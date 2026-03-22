@@ -1,0 +1,42 @@
+name: AgentLens
+options:
+  bundleIdPrefix: com.agentlens
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_PREVIEWS: YES
+    PRODUCT_NAME: AgentLens
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: 1
+    CODE_SIGN_STYLE: Automatic
+    INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
+    INFOPLIST_KEY_LSUIElement: true
+    GENERATE_INFOPLIST_FILE: YES
+
+targets:
+  AgentLens:
+    type: application
+    platform: macOS
+    sources:
+      - path: AgentLens
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.agentlens.app
+        CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/AgentLens.entitlements
+    dependencies:
+      - package: GRDB.swift
+        product: GRDB
+
+packages:
+  GRDB.swift:
+    url: https://github.com/groue/GRDB.swift
+    from: "7.0.0"
