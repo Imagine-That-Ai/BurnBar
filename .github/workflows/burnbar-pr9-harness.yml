@@ -1,0 +1,50 @@
+name: BurnBar PR9 Harness
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/burnbar-pr9-harness.yml"
+      - "scripts/**"
+      - "extensions/burnbar/**"
+      - "BurnBarCore/**"
+      - "BurnBarDaemon/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/burnbar-pr9-harness.yml"
+      - "scripts/**"
+      - "extensions/burnbar/**"
+      - "BurnBarCore/**"
+      - "BurnBarDaemon/**"
+
+jobs:
+  burnbar-pr9:
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: extensions/burnbar/package-lock.json
+
+      - name: Install BurnBar extension dependencies
+        run: npm ci --prefix extensions/burnbar
+
+      - name: Run BurnBar Swift tests
+        run: ./scripts/test-burnbar-swift.sh
+
+      - name: Run BurnBar TypeScript unit tests
+        run: ./scripts/test-burnbar-ts.sh
+
+      - name: Run BurnBar replay evals
+        run: ./scripts/test-burnbar-replay-evals.sh
+
+      - name: Run BurnBar extension-host tests
+        run: ./scripts/test-burnbar-extension-host.sh

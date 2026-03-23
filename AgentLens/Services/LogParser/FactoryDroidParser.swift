@@ -2,80 +2,79 @@ import Foundation
 
 // MARK: - Factory Droid Parser
 
+/// FactoryDroidParser extracts token usage from Factory Droid sessions and categorizes
+/// them by the underlying model provider (MiniMax, Z.ai, Claude, etc.)
 final class FactoryDroidParser: LogParser {
     let provider: AgentProvider = .factory
-    
-    private let fileManager = FileManager.default
-    
-    func parse() async throws -> [TokenUsage] {
-        let sessionsPath = (provider.logDirectory as NSString).expandingTildeInPath
+
+    func parse() async throws -> ParseResult {
+        let fileManager = FileManager.default
+        let sessionsPath = NSString(string: provider.logDirectory).expandingTildeInPath
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
-        
+
         guard fileManager.fileExists(atPath: sessionsPath) else {
-            print("Factory Droid sessions directory not found at: \(sessionsPath)")
-            return []
+            return ParseResult(usages: [], conversations: [])
         }
-        
+
         var usages: [TokenUsage] = []
-        
-        // Iterate through project directories
-        let projectDirs = try fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil)
-            .filter { $0.hasDirectoryPath }
-        
+        var conversations: [ConversationRecord] = []
+
+        let projectDirs = try fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+
         for projectDir in projectDirs {
-            let projectName = projectDir.lastPathComponent
-                .replacingOccurrences(of: "-Users-", with: "~/")
-                .replacingOccurrences(of: "-", with: "/")
-            
-            // Find all .jsonl session files and their corresponding .settings.json
-            let files = try? fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)
-            
-            // Group by session ID
-            var sessionFiles: [String: (jsonl: URL, settings: URL?)] = [:]
-            
-            for file in files ?? [] {
-                let filename = file.lastPathComponent
-                let baseName = filename.replacingOccurrences(of: ".jsonl", with: "")
-                                       .replacingOccurrences(of: ".settings.json", with: "")
-                
-                if filename.hasSuffix(".jsonl") {
-                    if sessionFiles[baseName] == nil {
-                        sessionFiles[baseName] = (jsonl: file, settings: nil)
-                    } else {
-                        sessionFiles[baseName]?.jsonl = file
-                    }
-                } else if filename.hasSuffix(".settings.json") {
-                    if sessionFiles[baseName] == nil {
-                        sessionFiles[baseName] = (jsonl: file, settings: file)
-                    } else {
-                        sessionFiles[baseName]?.settings = file
-                    }
+            let projectName = decodeProjectName(projectDir.lastPathComponent)
+
+            let files = try fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "jsonl" || $0.pathExtension == "json" }
+
+            for jsonlFile in files where jsonlFile.pathExtension == "jsonl" {
+                let baseName = jsonlFile.deletingPathExtension().lastPathComponent
+                let settingsFile = projectDir.appendingPathComponent("\(baseName).settings.json")
+
+                guard fileManager.fileExists(atPath: settingsFile.path) else {
+                    continue
                 }
-            }
-            
-            // Parse each session
-            for (sessionId, files) in sessionFiles {
-                if let usage = try? await parseSession(
-                    sessionId: sessionId,
-                    jsonlFile: files.jsonl,
-                    settingsFile: files.settings,
+
+                if let pair = try parseSession(
+                    sessionId: baseName,
+                    jsonlFile: jsonlFile,
+                    settingsFile: settingsFile,
                     projectName: projectName
-                ) {
+                ), let usage = pair.usage {
                     usages.append(usage)
+                    if let conv = pair.conversation {
+                        conversations.append(conv)
+                    }
                 }
             }
         }
-        
-        return usages
+
+        return ParseResult(usages: usages, conversations: conversations)
     }
-    
+
+    private func decodeProjectName(_ encoded: String) -> String {
+        var decoded = encoded
+            .replacingOccurrences(of: "-Users-", with: "~/")
+            .replacingOccurrences(of: "-", with: "/")
+
+        while decoded.contains("//") {
+            decoded = decoded.replacingOccurrences(of: "//", with: "/")
+        }
+
+        if decoded.hasSuffix("/") {
+            decoded.removeLast()
+        }
+
+        return decoded
+    }
+
     private func parseSession(
         sessionId: String,
         jsonlFile: URL,
         settingsFile: URL?,
         projectName: String
-    ) async throws -> TokenUsage? {
-        // Read settings file for token totals
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         var tokenData: (
             input: Int,
             output: Int,
@@ -85,54 +84,40 @@ final class FactoryDroidParser: LogParser {
             startTime: Date?,
             endTime: Date?
         ) = (0, 0, 0, 0, "unknown", nil, nil)
-        
-        if let settingsFile = settingsFile {
-            if let data = try? Data(contentsOf: settingsFile),
-               let settings = try? JSONDecoder().decode(FactorySettings.self, from: data) {
-                tokenData.input = settings.tokenUsage?.inputTokens ?? 0
-                tokenData.output = settings.tokenUsage?.outputTokens ?? 0
-                tokenData.cacheCreation = settings.tokenUsage?.cacheCreationTokens ?? 0
-                tokenData.cacheRead = settings.tokenUsage?.cacheReadTokens ?? 0
-                tokenData.model = settings.model ?? "unknown"
+
+        if let settingsFileURL = settingsFile {
+            if let data = try? Data(contentsOf: settingsFileURL),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                tokenData.model = (json["model"] as? String) ?? "unknown"
+
+                if let tokenUsage = json["tokenUsage"] as? [String: Any] {
+                    tokenData.input = tokenUsage["inputTokens"] as? Int ?? 0
+                    tokenData.output = tokenUsage["outputTokens"] as? Int ?? 0
+                    tokenData.cacheCreation = tokenUsage["cacheCreationTokens"] as? Int ?? 0
+                    tokenData.cacheRead = tokenUsage["cacheReadTokens"] as? Int ?? 0
+                }
             }
         }
-        
-        // Read JSONL file for timestamps
-        var firstTimestamp: Date?
-        var lastTimestamp: Date?
-        
+
+        let mtime = modificationDate(of: jsonlFile)
+        let conv = ClaudeConversationAccumulator()
+
         if let handle = try? FileHandle(forReadingFrom: jsonlFile) {
             defer { try? handle.close() }
-            
-            // Read first line for start time
-            if let firstLine = handle.readLine() {
-                if let data = firstLine.data(using: .utf8),
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    if let ts = json["timestamp"] as? String {
-                        firstTimestamp = ISO8601DateFormatter().date(from: ts)
-                    }
-                    // Also check for session_start type
-                    if json["type"] as? String == "session_start",
-                       let ts = json["timestamp"] as? String {
-                        firstTimestamp = ISO8601DateFormatter().date(from: ts) ?? firstTimestamp
-                    }
+            while let line = handle.readLine(), !line.isEmpty {
+                guard let data = line.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    continue
                 }
-            }
-            
-            // Seek to end and read backwards for last line
-            if let lastLine = try? handle.readLastLine() {
-                if let data = lastLine.data(using: .utf8),
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let ts = json["timestamp"] as? String {
-                    lastTimestamp = ISO8601DateFormatter().date(from: ts)
-                }
+                conv.ingest(jsonLine: json)
             }
         }
-        
-        let startTime = firstTimestamp ?? Date()
-        let endTime = lastTimestamp ?? startTime
-        
-        // Calculate cost (approximate pricing)
+
+        conv.finalizeArrays()
+
+        let startTime = conv.startTime ?? tokenData.startTime ?? Date()
+        let endTime = conv.endTime ?? tokenData.endTime ?? startTime
+
         let cost = calculateCost(
             inputTokens: tokenData.input,
             outputTokens: tokenData.output,
@@ -140,11 +125,13 @@ final class FactoryDroidParser: LogParser {
             cacheReadTokens: tokenData.cacheRead,
             model: tokenData.model
         )
-        
-        // Skip sessions with no activity
+
         guard tokenData.input > 0 || tokenData.output > 0 else { return nil }
-        
-        return TokenUsage(
+
+        let detectedProvider = detectProviderFromModel(tokenData.model)
+        guard detectedProvider == .factory else { return nil }
+
+        let usage = TokenUsage(
             provider: .factory,
             sessionId: sessionId,
             projectName: projectName,
@@ -157,8 +144,50 @@ final class FactoryDroidParser: LogParser {
             startTime: startTime,
             endTime: endTime
         )
+
+        let conversation = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .factory, sessionId: sessionId),
+            provider: .factory,
+            sessionId: sessionId,
+            projectName: projectName,
+            startTime: startTime,
+            endTime: endTime,
+            messageCount: conv.messageCount,
+            userWordCount: conv.userWordCount,
+            assistantWordCount: conv.assistantWordCount,
+            keyFiles: conv.keyFiles,
+            keyCommands: conv.keyCommands,
+            keyTools: conv.keyTools,
+            inferredTaskTitle: conv.firstUserText ?? projectName,
+            lastAssistantMessage: conv.lastAssistantText,
+            fullText: conv.fullText,
+            indexedAt: Date(),
+            fileModifiedAt: mtime,
+            summary: nil
+        )
+
+        return (usage, conversation)
     }
-    
+
+    private func modificationDate(of url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+    }
+
+    /// Detects the appropriate provider based on model name
+    private func detectProviderFromModel(_ model: String) -> AgentProvider {
+        let lowercasedModel = model.lowercased()
+
+        if lowercasedModel.contains("minimax") {
+            return .minimax
+        }
+
+        if lowercasedModel.contains("glm") || lowercasedModel.contains("z.ai") || lowercasedModel.contains("zai") {
+            return .zai
+        }
+
+        return .factory
+    }
+
     private func calculateCost(
         inputTokens: Int,
         outputTokens: Int,
@@ -166,61 +195,58 @@ final class FactoryDroidParser: LogParser {
         cacheReadTokens: Int,
         model: String
     ) -> Double {
-        // Approximate pricing (these vary by model, using Claude-like pricing as baseline)
         let lowercasedModel = model.lowercased()
-        
+
         let inputCost: Double
         let outputCost: Double
         let cacheCreationCost: Double
         let cacheReadCost: Double
-        
+
         if lowercasedModel.contains("opus") {
-            inputCost = 0.000015      // $15/1M tokens
-            outputCost = 0.000075     // $75/1M tokens
+            inputCost = 0.000015
+            outputCost = 0.000075
             cacheCreationCost = 0.00001875
             cacheReadCost = 0.0000015
         } else if lowercasedModel.contains("sonnet") {
-            inputCost = 0.000003      // $3/1M tokens
-            outputCost = 0.000015     // $15/1M tokens
+            inputCost = 0.000003
+            outputCost = 0.000015
             cacheCreationCost = 0.00000375
             cacheReadCost = 0.0000003
         } else if lowercasedModel.contains("haiku") {
-            inputCost = 0.00000025    // $0.25/1M tokens
-            outputCost = 0.00000125   // $1.25/1M tokens
+            inputCost = 0.00000025
+            outputCost = 0.00000125
             cacheCreationCost = 0.0000003125
             cacheReadCost = 0.00000003
-        } else if lowercasedModel.contains("glm") || lowercasedModel.contains("z.ai") {
-            // GLM models - approximate
+        } else if lowercasedModel.contains("glm") || lowercasedModel.contains("z.ai") || lowercasedModel.contains("zai") {
+            inputCost = 0.000001
+            outputCost = 0.000002
+            cacheCreationCost = 0.0000005
+            cacheReadCost = 0.0000001
+        } else if lowercasedModel.contains("minimax") {
             inputCost = 0.000001
             outputCost = 0.000002
             cacheCreationCost = 0
             cacheReadCost = 0
+        } else if lowercasedModel.contains("kimi-k2") || lowercasedModel.contains("kimi k2") {
+            inputCost = 0.0000006
+            outputCost = 0.000003
+            cacheCreationCost = 0
+            cacheReadCost = 0
+        } else if lowercasedModel.contains("kimi") || lowercasedModel.contains("moonshot") {
+            inputCost = 0.000003
+            outputCost = 0.000015
+            cacheCreationCost = 0
+            cacheReadCost = 0
         } else {
-            // Default (sonnet-like)
             inputCost = 0.000003
             outputCost = 0.000015
             cacheCreationCost = 0.00000375
             cacheReadCost = 0.0000003
         }
-        
+
         return Double(inputTokens) * inputCost
-             + Double(outputTokens) * outputCost
-             + Double(cacheCreationTokens) * cacheCreationCost
-             + Double(cacheReadTokens) * cacheReadCost
-    }
-}
-
-// MARK: - Factory Settings Model
-
-private struct FactorySettings: Codable {
-    let model: String?
-    let tokenUsage: TokenUsageData?
-    
-    struct TokenUsageData: Codable {
-        let inputTokens: Int
-        let outputTokens: Int
-        let cacheCreationTokens: Int
-        let cacheReadTokens: Int
-        let thinkingTokens: Int?
+            + Double(outputTokens) * outputCost
+            + Double(cacheCreationTokens) * cacheCreationCost
+            + Double(cacheReadTokens) * cacheReadCost
     }
 }

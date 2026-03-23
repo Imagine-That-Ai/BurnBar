@@ -1,0 +1,332 @@
+{
+  "schemaVersion": 1,
+  "providers": [
+    {
+      "id": "anthropic",
+      "displayName": "Anthropic",
+      "baseURL": "https://api.anthropic.com/v1",
+      "visibility": "hidden",
+      "capabilities": ["accounting"],
+      "models": [
+        {
+          "id": "claude-opus-family",
+          "displayName": "Claude Opus Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["claude", "opus"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 15,
+            "outputPerMToken": 75,
+            "cacheReadPerMToken": 1.5
+          }
+        },
+        {
+          "id": "claude-sonnet-family",
+          "displayName": "Claude Sonnet Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["claude", "sonnet"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 3,
+            "outputPerMToken": 15,
+            "cacheReadPerMToken": 0.3
+          }
+        },
+        {
+          "id": "claude-default-family",
+          "displayName": "Claude Default Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["claude"], "any": [], "none": ["opus", "sonnet"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.8,
+            "outputPerMToken": 4,
+            "cacheReadPerMToken": 0.08
+          }
+        }
+      ]
+    },
+    {
+      "id": "openai",
+      "displayName": "OpenAI",
+      "baseURL": "https://api.openai.com/v1",
+      "visibility": "hidden",
+      "capabilities": ["accounting"],
+      "models": [
+        {
+          "id": "gpt-4o-family",
+          "displayName": "GPT-4o Family",
+          "visibility": "hidden",
+          "aliases": ["gpt-4o"],
+          "matchers": [
+            { "all": ["gpt-4o"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1.25
+          }
+        },
+        {
+          "id": "gpt-4.5-family",
+          "displayName": "GPT-4.5 Family",
+          "visibility": "hidden",
+          "aliases": ["gpt-4.5"],
+          "matchers": [
+            { "all": ["gpt-4.5"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1.25
+          }
+        },
+        {
+          "id": "gpt-4-turbo-family",
+          "displayName": "GPT-4 Turbo Family",
+          "visibility": "hidden",
+          "aliases": ["gpt-4-turbo"],
+          "matchers": [
+            { "all": ["gpt-4-turbo"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 10,
+            "outputPerMToken": 30,
+            "cacheReadPerMToken": 5
+          }
+        },
+        {
+          "id": "gpt-4-family",
+          "displayName": "GPT-4 Family",
+          "visibility": "hidden",
+          "aliases": ["gpt-4"],
+          "matchers": [
+            { "all": ["gpt-4"], "any": [], "none": ["gpt-4o", "gpt-4.5", "gpt-4-turbo"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 30,
+            "outputPerMToken": 60,
+            "cacheReadPerMToken": 15
+          }
+        },
+        {
+          "id": "gpt-5-family",
+          "displayName": "GPT-5 Family",
+          "visibility": "hidden",
+          "aliases": ["gpt-5"],
+          "matchers": [
+            { "all": ["gpt-5"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1.25
+          }
+        },
+        {
+          "id": "codex-family",
+          "displayName": "Codex Family",
+          "visibility": "hidden",
+          "aliases": ["codex"],
+          "matchers": [
+            { "all": ["codex"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 3,
+            "outputPerMToken": 12,
+            "cacheReadPerMToken": 1.5
+          }
+        },
+        {
+          "id": "gpt-3.5-family",
+          "displayName": "GPT-3.5 Family",
+          "visibility": "hidden",
+          "aliases": ["gpt-3.5"],
+          "matchers": [
+            { "all": ["gpt-3.5"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.5,
+            "outputPerMToken": 1.5,
+            "cacheReadPerMToken": 0.25
+          }
+        },
+        {
+          "id": "reasoning-mini-family",
+          "displayName": "Reasoning Mini Family",
+          "visibility": "hidden",
+          "aliases": ["o1-mini", "o3-mini"],
+          "matchers": [
+            { "all": ["o1-mini"], "any": [], "none": [] },
+            { "all": ["o3-mini"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 3,
+            "outputPerMToken": 12,
+            "cacheReadPerMToken": 1.5
+          }
+        },
+        {
+          "id": "o3-family",
+          "displayName": "O3 Family",
+          "visibility": "hidden",
+          "aliases": ["o3"],
+          "matchers": [
+            { "all": ["o3"], "any": [], "none": ["o3-mini"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 60,
+            "outputPerMToken": 240,
+            "cacheReadPerMToken": 30
+          }
+        },
+        {
+          "id": "o1-family",
+          "displayName": "O1 Family",
+          "visibility": "hidden",
+          "aliases": ["o1"],
+          "matchers": [
+            { "all": ["o1"], "any": [], "none": ["o1-mini"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 60,
+            "outputPerMToken": 240,
+            "cacheReadPerMToken": 30
+          }
+        }
+      ]
+    },
+    {
+      "id": "zai",
+      "displayName": "Z.ai",
+      "baseURL": "https://api.z.ai/api/coding/paas/v4",
+      "visibility": "public",
+      "capabilities": ["routing", "accounting", "cursor_connector"],
+      "models": [
+        {
+          "id": "glm-5-turbo",
+          "displayName": "GLM-5 Turbo",
+          "visibility": "public",
+          "aliases": ["glm-5-turbo"],
+          "matchers": [
+            { "all": ["glm-5-turbo"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.07,
+            "outputPerMToken": 0.07,
+            "cacheReadPerMToken": 0.035
+          }
+        },
+        {
+          "id": "glm-5",
+          "displayName": "GLM-5",
+          "visibility": "public",
+          "aliases": ["glm-5"],
+          "matchers": [
+            { "all": ["glm", "5"], "any": [], "none": ["glm-5-turbo"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.07,
+            "outputPerMToken": 0.07,
+            "cacheReadPerMToken": 0.035
+          }
+        },
+        {
+          "id": "glm-family",
+          "displayName": "GLM Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["glm"], "any": [], "none": ["5"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.05,
+            "outputPerMToken": 0.05,
+            "cacheReadPerMToken": 0.025
+          }
+        }
+      ]
+    },
+    {
+      "id": "minimax",
+      "displayName": "MiniMax",
+      "baseURL": "https://api.minimax.io/v1",
+      "visibility": "public",
+      "capabilities": ["routing", "accounting", "cursor_connector"],
+      "models": [
+        {
+          "id": "minimax-m2.7-highspeed",
+          "displayName": "MiniMax M2.7 Highspeed",
+          "visibility": "public",
+          "aliases": ["minimax-m2.7-highspeed"],
+          "matchers": [
+            { "all": ["minimax-m2.7-highspeed"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.69,
+            "outputPerMToken": 0.69,
+            "cacheReadPerMToken": 0.34
+          }
+        },
+        {
+          "id": "minimax-m23-family",
+          "displayName": "MiniMax M2/M3 Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["minimax"], "any": ["m2", "m3"], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.69,
+            "outputPerMToken": 0.69,
+            "cacheReadPerMToken": 0.34
+          }
+        },
+        {
+          "id": "minimax-family",
+          "displayName": "MiniMax Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["minimax"], "any": [], "none": ["m2", "m3"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.5,
+            "outputPerMToken": 0.5,
+            "cacheReadPerMToken": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "id": "moonshot",
+      "displayName": "Moonshot",
+      "baseURL": "https://api.moonshot.cn/v1",
+      "visibility": "hidden",
+      "capabilities": ["accounting"],
+      "models": [
+        {
+          "id": "kimi-family",
+          "displayName": "Kimi Family",
+          "visibility": "hidden",
+          "aliases": ["kimi"],
+          "matchers": [
+            { "all": ["kimi"], "any": [], "none": [] },
+            { "all": ["moonshot"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.1,
+            "outputPerMToken": 0.3,
+            "cacheReadPerMToken": 0.05
+          }
+        }
+      ]
+    }
+  ]
+}

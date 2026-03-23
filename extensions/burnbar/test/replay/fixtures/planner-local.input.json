@@ -1,0 +1,75 @@
+{
+  "name": "planner-local",
+  "daemon": {
+    "health": [
+      {
+        "result": {
+          "ok": true,
+          "daemonVersion": "0.1.0",
+          "protocolVersion": 1,
+          "socketPath": "/tmp/burnbar.sock"
+        }
+      }
+    ],
+    "catalog": [
+      {
+        "result": {
+          "schemaVersion": 1,
+          "providers": [
+            {
+              "id": "z-ai",
+              "displayName": "Z.ai",
+              "baseURL": "https://api.z.ai",
+              "visibility": "public",
+              "capabilities": [
+                "routing"
+              ],
+              "models": [
+                {
+                  "id": "glm-4.6",
+                  "displayName": "GLM 4.6",
+                  "visibility": "public",
+                  "aliases": [],
+                  "pricing": {
+                    "inputPerMToken": 1,
+                    "outputPerMToken": 2,
+                    "cacheReadPerMToken": 0.5
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "workspace": {
+    "capabilities": [
+      {
+        "result": {
+          "hasWorkspace": true,
+          "localWorkspace": true,
+          "remoteWorkspace": false,
+          "readonlyWorkspace": false,
+          "virtualWorkspace": false,
+          "untrustedWorkspace": false,
+          "workspaceHost": "ui",
+          "availableTools": [
+            "read_file",
+            "search_workspace",
+            "apply_patch",
+            "run_terminal"
+          ],
+          "gatedTools": [],
+          "explanation": "Workspace tools are running in the local extension host. All PR6 workspace tools are available."
+        }
+      }
+    ]
+  },
+  "actions": [
+    {
+      "type": "refresh",
+      "label": "initial-refresh"
+    }
+  ]
+}

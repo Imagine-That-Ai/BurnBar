@@ -56,3 +56,11 @@ xcuserdata/
 *.env
 *.pem
 *.p12
+
+# Firebase — never commit the real plist; drop it locally as GoogleService-Info.plist
+GoogleService-Info.plist
+
+# Local test/build artifacts
+.playwright-mcp/
+output/playwright/
+default.profraw

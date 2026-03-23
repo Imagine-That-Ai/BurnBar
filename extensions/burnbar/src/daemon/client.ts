@@ -1,0 +1,269 @@
+import { randomUUID } from "node:crypto";
+import { createConnection } from "node:net";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+import {
+  BURNBAR_PROTOCOL_VERSION,
+  type BurnBarCatalog,
+  type BurnBarCatalogResponse,
+  type BurnBarClientArbitrationSnapshot,
+  type BurnBarClientAttachRequest,
+  type BurnBarClientAttachResponse,
+  type BurnBarClientDetachRequest,
+  type BurnBarConfigResponse,
+  type BurnBarHealthResponse,
+  type BurnBarRecentUsageRequest,
+  type BurnBarRecentUsageResponse,
+  type BurnBarRPCRequestEnvelopeWithParams,
+  type BurnBarRPCMethod,
+  type BurnBarRPCRequestEnvelope,
+  type BurnBarRPCResponseEnvelope
+} from "../types";
+import type {
+  BurnBarApprovalRespondRequest,
+  BurnBarRunCancelRequest,
+  BurnBarRunCreateRequest,
+  BurnBarRunCreateResponse,
+  BurnBarRunDetailResponse,
+  BurnBarRunEventBatch,
+  BurnBarRunGetRequest,
+  BurnBarRunListRequest,
+  BurnBarRunListResponse,
+  BurnBarRunPollRequest,
+  BurnBarRunRetryRequest
+} from "../types";
+import type {
+  BurnBarToolExecutionRequest,
+  BurnBarToolExecutionResponse,
+  BurnBarToolResultSubmissionRequest
+} from "../types";
+
+export const DEFAULT_BURNBAR_SOCKET_PATH = join(
+  homedir(),
+  "Library",
+  "Application Support",
+  "BurnBar",
+  "burnbar-daemon.sock"
+);
+
+function resolveDefaultSocketPath(): string {
+  return process.env.BURNBAR_DAEMON_SOCKET_PATH ?? DEFAULT_BURNBAR_SOCKET_PATH;
+}
+
+export interface BurnBarDaemonClientOptions {
+  socketPath?: string;
+  timeoutMs?: number;
+}
+
+export class BurnBarDaemonClientError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BurnBarDaemonClientError";
+  }
+}
+
+export interface BurnBarDaemonClientLike {
+  health(): Promise<BurnBarHealthResponse>;
+  catalog(): Promise<BurnBarCatalog>;
+  config(): Promise<BurnBarConfigResponse["snapshot"]>;
+  recentUsage(limit?: number): Promise<BurnBarRecentUsageResponse["usage"]>;
+  attach(params: BurnBarClientAttachRequest): Promise<BurnBarClientAttachResponse>;
+  detach(params: BurnBarClientDetachRequest): Promise<BurnBarClientArbitrationSnapshot>;
+  createRun(params: BurnBarRunCreateRequest): Promise<BurnBarRunCreateResponse>;
+  listRuns(params: BurnBarRunListRequest): Promise<BurnBarRunListResponse["runs"]>;
+  getRun(params: BurnBarRunGetRequest): Promise<BurnBarRunDetailResponse>;
+  pollRuns(params: BurnBarRunPollRequest): Promise<BurnBarRunEventBatch>;
+  cancelRun(params: BurnBarRunCancelRequest): Promise<BurnBarRunDetailResponse>;
+  retryRun(params: BurnBarRunRetryRequest): Promise<BurnBarRunDetailResponse>;
+  executeTool(params: BurnBarToolExecutionRequest): Promise<BurnBarToolExecutionResponse>;
+  submitToolResult(params: BurnBarToolResultSubmissionRequest): Promise<BurnBarRunDetailResponse>;
+  respondToApproval(params: BurnBarApprovalRespondRequest): Promise<BurnBarRunDetailResponse>;
+}
+
+export class BurnBarDaemonClient implements BurnBarDaemonClientLike {
+  private readonly socketPath: string;
+  private readonly timeoutMs: number;
+
+  constructor(options: BurnBarDaemonClientOptions = {}) {
+    this.socketPath = options.socketPath ?? resolveDefaultSocketPath();
+    this.timeoutMs = options.timeoutMs ?? 10_000;
+  }
+
+  async health(): Promise<BurnBarHealthResponse> {
+    return this.send<BurnBarHealthResponse>("daemon.health");
+  }
+
+  async catalog(): Promise<BurnBarCatalog> {
+    const response = await this.send<BurnBarCatalogResponse>("daemon.catalog");
+    return response.catalog;
+  }
+
+  async config(): Promise<BurnBarConfigResponse["snapshot"]> {
+    const response = await this.send<BurnBarConfigResponse, Record<string, never>>("daemon.config.get", {});
+    return response.snapshot;
+  }
+
+  async recentUsage(limit = 20): Promise<BurnBarRecentUsageResponse["usage"]> {
+    const response = await this.send<BurnBarRecentUsageResponse, BurnBarRecentUsageRequest>("daemon.usage.recent", {
+      limit
+    });
+    return response.usage;
+  }
+
+  async attach(params: BurnBarClientAttachRequest): Promise<BurnBarClientAttachResponse> {
+    return this.send("client.attach", params);
+  }
+
+  async detach(params: BurnBarClientDetachRequest): Promise<BurnBarClientArbitrationSnapshot> {
+    return this.send("client.detach", params);
+  }
+
+  async createRun(params: BurnBarRunCreateRequest): Promise<BurnBarRunCreateResponse> {
+    return this.send("run.create", params);
+  }
+
+  async listRuns(params: BurnBarRunListRequest): Promise<BurnBarRunListResponse["runs"]> {
+    const response = await this.send<BurnBarRunListResponse, BurnBarRunListRequest>("run.list", params);
+    return response.runs;
+  }
+
+  async getRun(params: BurnBarRunGetRequest): Promise<BurnBarRunDetailResponse> {
+    return this.send("run.get", params);
+  }
+
+  async pollRuns(params: BurnBarRunPollRequest): Promise<BurnBarRunEventBatch> {
+    return this.send("run.poll", params);
+  }
+
+  async cancelRun(params: BurnBarRunCancelRequest): Promise<BurnBarRunDetailResponse> {
+    return this.send("run.cancel", params);
+  }
+
+  async retryRun(params: BurnBarRunRetryRequest): Promise<BurnBarRunDetailResponse> {
+    return this.send("run.retry", params);
+  }
+
+  async executeTool(params: BurnBarToolExecutionRequest): Promise<BurnBarToolExecutionResponse> {
+    return this.send("workspace.executeTool", params);
+  }
+
+  async submitToolResult(params: BurnBarToolResultSubmissionRequest): Promise<BurnBarRunDetailResponse> {
+    return this.send("workspace.toolResult", params);
+  }
+
+  async respondToApproval(params: BurnBarApprovalRespondRequest): Promise<BurnBarRunDetailResponse> {
+    return this.send("approval.respond", params);
+  }
+
+  private async send<Result, Params = undefined>(method: BurnBarRPCMethod, params?: Params): Promise<Result> {
+    const payload = JSON.stringify(this.makeEnvelope(method, params)) + "\n";
+
+    return await new Promise<Result>((resolve, reject) => {
+      const socket = createConnection(this.socketPath);
+      let responseBuffer = "";
+      let settled = false;
+
+      const timeout = setTimeout(() => {
+        socket.destroy();
+        fail(new BurnBarDaemonClientError(`Timed out waiting for BurnBar daemon on ${this.socketPath}.`));
+      }, this.timeoutMs);
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        socket.removeAllListeners();
+      };
+
+      const fail = (error: Error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+
+      socket.setEncoding("utf8");
+
+      socket.on("connect", () => {
+        socket.write(payload);
+      });
+
+      socket.on("data", (chunk: string) => {
+        responseBuffer += chunk;
+        const newlineIndex = responseBuffer.indexOf("\n");
+        if (newlineIndex === -1) {
+          return;
+        }
+
+        const line = responseBuffer.slice(0, newlineIndex).trim();
+        if (!line) {
+          fail(new BurnBarDaemonClientError("BurnBar daemon returned an empty response."));
+          return;
+        }
+
+        try {
+          const envelope = JSON.parse(line) as BurnBarRPCResponseEnvelope<Result>;
+          if (envelope.error) {
+            fail(new BurnBarDaemonClientError(envelope.error.message));
+            return;
+          }
+
+          if (!envelope.result) {
+            fail(new BurnBarDaemonClientError("BurnBar daemon returned no result payload."));
+            return;
+          }
+
+          if (envelope.protocolVersion !== BURNBAR_PROTOCOL_VERSION) {
+            fail(
+              new BurnBarDaemonClientError(
+                `BurnBar protocol mismatch. Expected ${BURNBAR_PROTOCOL_VERSION}, received ${envelope.protocolVersion}.`
+              )
+            );
+            return;
+          }
+
+          settled = true;
+          cleanup();
+          resolve(envelope.result);
+          socket.end();
+        } catch (error) {
+          fail(
+            error instanceof Error
+              ? error
+              : new BurnBarDaemonClientError("Failed to parse BurnBar daemon response.")
+          );
+        }
+      });
+
+      socket.on("error", (error) => {
+        fail(
+          new BurnBarDaemonClientError(
+            `Unable to reach the local BurnBar daemon on ${this.socketPath}: ${error.message}`
+          )
+        );
+      });
+
+      socket.on("end", () => {
+        if (!settled && responseBuffer.trim().length === 0) {
+          fail(new BurnBarDaemonClientError("BurnBar daemon closed the connection before replying."));
+        }
+      });
+    });
+  }
+
+  private makeEnvelope(method: BurnBarRPCMethod, params?: unknown): BurnBarRPCRequestEnvelope | BurnBarRPCRequestEnvelopeWithParams<unknown> {
+    if (typeof params === "undefined") {
+      return {
+        id: randomUUID(),
+        method
+      };
+    }
+
+    return {
+      id: randomUUID(),
+      method,
+      params
+    };
+  }
+}

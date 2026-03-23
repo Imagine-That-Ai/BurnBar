@@ -1,0 +1,730 @@
+/* ============================================================
+   BurnBar VS Code Webview Panel — panel.css
+   ============================================================ */
+
+/* ----------------------------------------------------------
+   BurnBar accent tokens
+   ---------------------------------------------------------- */
+:root {
+  --bb-ember:     #E8624A;
+  --bb-teal:      #4ABFB0;
+  --bb-gold:      #D4A017;
+  --bb-ember-dim: rgba(232, 98, 74, 0.15);
+  --bb-teal-dim:  rgba(74, 191, 176, 0.12);
+  --bb-gold-dim:  rgba(212, 160, 23, 0.15);
+}
+
+/* ----------------------------------------------------------
+   Keyframe animations
+   ---------------------------------------------------------- */
+@keyframes bb-pulse {
+  0%,
+  100% { opacity: 1; }
+  50%  { opacity: 0.35; }
+}
+
+@keyframes bb-slide-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ----------------------------------------------------------
+   Base / reset
+   ---------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  background:  var(--vscode-sideBar-background);
+  color:       var(--vscode-sideBar-foreground);
+  font-family: var(--vscode-font-family);
+  font-size:   var(--vscode-font-size, 13px);
+  margin:      0;
+  padding:     0;
+  line-height: 1.5;
+}
+
+/* ----------------------------------------------------------
+   Root container
+   ---------------------------------------------------------- */
+#bb-root {
+  padding:        8px 12px;
+  display:        flex;
+  flex-direction: column;
+  gap:            12px;
+  min-height:     100vh;
+}
+
+/* ----------------------------------------------------------
+   Visibility helper — applied by JS
+   ---------------------------------------------------------- */
+[data-visible="false"] {
+  display: none !important;
+}
+
+/* ----------------------------------------------------------
+   Header
+   ---------------------------------------------------------- */
+.bb-header {
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  padding:         6px 0;
+  border-bottom:   1px solid rgba(128, 128, 128, 0.15);
+  gap:             8px;
+}
+
+.bb-wordmark {
+  font-weight:     600;
+  font-size:       13px;
+  letter-spacing:  0.02em;
+  color:           var(--bb-ember);
+  flex-shrink:     0;
+}
+
+.bb-header-chips {
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+  flex:        1;
+  min-width:   0;
+  flex-wrap:   wrap;
+}
+
+.bb-header-actions {
+  display:     flex;
+  align-items: center;
+  gap:         4px;
+  flex-shrink: 0;
+}
+
+/* ----------------------------------------------------------
+   Status orb
+   ---------------------------------------------------------- */
+.bb-orb {
+  width:         8px;
+  height:        8px;
+  border-radius: 50%;
+  display:       inline-block;
+  flex-shrink:   0;
+}
+
+.bb-orb--connected {
+  background: var(--bb-teal);
+}
+
+.bb-orb--connecting,
+.bb-orb--repairing {
+  background: var(--bb-gold);
+  animation:  bb-pulse 2s ease-in-out infinite;
+}
+
+.bb-orb--disconnected {
+  background: var(--vscode-editorError-foreground, #f48771);
+}
+
+/* ----------------------------------------------------------
+   Chip
+   ---------------------------------------------------------- */
+.bb-chip {
+  display:       inline-flex;
+  align-items:   center;
+  background:    var(--vscode-badge-background);
+  color:         var(--vscode-badge-foreground);
+  border-radius: 4px;
+  padding:       2px 7px;
+  font-size:     11px;
+  white-space:   nowrap;
+  overflow:      hidden;
+  text-overflow: ellipsis;
+  max-width:     160px;
+}
+
+.bb-chip--trusted  { border-left: 2px solid var(--bb-teal); }
+.bb-chip--untrusted { border-left: 2px solid var(--bb-gold); }
+
+/* ----------------------------------------------------------
+   Icon buttons (header)
+   ---------------------------------------------------------- */
+.bb-icon-btn {
+  background:    transparent;
+  border:        none;
+  color:         var(--vscode-sideBar-foreground);
+  cursor:        pointer;
+  padding:       3px 5px;
+  border-radius: 4px;
+  font-size:     14px;
+  line-height:   1;
+  opacity:       0.65;
+  transition:    opacity 120ms ease, background 120ms ease;
+}
+
+.bb-icon-btn:hover {
+  opacity:    1;
+  background: rgba(128, 128, 128, 0.15);
+}
+
+.bb-icon-btn:focus-visible {
+  outline:        2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* ----------------------------------------------------------
+   Recovery block
+   ---------------------------------------------------------- */
+.bb-recovery {
+  background:    rgba(244, 135, 113, 0.08);
+  border:        1px solid rgba(244, 135, 113, 0.3);
+  border-radius: 6px;
+  padding:       10px 12px;
+  display:       flex;
+  flex-direction: column;
+  gap:           8px;
+}
+
+.bb-recovery-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.bb-recovery-msg {
+  margin:    0;
+  font-size: 12px;
+  opacity:   0.85;
+}
+
+.bb-recovery-actions {
+  display:   flex;
+  gap:       8px;
+  flex-wrap: wrap;
+}
+
+/* ----------------------------------------------------------
+   Buttons
+   ---------------------------------------------------------- */
+.bb-btn {
+  display:       inline-flex;
+  align-items:   center;
+  justify-content: center;
+  gap:           4px;
+  border-radius: 4px;
+  font-family:   var(--vscode-font-family);
+  font-size:     13px;
+  cursor:        pointer;
+  padding:       6px 14px;
+  transition:    background 120ms ease, opacity 120ms ease, border-color 120ms ease;
+  white-space:   nowrap;
+}
+
+.bb-btn:focus-visible {
+  outline:        2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.bb-btn:disabled {
+  opacity: 0.45;
+  cursor:  not-allowed;
+}
+
+/* Primary — ember CTA */
+.bb-btn--primary {
+  background: var(--bb-ember);
+  color:      #fff;
+  border:     none;
+}
+
+.bb-btn--primary:hover:not(:disabled) {
+  background: rgba(232, 98, 74, 0.82);
+}
+
+/* Secondary — subtle */
+.bb-btn--secondary {
+  background: var(--vscode-button-secondaryBackground, var(--vscode-input-background));
+  color:      var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  border:     1px solid var(--vscode-input-border);
+}
+
+.bb-btn--secondary:hover:not(:disabled) {
+  background: var(--vscode-list-activeSelectionBackground);
+}
+
+/* Danger */
+.bb-btn--danger {
+  background: transparent;
+  color:      var(--vscode-editorError-foreground, #f48771);
+  border:     1px solid currentColor;
+}
+
+.bb-btn--danger:hover:not(:disabled) {
+  background: rgba(244, 135, 113, 0.1);
+}
+
+/* Small variant */
+.bb-btn--sm {
+  padding:   2px 8px;
+  font-size: 12px;
+}
+
+/* ----------------------------------------------------------
+   Composer
+   ---------------------------------------------------------- */
+.bb-composer {
+  display:        flex;
+  flex-direction: column;
+  gap:            8px;
+}
+
+.bb-composer-input {
+  width:         100%;
+  background:    var(--vscode-input-background);
+  color:         var(--vscode-input-foreground);
+  border:        1px solid var(--vscode-input-border);
+  border-radius: 4px;
+  padding:       8px 10px;
+  font-family:   var(--vscode-font-family);
+  font-size:     var(--vscode-font-size, 13px);
+  resize:        vertical;
+  min-height:    64px;
+  line-height:   1.45;
+  outline:       none;
+  transition:    border-color 150ms ease;
+}
+
+.bb-composer-input::placeholder {
+  opacity: 0.5;
+}
+
+.bb-composer-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.bb-composer-input:disabled {
+  opacity: 0.45;
+  cursor:  not-allowed;
+}
+
+/* Controls row: model select + mode chips */
+.bb-composer-controls {
+  display:     flex;
+  align-items: center;
+  gap:         8px;
+  flex-wrap:   wrap;
+}
+
+.bb-model-select {
+  background:    var(--vscode-input-background);
+  color:         var(--vscode-input-foreground);
+  border:        1px solid var(--vscode-input-border);
+  border-radius: 4px;
+  padding:       3px 7px;
+  font-family:   var(--vscode-font-family);
+  font-size:     12px;
+  cursor:        pointer;
+  outline:       none;
+  min-width:     120px;
+  max-width:     200px;
+}
+
+.bb-model-select:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.bb-model-select:disabled {
+  opacity: 0.45;
+  cursor:  not-allowed;
+}
+
+/* Mode chips row */
+.bb-mode-chips {
+  display:     flex;
+  gap:         4px;
+  flex-wrap:   wrap;
+}
+
+.bb-mode-chip {
+  background:    transparent;
+  color:         var(--vscode-sideBar-foreground);
+  border:        1px solid var(--vscode-input-border);
+  border-radius: 4px;
+  padding:       2px 9px;
+  font-family:   var(--vscode-font-family);
+  font-size:     11px;
+  cursor:        pointer;
+  opacity:       0.65;
+  transition:    opacity 120ms ease, background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.bb-mode-chip:hover {
+  opacity: 1;
+}
+
+.bb-mode-chip--active {
+  background:   var(--bb-ember-dim);
+  border-color: var(--bb-ember);
+  color:        var(--bb-ember);
+  opacity:      1;
+}
+
+.bb-mode-chip:focus-visible {
+  outline:        2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* Start run button — full width */
+.bb-start-run {
+  width: 100%;
+}
+
+.bb-composer-disabled-msg {
+  margin:    0;
+  font-size: 11px;
+  opacity:   0.55;
+  text-align: center;
+}
+
+/* ----------------------------------------------------------
+   Runs section
+   ---------------------------------------------------------- */
+.bb-runs {
+  display:        flex;
+  flex-direction: column;
+  gap:            8px;
+}
+
+/* Base run card */
+.bb-run-card {
+  background:    var(--vscode-editor-background);
+  border-radius: 6px;
+  padding:       10px 12px;
+  border:        1px solid rgba(128, 128, 128, 0.12);
+  display:       flex;
+  flex-direction: column;
+  gap:           8px;
+  animation:     bb-slide-in 150ms ease-out;
+}
+
+/* Active run */
+.bb-run-card--active {
+  border-color: var(--bb-ember);
+  background:   var(--bb-ember-dim);
+}
+
+/* Selected run (non-active) */
+.bb-run-card--selected {
+  border-color: var(--vscode-focusBorder);
+}
+
+/* Compact history card */
+.bb-run-card--compact {
+  padding: 7px 12px;
+  cursor:  pointer;
+  opacity: 0.85;
+  gap:     4px;
+  transition: opacity 120ms ease;
+}
+
+.bb-run-card--compact:hover {
+  opacity: 1;
+}
+
+/* Run card header row */
+.bb-run-card-header {
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  gap:             8px;
+}
+
+.bb-run-title {
+  font-family:   monospace;
+  font-size:     12px;
+  font-weight:   600;
+  overflow:      hidden;
+  text-overflow: ellipsis;
+  white-space:   nowrap;
+}
+
+/* Run meta row */
+.bb-run-card-meta {
+  display:     flex;
+  align-items: center;
+  gap:         10px;
+  font-size:   11px;
+  opacity:     0.65;
+}
+
+.bb-run-note {
+  margin:    0;
+  font-size: 12px;
+  opacity:   0.8;
+}
+
+/* ----------------------------------------------------------
+   Phase chips
+   ---------------------------------------------------------- */
+.bb-phase-chip {
+  display:       inline-flex;
+  align-items:   center;
+  border-radius: 4px;
+  padding:       2px 7px;
+  font-size:     10px;
+  font-weight:   600;
+  letter-spacing: 0.03em;
+  white-space:   nowrap;
+  flex-shrink:   0;
+}
+
+.bb-phase-chip--active {
+  background: var(--bb-ember-dim);
+  color:      var(--bb-ember);
+}
+
+.bb-phase-chip--warning {
+  background: var(--bb-gold-dim);
+  color:      var(--bb-gold);
+}
+
+.bb-phase-chip--success {
+  background: var(--bb-teal-dim);
+  color:      var(--bb-teal);
+}
+
+.bb-phase-chip--error,
+.bb-phase-chip--muted {
+  background: rgba(128, 128, 128, 0.12);
+  color:      var(--vscode-foreground);
+  opacity:    0.7;
+}
+
+/* ----------------------------------------------------------
+   Approval block
+   ---------------------------------------------------------- */
+.bb-approval {
+  border-top: 1px solid var(--bb-gold);
+  margin-top: 10px;
+  padding-top: 10px;
+  display:     flex;
+  flex-direction: column;
+  gap:         8px;
+}
+
+.bb-approval-title {
+  margin:      0;
+  font-size:   12px;
+  font-weight: 600;
+  color:       var(--bb-gold);
+}
+
+.bb-approval-msg {
+  margin:    0;
+  font-size: 12px;
+  opacity:   0.8;
+}
+
+.bb-approval-actions {
+  display:   flex;
+  gap:       8px;
+  flex-wrap: wrap;
+}
+
+/* ----------------------------------------------------------
+   Inline detail sections (collapsible)
+   ---------------------------------------------------------- */
+.bb-detail-sections {
+  border-top: 1px solid rgba(128, 128, 128, 0.1);
+  margin-top: 4px;
+  padding-top: 4px;
+  display:     flex;
+  flex-direction: column;
+  gap:         2px;
+}
+
+.bb-detail-section {
+  border:   none;
+  overflow: hidden;
+}
+
+.bb-detail-section summary {
+  cursor:         pointer;
+  font-size:      11px;
+  font-weight:    600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity:        0.6;
+  padding:        4px 0;
+  list-style:     none;
+  user-select:    none;
+  transition:     opacity 120ms ease;
+}
+
+.bb-detail-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.bb-detail-section summary::before {
+  content:      "▶";
+  display:      inline-block;
+  margin-right: 5px;
+  font-size:    9px;
+  transition:   transform 150ms ease;
+  opacity:      0.7;
+}
+
+.bb-detail-section[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.bb-detail-section summary:hover {
+  opacity: 1;
+}
+
+.bb-detail-content {
+  padding:    4px 0 6px 14px;
+  font-size:  12px;
+  max-height: 300px;
+  overflow-y: auto;
+  transition: max-height 200ms ease;
+}
+
+/* ----------------------------------------------------------
+   Run actions row
+   ---------------------------------------------------------- */
+.bb-run-actions {
+  display:   flex;
+  gap:       6px;
+  flex-wrap: wrap;
+  border-top: 1px solid rgba(128, 128, 128, 0.1);
+  padding-top: 8px;
+  margin-top: 2px;
+}
+
+/* ----------------------------------------------------------
+   History runs container
+   ---------------------------------------------------------- */
+.bb-history-runs {
+  display:        flex;
+  flex-direction: column;
+  gap:            6px;
+}
+
+/* ----------------------------------------------------------
+   Capability chips
+   ---------------------------------------------------------- */
+.bb-capabilities {
+  display:     flex;
+  gap:         6px;
+  flex-wrap:   wrap;
+  padding-top: 2px;
+}
+
+.bb-cap-chip {
+  display:       inline-flex;
+  align-items:   center;
+  border-radius: 4px;
+  padding:       2px 8px;
+  font-size:     11px;
+  background:    rgba(128, 128, 128, 0.08);
+  border:        1px solid rgba(128, 128, 128, 0.15);
+}
+
+.bb-cap-chip--ready {
+  color:        var(--bb-teal);
+  border-color: rgba(74, 191, 176, 0.25);
+  background:   var(--bb-teal-dim);
+}
+
+.bb-cap-chip--locked {
+  color:        var(--bb-gold);
+  border-color: rgba(212, 160, 23, 0.25);
+  background:   var(--bb-gold-dim);
+}
+
+.bb-cap-chip--warning {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+/* ----------------------------------------------------------
+   System drawer
+   ---------------------------------------------------------- */
+.bb-system-drawer {
+  border-top: 1px solid rgba(128, 128, 128, 0.15);
+  margin-top: 4px;
+}
+
+.bb-system-drawer-summary {
+  cursor:         pointer;
+  font-size:      11px;
+  font-weight:    600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity:        0.6;
+  padding:        6px 0;
+  list-style:     none;
+  user-select:    none;
+  transition:     opacity 120ms ease;
+}
+
+.bb-system-drawer-summary::-webkit-details-marker {
+  display: none;
+}
+
+.bb-system-drawer-summary::before {
+  content:      "▶";
+  display:      inline-block;
+  margin-right: 5px;
+  font-size:    9px;
+  transition:   transform 150ms ease;
+  opacity:      0.7;
+}
+
+.bb-system-drawer[open] .bb-system-drawer-summary::before {
+  transform: rotate(90deg);
+}
+
+.bb-system-drawer-summary:hover {
+  opacity: 1;
+}
+
+.bb-system-content {
+  padding:   4px 0 8px 0;
+  font-size: 11px;
+  display:   flex;
+  flex-direction: column;
+  gap:       4px;
+}
+
+.bb-system-kv {
+  display:   flex;
+  gap:       8px;
+  align-items: baseline;
+}
+
+.bb-system-kv-key {
+  font-family: monospace;
+  opacity:     0.55;
+  flex-shrink: 0;
+  min-width:   100px;
+}
+
+.bb-system-kv-value {
+  font-family:   monospace;
+  overflow:      hidden;
+  text-overflow: ellipsis;
+  white-space:   nowrap;
+}
+
+/* ----------------------------------------------------------
+   Error banner (injected by showError)
+   ---------------------------------------------------------- */
+.bb-error-banner {
+  background:    rgba(244, 135, 113, 0.12);
+  border:        1px solid rgba(244, 135, 113, 0.4);
+  border-radius: 4px;
+  padding:       7px 10px;
+  font-size:     12px;
+  color:         var(--vscode-editorError-foreground, #f48771);
+  animation:     bb-slide-in 150ms ease-out;
+}

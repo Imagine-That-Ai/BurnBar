@@ -1,0 +1,83 @@
+{
+  "name": "repair-recovery",
+  "daemon": {
+    "health": [
+      {
+        "error": "socket missing"
+      },
+      {
+        "result": {
+          "ok": true,
+          "daemonVersion": "0.1.1",
+          "protocolVersion": 1,
+          "socketPath": "/tmp/burnbar.sock"
+        }
+      }
+    ],
+    "catalog": [
+      {
+        "result": {
+          "schemaVersion": 1,
+          "providers": []
+        }
+      }
+    ]
+  },
+  "workspace": {
+    "capabilities": [
+      {
+        "result": {
+          "hasWorkspace": true,
+          "localWorkspace": true,
+          "remoteWorkspace": false,
+          "readonlyWorkspace": false,
+          "virtualWorkspace": false,
+          "untrustedWorkspace": false,
+          "workspaceHost": "ui",
+          "availableTools": [
+            "read_file",
+            "search_workspace",
+            "apply_patch",
+            "run_terminal"
+          ],
+          "gatedTools": [],
+          "explanation": "Workspace tools are running in the local extension host. All PR6 workspace tools are available."
+        }
+      },
+      {
+        "result": {
+          "hasWorkspace": true,
+          "localWorkspace": true,
+          "remoteWorkspace": false,
+          "readonlyWorkspace": false,
+          "virtualWorkspace": false,
+          "untrustedWorkspace": false,
+          "workspaceHost": "ui",
+          "availableTools": [
+            "read_file",
+            "search_workspace",
+            "apply_patch",
+            "run_terminal"
+          ],
+          "gatedTools": [],
+          "explanation": "Workspace tools are running in the local extension host. All PR6 workspace tools are available."
+        }
+      }
+    ]
+  },
+  "repair": {
+    "result": {
+      "message": "BurnBar daemon restart requested."
+    }
+  },
+  "actions": [
+    {
+      "type": "refresh",
+      "label": "before-repair"
+    },
+    {
+      "type": "repair",
+      "label": "after-repair"
+    }
+  ]
+}

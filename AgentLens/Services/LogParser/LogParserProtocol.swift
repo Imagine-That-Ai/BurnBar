@@ -1,10 +1,17 @@
 import Foundation
 
+// MARK: - Parse Result
+
+struct ParseResult: Sendable {
+    let usages: [TokenUsage]
+    let conversations: [ConversationRecord]
+}
+
 // MARK: - Log Parser Protocol
 
-protocol LogParser {
+protocol LogParser: Sendable {
     var provider: AgentProvider { get }
-    func parse() async throws -> [TokenUsage]
+    func parse() async throws -> ParseResult
 }
 
 // MARK: - FileHandle Extensions

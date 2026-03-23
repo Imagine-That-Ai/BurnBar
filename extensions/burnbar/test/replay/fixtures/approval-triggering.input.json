@@ -1,0 +1,53 @@
+{
+  "name": "approval-triggering",
+  "daemon": {
+    "health": [
+      {
+        "result": {
+          "ok": true,
+          "daemonVersion": "0.1.0",
+          "protocolVersion": 1,
+          "socketPath": "/tmp/burnbar.sock"
+        }
+      }
+    ],
+    "catalog": [
+      {
+        "result": {
+          "schemaVersion": 1,
+          "providers": []
+        }
+      }
+    ]
+  },
+  "workspace": {
+    "capabilities": [
+      {
+        "result": {
+          "hasWorkspace": true,
+          "localWorkspace": false,
+          "remoteWorkspace": true,
+          "readonlyWorkspace": false,
+          "virtualWorkspace": false,
+          "untrustedWorkspace": true,
+          "workspaceHost": "workspace",
+          "availableTools": [
+            "read_file",
+            "search_workspace"
+          ],
+          "gatedTools": [
+            "apply_patch",
+            "run_terminal"
+          ],
+          "explanation": "Workspace tools are running on the remote workspace host. This workspace is in restricted mode, so BurnBar will not apply patches or run terminal commands until you trust it."
+        }
+      }
+    ]
+  },
+  "actions": [
+    {
+      "type": "refresh",
+      "label": "approval-gated-refresh"
+    }
+  ]
+}

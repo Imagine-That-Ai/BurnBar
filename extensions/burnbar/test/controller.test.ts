@@ -1,0 +1,980 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { buildHealthRows, buildRunDetailRows } from "../src/state/projections";
+import { BurnBarExtensionController } from "../src/state/controller";
+import { buildPanelViewModel } from "../src/state/panelViewModel";
+import { BurnBarWorkspaceRpcError } from "../src/workspace/types";
+
+function makeConnectedClient(overrides: Partial<ConstructorParameters<typeof BurnBarExtensionController>[0]["client"]> = {}) {
+  return {
+    health: vi.fn().mockResolvedValue({
+      ok: true,
+      daemonVersion: "0.1.0",
+      protocolVersion: 1,
+      socketPath: "/tmp/burnbar.sock"
+    }),
+    catalog: vi.fn().mockResolvedValue({
+      schemaVersion: 1,
+      providers: [
+        {
+          id: "z-ai",
+          displayName: "Z.ai",
+          baseURL: "https://api.z.ai",
+          visibility: "public",
+          capabilities: ["routing"],
+          models: [
+            {
+              id: "glm-4.6",
+              displayName: "GLM 4.6",
+              visibility: "public",
+              aliases: [],
+              pricing: {
+                inputPerMToken: 1,
+                outputPerMToken: 2,
+                cacheReadPerMToken: 0.5
+              }
+            }
+          ]
+        }
+      ]
+    }),
+    config: vi.fn().mockResolvedValue({
+      providers: []
+    }),
+    recentUsage: vi.fn().mockResolvedValue([]),
+    attach: vi.fn().mockResolvedValue({
+      attachedClientID: "test-client",
+      negotiatedProtocolVersion: 1
+    }),
+    detach: vi.fn().mockResolvedValue({
+      activeClientID: "test-client",
+      attachedClientIDs: ["test-client"],
+      reason: "controller_detached"
+    }),
+    createRun: vi.fn(),
+    listRuns: vi.fn().mockResolvedValue([
+      {
+        runID: "run-1234",
+        clientID: "test-client",
+        sessionID: "session-1",
+        phase: "awaiting_approval",
+        modelID: "glm-4.6",
+        updatedAt: "2026-03-22T10:00:00.000Z",
+        activeApprovalID: "approval-1"
+      }
+    ]),
+    pollRuns: vi.fn().mockResolvedValue({
+      runs: [
+        {
+          runID: "run-1234",
+          clientID: "test-client",
+          sessionID: "session-1",
+          phase: "awaiting_approval",
+          modelID: "glm-4.6",
+          updatedAt: "2026-03-22T10:00:00.000Z",
+          activeApprovalID: "approval-1"
+        }
+      ],
+      approvals: [
+        {
+          approvalID: "approval-1",
+          runID: "run-1234",
+          tool: "apply_patch",
+          title: "Approve apply_patch",
+          message: "BurnBar needs approval before continuing this simulated tool step.",
+          requestedAt: "2026-03-22T10:00:00.000Z"
+        }
+      ],
+      pendingToolCalls: [],
+      arbitration: {
+        activeClientID: "test-client",
+        attachedClientIDs: ["test-client"],
+        reason: "first_controller_attached"
+      },
+      emittedAt: "2026-03-22T10:00:00.000Z"
+    }),
+    getRun: vi.fn().mockResolvedValue({
+      run: {
+        runID: "run-1234",
+        clientID: "test-client",
+        sessionID: "session-1",
+        phase: "awaiting_approval",
+        modelID: "glm-4.6",
+        updatedAt: "2026-03-22T10:00:00.000Z",
+        activeApprovalID: "approval-1"
+      },
+      approvalRequest: {
+        approvalID: "approval-1",
+        runID: "run-1234",
+        tool: "apply_patch",
+        title: "Approve apply_patch",
+        message: "BurnBar needs approval before continuing this simulated tool step.",
+        requestedAt: "2026-03-22T10:00:00.000Z"
+      },
+      arbitration: {
+        activeClientID: "test-client",
+        attachedClientIDs: ["test-client"],
+        reason: "first_controller_attached"
+      }
+    }),
+    executeTool: vi.fn().mockResolvedValue({
+      disposition: "no_pending_tool_call"
+    }),
+    submitToolResult: vi.fn().mockResolvedValue({
+      run: null,
+      approvalRequest: null,
+      arbitration: null
+    }),
+    cancelRun: vi.fn().mockResolvedValue({
+      run: {
+        runID: "run-1234",
+        clientID: "test-client",
+        sessionID: "session-1",
+        phase: "cancelled",
+        modelID: "glm-4.6",
+        updatedAt: "2026-03-22T10:01:00.000Z",
+        errorMessage: "Cancelled by controller."
+      }
+    }),
+    retryRun: vi.fn().mockResolvedValue({
+      run: {
+        runID: "run-1234",
+        clientID: "test-client",
+        sessionID: "session-1",
+        phase: "completed",
+        modelID: "glm-4.6",
+        updatedAt: "2026-03-22T10:02:00.000Z"
+      }
+    }),
+    respondToApproval: vi.fn().mockResolvedValue({
+      run: {
+        runID: "run-1234",
+        clientID: "test-client",
+        sessionID: "session-1",
+        phase: "completed",
+        modelID: "glm-4.6",
+        updatedAt: "2026-03-22T10:03:00.000Z"
+      }
+    }),
+    ...overrides
+  };
+}
+
+const localWorkspaceCapabilities = {
+  hasWorkspace: true,
+  localWorkspace: true,
+  remoteWorkspace: false,
+  readonlyWorkspace: false,
+  virtualWorkspace: false,
+  untrustedWorkspace: false,
+  workspaceHost: "ui" as const,
+  availableTools: ["read_file", "search_workspace", "apply_patch", "run_terminal"],
+  gatedTools: [],
+  explanation: "Workspace tools are running in the local extension host. All PR6 workspace tools are available."
+};
+
+describe("BurnBarExtensionController", () => {
+  it("loads daemon-backed runs after attaching the BurnBar client session", async () => {
+    const client = makeConnectedClient();
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "BurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+
+    expect(client.attach).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientID: "test-client",
+        sessionID: "session-1"
+      })
+    );
+    expect(controller.snapshot.connectionStatus).toBe("connected");
+    expect(controller.snapshot.clientAttached).toBe(true);
+    expect(controller.snapshot.runs.map((run) => run.id)).toEqual(["run-1234"]);
+    expect(controller.snapshot.selectedRunId).toBe("run-1234");
+    expect(controller.snapshot.selectedRunDetail?.approvalRequest?.approvalID).toBe("approval-1");
+    expect(buildRunDetailRows(controller.snapshot)).toContainEqual(
+      expect.objectContaining({
+        id: "approval-tool",
+        value: "apply_patch"
+      })
+    );
+  });
+
+  it("falls back to a repair-oriented placeholder when the daemon is unavailable", async () => {
+    const controller = new BurnBarExtensionController(
+      {
+        client: {
+          ...makeConnectedClient(),
+          health: vi.fn().mockRejectedValue(new Error("socket missing"))
+        },
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue({
+            hasWorkspace: true,
+            localWorkspace: false,
+            remoteWorkspace: true,
+            readonlyWorkspace: false,
+            virtualWorkspace: false,
+            untrustedWorkspace: true,
+            workspaceHost: "workspace",
+            availableTools: ["read_file", "search_workspace"],
+            gatedTools: ["apply_patch", "run_terminal"],
+            explanation:
+              "Workspace tools are running on the remote workspace host. This workspace is in restricted mode, so BurnBar will not apply patches or run terminal commands until you trust it."
+          })
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "BurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client"
+      }
+    );
+
+    await controller.refresh();
+
+    expect(controller.snapshot.connectionStatus).toBe("disconnected");
+    expect(controller.snapshot.runs[0]).toMatchObject({
+      id: "daemon-unavailable",
+      phase: "failed"
+    });
+    expect(controller.snapshot.lastError).toContain("socket missing");
+    expect(controller.snapshot.runs[0]?.note).toContain("Repair Daemon");
+    expect(controller.snapshot.workspace?.gatedTools).toEqual(["apply_patch", "run_terminal"]);
+
+    expect(buildHealthRows(controller.snapshot)).toContainEqual(
+      expect.objectContaining({
+        id: "next-step",
+        value: expect.stringContaining("Repair Daemon")
+      })
+    );
+    expect(buildRunDetailRows(controller.snapshot)).toContainEqual(
+      expect.objectContaining({
+        id: "recovery",
+        value: expect.stringContaining("Repair Daemon")
+      })
+    );
+  });
+
+  it("runs repair and refreshes daemon-backed state", async () => {
+    const client = makeConnectedClient({
+      health: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("socket missing"))
+        .mockResolvedValue({
+          ok: true,
+          daemonVersion: "0.1.0",
+          protocolVersion: 1,
+          socketPath: "/tmp/burnbar.sock"
+        })
+    });
+    const repair = vi.fn().mockResolvedValue({
+      message: "BurnBar daemon restart requested."
+    });
+    const capabilities = vi.fn().mockResolvedValue(localWorkspaceCapabilities);
+
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: { capabilities },
+        repairService: { repair }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    const result = await controller.repairDaemon();
+
+    expect(repair).toHaveBeenCalledTimes(1);
+    expect(result.message).toContain("restart requested");
+    expect(controller.snapshot.connectionStatus).toBe("connected");
+    expect(controller.snapshot.runs[0]?.source).toBe("daemon");
+    expect(capabilities).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces a no-workspace empty state without claiming tools are ready", async () => {
+    const client = makeConnectedClient({
+      pollRuns: vi.fn().mockResolvedValue({
+        runs: [],
+        approvals: [],
+        pendingToolCalls: [],
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        },
+        emittedAt: "2026-03-22T10:00:00.000Z"
+      })
+    });
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue({
+            hasWorkspace: false,
+            localWorkspace: false,
+            remoteWorkspace: false,
+            readonlyWorkspace: false,
+            virtualWorkspace: false,
+            untrustedWorkspace: false,
+            workspaceHost: "ui",
+            availableTools: [],
+            gatedTools: [],
+            explanation: "Open a workspace folder to enable BurnBar file, search, edit, and terminal tools."
+          })
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "BurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client"
+      }
+    );
+
+    await controller.refresh();
+
+    expect(controller.snapshot.runs[0]).toMatchObject({
+      id: "empty-run-list",
+      title: "No runs yet",
+      phase: "idle"
+    });
+    expect(buildHealthRows(controller.snapshot)).toContainEqual(
+      expect.objectContaining({
+        id: "workspace-mode",
+        value: "No workspace open • ui host"
+      })
+    );
+    expect(buildHealthRows(controller.snapshot)).toContainEqual(
+      expect.objectContaining({
+        id: "workspace-tools",
+        value: "Open a folder or workspace to enable BurnBar tools."
+      })
+    );
+  });
+
+  it("starts and approves a run through the daemon RPC methods", async () => {
+    const client = makeConnectedClient({
+      createRun: vi.fn().mockResolvedValue({
+        runID: "run-new",
+        phase: "awaiting_approval"
+      }),
+      listRuns: vi
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            runID: "run-1234",
+            clientID: "test-client",
+            sessionID: "session-1",
+            phase: "awaiting_approval",
+            modelID: "glm-4.6",
+            updatedAt: "2026-03-22T10:00:00.000Z",
+            activeApprovalID: "approval-1"
+          }
+        ])
+        .mockResolvedValue([
+          {
+            runID: "run-new",
+            clientID: "test-client",
+            sessionID: "session-1",
+            phase: "completed",
+            modelID: "glm-4.6",
+            updatedAt: "2026-03-22T10:03:00.000Z"
+          }
+        ]),
+      getRun: vi.fn().mockImplementation(async ({ runID }: { runID: string }) => {
+        if (runID === "run-1234") {
+          return {
+            run: {
+              runID: "run-1234",
+              clientID: "test-client",
+              sessionID: "session-1",
+              phase: "awaiting_approval",
+              modelID: "glm-4.6",
+              updatedAt: "2026-03-22T10:00:00.000Z",
+              activeApprovalID: "approval-1"
+            },
+            approvalRequest: {
+              approvalID: "approval-1",
+              runID: "run-1234",
+              tool: "apply_patch",
+              title: "Approve apply_patch",
+              message: "BurnBar needs approval before continuing this simulated tool step.",
+              requestedAt: "2026-03-22T10:00:00.000Z"
+            }
+          };
+        }
+
+        return {
+          run: {
+            runID: "run-new",
+            clientID: "test-client",
+            sessionID: "session-1",
+            phase: "completed",
+            modelID: "glm-4.6",
+            updatedAt: "2026-03-22T10:03:00.000Z"
+          }
+        };
+      }),
+      respondToApproval: vi.fn().mockResolvedValue({
+        run: {
+          runID: "run-new",
+          clientID: "test-client",
+          sessionID: "session-1",
+          phase: "completed",
+          modelID: "glm-4.6",
+          updatedAt: "2026-03-22T10:03:00.000Z"
+        }
+      })
+    });
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "BurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    await controller.startRun({
+      prompt: "Need approval",
+      modelID: "glm-4.6"
+    });
+    await controller.respondToApproval("run-1234", "approve");
+
+    expect(client.createRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientID: "test-client",
+        sessionID: "session-1",
+        prompt: "Need approval",
+        modelID: "glm-4.6"
+      })
+    );
+    expect(client.respondToApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response: expect.objectContaining({
+          approvalID: "approval-1",
+          clientID: "test-client",
+          decision: "approve"
+        })
+      })
+    );
+  });
+
+  it("dispatches pending tool calls to the workspace companion and submits results", async () => {
+    const readToolCall = {
+      callID: "call-read-1",
+      runID: "run-workflow",
+      tool: "read_file" as const,
+      arguments: { path: "src/example.ts" },
+      status: "pending" as const,
+      requestedBy: "test-client",
+      requestedAt: "2026-03-22T10:00:00.000Z"
+    };
+    const client = makeConnectedClient({
+      pollRuns: vi
+        .fn()
+        .mockResolvedValueOnce({
+          runs: [
+            {
+              runID: "run-workflow",
+              clientID: "test-client",
+              sessionID: "session-1",
+              phase: "waiting_on_companion",
+              modelID: "glm-4.6",
+              updatedAt: "2026-03-22T10:00:00.000Z"
+            }
+          ],
+          approvals: [],
+          pendingToolCalls: [readToolCall],
+          arbitration: {
+            activeClientID: "test-client",
+            attachedClientIDs: ["test-client"]
+          },
+          emittedAt: "2026-03-22T10:00:00.000Z"
+        })
+        .mockResolvedValue({
+          runs: [
+            {
+              runID: "run-workflow",
+              clientID: "test-client",
+              sessionID: "session-1",
+              phase: "completed",
+              modelID: "glm-4.6",
+              updatedAt: "2026-03-22T10:00:01.000Z"
+            }
+          ],
+          approvals: [],
+          pendingToolCalls: [],
+          arbitration: {
+            activeClientID: "test-client",
+            attachedClientIDs: ["test-client"]
+          },
+          emittedAt: "2026-03-22T10:00:01.000Z"
+        }),
+      executeTool: vi
+        .fn()
+        .mockResolvedValueOnce({
+          disposition: "dispatched",
+          toolCall: readToolCall
+        })
+        .mockResolvedValue({
+          disposition: "no_pending_tool_call"
+        }),
+      submitToolResult: vi.fn().mockResolvedValue({
+        run: {
+          runID: "run-workflow",
+          clientID: "test-client",
+          sessionID: "session-1",
+          phase: "completed",
+          modelID: "glm-4.6",
+          updatedAt: "2026-03-22T10:00:01.000Z"
+        }
+      })
+    });
+    const readFile = vi.fn().mockResolvedValue({
+      path: "file:///workspace/src/example.ts",
+      content: "export const value = 1;\n"
+    });
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities),
+          readFile
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "BurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(readFile).toHaveBeenCalledWith({ path: "src/example.ts" });
+    expect(client.submitToolResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runID: "run-workflow",
+        callID: "call-read-1",
+        succeeded: true
+      })
+    );
+  });
+
+  it("maps trust-gated workspace refusals into structured daemon tool errors", async () => {
+    const patchToolCall = {
+      callID: "call-patch-1",
+      runID: "run-workflow",
+      tool: "apply_patch" as const,
+      arguments: {
+        changes: [
+          {
+            path: "src/example.ts",
+            text: "export const value = 2;\n"
+          }
+        ]
+      },
+      status: "pending" as const,
+      requestedBy: "test-client",
+      requestedAt: "2026-03-22T10:00:00.000Z"
+    };
+    const client = makeConnectedClient({
+      pollRuns: vi
+        .fn()
+        .mockResolvedValueOnce({
+          runs: [
+            {
+              runID: "run-workflow",
+              clientID: "test-client",
+              sessionID: "session-1",
+              phase: "waiting_on_companion",
+              modelID: "glm-4.6",
+              updatedAt: "2026-03-22T10:00:00.000Z"
+            }
+          ],
+          approvals: [],
+          pendingToolCalls: [patchToolCall],
+          arbitration: {
+            activeClientID: "test-client",
+            attachedClientIDs: ["test-client"]
+          },
+          emittedAt: "2026-03-22T10:00:00.000Z"
+        })
+        .mockResolvedValue({
+          runs: [
+            {
+              runID: "run-workflow",
+              clientID: "test-client",
+              sessionID: "session-1",
+              phase: "awaiting_approval",
+              modelID: "glm-4.6",
+              updatedAt: "2026-03-22T10:00:01.000Z",
+              activeApprovalID: "approval-workflow"
+            }
+          ],
+          approvals: [
+            {
+              approvalID: "approval-workflow",
+              runID: "run-workflow",
+              tool: "apply_patch",
+              title: "Workspace action required",
+              message: "Trust this workspace before applying edits.",
+              requestedAt: "2026-03-22T10:00:01.000Z"
+            }
+          ],
+          pendingToolCalls: [],
+          arbitration: {
+            activeClientID: "test-client",
+            attachedClientIDs: ["test-client"]
+          },
+          emittedAt: "2026-03-22T10:00:01.000Z"
+        }),
+      executeTool: vi
+        .fn()
+        .mockResolvedValueOnce({
+          disposition: "dispatched",
+          toolCall: patchToolCall
+        })
+        .mockResolvedValue({
+          disposition: "no_pending_tool_call"
+        }),
+      submitToolResult: vi.fn().mockResolvedValue({
+        run: {
+          runID: "run-workflow",
+          clientID: "test-client",
+          sessionID: "session-1",
+          phase: "awaiting_approval",
+          modelID: "glm-4.6",
+          updatedAt: "2026-03-22T10:00:01.000Z"
+        }
+      })
+    });
+    const applyPatch = vi
+      .fn()
+      .mockRejectedValue(new BurnBarWorkspaceRpcError("TRUST_REQUIRED", "Trust this workspace before applying edits."));
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities),
+          applyPatch
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "BurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(client.submitToolResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runID: "run-workflow",
+        callID: "call-patch-1",
+        succeeded: false,
+        error: expect.objectContaining({
+          code: "trust_gated"
+        })
+      })
+    );
+  });
+
+  it("projects pending tool labels on run cards", async () => {
+    const client = makeConnectedClient({
+      pollRuns: vi.fn().mockResolvedValue({
+        runs: [
+          {
+            runID: "run-tooling",
+            clientID: "test-client",
+            sessionID: "session-1",
+            phase: "waiting_on_companion",
+            modelID: "glm-4.6",
+            updatedAt: "2026-03-22T10:00:00.000Z"
+          }
+        ],
+        approvals: [],
+        pendingToolCalls: [
+          {
+            callID: "call-read-1",
+            runID: "run-tooling",
+            tool: "read_file",
+            arguments: { path: "src/example.ts" },
+            status: "pending",
+            requestedBy: "test-client",
+            requestedAt: "2026-03-22T10:00:00.000Z"
+          }
+        ],
+        arbitration: {
+          activeClientID: "other-client",
+          attachedClientIDs: ["other-client", "test-client"]
+        },
+        emittedAt: "2026-03-22T10:00:00.000Z"
+      }),
+      executeTool: vi.fn().mockResolvedValue({
+        disposition: "no_pending_tool_call"
+      })
+    });
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "BurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+
+    expect(controller.snapshot.runs[0]).toMatchObject({
+      id: "run-tooling",
+      note: "Reading file"
+    });
+  });
+});
+
+describe("buildPanelViewModel", () => {
+  it("produces no-workspace state without capability chips", async () => {
+    const client = makeConnectedClient({
+      pollRuns: vi.fn().mockResolvedValue({
+        runs: [],
+        approvals: [],
+        pendingToolCalls: [],
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        },
+        emittedAt: "2026-03-22T10:00:00.000Z"
+      })
+    });
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue({
+            hasWorkspace: false,
+            localWorkspace: false,
+            remoteWorkspace: false,
+            readonlyWorkspace: false,
+            virtualWorkspace: false,
+            untrustedWorkspace: false,
+            workspaceHost: "ui" as const,
+            availableTools: [],
+            gatedTools: [],
+            explanation: "Open a workspace folder to enable BurnBar file, search, edit, and terminal tools."
+          })
+        },
+        repairService: { repair: vi.fn().mockResolvedValue({ message: "ok" }) }
+      },
+      { clientID: "test-client" }
+    );
+
+    await controller.refresh();
+    const vm = buildPanelViewModel(controller.snapshot);
+
+    expect(vm.hasWorkspace).toBe(false);
+    expect(vm.workspaceDescription).toBe("No workspace open");
+    expect(vm.capabilityChips).toEqual([
+      { label: "Open a folder to enable tools", kind: "warning" }
+    ]);
+    expect(vm.noRunsYet).toBe(true);
+    expect(vm.isConnected).toBe(true);
+  });
+
+  it("produces daemon-unavailable state with recovery message", async () => {
+    const controller = new BurnBarExtensionController(
+      {
+        client: {
+          ...makeConnectedClient(),
+          health: vi.fn().mockRejectedValue(new Error("socket missing"))
+        },
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue({
+            hasWorkspace: true,
+            localWorkspace: true,
+            remoteWorkspace: false,
+            readonlyWorkspace: false,
+            virtualWorkspace: false,
+            untrustedWorkspace: false,
+            workspaceHost: "ui" as const,
+            availableTools: ["read_file", "search_workspace", "apply_patch", "run_terminal"],
+            gatedTools: [],
+            explanation: "All tools available."
+          })
+        },
+        repairService: { repair: vi.fn().mockResolvedValue({ message: "ok" }) }
+      },
+      { clientID: "test-client" }
+    );
+
+    await controller.refresh();
+    const vm = buildPanelViewModel(controller.snapshot);
+
+    expect(vm.isDaemonUnavailable).toBe(true);
+    expect(vm.isConnected).toBe(false);
+    expect(vm.recoveryMessage).toContain("socket missing");
+    expect(vm.isComposerEnabled).toBe(false);
+    expect(vm.activeRun?.phase).toBe("failed");
+  });
+
+  it("surfaces approval state on the selected run", async () => {
+    const client = makeConnectedClient();
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: { repair: vi.fn().mockResolvedValue({ message: "ok" }) }
+      },
+      { clientID: "test-client", sessionID: "session-1" }
+    );
+
+    await controller.refresh();
+    const vm = buildPanelViewModel(controller.snapshot);
+
+    expect(vm.approvalState).toBeDefined();
+    expect(vm.approvalState?.tool).toBe("apply_patch");
+    expect(vm.approvalState?.title).toContain("apply_patch");
+    expect(vm.activeRun?.phaseColor).toBe("warning");
+    expect(vm.activeRun?.hasApproval).toBe(true);
+  });
+
+  it("places active runs first and completed runs in history", async () => {
+    const client = makeConnectedClient({
+      pollRuns: vi.fn().mockResolvedValue({
+        runs: [
+          {
+            runID: "run-active",
+            clientID: "test-client",
+            sessionID: "session-1",
+            phase: "model_streaming",
+            modelID: "glm-4.6",
+            updatedAt: "2026-03-22T10:01:00.000Z"
+          },
+          {
+            runID: "run-done",
+            clientID: "test-client",
+            sessionID: "session-1",
+            phase: "completed",
+            modelID: "glm-4.6",
+            updatedAt: "2026-03-22T10:00:00.000Z"
+          }
+        ],
+        approvals: [],
+        pendingToolCalls: [],
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        },
+        emittedAt: "2026-03-22T10:01:00.000Z"
+      }),
+      getRun: vi.fn().mockResolvedValue({ run: null, approvalRequest: null, arbitration: null })
+    });
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: { repair: vi.fn().mockResolvedValue({ message: "ok" }) }
+      },
+      { clientID: "test-client", sessionID: "session-1" }
+    );
+
+    await controller.refresh();
+    const vm = buildPanelViewModel(controller.snapshot);
+
+    expect(vm.activeRun?.id).toBe("run-active");
+    expect(vm.activeRun?.phaseColor).toBe("active");
+    expect(vm.historyRuns).toHaveLength(1);
+    expect(vm.historyRuns[0]?.id).toBe("run-done");
+    expect(vm.historyRuns[0]?.phaseColor).toBe("success");
+  });
+
+  it("populates model options from catalog public models", async () => {
+    const client = makeConnectedClient({
+      pollRuns: vi.fn().mockResolvedValue({
+        runs: [],
+        approvals: [],
+        pendingToolCalls: [],
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        },
+        emittedAt: "2026-03-22T10:00:00.000Z"
+      })
+    });
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: { repair: vi.fn().mockResolvedValue({ message: "ok" }) }
+      },
+      { clientID: "test-client" }
+    );
+
+    await controller.refresh();
+    const vm = buildPanelViewModel(controller.snapshot);
+
+    expect(vm.isComposerEnabled).toBe(true);
+    expect(vm.selectedModelOptions).toHaveLength(1);
+    expect(vm.selectedModelOptions[0]?.id).toBe("glm-4.6");
+    expect(vm.selectedModelOptions[0]?.providerName).toBe("Z.ai");
+  });
+});

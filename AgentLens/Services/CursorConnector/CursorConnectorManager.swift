@@ -1,0 +1,924 @@
+import AppKit
+import CryptoKit
+import Foundation
+import SQLite3
+
+#if canImport(BurnBarCore)
+import BurnBarCore
+#endif
+
+@MainActor
+@Observable
+final class CursorConnectorManager {
+    static let shared = CursorConnectorManager()
+
+    private let defaults = UserDefaults.standard
+    private let keychain = KeychainStore()
+    private let decoder = JSONDecoder()
+    private let encoder = JSONEncoder()
+
+    var config: CursorConnectorConfig
+    var health = ConnectorHealthSnapshot()
+    var isBusy = false
+    var lastError: String?
+    var recentRouteLog: [String] = []
+    var recentUsageEvents: [RoutedUsageEvent] = []
+
+    private let supportDirectory: URL
+    private let proxyScriptURL: URL
+    private let proxyConfigURL: URL
+    private let proxyLogURL: URL
+    private let usageLogURL: URL
+
+    private var proxyProcess: Process?
+    private var tunnelProcess: Process?
+    private var usagePollTask: Task<Void, Never>?
+    private var routePollTask: Task<Void, Never>?
+    private var usageReadOffset: UInt64 = 0
+    private var routeReadOffset: UInt64 = 0
+    private weak var dataStore: DataStore?
+
+    private init() {
+        BurnBarMigration.migrateUserDefaults()
+        self.supportDirectory = (try? BurnBarMigration.prepareSupportDirectory()) ?? BurnBarAppPaths.live().supportDirectory
+        self.proxyScriptURL = supportDirectory.appendingPathComponent("cursor_connector_proxy.py")
+        self.proxyConfigURL = supportDirectory.appendingPathComponent("cursor_connector_proxy_config.json")
+        self.proxyLogURL = supportDirectory.appendingPathComponent("cursor_connector_proxy.log")
+        self.usageLogURL = supportDirectory.appendingPathComponent("cursor_connector_usage.jsonl")
+
+        if let data = UserDefaults.standard.data(forKey: CursorConnectorConfig.defaultsKey),
+           let loaded = try? JSONDecoder().decode(CursorConnectorConfig.self, from: data) {
+            self.config = loaded
+        } else {
+            self.config = CursorConnectorConfig()
+        }
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        refreshSystemHealth()
+    }
+
+    func attach(dataStore: DataStore) {
+        self.dataStore = dataStore
+        beginPollingLogsIfNeeded()
+    }
+
+    func providerConfig(for provider: ConnectorProvider) -> ConnectorProviderConfig {
+        config.providerConfigs.first(where: { $0.id == provider }) ?? ConnectorProviderConfig(id: provider)
+    }
+
+    func updateProviderConfig(_ provider: ConnectorProvider, mutate: (inout ConnectorProviderConfig) -> Void) {
+        guard let idx = config.providerConfigs.firstIndex(where: { $0.id == provider }) else { return }
+        var copy = config.providerConfigs[idx]
+        mutate(&copy)
+        config.providerConfigs[idx] = copy
+        saveConfig()
+    }
+
+    func apiKey(for provider: ConnectorProvider) -> String {
+        (try? keychain.string(for: keychainAccount(for: provider))) ?? ""
+    }
+
+    func setAPIKey(_ apiKey: String, for provider: ConnectorProvider) {
+        do {
+            if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                try keychain.delete(account: keychainAccount(for: provider))
+            } else {
+                try keychain.set(apiKey.trimmingCharacters(in: .whitespacesAndNewlines), for: keychainAccount(for: provider))
+            }
+        } catch {
+            lastError = "Could not save \(provider.displayName) API key: \(error.localizedDescription)"
+        }
+    }
+
+    func importFromFactorySettings() {
+        let factoryURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".factory/settings.json")
+        guard let data = try? Data(contentsOf: factoryURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let customModels = json["customModels"] as? [[String: Any]] else {
+            lastError = "Factory settings were not found."
+            return
+        }
+
+        var foundAny = false
+        for provider in ConnectorProvider.allCases {
+            let providerEntries = customModels.filter { entry in
+                guard let baseURL = (entry["baseUrl"] as? String) else { return false }
+                return Self.provider(forBaseURL: baseURL) == provider
+            }
+            guard let first = providerEntries.first else { continue }
+            foundAny = true
+            if let apiKey = first["apiKey"] as? String {
+                setAPIKey(apiKey, for: provider)
+            }
+            updateProviderConfig(provider) { config in
+                config.enabled = true
+                if let baseURL = first["baseUrl"] as? String {
+                    config.baseURL = baseURL
+                }
+                let filteredModels = providerEntries.compactMap { $0["model"] as? String }.filter { Self.supportedModel($0, provider: provider) }
+                if !filteredModels.isEmpty {
+                    config.selectedModels = filteredModels
+                }
+                config.importedFromFactory = true
+            }
+        }
+        if !foundAny {
+            lastError = "Factory settings were found, but no supported Z.ai or MiniMax models were available."
+        } else {
+            lastError = nil
+            config.statusMessage = "Imported supported models from Factory"
+            saveConfig()
+        }
+    }
+
+    func connect() async {
+        isBusy = true
+        defer { isBusy = false }
+        lastError = nil
+
+        do {
+            try validateConfiguration()
+            try ensureSupportDirectory()
+            refreshSystemHealth()
+            try writeProxyScript()
+            try writeProxyConfig()
+            try await startProxy()
+            try await startTunnel()
+            try backupAndApplyCursorSettings()
+            try await verifyPublicEndpoint()
+            config.isEnabled = true
+            config.lastAppliedAt = Date()
+            config.statusMessage = "Connected to Cursor"
+            saveConfig()
+            beginPollingLogsIfNeeded()
+        } catch {
+            config.statusMessage = "Connection failed"
+            saveConfig()
+            lastError = error.localizedDescription
+        }
+    }
+
+    func disconnect() async {
+        isBusy = true
+        defer { isBusy = false }
+
+        do {
+            stopTunnel()
+            stopProxy()
+            try restoreCursorSettings()
+            config.isEnabled = false
+            config.tunnel.publicBaseURL = nil
+            config.tunnel.statusMessage = "Disconnected"
+            health.publicBaseURLReachable = false
+            config.statusMessage = "Disconnected"
+            saveConfig()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func installCloudflaredWithHomebrew() async {
+        guard health.homebrewInstalled else {
+            lastError = "Homebrew is not installed. Install cloudflared manually."
+            return
+        }
+        isBusy = true
+        defer {
+            isBusy = false
+            refreshSystemHealth()
+        }
+
+        do {
+            _ = try await Self.runCommand(
+                executable: FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".homebrew/bin/brew").path,
+                arguments: ["install", "cloudflared"]
+            )
+            config.statusMessage = "cloudflared installed"
+            saveConfig()
+        } catch {
+            lastError = "cloudflared install failed: \(error.localizedDescription)"
+        }
+    }
+
+    func openCloudflareDocs() {
+        NSWorkspace.shared.open(URL(string: "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/")!)
+    }
+
+    func openCursorDocs() {
+        NSWorkspace.shared.open(URL(string: "https://cursor.com/help/models-and-usage/api-keys")!)
+    }
+
+    func resetUnsupportedModels() {
+        for provider in ConnectorProvider.allCases {
+            updateProviderConfig(provider) { config in
+                config.selectedModels = config.selectedModels.filter { Self.supportedModel($0, provider: provider) }
+                config.customModels = config.customModels.filter { Self.supportedModel($0, provider: provider) }
+            }
+        }
+    }
+
+    func refreshSystemHealth() {
+        health.cloudflaredInstalled = Self.findExecutable(named: "cloudflared") != nil
+        health.homebrewInstalled = Self.findHomebrew() != nil
+        health.routerListening = false
+        health.publicBaseURLReachable = false
+    }
+
+    private func keychainAccount(for provider: ConnectorProvider) -> String {
+        "provider.\(provider.rawValue).apiKey"
+    }
+
+    private func validateConfiguration() throws {
+        let enabledProviders = config.enabledProviderConfigs
+        guard !enabledProviders.isEmpty else {
+            throw NSError(
+                domain: "CursorConnector",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Enable at least one provider before connecting."]
+            )
+        }
+
+        guard !config.exposedModels.isEmpty else {
+            throw NSError(
+                domain: "CursorConnector",
+                code: 7,
+                userInfo: [NSLocalizedDescriptionKey: "Choose at least one supported model to expose to Cursor."]
+            )
+        }
+
+        for provider in enabledProviders where apiKey(for: provider.id).isEmpty {
+            throw NSError(
+                domain: "CursorConnector",
+                code: 8,
+                userInfo: [NSLocalizedDescriptionKey: "\(provider.id.displayName) needs an API key before connecting."]
+            )
+        }
+    }
+
+    private func saveConfig() {
+        if let data = try? encoder.encode(config) {
+            defaults.set(data, forKey: CursorConnectorConfig.defaultsKey)
+        }
+    }
+
+    private func ensureSupportDirectory() throws {
+        try FileManager.default.createDirectory(at: supportDirectory, withIntermediateDirectories: true)
+    }
+
+    private func writeProxyConfig() throws {
+        struct RouteEntry: Codable {
+            let provider: String
+            let baseURL: String
+            let apiKey: String
+        }
+        let routes = Dictionary(uniqueKeysWithValues: config.enabledProviderConfigs.flatMap { providerConfig in
+            providerConfig.exposedModels.map { model in
+                (
+                    model,
+                    RouteEntry(
+                        provider: providerConfig.id.rawValue,
+                        baseURL: providerConfig.baseURL,
+                        apiKey: apiKey(for: providerConfig.id)
+                    )
+                )
+            }
+        })
+        let payload: [String: Any] = [
+            "port": Int(config.preferredPort),
+            "routes": routes.mapValues { [
+                "provider": $0.provider,
+                "base_url": $0.baseURL,
+                "api_key": $0.apiKey
+            ] },
+            "usage_log": usageLogURL.path
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: proxyConfigURL, options: .atomic)
+    }
+
+    private func writeProxyScript() throws {
+        try Self.proxyScript().write(to: proxyScriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: proxyScriptURL.path)
+    }
+
+    private func startProxy() async throws {
+        stopProxy()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = [proxyScriptURL.path, proxyConfigURL.path]
+        process.standardOutput = try FileHandle(forWritingTo: ensureLogFile(at: proxyLogURL))
+        process.standardError = try FileHandle(forWritingTo: ensureLogFile(at: proxyLogURL))
+        try process.run()
+        proxyProcess = process
+        try await Task.sleep(nanoseconds: 700_000_000)
+        health.routerListening = true
+    }
+
+    private func stopProxy() {
+        proxyProcess?.terminate()
+        proxyProcess = nil
+        health.routerListening = false
+    }
+
+    private func startTunnel() async throws {
+        stopTunnel()
+        guard let cloudflared = Self.findExecutable(named: "cloudflared") else {
+            throw NSError(domain: "CursorConnector", code: 2, userInfo: [NSLocalizedDescriptionKey: "cloudflared is not installed"])
+        }
+
+        let localURL = "http://127.0.0.1:\(config.preferredPort)"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: cloudflared)
+        process.arguments = ["tunnel", "--url", localURL, "--no-autoupdate"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        tunnelProcess = process
+
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            let data = pipe.fileHandleForReading.availableData
+            if let text = String(data: data, encoding: .utf8), !text.isEmpty {
+                appendRouteLog(text)
+                if let url = Self.extractTryCloudflareURL(from: text) {
+                    config.tunnel.publicBaseURL = url + "/v1"
+                    config.tunnel.mode = .quick
+                    config.tunnel.statusMessage = "Quick tunnel is live"
+                    config.tunnel.lastVerifiedAt = nil
+                    saveConfig()
+                    return
+                }
+            }
+            try await Task.sleep(nanoseconds: 400_000_000)
+        }
+
+        throw NSError(domain: "CursorConnector", code: 3, userInfo: [NSLocalizedDescriptionKey: "Cloudflare tunnel did not produce a public URL in time"])
+    }
+
+    private func stopTunnel() {
+        tunnelProcess?.terminate()
+        tunnelProcess = nil
+        config.tunnel.lastVerifiedAt = nil
+    }
+
+    private func verifyPublicEndpoint() async throws {
+        guard let base = config.tunnel.publicBaseURL else {
+            throw NSError(domain: "CursorConnector", code: 4, userInfo: [NSLocalizedDescriptionKey: "Tunnel is missing a public URL"])
+        }
+        let url = URL(string: base + "/models")!
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw NSError(domain: "CursorConnector", code: 5, userInfo: [NSLocalizedDescriptionKey: "Public endpoint verification failed"])
+        }
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let modelObjects = object?["data"] as? [[String: Any]] ?? []
+        let ids = modelObjects.compactMap { $0["id"] as? String }
+        for model in config.exposedModels where !ids.contains(model) {
+            throw NSError(domain: "CursorConnector", code: 6, userInfo: [NSLocalizedDescriptionKey: "Model \(model) was not exposed by the public endpoint"])
+        }
+        config.tunnel.lastVerifiedAt = Date()
+        health.publicBaseURLReachable = true
+        saveConfig()
+    }
+
+    private func backupAndApplyCursorSettings() throws {
+        let dbURL = Self.cursorStateDBURL()
+        let key = "src.vs.platform.reactivestorage.browser.reactiveStorageServiceImpl.persistentStorage.applicationUser"
+        let db = try Self.sqliteDB(path: dbURL.path)
+        defer { sqlite3_close(db) }
+
+        let currentJSON = try Self.readSQLiteValue(db: db, key: key)
+        let currentAuth = try Self.readSQLiteValue(db: db, key: "cursorAuth/openAIKey", allowMissing: true)
+        let parsed = try JSONSerialization.jsonObject(with: Data(currentJSON.utf8)) as? [String: Any] ?? [:]
+        let ai = parsed["aiSettings"] as? [String: Any] ?? [:]
+
+        config.cursorSnapshot = CursorSetupSnapshot(
+            useOpenAIKey: parsed["useOpenAIKey"] as? Bool,
+            openAIBaseUrl: parsed["openAIBaseUrl"] as? String,
+            userAddedModels: ai["userAddedModels"] as? [String] ?? [],
+            openAIKey: currentAuth
+        )
+
+        var updated = parsed
+        updated["useOpenAIKey"] = true
+        updated["openAIBaseUrl"] = config.tunnel.publicBaseURL
+        var updatedAI = ai
+        updatedAI["userAddedModels"] = config.exposedModels
+        updated["aiSettings"] = updatedAI
+
+        let data = try JSONSerialization.data(withJSONObject: updated, options: [])
+        let newJSON = String(data: data, encoding: .utf8) ?? "{}"
+        try Self.writeSQLiteValue(db: db, key: key, value: newJSON)
+        try Self.writeSQLiteValue(db: db, key: "cursorAuth/openAIKey", value: "sk-burnbar-cursor-connector")
+        saveConfig()
+    }
+
+    private func restoreCursorSettings() throws {
+        guard let snapshot = config.cursorSnapshot else { return }
+        let dbURL = Self.cursorStateDBURL()
+        let key = "src.vs.platform.reactivestorage.browser.reactiveStorageServiceImpl.persistentStorage.applicationUser"
+        let db = try Self.sqliteDB(path: dbURL.path)
+        defer { sqlite3_close(db) }
+
+        let currentJSON = try Self.readSQLiteValue(db: db, key: key)
+        var parsed = try JSONSerialization.jsonObject(with: Data(currentJSON.utf8)) as? [String: Any] ?? [:]
+        var ai = parsed["aiSettings"] as? [String: Any] ?? [:]
+        parsed["useOpenAIKey"] = snapshot.useOpenAIKey
+        parsed["openAIBaseUrl"] = snapshot.openAIBaseUrl
+        ai["userAddedModels"] = snapshot.userAddedModels
+        parsed["aiSettings"] = ai
+        let data = try JSONSerialization.data(withJSONObject: parsed, options: [])
+        let restoredJSON = String(data: data, encoding: .utf8) ?? "{}"
+        try Self.writeSQLiteValue(db: db, key: key, value: restoredJSON)
+        if let openAIKey = snapshot.openAIKey {
+            try Self.writeSQLiteValue(db: db, key: "cursorAuth/openAIKey", value: openAIKey)
+        }
+    }
+
+    private func beginPollingLogsIfNeeded() {
+        if usagePollTask == nil {
+            usagePollTask = Task { [weak self] in
+                while let self {
+                    await self.pollUsageEvents()
+                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                }
+            }
+        }
+        if routePollTask == nil {
+            routePollTask = Task { [weak self] in
+                while let self {
+                    await self.pollRouteLogs()
+                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                }
+            }
+        }
+    }
+
+    private func pollRouteLogs() async {
+        guard FileManager.default.fileExists(atPath: proxyLogURL.path) else { return }
+        guard let handle = try? FileHandle(forReadingFrom: proxyLogURL) else { return }
+        defer { try? handle.close() }
+        do {
+            try handle.seek(toOffset: routeReadOffset)
+            let data = handle.readDataToEndOfFile()
+            routeReadOffset += UInt64(data.count)
+            guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return }
+            appendRouteLog(text)
+        } catch {
+            lastError = "Could not read proxy log: \(error.localizedDescription)"
+        }
+    }
+
+    private func pollUsageEvents() async {
+        guard let dataStore, FileManager.default.fileExists(atPath: usageLogURL.path) else { return }
+        guard let handle = try? FileHandle(forReadingFrom: usageLogURL) else { return }
+        defer { try? handle.close() }
+        do {
+            try handle.seek(toOffset: usageReadOffset)
+            let data = handle.readDataToEndOfFile()
+            usageReadOffset += UInt64(data.count)
+            guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return }
+            let lines = text.split(separator: "\n")
+            var insertedAny = false
+            for line in lines {
+                guard let payload = line.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+                      let requestID = json["request_id"] as? String,
+                      let providerRaw = json["provider"] as? String,
+                      let provider = ConnectorProvider(rawValue: providerRaw),
+                      let model = json["model"] as? String else { continue }
+
+                let promptTokens = json["prompt_tokens"] as? Int ?? 0
+                let completionTokens = json["completion_tokens"] as? Int ?? 0
+                let cacheReadTokens = json["cache_read_tokens"] as? Int ?? 0
+                let totalTokens = json["total_tokens"] as? Int ?? (promptTokens + completionTokens + cacheReadTokens)
+                let timestamp = (json["timestamp"] as? String).flatMap(Self.isoDateFormatter.date(from:)) ?? Date()
+                let cost = ModelPricing.lookup(model: model).cost(
+                    inputTokens: promptTokens,
+                    outputTokens: completionTokens,
+                    cacheReadTokens: cacheReadTokens
+                )
+                recentUsageEvents.insert(
+                    RoutedUsageEvent(
+                        provider: provider,
+                        model: model,
+                        promptTokens: promptTokens,
+                        completionTokens: completionTokens,
+                        cacheReadTokens: cacheReadTokens,
+                        totalTokens: totalTokens,
+                        cost: cost,
+                        timestamp: timestamp
+                    ),
+                    at: 0
+                )
+                recentUsageEvents = Array(recentUsageEvents.prefix(12))
+
+                let usage = TokenUsage(
+                    id: Self.deterministicUUID(for: requestID),
+                    provider: provider.agentProvider,
+                    sessionId: requestID,
+                    projectName: "BurnBar Cursor Connector",
+                    model: model,
+                    inputTokens: promptTokens,
+                    outputTokens: completionTokens,
+                    cacheReadTokens: cacheReadTokens,
+                    costUSD: cost,
+                    startTime: timestamp,
+                    endTime: timestamp
+                )
+                try? dataStore.insert(usage)
+                insertedAny = true
+            }
+            if insertedAny {
+                dataStore.refresh()
+            }
+        } catch {
+            lastError = "Could not read usage log: \(error.localizedDescription)"
+        }
+    }
+
+    private func appendRouteLog(_ text: String) {
+        let lines = text
+            .split(separator: "\n")
+            .map(String.init)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !lines.isEmpty else { return }
+        recentRouteLog.append(contentsOf: lines)
+        recentRouteLog = Array(recentRouteLog.suffix(20))
+    }
+
+    private func ensureLogFile(at url: URL) throws -> URL {
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: Data())
+        }
+        return url
+    }
+
+    private static func cursorStateDBURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Cursor/User/globalStorage/state.vscdb")
+    }
+
+    private static func sqliteDB(path: String) throws -> OpaquePointer {
+        var db: OpaquePointer?
+        guard sqlite3_open(path, &db) == SQLITE_OK, let db else {
+            throw NSError(domain: "CursorConnector", code: 10, userInfo: [NSLocalizedDescriptionKey: "Could not open Cursor state database"])
+        }
+        return db
+    }
+
+    private static func readSQLiteValue(db: OpaquePointer, key: String, allowMissing: Bool = false) throws -> String {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, "SELECT value FROM ItemTable WHERE key = ?", -1, &statement, nil) == SQLITE_OK else {
+            throw NSError(domain: "CursorConnector", code: 11, userInfo: [NSLocalizedDescriptionKey: "Could not prepare Cursor read"])
+        }
+        sqlite3_bind_text(statement, 1, (key as NSString).utf8String, -1, nil)
+        let step = sqlite3_step(statement)
+        if step == SQLITE_ROW, let cString = sqlite3_column_text(statement, 0) {
+            return String(cString: cString)
+        }
+        if allowMissing { return "" }
+        throw NSError(domain: "CursorConnector", code: 12, userInfo: [NSLocalizedDescriptionKey: "Cursor setting \(key) was not found"])
+    }
+
+    private static func writeSQLiteValue(db: OpaquePointer, key: String, value: String) throws {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        let sql = "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)"
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw NSError(domain: "CursorConnector", code: 13, userInfo: [NSLocalizedDescriptionKey: "Could not prepare Cursor write"])
+        }
+        sqlite3_bind_text(statement, 1, (key as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(statement, 2, (value as NSString).utf8String, -1, nil)
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw NSError(domain: "CursorConnector", code: 14, userInfo: [NSLocalizedDescriptionKey: "Could not write Cursor setting \(key)"])
+        }
+    }
+
+    private static func deterministicUUID(for value: String) -> UUID {
+        let digest = Insecure.MD5.hash(data: Data(value.utf8))
+        let bytes = Array(digest)
+        return UUID(uuid: (
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5],
+            bytes[6], bytes[7],
+            bytes[8], bytes[9],
+            bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+        ))
+    }
+
+    static func supportedModel(_ model: String) -> Bool {
+        let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return false }
+        return ConnectorProvider.allCases.contains { supportedModel(normalized, provider: $0) }
+    }
+
+    static func supportedModel(_ model: String, provider: ConnectorProvider?) -> Bool {
+        let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return false }
+
+        if let provider {
+            if BurnBarConnectorCatalogLookup.shared.supportsModel(named: normalized, providerID: provider.rawValue) {
+                return true
+            }
+
+            guard !BurnBarConnectorCatalogLookup.shared.isCatalogAvailable else {
+                return false
+            }
+
+            let lowercased = normalized.lowercased()
+            switch provider {
+            case .zai:
+                return lowercased.contains("glm") || lowercased.contains("z.ai")
+            case .minimax:
+                return lowercased.contains("minimax")
+            }
+        }
+
+        return Self.supportedModel(normalized)
+    }
+
+    private static func provider(forBaseURL baseURL: String) -> ConnectorProvider? {
+        if let catalog = BurnBarConnectorCatalogLookup.shared.provider(forBaseURL: baseURL) {
+            return ConnectorProvider(rawValue: catalog.id)
+        }
+        let normalized = baseURL.lowercased()
+        if normalized.contains("z.ai") {
+            return .zai
+        }
+        if normalized.contains("minimax") {
+            return .minimax
+        }
+        return nil
+    }
+
+    private static func findExecutable(named name: String) -> String? {
+        if let path = runWhich(named: name) { return path }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let candidates = [
+            "\(home)/.homebrew/bin/\(name)",
+            "/opt/homebrew/bin/\(name)",
+            "/usr/local/bin/\(name)",
+            "/usr/bin/\(name)"
+        ]
+        return candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
+    }
+
+    private static func findHomebrew() -> String? {
+        if let path = runWhich(named: "brew") { return path }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let candidates = [
+            "\(home)/.homebrew/bin/brew",
+            "/opt/homebrew/bin/brew",
+            "/usr/local/bin/brew"
+        ]
+        return candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
+    }
+
+    private static func runWhich(named name: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-lc", "command -v \(name)"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return path?.isEmpty == false ? path : nil
+        } catch {
+            return nil
+        }
+    }
+
+    private static func runCommand(executable: String, arguments: [String]) async throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        process.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8) ?? ""
+        guard process.terminationStatus == 0 else {
+            throw NSError(domain: "CursorConnector", code: 15, userInfo: [NSLocalizedDescriptionKey: output])
+        }
+        return output
+    }
+
+    private static func extractTryCloudflareURL(from text: String) -> String? {
+        let pattern = #"https://[A-Za-z0-9\-]+\.trycloudflare\.com"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(location: 0, length: text.utf16.count)
+        guard let match = regex.firstMatch(in: text, range: range),
+              let swiftRange = Range(match.range, in: text) else { return nil }
+        return String(text[swiftRange])
+    }
+
+    static let isoDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    static func proxyScript() -> String {
+        """
+        #!/usr/bin/env python3
+        import json, ssl, sys, uuid, datetime
+        from http import HTTPStatus
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from urllib.error import HTTPError, URLError
+        from urllib.request import Request, urlopen
+
+        CONFIG_PATH = sys.argv[1]
+
+        def load_config():
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+
+        def extract_text_parts(content):
+            if content is None:
+                return []
+            if isinstance(content, str):
+                return [content]
+            if isinstance(content, list):
+                parts = []
+                for item in content:
+                    if isinstance(item, str):
+                        parts.append(item)
+                    elif isinstance(item, dict):
+                        t = item.get("type")
+                        if t in ("input_text", "output_text", "text") and isinstance(item.get("text"), str):
+                            parts.append(item["text"])
+                return parts
+            if isinstance(content, dict) and isinstance(content.get("text"), str):
+                return [content["text"]]
+            return []
+
+        def responses_to_chat_payload(payload):
+            messages = []
+            instructions = payload.get("instructions")
+            if isinstance(instructions, str) and instructions.strip():
+                messages.append({"role": "system", "content": instructions})
+            input_value = payload.get("input")
+            if isinstance(input_value, str):
+                messages.append({"role": "user", "content": input_value})
+            elif isinstance(input_value, list):
+                for item in input_value:
+                    if isinstance(item, str):
+                        messages.append({"role": "user", "content": item})
+                        continue
+                    if not isinstance(item, dict):
+                        continue
+                    role = item.get("role") or "user"
+                    if role == "developer":
+                        role = "system"
+                    text = "\\n".join(extract_text_parts(item.get("content")))
+                    if text:
+                        messages.append({"role": role, "content": text})
+            chat = {"model": payload["model"], "messages": messages or [{"role":"user","content":""}]}
+            for key in ("stream", "temperature", "top_p", "stop", "tools", "tool_choice", "parallel_tool_calls", "presence_penalty", "frequency_penalty", "metadata"):
+                if key in payload:
+                    chat[key] = payload[key]
+            if "max_output_tokens" in payload:
+                chat["max_tokens"] = payload["max_output_tokens"]
+            elif "max_completion_tokens" in payload:
+                chat["max_tokens"] = payload["max_completion_tokens"]
+            return chat
+
+        def chat_to_responses_payload(model, payload):
+            choice = (payload.get("choices") or [{}])[0]
+            message = choice.get("message") or {}
+            content = message.get("content")
+            if isinstance(content, str):
+                text = content
+            else:
+                text = "\\n".join(extract_text_parts(content))
+            usage = payload.get("usage") or {}
+            return {
+                "id": payload.get("id") or f"resp_{uuid.uuid4().hex}",
+                "object": "response",
+                "created_at": int(datetime.datetime.now().timestamp()),
+                "status": "completed",
+                "model": model,
+                "output": [{
+                    "id": f"msg_{uuid.uuid4().hex}",
+                    "type": "message",
+                    "status": "completed",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": text, "annotations": []}],
+                }],
+                "output_text": text,
+                "usage": {
+                    "input_tokens": usage.get("prompt_tokens"),
+                    "output_tokens": usage.get("completion_tokens"),
+                    "total_tokens": usage.get("total_tokens"),
+                },
+            }
+
+        def log_usage(config, provider, model, payload):
+            usage = payload.get("usage") or {}
+            event = {
+                "request_id": payload.get("id") or uuid.uuid4().hex,
+                "provider": provider,
+                "model": model,
+                "prompt_tokens": usage.get("prompt_tokens", 0) or 0,
+                "completion_tokens": usage.get("completion_tokens", 0) or 0,
+                "cache_read_tokens": usage.get("prompt_tokens_details", {}).get("cached_tokens", 0) if isinstance(usage.get("prompt_tokens_details"), dict) else 0,
+                "total_tokens": usage.get("total_tokens", 0) or 0,
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+            }
+            with open(config["usage_log"], "a", encoding="utf-8") as f:
+                f.write(json.dumps(event) + "\\n")
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, fmt, *args):
+                sys.stderr.write("[cursor_connector] " + (fmt % args) + "\\n")
+
+            def send_json(self, status, payload):
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                config = load_config()
+                if self.path in ("/health", "/healthz"):
+                    self.send_json(HTTPStatus.OK, {"ok": True})
+                    return
+                if self.path.startswith("/v1/models"):
+                    data = [{"id": mid, "object": "model", "created": 0, "owned_by": "burnbar"} for mid in sorted(config["routes"].keys())]
+                    self.send_json(HTTPStatus.OK, {"object": "list", "data": data})
+                    return
+                self.send_json(HTTPStatus.NOT_FOUND, {"error": {"message": "not found"}})
+
+            def do_POST(self):
+                config = load_config()
+                is_chat = self.path.startswith("/v1/chat/completions")
+                is_responses = self.path.startswith("/v1/responses")
+                if not is_chat and not is_responses:
+                    self.send_json(HTTPStatus.NOT_FOUND, {"error": {"message": "not found"}})
+                    return
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                body = self.rfile.read(length) if length > 0 else b"{}"
+                payload = json.loads(body.decode("utf-8"))
+                model = payload.get("model")
+                route = config["routes"].get(model)
+                if not route:
+                    self.send_json(HTTPStatus.BAD_REQUEST, {"error": {"message": f"unknown model {model}"}})
+                    return
+                sys.stderr.write(f"[cursor_connector] route path={self.path} model={model} upstream={route['base_url']}\\n")
+                outbound = payload if is_chat else responses_to_chat_payload(payload)
+                outbound_body = json.dumps(outbound).encode("utf-8")
+                req = Request(
+                    route["base_url"].rstrip("/") + "/chat/completions",
+                    data=outbound_body,
+                    method="POST",
+                    headers={"Content-Type": "application/json", "Authorization": f"Bearer {route['api_key']}"}
+                )
+                ctx = ssl.create_default_context()
+                try:
+                    with urlopen(req, timeout=600, context=ctx) as resp:
+                        upstream_body = resp.read()
+                        content_type = resp.headers.get("Content-Type", "application/json")
+                        response_body = upstream_body
+                        if "application/json" in content_type:
+                            response_json = json.loads(upstream_body.decode("utf-8"))
+                            log_usage(config, route["provider"], model, response_json)
+                            if is_responses:
+                                response_body = json.dumps(chat_to_responses_payload(model, response_json)).encode("utf-8")
+                                content_type = "application/json"
+                        self.send_response(resp.getcode())
+                        self.send_header("Content-Type", content_type)
+                        self.send_header("Content-Length", str(len(response_body)))
+                        self.end_headers()
+                        self.wfile.write(response_body)
+                except HTTPError as e:
+                    err = e.read() if e.fp else b"{}"
+                    self.send_response(e.code)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(err)))
+                    self.end_headers()
+                    self.wfile.write(err)
+                except URLError as e:
+                    self.send_json(HTTPStatus.BAD_GATEWAY, {"error": {"message": str(e.reason)}})
+
+        if __name__ == "__main__":
+            config = load_config()
+            server = ThreadingHTTPServer(("127.0.0.1", int(config["port"])), Handler)
+            sys.stderr.write(f"cursor_connector_proxy on http://127.0.0.1:{config['port']}/v1\\n")
+            server.serve_forever()
+        """
+    }
+}

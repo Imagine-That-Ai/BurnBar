@@ -1,256 +1,509 @@
 import SwiftUI
+import AppKit
+
+// MARK: - Menu Bar Popover View
 
 struct MenuBarPopoverView: View {
     @Environment(\.dismiss) private var dismiss
     let dataStore: DataStore
+    var aggregator: UsageAggregator?
+    let settingsManager: SettingsManager
     let onOpenDashboard: () -> Void
     let onOpenSettings: () -> Void
-    
+
+    @AppStorage("hasOnboarded") private var hasOnboarded = false
+    @State private var showScanFlash = false
+    @State private var listAppeared = false
+
+    private var isScanning: Bool { aggregator?.isRefreshing ?? false }
+
+    private var insights: [Insight] {
+        InsightEngine.generate(from: dataStore)
+    }
+
+    private var menuBarSparklineSeries: [Double] {
+        switch settingsManager.usageDisplayMode {
+        case .currency:
+            return dataStore.last7DayCosts
+        case .tokens:
+            return dataStore.last7DayTokenTotals.map { Double($0) }
+        }
+    }
+
+    private var lastRefreshDate: Date? {
+        aggregator?.lastRefresh ?? dataStore.lastRefresh
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            headerView
-            
-            Divider()
-            
-            // Today's Summary
-            todaySummaryView
-                .padding(16)
-            
-            Divider()
-            
-            // Provider Breakdown
-            providerBreakdownView
-                .padding(16)
-            
-            Divider()
-            
-            // Actions
-            actionButtons
-                .padding(12)
+        Group {
+            if !hasOnboarded && dataStore.usages.isEmpty, aggregator != nil {
+                OnboardingView(
+                    dataStore: dataStore,
+                    aggregator: aggregator,
+                    settingsManager: settingsManager,
+                    onDismiss: {},
+                    onOpenSettings: onOpenSettings
+                )
+            } else {
+                VStack(spacing: 0) {
+                    headerView
+                    freshnessBar
+                    Divider().background(DesignSystem.Colors.border)
+                    InsightCardView(insights: insights)
+                    Divider().background(DesignSystem.Colors.border)
+                    summaryView
+                    Divider().background(DesignSystem.Colors.border)
+                    providerListView
+                    Divider().background(DesignSystem.Colors.border)
+                    actionBar
+                }
+            }
         }
-        .frame(width: 320)
-        .background(ThemeManager.AppColors.darkBackground)
+        .frame(width: 340)
+        .background(DesignSystem.Colors.background)
+        .onChange(of: isScanning) { oldValue, newValue in
+            if oldValue && !newValue {
+                withAnimation(DesignSystem.Animation.gentle) {
+                    showScanFlash = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    withAnimation(DesignSystem.Animation.gentle) {
+                        showScanFlash = false
+                    }
+                }
+            }
+        }
+        .onAppear {
+            listAppeared = true
+        }
     }
-    
+
     // MARK: - Header
-    
+
     private var headerView: some View {
-        HStack {
-            Image(systemName: "cpu.fill")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(ThemeManager.AppColors.coral)
-            
-            Text("AgentLens")
-                .font(ThemeManager.Typography.headline)
-                .foregroundStyle(ThemeManager.AppColors.textPrimary)
-            
-            Spacer()
-            
-            Text("Today")
-                .font(ThemeManager.Typography.caption)
-                .foregroundStyle(ThemeManager.AppColors.textSecondary)
+        GlassCard {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                AppLogoView(size: 28)
+
+                Text("BurnBar")
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                Spacer()
+
+                GlassIconButton(
+                    icon: isScanning ? "arrow.triangle.2.circlepath" : "arrow.clockwise",
+                    isLoading: isScanning,
+                    action: {
+                        guard let agg = aggregator else { return }
+                        Task { await agg.refreshAll() }
+                    }
+                )
+                .help("Scan for new sessions")
+            }
+            .padding(.horizontal, DesignSystem.Spacing.lg)
+            .padding(.vertical, DesignSystem.Spacing.md)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(ThemeManager.AppColors.cardBackground)
+        .background(
+            DesignSystem.Colors.success.opacity(showScanFlash ? 0.08 : 0)
+        )
     }
-    
-    // MARK: - Today's Summary
-    
-    private var todaySummaryView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Total Cost Today
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(formatCost(dataStore.totalCostToday))
-                    .font(ThemeManager.Typography.monoDisplay)
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [ThemeManager.AppColors.coral, ThemeManager.AppColors.purple],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                
+
+    // MARK: - Freshness Bar
+
+    private var freshnessBar: some View {
+        TimelineView(.periodic(from: .now, by: 15)) { context in
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Circle()
+                    .fill(freshnessColor(at: context.date))
+                    .frame(width: 6, height: 6)
+
+                Text(freshnessLabel(at: context.date))
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                Spacer()
+
+                if !dataStore.usages.isEmpty {
+                    Text("\(dataStore.usages.count) session\(dataStore.usages.count == 1 ? "" : "s")")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+            }
+            .padding(.horizontal, DesignSystem.Spacing.lg)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .background(DesignSystem.Colors.surface.opacity(0.5))
+        }
+    }
+
+    private func freshnessColor(at now: Date) -> Color {
+        guard let last = lastRefreshDate else { return DesignSystem.Colors.textMuted }
+        let elapsed = now.timeIntervalSince(last)
+        if elapsed < 60 { return DesignSystem.Colors.success }        // green — just updated
+        if elapsed < 900 { return DesignSystem.Colors.textSecondary }  // normal — within 15 min
+        return DesignSystem.Colors.warning                              // amber — stale
+    }
+
+    private func freshnessLabel(at now: Date) -> String {
+        if isScanning { return "Scanning..." }
+        guard let last = lastRefreshDate else { return "Not scanned yet" }
+        let elapsed = Int(now.timeIntervalSince(last))
+        if elapsed < 5 { return "Updated just now" }
+        if elapsed < 60 { return "Updated \(elapsed)s ago" }
+        if elapsed < 3600 { return "Updated \(elapsed / 60)m ago" }
+        return "Updated \(elapsed / 3600)h ago"
+    }
+
+    // MARK: - Summary
+
+    private var summaryView: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            // Hero cost
+            HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
+                Text(settingsManager.formatUsageMetric(cost: dataStore.totalCostToday, tokens: dataStore.totalTokensToday))
+                    .font(DesignSystem.Typography.monoLarge)
+                    .foregroundStyle(DesignSystem.Colors.primaryGradient)
+                    .contentTransition(.numericText(countsDown: false))
+                    .animation(DesignSystem.Animation.gentle, value: dataStore.totalCostToday)
+                    .animation(DesignSystem.Animation.gentle, value: dataStore.totalTokensToday)
+                    .animation(DesignSystem.Animation.gentle, value: settingsManager.usageDisplayMode)
+
                 Text("today")
-                    .font(ThemeManager.Typography.caption)
-                    .foregroundStyle(ThemeManager.AppColors.textSecondary)
-                
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Circle()
+                        .fill(dataStore.moodColor)
+                        .frame(width: 6, height: 6)
+                    Text(dataStore.moodLabel)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(dataStore.moodColor)
+                }
+
                 Spacer()
             }
-            
-            // Quick Stats
-            HStack(spacing: 16) {
-                QuickStat(
+
+            // Period costs
+            HStack(spacing: DesignSystem.Spacing.xl) {
+                PeriodCost(
                     label: "This Week",
-                    value: formatCost(dataStore.totalCostThisWeek)
+                    value: settingsManager.formatUsageMetric(cost: dataStore.totalCostThisWeek, tokens: dataStore.totalTokensThisWeek)
                 )
-                
-                QuickStat(
+                PeriodCost(
                     label: "This Month",
-                    value: formatCost(dataStore.totalCostThisMonth)
+                    value: settingsManager.formatUsageMetric(cost: dataStore.totalCostThisMonth, tokens: dataStore.totalTokensThisMonth)
                 )
             }
-            
-            // Top Provider Today
-            if let topProvider = dataStore.topProviderToday() {
-                HStack(spacing: 8) {
-                    Image(systemName: topProvider.provider.iconName)
-                        .font(.system(size: 12))
-                        .foregroundStyle(ProviderTheme.theme(for: topProvider.provider).primaryColor)
-                    
-                    Text("Top: \(topProvider.provider.displayName)")
-                        .font(ThemeManager.Typography.caption)
-                        .foregroundStyle(ThemeManager.AppColors.textSecondary)
-                    
-                    Spacer()
-                    
-                    Text(formatCost(topProvider.cost))
-                        .font(ThemeManager.Typography.monoCaption)
-                        .foregroundStyle(ThemeManager.AppColors.textPrimary)
-                }
-                .padding(8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(ProviderTheme.theme(for: topProvider.provider).primaryColor.opacity(0.1))
-                )
+
+            HStack {
+                Spacer()
+                MiniSparkline(data: menuBarSparklineSeries)
             }
         }
+        .padding(DesignSystem.Spacing.lg)
     }
-    
-    // MARK: - Provider Breakdown
-    
-    private var providerBreakdownView: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Providers Today")
-                .font(ThemeManager.Typography.caption)
-                .foregroundStyle(ThemeManager.AppColors.textSecondary)
-            
-            let summaries = dataStore.providerSummaries.filter { summary in
-                Calendar.current.isDateInToday(
-                    dataStore.usages(for: summary.provider).first?.startTime ?? .distantPast
-                )
-            }
-            
-            if summaries.isEmpty {
-                Text("No activity today")
-                    .font(ThemeManager.Typography.body)
-                    .foregroundStyle(ThemeManager.AppColors.textMuted)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 8)
+
+    // MARK: - Provider List
+
+    private var providerListView: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("PROVIDERS")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .padding(.horizontal, DesignSystem.Spacing.lg)
+                .padding(.top, DesignSystem.Spacing.md)
+
+            if dataStore.providerSummaries.isEmpty {
+                emptyStateView
             } else {
-                ForEach(summaries.prefix(4)) { summary in
-                    ProviderRow(
-                        summary: summary,
-                        theme: ProviderTheme.theme(for: summary.provider)
-                    )
+                ForEach(Array(dataStore.providerSummaries.prefix(5).enumerated()), id: \.element.id) { index, summary in
+                    ProviderListRow(summary: summary)
+                        .padding(.horizontal, DesignSystem.Spacing.sm)
+                        .padding(.vertical, DesignSystem.Spacing.xs)
+                        .opacity(listAppeared ? 1 : 0)
+                        .offset(y: listAppeared ? 0 : 8)
+                        .animation(
+                            DesignSystem.Animation.standard.delay(Double(index) * 0.06),
+                            value: listAppeared
+                        )
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .opacity
+                        ))
                 }
             }
         }
+        .padding(.bottom, DesignSystem.Spacing.sm)
     }
-    
-    // MARK: - Action Buttons
-    
-    private var actionButtons: some View {
-        HStack(spacing: 12) {
-            Button {
+
+    private var emptyStateView: some View {
+        VStack(spacing: DesignSystem.Spacing.sm) {
+            if dataStore.usages.isEmpty {
+                Image(systemName: "cpu")
+                    .font(.system(size: 28))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Text("Welcome to BurnBar")
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Text("Click Scan to import sessions from\nyour AI coding agents.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .multilineTextAlignment(.center)
+                Text("Supports Claude Code, Factory, Codex, and more.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .multilineTextAlignment(.center)
+            } else {
+                Image(systemName: "tray")
+                    .font(.system(size: 28))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Text("No activity")
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, DesignSystem.Spacing.xl)
+    }
+
+    // MARK: - Action Bar
+
+    private var actionBar: some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            GlassButton(
+                title: "Dashboard",
+                icon: "chart.bar.fill",
+                style: .prominent
+            ) {
                 dismiss()
                 onOpenDashboard()
-            } label: {
-                Label("Dashboard", systemImage: "chart.bar.fill")
-                    .font(ThemeManager.Typography.caption)
-                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(ThemeManager.AppColors.purple)
-            
-            Button {
+
+            GlassButton(
+                title: "Settings",
+                icon: "gearshape.fill",
+                style: .regular
+            ) {
                 dismiss()
                 onOpenSettings()
-            } label: {
-                Label("Settings", systemImage: "gearshape.fill")
-                    .font(ThemeManager.Typography.caption)
-                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
-            .tint(ThemeManager.AppColors.border)
+
+            GlassIconButton(
+                icon: "power",
+                action: {
+                    NSApplication.shared.terminate(nil)
+                }
+            )
         }
+        .padding(DesignSystem.Spacing.md)
     }
-    
-    // MARK: - Helpers
-    
-    private func formatCost(_ cost: Double) -> String {
-        if cost < 0.01 {
-            return String(format: "$%.4f", cost)
-        } else if cost < 1.0 {
-            return String(format: "$%.2f", cost)
-        } else {
-            return String(format: "$%.2f", cost)
-        }
-    }
+
 }
 
-// MARK: - Quick Stat
+// MARK: - Period Cost
 
-private struct QuickStat: View {
+private struct PeriodCost: View {
     let label: String
     let value: String
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(ThemeManager.Typography.caption)
-                .foregroundStyle(ThemeManager.AppColors.textSecondary)
-            
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
             Text(value)
-                .font(ThemeManager.Typography.monoCaption)
-                .foregroundStyle(ThemeManager.AppColors.textPrimary)
+                .font(DesignSystem.Typography.monoSmall)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
         }
     }
 }
 
-// MARK: - Provider Row
+// MARK: - Provider List Row
 
-private struct ProviderRow: View {
+private struct ProviderListRow: View {
     let summary: ProviderSummary
-    let theme: ProviderTheme
-    
+
+    @Bindable private var settingsManager = SettingsManager.shared
+
+    private var theme: ProviderTheme { ProviderTheme.theme(for: summary.provider) }
+
     var body: some View {
-        HStack(spacing: 10) {
-            // Provider Icon
-            Image(systemName: summary.provider.iconName)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(theme.primaryColor)
-                .frame(width: 24, height: 24)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
+        GlassCard(interactive: true) {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                // Provider icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7.5, style: .continuous)
                         .fill(theme.primaryColor.opacity(0.15))
-                )
-            
-            // Provider Name & Session Count
-            VStack(alignment: .leading, spacing: 2) {
-                Text(summary.provider.displayName)
-                    .font(ThemeManager.Typography.body)
-                    .foregroundStyle(ThemeManager.AppColors.textPrimary)
-                
-                Text("\(summary.sessionCount) session\(summary.sessionCount == 1 ? "" : "s")")
-                    .font(ThemeManager.Typography.caption)
-                    .foregroundStyle(ThemeManager.AppColors.textSecondary)
+                        .frame(width: 32, height: 32)
+
+                    ProviderLogoView(provider: summary.provider, size: 20, useFallbackColor: false)
+                }
+
+                // Name & sessions
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(summary.provider.displayName)
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                    Text("\(summary.sessionCount) session\(summary.sessionCount == 1 ? "" : "s")")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer()
+
+                // Cost or tokens
+                Text(settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens))
+                    .font(DesignSystem.Typography.mono)
+                    .foregroundStyle(theme.primaryColor)
             }
-            
-            Spacer()
-            
-            // Cost
-            Text(summary.formattedCost)
-                .font(ThemeManager.Typography.monoBody)
-                .foregroundStyle(theme.primaryColor)
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.sm)
         }
+    }
+}
+
+// MARK: - Glass Card
+
+/// A dark glass-style card with subtle border and surface treatment.
+struct GlassCard<Content: View>: View {
+    var interactive: Bool = false
+    @ViewBuilder let content: () -> Content
+
+    @State private var isHovered = false
+    @State private var isPressed = false
+
+    init(
+        interactive: Bool = false,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.interactive = interactive
+        self.content = content
+    }
+
+    var body: some View {
+        content()
+            .padding(DesignSystem.Spacing.xs)
+            .background(DesignSystem.Colors.surface)
+            .clipShape(.rect(cornerRadius: DesignSystem.Radius.md))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
+                    .stroke(DesignSystem.Colors.border.opacity(0.6), lineWidth: 0.5)
+            )
+            .scaleEffect(interactive ? (isPressed ? 0.98 : isHovered ? 1.015 : 1.0) : 1.0)
+            .animation(isPressed ? DesignSystem.Animation.snappy : DesignSystem.Animation.hover, value: isHovered)
+            .animation(DesignSystem.Animation.snappy, value: isPressed)
+            .onHover { if interactive { isHovered = $0 } }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in if interactive { isPressed = true } }
+                    .onEnded { _ in isPressed = false }
+            )
+    }
+}
+
+// MARK: - Glass Button
+
+struct GlassButton: View {
+    enum Style {
+        case prominent
+        case regular
+    }
+
+    let title: String
+    let icon: String
+    let style: Style
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            if style == .prominent {
+                prominentLabel
+            } else {
+                regularLabel
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var prominentLabel: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .medium))
+            Text(title)
+                .font(DesignSystem.Typography.caption)
+        }
+        .foregroundStyle(DesignSystem.Colors.primaryGradient)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.surfaceElevated)
+        .clipShape(.rect(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.primaryGradient.opacity(0.55), lineWidth: 1.0)
+        )
+    }
+
+    private var regularLabel: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .medium))
+            Text(title)
+                .font(DesignSystem.Typography.caption)
+        }
+        .foregroundStyle(DesignSystem.Colors.textSecondary)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.surface)
+        .clipShape(.rect(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.border.opacity(0.5), lineWidth: 0.5)
+        )
+    }
+}
+
+// MARK: - Glass Icon Button
+
+struct GlassIconButton: View {
+    let icon: String
+    var isLoading: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(DesignSystem.Colors.surface)
+                    .frame(width: 28, height: 28)
+
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.mini)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+            }
+            .clipShape(.circle)
+            .overlay(
+                Circle()
+                    .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
     }
 }
 
 #Preview {
     MenuBarPopoverView(
         dataStore: DataStore(),
+        aggregator: nil,
+        settingsManager: .shared,
         onOpenDashboard: {},
         onOpenSettings: {}
     )

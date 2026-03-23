@@ -31,7 +31,49 @@ final class SettingsManager {
     var costAlertThreshold: Double? {
         didSet { save() }
     }
-    
+
+    var dailyDigestEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// Hour 0–23 local time for daily digest notification.
+    var dailyDigestHour: Int {
+        didSet { save() }
+    }
+
+    /// User opted in to local indexing of conversation text for search and chat context.
+    var conversationIndexingEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// Opt-in: sync conversation metadata (not full transcripts) to Firestore for cross-device recall.
+    var conversationCloudBackupEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// Whether the one-time consent sheet for conversation indexing has been presented.
+    var conversationIndexingConsentShown: Bool {
+        didSet { save() }
+    }
+
+    /// User allowed the app to invoke `claude` / `codex` CLIs for the in-app assistant.
+    var cliAssistantAllowed: Bool {
+        didSet {
+            if cliAssistantAllowed { cliAssistantConsentShown = true }
+            save()
+        }
+    }
+
+    /// Whether the one-time consent sheet for the CLI assistant has been presented.
+    var cliAssistantConsentShown: Bool {
+        didSet { save() }
+    }
+
+    /// Show spend in USD or total token volume (scaled to M/B).
+    var usageDisplayMode: UsageDisplayMode {
+        didSet { save() }
+    }
+
     // MARK: - Computed
     
     var refreshIntervalMinutes: Double {
@@ -42,6 +84,8 @@ final class SettingsManager {
     // MARK: - Initialization
     
     private init() {
+        BurnBarMigration.migrateUserDefaults()
+
         // Load from UserDefaults
         let defaults = UserDefaults.standard
         
@@ -72,6 +116,37 @@ final class SettingsManager {
         } else {
             self.costAlertThreshold = nil
         }
+
+        self.dailyDigestEnabled = defaults.bool(forKey: "dailyDigestEnabled")
+        if defaults.object(forKey: "dailyDigestHour") != nil {
+            let hour = defaults.integer(forKey: "dailyDigestHour")
+            self.dailyDigestHour = (hour >= 0 && hour < 24) ? hour : 18
+        } else {
+            self.dailyDigestHour = 18
+        }
+
+        self.conversationIndexingConsentShown = defaults.bool(forKey: "conversationIndexingConsentShown")
+        if defaults.object(forKey: "conversationIndexingEnabled") != nil {
+            self.conversationIndexingEnabled = defaults.bool(forKey: "conversationIndexingEnabled")
+        } else {
+            self.conversationIndexingEnabled = false
+        }
+
+        self.conversationCloudBackupEnabled = defaults.bool(forKey: "conversationCloudBackupEnabled")
+
+        self.cliAssistantConsentShown = defaults.bool(forKey: "cliAssistantConsentShown")
+        if defaults.object(forKey: "cliAssistantAllowed") != nil {
+            self.cliAssistantAllowed = defaults.bool(forKey: "cliAssistantAllowed")
+        } else {
+            self.cliAssistantAllowed = false
+        }
+
+        if let modeRaw = defaults.string(forKey: "usageDisplayMode"),
+           let mode = UsageDisplayMode(rawValue: modeRaw) {
+            self.usageDisplayMode = mode
+        } else {
+            self.usageDisplayMode = .currency
+        }
     }
     
     // MARK: - Persistence
@@ -95,10 +170,51 @@ final class SettingsManager {
         } else {
             defaults.set(false, forKey: "hasCostAlertThreshold")
         }
+
+        defaults.set(dailyDigestEnabled, forKey: "dailyDigestEnabled")
+        defaults.set(dailyDigestHour, forKey: "dailyDigestHour")
+        defaults.set(conversationIndexingEnabled, forKey: "conversationIndexingEnabled")
+        defaults.set(conversationCloudBackupEnabled, forKey: "conversationCloudBackupEnabled")
+        defaults.set(conversationIndexingConsentShown, forKey: "conversationIndexingConsentShown")
+        defaults.set(cliAssistantAllowed, forKey: "cliAssistantAllowed")
+        defaults.set(cliAssistantConsentShown, forKey: "cliAssistantConsentShown")
+        defaults.set(usageDisplayMode.rawValue, forKey: "usageDisplayMode")
+    }
+
+    /// Formats a usage row or aggregate for the current display preference.
+    func formatUsageMetric(cost: Double, tokens: Int) -> String {
+        switch usageDisplayMode {
+        case .currency: return cost.formatAsCost()
+        case .tokens: return tokens.formatAsTokenVolume()
+        }
     }
     
+    // MARK: - First Launch
+
+    var isFirstLaunch: Bool {
+        !UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
+    }
+
+    // MARK: - Provider Detection
+
+    func detectAvailableProviders() -> [AgentProvider: Bool] {
+        var result: [AgentProvider: Bool] = [:]
+        let fm = FileManager.default
+        for provider in AgentProvider.allCases {
+            let path = (provider.logDirectory as NSString).expandingTildeInPath
+            result[provider] = fm.fileExists(atPath: path)
+        }
+        return result
+    }
+
+    func pathExists(for provider: AgentProvider) -> Bool {
+        let path = logPaths[provider] ?? provider.logDirectory
+        let expandedPath = (path as NSString).expandingTildeInPath
+        return FileManager.default.fileExists(atPath: expandedPath)
+    }
+
     // MARK: - Path Resolution
-    
+
     func resolvedPath(for provider: AgentProvider) -> URL? {
         let path = logPaths[provider] ?? provider.logDirectory
         let expandedPath = (path as NSString).expandingTildeInPath
