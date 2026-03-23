@@ -16,7 +16,8 @@ final class WindowManager: ObservableObject {
         dataStore: DataStore,
         aggregator: UsageAggregator?,
         accountManager: AccountManager,
-        cloudSyncService: CloudSyncService?
+        cloudSyncService: CloudSyncService?,
+        iCloudSessionMirrorService: ICloudSessionMirrorService?
     ) {
         NSApplication.shared.activate(ignoringOtherApps: true)
 
@@ -29,7 +30,8 @@ final class WindowManager: ObservableObject {
             dataStore: dataStore,
             aggregator: aggregator,
             accountManager: accountManager,
-            cloudSyncService: cloudSyncService
+            cloudSyncService: cloudSyncService,
+            iCloudSessionMirrorService: iCloudSessionMirrorService
         )
         .frame(minWidth: 900, minHeight: 600)
 
@@ -54,6 +56,7 @@ final class WindowManager: ObservableObject {
         settingsManager: SettingsManager,
         accountManager: AccountManager,
         cloudSyncService: CloudSyncService?,
+        iCloudSessionMirrorService: ICloudSessionMirrorService?,
         dataStore: DataStore
     ) {
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -67,6 +70,7 @@ final class WindowManager: ObservableObject {
             settingsManager: settingsManager,
             accountManager: accountManager,
             cloudSyncService: cloudSyncService,
+            iCloudSessionMirrorService: iCloudSessionMirrorService,
             dataStore: dataStore
         )
         .frame(width: 600, height: 540)
@@ -101,6 +105,7 @@ struct BurnBarApp: App {
     @State private var aggregator: UsageAggregator?
     @State private var accountManager: AccountManager
     @State private var cloudSyncService: CloudSyncService?
+    @State private var iCloudSessionMirrorService: ICloudSessionMirrorService?
 
     @MainActor
     init() {
@@ -112,6 +117,7 @@ struct BurnBarApp: App {
         _aggregator = State(initialValue: nil)
         _accountManager = State(initialValue: AccountManager.shared)
         _cloudSyncService = State(initialValue: nil)
+        _iCloudSessionMirrorService = State(initialValue: nil)
     }
 
     @MainActor
@@ -143,7 +149,8 @@ struct BurnBarApp: App {
                         dataStore: dataStore,
                         aggregator: aggregator,
                         accountManager: accountManager,
-                        cloudSyncService: cloudSyncService
+                        cloudSyncService: cloudSyncService,
+                        iCloudSessionMirrorService: iCloudSessionMirrorService
                     )
                 },
                 onOpenSettings: {
@@ -151,6 +158,7 @@ struct BurnBarApp: App {
                         settingsManager: settingsManager,
                         accountManager: accountManager,
                         cloudSyncService: cloudSyncService,
+                        iCloudSessionMirrorService: iCloudSessionMirrorService,
                         dataStore: dataStore
                     )
                 }
@@ -168,7 +176,9 @@ struct BurnBarApp: App {
                 guard aggregator == nil else { return }
                 let sync = CloudSyncService(dataStore: dataStore, accountManager: accountManager)
                 cloudSyncService = sync
-                let newAggregator = UsageAggregator(dataStore: dataStore, cloudSync: sync)
+                let mirror = ICloudSessionMirrorService(settingsManager: settingsManager)
+                iCloudSessionMirrorService = mirror
+                let newAggregator = UsageAggregator(dataStore: dataStore, cloudSync: sync, sessionMirror: mirror)
                 aggregator = newAggregator
                 CursorConnectorManager.shared.attach(dataStore: dataStore)
                 if !hasShownInitialDashboard {
@@ -177,7 +187,8 @@ struct BurnBarApp: App {
                         dataStore: dataStore,
                         aggregator: newAggregator,
                         accountManager: accountManager,
-                        cloudSyncService: sync
+                        cloudSyncService: sync,
+                        iCloudSessionMirrorService: mirror
                     )
                 }
                 // Don’t block the first frame on a long disk scan; the menu bar can appear while refresh runs.

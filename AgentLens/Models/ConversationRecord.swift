@@ -1,5 +1,13 @@
 import Foundation
 
+// MARK: - Conversation Source Type
+
+/// Discriminates between indexed provider transcripts and the in-app CLI assistant log.
+enum ConversationSourceType: String, Codable {
+    case providerLog  = "provider_log"
+    case cliAssistant = "cli_assistant"
+}
+
 // MARK: - Conversation Record
 
 /// Indexed session transcript and metadata for local search and context.
@@ -24,6 +32,8 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
     let fileModifiedAt: Date?
     /// Populated after on-demand CLI summarization in Session detail.
     let summary: String?
+    /// Whether this record comes from a provider log file or the in-app CLI assistant thread.
+    let sourceType: ConversationSourceType
 
     init(
         id: String,
@@ -43,7 +53,8 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
         fullText: String,
         indexedAt: Date = Date(),
         fileModifiedAt: Date?,
-        summary: String? = nil
+        summary: String? = nil,
+        sourceType: ConversationSourceType = .providerLog
     ) {
         self.id = id
         self.provider = provider
@@ -63,7 +74,11 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
         self.indexedAt = indexedAt
         self.fileModifiedAt = fileModifiedAt
         self.summary = summary
+        self.sourceType = sourceType
     }
+
+    /// Stable synthetic ID for the in-app CLI assistant conversation.
+    static let cliAssistantId = "cli_assistant:local"
 
     static func stableId(provider: AgentProvider, sessionId: String) -> String {
         "\(provider.rawValue):\(sessionId)"

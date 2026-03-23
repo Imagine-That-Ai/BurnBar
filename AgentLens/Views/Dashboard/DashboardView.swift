@@ -6,6 +6,7 @@ import SwiftUI
 private enum DashboardMainRoute: Hashable {
     case overview
     case projects
+    case sessionLogs
     case provider(AgentProvider)
 }
 
@@ -17,6 +18,7 @@ struct DashboardView: View {
     var aggregator: UsageAggregator?
     var accountManager: AccountManager
     var cloudSyncService: CloudSyncService?
+    var iCloudSessionMirrorService: ICloudSessionMirrorService?
     @State private var mainRoute: DashboardMainRoute = .overview
     @State private var selectedTimeRange: TimeRange = .today
     @State private var showingSettings = false
@@ -25,18 +27,21 @@ struct DashboardView: View {
     @State private var chatPanelOpen = false
     @State private var showIndexingConsent = false
     @State private var showCLIConsentSheet = false
+    @State private var showSessionLogCloudConsent = false
     @State private var chatController: ChatSessionController
 
     init(
         dataStore: DataStore,
         aggregator: UsageAggregator?,
         accountManager: AccountManager = .shared,
-        cloudSyncService: CloudSyncService? = nil
+        cloudSyncService: CloudSyncService? = nil,
+        iCloudSessionMirrorService: ICloudSessionMirrorService? = nil
     ) {
         self._dataStore = Bindable(dataStore)
         self.aggregator = aggregator
         self.accountManager = accountManager
         self.cloudSyncService = cloudSyncService
+        self.iCloudSessionMirrorService = iCloudSessionMirrorService
         _chatController = State(initialValue: ChatSessionController(dataStore: dataStore, settingsManager: SettingsManager.shared))
     }
 
@@ -83,6 +88,7 @@ struct DashboardView: View {
                 settingsManager: SettingsManager.shared,
                 accountManager: accountManager,
                 cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService,
                 dataStore: dataStore
             )
         }
@@ -149,6 +155,17 @@ struct DashboardView: View {
                 showCLIConsentSheet = false
             }
             .presentationBackground(Material.ultraThinMaterial)
+        }
+        .sheet(isPresented: $showSessionLogCloudConsent) {
+            SessionLogCloudConsentSheet(settingsManager: settingsManager) {
+                showSessionLogCloudConsent = false
+            }
+            .presentationBackground(Material.ultraThinMaterial)
+        }
+        .onChange(of: accountManager.isSignedIn) { _, isSignedIn in
+            if isSignedIn && !settingsManager.sessionLogCloudBackupConsentShown {
+                showSessionLogCloudConsent = true
+            }
         }
     }
 
@@ -286,6 +303,13 @@ struct DashboardView: View {
                         }
                     }
                     .focusable()
+
+                    SidebarSessionLogsRow(isSelected: mainRoute == .sessionLogs) {
+                        withAnimation(DesignSystem.Animation.standard) {
+                            mainRoute = .sessionLogs
+                        }
+                    }
+                    .focusable()
                 }
 
                 GlassCard {
@@ -407,6 +431,7 @@ struct DashboardView: View {
         var routes: [DashboardMainRoute] = [.overview]
         routes.append(contentsOf: dataStore.providerSummaries.map { .provider($0.provider) })
         routes.append(.projects)
+        routes.append(.sessionLogs)
         return routes
     }
 
@@ -419,6 +444,12 @@ struct DashboardView: View {
             overviewView
         case .projects:
             ProjectsView(dataStore: dataStore)
+        case .sessionLogs:
+            SessionLogsView(
+                dataStore: dataStore,
+                accountManager: accountManager,
+                settingsManager: settingsManager
+            )
         case .provider(let provider):
             ProviderDashboardView(
                 provider: provider,
@@ -988,6 +1019,56 @@ private struct SidebarProjectsRow: View {
     }
 }
 
+// MARK: - Sidebar Session Logs Row
+
+private struct SidebarSessionLogsRow: View {
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? DesignSystem.Colors.ember.opacity(0.18) : DesignSystem.Colors.surfaceElevated)
+                        .frame(width: 34, height: 34)
+
+                    Image(systemName: "scroll.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(isSelected ? DesignSystem.Colors.ember : DesignSystem.Colors.textSecondary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Session Logs")
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
+
+                    Text("Full transcripts & chat history")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(isSelected ? DesignSystem.Colors.ember.opacity(0.8) : DesignSystem.Colors.textMuted)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
+                    .fill(isSelected ? DesignSystem.Colors.ember.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(0.35))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
+                    .stroke(isSelected ? DesignSystem.Colors.ember.opacity(0.3) : DesignSystem.Colors.border.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - Stat Card
 
 private struct StatCard: View {
@@ -1350,6 +1431,9 @@ private struct DashboardBackdrop: View {
 }
 
 struct BracketSwarmBackground: View {
+    private static let braceSizes: [CGFloat] = [12, 14, 16, 18, 20, 22]
+    private static let animationCadence: TimeInterval = 1.0 / 12.0
+
     var moodBand: MoodBand = .onPace
 
     @State private var swarms: [DashboardBraceSwarm] = []
@@ -1375,11 +1459,10 @@ struct BracketSwarmBackground: View {
 
     var body: some View {
         GeometryReader { proxy in
-            TimelineView(.animation) { timeline in
-                Canvas { context, size in
+            TimelineView(.periodic(from: .now, by: Self.animationCadence)) { timeline in
+                Canvas(opaque: false, colorMode: .nonLinear, rendersAsynchronously: true) { context, size in
                     guard !swarms.isEmpty else { return }
                     let time = timeline.date.timeIntervalSinceReferenceDate * speedMultiplier
-                    let palettes = bracePalettes
 
                     for swarm in swarms {
                         let orbitPhase = (time / swarm.orbitDuration + swarm.orbitPhase) * .pi * 2
@@ -1397,23 +1480,22 @@ struct BracketSwarmBackground: View {
                         swarmContext.scaleBy(x: scale, y: scale)
 
                         for brace in swarm.braces {
-                            let palette = palettes[brace.paletteIndex % palettes.count]
                             let point = CGPoint(
                                 x: swarm.radius + brace.x,
                                 y: swarm.radius + brace.y
                             )
-                            let glyph = Text(brace.isOpen ? "{" : "}")
-                                .font(.system(size: brace.size, weight: .ultraLight, design: .rounded))
-
-                            var glowContext = swarmContext
-                            glowContext.opacity = brace.opacity * 0.5
-                            glowContext.addFilter(.shadow(color: palette.glow, radius: 6, x: 0, y: 0))
-                            glowContext.draw(glyph.foregroundStyle(palette.glow), at: point, anchor: .center)
+                            guard let symbol = context.resolveSymbol(id: brace.symbolKey) else { continue }
 
                             var primaryContext = swarmContext
                             primaryContext.opacity = brace.opacity
-                            primaryContext.draw(glyph.foregroundStyle(palette.primary), at: point, anchor: .center)
+                            primaryContext.draw(symbol, at: point, anchor: .center)
                         }
+                    }
+                } symbols: {
+                    // Reuse a small set of brace glyph variants instead of re-resolving text every frame.
+                    ForEach(braceSymbolKeys, id: \.self) { symbolKey in
+                        braceSymbolView(for: symbolKey)
+                            .tag(symbolKey)
                     }
                 }
             }
@@ -1457,6 +1539,27 @@ struct BracketSwarmBackground: View {
         ]
     }
 
+    private var braceSymbolKeys: [DashboardBraceSymbolKey] {
+        bracePalettes.indices.flatMap { paletteIndex in
+            Self.braceSizes.flatMap { size in
+                [
+                    DashboardBraceSymbolKey(size: Int(size.rounded()), paletteIndex: paletteIndex, isOpen: true),
+                    DashboardBraceSymbolKey(size: Int(size.rounded()), paletteIndex: paletteIndex, isOpen: false)
+                ]
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func braceSymbolView(for key: DashboardBraceSymbolKey) -> some View {
+        let palette = bracePalettes[key.paletteIndex % bracePalettes.count]
+
+        Text(key.isOpen ? "{" : "}")
+            .font(.system(size: CGFloat(key.size), weight: .ultraLight, design: .rounded))
+            .foregroundStyle(palette.primary.opacity(0.92))
+            .shadow(color: palette.glow, radius: 3, x: 0, y: 0)
+    }
+
     private func regenerateSwarmsIfNeeded(size: CGSize, force: Bool = false) {
         guard size != .zero else { return }
         if !force,
@@ -1471,8 +1574,8 @@ struct BracketSwarmBackground: View {
     }
 
     private func buildSwarms(size: CGSize) -> [DashboardBraceSwarm] {
-        let swarmCount = max(2, Int(4 * densityMultiplier))
-        let bracesPerSwarm = max(12, Int(42 * densityMultiplier))
+        let swarmCount = max(2, Int(3 * densityMultiplier))
+        let bracesPerSwarm = max(8, Int(18 * densityMultiplier))
         let padding: CGFloat = 80
         let width = max(size.width, padding * 2 + 1)
         let height = max(size.height, padding * 2 + 1)
@@ -1496,14 +1599,18 @@ struct BracketSwarmBackground: View {
                 let distance = radius * abs(normalized)
                 let x = cos(angle) * distance
                 let y = sin(angle) * distance * CGFloat.random(in: 0.8...1.2)
+                let symbolSize = Self.braceSizes.randomElement() ?? 16
+                let paletteIndex = Int.random(in: 0..<bracePalettes.count)
 
                 braces.append(
                     DashboardBraceSpec(
                         x: x,
                         y: y,
-                        size: CGFloat.random(in: 12...24),
-                        paletteIndex: Int.random(in: 0..<bracePalettes.count),
-                        isOpen: Bool.random(),
+                        symbolKey: DashboardBraceSymbolKey(
+                            size: Int(symbolSize.rounded()),
+                            paletteIndex: paletteIndex,
+                            isOpen: Bool.random()
+                        ),
                         opacity: Double.random(in: 0.14...0.32)
                     )
                 )
@@ -1543,10 +1650,14 @@ private struct DashboardBraceSpec: Identifiable {
     let id = UUID()
     let x: CGFloat
     let y: CGFloat
-    let size: CGFloat
+    let symbolKey: DashboardBraceSymbolKey
+    let opacity: Double
+}
+
+private struct DashboardBraceSymbolKey: Hashable {
+    let size: Int
     let paletteIndex: Int
     let isOpen: Bool
-    let opacity: Double
 }
 
 private struct DashboardBraceSwarm: Identifiable {

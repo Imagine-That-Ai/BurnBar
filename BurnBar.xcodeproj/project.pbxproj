@@ -47,6 +47,9 @@
 		6EA6639C091DB34D5D77EEC4 /* BurnBarProviderRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CD47FEE60B1D5715C8E94F1 /* BurnBarProviderRouter.swift */; };
 		720603691FA7249468178568 /* BurnBarProviderCatalogSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E43E6640557CB14B9782F17F /* BurnBarProviderCatalogSupport.swift */; };
 		7D62BA6F6FCE298E4AD710F9 /* CloudSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CD006CD9B9241D1364DE204 /* CloudSyncService.swift */; };
+		AA11BB22CC33DD44EE556601 /* ICloudSessionMirrorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE556600 /* ICloudSessionMirrorService.swift */; };
+		CC11DD22EE33445566778801 /* SessionLogMarkdownFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC11DD22EE33445566778800 /* SessionLogMarkdownFormatter.swift */; };
+		EE11AA22BB33CC44DD55EE01 /* SessionLogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE11AA22BB33CC44DD55EE00 /* SessionLogsView.swift */; };
 		86FE7AA85FD388F048D169AF /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E585C2B7DE464924EC3F5751 /* KeychainStore.swift */; };
 		8A964B0CD5A05F81129CEF49 /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E1396996BD4F1A33C8202CE /* ThemeManager.swift */; };
 		8B70B20C4CB174C0EE104F0B /* AgentProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93861E410EAF0BE0E52F57BC /* AgentProvider.swift */; };
@@ -168,6 +171,9 @@
 		65A09A8DD647C8765C28A970 /* ConversationParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationParsingTests.swift; sourceTree = "<group>"; };
 		682017FCA38A7AB4A7C80608 /* BurnBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BurnBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6CD006CD9B9241D1364DE204 /* CloudSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncService.swift; sourceTree = "<group>"; };
+		AA11BB22CC33DD44EE556600 /* ICloudSessionMirrorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICloudSessionMirrorService.swift; sourceTree = "<group>"; };
+		CC11DD22EE33445566778800 /* SessionLogMarkdownFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLogMarkdownFormatter.swift; sourceTree = "<group>"; };
+		EE11AA22BB33CC44DD55EE00 /* SessionLogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLogsView.swift; sourceTree = "<group>"; };
 		7356C2B877EAD026DC34C39C /* CursorConnectorModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorConnectorModels.swift; sourceTree = "<group>"; };
 		744780AD18D485DDFFF46DA4 /* BurnBarDaemonExecutable */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = text; name = BurnBarDaemonExecutable; path = BurnBarDaemon; sourceTree = BUILT_PRODUCTS_DIR; };
 		787CA705F565BE6C5765A7F7 /* InsightCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightCardView.swift; sourceTree = "<group>"; };
@@ -411,6 +417,14 @@
 			path = Popover;
 			sourceTree = "<group>";
 		};
+		FF11AA22BB33CC44DD55EE99 /* SessionLogs */ = {
+			isa = PBXGroup;
+			children = (
+				EE11AA22BB33CC44DD55EE00 /* SessionLogsView.swift */,
+			);
+			path = SessionLogs;
+			sourceTree = "<group>";
+		};
 		8B073BDC54AC148B858D584B /* Packages */ = {
 			isa = PBXGroup;
 			children = (
@@ -427,6 +441,7 @@
 				15A5C7F19A6DF6F1DACA9F83 /* Components */,
 				6623CD7316ADE08CDD703D69 /* Dashboard */,
 				882BB2854400C682A0CEAAB4 /* Popover */,
+				FF11AA22BB33CC44DD55EE99 /* SessionLogs */,
 				972073AE992CC15463D4BF60 /* Settings */,
 			);
 			path = Views;
@@ -491,6 +506,8 @@
 				7A75541FE7442B29F4894BCC /* BurnBarIdentity.swift */,
 				F729FDFE6D34B6F03B5DDCA9 /* CLIBridge.swift */,
 				6CD006CD9B9241D1364DE204 /* CloudSyncService.swift */,
+				AA11BB22CC33DD44EE556600 /* ICloudSessionMirrorService.swift */,
+				CC11DD22EE33445566778800 /* SessionLogMarkdownFormatter.swift */,
 				0C0C003B0BC42F2B9629E344 /* ContextBuilder.swift */,
 				F78AAB24FFCF6E834BEF9F57 /* ConversationIndexer.swift */,
 				EAC7BF69A4E9C2151614E0DB /* DailyDigestManager.swift */,
@@ -754,6 +771,8 @@
 				8D77F5D4F3A5E3DC6A2BF45C /* ClaudeCodeParser.swift in Sources */,
 				D1465342E1C49F1C5B32D9BF /* ClaudeConversationExtractor.swift in Sources */,
 				7D62BA6F6FCE298E4AD710F9 /* CloudSyncService.swift in Sources */,
+				AA11BB22CC33DD44EE556601 /* ICloudSessionMirrorService.swift in Sources */,
+				CC11DD22EE33445566778801 /* SessionLogMarkdownFormatter.swift in Sources */,
 				ADC3D20DDABC845D7ECF52D3 /* ColorAdaptive.swift in Sources */,
 				4C1DEE0A243A0D0F82A5F94B /* ContextBuilder.swift in Sources */,
 				2160E0861FDA738ABA9FB7F2 /* ConversationIndexer.swift in Sources */,
@@ -784,6 +803,7 @@
 				E9F2A8ED3429D40FF1A5FBC5 /* ProviderTheme.swift in Sources */,
 				0B81470A3FAFC854A11B8D48 /* SearchService.swift in Sources */,
 				AAF91CB4D31BF1A344E7BA87 /* SessionDetailView.swift in Sources */,
+				EE11AA22BB33CC44DD55EE01 /* SessionLogsView.swift in Sources */,
 				E51DD6FEEC5C264E8BB711DC /* SettingsManager.swift in Sources */,
 				63129433EF48F8636FCB8B1A /* SettingsView.swift in Sources */,
 				8A964B0CD5A05F81129CEF49 /* ThemeManager.swift in Sources */,

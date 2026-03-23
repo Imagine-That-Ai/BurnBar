@@ -1,0 +1,446 @@
+import Darwin
+import Foundation
+
+// MARK: - Constants
+
+enum ICloudSessionMirrorConstants {
+    static let containerIdentifier = "iCloud.com.burnbar.app"
+    static let mirrorPathComponents = ["Documents", "BurnBar", "SessionMirror"]
+}
+
+// MARK: - Mirror state (persisted)
+
+private struct ICloudSessionMirrorStateFile: Codable, Sendable {
+    var files: [String: ICloudSessionMirrorFileRecord]
+}
+
+private struct ICloudSessionMirrorFileRecord: Codable, Sendable {
+    var modificationTime: TimeInterval
+    var size: Int64
+}
+
+// MARK: - Snapshot (captured on MainActor, processed off-thread)
+
+private struct ICloudSessionMirrorSnapshot: Sendable {
+    let containerIdentifier: String
+    let mirrorPathComponents: [String]
+    let providers: [ICloudSessionProviderSpec]
+    let stateFilePath: String
+}
+
+private struct ICloudSessionProviderSpec: Sendable {
+    let slug: String
+    let rootPath: String
+    let filePattern: String
+}
+
+private struct ICloudSessionMirrorSyncResult: Sendable {
+    let lastSyncDate: Date?
+    let errorMessage: String?
+    let updatedCount: Int
+    let removedCount: Int
+}
+
+// MARK: - Engine (background)
+
+private enum ICloudSessionMirrorEngine {
+
+    static func estimateBytes(_ snapshot: ICloudSessionMirrorSnapshot) async -> Int64 {
+        let fm = FileManager()
+        var total: Int64 = 0
+        for spec in snapshot.providers {
+            guard let sources = try? sourceFiles(for: spec, fm: fm) else { continue }
+            for url in sources {
+                total += (try? fm.fileSize(at: url)) ?? 0
+            }
+            await Task.yield()
+        }
+        return total
+    }
+
+    static func perform(_ snapshot: ICloudSessionMirrorSnapshot) async -> ICloudSessionMirrorSyncResult {
+        let fm = FileManager()
+
+        guard let base = fm.url(forUbiquityContainerIdentifier: snapshot.containerIdentifier) else {
+            return ICloudSessionMirrorSyncResult(
+                lastSyncDate: nil,
+                errorMessage: "iCloud Drive is not available. Sign in to iCloud and enable iCloud Drive in System Settings.",
+                updatedCount: 0,
+                removedCount: 0
+            )
+        }
+
+        let mirrorRoot = snapshot.mirrorPathComponents.reduce(base) { $0.appendingPathComponent($1, isDirectory: true) }
+
+        do {
+            try fm.createDirectory(at: mirrorRoot, withIntermediateDirectories: true)
+        } catch {
+            return ICloudSessionMirrorSyncResult(
+                lastSyncDate: nil,
+                errorMessage: userFacingMirrorError(error),
+                updatedCount: 0,
+                removedCount: 0
+            )
+        }
+
+        var state = loadState(path: snapshot.stateFilePath, fm: fm)
+        let previousSnapshot = state.files
+        var newRecords: [String: ICloudSessionMirrorFileRecord] = [:]
+        var updatedCount = 0
+        var removedCount = 0
+        var fileIndex = 0
+
+        do {
+            for spec in snapshot.providers {
+                let root = URL(fileURLWithPath: spec.rootPath, isDirectory: true).standardizedFileURL
+                let sources = try sourceFiles(for: spec, fm: fm)
+                let rootStandard = root
+
+                for source in sources {
+                    fileIndex += 1
+                    if fileIndex % 32 == 0 { await Task.yield() }
+
+                    let sourcePath = source.standardizedFileURL.path
+                    let relative = try relativePath(from: rootStandard, to: source.standardizedFileURL)
+                    let dest = mirrorRoot
+                        .appendingPathComponent(spec.slug, isDirectory: true)
+                        .appendingPathComponent(relative, isDirectory: false)
+
+                    let attrs = try source.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+                    guard let mod = attrs.contentModificationDate else { continue }
+                    let size = Int64(attrs.fileSize ?? 0)
+                    let prev = state.files[sourcePath]
+
+                    if let prev, prev.modificationTime == mod.timeIntervalSinceReferenceDate, prev.size == size {
+                        newRecords[sourcePath] = prev
+                        continue
+                    }
+
+                    try copyIntoUbiquity(from: source, to: dest, fm: fm)
+                    newRecords[sourcePath] = ICloudSessionMirrorFileRecord(
+                        modificationTime: mod.timeIntervalSinceReferenceDate,
+                        size: size
+                    )
+                    updatedCount += 1
+                }
+            }
+
+            for (sourcePath, _) in previousSnapshot where newRecords[sourcePath] == nil {
+                guard !fm.fileExists(atPath: sourcePath) else { continue }
+                guard let match = inferProvider(from: sourcePath, specs: snapshot.providers) else { continue }
+                let sourceURL = URL(fileURLWithPath: sourcePath).standardizedFileURL
+                guard let rel = try? relativePath(
+                    from: URL(fileURLWithPath: match.rootPath, isDirectory: true).standardizedFileURL,
+                    to: sourceURL
+                ) else { continue }
+                let dest = mirrorRoot
+                    .appendingPathComponent(match.slug, isDirectory: true)
+                    .appendingPathComponent(rel, isDirectory: false)
+                if fm.fileExists(atPath: dest.path) {
+                    try? fm.removeItem(at: dest)
+                    removedCount += 1
+                }
+            }
+
+            state.files = newRecords
+            try saveState(state, path: snapshot.stateFilePath, fm: fm)
+
+            return ICloudSessionMirrorSyncResult(
+                lastSyncDate: Date(),
+                errorMessage: nil,
+                updatedCount: updatedCount,
+                removedCount: removedCount
+            )
+        } catch {
+            return ICloudSessionMirrorSyncResult(
+                lastSyncDate: nil,
+                errorMessage: userFacingMirrorError(error),
+                updatedCount: updatedCount,
+                removedCount: removedCount
+            )
+        }
+    }
+
+    // MARK: - Copy (write coordination only — avoids cross-volume read/write coordinator failures)
+
+    private static func copyIntoUbiquity(from source: URL, to dest: URL, fm: FileManager) throws {
+        try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+
+        var coordinationError: NSError?
+        var innerError: Error?
+        let coordinator = NSFileCoordinator()
+        coordinator.coordinate(writingItemAt: dest, options: .forReplacing, error: &coordinationError) { writeURL in
+            do {
+                if fm.fileExists(atPath: writeURL.path) {
+                    try fm.removeItem(at: writeURL)
+                }
+                try fm.copyItem(at: source, to: writeURL)
+            } catch {
+                innerError = error
+            }
+        }
+
+        if coordinationError != nil || innerError != nil {
+            try copyIntoUbiquityFallback(from: source, to: dest, fm: fm)
+        }
+    }
+
+    /// Plain copy when `NSFileCoordinator` fails or rejects the operation (common when mixing `~` paths with ubiquity).
+    private static func copyIntoUbiquityFallback(from source: URL, to dest: URL, fm: FileManager) throws {
+        try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if fm.fileExists(atPath: dest.path) {
+            try fm.removeItem(at: dest)
+        }
+        try fm.copyItem(at: source, to: dest)
+    }
+
+    private static func userFacingMirrorError(_ error: Error) -> String {
+        let ns = error as NSError
+
+        if ns.domain == NSCocoaErrorDomain {
+            switch ns.code {
+            case NSFileWriteNoPermissionError:
+                return """
+                iCloud blocked writing (permission denied). Fix: in Apple Developer, enable iCloud Documents for app id com.burnbar.app with container iCloud.com.burnbar.app, then rebuild with that team/provisioning profile. Also confirm you are signed into iCloud Drive on this Mac.
+                """
+            case NSFileReadNoPermissionError:
+                return "Could not read a session file. If logs are outside your home folder, grant Full Disk Access to BurnBar in System Settings → Privacy & Security."
+            default:
+                break
+            }
+        }
+
+        if ns.domain == NSPOSIXErrorDomain {
+            switch ns.code {
+            case Int(EPERM), Int(EACCES):
+                return "The system denied file access (POSIX permission). For iCloud: verify Developer iCloud capability and signing. For ~/.local paths: check Full Disk Access."
+            default:
+                break
+            }
+        }
+
+        let description = error.localizedDescription
+        if description.localizedCaseInsensitiveContains("insufficient permissions")
+            || description.localizedCaseInsensitiveContains("permission denied") {
+            return """
+            \(description)
+
+            Note: “Missing or insufficient permissions” is often a Firestore security-rules error during refresh. If this appeared right after “Mirror now”, it is more likely an iCloud signing/capability issue—see README iCloud section.
+            """
+        }
+
+        return description
+    }
+
+    private static func inferProvider(from sourcePath: String, specs: [ICloudSessionProviderSpec]) -> ICloudSessionProviderSpec? {
+        let standardizedPath = (sourcePath as NSString).standardizingPath
+        var best: ICloudSessionProviderSpec?
+        var bestLen = 0
+        for spec in specs {
+            let rs = (spec.rootPath as NSString).standardizingPath
+            guard standardizedPath == rs || standardizedPath.hasPrefix(rs + "/") else { continue }
+            if rs.count > bestLen {
+                best = spec
+                bestLen = rs.count
+            }
+        }
+        return best
+    }
+
+    private static func sourceFiles(for spec: ICloudSessionProviderSpec, fm: FileManager) throws -> [URL] {
+        let standardized = URL(fileURLWithPath: spec.rootPath, isDirectory: true).standardizedFileURL
+        guard fm.fileExists(atPath: standardized.path) else { return [] }
+
+        switch spec.filePattern {
+        case "state_5.sqlite":
+            let f = standardized.appendingPathComponent("state_5.sqlite")
+            return fm.fileExists(atPath: f.path) ? [f] : []
+        default:
+            let exts = Set(mirrorExtensions(for: spec.filePattern))
+            return try enumerateFiles(in: standardized, matchingExtensions: exts, fm: fm)
+        }
+    }
+
+    private static func mirrorExtensions(for filePattern: String) -> [String] {
+        switch filePattern {
+        case "*.jsonl":
+            return ["jsonl", "json"]
+        case "*.json":
+            return ["json"]
+        case "*.db":
+            return ["db"]
+        default:
+            return []
+        }
+    }
+
+    private static func enumerateFiles(in root: URL, matchingExtensions: Set<String>, fm: FileManager) throws -> [URL] {
+        var result: [URL] = []
+        guard let enumerator = fm.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return result }
+
+        for case let item as URL in enumerator {
+            let isFile = (try? item.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false
+            guard isFile else { continue }
+            let ext = item.pathExtension.lowercased()
+            guard matchingExtensions.contains(ext) else { continue }
+            result.append(item)
+        }
+        return result
+    }
+
+    private static func relativePath(from root: URL, to file: URL) throws -> String {
+        let rootPath = root.standardizedFileURL.path
+        let filePath = file.standardizedFileURL.path
+        guard filePath.hasPrefix(rootPath) else {
+            throw ICloudSessionMirrorError.pathOutsideRoot
+        }
+        var sub = String(filePath.dropFirst(rootPath.count))
+        if sub.hasPrefix("/") { sub.removeFirst() }
+        if sub.isEmpty { return file.lastPathComponent }
+        return sub
+    }
+
+    private static func loadState(path: String, fm: FileManager) -> ICloudSessionMirrorStateFile {
+        let url = URL(fileURLWithPath: path)
+        guard let data = try? Data(contentsOf: url),
+              let decoded = try? JSONDecoder().decode(ICloudSessionMirrorStateFile.self, from: data) else {
+            return ICloudSessionMirrorStateFile(files: [:])
+        }
+        return decoded
+    }
+
+    private static func saveState(_ state: ICloudSessionMirrorStateFile, path: String, fm: FileManager) throws {
+        let url = URL(fileURLWithPath: path)
+        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let data = try JSONEncoder().encode(state)
+        try data.write(to: url, options: .atomic)
+    }
+}
+
+// MARK: - ICloudSessionMirrorService
+
+/// Incrementally copies agent session files from configured provider paths into the app’s iCloud Drive
+/// container (`Documents/BurnBar/SessionMirror/...`). Independent of Firebase.
+@Observable
+@MainActor
+final class ICloudSessionMirrorService {
+
+    private(set) var isSyncing = false
+    private(set) var lastSyncDate: Date?
+    private(set) var lastSyncError: String?
+    /// Files copied or updated in the last completed sync.
+    private(set) var lastSyncUpdatedCount: Int = 0
+    /// Files removed from mirror when sources disappeared locally.
+    private(set) var lastSyncRemovedCount: Int = 0
+
+    private let settingsManager: SettingsManager
+    private let fileManager: FileManager
+
+    init(settingsManager: SettingsManager = .shared, fileManager: FileManager = .default) {
+        self.settingsManager = settingsManager
+        self.fileManager = fileManager
+    }
+
+    // MARK: - iCloud availability
+
+    /// `true` when this Mac is signed into iCloud (Drive may still be off; container URL can still appear).
+    var hasUbiquityIdentity: Bool {
+        fileManager.ubiquityIdentityToken != nil
+    }
+
+    /// Root folder shown in Finder for mirrored session files, if the container is available.
+    func mirrorRootDirectoryURL() -> URL? {
+        guard let base = ubiquityContainerURL() else { return nil }
+        return ICloudSessionMirrorConstants.mirrorPathComponents.reduce(base) { $0.appendingPathComponent($1, isDirectory: true) }
+    }
+
+    func ubiquityContainerURL() -> URL? {
+        fileManager.url(forUbiquityContainerIdentifier: ICloudSessionMirrorConstants.containerIdentifier)
+    }
+
+    // MARK: - Public API
+
+    /// Rough total size of files that would be mirrored (for setup UI). Runs off the main thread.
+    func estimatedTotalBytesToMirror() async -> Int64 {
+        let snapshot = makeSnapshot()
+        await Task.yield()
+        return await Task.detached(priority: .utility) {
+            await ICloudSessionMirrorEngine.estimateBytes(snapshot)
+        }.value
+    }
+
+    func syncIfNeeded() async {
+        guard settingsManager.iCloudSessionMirrorEnabled else { return }
+        guard !isSyncing else { return }
+
+        isSyncing = true
+        lastSyncError = nil
+        lastSyncUpdatedCount = 0
+        lastSyncRemovedCount = 0
+
+        let snapshot = makeSnapshot()
+
+        let result = await Task.detached(priority: .utility) {
+            await ICloudSessionMirrorEngine.perform(snapshot)
+        }.value
+
+        lastSyncDate = result.lastSyncDate
+        lastSyncError = result.errorMessage
+        lastSyncUpdatedCount = result.updatedCount
+        lastSyncRemovedCount = result.removedCount
+        isSyncing = false
+    }
+
+    // MARK: - Snapshot
+
+    private func makeSnapshot() -> ICloudSessionMirrorSnapshot {
+        let providers: [ICloudSessionProviderSpec] = mirrorEligibleProviders().compactMap { p in
+            guard let u = settingsManager.resolvedPath(for: p) else { return nil }
+            return ICloudSessionProviderSpec(
+                slug: filesystemSlug(p.rawValue),
+                rootPath: u.path,
+                filePattern: p.filePattern
+            )
+        }
+        return ICloudSessionMirrorSnapshot(
+            containerIdentifier: ICloudSessionMirrorConstants.containerIdentifier,
+            mirrorPathComponents: ICloudSessionMirrorConstants.mirrorPathComponents,
+            providers: providers,
+            stateFilePath: stateFileURL.path
+        )
+    }
+
+    private func mirrorEligibleProviders() -> [AgentProvider] {
+        AgentProvider.allCases.filter { $0.supportLevel != .unsupported }
+    }
+
+    private func filesystemSlug(_ name: String) -> String {
+        name.replacingOccurrences(of: "/", with: "-")
+    }
+
+    private var stateFileURL: URL {
+        let base = (try? BurnBarMigration.prepareSupportDirectory(fileManager: fileManager))
+            ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("BurnBar", isDirectory: true)
+        return base.appendingPathComponent("ICloudSessionMirrorState.json", isDirectory: false)
+    }
+}
+
+// MARK: - Errors
+
+private enum ICloudSessionMirrorError: Error {
+    case pathOutsideRoot
+}
+
+// MARK: - FileManager
+
+private extension FileManager {
+    func fileSize(at url: URL) throws -> Int64 {
+        let v = try url.resourceValues(forKeys: [.fileSizeKey])
+        return Int64(v.fileSize ?? 0)
+    }
+}

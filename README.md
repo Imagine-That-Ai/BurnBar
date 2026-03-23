@@ -190,6 +190,7 @@ BurnBar is a happy offline hermit by default. Cloud sync is for people who use m
 - **Sync store:** Firestore at `users/{uid}/usage/{deviceId}_{usageId}`
 - **Auth:** Firebase Auth — **Google** and/or **Sign in with Apple**
 - **Device identity:** random UUID in Keychain (survives reinstalls, judges silently)
+- **iCloud mirror (optional):** copies parsed session log files into your **personal** iCloud Drive folder for the app (`Documents/BurnBar/SessionMirror/...`). Independent of Firebase; see below.
 
 **Setup:**
 
@@ -213,6 +214,17 @@ service cloud.firestore {
 6. `xcodegen generate` and rebuild.
 
 **Privacy:** synced payloads can include **project directory names** and **model names** from sessions. You can disable sync in **Settings → Account** without sacrificing local history.
+
+### iCloud session file mirror (optional)
+
+Use this when you want session logs in **your** Apple ID’s iCloud storage instead of (or in addition to) Firestore metadata.
+
+- **Where:** After each successful refresh, BurnBar incrementally copies files from each supported provider’s configured log path into the app’s iCloud container: `Documents/BurnBar/SessionMirror/<provider>/…` (same layout as on disk under that root).
+- **UI:** **Settings → Account → iCloud session files** — toggle, status, **Set up guide** (iCloud sign-in check, privacy notes, size estimate, **Reveal in Finder**, **Mirror now**, and advanced Terminal examples for symlink-based relocation).
+- **Apple Developer:** Enable **iCloud** for the macOS app ID `com.burnbar.app` with **iCloud Documents** and container `iCloud.com.burnbar.app`, matching [AgentLens/Resources/BurnBar.entitlements](AgentLens/Resources/BurnBar.entitlements).
+- **Privacy:** mirrored files can contain paths, prompts, and code snippets. They are **not** uploaded to BurnBar-operated Firebase storage by this feature (they sync through Apple’s iCloud like any other document).
+- **Conflicts:** editing the same mirrored file on two Macs can produce iCloud “conflict” copies; BurnBar does not merge those automatically.
+- **“Missing or insufficient permissions”:** if this appears during **Firestore** sync or dashboard refresh, update your Firestore security rules for the signed-in user. If it appears only when **mirroring to iCloud**, the Mac build usually needs the **iCloud Documents** capability and matching **provisioning profile** for container `iCloud.com.burnbar.app` (see Apple Developer → Identifiers → your App ID).
 
 ---
 

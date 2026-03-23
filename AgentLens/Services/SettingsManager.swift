@@ -46,8 +46,23 @@ final class SettingsManager {
         didSet { save() }
     }
 
-    /// Opt-in: sync conversation metadata (not full transcripts) to Firestore for cross-device recall.
+    /// Opt-in: sync conversation metadata (not full transcripts) to Firestore for cross-device recall when signed in.
     var conversationCloudBackupEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// Copy on-disk session files into the app’s iCloud Drive container (independent of Firebase).
+    var iCloudSessionMirrorEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// Opt-in: back up full session-log Markdown to Firestore. Requires auth + `isCloudSyncEnabled`.
+    var sessionLogCloudBackupEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// Whether the one-time cloud session-log backup consent sheet has been shown (per device).
+    var sessionLogCloudBackupConsentShown: Bool {
         didSet { save() }
     }
 
@@ -134,6 +149,10 @@ final class SettingsManager {
 
         self.conversationCloudBackupEnabled = defaults.bool(forKey: "conversationCloudBackupEnabled")
 
+        self.iCloudSessionMirrorEnabled = defaults.bool(forKey: "iCloudSessionMirrorEnabled")
+        self.sessionLogCloudBackupEnabled = defaults.bool(forKey: "sessionLogCloudBackupEnabled")
+        self.sessionLogCloudBackupConsentShown = defaults.bool(forKey: "sessionLogCloudBackupConsentShown")
+
         self.cliAssistantConsentShown = defaults.bool(forKey: "cliAssistantConsentShown")
         if defaults.object(forKey: "cliAssistantAllowed") != nil {
             self.cliAssistantAllowed = defaults.bool(forKey: "cliAssistantAllowed")
@@ -175,6 +194,9 @@ final class SettingsManager {
         defaults.set(dailyDigestHour, forKey: "dailyDigestHour")
         defaults.set(conversationIndexingEnabled, forKey: "conversationIndexingEnabled")
         defaults.set(conversationCloudBackupEnabled, forKey: "conversationCloudBackupEnabled")
+        defaults.set(iCloudSessionMirrorEnabled, forKey: "iCloudSessionMirrorEnabled")
+        defaults.set(sessionLogCloudBackupEnabled, forKey: "sessionLogCloudBackupEnabled")
+        defaults.set(sessionLogCloudBackupConsentShown, forKey: "sessionLogCloudBackupConsentShown")
         defaults.set(conversationIndexingConsentShown, forKey: "conversationIndexingConsentShown")
         defaults.set(cliAssistantAllowed, forKey: "cliAssistantAllowed")
         defaults.set(cliAssistantConsentShown, forKey: "cliAssistantConsentShown")

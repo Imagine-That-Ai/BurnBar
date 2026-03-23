@@ -45,6 +45,7 @@ struct SettingsView: View {
     @Bindable var settingsManager: SettingsManager
     var accountManager: AccountManager
     var cloudSyncService: CloudSyncService?
+    var iCloudSessionMirrorService: ICloudSessionMirrorService?
     var dataStore: DataStore
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: SettingsTab? = .general
@@ -53,11 +54,13 @@ struct SettingsView: View {
         settingsManager: SettingsManager,
         accountManager: AccountManager = .shared,
         cloudSyncService: CloudSyncService? = nil,
+        iCloudSessionMirrorService: ICloudSessionMirrorService? = nil,
         dataStore: DataStore
     ) {
         self._settingsManager = Bindable(settingsManager)
         self.accountManager = accountManager
         self.cloudSyncService = cloudSyncService
+        self.iCloudSessionMirrorService = iCloudSessionMirrorService
         self.dataStore = dataStore
     }
 
@@ -103,6 +106,7 @@ struct SettingsView: View {
             AccountSettingsView(
                 accountManager: accountManager,
                 cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService,
                 settingsManager: settingsManager
             )
             .navigationTitle("Account")
@@ -324,7 +328,7 @@ private struct ProvidersSettingsView: View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                 BurnBarDaemonCard(dataStore: dataStore)
 
-                Text("Connect Cursor with your own model providers, then keep the existing parser paths below for everything else.")
+                Text("Install the daemon for BurnBar-routed models (editor extension). Log paths below stay for usage parsing from each agent’s files.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .padding(.bottom, DesignSystem.Spacing.sm)
@@ -893,11 +897,13 @@ private struct SettingsToggle: View {
 private struct AccountSettingsView: View {
     var accountManager: AccountManager
     var cloudSyncService: CloudSyncService?
+    var iCloudSessionMirrorService: ICloudSessionMirrorService?
     @Bindable var settingsManager: SettingsManager
 
     @State private var isSigningInGoogle = false
     @State private var isSigningInApple = false
     @State private var signInError: String?
+    @State private var showICloudSessionSetup = false
 
     /// Prefers Firebase/Auth `userInfo` keys over the generic `localizedDescription` (e.g. keychain errors).
     private static func signInErrorMessage(_ error: Error) -> String {
@@ -915,15 +921,29 @@ private struct AccountSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                 if accountManager.isFirebaseAvailable {
-                    signedInContent
+                    firebaseCloudSyncContent
                 } else {
                     notConfiguredBanner
                 }
+                iCloudSessionMirrorSection
             }
             .padding(DesignSystem.Spacing.lg)
         }
         .background(DesignSystem.Colors.background)
         .scrollContentBackground(.hidden)
+        .sheet(isPresented: $showICloudSessionSetup) {
+            if let mirror = iCloudSessionMirrorService {
+                ICloudSessionSetupSheet(mirrorService: mirror, settingsManager: settingsManager)
+            } else {
+                VStack(spacing: DesignSystem.Spacing.md) {
+                    Text("Open Settings from the running BurnBar app to use the iCloud setup guide.")
+                        .font(DesignSystem.Typography.body)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                }
+                .frame(minWidth: 320, minHeight: 120)
+            }
+        }
     }
 
     // MARK: - Not Configured
@@ -948,10 +968,10 @@ private struct AccountSettingsView: View {
         }
     }
 
-    // MARK: - Signed-in / Signed-out Content
+    // MARK: - Firebase account & Firestore sync
 
     @ViewBuilder
-    private var signedInContent: some View {
+    private var firebaseCloudSyncContent: some View {
         sectionHeader("Account")
 
         if accountManager.isSignedIn {
@@ -1009,7 +1029,7 @@ private struct AccountSettingsView: View {
 
                     SettingsToggle(
                         title: "Back Up Session History",
-                        subtitle: "Syncs session metadata (not full text) to iCloud for recall across devices",
+                        subtitle: "Sync session metadata (not full transcripts) to Firestore for recall on your signed-in Macs",
                         isOn: $settingsManager.conversationCloudBackupEnabled
                     )
                     .disabled(!accountManager.isSignedIn || !accountManager.isCloudSyncEnabled)
@@ -1098,6 +1118,102 @@ private struct AccountSettingsView: View {
         }
     }
 
+    // MARK: - iCloud session file mirror
+
+    private var iCloudSessionMirrorSection: some View {
+        Group {
+            sectionHeader("iCloud session files")
+
+            accountPanel {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                    Text(
+                        "Keep a copy of on-disk session logs in your personal iCloud Drive. This is separate from Firebase and does not require signing in to BurnBar."
+                    )
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    SettingsToggle(
+                        title: "Mirror session files to iCloud",
+                        subtitle: "Copies supported provider logs into BurnBar’s iCloud folder after each refresh",
+                        isOn: $settingsManager.iCloudSessionMirrorEnabled
+                    )
+
+                    Button {
+                        showICloudSessionSetup = true
+                    } label: {
+                        Label("Set up guide…", systemImage: "hand.raised.fill")
+                            .font(DesignSystem.Typography.body)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DesignSystem.Colors.whimsy)
+                    .disabled(iCloudSessionMirrorService == nil)
+
+                    Divider().background(DesignSystem.Colors.border)
+
+                    iCloudMirrorStatusRow
+                }
+            }
+        }
+    }
+
+    private var iCloudMirrorStatusRow: some View {
+        HStack(spacing: DesignSystem.Spacing.md) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Last iCloud mirror")
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                Group {
+                    if let error = iCloudSessionMirrorService?.lastSyncError {
+                        Text(error)
+                            .foregroundStyle(DesignSystem.Colors.error)
+                    } else if let date = iCloudSessionMirrorService?.lastSyncDate {
+                        Text(date.formatted(.relative(presentation: .named)))
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    } else {
+                        Text("Not yet")
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                }
+                .font(DesignSystem.Typography.caption)
+                .fixedSize(horizontal: false, vertical: true)
+
+                if let m = iCloudSessionMirrorService, m.lastSyncUpdatedCount > 0 || m.lastSyncRemovedCount > 0,
+                   m.lastSyncError == nil, m.lastSyncDate != nil {
+                    Text(
+                        "Updated \(m.lastSyncUpdatedCount) file(s), removed \(m.lastSyncRemovedCount) from mirror"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+            }
+
+            Spacer()
+
+            if iCloudSessionMirrorService?.isSyncing == true {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    ProgressView().controlSize(.small)
+                    Text("Mirroring")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+            } else {
+                Image(
+                    systemName: iCloudSessionMirrorService?.lastSyncError != nil
+                        ? "exclamationmark.icloud.fill"
+                        : "icloud.fill"
+                )
+                .font(.system(size: 14))
+                .foregroundStyle(
+                    iCloudSessionMirrorService?.lastSyncError != nil
+                        ? DesignSystem.Colors.error
+                        : DesignSystem.Colors.textSecondary
+                )
+            }
+        }
+    }
+
     private func accountPanel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .padding(DesignSystem.Spacing.lg)
@@ -1168,6 +1284,309 @@ private struct AccountSettingsView: View {
             }
         }
         .padding(DesignSystem.Spacing.lg)
+    }
+}
+
+// MARK: - iCloud session setup (white glove)
+
+private struct ICloudSessionSetupSheet: View {
+    var mirrorService: ICloudSessionMirrorService
+    @Bindable var settingsManager: SettingsManager
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var showAdvanced = false
+    @State private var isRunningMirror = false
+    @State private var estimatedBytes: Int64 = 0
+    @State private var isEstimatingSize = true
+
+    private var estimatedString: String {
+        if isEstimatingSize {
+            return "Calculating…"
+        }
+        return ByteCountFormatter.string(fromByteCount: estimatedBytes, countStyle: .file)
+    }
+
+    private var mirrorProviders: [AgentProvider] {
+        AgentProvider.allCases.filter { $0.supportLevel != .unsupported }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                    if mirrorService.hasUbiquityIdentity {
+                        statusOkBanner
+                    } else {
+                        iCloudSignInBanner
+                    }
+
+                    privacyCard
+
+                    providersCard
+
+                    actionsCard
+
+                    DisclosureGroup(isExpanded: $showAdvanced) {
+                        advancedSymlinkCard
+                    } label: {
+                        Text("Advanced: point agents at an iCloud folder")
+                            .font(DesignSystem.Typography.body)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    }
+                    .padding(DesignSystem.Spacing.lg)
+                    .background {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                                .fill(DesignSystem.Colors.surface.opacity(0.55))
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
+                }
+                .padding(DesignSystem.Spacing.lg)
+            }
+            .background(DesignSystem.Colors.background)
+            .navigationTitle("iCloud session backup")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .frame(minWidth: 480, minHeight: 520)
+        .task {
+            isEstimatingSize = true
+            estimatedBytes = await mirrorService.estimatedTotalBytesToMirror()
+            isEstimatingSize = false
+        }
+    }
+
+    private var statusOkBanner: some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+            Image(systemName: "checkmark.icloud.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(DesignSystem.Colors.success)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("iCloud is available on this Mac")
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("BurnBar can write to your app folder in iCloud Drive. If the folder is empty at first, run a refresh or use “Mirror now” below.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .fill(DesignSystem.Colors.success.opacity(0.12))
+        }
+    }
+
+    private var iCloudSignInBanner: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                Image(systemName: "exclamationmark.icloud.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Sign in to iCloud")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("Open System Settings, sign in with your Apple ID, and turn on iCloud Drive. Then return here and try again.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Button("Open Apple ID settings") {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preferences.AppleIDPrefPane") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .fill(DesignSystem.Colors.warning.opacity(0.12))
+        }
+    }
+
+    private var privacyCard: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("Privacy")
+                .font(DesignSystem.Typography.headline)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            Text(
+                "Session files can include project paths, prompts, and snippets of code. They are copied to your Apple ID’s iCloud storage—not to BurnBar’s servers. Large trees can use significant iCloud quota."
+            )
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "If two Macs change the same mirrored file, iCloud may create conflict copies. Keep agents quit on one Mac while moving folders."
+            )
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.55))
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
+    }
+
+    private var providersCard: some View {
+        let logPaths = settingsManager.logPaths
+        return VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("What we mirror")
+                .font(DesignSystem.Typography.headline)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            Text("Rough total right now: \(estimatedString) (estimate only).")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+            ForEach(mirrorProviders, id: \.self) { provider in
+                let path = logPaths[provider] ?? provider.logDirectory
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(provider.displayName)
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(path)
+                        .font(.caption2)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .textSelection(.enabled)
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.55))
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
+    }
+
+    private var actionsCard: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            Text("Finish setup")
+                .font(DesignSystem.Typography.headline)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+            Toggle("Enable mirror after each refresh", isOn: $settingsManager.iCloudSessionMirrorEnabled)
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Button {
+                    Task {
+                        isRunningMirror = true
+                        defer { isRunningMirror = false }
+                        settingsManager.iCloudSessionMirrorEnabled = true
+                        await mirrorService.syncIfNeeded()
+                    }
+                } label: {
+                    if isRunningMirror {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Text("Mirror now")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isRunningMirror || !mirrorService.hasUbiquityIdentity)
+
+                Button("Reveal in Finder") {
+                    if let url = mirrorService.mirrorRootDirectoryURL() {
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(mirrorService.mirrorRootDirectoryURL() == nil)
+            }
+
+            Text("Finder path: iCloud Drive → BurnBar → SessionMirror (inside the app’s iCloud Documents).")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.55))
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
+    }
+
+    private var advancedSymlinkCard: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            Text(
+                "BurnBar does not move your agent folders automatically. To make Factory (or another tool) write directly into iCloud, quit that tool, back up the folder, then run commands in Terminal."
+            )
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+            symlinkBlock(
+                title: "Example: Factory sessions",
+                command: """
+                # Quit Factory first. DEST = a folder you create inside the BurnBar iCloud area (use Reveal in Finder).
+                mv ~/.factory/sessions \"$DEST/factory-sessions\"
+                ln -s \"$DEST/factory-sessions\" ~/.factory/sessions
+                """
+            )
+
+            symlinkBlock(
+                title: "Example: Kimi sessions",
+                command: """
+                # Quit Kimi agents first.
+                mv ~/.kimi/sessions \"$DEST/kimi-sessions\"
+                ln -s \"$DEST/kimi-sessions\" ~/.kimi/sessions
+                """
+            )
+        }
+        .padding(.top, DesignSystem.Spacing.sm)
+    }
+
+    private func symlinkBlock(title: String, command: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            Text(command)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .textSelection(.enabled)
+            Button("Copy commands") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(command, forType: .string)
+            }
+            .buttonStyle(.borderless)
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(DesignSystem.Colors.whimsy)
+        }
+        .padding(.vertical, 4)
     }
 }
 

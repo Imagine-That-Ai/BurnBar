@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CursorConnectorView: View {
     @State private var manager = CursorConnectorManager.shared
+    @State private var legacyConnectorExpanded = false
     let dataStore: DataStore
 
     private var zaiBinding: Binding<ConnectorProviderConfig> {
@@ -16,12 +17,56 @@ struct CursorConnectorView: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
             hero
             providerCluster
-            tunnelCluster
-            routeDiagnostics
+            DisclosureGroup(isExpanded: $legacyConnectorExpanded) {
+                tunnelCluster
+                routeDiagnostics
+            } label: {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Text("Legacy: Cursor built-in OpenAI override")
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(legacyConnectorSummary)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(DesignSystem.Spacing.lg)
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.55))
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .strokeBorder(DesignSystem.Colors.border.opacity(0.35), lineWidth: 0.5)
+            )
         }
         .onAppear {
             manager.attach(dataStore: dataStore)
+            if manager.config.isEnabled {
+                legacyConnectorExpanded = true
+            }
         }
+        .onChange(of: manager.config.isEnabled) { _, enabled in
+            if enabled {
+                legacyConnectorExpanded = true
+            }
+        }
+    }
+
+    private var legacyConnectorSummary: String {
+        if manager.config.isEnabled {
+            return "Active — BurnBar is patching Cursor’s OpenAI base URL. Prefer the daemon + extension for new setups."
+        }
+        if !manager.health.cloudflaredInstalled {
+            return "Optional. Only if you want Cursor’s own model picker to hit Z.ai / MiniMax through BurnBar; requires cloudflared for a public HTTPS URL."
+        }
+        return "Optional. Writes Cursor’s BYOK settings and uses a quick tunnel so Cursor can reach the local router."
     }
 
     private var hero: some View {
@@ -42,10 +87,10 @@ struct CursorConnectorView: View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                        Text("Connect Cursor")
+                        Text("Cursor & providers")
                             .font(DesignSystem.Typography.display)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        Text("Bring Z.ai and MiniMax into Cursor through BurnBar without hand-editing databases or babysitting a proxy.")
+                        Text("Use the BurnBar Daemon above plus the BurnBar editor extension for routed runs—no tunnel. The section below is a legacy path that patches Cursor’s SQLite OpenAI override when you want those models inside Cursor’s built-in chat.")
                             .font(DesignSystem.Typography.body)
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -93,7 +138,7 @@ struct CursorConnectorView: View {
         HStack(spacing: DesignSystem.Spacing.sm) {
             routeNode(label: "Choose models", state: !manager.config.exposedModels.isEmpty)
             routeLink
-            routeNode(label: "Open tunnel", state: manager.config.tunnel.publicBaseURL != nil)
+            routeNode(label: "Public URL", state: manager.config.tunnel.publicBaseURL != nil)
             routeLink
             routeNode(label: "Apply Cursor", state: manager.config.lastAppliedAt != nil)
             routeLink
@@ -233,10 +278,10 @@ struct CursorConnectorView: View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 HStack {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                        Text("Cloudflare tunnel")
+                        Text("Public HTTPS URL (cloudflared)")
                             .font(DesignSystem.Typography.headline)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        Text("Cursor blocks localhost, so BurnBar opens a public HTTPS tunnel for you. v1 uses a quick tunnel for the fastest path from key paste to working models.")
+                        Text("Cursor rejects localhost for this override, so this legacy path runs cloudflared’s ephemeral quick tunnel to expose the local router.")
                             .font(DesignSystem.Typography.caption)
                             .foregroundStyle(DesignSystem.Colors.textMuted)
                     }

@@ -386,6 +386,20 @@ final class DataStore {
             }
         }
 
+        /// Discriminates provider-log conversations from the in-app CLI assistant thread.
+        migrator.registerMigration("v9_source_type") { db in
+            try db.alter(table: "conversations") { t in
+                t.add(column: "sourceType", .text).notNull().defaults(to: "provider_log")
+            }
+        }
+
+        /// Independent dirty-flag for full session-log (Markdown) cloud backup.
+        migrator.registerMigration("v10_log_synced_at") { db in
+            try db.alter(table: "conversations") { t in
+                t.add(column: "logSyncedAt", .datetime)
+            }
+        }
+
         return migrator
     }
     
@@ -657,22 +671,23 @@ final class DataStore {
                 sql: "SELECT conversationSyncedAt FROM conversations WHERE id = ?",
                 arguments: [record.id]
             )
+            let priorLogSyncedAt: Date? = try Date.fetchOne(
+                db,
+                sql: "SELECT logSyncedAt FROM conversations WHERE id = ?",
+                arguments: [record.id]
+            )
 
             var summaryOut = record.summary
             if summaryOut == nil {
                 summaryOut = try String.fetchOne(db, sql: "SELECT summary FROM conversations WHERE id = ?", arguments: [record.id])
             }
 
-            let conversationSyncedAt: Date?
-            if let existing {
-                conversationSyncedAt = Self.shouldPreserveConversationSyncedAt(
-                    existing: existing,
-                    incoming: record,
-                    resolvedSummary: summaryOut
-                ) ? priorSyncedAt : nil
-            } else {
-                conversationSyncedAt = nil
-            }
+            let preserve = existing.map {
+                Self.shouldPreserveConversationSyncedAt(existing: $0, incoming: record, resolvedSummary: summaryOut)
+            } ?? false
+
+            let conversationSyncedAt: Date? = preserve ? priorSyncedAt : nil
+            let logSyncedAt: Date? = preserve ? priorLogSyncedAt : nil
 
             try db.execute(
                 sql: """
@@ -681,8 +696,9 @@ final class DataStore {
                     messageCount, userWordCount, assistantWordCount,
                     keyFiles, keyCommands, keyTools,
                     inferredTaskTitle, lastAssistantMessage, fullText,
-                    indexedAt, fileModifiedAt, summary, conversationSyncedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    indexedAt, fileModifiedAt, summary, conversationSyncedAt,
+                    sourceType, logSyncedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     record.id,
@@ -703,7 +719,9 @@ final class DataStore {
                     record.indexedAt,
                     record.fileModifiedAt,
                     summaryOut,
-                    conversationSyncedAt
+                    conversationSyncedAt,
+                    record.sourceType.rawValue,
+                    logSyncedAt
                 ]
             )
         }
@@ -911,6 +929,9 @@ final class DataStore {
         let indexedAt = Self.parseDateValue(row["indexedAt"]) ?? Date()
         let fileModifiedAt = Self.parseDateValue(row["fileModifiedAt"])
 
+        let sourceTypeRaw = (row["sourceType"] as? String) ?? "provider_log"
+        let sourceType = ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog
+
         return ConversationRecord(
             id: id,
             provider: provider,
@@ -929,7 +950,8 @@ final class DataStore {
             fullText: fullText,
             indexedAt: indexedAt,
             fileModifiedAt: fileModifiedAt,
-            summary: row["summary"] as? String
+            summary: row["summary"] as? String,
+            sourceType: sourceType
         )
     }
 
@@ -958,7 +980,96 @@ final class DataStore {
         return arr
     }
 
-    /// Fields that are mirrored to Firestore for conversation backup (excludes local-only columns like `fullText`).
+    // MARK: - Session Logs
+
+    /// All indexed conversations sorted by most-recent first, for the Session Logs center.
+    func fetchAllSessionLogs(limit: Int = 1000) throws -> [ConversationRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM conversations ORDER BY COALESCE(endTime, startTime, indexedAt) DESC LIMIT ?",
+                arguments: [limit]
+            )
+            return rows.compactMap { Self.conversation(from: $0) }
+        }
+    }
+
+    /// Conversations whose full Markdown log has not yet been uploaded to Firestore.
+    func fetchUnsyncedSessionLogs(limit: Int = 100) throws -> [ConversationRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM conversations
+                WHERE logSyncedAt IS NULL
+                ORDER BY COALESCE(endTime, startTime) ASC
+                LIMIT ?
+                """,
+                arguments: [limit]
+            )
+            return rows.compactMap { Self.conversation(from: $0) }
+        }
+    }
+
+    func markSessionLogsSynced(ids: [String]) throws {
+        guard !ids.isEmpty else { return }
+        let placeholders = ids.map { _ in "?" }.joined(separator: ", ")
+        try dbQueue.write { db in
+            var args = StatementArguments([Date()])
+            args += StatementArguments(ids)
+            try db.execute(
+                sql: "UPDATE conversations SET logSyncedAt = ? WHERE id IN (\(placeholders))",
+                arguments: args
+            )
+        }
+    }
+
+    /// Synthesizes a single `cliAssistant` ConversationRecord from persisted chat messages
+    /// and upserts it so the Session Logs center and cloud sync treat it like any other session.
+    func upsertCLIConversation(from messages: [ChatMessageRecord]) throws {
+        guard messages.isEmpty == false else { return }
+
+        let start = messages.first?.timestamp
+        let end   = messages.last?.timestamp
+
+        let assistantWords = messages
+            .filter { $0.role == .assistant }
+            .reduce(0) { $0 + $1.content.split(separator: " ").count }
+        let userWords = messages
+            .filter { $0.role == .user }
+            .reduce(0) { $0 + $1.content.split(separator: " ").count }
+
+        let markdown = SessionLogMarkdownFormatter.cliMarkdown(from: messages)
+        let lastAssistant = messages.last(where: { $0.role == .assistant })?.content ?? ""
+
+        let record = ConversationRecord(
+            id: ConversationRecord.cliAssistantId,
+            provider: .claudeCode,
+            sessionId: "cli-assistant-local",
+            projectName: "BurnBar",
+            startTime: start,
+            endTime: end,
+            messageCount: messages.count,
+            userWordCount: userWords,
+            assistantWordCount: assistantWords,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "BurnBar Assistant",
+            lastAssistantMessage: String(lastAssistant.prefix(500)),
+            fullText: markdown,
+            indexedAt: Date(),
+            fileModifiedAt: nil,
+            summary: nil,
+            sourceType: .cliAssistant
+        )
+        try upsertConversation(record)
+    }
+
+    // MARK: - Sync Helpers (private)
+
+    /// Returns true when every synced field is unchanged so the existing sync timestamps can be preserved.
+    /// Checking `fullText` ensures transcript changes also reset the full-log dirty flag (`logSyncedAt`).
     private static func shouldPreserveConversationSyncedAt(
         existing: ConversationRecord,
         incoming: ConversationRecord,
@@ -977,6 +1088,7 @@ final class DataStore {
             && existing.keyTools == incoming.keyTools
             && existing.inferredTaskTitle == incoming.inferredTaskTitle
             && existing.lastAssistantMessage == incoming.lastAssistantMessage
+            && existing.fullText == incoming.fullText
             && existing.summary == resolvedSummary
     }
 

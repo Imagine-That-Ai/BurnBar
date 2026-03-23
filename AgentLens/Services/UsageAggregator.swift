@@ -18,6 +18,7 @@ final class UsageAggregator {
     private let dataStore: DataStore
     private let parsers: [AgentProvider: any LogParser]
     private weak var cloudSync: CloudSyncService?
+    private weak var sessionMirror: ICloudSessionMirrorService?
     private let settingsManager: SettingsManager
 
     private(set) var isRefreshing = false
@@ -25,9 +26,15 @@ final class UsageAggregator {
     private(set) var errors: [AgentProvider: String] = [:]
     private(set) var parserHealth: [AgentProvider: ParserHealth] = [:]
 
-    init(dataStore: DataStore, cloudSync: CloudSyncService? = nil, settingsManager: SettingsManager = .shared) {
+    init(
+        dataStore: DataStore,
+        cloudSync: CloudSyncService? = nil,
+        sessionMirror: ICloudSessionMirrorService? = nil,
+        settingsManager: SettingsManager = .shared
+    ) {
         self.dataStore = dataStore
         self.cloudSync = cloudSync
+        self.sessionMirror = sessionMirror
         self.settingsManager = settingsManager
         // All parsers initialized - each handles missing directories gracefully
         self.parsers = [
@@ -100,6 +107,9 @@ final class UsageAggregator {
         // Upload unsynced rows to Firestore (no-op if not signed in)
         await cloudSync?.uploadPending()
         await cloudSync?.uploadPendingConversations()
+        await cloudSync?.uploadPendingSessionLogs()
+
+        await sessionMirror?.syncIfNeeded()
     }
 
     /// Clears local usage rows so the dashboard resets immediately, then re-parses all providers.
