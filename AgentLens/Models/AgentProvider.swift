@@ -35,6 +35,14 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
     case zai = "Zai"
     case minimax = "MiniMax"
     case kimi = "Kimi"
+    case cline = "Cline"
+    case kiloCode = "Kilo Code"
+    case rooCode = "Roo Code"
+    case forgeDev = "Forge"
+    case augment = "Augment"
+    case hermes = "Hermes"
+    case geminiCLI = "Gemini CLI"
+    case goose = "Goose"
     
     var id: String { rawValue }
     
@@ -48,7 +56,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .copilot:
             return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/copilot-color.png")
         case .aider:
-            return nil // Aider doesn't have a logo in lobehub
+            return nil
         case .cursor:
             return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/cursor.png")
         case .codex:
@@ -59,6 +67,14 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
             return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/minimax-color.png")
         case .kimi:
             return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kimi-color.png")
+        case .cline:
+            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/cline-color.png")
+        case .kiloCode, .rooCode, .forgeDev, .hermes, .goose:
+            return nil
+        case .geminiCLI:
+            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/gemini-color.png")
+        case .augment:
+            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/augment-color.png")
         }
     }
 
@@ -73,6 +89,14 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .zai: return "bolt.fill"
         case .minimax: return "star.fill"
         case .kimi: return "moon.fill"
+        case .cline: return "brain.head.profile"
+        case .kiloCode: return "k.circle.fill"
+        case .rooCode: return "hare.fill"
+        case .forgeDev: return "flame.fill"
+        case .augment: return "arrow.trianglehead.2.counterclockwise.rotate.90"
+        case .hermes: return "wind"
+        case .geminiCLI: return "diamond.fill"
+        case .goose: return "bird.fill"
         }
     }
     
@@ -82,49 +106,58 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .factory: return "~/.factory/sessions"
         case .claudeCode: return "~/.claude/projects"
-        case .copilot: return "~/Library/Application Support/Copilot"
+        case .copilot: return "~/.copilot/session-state"
         case .aider: return "~/.aider"
         case .cursor: return "~/.cursor/ai-tracking"
         case .codex: return "~/.codex"
         case .zai: return "~/.factory/sessions"
         case .minimax: return "~/.factory/sessions"
         case .kimi: return "~/.kimi/sessions"
+        case .cline: return "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks"
+        case .kiloCode: return "~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks"
+        case .rooCode: return "~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks"
+        case .forgeDev: return "~/.forge/sessions"
+        case .augment: return "~/Library/Application Support/Code/User/globalStorage/augment.vscode-augment"
+        case .hermes: return "~/.hermes/sessions"
+        case .geminiCLI: return "~/.gemini/tmp"
+        case .goose: return "~/.local/share/goose/sessions"
         }
     }
-    
+
     var filePattern: String {
         switch self {
         case .factory: return "*.jsonl"
         case .claudeCode: return "*.jsonl"
-        case .copilot: return "*.json"
+        case .copilot: return "*.jsonl"
         case .aider: return "*.jsonl"
         case .cursor: return "*.db"
         case .codex: return "state_5.sqlite"
         case .zai: return "*.jsonl"
         case .minimax: return "*.jsonl"
         case .kimi: return "*.jsonl"
+        case .cline, .kiloCode, .rooCode: return "*.json"
+        case .forgeDev, .hermes: return "*.jsonl"
+        case .augment: return "*.json"
+        case .geminiCLI: return "*.json"
+        case .goose: return "sessions.db"
         }
     }
 
     var supportLevel: ProviderSupportLevel {
         switch self {
-        case .factory, .claudeCode:
+        case .factory, .claudeCode, .codex, .aider, .cline, .kiloCode, .rooCode, .geminiCLI, .goose:
             return .supported
-        case .codex, .kimi, .zai, .minimax:
+        case .copilot, .kimi, .zai, .minimax, .cursor, .forgeDev, .augment, .hermes:
             return .partial
-        case .copilot, .aider, .cursor:
-            return .unsupported
         }
     }
 
     var dataConfidence: DataConfidence {
         switch self {
-        case .factory, .claudeCode:
+        case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode, .rooCode, .geminiCLI, .goose:
             return .exact
-        case .codex, .kimi, .zai, .minimax:
+        case .zai, .minimax, .copilot, .cursor, .forgeDev, .augment, .hermes:
             return .estimated
-        case .copilot, .aider, .cursor:
-            return .unavailable
         }
     }
 }
@@ -249,6 +282,50 @@ struct ModelUsage: Identifiable, Hashable {
     let outputTokens: Int
     let cacheCreationTokens: Int
     let cacheReadTokens: Int
+    let totalTokens: Int
+    let cost: Double
+    let percentage: Double
+}
+
+// MARK: - Dashboard View Mode
+
+enum DashboardViewMode: String, CaseIterable, Identifiable {
+    case agents = "Agents"
+    case models = "Models"
+    var id: String { rawValue }
+    var displayName: String { rawValue }
+    var icon: String {
+        switch self {
+        case .agents: return "cpu"
+        case .models: return "cube.transparent"
+        }
+    }
+}
+
+// MARK: - Model Summary
+
+struct ModelSummary: Identifiable, Hashable {
+    let id = UUID()
+    let modelName: String
+    let displayName: String
+    let totalCost: Double
+    let totalTokens: Int
+    let totalInputTokens: Int
+    let totalOutputTokens: Int
+    let sessionCount: Int
+    let providerBreakdown: [ProviderUsage]
+
+    var formattedCost: String {
+        totalCost.formatAsCost()
+    }
+}
+
+// MARK: - Provider Usage (for model breakdown)
+
+struct ProviderUsage: Identifiable, Hashable {
+    let id = UUID()
+    let provider: AgentProvider
+    let sessionCount: Int
     let totalTokens: Int
     let cost: Double
     let percentage: Double

@@ -8,6 +8,7 @@ private enum DashboardMainRoute: Hashable {
     case projects
     case sessionLogs
     case provider(AgentProvider)
+    case model(String)
 }
 
 // MARK: - Dashboard View
@@ -21,6 +22,7 @@ struct DashboardView: View {
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     @State private var mainRoute: DashboardMainRoute = .overview
     @State private var selectedTimeRange: TimeRange = .today
+    @AppStorage("dashboardViewMode") private var viewMode: DashboardViewMode = .agents
     @State private var showingSettings = false
     @State private var overviewAppeared = false
     @State private var sidebarAppeared = false
@@ -190,6 +192,20 @@ struct DashboardView: View {
 
         ToolbarItem(placement: .primaryAction) {
             HStack(spacing: DesignSystem.Spacing.md) {
+                // View mode toggle (Agents / Models)
+                Picker("", selection: $viewMode) {
+                    ForEach(DashboardViewMode.allCases) { mode in
+                        Label(mode.displayName, systemImage: mode.icon).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 160)
+                .onChange(of: viewMode) { _, _ in
+                    withAnimation(DesignSystem.Animation.standard) {
+                        mainRoute = .overview
+                    }
+                }
+
                 // Time range picker
                 GlassPicker(
                     selection: $selectedTimeRange,
@@ -249,11 +265,13 @@ struct DashboardView: View {
                             .foregroundStyle(DesignSystem.Colors.textMuted)
                             .textCase(.uppercase)
 
-                        Text("Agent providers")
+                        Text(viewMode == .agents ? "Agent providers" : "LLM Models")
                             .font(DesignSystem.Typography.title)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                        Text("Scan, compare spend, and drill into model behavior from one workspace.")
+                        Text(viewMode == .agents
+                            ? "Scan, compare spend, and drill into model behavior from one workspace."
+                            : "Track spend and token volume across every model your agents use.")
                             .font(DesignSystem.Typography.caption)
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -273,25 +291,45 @@ struct DashboardView: View {
                         }
                     }
 
-                    ForEach(Array(dataStore.providerSummaries.enumerated()), id: \.element.id) { index, summary in
-                        SidebarItem(
-                            provider: summary.provider,
-                            isSelected: mainRoute == .provider(summary.provider),
-                            primaryMetric: settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens),
-                            totalCost: summary.totalCost,
-                            sessionCount: summary.sessionCount
-                        ) {
-                            withAnimation(DesignSystem.Animation.standard) {
-                                mainRoute = .provider(summary.provider)
+                    if viewMode == .agents {
+                        ForEach(Array(dataStore.providerSummaries.enumerated()), id: \.element.id) { index, summary in
+                            SidebarItem(
+                                provider: summary.provider,
+                                isSelected: mainRoute == .provider(summary.provider),
+                                primaryMetric: settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens),
+                                totalCost: summary.totalCost,
+                                sessionCount: summary.sessionCount
+                            ) {
+                                withAnimation(DesignSystem.Animation.standard) {
+                                    mainRoute = .provider(summary.provider)
+                                }
                             }
+                            .focusable()
+                            .opacity(sidebarAppeared ? 1 : 0)
+                            .offset(y: sidebarAppeared ? 0 : 8)
+                            .animation(
+                                DesignSystem.Animation.standard.delay(Double(index) * 0.06),
+                                value: sidebarAppeared
+                            )
                         }
-                        .focusable()
-                        .opacity(sidebarAppeared ? 1 : 0)
-                        .offset(y: sidebarAppeared ? 0 : 8)
-                        .animation(
-                            DesignSystem.Animation.standard.delay(Double(index) * 0.06),
-                            value: sidebarAppeared
-                        )
+                    } else {
+                        ForEach(Array(dataStore.modelSummaries.enumerated()), id: \.element.id) { index, summary in
+                            ModelSidebarItem(
+                                summary: summary,
+                                isSelected: mainRoute == .model(summary.modelName)
+                            ) {
+                                withAnimation(DesignSystem.Animation.standard) {
+                                    mainRoute = .model(summary.modelName)
+                                }
+                            }
+                            .focusable()
+                            .opacity(sidebarAppeared ? 1 : 0)
+                            .offset(y: sidebarAppeared ? 0 : 8)
+                            .animation(
+                                DesignSystem.Animation.standard.delay(Double(index) * 0.06),
+                                value: sidebarAppeared
+                            )
+                        }
                     }
 
                     SidebarProjectsRow(
@@ -429,7 +467,11 @@ struct DashboardView: View {
 
     private var sidebarRouteOrder: [DashboardMainRoute] {
         var routes: [DashboardMainRoute] = [.overview]
-        routes.append(contentsOf: dataStore.providerSummaries.map { .provider($0.provider) })
+        if viewMode == .agents {
+            routes.append(contentsOf: dataStore.providerSummaries.map { .provider($0.provider) })
+        } else {
+            routes.append(contentsOf: dataStore.modelSummaries.map { .model($0.modelName) })
+        }
         routes.append(.projects)
         routes.append(.sessionLogs)
         return routes
@@ -456,6 +498,12 @@ struct DashboardView: View {
                 dataStore: dataStore,
                 timeRange: selectedTimeRange
             )
+        case .model(let modelName):
+            ModelDashboardView(
+                modelName: modelName,
+                dataStore: dataStore,
+                timeRange: selectedTimeRange
+            )
         }
     }
 
@@ -463,7 +511,7 @@ struct DashboardView: View {
 
     private var overviewView: some View {
         ScrollView {
-            if dataStore.providerSummaries.isEmpty {
+            if dataStore.providerSummaries.isEmpty && dataStore.modelSummaries.isEmpty {
                 emptyOverviewView
             } else {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
@@ -474,7 +522,11 @@ struct DashboardView: View {
                     statsRow
 
                     HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
-                        providerLane
+                        if viewMode == .agents {
+                            providerLane
+                        } else {
+                            modelLane
+                        }
                         activityLane
                     }
                 }
@@ -536,12 +588,14 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                            Text("Usage Radar")
+                            Text(viewMode == .agents ? "Usage Radar" : "Model Radar")
                                 .font(DesignSystem.Typography.tiny)
                                 .foregroundStyle(DesignSystem.Colors.textMuted)
                                 .textCase(.uppercase)
 
-                            Text("See which agents are burning tokens, shifting models, and driving cost right now.")
+                            Text(viewMode == .agents
+                                ? "See which agents are burning tokens, shifting models, and driving cost right now."
+                                : "See which LLMs are driving cost, and which agents rely on them.")
                                 .font(DesignSystem.Typography.display)
                                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -565,8 +619,13 @@ struct DashboardView: View {
 
                     HStack(spacing: DesignSystem.Spacing.md) {
                         metricChip(label: "Sessions", value: "\(filteredUsages.count)")
-                        metricChip(label: "Active Providers", value: "\(activeProviderCount)")
-                        metricChip(label: "Top Provider", value: topProviderSummary?.provider.displayName ?? "None")
+                        if viewMode == .agents {
+                            metricChip(label: "Active Providers", value: "\(activeProviderCount)")
+                            metricChip(label: "Top Provider", value: topProviderSummary?.provider.displayName ?? "None")
+                        } else {
+                            metricChip(label: "Active Models", value: "\(dataStore.modelSummaries.count)")
+                            metricChip(label: "Top Model", value: dataStore.modelSummaries.first?.displayName ?? "None")
+                        }
                     }
                 }
                 .padding(DesignSystem.Spacing.xl)
@@ -688,6 +747,44 @@ struct DashboardView: View {
                         ProviderCard(summary: summary, rank: index + 1) {
                             withAnimation(DesignSystem.Animation.standard) {
                                 mainRoute = .provider(summary.provider)
+                            }
+                        }
+                        .opacity(overviewAppeared ? 1 : 0)
+                        .offset(y: overviewAppeared ? 0 : 8)
+                        .animation(DesignSystem.Animation.standard.delay(Double(index) * 0.06), value: overviewAppeared)
+                    }
+                }
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .opacity(overviewAppeared ? 1 : 0)
+        .offset(y: overviewAppeared ? 0 : 8)
+        .animation(DesignSystem.Animation.standard.delay(0.24), value: overviewAppeared)
+    }
+
+    private var modelLane: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                HStack {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                        Text("Model Ranking")
+                            .font(DesignSystem.Typography.headline)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                        Text("Cost, session volume, and agent mix across all tracked models.")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+
+                    Spacer()
+                }
+
+                VStack(spacing: DesignSystem.Spacing.sm) {
+                    ForEach(Array(dataStore.modelSummaries.enumerated()), id: \.element.id) { index, summary in
+                        ModelCard(summary: summary, rank: index + 1) {
+                            withAnimation(DesignSystem.Animation.standard) {
+                                mainRoute = .model(summary.modelName)
                             }
                         }
                         .opacity(overviewAppeared ? 1 : 0)
@@ -947,6 +1044,68 @@ private struct SidebarItem: View {
                             .font(DesignSystem.Typography.monoSmall)
                             .foregroundStyle(isSelected ? theme.primaryColor : DesignSystem.Colors.textMuted)
                     }
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(isSelected ? theme.primaryColor.opacity(0.8) : DesignSystem.Colors.textMuted)
+                }
+            }
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
+                    .fill(isSelected ? theme.primaryColor.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(0.35))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
+                    .stroke(isSelected ? theme.primaryColor.opacity(0.3) : DesignSystem.Colors.border.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Model Sidebar Item
+
+private struct ModelSidebarItem: View {
+    let summary: ModelSummary
+    let isSelected: Bool
+    let action: () -> Void
+
+    @Bindable private var settingsManager = SettingsManager.shared
+
+    private var theme: ProviderTheme { ProviderTheme.theme(forModel: summary.modelName) }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? theme.primaryColor.opacity(0.18) : DesignSystem.Colors.surfaceElevated)
+                        .frame(width: 34, height: 34)
+
+                    Image(systemName: "cube.transparent")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(isSelected ? theme.primaryColor : DesignSystem.Colors.textSecondary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(summary.displayName)
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
+
+                    Text("\(summary.sessionCount) session\(summary.sessionCount == 1 ? "" : "s")")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens))
+                        .font(DesignSystem.Typography.monoSmall)
+                        .foregroundStyle(isSelected ? theme.primaryColor : DesignSystem.Colors.textMuted)
 
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))

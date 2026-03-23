@@ -1,0 +1,331 @@
+import Foundation
+
+// MARK: - Shared Token Extraction Utilities
+
+/// Extracted token usage fields from a provider's usage dictionary.
+struct ExtractedTokenUsage {
+    let input: Int
+    let output: Int
+    let cacheCreation: Int
+    let cacheRead: Int
+}
+
+/// Estimated token counts derived from character-level content analysis.
+struct EstimatedTokens {
+    let input: Int
+    let output: Int
+}
+
+/// Shared utilities for parsing token usage from heterogeneous provider JSON formats.
+/// Used by ClaudeCodeParser, FactoryDroidParser, ModelFilterParser, and others.
+enum TokenExtractionUtility {
+
+    // MARK: - Usage Extraction
+
+    /// Extract token counts from a usage dictionary, handling multiple naming conventions
+    /// across providers (snake_case, camelCase, nested objects).
+    static func extractUsageTokens(
+        _ usage: [String: Any],
+        inputHint: Int = 0,
+        outputHint: Int = 0
+    ) -> ExtractedTokenUsage {
+        var input = firstIntValue(
+            in: usage,
+            paths: [
+                ["input_tokens"],
+                ["prompt_tokens"],
+                ["inputTokens"],
+                ["promptTokens"]
+            ]
+        ) ?? 0
+
+        var output = firstIntValue(
+            in: usage,
+            paths: [
+                ["output_tokens"],
+                ["completion_tokens"],
+                ["outputTokens"],
+                ["completionTokens"]
+            ]
+        ) ?? 0
+
+        let cacheCreation = firstIntValue(
+            in: usage,
+            paths: [
+                ["cache_creation_input_tokens"],
+                ["cache_creation_tokens"],
+                ["cacheCreationTokens"]
+            ]
+        ) ?? 0
+
+        let cacheRead = firstIntValue(
+            in: usage,
+            paths: [
+                ["cache_read_input_tokens"],
+                ["cache_read_tokens"],
+                ["cacheReadTokens"],
+                ["prompt_tokens_details", "cached_tokens"],
+                ["promptTokensDetails", "cachedTokens"],
+                ["cached_tokens"],
+                ["cachedTokens"]
+            ]
+        ) ?? 0
+
+        let thinking = firstIntValue(
+            in: usage,
+            paths: [
+                ["thinking_tokens"],
+                ["reasoning_tokens"],
+                ["thinkingTokens"],
+                ["reasoningTokens"],
+                ["completion_tokens_details", "reasoning_tokens"],
+                ["output_tokens_details", "reasoning_tokens"]
+            ]
+        ) ?? 0
+
+        let total = firstIntValue(
+            in: usage,
+            paths: [
+                ["total_tokens"],
+                ["totalTokens"]
+            ]
+        ) ?? 0
+
+        let explicitPayloadTotal = max(input, 0) + max(output, 0) + max(cacheCreation, 0) + max(cacheRead, 0)
+        let normalizedTotal = max(total, explicitPayloadTotal)
+
+        if normalizedTotal > 0 {
+            let availableForInOut = max(normalizedTotal - cacheCreation - cacheRead, 0)
+
+            if input == 0 && output == 0 && availableForInOut > 0 {
+                let combinedHints = inputHint + outputHint
+                let inputRatio = combinedHints > 0
+                    ? Double(inputHint) / Double(combinedHints)
+                    : 0.62
+                input = Int((Double(availableForInOut) * inputRatio).rounded())
+                output = max(availableForInOut - input, 0)
+            } else if input == 0 && output > 0 && availableForInOut > output {
+                input = availableForInOut - output
+            } else if output == 0 && input > 0 && availableForInOut > input {
+                output = availableForInOut - input
+            } else if input + output < availableForInOut {
+                output += availableForInOut - (input + output)
+            }
+        }
+
+        if thinking > 0 && total == 0 {
+            output += thinking
+        }
+
+        return ExtractedTokenUsage(
+            input: max(input, 0),
+            output: max(output, 0),
+            cacheCreation: max(cacheCreation, 0),
+            cacheRead: max(cacheRead, 0)
+        )
+    }
+
+    // MARK: - Content Metrics
+
+    /// Keys in content dictionaries that should not contribute to character counts.
+    private static let ignoredContentKeys: Set<String> = ["type", "role", "id", "tool_use_id", "name"]
+
+    /// Measures visible and reasoning character counts from arbitrary JSON content structures.
+    static func contentMetrics(from value: Any, key: String? = nil) -> (visibleChars: Int, reasoningChars: Int) {
+        switch value {
+        case let text as String:
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return (0, 0) }
+            if key == "signature" {
+                return (0, trimmed.count)
+            }
+            if let key, ignoredContentKeys.contains(key) {
+                return (0, 0)
+            }
+            return (trimmed.count, 0)
+        case let array as [Any]:
+            var visible = 0
+            var reasoning = 0
+            for item in array {
+                let nested = contentMetrics(from: item)
+                visible += nested.visibleChars
+                reasoning += nested.reasoningChars
+            }
+            return (visible, reasoning)
+        case let dictionary as [String: Any]:
+            var visible = 0
+            var reasoning = 0
+            for (nestedKey, nestedValue) in dictionary {
+                let nested = contentMetrics(from: nestedValue, key: nestedKey)
+                visible += nested.visibleChars
+                reasoning += nested.reasoningChars
+            }
+            return (visible, reasoning)
+        default:
+            return (0, 0)
+        }
+    }
+
+    // MARK: - Fallback Estimation
+
+    /// Estimate token counts from character-level content analysis when no usage data is available.
+    static func estimateFallbackTokens(
+        userVisibleChars: Int,
+        assistantVisibleChars: Int,
+        assistantReasoningChars: Int,
+        userMessageCount: Int,
+        assistantMessageCount: Int
+    ) -> EstimatedTokens {
+        let userTokens = estimatedTokenCount(for: userVisibleChars, charsPerToken: 3.35) + (userMessageCount * 9)
+        let assistantVisibleTokens = estimatedTokenCount(for: assistantVisibleChars, charsPerToken: 3.35)
+        let assistantReasoningTokens = estimatedTokenCount(for: assistantReasoningChars, charsPerToken: 2.45)
+        let assistantTokens = assistantVisibleTokens + assistantReasoningTokens + (assistantMessageCount * 7)
+
+        return EstimatedTokens(
+            input: max(userTokens, 0),
+            output: max(assistantTokens, 0)
+        )
+    }
+
+    /// Estimate token count from character count, adjusting for CJK content.
+    static func estimatedTokenCount(for characters: Int, charsPerToken: Double) -> Int {
+        guard characters > 0 else { return 0 }
+        return Int((Double(characters) / charsPerToken).rounded(.up))
+    }
+
+    /// Detect whether text is predominantly CJK and return appropriate chars-per-token ratio.
+    static func charsPerToken(for text: String, defaultRatio: Double = 3.35) -> Double {
+        guard !text.isEmpty else { return defaultRatio }
+        let sample = String(text.prefix(2000))
+        var cjkCount = 0
+        var totalCount = 0
+        for scalar in sample.unicodeScalars {
+            if scalar.isASCII && scalar == " " { continue }
+            totalCount += 1
+            // CJK Unified Ideographs + common CJK ranges
+            if (0x4E00...0x9FFF).contains(scalar.value) ||
+               (0x3400...0x4DBF).contains(scalar.value) ||
+               (0x3000...0x303F).contains(scalar.value) ||
+               (0x3040...0x309F).contains(scalar.value) ||
+               (0x30A0...0x30FF).contains(scalar.value) ||
+               (0xAC00...0xD7AF).contains(scalar.value) {
+                cjkCount += 1
+            }
+        }
+        let cjkRatio = totalCount > 0 ? Double(cjkCount) / Double(totalCount) : 0
+        if cjkRatio > 0.3 {
+            return 1.5
+        }
+        return defaultRatio
+    }
+
+    // MARK: - Model Detection
+
+    /// Detect a model hint from content that contains "model:" annotations.
+    static func detectModelHint(from value: Any) -> String? {
+        switch value {
+        case let text as String:
+            guard text.lowercased().contains("model:") else { return nil }
+            guard let range = text.range(of: "model:", options: .caseInsensitive) else { return nil }
+            let afterModel = text[range.upperBound...]
+            let endIndex = afterModel.firstIndex(of: "\n") ?? afterModel.endIndex
+            let model = String(afterModel[..<endIndex]).trimmingCharacters(in: .whitespaces)
+            return model.isEmpty ? nil : model
+        case let array as [Any]:
+            for item in array {
+                if let found = detectModelHint(from: item) {
+                    return found
+                }
+            }
+            return nil
+        case let dictionary as [String: Any]:
+            for (_, nestedValue) in dictionary {
+                if let found = detectModelHint(from: nestedValue) {
+                    return found
+                }
+            }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    /// Strip `custom:` prefix from model names.
+    static func normalizeModelName(_ model: String) -> String {
+        model.hasPrefix("custom:") ? String(model.dropFirst(7)) : model
+    }
+
+    /// Stable lowercase key for grouping usages by model.
+    static func normalizeModelKey(_ model: String) -> String {
+        normalizeModelName(model)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
+    /// Human-readable display name for a model string.
+    static func displayNameForModel(_ rawName: String) -> String {
+        let key = normalizeModelKey(rawName)
+        guard !key.isEmpty else { return rawName }
+        // Title-case: replace hyphens/underscores with spaces, capitalize each word
+        return key
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .map { word in
+                let s = String(word)
+                // Keep version numbers and known acronyms lowercase-ish
+                if s.first?.isNumber == true { return s }
+                return s.prefix(1).uppercased() + s.dropFirst()
+            }
+            .joined(separator: " ")
+    }
+
+    // MARK: - JSON Helpers
+
+    static func firstIntValue(in dictionary: [String: Any], paths: [[String]]) -> Int? {
+        for path in paths {
+            if let value = nestedValue(in: dictionary, path: path),
+               let intValue = parseInt(value) {
+                return intValue
+            }
+        }
+        return nil
+    }
+
+    static func nestedValue(in dictionary: [String: Any], path: [String]) -> Any? {
+        var cursor: Any = dictionary
+        for key in path {
+            guard let dict = cursor as? [String: Any], let next = dict[key] else {
+                return nil
+            }
+            cursor = next
+        }
+        return cursor
+    }
+
+    static func parseInt(_ value: Any?) -> Int? {
+        guard let value else { return nil }
+        if let intValue = value as? Int {
+            return max(intValue, 0)
+        }
+        if let int64Value = value as? Int64 {
+            return max(Int(int64Value), 0)
+        }
+        if let doubleValue = value as? Double {
+            return max(Int(doubleValue.rounded()), 0)
+        }
+        if let numberValue = value as? NSNumber {
+            return max(numberValue.intValue, 0)
+        }
+        if let stringValue = value as? String {
+            let trimmed = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let intValue = Int(trimmed) {
+                return max(intValue, 0)
+            }
+            if let doubleValue = Double(trimmed) {
+                return max(Int(doubleValue.rounded()), 0)
+            }
+        }
+        return nil
+    }
+}

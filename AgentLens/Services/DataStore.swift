@@ -197,6 +197,56 @@ final class DataStore {
         }.sorted { $0.totalCost > $1.totalCost }
     }
     
+    // MARK: - Model Summaries
+
+    var modelSummaries: [ModelSummary] {
+        let grouped = Dictionary(grouping: usages) {
+            TokenExtractionUtility.normalizeModelKey($0.model)
+        }
+        return grouped.compactMap { key, modelUsages -> ModelSummary? in
+            guard !modelUsages.isEmpty else { return nil }
+            let totalCost = modelUsages.reduce(0) { $0 + $1.cost }
+            let totalTokens = modelUsages.reduce(0) { $0 + $1.totalTokens }
+            let totalInputTokens = modelUsages.reduce(0) { $0 + $1.inputTokens }
+            let totalOutputTokens = modelUsages.reduce(0) { $0 + $1.outputTokens }
+
+            let byProvider = Dictionary(grouping: modelUsages) { $0.provider }
+            let providerBreakdown = byProvider.map { provider, pUsages -> ProviderUsage in
+                let pCost = pUsages.reduce(0) { $0 + $1.cost }
+                let pTokens = pUsages.reduce(0) { $0 + $1.totalTokens }
+                return ProviderUsage(
+                    provider: provider,
+                    sessionCount: pUsages.count,
+                    totalTokens: pTokens,
+                    cost: pCost,
+                    percentage: totalCost > 0 ? (pCost / totalCost) * 100 : 0
+                )
+            }.sorted { $0.cost > $1.cost }
+
+            return ModelSummary(
+                modelName: key,
+                displayName: TokenExtractionUtility.displayNameForModel(modelUsages.first?.model ?? key),
+                totalCost: totalCost,
+                totalTokens: totalTokens,
+                totalInputTokens: totalInputTokens,
+                totalOutputTokens: totalOutputTokens,
+                sessionCount: modelUsages.count,
+                providerBreakdown: providerBreakdown
+            )
+        }.sorted { $0.totalCost > $1.totalCost }
+    }
+
+    func usages(forModel normalizedName: String) -> [TokenUsage] {
+        usages.filter { TokenExtractionUtility.normalizeModelKey($0.model) == normalizedName }
+    }
+
+    func usages(forModel normalizedName: String, in dateRange: ClosedRange<Date>) -> [TokenUsage] {
+        usages.filter {
+            TokenExtractionUtility.normalizeModelKey($0.model) == normalizedName
+            && dateRange.contains($0.startTime)
+        }
+    }
+
     var dailySummaries: [DailyUsageSummary] {
         let calendar = Calendar.current
         var dayData: [Date: [TokenUsage]] = [:]

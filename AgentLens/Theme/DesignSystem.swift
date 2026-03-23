@@ -83,6 +83,12 @@ enum DesignSystem {
             case .zai: return Color(hex: "8B5CF6")
             case .minimax: return Color(hex: "F59E0B")
             case .kimi: return Color(hex: "6366F1")
+            case .cline: return Color(hex: "D4A373")
+            case .kiloCode: return Color(hex: "10B981")
+            case .rooCode: return Color(hex: "EC4899")
+            case .forgeDev: return Color(hex: "F97316")
+            case .augment: return Color(hex: "3B82F6")
+            case .hermes: return Color(hex: "A855F7")
             }
         }
 
@@ -97,6 +103,12 @@ enum DesignSystem {
             case .zai: return Color(hex: "A78BFA")
             case .minimax: return Color(hex: "FCD34D")
             case .kimi: return Color(hex: "818CF8")
+            case .cline: return Color(hex: "E8C4A0")
+            case .kiloCode: return Color(hex: "34D399")
+            case .rooCode: return Color(hex: "F472B6")
+            case .forgeDev: return Color(hex: "FB923C")
+            case .augment: return Color(hex: "60A5FA")
+            case .hermes: return Color(hex: "C084FC")
             }
         }
 
@@ -111,7 +123,48 @@ enum DesignSystem {
             case .zai: return [Color(hex: "8B5CF6"), Color(hex: "A78BFA"), Color(hex: "6366F1"), Color(hex: "7C3AED")]
             case .minimax: return [Color(hex: "F59E0B"), Color(hex: "FCD34D"), Color(hex: "D97706"), Color(hex: "FBBF24")]
             case .kimi: return [Color(hex: "6366F1"), Color(hex: "818CF8"), Color(hex: "A5B4FC"), Color(hex: "C7D2FE")]
+            case .cline: return [Color(hex: "D4A373"), Color(hex: "E8C4A0"), Color(hex: "C08B5C"), Color(hex: "A67B5B")]
+            case .kiloCode: return [Color(hex: "10B981"), Color(hex: "34D399"), Color(hex: "059669"), Color(hex: "6EE7B7")]
+            case .rooCode: return [Color(hex: "EC4899"), Color(hex: "F472B6"), Color(hex: "DB2777"), Color(hex: "F9A8D4")]
+            case .forgeDev: return [Color(hex: "F97316"), Color(hex: "FB923C"), Color(hex: "EA580C"), Color(hex: "FDBA74")]
+            case .augment: return [Color(hex: "3B82F6"), Color(hex: "60A5FA"), Color(hex: "2563EB"), Color(hex: "93C5FD")]
+            case .hermes: return [Color(hex: "A855F7"), Color(hex: "C084FC"), Color(hex: "9333EA"), Color(hex: "D8B4FE")]
             }
+        }
+
+        // MARK: - Model Colors
+
+        /// Deterministic color for a model name. Known families get brand colors; others hash into a palette.
+        static func colorForModel(_ modelName: String) -> Color {
+            let key = modelName.lowercased()
+            if key.contains("claude") { return Color(hex: "CC785C") }
+            if key.contains("gpt") || key.hasPrefix("o1") || key.hasPrefix("o3") || key.hasPrefix("o4") { return Color(hex: "00A67E") }
+            if key.contains("gemini") { return Color(hex: "4285F4") }
+            if key.contains("deepseek") { return Color(hex: "6366F1") }
+            if key.contains("kimi") || key.contains("moonshot") { return Color(hex: "6366F1") }
+            if key.contains("minimax") { return Color(hex: "F59E0B") }
+            if key.contains("llama") || key.contains("meta") { return Color(hex: "0668E1") }
+            if key.contains("mistral") { return Color(hex: "FF7000") }
+            if key.contains("qwen") { return Color(hex: "615EFF") }
+
+            // Deterministic hash for unknown models
+            let palette: [Color] = [
+                Color(hex: "D4A373"), Color(hex: "10B981"), Color(hex: "EC4899"),
+                Color(hex: "F97316"), Color(hex: "3B82F6"), Color(hex: "A855F7"),
+                Color(hex: "EF4444"), Color(hex: "14B8A6"), Color(hex: "F59E0B"),
+                Color(hex: "8B5CF6"), Color(hex: "06B6D4"), Color(hex: "84CC16"),
+            ]
+            let hash = abs(key.hashValue)
+            return palette[hash % palette.count]
+        }
+
+        static func gradientForModel(_ modelName: String) -> LinearGradient {
+            let primary = colorForModel(modelName)
+            return LinearGradient(
+                colors: [primary, primary.opacity(0.6)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 

@@ -95,6 +95,12 @@
 		FDCF746FB0D1A9FFA4775177 /* ConversationParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65A09A8DD647C8765C28A970 /* ConversationParsingTests.swift */; };
 		FF7C1830F6BB33A71CD79EE4 /* ConversationRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = E62DF2D96D023A5FF92F39C1 /* ConversationRecord.swift */; };
 		FFBFE6597948663C685FE51C /* BurnBarCore in Frameworks */ = {isa = PBXBuildFile; productRef = 672895C82DE1B508B5837144 /* BurnBarCore */; };
+		ACCEEE5A80DA4687 /* TokenExtractionUtility.swift in Sources */ = {isa = PBXBuildFile; fileRef = F55E2D3423A38320 /* TokenExtractionUtility.swift */; };
+		89E93E81049A0FA5 /* ClineFormatParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E4A10B7710EB0F2 /* ClineFormatParser.swift */; };
+		54E6263A0ECCF0EB /* ForgeDevParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48EC6B685D165B26 /* ForgeDevParser.swift */; };
+		A9C74FE3309C0F35 /* AugmentParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6F0E5558518D32A /* AugmentParser.swift */; };
+		5F53D5E9AB35BEFF /* HermesParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = D43E367CD152C32C /* HermesParser.swift */; };
+		B2C3D4E5F6070809 /* ModelDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60708 /* ModelDashboardView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -223,6 +229,12 @@
 		FA53CDBBD782834EC9FA51B8 /* MiniSparkline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniSparkline.swift; sourceTree = "<group>"; };
 		FB2B6C595EE40639297CBC2A /* BurnBarMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarMigrationTests.swift; sourceTree = "<group>"; };
 		FD6F26FB866B92E10DC33128 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		F55E2D3423A38320 /* TokenExtractionUtility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenExtractionUtility.swift; sourceTree = "<group>"; };
+		7E4A10B7710EB0F2 /* ClineFormatParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClineFormatParser.swift; sourceTree = "<group>"; };
+		48EC6B685D165B26 /* ForgeDevParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgeDevParser.swift; sourceTree = "<group>"; };
+		D6F0E5558518D32A /* AugmentParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AugmentParser.swift; sourceTree = "<group>"; };
+		D43E367CD152C32C /* HermesParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesParser.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60708 /* ModelDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDashboardView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -283,6 +295,11 @@
 				8DCE6654BB36FDEC775973BE /* ClaudeConversationExtractor.swift */,
 				B31C24B995A2CBBB18265152 /* FactoryDroidParser.swift */,
 				021276DEE6679BDBF0E71042 /* KimiParser.swift */,
+				D43E367CD152C32C /* HermesParser.swift */,
+				D6F0E5558518D32A /* AugmentParser.swift */,
+				48EC6B685D165B26 /* ForgeDevParser.swift */,
+				7E4A10B7710EB0F2 /* ClineFormatParser.swift */,
+				F55E2D3423A38320 /* TokenExtractionUtility.swift */,
 				A092BBAFB87D0879CA16B36D /* LogParserProtocol.swift */,
 			);
 			path = LogParser;
@@ -390,6 +407,7 @@
 				0263618C9749E500C938C0B1 /* NarrativeCardView.swift */,
 				F4FDA5107B5C32DF13BF1B1C /* ProjectsView.swift */,
 				2D3647B2340086A90F0DEF7D /* ProviderDashboardView.swift */,
+				A1B2C3D4E5F60708 /* ModelDashboardView.swift */,
 				EAD45369DB6FF2FB2D144762 /* SessionDetailView.swift */,
 			);
 			path = Dashboard;
@@ -799,6 +817,12 @@
 				FCB2B100086EB32711D2677A /* OnboardingView.swift in Sources */,
 				A46C2B6F13102032252A1F21 /* ProjectsView.swift in Sources */,
 				F96F34F5EB13D199D821A7EC /* ProviderDashboardView.swift in Sources */,
+				ACCEEE5A80DA4687 /* TokenExtractionUtility.swift in Sources */,
+				89E93E81049A0FA5 /* ClineFormatParser.swift in Sources */,
+				54E6263A0ECCF0EB /* ForgeDevParser.swift in Sources */,
+				A9C74FE3309C0F35 /* AugmentParser.swift in Sources */,
+				5F53D5E9AB35BEFF /* HermesParser.swift in Sources */,
+				B2C3D4E5F6070809 /* ModelDashboardView.swift in Sources */,
 				05A6E3A1E5E7A10FD483BC7B /* ProviderLogoView.swift in Sources */,
 				E9F2A8ED3429D40FF1A5FBC5 /* ProviderTheme.swift in Sources */,
 				0B81470A3FAFC854A11B8D48 /* SearchService.swift in Sources */,

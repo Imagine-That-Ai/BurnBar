@@ -42,6 +42,28 @@ struct ProviderTheme {
             )
         )
     }
+
+    // MARK: - Model Themes
+
+    static func theme(forModel modelName: String) -> ProviderTheme {
+        let primary = DesignSystem.Colors.colorForModel(modelName)
+        let accent = primary.opacity(0.7)
+        let chartColors = [primary, primary.opacity(0.7), primary.opacity(0.5), primary.opacity(0.3)]
+
+        return ProviderTheme(
+            provider: .claudeCode, // placeholder — views use primaryColor, not provider
+            primaryColor: primary,
+            accentColor: accent,
+            textColor: DesignSystem.Colors.textPrimary,
+            secondaryTextColor: DesignSystem.Colors.textSecondary,
+            chartColors: chartColors,
+            gradient: LinearGradient(
+                colors: [primary, accent],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+    }
 }
 
 // MARK: - Color Extension

@@ -44,6 +44,31 @@ final class ClaudeCodeParser: LogParser {
                         conversations.append(conv)
                     }
                 }
+
+                // Parse subagent sessions in {sessionId}/subagents/agent-*.jsonl
+                let subagentsDir = projectDir
+                    .appendingPathComponent(sessionId)
+                    .appendingPathComponent("subagents")
+                if let subagentFiles = try? FileManager.default.contentsOfDirectory(
+                    at: subagentsDir,
+                    includingPropertiesForKeys: nil
+                ) {
+                    let agentJsonlFiles = subagentFiles.filter {
+                        $0.pathExtension == "jsonl" && $0.lastPathComponent.hasPrefix("agent-")
+                    }
+                    for agentFile in agentJsonlFiles {
+                        let agentId = agentFile.deletingPathExtension().lastPathComponent
+                        let subSessionId = "\(sessionId)/\(agentId)"
+                        if let pair = try? parseClaudeSession(
+                            file: agentFile,
+                            sessionId: subSessionId,
+                            projectName: projectName
+                        ), let usage = pair.usage {
+                            usages.append(usage)
+                            // Skip conversation records for subagents — they're fragments
+                        }
+                    }
+                }
             }
         }
 
@@ -126,15 +151,15 @@ final class ClaudeCodeParser: LogParser {
                 acc.endTime = date
             }
 
-            let extractedUsage = extractUsageTokens(
+            let extracted = TokenExtractionUtility.extractUsageTokens(
                 usage,
                 inputHint: acc.inputTokens,
                 outputHint: acc.outputTokens
             )
-            acc.inputTokens += extractedUsage.input
-            acc.outputTokens += extractedUsage.output
-            acc.cacheCreationTokens += extractedUsage.cacheCreation
-            acc.cacheReadTokens += extractedUsage.cacheRead
+            acc.inputTokens += extracted.input
+            acc.outputTokens += extracted.output
+            acc.cacheCreationTokens += extracted.cacheCreation
+            acc.cacheReadTokens += extracted.cacheRead
 
             if let model = message["model"] as? String {
                 acc.models.insert(model)
@@ -147,19 +172,20 @@ final class ClaudeCodeParser: LogParser {
 
         conv.finalizeArrays()
 
-        acc.totalCost = calculateClaudeCost(
+        let model = acc.models.first ?? "claude"
+        let pricing = ModelPricing.lookup(model: model)
+        acc.totalCost = pricing.cost(
             inputTokens: acc.inputTokens,
             outputTokens: acc.outputTokens,
             cacheCreationTokens: acc.cacheCreationTokens,
-            cacheReadTokens: acc.cacheReadTokens,
-            models: Array(acc.models)
+            cacheReadTokens: acc.cacheReadTokens
         )
 
         let usage = TokenUsage(
             provider: .claudeCode,
             sessionId: sessionId,
             projectName: acc.projectName,
-            model: acc.models.first ?? "claude",
+            model: model,
             inputTokens: acc.inputTokens,
             outputTokens: acc.outputTokens,
             cacheCreationTokens: acc.cacheCreationTokens,
@@ -195,194 +221,6 @@ final class ClaudeCodeParser: LogParser {
 
     private func modificationDate(of url: URL) -> Date? {
         (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
-    }
-
-    private func calculateClaudeCost(
-        inputTokens: Int,
-        outputTokens: Int,
-        cacheCreationTokens: Int,
-        cacheReadTokens: Int,
-        models: [String]
-    ) -> Double {
-        let model = models.first?.lowercased() ?? ""
-
-        let inputCost: Double
-        let outputCost: Double
-        let cacheCreationCost: Double
-        let cacheReadCost: Double
-
-        if model.contains("opus") {
-            inputCost = 0.000015
-            outputCost = 0.000075
-            cacheCreationCost = 0.00001875
-            cacheReadCost = 0.0000015
-        } else if model.contains("sonnet") {
-            inputCost = 0.000003
-            outputCost = 0.000015
-            cacheCreationCost = 0.00000375
-            cacheReadCost = 0.0000003
-        } else if model.contains("haiku") {
-            inputCost = 0.00000025
-            outputCost = 0.00000125
-            cacheCreationCost = 0.0000003125
-            cacheReadCost = 0.00000003
-        } else {
-            inputCost = 0.000003
-            outputCost = 0.000015
-            cacheCreationCost = 0.00000375
-            cacheReadCost = 0.0000003
-        }
-
-        return Double(inputTokens) * inputCost
-            + Double(outputTokens) * outputCost
-            + Double(cacheCreationTokens) * cacheCreationCost
-            + Double(cacheReadTokens) * cacheReadCost
-    }
-
-    private func extractUsageTokens(
-        _ usage: [String: Any],
-        inputHint: Int,
-        outputHint: Int
-    ) -> (input: Int, output: Int, cacheCreation: Int, cacheRead: Int) {
-        var input = firstIntValue(
-            in: usage,
-            paths: [
-                ["input_tokens"],
-                ["prompt_tokens"],
-                ["inputTokens"],
-                ["promptTokens"]
-            ]
-        ) ?? 0
-
-        var output = firstIntValue(
-            in: usage,
-            paths: [
-                ["output_tokens"],
-                ["completion_tokens"],
-                ["outputTokens"],
-                ["completionTokens"]
-            ]
-        ) ?? 0
-
-        let cacheCreation = firstIntValue(
-            in: usage,
-            paths: [
-                ["cache_creation_input_tokens"],
-                ["cache_creation_tokens"],
-                ["cacheCreationTokens"]
-            ]
-        ) ?? 0
-
-        let cacheRead = firstIntValue(
-            in: usage,
-            paths: [
-                ["cache_read_input_tokens"],
-                ["cache_read_tokens"],
-                ["cacheReadTokens"],
-                ["prompt_tokens_details", "cached_tokens"],
-                ["promptTokensDetails", "cachedTokens"],
-                ["cached_tokens"],
-                ["cachedTokens"]
-            ]
-        ) ?? 0
-
-        let thinking = firstIntValue(
-            in: usage,
-            paths: [
-                ["thinking_tokens"],
-                ["reasoning_tokens"],
-                ["thinkingTokens"],
-                ["reasoningTokens"],
-                ["completion_tokens_details", "reasoning_tokens"],
-                ["output_tokens_details", "reasoning_tokens"]
-            ]
-        ) ?? 0
-
-        let total = firstIntValue(
-            in: usage,
-            paths: [
-                ["total_tokens"],
-                ["totalTokens"]
-            ]
-        ) ?? 0
-
-        let explicitPayloadTotal = max(input, 0) + max(output, 0) + max(cacheCreation, 0) + max(cacheRead, 0)
-        let normalizedTotal = max(total, explicitPayloadTotal)
-
-        if normalizedTotal > 0 {
-            let availableForInOut = max(normalizedTotal - cacheCreation - cacheRead, 0)
-            if input == 0 && output == 0 && availableForInOut > 0 {
-                let safeInputHint = max(inputHint, 1)
-                let safeOutputHint = max(outputHint, 1)
-                let ratio = Double(safeInputHint) / Double(safeInputHint + safeOutputHint)
-                input = Int((Double(availableForInOut) * ratio).rounded())
-                output = max(availableForInOut - input, 0)
-            } else if input == 0 && output > 0 && availableForInOut > output {
-                input = availableForInOut - output
-            } else if output == 0 && input > 0 && availableForInOut > input {
-                output = availableForInOut - input
-            } else if input + output < availableForInOut {
-                output += availableForInOut - (input + output)
-            }
-        }
-
-        if thinking > 0 && total == 0 {
-            output += thinking
-        }
-
-        return (
-            input: max(input, 0),
-            output: max(output, 0),
-            cacheCreation: max(cacheCreation, 0),
-            cacheRead: max(cacheRead, 0)
-        )
-    }
-
-    private func firstIntValue(in dictionary: [String: Any], paths: [[String]]) -> Int? {
-        for path in paths {
-            if let value = nestedValue(in: dictionary, path: path),
-               let intValue = parseInt(value) {
-                return intValue
-            }
-        }
-        return nil
-    }
-
-    private func nestedValue(in dictionary: [String: Any], path: [String]) -> Any? {
-        var cursor: Any = dictionary
-        for key in path {
-            guard let dict = cursor as? [String: Any], let next = dict[key] else {
-                return nil
-            }
-            cursor = next
-        }
-        return cursor
-    }
-
-    private func parseInt(_ value: Any?) -> Int? {
-        guard let value else { return nil }
-        if let intValue = value as? Int {
-            return max(intValue, 0)
-        }
-        if let int64Value = value as? Int64 {
-            return max(Int(int64Value), 0)
-        }
-        if let doubleValue = value as? Double {
-            return max(Int(doubleValue.rounded()), 0)
-        }
-        if let numberValue = value as? NSNumber {
-            return max(numberValue.intValue, 0)
-        }
-        if let stringValue = value as? String {
-            let trimmed = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let intValue = Int(trimmed) {
-                return max(intValue, 0)
-            }
-            if let doubleValue = Double(trimmed) {
-                return max(Int(doubleValue.rounded()), 0)
-            }
-        }
-        return nil
     }
 }
 
