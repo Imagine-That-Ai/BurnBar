@@ -29,6 +29,14 @@ public enum BurnBarDaemonPaths {
     public static var defaultUsageLedgerURL: URL {
         supportDirectoryURL.appendingPathComponent("usage-events.jsonl", isDirectory: false)
     }
+
+    public static var defaultRunJournalURL: URL {
+        supportDirectoryURL.appendingPathComponent("run-journal.jsonl", isDirectory: false)
+    }
+
+    public static var defaultRunCheckpointDirectoryURL: URL {
+        supportDirectoryURL.appendingPathComponent("run-checkpoints", isDirectory: true)
+    }
 }
 
 public enum BurnBarDaemonVersion {

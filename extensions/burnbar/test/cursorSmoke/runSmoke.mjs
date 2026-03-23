@@ -2,6 +2,7 @@ import { mkdtempSync, cpSync, mkdirSync, writeFileSync, readFileSync, existsSync
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
+import { createConnection } from "node:net";
 
 const repoRoot = join(dirname(dirname(dirname(new URL(import.meta.url).pathname))), "..", "..");
 const extensionRoot = join(repoRoot, "extensions", "burnbar");
@@ -121,6 +122,8 @@ while (!existsSync(socketPath)) {
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
+await waitForDaemonHealth(socketPath, daemon);
+
 const cursor = spawn(cursorBinary, [workspaceDir, "--new-window", "--user-data-dir", userDataDir, "--extensions-dir", extensionsDir, "--disable-gpu"], {
   env: {
     ...process.env,
@@ -177,3 +180,101 @@ if (!result.ok) {
 }
 
 console.log(JSON.stringify(result));
+
+async function waitForDaemonHealth(socketPath, daemonProcess, timeoutMs = 60000) {
+  const startedAt = Date.now();
+  let lastError = "Unknown daemon health error.";
+
+  while (Date.now() - startedAt <= timeoutMs) {
+    if (daemonProcess.exitCode != null) {
+      throw new Error(`BurnBar daemon exited before responding to health (exit ${daemonProcess.exitCode}).`);
+    }
+
+    try {
+      await requestHealth(socketPath);
+      return;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  throw new Error(lastError);
+}
+
+async function requestHealth(socketPath) {
+  const payload = `${JSON.stringify({ id: "smoke-health", method: "daemon.health" })}\n`;
+
+  return await new Promise((resolve, reject) => {
+    const socket = createConnection(socketPath);
+    let responseBuffer = "";
+    let settled = false;
+
+    const timeout = setTimeout(() => {
+      socket.destroy();
+      fail(new Error(`Timed out waiting for BurnBar daemon on ${socketPath}.`));
+    }, 3000);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      socket.removeAllListeners();
+    };
+
+    const fail = (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+
+    socket.setEncoding("utf8");
+
+    socket.on("connect", () => {
+      socket.write(payload);
+    });
+
+    socket.on("data", (chunk) => {
+      responseBuffer += chunk;
+      const newlineIndex = responseBuffer.indexOf("\n");
+      if (newlineIndex === -1) {
+        return;
+      }
+
+      const line = responseBuffer.slice(0, newlineIndex).trim();
+      if (!line) {
+        fail(new Error("BurnBar daemon returned an empty response."));
+        return;
+      }
+
+      try {
+        const envelope = JSON.parse(line);
+        if (envelope.error) {
+          fail(new Error(envelope.error.message));
+          return;
+        }
+        if (!envelope.result?.ok) {
+          fail(new Error("BurnBar daemon health response was not OK."));
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolve(envelope.result);
+        socket.end();
+      } catch (error) {
+        fail(error instanceof Error ? error : new Error("Failed to parse BurnBar daemon health response."));
+      }
+    });
+
+    socket.on("error", (error) => {
+      fail(new Error(`Timed out waiting for BurnBar daemon on ${socketPath}.`));
+    });
+
+    socket.on("end", () => {
+      if (!settled && responseBuffer.trim().length === 0) {
+        fail(new Error("BurnBar daemon closed the connection before replying."));
+      }
+    });
+  });
+}

@@ -16,8 +16,39 @@ public struct BurnBarProviderExecutionResult: Sendable {
     }
 }
 
+public struct BurnBarStructuredPromptRequest: Sendable {
+    public let systemPrompt: String?
+    public let userPrompt: String
+    public let assistantContextBlocks: [String]
+    public let jsonOnly: Bool
+
+    public init(
+        systemPrompt: String? = nil,
+        userPrompt: String,
+        assistantContextBlocks: [String] = [],
+        jsonOnly: Bool = false
+    ) {
+        self.systemPrompt = systemPrompt
+        self.userPrompt = userPrompt
+        self.assistantContextBlocks = assistantContextBlocks
+        self.jsonOnly = jsonOnly
+    }
+}
+
 public protocol BurnBarProviderExecuting: Sendable {
-    func complete(prompt: String, route: BurnBarProviderRoute) async throws -> BurnBarProviderExecutionResult
+    func completeStructured(
+        _ request: BurnBarStructuredPromptRequest,
+        route: BurnBarProviderRoute
+    ) async throws -> BurnBarProviderExecutionResult
+}
+
+public extension BurnBarProviderExecuting {
+    func complete(prompt: String, route: BurnBarProviderRoute) async throws -> BurnBarProviderExecutionResult {
+        try await completeStructured(
+            BurnBarStructuredPromptRequest(userPrompt: prompt),
+            route: route
+        )
+    }
 }
 
 public enum BurnBarProviderExecutorError: Error, LocalizedError {
@@ -44,7 +75,10 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         self.session = session
     }
 
-    public func complete(prompt: String, route: BurnBarProviderRoute) async throws -> BurnBarProviderExecutionResult {
+    public func completeStructured(
+        _ promptRequest: BurnBarStructuredPromptRequest,
+        route: BurnBarProviderRoute
+    ) async throws -> BurnBarProviderExecutionResult {
         guard let baseURL = URL(string: route.baseURL) else {
             throw BurnBarProviderExecutorError.invalidBaseURL(route.baseURL)
         }
@@ -54,10 +88,19 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(route.apiKey)", forHTTPHeaderField: "Authorization")
+        var messages: [ProviderCompletionRequest.Message] = []
+        if let systemPrompt = promptRequest.systemPrompt, !systemPrompt.isEmpty {
+            messages.append(.init(role: "system", content: systemPrompt))
+        }
+        for assistantBlock in promptRequest.assistantContextBlocks where !assistantBlock.isEmpty {
+            messages.append(.init(role: "assistant", content: assistantBlock))
+        }
+        messages.append(.init(role: "user", content: promptRequest.userPrompt))
         request.httpBody = try JSONEncoder().encode(
             ProviderCompletionRequest(
                 model: route.resolvedModelID,
-                messages: [.init(role: "user", content: prompt)]
+                messages: messages,
+                responseFormat: promptRequest.jsonOnly ? .init(type: "json_object") : nil
             )
         )
 
@@ -78,7 +121,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         }
 
         let usage = decoded.usage.normalized(
-            inputHint: max(1, prompt.count / 4),
+            inputHint: max(1, promptRequest.userPrompt.count / 4),
             outputHint: max(1, choice.message.content.count / 4)
         )
 
@@ -158,8 +201,19 @@ private struct ProviderCompletionRequest: Encodable {
         let content: String
     }
 
+    struct ResponseFormat: Encodable {
+        let type: String
+    }
+
     let model: String
     let messages: [Message]
+    let responseFormat: ResponseFormat?
+
+    private enum CodingKeys: String, CodingKey {
+        case model
+        case messages
+        case responseFormat = "response_format"
+    }
 }
 
 private struct ProviderCompletionResponse: Decodable {

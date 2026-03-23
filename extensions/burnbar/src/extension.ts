@@ -153,7 +153,10 @@ export async function activateBurnBarExtension(
       }
 
       try {
-        const inferredMetadata = inferWorkflowMetadataFromPrompt(prompt);
+        const inferredMetadata = {
+          ...buildEditorContextMetadata(),
+          ...inferWorkflowMetadataFromPrompt(prompt)
+        };
         const result = await controller.startRun({
           prompt,
           modelID: model.id,
@@ -397,8 +400,6 @@ async function runCursorSmoke({
       throw new Error("BurnBar smoke requires a workspace file path.");
     }
 
-    await waitForDaemonReady(daemonClient);
-
     const readResult = await (workspaceClient as BurnBarWorkspaceRpcClient).readFile({ path: filePath });
     const catalog = await daemonClient.catalog();
     const fallbackModelID = catalog.providers
@@ -413,14 +414,9 @@ async function runCursorSmoke({
     const replacement = buildSmokeReplacement(readResult.content);
     const runID = await createRun(
       resolvedModelID,
-      "Change a string in one file",
+      `Find the numeric constant in the current file and update ${replacement.from} to ${replacement.to}.`,
       {
-        workspaceWorkflow: {
-          type: "replace_string_in_file",
-          path: filePath,
-          from: replacement.from,
-          to: replacement.to
-        }
+        activeFilePath: filePath
       }
     );
 
@@ -569,6 +565,32 @@ function inferWorkflowMetadataFromPrompt(prompt: string): Record<string, BurnBar
       to: replacement.to
     } as BurnBarJSONValue
   };
+}
+
+function buildEditorContextMetadata(): Record<string, BurnBarJSONValue> | undefined {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    return undefined;
+  }
+
+  const document = editor.document;
+  if (document.uri.scheme !== "file") {
+    return undefined;
+  }
+
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+  const metadata: Record<string, BurnBarJSONValue> = {
+    activeFilePath: workspaceFolder
+      ? relative(workspaceFolder.uri.fsPath, document.uri.fsPath) || document.uri.fsPath
+      : document.uri.fsPath
+  };
+
+  const selectedText = document.getText(editor.selection).trim();
+  if (selectedText) {
+    metadata.activeSelectionText = selectedText;
+  }
+
+  return metadata;
 }
 
 async function resolveBurnBarClientID(

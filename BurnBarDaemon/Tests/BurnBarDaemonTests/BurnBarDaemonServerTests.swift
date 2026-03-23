@@ -98,11 +98,17 @@ final class BurnBarDaemonServerTests: XCTestCase {
             fileURL: rootURL.appendingPathComponent("usage-events.jsonl"),
             logger: BurnBarDaemonLogger(category: "server-tests")
         )
+        let runJournal = BurnBarRunJournal(
+            fileURL: rootURL.appendingPathComponent("run-journal.jsonl"),
+            checkpointsDirectoryURL: rootURL.appendingPathComponent("run-checkpoints", isDirectory: true),
+            logger: BurnBarDaemonLogger(category: "server-tests")
+        )
         let clientRegistry = BurnBarClientRegistry(logger: BurnBarDaemonLogger(category: "server-tests"))
         let runService = BurnBarRunService(
             router: BurnBarProviderRouter(configStore: configStore, logger: BurnBarDaemonLogger(category: "server-tests")),
             usageRecorder: usageRecorder,
             clientRegistry: clientRegistry,
+            runJournal: runJournal,
             logger: BurnBarDaemonLogger(category: "server-tests")
         )
 

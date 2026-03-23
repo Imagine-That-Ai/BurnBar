@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
 import { BurnBarExtensionController } from "../state/controller";
 import { buildPanelViewModel } from "../state/panelViewModel";
+import type { BurnBarJSONValue } from "../types";
 import type { BurnBarPanelWebviewMessage } from "./panelProtocol";
 import { buildPanelHtml } from "./panelHtml";
 
@@ -77,10 +78,25 @@ export class BurnBarPanelView implements vscode.WebviewViewProvider {
     try {
       switch (message.type) {
         case "startRun":
+          const metadata: Record<string, BurnBarJSONValue> = { mode: message.mode };
+          const activeEditor = vscode.window.activeTextEditor;
+          if (activeEditor?.document) {
+            const document = activeEditor.document;
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+            metadata.activeFilePath = workspaceFolder
+              ? vscode.workspace.asRelativePath(document.uri, false)
+              : document.uri.fsPath;
+
+            const selectedText = document.getText(activeEditor.selection).trim();
+            if (selectedText) {
+              metadata.activeSelectionText = selectedText;
+            }
+          }
+
           await this.controller.startRun({
             prompt: message.prompt,
             modelID: message.modelID,
-            metadata: { mode: message.mode }
+            metadata
           });
           break;
         case "refresh":

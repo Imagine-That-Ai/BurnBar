@@ -212,6 +212,41 @@ export interface BurnBarToolCallSnapshot {
   error?: BurnBarToolExecutionError | null;
 }
 
+export type BurnBarAgentLoopActionKind =
+  | "complete"
+  | "search_workspace"
+  | "read_file"
+  | "apply_patch"
+  | "run_terminal"
+  | "request_approval"
+  | "fail";
+
+export interface BurnBarAgentContextSnapshot {
+  candidatePaths: string[];
+  activeFilePath?: string | null;
+  lastReadFilePath?: string | null;
+  lastReadContent?: string | null;
+  searchHints: string[];
+  replacementTargetPath?: string | null;
+  searchResultPaths: string[];
+}
+
+export interface BurnBarAgentLoopDecision {
+  action: BurnBarAgentLoopActionKind;
+  requestedTool?: BurnBarToolKind | null;
+  arguments?: BurnBarJSONValue | null;
+  rationale: string;
+  message?: string | null;
+}
+
+export interface BurnBarAgentLoopState {
+  iterationCount: number;
+  lastDecision?: BurnBarAgentLoopDecision | null;
+  lastContextSnapshot?: BurnBarAgentContextSnapshot | null;
+  lastExecutedTool?: BurnBarToolKind | null;
+  terminalPending: boolean;
+}
+
 export interface BurnBarRunCreateRequest {
   clientID: string;
   sessionID: string;
@@ -288,6 +323,7 @@ export interface BurnBarRunDetailResponse {
   run?: BurnBarRunStateSnapshot | null;
   approvalRequest?: BurnBarApprovalRequest | null;
   pendingToolCall?: BurnBarToolCallSnapshot | null;
+  loopState?: BurnBarAgentLoopState | null;
   arbitration?: BurnBarClientArbitrationSnapshot | null;
 }
 

@@ -48,6 +48,7 @@ export interface BurnBarPanelSelectedRunDetail {
   usageText?: string;
   recoveryMessage?: string;
   arbitrationInfo?: string;
+  loopDecisionText?: string;
 }
 
 export interface BurnBarPanelViewModel {
@@ -394,7 +395,14 @@ function buildSelectedRunDetail(state: BurnBarState): BurnBarPanelSelectedRunDet
     }
   }
 
-  return { summary, usageText, recoveryMessage, arbitrationInfo };
+  let loopDecisionText: string | undefined;
+  const loopState = detail.loopState;
+  if (loopState?.lastDecision) {
+    const tool = loopState.lastDecision.requestedTool ? ` via ${loopState.lastDecision.requestedTool}` : "";
+    loopDecisionText = `Loop ${loopState.iterationCount}: ${loopState.lastDecision.action}${tool} — ${loopState.lastDecision.rationale}`;
+  }
+
+  return { summary, usageText, recoveryMessage, arbitrationInfo, loopDecisionText };
 }
 
 function buildRecoveryMessage(state: BurnBarState): string | undefined {

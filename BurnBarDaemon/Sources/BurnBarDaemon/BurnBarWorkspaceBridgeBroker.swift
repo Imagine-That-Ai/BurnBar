@@ -163,6 +163,13 @@ public actor BurnBarWorkspaceBridgeBroker {
         return cancelled
     }
 
+    public func restoreActiveCall(_ snapshot: BurnBarToolCallSnapshot) {
+        guard snapshot.status == .pending || snapshot.status == .inProgress else {
+            return
+        }
+        activeCalls[snapshot.runID] = snapshot
+    }
+
     private func resolveRunID(for requestedRunID: BurnBarRunID?) -> BurnBarRunID? {
         if let requestedRunID {
             return activeCalls[requestedRunID] == nil ? nil : requestedRunID

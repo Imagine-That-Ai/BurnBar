@@ -30,18 +30,8 @@ public enum BurnBarRunServiceError: Error, LocalizedError {
     }
 }
 
-private struct BurnBarReplaceStringWorkflow: Sendable {
-    let path: String
-    let from: String
-    let to: String
-}
-
 private struct BurnBarRunExecutionPlan: Sendable {
     let requiresApproval: Bool
-    let toolKind: BurnBarToolKind?
-    let waitOnCompanion: Bool
-    let toolArguments: BurnBarJSONValue
-    let workflow: BurnBarReplaceStringWorkflow?
     let failUntilAttempt: Int
     let inputTokens: Int
     let outputTokens: Int
@@ -50,20 +40,13 @@ private struct BurnBarRunExecutionPlan: Sendable {
     let approvalMessage: String
 
     init(request: BurnBarRunCreateRequest) {
-        let workflow = request.metadata.replaceStringWorkflow()
-        let toolKind = request.metadata.toolKindValue(forKey: "toolKind")
-
         self.requiresApproval = request.metadata.boolValue(forKey: "requiresApproval") ?? false
-        self.toolKind = toolKind
-        self.waitOnCompanion = request.metadata.boolValue(forKey: "waitOnCompanion") ?? false
-        self.toolArguments = request.metadata.jsonValue(forKey: "toolArguments") ?? .object([:])
-        self.workflow = workflow
         self.failUntilAttempt = request.metadata.intValue(forKey: "failUntilAttempt") ?? 0
         self.inputTokens = request.metadata.intValue(forKey: "inputTokens") ?? max(1, request.prompt.count / 4)
-        self.outputTokens = request.metadata.intValue(forKey: "outputTokens") ?? (toolKind == nil ? 48 : 12)
+        self.outputTokens = request.metadata.intValue(forKey: "outputTokens") ?? 12
         self.cacheReadTokens = request.metadata.intValue(forKey: "cacheReadTokens") ?? 0
         self.approvalTitle = request.metadata.stringValue(forKey: "approvalTitle")
-            ?? "Approve \(toolKind?.rawValue ?? "burnbar_action")"
+            ?? "Approve burnbar_action"
         self.approvalMessage = request.metadata.stringValue(forKey: "approvalMessage")
             ?? "BurnBar needs approval before continuing this tool step."
     }
@@ -74,6 +57,8 @@ private struct BurnBarManagedRun: Sendable {
     let originalPrompt: String
     let modelID: String
     let metadata: [String: BurnBarJSONValue]
+    var intent: BurnBarAgentIntent
+    var planOutline: BurnBarPlanOutline
     var attempt: Int
     var route: BurnBarProviderRoute
     var plan: BurnBarRunExecutionPlan
@@ -84,7 +69,11 @@ private struct BurnBarManagedRun: Sendable {
     var lastToolCall: BurnBarToolCallSnapshot?
     var workflowStep: Int
     var workflowReadContent: String?
+    var lastReadFilePath: String?
+    var searchResultPaths: [String]
     var companionToolCompleted: Bool
+    var lastRecoveryDecision: BurnBarRecoveryDecision?
+    var loopState: BurnBarAgentLoopState
 }
 
 public actor BurnBarRunService {
@@ -93,10 +82,17 @@ public actor BurnBarRunService {
     private let clientRegistry: BurnBarClientRegistry
     private let providerExecutor: any BurnBarProviderExecuting
     private let workspaceBridgeBroker: BurnBarWorkspaceBridgeBroker
+    private let plannerService: BurnBarPlannerService
+    private let contextSelector: BurnBarContextSelector
+    private let agentLoopService: BurnBarAgentLoopService
+    private let recoveryEngine: BurnBarRecoveryEngine
+    private let policyEngine: BurnBarPolicyEngine
+    private let runJournal: BurnBarRunJournal
     private let logger: BurnBarDaemonLogger
 
     private var runs: [BurnBarRunID: BurnBarManagedRun] = [:]
     private var runOrder: [BurnBarRunID] = []
+    private var restoredPersistedRuns = false
 
     public init(
         router: BurnBarProviderRouter,
@@ -104,6 +100,12 @@ public actor BurnBarRunService {
         clientRegistry: BurnBarClientRegistry,
         providerExecutor: any BurnBarProviderExecuting = BurnBarOpenAICompatibleProviderExecutor(),
         workspaceBridgeBroker: BurnBarWorkspaceBridgeBroker = BurnBarWorkspaceBridgeBroker(),
+        plannerService: BurnBarPlannerService = BurnBarPlannerService(),
+        contextSelector: BurnBarContextSelector = BurnBarContextSelector(),
+        agentLoopService: BurnBarAgentLoopService = BurnBarAgentLoopService(),
+        recoveryEngine: BurnBarRecoveryEngine = BurnBarRecoveryEngine(),
+        policyEngine: BurnBarPolicyEngine = BurnBarPolicyEngine(),
+        runJournal: BurnBarRunJournal = BurnBarRunJournal(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "run-service")
     ) {
         self.router = router
@@ -111,10 +113,17 @@ public actor BurnBarRunService {
         self.clientRegistry = clientRegistry
         self.providerExecutor = providerExecutor
         self.workspaceBridgeBroker = workspaceBridgeBroker
+        self.plannerService = plannerService
+        self.contextSelector = contextSelector
+        self.agentLoopService = agentLoopService
+        self.recoveryEngine = recoveryEngine
+        self.policyEngine = policyEngine
+        self.runJournal = runJournal
         self.logger = logger
     }
 
     public func createRun(_ request: BurnBarRunCreateRequest) async throws -> BurnBarRunCreateResponse {
+        try await restorePersistedRunsIfNeeded()
         try await clientRegistry.requireController(request.clientID)
         try await clientRegistry.requireAttached(request.clientID, sessionID: request.sessionID)
 
@@ -124,6 +133,7 @@ public actor BurnBarRunService {
         } catch {
             throw BurnBarRunServiceError.routeFailed(error.localizedDescription)
         }
+        let plannedRun = try plannerService.plan(for: request)
 
         let runID = BurnBarRunID()
         let plan = BurnBarRunExecutionPlan(request: request)
@@ -132,6 +142,8 @@ public actor BurnBarRunService {
             originalPrompt: request.prompt,
             modelID: request.modelID,
             metadata: request.metadata,
+            intent: plannedRun.intent,
+            planOutline: plannedRun.outline,
             attempt: 1,
             route: route,
             plan: plan,
@@ -149,11 +161,17 @@ public actor BurnBarRunService {
             lastToolCall: nil,
             workflowStep: 0,
             workflowReadContent: nil,
-            companionToolCompleted: false
+            lastReadFilePath: nil,
+            searchResultPaths: [],
+            companionToolCompleted: false,
+            lastRecoveryDecision: nil,
+            loopState: BurnBarAgentLoopState()
         )
 
         try transition(&run, to: .planning)
+        try await appendJournalBootstrap(for: run)
         try await continueExecution(for: &run)
+        try await writeCheckpoint(for: run)
         runs[runID] = run
         runOrder.append(runID)
 
@@ -170,12 +188,14 @@ public actor BurnBarRunService {
     }
 
     public func listRuns(_ request: BurnBarRunListRequest) async throws -> BurnBarRunListResponse {
+        try await restorePersistedRunsIfNeeded()
         try await clientRegistry.requireAttached(request.clientID)
         let snapshots = runOrder.compactMap { runs[$0]?.snapshot }.sorted { $0.updatedAt > $1.updatedAt }
         return BurnBarRunListResponse(runs: snapshots)
     }
 
     public func getRun(_ request: BurnBarRunGetRequest) async throws -> BurnBarRunDetailResponse {
+        try await restorePersistedRunsIfNeeded()
         try await clientRegistry.requireAttached(request.clientID)
         guard let run = runs[request.runID] else {
             throw BurnBarRunServiceError.runNotFound(request.runID)
@@ -185,11 +205,13 @@ public actor BurnBarRunService {
             run: run.snapshot,
             approvalRequest: run.approvalRequest,
             pendingToolCall: await workspaceBridgeBroker.activeCall(for: request.runID),
+            loopState: run.loopState,
             arbitration: await clientRegistry.arbitration()
         )
     }
 
     public func pollRuns(_ request: BurnBarRunPollRequest) async throws -> BurnBarRunEventBatch {
+        try await restorePersistedRunsIfNeeded()
         try await clientRegistry.requireAttached(request.clientID, sessionID: request.sessionID)
 
         let scopedRuns: [BurnBarManagedRun]
@@ -216,6 +238,7 @@ public actor BurnBarRunService {
     }
 
     public func executeTool(_ request: BurnBarToolExecutionRequest) async throws -> BurnBarToolExecutionResponse {
+        try await restorePersistedRunsIfNeeded()
         try await clientRegistry.requireAttached(request.clientID, sessionID: request.sessionID)
         try await clientRegistry.requireController(request.clientID)
 
@@ -236,6 +259,7 @@ public actor BurnBarRunService {
     }
 
     public func submitToolResult(_ request: BurnBarToolResultSubmissionRequest) async throws -> BurnBarRunDetailResponse {
+        try await restorePersistedRunsIfNeeded()
         try await clientRegistry.requireAttached(request.clientID, sessionID: request.sessionID)
         try await clientRegistry.requireController(request.clientID)
         guard var run = runs[request.runID] else {
@@ -250,6 +274,15 @@ public actor BurnBarRunService {
         run.lastToolCall = callSnapshot
         run.activeToolCallID = nil
         _ = await workspaceBridgeBroker.clearActiveCall(runID: request.runID, callID: request.callID)
+        try await appendJournalEvent(
+            BurnBarRunJournalEvent(
+                runID: run.runID,
+                kind: .toolCompleted,
+                phase: run.snapshot.phase,
+                payload: try BurnBarJSONValue.fromEncodable(callSnapshot),
+                emittedAt: Date()
+            )
+        )
 
         if request.succeeded {
             try applySuccessfulToolResult(callSnapshot, to: &run)
@@ -260,20 +293,23 @@ public actor BurnBarRunService {
                 code: .unknown,
                 message: request.error?.message ?? "Workspace companion reported a failed tool call."
             )
-            try handleToolFailure(error: error, callSnapshot: callSnapshot, run: &run)
+            try await handleToolFailure(error: error, callSnapshot: callSnapshot, run: &run)
         }
 
+        try await writeCheckpoint(for: run)
         runs[request.runID] = run
 
         return BurnBarRunDetailResponse(
             run: run.snapshot,
             approvalRequest: run.approvalRequest,
             pendingToolCall: await workspaceBridgeBroker.activeCall(for: request.runID),
+            loopState: run.loopState,
             arbitration: await clientRegistry.arbitration()
         )
     }
 
     public func cancelRun(_ request: BurnBarRunCancelRequest) async throws -> BurnBarRunDetailResponse {
+        try await restorePersistedRunsIfNeeded()
         try await clientRegistry.requireController(request.clientID)
         guard var run = runs[request.runID] else {
             throw BurnBarRunServiceError.runNotFound(request.runID)
@@ -284,6 +320,16 @@ public actor BurnBarRunService {
         run.approvalRequest = nil
         run.activeToolCallID = nil
         _ = await workspaceBridgeBroker.cancelActiveCall(for: request.runID)
+        try await appendJournalEvent(
+            BurnBarRunJournalEvent(
+                runID: run.runID,
+                kind: .runCancelled,
+                phase: run.snapshot.phase,
+                payload: .object(["message": .string(message)]),
+                emittedAt: Date()
+            )
+        )
+        try await writeCheckpoint(for: run)
         runs[request.runID] = run
 
         logger.notice(
@@ -298,6 +344,7 @@ public actor BurnBarRunService {
     }
 
     public func retryRun(_ request: BurnBarRunRetryRequest) async throws -> BurnBarRunDetailResponse {
+        try await restorePersistedRunsIfNeeded()
         try await clientRegistry.requireController(request.clientID)
         guard var run = runs[request.runID] else {
             throw BurnBarRunServiceError.runNotFound(request.runID)
@@ -321,9 +368,12 @@ public actor BurnBarRunService {
         } catch {
             throw BurnBarRunServiceError.routeFailed(error.localizedDescription)
         }
+        let plannedRun = try plannerService.plan(for: retryRequest)
 
         run.attempt += 1
         run.route = route
+        run.intent = plannedRun.intent
+        run.planOutline = plannedRun.outline
         run.plan = BurnBarRunExecutionPlan(request: retryRequest)
         run.approvalRequest = nil
         run.approvalResolvedForAttempt = false
@@ -331,7 +381,11 @@ public actor BurnBarRunService {
         run.lastToolCall = nil
         run.workflowStep = 0
         run.workflowReadContent = nil
+        run.lastReadFilePath = nil
+        run.searchResultPaths = []
         run.companionToolCompleted = false
+        run.lastRecoveryDecision = nil
+        run.loopState = BurnBarAgentLoopState()
         _ = await workspaceBridgeBroker.cancelActiveCall(for: request.runID)
         run.snapshot = BurnBarRunStateSnapshot(
             runID: run.runID,
@@ -344,7 +398,9 @@ public actor BurnBarRunService {
         )
 
         try transition(&run, to: .planning)
+        try await appendJournalBootstrap(for: run)
         try await continueExecution(for: &run)
+        try await writeCheckpoint(for: run)
         runs[request.runID] = run
 
         logger.notice(
@@ -359,6 +415,7 @@ public actor BurnBarRunService {
     }
 
     public func respondToApproval(_ request: BurnBarApprovalRespondRequest) async throws -> BurnBarRunDetailResponse {
+        try await restorePersistedRunsIfNeeded()
         try await clientRegistry.requireController(request.response.clientID)
         guard let runID = runs.first(where: { $0.value.approvalRequest?.approvalID == request.response.approvalID })?.key,
               var run = runs[runID] else {
@@ -372,6 +429,15 @@ public actor BurnBarRunService {
         case .approve:
             run.approvalRequest = nil
             run.approvalResolvedForAttempt = true
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: run.runID,
+                    kind: .approvalResponded,
+                    phase: run.snapshot.phase,
+                    payload: try BurnBarJSONValue.fromEncodable(request.response),
+                    emittedAt: Date()
+                )
+            )
             try transition(&run, to: .planning, activeApprovalID: nil)
             try await continueExecution(for: &run)
         case .reject, .cancel:
@@ -380,9 +446,19 @@ public actor BurnBarRunService {
             _ = await workspaceBridgeBroker.cancelActiveCall(for: runID)
             let decisionText = request.response.decision == .reject ? "rejected" : "cancelled"
             let message = request.response.note ?? "Approval \(decisionText) by controller."
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: run.runID,
+                    kind: .approvalResponded,
+                    phase: run.snapshot.phase,
+                    payload: try BurnBarJSONValue.fromEncodable(request.response),
+                    emittedAt: Date()
+                )
+            )
             try transition(&run, to: .cancelled, errorMessage: message, activeApprovalID: nil)
         }
 
+        try await writeCheckpoint(for: run)
         runs[runID] = run
 
         logger.notice(
@@ -398,17 +474,32 @@ public actor BurnBarRunService {
     }
 
     private func continueExecution(for run: inout BurnBarManagedRun) async throws {
-        if run.plan.requiresApproval && !run.approvalResolvedForAttempt && run.approvalRequest == nil {
+        if let approval = policyEngine.approvalDescriptor(
+            explicitApprovalRequired: run.plan.requiresApproval && !run.approvalResolvedForAttempt && run.approvalRequest == nil,
+            intent: run.intent,
+            tool: run.intent.requestedTools.last,
+            customTitle: run.plan.approvalTitle,
+            customMessage: run.plan.approvalMessage
+        ) {
             let approvalID = BurnBarApprovalID()
             run.approvalRequest = BurnBarApprovalRequest(
                 approvalID: approvalID,
                 runID: run.runID,
-                tool: run.plan.toolKind ?? .applyPatch,
-                title: run.plan.approvalTitle,
-                message: run.plan.approvalMessage,
+                tool: approval.tool,
+                title: approval.title,
+                message: approval.message,
                 requestedAt: Date()
             )
             try transition(&run, to: .awaitingApproval, activeApprovalID: approvalID)
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: run.runID,
+                    kind: .approvalRequested,
+                    phase: run.snapshot.phase,
+                    payload: try BurnBarJSONValue.fromEncodable(run.approvalRequest),
+                    emittedAt: Date()
+                )
+            )
             return
         }
 
@@ -419,32 +510,47 @@ public actor BurnBarRunService {
                 errorMessage: "Simulated failure on attempt \(run.attempt).",
                 activeApprovalID: nil
             )
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: run.runID,
+                    kind: .runFailed,
+                    phase: run.snapshot.phase,
+                    payload: .object(["message": .string("Simulated failure on attempt \(run.attempt).")]),
+                    emittedAt: Date()
+                )
+            )
+            try await writeCheckpoint(for: run)
             return
         }
 
-        if run.plan.workflow != nil {
-            try await continueReplaceStringWorkflow(for: &run)
-            return
-        }
-
-        if let toolKind = run.plan.toolKind {
+        if run.intent.requiresWorkspaceToolExecution || run.intent.kind == .generic || run.intent.kind == .inspectWorkspace {
             try transition(&run, to: .executingTool)
 
-            if run.plan.waitOnCompanion {
-                if run.companionToolCompleted {
-                    try await completeRunAndRecordUsage(for: &run)
-                    return
-                }
+            if run.intent.kind != .generic && run.intent.kind != .inspectWorkspace && run.companionToolCompleted {
+                try await completeRunAndRecordUsage(for: &run)
+                return
+            }
 
+            if let deterministicAction = try deterministicContextAction(for: run) {
                 try await dispatchCompanionToolCall(
                     for: &run,
-                    toolKind: toolKind,
-                    arguments: run.plan.toolArguments
+                    toolKind: deterministicAction.tool,
+                    arguments: deterministicAction.arguments
                 )
                 return
             }
 
-            try await completeRunAndRecordUsage(for: &run)
+            if run.intent.kind == .replaceStringInFile && run.workflowStep >= 2 {
+                try await completeRunAndRecordUsage(for: &run)
+                return
+            }
+
+            if run.intent.kind == .generic && run.intent.requestedTools.count == 1 && run.intent.toolArguments == nil {
+                try await completeRunAndRecordUsage(for: &run)
+                return
+            }
+
+            try await runAgentLoop(for: &run)
             return
         }
 
@@ -476,6 +582,16 @@ public actor BurnBarRunService {
                 errorMessage: error.localizedDescription,
                 activeApprovalID: nil
             )
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: run.runID,
+                    kind: .runFailed,
+                    phase: run.snapshot.phase,
+                    payload: .object(["message": .string(error.localizedDescription)]),
+                    emittedAt: Date()
+                )
+            )
+            try await writeCheckpoint(for: run)
             return
         }
 
@@ -486,52 +602,198 @@ public actor BurnBarRunService {
         )
     }
 
-    private func continueReplaceStringWorkflow(for run: inout BurnBarManagedRun) async throws {
-        guard let workflow = run.plan.workflow else {
-            throw BurnBarRunServiceError.missingWorkflowInput(run.runID, "Workflow metadata is unavailable.")
+    private func continueIntentExecution(for run: inout BurnBarManagedRun) async throws {
+        let selectionState = BurnBarContextSelectionState(
+            workflowStep: run.workflowStep,
+            lastReadContent: run.workflowReadContent,
+            toolAlreadyCompleted: run.companionToolCompleted
+        )
+
+        do {
+            if let action = try contextSelector.nextAction(for: run.intent, state: selectionState) {
+                if run.snapshot.phase != .executingTool {
+                    try transition(&run, to: .executingTool)
+                }
+                try await dispatchCompanionToolCall(
+                    for: &run,
+                    toolKind: action.tool,
+                    arguments: action.arguments
+                )
+            } else {
+                try await completeRunAndRecordUsage(for: &run)
+            }
+        } catch let error as BurnBarContextSelectorError {
+            try transition(
+                &run,
+                to: .failed,
+                errorMessage: error.localizedDescription,
+                activeApprovalID: nil
+            )
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: run.runID,
+                    kind: .runFailed,
+                    phase: run.snapshot.phase,
+                    payload: .object(["message": .string(error.localizedDescription)]),
+                    emittedAt: Date()
+                )
+            )
         }
+    }
 
-        switch run.workflowStep {
-        case 0:
-            try transition(&run, to: .executingTool)
-            try await dispatchCompanionToolCall(
-                for: &run,
-                toolKind: .readFile,
-                arguments: .object(["path": .string(workflow.path)])
-            )
-        case 1:
-            guard let readContent = run.workflowReadContent else {
-                throw BurnBarRunServiceError.missingWorkflowInput(
-                    run.runID,
-                    "Read-file output is required before applying a patch."
-                )
-            }
-            let updatedContent = readContent.replacingOccurrences(of: workflow.from, with: workflow.to)
-            guard updatedContent != readContent else {
-                try transition(
-                    &run,
-                    to: .failed,
-                    errorMessage: "BurnBar could not find '\(workflow.from)' in \(workflow.path).",
-                    activeApprovalID: nil
-                )
-                return
-            }
+    private func deterministicContextAction(for run: BurnBarManagedRun) throws -> BurnBarContextAction? {
+        let selectionState = BurnBarContextSelectionState(
+            workflowStep: run.workflowStep,
+            lastReadContent: run.workflowReadContent,
+            toolAlreadyCompleted: run.companionToolCompleted
+        )
 
-            try transition(&run, to: .executingTool)
-            try await dispatchCompanionToolCall(
-                for: &run,
-                toolKind: .applyPatch,
-                arguments: .object([
-                    "changes": .array([
-                        .object([
-                            "path": .string(workflow.path),
-                            "text": .string(updatedContent)
-                        ])
-                    ])
-                ])
+        switch run.intent.kind {
+        case .replaceStringInFile, .runTerminal:
+            return try contextSelector.nextAction(for: run.intent, state: selectionState)
+        case .inspectWorkspace:
+            if run.loopState.iterationCount == 0, run.searchResultPaths.isEmpty, run.workflowReadContent == nil {
+                return try contextSelector.nextAction(for: run.intent, state: selectionState)
+            }
+            return nil
+        case .generic:
+            if run.intent.requestedTools.count == 1 {
+                return try contextSelector.nextAction(for: run.intent, state: selectionState)
+            }
+            return nil
+        }
+    }
+
+    private func currentContextSnapshot(for run: BurnBarManagedRun) -> BurnBarAgentContextSnapshot {
+        let selectionState = BurnBarContextSelectionState(
+            workflowStep: run.workflowStep,
+            lastReadContent: run.workflowReadContent,
+            toolAlreadyCompleted: run.companionToolCompleted
+        )
+        return contextSelector.makeContextSnapshot(
+            for: run.intent,
+            state: selectionState,
+            lastReadFilePath: run.lastReadFilePath,
+            searchResultPaths: run.searchResultPaths
+        )
+    }
+
+    private func runAgentLoop(for run: inout BurnBarManagedRun) async throws {
+        do {
+            let contextSnapshot = currentContextSnapshot(for: run)
+            let journalTail = try await runJournal.events(for: run.runID)
+            let decision = try await agentLoopService.decideNextAction(
+                request: BurnBarAgentLoopRequest(
+                    objective: run.originalPrompt,
+                    intent: run.intent,
+                    planOutline: run.planOutline,
+                    loopState: run.loopState,
+                    contextSnapshot: contextSnapshot,
+                    journalTail: journalTail
+                ),
+                route: run.route,
+                providerExecutor: providerExecutor
             )
-        default:
-            try await completeRunAndRecordUsage(for: &run)
+
+            run.loopState = BurnBarAgentLoopState(
+                iterationCount: run.loopState.iterationCount + 1,
+                lastDecision: decision,
+                lastContextSnapshot: contextSnapshot,
+                lastExecutedTool: run.loopState.lastExecutedTool,
+                terminalPending: decision.action == .runTerminal
+            )
+
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: run.runID,
+                    kind: .loopDecided,
+                    phase: run.snapshot.phase,
+                    payload: try BurnBarJSONValue.fromEncodable(decision),
+                    emittedAt: Date()
+                )
+            )
+
+            switch decision.action {
+            case .searchWorkspace, .readFile, .applyPatch, .runTerminal:
+                guard let tool = decision.requestedTool ?? BurnBarToolKind(rawValue: decision.action.rawValue),
+                      let arguments = decision.arguments else {
+                    throw BurnBarAgentLoopServiceError.invalidDecision("Tool action '\(decision.action.rawValue)' is missing tool arguments.")
+                }
+                run.loopState = BurnBarAgentLoopState(
+                    iterationCount: run.loopState.iterationCount,
+                    lastDecision: run.loopState.lastDecision,
+                    lastContextSnapshot: run.loopState.lastContextSnapshot,
+                    lastExecutedTool: tool,
+                    terminalPending: tool == .runTerminal
+                )
+                try await dispatchCompanionToolCall(
+                    for: &run,
+                    toolKind: tool,
+                    arguments: arguments
+                )
+            case .requestApproval:
+                guard policyEngine.shouldHonorModelRequestedApproval(for: decision.requestedTool),
+                      let requestedTool = decision.requestedTool else {
+                    throw BurnBarAgentLoopServiceError.unsupportedAction("Model requested approval for an unsupported or low-risk action.")
+                }
+                let approvalID = BurnBarApprovalID()
+                run.approvalRequest = BurnBarApprovalRequest(
+                    approvalID: approvalID,
+                    runID: run.runID,
+                    tool: requestedTool,
+                    title: "Approve \(requestedTool.rawValue)",
+                    message: decision.message ?? "BurnBar paused because the model requested approval before continuing.",
+                    requestedAt: Date()
+                )
+                try transition(&run, to: .awaitingApproval, activeApprovalID: approvalID)
+                try await appendJournalEvent(
+                    BurnBarRunJournalEvent(
+                        runID: run.runID,
+                        kind: .approvalRequested,
+                        phase: run.snapshot.phase,
+                        payload: try BurnBarJSONValue.fromEncodable(run.approvalRequest),
+                        emittedAt: Date()
+                    )
+                )
+            case .complete:
+                try await completeRunAndRecordUsage(for: &run)
+            case .fail:
+                let message = decision.message ?? "BurnBar agent loop reported an unrecoverable failure."
+                try transition(&run, to: .failed, errorMessage: message, activeApprovalID: nil)
+                try await appendJournalEvent(
+                    BurnBarRunJournalEvent(
+                        runID: run.runID,
+                        kind: .runFailed,
+                        phase: run.snapshot.phase,
+                        payload: .object(["message": .string(message)]),
+                        emittedAt: Date()
+                    )
+                )
+                try await writeCheckpoint(for: run)
+            }
+        } catch {
+            let recoveryDecision = recoveryEngine.decideLoopFailure(error)
+            run.lastRecoveryDecision = recoveryDecision
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: run.runID,
+                    kind: .recoveryDecided,
+                    phase: run.snapshot.phase,
+                    payload: try BurnBarJSONValue.fromEncodable(recoveryDecision),
+                    emittedAt: Date()
+                )
+            )
+            try transition(&run, to: .failed, errorMessage: recoveryDecision.userMessage, activeApprovalID: nil)
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: run.runID,
+                    kind: .runFailed,
+                    phase: run.snapshot.phase,
+                    payload: .object(["message": .string(recoveryDecision.userMessage)]),
+                    emittedAt: Date()
+                )
+            )
+            try await writeCheckpoint(for: run)
         }
     }
 
@@ -552,13 +814,22 @@ public actor BurnBarRunService {
         run.activeToolCallID = snapshot.callID
         run.lastToolCall = snapshot
         try transition(&run, to: .waitingOnCompanion)
+        try await appendJournalEvent(
+            BurnBarRunJournalEvent(
+                runID: run.runID,
+                kind: .toolDispatched,
+                phase: run.snapshot.phase,
+                payload: try BurnBarJSONValue.fromEncodable(snapshot),
+                emittedAt: Date()
+            )
+        )
     }
 
     private func applySuccessfulToolResult(
         _ callSnapshot: BurnBarToolCallSnapshot,
         to run: inout BurnBarManagedRun
     ) throws {
-        if run.plan.workflow != nil {
+        if run.intent.kind == .replaceStringInFile {
             switch run.workflowStep {
             case 0:
                 guard callSnapshot.tool == .readFile else {
@@ -584,40 +855,98 @@ public actor BurnBarRunService {
                     )
                 }
                 run.workflowStep = 2
+                run.companionToolCompleted = true
             default:
                 break
             }
             return
         }
 
-        if run.plan.toolKind != nil && run.plan.waitOnCompanion {
+        switch callSnapshot.tool {
+        case .readFile:
+            if let output = callSnapshot.output?.objectValue() {
+                run.lastReadFilePath = output["path"]?.stringValue()
+                run.workflowReadContent = output["content"]?.stringValue()
+            }
+        case .searchWorkspace:
+            if let output = callSnapshot.output?.objectValue(),
+               case .array(let matches)? = output["matches"] {
+                run.searchResultPaths = matches.compactMap { match in
+                    match.objectValue()?["path"]?.stringValue()
+                }
+            }
+        case .applyPatch, .runTerminal:
+            break
+        }
+
+        if run.intent.kind == .runTerminal || (run.intent.kind == .generic && run.intent.requestedTools.count == 1) {
             run.companionToolCompleted = true
         }
+
+        run.loopState = BurnBarAgentLoopState(
+            iterationCount: run.loopState.iterationCount,
+            lastDecision: run.loopState.lastDecision,
+            lastContextSnapshot: currentContextSnapshot(for: run),
+            lastExecutedTool: callSnapshot.tool,
+            terminalPending: false
+        )
     }
 
     private func handleToolFailure(
         error: BurnBarToolExecutionError,
         callSnapshot: BurnBarToolCallSnapshot,
         run: inout BurnBarManagedRun
-    ) throws {
-        switch error.code {
-        case .trustGated, .noWorkspace, .remoteUnsupported:
+    ) async throws {
+        let decision = recoveryEngine.decide(for: error, toolCall: callSnapshot, attempt: run.attempt)
+        run.lastRecoveryDecision = decision
+        try await appendJournalEvent(
+            BurnBarRunJournalEvent(
+                runID: run.runID,
+                kind: .recoveryDecided,
+                phase: run.snapshot.phase,
+                payload: try BurnBarJSONValue.fromEncodable(decision),
+                emittedAt: Date()
+            )
+        )
+
+        switch decision.action {
+        case .requestApproval:
             let approvalID = BurnBarApprovalID()
             run.approvalRequest = BurnBarApprovalRequest(
                 approvalID: approvalID,
                 runID: run.runID,
                 tool: callSnapshot.tool,
                 title: "Workspace action required for \(callSnapshot.tool.rawValue)",
-                message: error.message,
+                message: decision.userMessage,
                 requestedAt: Date()
             )
             try transition(&run, to: .awaitingApproval, activeApprovalID: approvalID)
-        case .applyFailed, .terminalFailed, .unknown:
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: run.runID,
+                    kind: .approvalRequested,
+                    phase: run.snapshot.phase,
+                    payload: try BurnBarJSONValue.fromEncodable(run.approvalRequest),
+                    emittedAt: Date()
+                )
+            )
+        case .retryTool:
+            try transition(&run, to: .planning, activeApprovalID: nil)
+        case .failRun:
             try transition(
                 &run,
                 to: .failed,
-                errorMessage: error.message,
+                errorMessage: decision.userMessage,
                 activeApprovalID: nil
+            )
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: run.runID,
+                    kind: .runFailed,
+                    phase: run.snapshot.phase,
+                    payload: .object(["message": .string(decision.userMessage)]),
+                    emittedAt: Date()
+                )
             )
         }
     }
@@ -625,10 +954,164 @@ public actor BurnBarRunService {
     private func completeRunAndRecordUsage(for run: inout BurnBarManagedRun) async throws {
         let usageEvent = makeUsageEvent(for: run, plan: run.plan)
         try transition(&run, to: .completed, activeApprovalID: nil)
+        try await appendJournalEvent(
+            BurnBarRunJournalEvent(
+                runID: run.runID,
+                kind: .runCompleted,
+                phase: run.snapshot.phase,
+                payload: try BurnBarJSONValue.fromEncodable(usageEvent),
+                emittedAt: Date()
+            )
+        )
+        try await writeCheckpoint(for: run)
         _ = try await usageRecorder.record(
             usageEvent,
             idempotencyKey: "run:\(run.runID.rawValue):attempt:\(run.attempt)"
         )
+    }
+
+    private func appendJournalBootstrap(for run: BurnBarManagedRun) async throws {
+        try await appendJournalEvent(
+            BurnBarRunJournalEvent(
+                runID: run.runID,
+                kind: .runCreated,
+                phase: run.snapshot.phase,
+                payload: try BurnBarJSONValue.fromEncodable(run.intent),
+                emittedAt: Date()
+            )
+        )
+        try await appendJournalEvent(
+            BurnBarRunJournalEvent(
+                runID: run.runID,
+                kind: .planGenerated,
+                phase: run.snapshot.phase,
+                payload: try BurnBarJSONValue.fromEncodable(run.planOutline),
+                emittedAt: Date()
+            )
+        )
+    }
+
+    private func appendJournalEvent(_ event: BurnBarRunJournalEvent) async throws {
+        try await runJournal.append(event)
+    }
+
+    private func writeCheckpoint(for run: BurnBarManagedRun) async throws {
+        try await runJournal.writeCheckpoint(
+            BurnBarRunJournalCheckpoint(
+                runID: run.runID,
+                clientID: run.snapshot.clientID,
+                sessionID: run.snapshot.sessionID,
+                phase: run.snapshot.phase,
+                modelID: run.snapshot.modelID,
+                originalPrompt: run.originalPrompt,
+                metadata: run.metadata,
+                intent: run.intent,
+                planOutline: run.planOutline,
+                attempt: run.attempt,
+                errorMessage: run.snapshot.errorMessage,
+                approvalRequest: run.approvalRequest,
+                approvalResolvedForAttempt: run.approvalResolvedForAttempt,
+                activeApprovalID: run.snapshot.activeApprovalID,
+                lastToolCall: run.lastToolCall,
+                lastToolCallID: run.lastToolCall?.callID,
+                workflowStep: run.workflowStep,
+                workflowReadContent: run.workflowReadContent,
+                companionToolCompleted: run.companionToolCompleted,
+                lastRecoveryDecision: run.lastRecoveryDecision,
+                loopState: run.loopState,
+                updatedAt: run.snapshot.updatedAt
+            )
+        )
+    }
+
+    private func restorePersistedRunsIfNeeded() async throws {
+        guard !restoredPersistedRuns else {
+            return
+        }
+
+        let checkpoints = try await runJournal.allCheckpoints()
+        guard !checkpoints.isEmpty else {
+            restoredPersistedRuns = true
+            return
+        }
+
+        for checkpoint in checkpoints {
+            guard runs[checkpoint.runID] == nil else {
+                continue
+            }
+
+            let route: BurnBarProviderRoute
+            do {
+                route = try await router.route(modelName: checkpoint.modelID)
+            } catch {
+                logger.error(
+                    "run_restore_skipped_route_failed",
+                    metadata: [
+                        "run_id": checkpoint.runID.rawValue,
+                        "model_id": checkpoint.modelID,
+                        "error": error.localizedDescription
+                    ]
+                )
+                continue
+            }
+
+            let retryRequest = BurnBarRunCreateRequest(
+                clientID: checkpoint.clientID,
+                sessionID: checkpoint.sessionID,
+                prompt: checkpoint.originalPrompt,
+                modelID: checkpoint.modelID,
+                metadata: checkpoint.metadata
+            )
+            let plan = BurnBarRunExecutionPlan(request: retryRequest)
+            let approvalID = checkpoint.activeApprovalID ?? checkpoint.approvalRequest?.approvalID
+            let restoredRun = BurnBarManagedRun(
+                runID: checkpoint.runID,
+                originalPrompt: checkpoint.originalPrompt,
+                modelID: checkpoint.modelID,
+                metadata: checkpoint.metadata,
+                intent: checkpoint.intent,
+                planOutline: checkpoint.planOutline,
+                attempt: checkpoint.attempt,
+                route: route,
+                plan: plan,
+                snapshot: BurnBarRunStateSnapshot(
+                    runID: checkpoint.runID,
+                    clientID: checkpoint.clientID,
+                    sessionID: checkpoint.sessionID,
+                    phase: checkpoint.phase,
+                    modelID: checkpoint.modelID,
+                    updatedAt: checkpoint.updatedAt,
+                    errorMessage: checkpoint.errorMessage,
+                    activeApprovalID: approvalID
+                ),
+                approvalRequest: checkpoint.approvalRequest,
+                approvalResolvedForAttempt: checkpoint.approvalResolvedForAttempt,
+                activeToolCallID: checkpoint.lastToolCallID,
+                lastToolCall: checkpoint.lastToolCall,
+                workflowStep: checkpoint.workflowStep,
+                workflowReadContent: checkpoint.workflowReadContent,
+                lastReadFilePath: checkpoint.loopState.lastContextSnapshot?.lastReadFilePath,
+                searchResultPaths: checkpoint.loopState.lastContextSnapshot?.searchResultPaths ?? [],
+                companionToolCompleted: checkpoint.companionToolCompleted,
+                lastRecoveryDecision: checkpoint.lastRecoveryDecision,
+                loopState: checkpoint.loopState
+            )
+            runs[checkpoint.runID] = restoredRun
+            runOrder.append(checkpoint.runID)
+
+            if let lastToolCall = checkpoint.lastToolCall {
+                await workspaceBridgeBroker.restoreActiveCall(lastToolCall)
+            }
+        }
+
+        var dedupedOrder: [BurnBarRunID] = []
+        var seen = Set<BurnBarRunID>()
+        for runID in runOrder where !seen.contains(runID) {
+            seen.insert(runID)
+            dedupedOrder.append(runID)
+        }
+        runOrder = dedupedOrder
+        restoredPersistedRuns = true
     }
 
     private func makeUsageEvent(for run: BurnBarManagedRun, plan: BurnBarRunExecutionPlan) -> BurnBarUsageEvent {
@@ -683,50 +1166,20 @@ private extension Dictionary where Key == String, Value == BurnBarJSONValue {
         guard case .number(let value)? = self[key] else { return nil }
         return Int(value)
     }
+}
 
-    func jsonValue(forKey key: String) -> BurnBarJSONValue? {
-        self[key]
-    }
-
-    func objectValue(forKey key: String) -> [String: BurnBarJSONValue]? {
-        guard case .object(let value)? = self[key] else { return nil }
+private extension BurnBarJSONValue {
+    func objectValue() -> [String: BurnBarJSONValue]? {
+        guard case .object(let value) = self else {
+            return nil
+        }
         return value
     }
 
-    func toolKindValue(forKey key: String) -> BurnBarToolKind? {
-        guard let rawValue = stringValue(forKey: key) else {
+    func stringValue() -> String? {
+        guard case .string(let value) = self else {
             return nil
         }
-        return BurnBarToolKind(rawValue: rawValue)
-    }
-
-    func replaceStringWorkflow() -> BurnBarReplaceStringWorkflow? {
-        if let workflowObject = objectValue(forKey: "workspaceWorkflow") ?? objectValue(forKey: "workflow"),
-           let workflow = workflowObject.toReplaceStringWorkflow() {
-            return workflow
-        }
-
-        if let path = stringValue(forKey: "filePath") ?? stringValue(forKey: "path"),
-           let from = stringValue(forKey: "from") ?? stringValue(forKey: "fromText"),
-           let to = stringValue(forKey: "to") ?? stringValue(forKey: "toText") {
-            return BurnBarReplaceStringWorkflow(path: path, from: from, to: to)
-        }
-
-        return nil
-    }
-}
-
-private extension Dictionary where Key == String, Value == BurnBarJSONValue {
-    func toReplaceStringWorkflow() -> BurnBarReplaceStringWorkflow? {
-        let type = stringValue(forKey: "type") ?? stringValue(forKey: "kind") ?? "replace_string_in_file"
-        guard type == "replace_string_in_file" else {
-            return nil
-        }
-        guard let path = stringValue(forKey: "path"),
-              let from = stringValue(forKey: "from"),
-              let to = stringValue(forKey: "to") else {
-            return nil
-        }
-        return BurnBarReplaceStringWorkflow(path: path, from: from, to: to)
+        return value
     }
 }

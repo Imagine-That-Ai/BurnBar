@@ -354,6 +354,24 @@ export function buildRunDetailRows(state: BurnBarState): BurnBarRunDetailRow[] {
     });
   }
 
+  if (detailForSelectedRun?.loopState?.lastDecision) {
+    rows.push({
+      id: "loop-iteration",
+      label: "Loop iteration",
+      value: String(detailForSelectedRun.loopState.iterationCount)
+    });
+    rows.push({
+      id: "loop-action",
+      label: "Loop action",
+      value: detailForSelectedRun.loopState.lastDecision.action
+    });
+    rows.push({
+      id: "loop-rationale",
+      label: "Loop rationale",
+      value: detailForSelectedRun.loopState.lastDecision.rationale
+    });
+  }
+
   if (detailForSelectedRun?.arbitration) {
     rows.push({
       id: "controller",

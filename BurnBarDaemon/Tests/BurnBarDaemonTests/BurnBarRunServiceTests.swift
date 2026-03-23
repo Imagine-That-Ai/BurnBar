@@ -367,6 +367,159 @@ final class BurnBarRunServiceTests: XCTestCase {
         XCTAssertEqual(usageRecords.first?.event.runID, createResponse.runID)
     }
 
+    func testGenericPromptUsesModelLoopToSearchThenComplete() async throws {
+        let harness = try makeHarness(
+            name: "generic-search-loop",
+            providerExecutor: BurnBarSequencedProviderExecutor(outputs: [
+                #"{"action":"complete","rationale":"The search results were enough to answer.","message":"Done."}"#
+            ])
+        )
+        let clientID = BurnBarClientID(rawValue: "loop-controller")
+        let sessionID = BurnBarSessionID(rawValue: "loop-session")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Loop Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "search for BurnBarRunService",
+                modelID: "glm-5"
+            )
+        )
+        XCTAssertEqual(created.phase, .waitingOnCompanion)
+
+        let pending = try await harness.runService.pollRuns(
+            BurnBarRunPollRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+        XCTAssertEqual(pending.pendingToolCalls.first?.tool, .searchWorkspace)
+
+        let claimed = try await harness.runService.executeTool(
+            BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+        _ = try await harness.runService.submitToolResult(
+            BurnBarToolResultSubmissionRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                runID: created.runID,
+                callID: try XCTUnwrap(claimed.toolCall?.callID),
+                succeeded: true,
+                output: .object([
+                    "matches": .array([
+                        .object([
+                            "path": .string("file:///workspace/BurnBarDaemon/Sources/BurnBarDaemon/BurnBarRunService.swift"),
+                            "line": .number(1),
+                            "character": .number(1),
+                            "preview": .string("public actor BurnBarRunService")
+                        ])
+                    ])
+                ]),
+                error: nil,
+                completedAt: Date()
+            )
+        )
+
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(detail.run?.phase, .completed)
+    }
+
+    func testGenericPromptUsesModelLoopToSearchThenReadThenComplete() async throws {
+        let harness = try makeHarness(
+            name: "generic-search-read-loop",
+            providerExecutor: BurnBarSequencedProviderExecutor(outputs: [
+                #"{"action":"read_file","requestedTool":"read_file","arguments":{"path":"file:///workspace/BurnBarDaemon/Sources/BurnBarDaemon/BurnBarRunService.swift"},"rationale":"Need to inspect the file after search."}"#,
+                #"{"action":"complete","rationale":"The file contents were enough to finish.","message":"Done."}"#
+            ])
+        )
+        let clientID = BurnBarClientID(rawValue: "loop-controller-2")
+        let sessionID = BurnBarSessionID(rawValue: "loop-session-2")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Loop Controller 2",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "search for BurnBarRunService and inspect the file",
+                modelID: "glm-5"
+            )
+        )
+        XCTAssertEqual(created.phase, .waitingOnCompanion)
+
+        let firstClaim = try await harness.runService.executeTool(
+            BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+        XCTAssertEqual(firstClaim.toolCall?.tool, .searchWorkspace)
+        _ = try await harness.runService.submitToolResult(
+            BurnBarToolResultSubmissionRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                runID: created.runID,
+                callID: try XCTUnwrap(firstClaim.toolCall?.callID),
+                succeeded: true,
+                output: .object([
+                    "matches": .array([
+                        .object([
+                            "path": .string("file:///workspace/BurnBarDaemon/Sources/BurnBarDaemon/BurnBarRunService.swift"),
+                            "line": .number(1),
+                            "character": .number(1),
+                            "preview": .string("public actor BurnBarRunService")
+                        ])
+                    ])
+                ]),
+                error: nil,
+                completedAt: Date()
+            )
+        )
+
+        let secondPending = try await harness.runService.pollRuns(
+            BurnBarRunPollRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+        XCTAssertEqual(secondPending.pendingToolCalls.first?.tool, .readFile)
+        let secondClaim = try await harness.runService.executeTool(
+            BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+        _ = try await harness.runService.submitToolResult(
+            BurnBarToolResultSubmissionRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                runID: created.runID,
+                callID: try XCTUnwrap(secondClaim.toolCall?.callID),
+                succeeded: true,
+                output: .object([
+                    "path": .string("file:///workspace/BurnBarDaemon/Sources/BurnBarDaemon/BurnBarRunService.swift"),
+                    "content": .string("public actor BurnBarRunService {}\n")
+                ]),
+                error: nil,
+                completedAt: Date()
+            )
+        )
+
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(detail.run?.phase, .completed)
+        XCTAssertEqual(detail.loopState?.iterationCount, 2)
+    }
+
     func testWorkspaceRefusalCreatesApprovalInAwaitingApprovalPhase() async throws {
         let harness = try makeHarness(name: "workflow-refusal")
         let clientID = BurnBarClientID(rawValue: "workflow-controller")
@@ -599,6 +752,115 @@ final class BurnBarRunServiceTests: XCTestCase {
         XCTAssertEqual(polled.pendingToolCalls.first?.tool, .readFile)
     }
 
+    func testRestartRestoresPendingToolCallFromCheckpoint() async throws {
+        let harness = try makeHarness(name: "restart-pending-tool")
+        let clientID = BurnBarClientID(rawValue: "restore-controller")
+        let originalSession = BurnBarSessionID(rawValue: "restore-session-1")
+        let reconnectSession = BurnBarSessionID(rawValue: "restore-session-2")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: originalSession,
+                clientName: "Restore Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: originalSession,
+                prompt: "Change a string in one file",
+                modelID: "glm-5",
+                metadata: [
+                    "workspaceWorkflow": .object([
+                        "type": .string("replace_string_in_file"),
+                        "path": .string("src/example.ts"),
+                        "from": .string("value = 1"),
+                        "to": .string("value = 2")
+                    ])
+                ]
+            )
+        )
+        XCTAssertEqual(created.phase, .waitingOnCompanion)
+
+        let restoredHarness = try makeHarness(
+            name: "restart-pending-tool-restored",
+            rootURL: harness.rootURL,
+            secretStore: harness.secretStore
+        )
+        _ = await restoredHarness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: reconnectSession,
+                clientName: "Restore Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+
+        let polled = try await restoredHarness.runService.pollRuns(
+            BurnBarRunPollRequest(clientID: clientID, sessionID: reconnectSession, runID: created.runID)
+        )
+        XCTAssertEqual(polled.runs.first?.phase, .waitingOnCompanion)
+        XCTAssertEqual(polled.pendingToolCalls.first?.tool, .readFile)
+    }
+
+    func testRestartRestoresPendingApprovalFromCheckpoint() async throws {
+        let harness = try makeHarness(name: "restart-pending-approval")
+        let clientID = BurnBarClientID(rawValue: "approval-controller")
+        let originalSession = BurnBarSessionID(rawValue: "approval-session-1")
+        let reconnectSession = BurnBarSessionID(rawValue: "approval-session-2")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: originalSession,
+                clientName: "Approval Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: originalSession,
+                prompt: "Need approval",
+                modelID: "glm-5",
+                metadata: [
+                    "requiresApproval": .bool(true),
+                    "toolKind": .string(BurnBarToolKind.runTerminal.rawValue),
+                    "toolArguments": .object([
+                        "command": .string("npm test")
+                    ])
+                ]
+            )
+        )
+        XCTAssertEqual(created.phase, .awaitingApproval)
+
+        let restoredHarness = try makeHarness(
+            name: "restart-pending-approval-restored",
+            rootURL: harness.rootURL,
+            secretStore: harness.secretStore
+        )
+        _ = await restoredHarness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: reconnectSession,
+                clientName: "Approval Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+
+        let detail = try await restoredHarness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(detail.run?.phase, .awaitingApproval)
+        XCTAssertEqual(detail.approvalRequest?.tool, .runTerminal)
+    }
+
     func testRunTerminalCompanionFlowCompletesAfterToolResultSubmission() async throws {
         let harness = try makeHarness(name: "terminal-companion-flow")
         let clientID = BurnBarClientID(rawValue: "terminal-controller")
@@ -772,12 +1034,17 @@ final class BurnBarRunServiceTests: XCTestCase {
         XCTAssertEqual(detail.arbitration?.activeClientID, observerID)
     }
 
-    private func makeHarness(name: String) throws -> BurnBarRunServiceHarness {
-        let rootURL = FileManager.default.temporaryDirectory
+    private func makeHarness(
+        name: String,
+        rootURL: URL? = nil,
+        secretStore: BurnBarInMemorySecretStore? = nil,
+        providerExecutor: any BurnBarProviderExecuting = BurnBarStubProviderExecutor()
+    ) throws -> BurnBarRunServiceHarness {
+        let rootURL = rootURL ?? FileManager.default.temporaryDirectory
             .appendingPathComponent("burnbar-run-service-\(name)-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
 
-        let secretStore = BurnBarInMemorySecretStore()
+        let secretStore = secretStore ?? BurnBarInMemorySecretStore()
         let configStore = BurnBarConfigStore(
             fileURL: rootURL.appendingPathComponent("provider-config.json"),
             catalog: BurnBarCatalogLoader.bundledCatalog,
@@ -788,6 +1055,11 @@ final class BurnBarRunServiceTests: XCTestCase {
             fileURL: rootURL.appendingPathComponent("usage-events.jsonl"),
             logger: BurnBarDaemonLogger(category: "run-service-tests")
         )
+        let runJournal = BurnBarRunJournal(
+            fileURL: rootURL.appendingPathComponent("run-journal.jsonl"),
+            checkpointsDirectoryURL: rootURL.appendingPathComponent("run-checkpoints", isDirectory: true),
+            logger: BurnBarDaemonLogger(category: "run-service-tests")
+        )
         let clientRegistry = BurnBarClientRegistry(logger: BurnBarDaemonLogger(category: "run-service-tests"))
         let runService = BurnBarRunService(
             router: BurnBarProviderRouter(
@@ -796,12 +1068,14 @@ final class BurnBarRunServiceTests: XCTestCase {
             ),
             usageRecorder: usageRecorder,
             clientRegistry: clientRegistry,
-            providerExecutor: BurnBarStubProviderExecutor(),
+            providerExecutor: providerExecutor,
+            runJournal: runJournal,
             logger: BurnBarDaemonLogger(category: "run-service-tests")
         )
 
         return BurnBarRunServiceHarness(
             rootURL: rootURL,
+            secretStore: secretStore,
             configStore: configStore,
             usageRecorder: usageRecorder,
             clientRegistry: clientRegistry,
@@ -824,6 +1098,7 @@ final class BurnBarRunServiceTests: XCTestCase {
 
 private struct BurnBarRunServiceHarness {
     let rootURL: URL
+    let secretStore: BurnBarInMemorySecretStore
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
     let clientRegistry: BurnBarClientRegistry
@@ -831,12 +1106,43 @@ private struct BurnBarRunServiceHarness {
 }
 
 private struct BurnBarStubProviderExecutor: BurnBarProviderExecuting {
-    func complete(prompt: String, route: BurnBarProviderRoute) async throws -> BurnBarProviderExecutionResult {
-        BurnBarProviderExecutionResult(
-            outputText: "stubbed response for \(route.resolvedModelID)",
+    func completeStructured(
+        _ request: BurnBarStructuredPromptRequest,
+        route: BurnBarProviderRoute
+    ) async throws -> BurnBarProviderExecutionResult {
+        let prompt = [request.systemPrompt, request.userPrompt]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
+        return BurnBarProviderExecutionResult(
+            outputText: #"{"action":"complete","rationale":"Stub executor completed the run.","message":"stubbed response for \#(route.resolvedModelID)"}"#,
             inputTokens: max(1, prompt.count / 4),
             outputTokens: 32,
             cacheReadTokens: 4
+        )
+    }
+}
+
+private actor BurnBarSequencedProviderExecutor: BurnBarProviderExecuting {
+    private var outputs: [String]
+
+    init(outputs: [String]) {
+        self.outputs = outputs
+    }
+
+    func completeStructured(
+        _ request: BurnBarStructuredPromptRequest,
+        route: BurnBarProviderRoute
+    ) async throws -> BurnBarProviderExecutionResult {
+        let output = outputs.isEmpty ? #"{"action":"fail","rationale":"No queued output.","message":"No queued output available."}"# : outputs.removeFirst()
+
+        let prompt = [request.systemPrompt, request.userPrompt]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
+        return BurnBarProviderExecutionResult(
+            outputText: output,
+            inputTokens: max(1, prompt.count / 4),
+            outputTokens: max(1, output.count / 4),
+            cacheReadTokens: 0
         )
     }
 }

@@ -587,17 +587,20 @@ public struct BurnBarRunDetailResponse: Codable, Hashable, Sendable {
     public let run: BurnBarRunStateSnapshot?
     public let approvalRequest: BurnBarApprovalRequest?
     public let pendingToolCall: BurnBarToolCallSnapshot?
+    public let loopState: BurnBarAgentLoopState?
     public let arbitration: BurnBarClientArbitrationSnapshot?
 
     public init(
         run: BurnBarRunStateSnapshot?,
         approvalRequest: BurnBarApprovalRequest? = nil,
         pendingToolCall: BurnBarToolCallSnapshot? = nil,
+        loopState: BurnBarAgentLoopState? = nil,
         arbitration: BurnBarClientArbitrationSnapshot? = nil
     ) {
         self.run = run
         self.approvalRequest = approvalRequest
         self.pendingToolCall = pendingToolCall
+        self.loopState = loopState
         self.arbitration = arbitration
     }
 }
