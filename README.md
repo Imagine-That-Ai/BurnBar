@@ -7,113 +7,124 @@
 
 </div>
 
-If you're the kind of person who has three AI agents running in parallel tabs and only checks the bill at the end of the month, this is for you. BurnBar sits quietly in your menu bar, reads the local session logs your agents leave behind, and gives you a live view of tokens burned and dollars spent across every provider you use.
+If you're the kind of person who has three AI agents running in parallel tabs and only checks the bill at the end of the month, this is for you. BurnBar sits quietly in your menu bar, reads the local session logs your agents leave behind, and gives you a live view of tokens burned and dollars spent across the providers you actually use.
 
-For analytics, it stays local-first: no API keys, no account, no cloud required. BurnBar also ships a Cursor extension shell backed by the local BurnBar daemon.
+For the paranoid-and-proud crowd: analytics stay **local-first**. No API keys, no account, no cloud — unless you *want* cloud. BurnBar also ships a **Cursor / VS Code extension** that talks to a small **local daemon** so your editor and your meter can be friends.
 
-Cursor docs:
+**Cursor deep dives** (for humans and agents):
 
 - [BurnBar + Cursor Agent Onboarding](docs/BURNBAR_CURSOR_AGENT_ONBOARDING.md)
 - [BurnBar Current Release Architecture](docs/BURNBAR_RELEASE_ARCHITECTURE.md)
 
-<!-- TODO: Add screenshot -->
+<!-- TODO: Add screenshot — ideally one popover, one dashboard, one "oh no" spend spike -->
 
 ---
 
 ## What it does
 
-- **Lives in your menu bar** — no Dock icon, no windows stealing focus. Click the icon when you're curious, ignore it when you're not.
-- **Reads local logs directly** — parses session files from Claude Code, Factory/Droid, Codex, Kimi, and more. No tokens or credentials needed.
-- **Tracks cost and token volume** — today, this week, this month. Toggle between dollar view and raw token counts.
-- **Smart insights** — the InsightEngine notices patterns: spend up 40% vs yesterday, cache hits covering most of your tokens, first session with a new model. Surfaced as brief cards, not a wall of charts.
-- **Per-provider breakdown** — see exactly which agent is costing the most and how that shifts day over day.
-- **Daily digest** — optional notification at a time you pick, summarizing the day's usage in a sentence or two.
-- **Chat panel** — ask questions about your own usage data directly inside the dashboard.
-- **Optional cloud sync** — Sign in with Apple and your totals follow you across machines. Firebase-backed, fully opt-in, and you can turn it off without losing anything local.
-- **Optional Cursor connector** — bring selected Z.ai and MiniMax models into Cursor through a local router and public tunnel, with route logging so you can verify exactly where requests went.
+- **Lives in your menu bar** — no Dock icon, no windows stealing focus. Click when you're curious; forget it exists when you're not.
+- **Reads local logs directly** — parses session files from Claude Code, Factory/Droid, Codex, Kimi, and friends. Your API keys never leave the providers you already trust; BurnBar just reads crumbs they dropped on disk.
+- **Tracks cost and token volume** — today, this week, this month. Flip between "how many dollars" and "how many tokens" like the sophisticated chaos goblin you are.
+- **Smart insights** — the InsightEngine notices patterns: spend up 40% vs yesterday, cache hits doing heavy lifting, first date with a shiny new model. Little cards, not a spreadsheet cosplaying as a product.
+- **Per-provider breakdown** — see which agent is winning the "most expensive hobby" award and whether it's gaining on yesterday's champion.
+- **Daily digest** — optional notification at a time you pick, because future-you deserves a single sentence of truth instead of a billing surprise.
+- **Chat panel** — ask questions about *your* usage data inside the dashboard. Meta? A little. Useful? Also a little. Delightful? We think so.
+- **Optional cloud sync** — sign in with **Google or Apple** (Firebase under the hood), and your totals can follow you across Macs. Fully opt-in; flip it off anytime and your local world keeps spinning.
+- **Optional Cursor connector** — route selected **Z.ai** and **MiniMax** models through a local OpenAI-shaped router plus a tunnel, because Cursor is picky about BYOK targets. BurnBar logs those requests so you know where the bits actually went.
 
 ---
 
-## Provider Support
+## Provider support
 
-| Provider | Status | Log Location | Confidence |
+| Provider | Status | Log location | Confidence |
 |---|---|---|---|
 | Claude Code | Supported | `~/.claude/projects/*.jsonl` | Exact |
 | Factory (Droid) | Supported | `~/.factory/sessions/*.jsonl` | Exact |
 | Codex (OpenAI) | Partial | `~/.codex/state_5.sqlite` | Estimated |
 | Kimi (Moonshot) | Partial | `~/.kimi/sessions/*.jsonl` | Estimated |
-| Zai | Partial | via Factory sessions | Estimated |
+| Z.ai | Partial | via Factory sessions | Estimated |
 | MiniMax | Partial | via Factory sessions | Estimated |
 | Copilot | Planned | — | — |
 | Aider | Planned | — | — |
 | Cursor connector | Supported (optional) | Cursor BYOK + BurnBar local router | Exact |
 
-**Exact** means token counts come directly from the provider's log format.
-**Estimated** means some heuristics are involved — for example, Codex stores total tokens without an input/output split, so BurnBar assumes 50/50. Costs are always calculated from public pricing tables, never from your billing account.
+**Exact** = the log format actually told us the numbers; we're not guessing.
 
-### Cursor Agent Provider Scope
+**Estimated** = we applied math and hope — e.g. Codex may only give totals without an input/output split, so BurnBar shrugs and assumes 50/50. Costs everywhere use **public pricing tables**, not your invoice. Good for trends; bad for tax audits.
 
-Current routed Cursor scope is narrower than the analytics table above.
+### Cursor agent provider scope (narrower on purpose)
 
-- Supported now: `Z.ai`, `MiniMax`
-- Intentionally unsupported for routed Cursor use: `Kimi`, `pony-alpha-2`, hidden/internal catalog models
-- Current public catalog models for routed Cursor use: `glm-5-turbo`, `glm-5`, `minimax-m2.7-highspeed`
+Routed Cursor traffic is a smaller club than the table above.
 
-The current Cursor sidebar is still a daemon/workspace shell. It shows health, catalog state, workspace state, and recovery guidance, but it does not yet expose full run controls from the sidebar.
+- **In:** `Z.ai`, `MiniMax`
+- **Out (on purpose):** `Kimi`, `pony-alpha-2`, hidden/internal catalog models, browser tools
+- **Public catalog examples for routing:** `glm-5-turbo`, `glm-5`, `minimax-m2.7-highspeed`
 
----
-
-## BurnBar In Cursor
-
-The current BurnBar Cursor release is local-first and daemon-backed.
-
-What you get today:
-
-- a BurnBar activity bar entry with `Health`, `Runs`, and `Run Detail`
-- reconnect, refresh, and daemon repair actions
-- workspace capability detection for local, remote, read-only, virtual, and restricted modes
-- inline recovery copy for common daemon and workspace failures
-
-Restricted-mode behavior in the shipped extension:
-
-- Available: `read_file`, `search_workspace`, health, catalog state, projected run state
-- Gated: `apply_patch`, `run_terminal`
-
-Fast start:
-
-1. Open BurnBar on the same macOS machine as Cursor.
-2. Install or repair the daemon in BurnBar.
-3. Add Z.ai or MiniMax keys if you want routed Cursor models.
-4. Install the BurnBar extension in Cursor.
-5. Open a folder or workspace, then open the BurnBar sidebar.
+The sidebar today is honest about being a **shell**: health, catalog, workspace state, recovery copy — the full run-control red carpet is still rolling out.
 
 ---
 
-## Cursor Provider Routing
+## BurnBar in Cursor (and VS Code)
 
-BurnBar can also route supported provider models into Cursor without hand-editing Cursor state or running your own proxy.
+The extension is **local-first** and **daemon-backed**. Think of it as a polite sidecar, not a second brain.
 
-What it does
+You get:
 
-- Stores your Z.ai and MiniMax API keys in the local macOS Keychain
-- Lets you choose exactly which model IDs Cursor should see
-- Starts a local OpenAI-compatible router
-- Opens a public HTTPS tunnel because Cursor blocks `localhost` and private-IP BYOK targets
-- Writes Cursor's custom-model BYOK settings for you
-- Logs routed requests back into BurnBar as `BurnBar Cursor Connector` usage
+- a BurnBar activity bar home with **Health**, **Runs**, and **Run Detail**
+- **Reconnect**, **Refresh**, and **Repair Daemon** when the universe is misaligned
+- workspace capability detection (local, remote, read-only, virtual, restricted) so the UI doesn't lie to you
+- inline recovery prose for the usual failure modes — socket missing, timeout, protocol mismatch, "did you install the daemon?", etc.
 
-v1 scope
+**Restricted workspaces** (Cursor/VS Code untrusted mode):
 
-- Supported providers: `Z.ai`, `MiniMax`
-- Intentionally excluded: `Kimi`, `pony-alpha-2`
-- Current tunnel path: Cloudflare quick tunnel for fastest setup
+- **Allowed:** `read_file`, `search_workspace`, health, catalog state, projected run state
+- **Gated until trusted:** `apply_patch`, `run_terminal`
 
-What you need
+**Fast start** (five steps, zero mysticism):
 
-1. Install `cloudflared`
-2. Open `Settings > Providers > Connect Cursor`
-3. Paste keys, choose models, and press `Connect`
-4. Keep BurnBar running while Cursor uses the connector
+1. Run BurnBar on the same Mac as the editor.
+2. Install or repair the daemon from BurnBar.
+3. Add Z.ai / MiniMax keys if you want routed models.
+4. Install the BurnBar extension from `extensions/burnbar` (build with `npm run build` in that folder, then load the unpacked extension in your editor of choice).
+5. Open a folder or workspace, then open the BurnBar sidebar and say hi.
+
+---
+
+## Cursor provider routing (the tunnel plot twist)
+
+BurnBar can wire supported models into Cursor without you hand-editing ghost JSON or running a sketchy proxy you found at 2am.
+
+The play:
+
+- Keys live in the **macOS Keychain** (where keys belong).
+- You pick which model IDs Cursor should believe in.
+- A local **OpenAI-compatible router** wakes up.
+- A **public HTTPS tunnel** appears because Cursor blocks `localhost` and private IPs for BYOK — not our rule, just our problem to solve.
+- BurnBar writes Cursor's custom-model BYOK settings for you.
+- Routed usage shows up as **`BurnBar Cursor Connector`** so your dashboard and your conscience stay aligned.
+
+**v1 scope:** `Z.ai`, `MiniMax`. **Tunnel flavor:** Cloudflare quick tunnel (bring `cloudflared`).
+
+**Checklist:**
+
+1. Install `cloudflared` (Homebrew is fine; the internet is full of opinions).
+2. BurnBar → **Settings → Providers → Connect Cursor**
+3. Paste keys, pick models, mash **Connect**
+4. Leave BurnBar running while Cursor chats through the connector — it's doing real work under the hood.
+
+---
+
+## Repository map (yes, the folder is still named AgentLens)
+
+The Mac app sources live under **`AgentLens/`** because renaming folders is a personality test Xcode sometimes fails. The product name is **BurnBar**; the bundle is **`com.burnbar.app`**. Roll with it.
+
+| Area | What lives there |
+|---|---|
+| `AgentLens/` | SwiftUI app: menu bar, dashboard, settings, parsers, GRDB store |
+| `BurnBarCore/` | Shared types and RPC contracts for app ↔ daemon |
+| `BurnBarDaemon/` | Local JSON-RPC daemon + executable wrapper |
+| `extensions/burnbar/` | TypeScript extension for Cursor / VS Code |
+| `docs/` | Architecture, onboarding, roadmap, and other words we meant |
 
 ---
 
@@ -122,20 +133,21 @@ What you need
 - macOS 14 Sonoma or later
 - Xcode 16+
 - Swift 5.10
+- Node + npm (only if you're hacking the editor extension)
 
 ---
 
-## Build
+## Build (Mac app)
 
 ```bash
-git clone https://github.com/your-org/BurnBar.git
+git clone https://github.com/Ajnunezg/BurnBar.git
 cd BurnBar
 open BurnBar.xcodeproj
 ```
 
-Hit `Cmd+R`. The app will appear in your menu bar.
+Hit **⌘R**. The app shows up in your menu bar like a well-behaved utility.
 
-If you prefer xcodegen:
+**xcodegen** fans:
 
 ```bash
 brew install xcodegen
@@ -143,26 +155,47 @@ xcodegen generate
 open BurnBar.xcodeproj
 ```
 
-The app runs as `LSUIElement` — no Dock icon, no main window on launch. Everything is in the menu bar popover and the dashboard window that opens from it.
+`LSUIElement` means: no Dock icon, no dramatic launch window — popover first, dashboard when you ask for it.
+
+**Optional:** add your Apple **DEVELOPMENT_TEAM** in `project.yml` under the BurnBar target if Keychain groups (Firebase / Google Sign-In) make Xcode grumpy about signing.
 
 ---
 
-## Cloud Sync (optional)
+## Build (editor extension)
 
-BurnBar works completely offline out of the box. Cloud sync is an opt-in layer for people who want their totals to follow them across machines.
+```bash
+cd extensions/burnbar
+npm install
+npm run build
+```
 
-**How it works:**
+Load the `extensions/burnbar` folder as an unpacked extension in Cursor or VS Code.
 
-- **Primary store:** GRDB SQLite — local, fast, always-on
-- **Sync store:** Firestore under `users/{uid}/usage/{deviceId}_{usageId}`
-- **Auth:** Sign in with Apple via Firebase Auth
-- **Device identity:** A random UUID in Keychain that survives reinstalls
+**Tests** (for the statistically responsible):
+
+```bash
+cd extensions/burnbar
+npm run test:ci   # unit + replay + extension-host
+```
+
+---
+
+## Cloud sync (optional)
+
+BurnBar is a happy offline hermit by default. Cloud sync is for people who use more than one Mac and would like their totals to agree with each other.
+
+**Pieces:**
+
+- **Primary store:** GRDB + SQLite — fast, local, yours
+- **Sync store:** Firestore at `users/{uid}/usage/{deviceId}_{usageId}`
+- **Auth:** Firebase Auth — **Google** and/or **Sign in with Apple**
+- **Device identity:** random UUID in Keychain (survives reinstalls, judges silently)
 
 **Setup:**
 
-1. Create a project in [Firebase Console](https://console.firebase.google.com) and add a macOS app with bundle ID `com.burnbar.app`.
-2. Enable **Authentication > Sign-in method > Apple**.
-3. Create a Firestore database (production mode) and deploy these security rules:
+1. Create a [Firebase](https://console.firebase.google.com) project and add a **macOS** app with bundle ID `com.burnbar.app`.
+2. Enable **Authentication** providers: **Google** and **Apple** (and whatever else you need for your own sanity).
+3. Create a Firestore database (production mode) and deploy rules like:
 
 ```
 rules_version = '2';
@@ -175,33 +208,35 @@ service cloud.firestore {
 }
 ```
 
-4. Download `GoogleService-Info.plist` and place it at `AgentLens/Resources/GoogleService-Info.plist`. This file is gitignored — never commit it. See `GoogleService-Info.plist.example` for the expected shape.
+4. Download `GoogleService-Info.plist` → `AgentLens/Resources/GoogleService-Info.plist` (gitignored; never commit). See `AgentLens/Resources/GoogleService-Info.plist.example` for the shape of the thing.
+5. Configure the **Google Sign-In** URL scheme / OAuth client as Firebase/Google Cloud demand (the app ships `BurnBar-Info.plist` entries for the bundled client; yours will differ in a fork).
+6. `xcodegen generate` and rebuild.
 
-5. Run `xcodegen generate` and rebuild.
-
-**Privacy note:** Sync data includes project directory names and model names from your sessions. You can disable cloud sync at any time in **Settings > Account** without losing any local data.
+**Privacy:** synced payloads can include **project directory names** and **model names** from sessions. You can disable sync in **Settings → Account** without sacrificing local history.
 
 ---
 
-## Limitations
+## Limitations (we're not going to surprise you)
 
-Worth being upfront about:
-
-- **Costs are estimates.** Calculated from public pricing tables, not your actual invoices. Good for patterns and relative comparison, not for reconciling your credit card statement.
-- **Estimated providers use heuristics.** If a log format doesn't expose input vs. output token counts separately, BurnBar splits them proportionally. Zai and MiniMax are detected by model name inside Factory session logs.
-- **Menu bar only by design.** There's no persistent main window — that's intentional. The dashboard opens on demand and closes when you're done.
-- **Cloud totals cover the last 90 days** of uploaded data. Everything older stays local.
+- **Costs are estimates** from public price lists, not your accounting software. Great for vibes and trends; don't use them to fight finance.
+- **Heuristics happen** wherever logs are shy about splits. Z.ai / MiniMax in analytics often arrive via Factory session fingerprints — clever, not clairvoyant.
+- **Menu bar first** — no always-on main window by default. That's a feature for people who already have seventeen windows.
+- **Cloud window:** uploaded totals emphasize roughly the **last 90 days**; ancient history stays local, like your old Xcode archives.
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for a full walkthrough of the project structure, how to add a new provider parser, coding conventions, and how to test changes.
+[CONTRIBUTING.md](CONTRIBUTING.md) is the tour guide: folder layout, how to teach BurnBar a new parser, `DesignSystem` discipline, and how to click "refresh" like a pro.
 
-The short version: parsers conform to `LogParser`, run in async contexts, must be `Sendable`, and should return an empty array gracefully when the log directory doesn't exist — never crash on missing data.
+**TL;DR for parsers:** conform to `LogParser`, stay `Sendable`, return `[]` when folders ghost you — never throw a tantrum on missing files.
+
+**Design tokens:** [DESIGN.md](DESIGN.md) — adaptive colors, SF Pro Rounded, and the botanical cream agenda.
+
+**Where we're headed:** [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ---
 
 ## License
 
-<!-- TODO: Add license -->
+No root `LICENSE` file yet — we're in the awkward "figure out the legal bit" phase. The editor extension's `package.json` currently says `UNLICENSED`; treat that as a placeholder until we pick something human-readable.

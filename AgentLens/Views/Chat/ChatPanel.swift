@@ -6,99 +6,169 @@ struct ChatPanel: View {
     @Bindable var controller: ChatSessionController
     var dataStore: DataStore
     var settingsManager: SettingsManager
+    /// Overlay geometry for clamping drag offset (same space as `GeometryReader` wrapping the chat stack).
+    var containerSize: CGSize
+    var edgePadding: CGFloat = 20
     var onClose: () -> Void
 
     @State private var brief = InsightBriefSnapshot()
     @State private var panelResizeStart: CGFloat?
     @State private var bottomResizeStart: CGFloat?
+    @State private var cornerResizeStart: CGSize?
+    @State private var headerDragStart: CGSize?
+
+    private let cornerResizeHandle: CGFloat = 18
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().background(DesignSystem.Colors.border)
+            Divider().opacity(0.35)
             content
-            Divider().background(DesignSystem.Colors.border)
+            if showInlineAgentContext {
+                inlineAgentContextRibbon
+            }
+            Divider().opacity(0.35)
             inputRow
         }
-        .frame(width: panelWidth, height: panelHeight)
+        .frame(width: controller.panelWidth, height: controller.panelHeight)
         .background {
             ZStack {
-                DesignSystem.Colors.surface.opacity(0.96)
-                LinearGradient(
-                    colors: [
-                        DesignSystem.Colors.coral.opacity(0.05),
-                        Color.clear,
-                        DesignSystem.Colors.teal.opacity(0.04)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.4))
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                DesignSystem.Colors.whimsy.opacity(0.06),
+                                Color.clear,
+                                DesignSystem.Colors.ember.opacity(0.04)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                .stroke(DesignSystem.Colors.border.opacity(0.55), lineWidth: 0.5)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.18),
+                            DesignSystem.Colors.whimsy.opacity(0.18),
+                            DesignSystem.Colors.border.opacity(0.35)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.75
+                )
         )
-        .shadow(color: DesignSystem.Colors.background.opacity(0.35), radius: 28, y: 12)
-        .overlay(alignment: controller.dock == .leading ? .trailing : .leading) {
-            if controller.dock != .bottom {
-                Color.clear
-                    .frame(width: 10)
-                    .contentShape(Rectangle())
-                    .highPriorityGesture(
-                        DragGesture(minimumDistance: 2)
-                            .onChanged { g in
-                                if panelResizeStart == nil { panelResizeStart = controller.panelWidth }
-                                let base = panelResizeStart ?? 320
-                                let delta = controller.dock == .leading ? g.translation.width : -g.translation.width
-                                controller.panelWidth = min(520, max(260, base + delta))
-                            }
-                            .onEnded { _ in panelResizeStart = nil }
-                    )
-            }
+        .shadow(color: Color.black.opacity(0.12), radius: 32, y: 14)
+        .overlay(alignment: .trailing) {
+            Color.clear
+                .frame(width: 10)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 2)
+                        .onChanged { g in
+                            if panelResizeStart == nil { panelResizeStart = controller.panelWidth }
+                            let base = panelResizeStart ?? 400
+                            controller.panelWidth = min(720, max(260, base + g.translation.width))
+                        }
+                        .onEnded { _ in
+                            panelResizeStart = nil
+                            controller.persistPanelGeometry()
+                        }
+                )
         }
-        .overlay(alignment: .top) {
-            if controller.dock == .bottom {
-                Color.clear
-                    .frame(height: 10)
-                    .contentShape(Rectangle())
-                    .highPriorityGesture(
-                        DragGesture(minimumDistance: 2)
-                            .onChanged { g in
-                                if bottomResizeStart == nil { bottomResizeStart = controller.panelHeight }
-                                let base = bottomResizeStart ?? 280
-                                controller.panelHeight = min(520, max(200, base - g.translation.height))
+        .overlay(alignment: .bottom) {
+            Color.clear
+                .frame(height: 10)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 2)
+                        .onChanged { g in
+                            if bottomResizeStart == nil { bottomResizeStart = controller.panelHeight }
+                            let base = bottomResizeStart ?? 440
+                            controller.panelHeight = min(900, max(200, base + g.translation.height))
+                        }
+                        .onEnded { _ in
+                            bottomResizeStart = nil
+                            controller.persistPanelGeometry()
+                        }
+                )
+        }
+        .overlay(alignment: .bottomTrailing) {
+            Color.clear
+                .frame(width: cornerResizeHandle, height: cornerResizeHandle)
+                .contentShape(Rectangle())
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 2)
+                        .onChanged { g in
+                            if cornerResizeStart == nil {
+                                cornerResizeStart = CGSize(width: controller.panelWidth, height: controller.panelHeight)
                             }
-                            .onEnded { _ in bottomResizeStart = nil }
-                    )
-            }
+                            let base = cornerResizeStart ?? CGSize(width: 400, height: 440)
+                            controller.panelWidth = min(720, max(260, base.width + g.translation.width))
+                            controller.panelHeight = min(900, max(200, base.height + g.translation.height))
+                        }
+                        .onEnded { _ in
+                            cornerResizeStart = nil
+                            controller.persistPanelGeometry()
+                        }
+                )
         }
         .onAppear {
             brief = InsightBriefSnapshot.build(from: dataStore)
             controller.loadPersistedMessages()
         }
         .onChange(of: dataStore.lastRefresh) { _, _ in
-            brief = InsightBriefSnapshot.build(from: dataStore)
+            Task { @MainActor in
+                brief = InsightBriefSnapshot.build(from: dataStore)
+            }
         }
-    }
-
-    private var panelWidth: CGFloat {
-        switch controller.dock {
-        case .bottom: return 520
-        case .leading, .trailing: return controller.panelWidth
-        }
-    }
-
-    private var panelHeight: CGFloat {
-        switch controller.dock {
-        case .bottom: return controller.panelHeight
-        case .leading, .trailing: return 560
+        .onChange(of: containerSize) { _, new in
+            controller.reclampPanelOffset(container: new, padding: edgePadding)
         }
     }
 
     private var header: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 13, weight: .medium))
+                Text("Chat")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .frame(minWidth: 76, alignment: .leading)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .help("Drag to move")
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 4)
+                    .onChanged { g in
+                        if headerDragStart == nil { headerDragStart = controller.panelFloatOffset }
+                        let start = headerDragStart ?? .zero
+                        controller.applyClampedPanelDrag(
+                            start: start,
+                            translation: g.translation,
+                            container: containerSize,
+                            padding: edgePadding
+                        )
+                    }
+                    .onEnded { _ in
+                        headerDragStart = nil
+                        controller.persistPanelGeometry()
+                    }
+            )
+
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11))
                 .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -109,7 +179,9 @@ struct ChatPanel: View {
                 .onSubmit { controller.performSearch() }
                 .onChange(of: controller.searchQuery) { _, new in
                     if new.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        controller.searchResults = []
+                        Task { @MainActor in
+                            controller.searchResults = []
+                        }
                         return
                     }
                     let q = new
@@ -124,14 +196,6 @@ struct ChatPanel: View {
                 ProgressView().controlSize(.small)
             }
 
-            Picker("Dock", selection: $controller.dock) {
-                ForEach(ChatPanelDock.allCases) { d in
-                    Text(d.label).tag(d)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 200)
-
             Button {
                 onClose()
             } label: {
@@ -143,6 +207,7 @@ struct ChatPanel: View {
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(Color.white.opacity(0.02))
     }
 
     private var content: some View {
@@ -167,10 +232,6 @@ struct ChatPanel: View {
                                     .padding(.horizontal, DesignSystem.Spacing.sm)
                             }
 
-                            if controller.messages.isEmpty && settingsManager.conversationIndexingEnabled {
-                                insightSection
-                            }
-
                             ForEach(controller.messages) { msg in
                                 ChatMessageView(
                                     message: msg,
@@ -184,8 +245,10 @@ struct ChatPanel: View {
                     }
                     .onChange(of: controller.messages.count) { _, _ in
                         if let last = controller.messages.last {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                proxy.scrollTo(last.id, anchor: .bottom)
+                            Task { @MainActor in
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    proxy.scrollTo(last.id, anchor: .bottom)
+                                }
                             }
                         }
                     }
@@ -216,8 +279,26 @@ struct ChatPanel: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(DesignSystem.Spacing.sm)
-                        .background(DesignSystem.Colors.surfaceElevated.opacity(0.85))
+                        .background {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                                    .fill(.thinMaterial)
+                                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                                    .fill(DesignSystem.Colors.surface.opacity(0.3))
+                            }
+                        }
                         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.1), DesignSystem.Colors.border.opacity(0.3)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 0.5
+                                )
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -226,57 +307,79 @@ struct ChatPanel: View {
         }
     }
 
-    private var insightSection: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            Text("Brief")
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-                .textCase(.uppercase)
+    /// Agent / session context: shown as plain inline text above the composer (not boxed at the top of the scroll).
+    private var showInlineAgentContext: Bool {
+        controller.messages.isEmpty
+            && settingsManager.conversationIndexingEnabled
+            && controller.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && brief.hasInlineContent
+    }
 
+    private var inlineAgentContextRibbon: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
             if let w = brief.whereLeftOff {
-                InsightBriefCard(
-                    title: "Where you left off",
-                    bodyText: w,
-                    icon: "arrow.turn.down.right",
-                    accent: DesignSystem.Colors.teal
-                ) {
+                Button {
                     controller.inputText = "Tell me more about my work on \(brief.whereLeftOffProject ?? "this project")"
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Where you left off")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                        Text(w)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
+                .buttonStyle(.plain)
             }
 
             if let title = brief.heaviestTaskTitle, let cost = brief.heaviestTaskCost, let proj = brief.heaviestTaskProject {
-                InsightBriefCard(
-                    title: "Heaviest task this week",
-                    bodyText: "\(cost.formatAsCost()) on \(proj) — \(title)",
-                    icon: "flame.fill",
-                    accent: DesignSystem.Colors.coral
-                ) {
+                Button {
                     controller.inputText = "What did I spend on \(title) this week?"
+                } label: {
+                    Text("Heaviest this week: \(cost.formatAsCost()) on \(proj) — \(title)")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .buttonStyle(.plain)
             }
 
             if let m = brief.modelShiftHeadline {
-                InsightBriefCard(
-                    title: "New model activity",
-                    bodyText: m,
-                    icon: "sparkles",
-                    accent: DesignSystem.Colors.purple
-                ) {
+                Button {
                     controller.inputText = "Tell me more about my new model usage"
+                } label: {
+                    Text(m)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .buttonStyle(.plain)
             }
 
             if let inc = brief.incompleteHint {
-                InsightBriefCard(
-                    title: "Open thread",
-                    bodyText: inc,
-                    icon: "ellipsis.bubble",
-                    accent: DesignSystem.Colors.gold
-                ) {
+                Button {
                     controller.inputText = "Help me continue where I left off"
+                } label: {
+                    Text(inc)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .buttonStyle(.plain)
             }
         }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm)
     }
 
     private var inputRow: some View {
@@ -285,12 +388,30 @@ struct ChatPanel: View {
                 .textFieldStyle(.plain)
                 .font(DesignSystem.Typography.body)
                 .lineLimit(1...5)
+                .submitLabel(.send)
+                .onSubmit {
+                    Task { await controller.send() }
+                }
                 .padding(DesignSystem.Spacing.sm)
-                .background(DesignSystem.Colors.background.opacity(0.9))
-                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                .background {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                            .fill(DesignSystem.Colors.surface.opacity(0.3))
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .stroke(DesignSystem.Colors.border.opacity(0.6), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [DesignSystem.Colors.whimsy.opacity(0.3), DesignSystem.Colors.border.opacity(0.3)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.75
+                        )
                 )
 
             VStack(spacing: 6) {

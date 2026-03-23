@@ -18,6 +18,7 @@ export type BurnBarRPCMethod =
   | "workspace.toolResult"
   | "approval.respond"
   | "client.attach"
+  | "client.claimControl"
   | "client.detach";
 export type BurnBarConnectionStatus =
   | "connecting"
@@ -152,6 +153,11 @@ export interface BurnBarClientAttachRequest {
 export interface BurnBarClientAttachResponse {
   attachedClientID: string;
   negotiatedProtocolVersion?: number | null;
+}
+
+export interface BurnBarClientClaimControlRequest {
+  clientID: string;
+  sessionID: string;
 }
 
 export interface BurnBarClientDetachRequest {

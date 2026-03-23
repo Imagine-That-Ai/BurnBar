@@ -34,6 +34,16 @@ struct MenuBarPopoverView: View {
         aggregator?.lastRefresh ?? dataStore.lastRefresh
     }
 
+    private func runScan() {
+        guard let agg = aggregator else { return }
+        Task { await agg.refreshAll() }
+    }
+
+    private func runRecount() {
+        guard let agg = aggregator else { return }
+        Task { await agg.recountAll() }
+    }
+
     var body: some View {
         Group {
             if !hasOnboarded && dataStore.usages.isEmpty, aggregator != nil {
@@ -62,7 +72,8 @@ struct MenuBarPopoverView: View {
         .frame(width: 340)
         .background(DesignSystem.Colors.background)
         .onChange(of: isScanning) { oldValue, newValue in
-            if oldValue && !newValue {
+            guard oldValue, !newValue else { return }
+            Task { @MainActor in
                 withAnimation(DesignSystem.Animation.gentle) {
                     showScanFlash = true
                 }
@@ -74,7 +85,9 @@ struct MenuBarPopoverView: View {
             }
         }
         .onAppear {
-            listAppeared = true
+            Task { @MainActor in
+                listAppeared = true
+            }
         }
     }
 
@@ -92,12 +105,16 @@ struct MenuBarPopoverView: View {
                 Spacer()
 
                 GlassIconButton(
+                    icon: "arrow.counterclockwise",
+                    action: runRecount
+                )
+                .disabled(isScanning || aggregator == nil)
+                .help("Recount from scratch (clear board and scan again)")
+
+                GlassIconButton(
                     icon: isScanning ? "arrow.triangle.2.circlepath" : "arrow.clockwise",
                     isLoading: isScanning,
-                    action: {
-                        guard let agg = aggregator else { return }
-                        Task { await agg.refreshAll() }
-                    }
+                    action: runScan
                 )
                 .help("Scan for new sessions")
             }
@@ -139,9 +156,9 @@ struct MenuBarPopoverView: View {
     private func freshnessColor(at now: Date) -> Color {
         guard let last = lastRefreshDate else { return DesignSystem.Colors.textMuted }
         let elapsed = now.timeIntervalSince(last)
-        if elapsed < 60 { return DesignSystem.Colors.success }        // green — just updated
-        if elapsed < 900 { return DesignSystem.Colors.textSecondary }  // normal — within 15 min
-        return DesignSystem.Colors.warning                              // amber — stale
+        if elapsed < 60 { return DesignSystem.Colors.success }
+        if elapsed < 900 { return DesignSystem.Colors.textSecondary }
+        return DesignSystem.Colors.warning
     }
 
     private func freshnessLabel(at now: Date) -> String {
@@ -158,7 +175,6 @@ struct MenuBarPopoverView: View {
 
     private var summaryView: some View {
         VStack(spacing: DesignSystem.Spacing.md) {
-            // Hero cost
             HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
                 Text(settingsManager.formatUsageMetric(cost: dataStore.totalCostToday, tokens: dataStore.totalTokensToday))
                     .font(DesignSystem.Typography.monoLarge)
@@ -184,7 +200,6 @@ struct MenuBarPopoverView: View {
                 Spacer()
             }
 
-            // Period costs
             HStack(spacing: DesignSystem.Spacing.xl) {
                 PeriodCost(
                     label: "This Week",
@@ -332,7 +347,6 @@ private struct ProviderListRow: View {
     var body: some View {
         GlassCard(interactive: true) {
             HStack(spacing: DesignSystem.Spacing.md) {
-                // Provider icon
                 ZStack {
                     RoundedRectangle(cornerRadius: 7.5, style: .continuous)
                         .fill(theme.primaryColor.opacity(0.15))
@@ -341,7 +355,6 @@ private struct ProviderListRow: View {
                     ProviderLogoView(provider: summary.provider, size: 20, useFallbackColor: false)
                 }
 
-                // Name & sessions
                 VStack(alignment: .leading, spacing: 1) {
                     Text(summary.provider.displayName)
                         .font(DesignSystem.Typography.body)
@@ -354,7 +367,6 @@ private struct ProviderListRow: View {
 
                 Spacer()
 
-                // Cost or tokens
                 Text(settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens))
                     .font(DesignSystem.Typography.mono)
                     .foregroundStyle(theme.primaryColor)
@@ -365,9 +377,9 @@ private struct ProviderListRow: View {
     }
 }
 
-// MARK: - Glass Card
+// MARK: - Glass Card (Glassmorphic)
 
-/// A dark glass-style card with subtle border and surface treatment.
+/// Frosted glass card with real material blur, warm tint, and luminous border.
 struct GlassCard<Content: View>: View {
     var interactive: Bool = false
     @ViewBuilder let content: () -> Content
@@ -386,12 +398,43 @@ struct GlassCard<Content: View>: View {
     var body: some View {
         content()
             .padding(DesignSystem.Spacing.xs)
-            .background(DesignSystem.Colors.surface)
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.55))
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.08),
+                                    Color.clear,
+                                    DesignSystem.Colors.ember.opacity(0.02)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+            }
             .clipShape(.rect(cornerRadius: DesignSystem.Radius.md))
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
-                    .stroke(DesignSystem.Colors.border.opacity(0.6), lineWidth: 0.5)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.18),
+                                DesignSystem.Colors.border.opacity(0.45),
+                                DesignSystem.Colors.border.opacity(0.25)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.75
+                    )
             )
+            .shadow(color: Color.black.opacity(0.04), radius: 8, y: 3)
             .scaleEffect(interactive ? (isPressed ? 0.98 : isHovered ? 1.015 : 1.0) : 1.0)
             .animation(isPressed ? DesignSystem.Animation.snappy : DesignSystem.Animation.hover, value: isHovered)
             .animation(DesignSystem.Animation.snappy, value: isPressed)
@@ -438,11 +481,27 @@ struct GlassButton: View {
         .foregroundStyle(DesignSystem.Colors.primaryGradient)
         .frame(maxWidth: .infinity)
         .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.surfaceElevated)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.ember.opacity(0.06))
+            }
+        }
         .clipShape(.rect(cornerRadius: DesignSystem.Radius.md, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .strokeBorder(DesignSystem.Colors.primaryGradient.opacity(0.55), lineWidth: 1.0)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [DesignSystem.Colors.ember.opacity(0.4), DesignSystem.Colors.amber.opacity(0.3)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.75
+                )
         )
     }
 
@@ -456,11 +515,25 @@ struct GlassButton: View {
         .foregroundStyle(DesignSystem.Colors.textSecondary)
         .frame(maxWidth: .infinity)
         .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.surface)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.5))
+            }
+        }
         .clipShape(.rect(cornerRadius: DesignSystem.Radius.md, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .strokeBorder(DesignSystem.Colors.border.opacity(0.5), lineWidth: 0.5)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.5
+                )
         )
     }
 }
@@ -476,8 +549,17 @@ struct GlassIconButton: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(DesignSystem.Colors.surface)
-                    .frame(width: 28, height: 28)
+                    .fill(.ultraThinMaterial)
+                Circle()
+                    .fill(DesignSystem.Colors.surface.opacity(0.45))
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.1), Color.clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
 
                 if isLoading {
                     ProgressView()
@@ -488,11 +570,20 @@ struct GlassIconButton: View {
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
             }
+            .frame(width: 28, height: 28)
             .clipShape(.circle)
             .overlay(
                 Circle()
-                    .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.15), DesignSystem.Colors.border.opacity(0.4)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.5
+                    )
             )
+            .shadow(color: Color.black.opacity(0.03), radius: 4, y: 2)
         }
         .buttonStyle(.plain)
         .disabled(isLoading)

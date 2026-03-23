@@ -1,24 +1,6 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Dock
-
-enum ChatPanelDock: String, CaseIterable, Identifiable {
-    case trailing
-    case leading
-    case bottom
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .trailing: return "Right"
-        case .leading: return "Left"
-        case .bottom: return "Bottom"
-        }
-    }
-}
-
 // MARK: - Chat Session Controller
 
 @MainActor
@@ -32,9 +14,15 @@ final class ChatSessionController {
     var searchResults: [SearchResult] = []
     var isSearching = false
     var selectedContext: ConversationRecord?
-    var dock: ChatPanelDock = .trailing
-    var panelWidth: CGFloat = 320
-    var panelHeight: CGFloat = 280
+    /// Cumulative offset from the default bottom-trailing anchor (drag to reposition).
+    var panelFloatOffset: CGSize = .zero
+    var panelWidth: CGFloat = 400
+    var panelHeight: CGFloat = 440
+
+    private static let udPanelW = "chatPanelWidth"
+    private static let udPanelH = "chatPanelHeight"
+    private static let udOffsetX = "chatPanelFloatOffsetX"
+    private static let udOffsetY = "chatPanelFloatOffsetY"
     var firstAssistantBadgeShown = false
     private(set) var activeStreamMessageId: String?
 
@@ -50,6 +38,42 @@ final class ChatSessionController {
         self.settingsManager = settingsManager
         self.searchService = SearchService(dataStore: dataStore)
         self.cliBridge = CLIBridge()
+
+        let w = UserDefaults.standard.double(forKey: Self.udPanelW)
+        if w >= 260 && w <= 800 { panelWidth = CGFloat(w) }
+        let h = UserDefaults.standard.double(forKey: Self.udPanelH)
+        if h >= 200 && h <= 900 { panelHeight = CGFloat(h) }
+        let ox = UserDefaults.standard.double(forKey: Self.udOffsetX)
+        let oy = UserDefaults.standard.double(forKey: Self.udOffsetY)
+        if ox != 0 || oy != 0 {
+            panelFloatOffset = CGSize(width: CGFloat(ox), height: CGFloat(oy))
+        }
+    }
+
+    func clampedPanelOffset(_ proposed: CGSize, container: CGSize, padding: CGFloat) -> CGSize {
+        guard container.width > 1, container.height > 1 else { return proposed }
+        let minX = -(container.width - panelWidth - padding * 2)
+        let minY = -(container.height - panelHeight - padding * 2)
+        return CGSize(
+            width: min(0, max(minX, proposed.width)),
+            height: min(0, max(minY, proposed.height))
+        )
+    }
+
+    func applyClampedPanelDrag(start: CGSize, translation: CGSize, container: CGSize, padding: CGFloat) {
+        let proposed = CGSize(width: start.width + translation.width, height: start.height + translation.height)
+        panelFloatOffset = clampedPanelOffset(proposed, container: container, padding: padding)
+    }
+
+    func reclampPanelOffset(container: CGSize, padding: CGFloat) {
+        panelFloatOffset = clampedPanelOffset(panelFloatOffset, container: container, padding: padding)
+    }
+
+    func persistPanelGeometry() {
+        UserDefaults.standard.set(Double(panelWidth), forKey: Self.udPanelW)
+        UserDefaults.standard.set(Double(panelHeight), forKey: Self.udPanelH)
+        UserDefaults.standard.set(Double(panelFloatOffset.width), forKey: Self.udOffsetX)
+        UserDefaults.standard.set(Double(panelFloatOffset.height), forKey: Self.udOffsetY)
     }
 
     func loadPersistedMessages() {
@@ -133,7 +157,6 @@ final class ChatSessionController {
         isStreaming = true
         let assistantId = UUID().uuidString
         activeStreamMessageId = assistantId
-        var acc = ""
         let backendLabel: String
         switch cliBridge.detectedBackend {
         case .some(.claudeCode): backendLabel = "claude"
@@ -150,25 +173,35 @@ final class ChatSessionController {
         firstAssistantBadgeShown = true
         messages.append(placeholder)
 
-        streamTask = Task {
+        streamTask = Task { [weak self] in
+            guard let self else { return }
             do {
+                var pieces: [ChatTranscriptPiece] = []
                 let stream = cliBridge.chat(systemPrompt: augmentedSystem, userMessage: trimmed)
-                for try await chunk in stream {
-                    acc += chunk
-                    await MainActor.run {
+                for try await event in stream {
+                    switch event {
+                    case .text(let chunk):
+                        Self.appendStreamingText(chunk, to: &pieces)
+                    case .toolUse(let name, let detail):
+                        pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
+                    }
+                    let joined = ChatMessageRecord.joinedText(from: pieces)
+                    let snapshot = pieces
+                    await Task { @MainActor in
                         if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
                             let old = self.messages[idx]
                             self.messages[idx] = ChatMessageRecord(
                                 id: old.id,
                                 role: old.role,
-                                content: acc,
+                                content: joined,
                                 timestamp: old.timestamp,
-                                cliUsed: old.cliUsed
+                                cliUsed: old.cliUsed,
+                                transcriptPieces: snapshot
                             )
                         }
-                    }
+                    }.value
                 }
-                await MainActor.run {
+                await Task { @MainActor in
                     self.isStreaming = false
                     self.activeStreamMessageId = nil
                     if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
@@ -176,9 +209,9 @@ final class ChatSessionController {
                         try? self.dataStore.saveChatMessage(final)
                     }
                     self.selectedContext = nil
-                }
+                }.value
             } catch {
-                await MainActor.run {
+                await Task { @MainActor in
                     self.isStreaming = false
                     self.activeStreamMessageId = nil
                     self.streamError = error.localizedDescription
@@ -189,10 +222,11 @@ final class ChatSessionController {
                             role: old.role,
                             content: old.content.isEmpty ? (self.streamError ?? "Error") : old.content,
                             timestamp: old.timestamp,
-                            cliUsed: old.cliUsed
+                            cliUsed: old.cliUsed,
+                            transcriptPieces: old.transcriptPieces
                         )
                     }
-                }
+                }.value
             }
         }
     }
@@ -202,5 +236,16 @@ final class ChatSessionController {
         cliBridge.cancel()
         isStreaming = false
         activeStreamMessageId = nil
+    }
+
+    private static func appendStreamingText(_ chunk: String, to pieces: inout [ChatTranscriptPiece]) {
+        guard !chunk.isEmpty else { return }
+        if let i = pieces.indices.last, pieces[i].kind == .text {
+            var last = pieces[i]
+            last.value += chunk
+            pieces[i] = last
+        } else {
+            pieces.append(ChatTranscriptPiece(kind: .text, value: chunk, detail: nil))
+        }
     }
 }

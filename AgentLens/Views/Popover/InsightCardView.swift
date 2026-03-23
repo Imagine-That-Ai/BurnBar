@@ -2,35 +2,43 @@ import SwiftUI
 
 struct InsightCardView: View {
     let insights: [Insight]
-    @State private var currentIndex = 0
-    @State private var isHovered = false
+    /// While hovering, hold the carousel on the index at hover start (must not mutate state during `TimelineView` body).
+    @State private var pausedIndex: Int?
 
     var body: some View {
         if insights.isEmpty {
             EmptyView()
         } else if insights.count == 1 {
-            cardContent(for: insights[0])
+            cardContent(for: insights[0], displayIndex: 0)
         } else {
             TimelineView(.periodic(from: .now, by: 8)) { ctx in
-                let _ = advance(at: ctx.date)
-                cardContent(for: insights[currentIndex])
-                    .id(currentIndex)
+                let idx = currentIndex(for: ctx.date)
+                cardContent(for: insights[idx], displayIndex: idx)
+                    .id(idx)
                     .transition(.opacity.animation(.easeInOut(duration: 0.4)))
             }
-            .onHover { isHovered = $0 }
+            .onHover { hovering in
+                if hovering {
+                    pausedIndex = rotatingIndex(at: Date(), count: insights.count)
+                } else {
+                    pausedIndex = nil
+                }
+            }
         }
     }
 
-    private func advance(at date: Date) -> Int {
-        guard !isHovered else { return currentIndex }
+    private func rotatingIndex(at date: Date, count: Int) -> Int {
         let seconds = Int(date.timeIntervalSince1970)
-        let idx = (seconds / 8) % insights.count
-        if idx != currentIndex { currentIndex = idx }
-        return currentIndex
+        return (seconds / 8) % max(count, 1)
+    }
+
+    private func currentIndex(for date: Date) -> Int {
+        if let pausedIndex { return pausedIndex }
+        return rotatingIndex(at: date, count: insights.count)
     }
 
     @ViewBuilder
-    private func cardContent(for insight: Insight) -> some View {
+    private func cardContent(for insight: Insight, displayIndex: Int) -> some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
             Image(systemName: insight.icon)
                 .font(.system(size: 12, weight: .semibold))
@@ -55,7 +63,7 @@ struct InsightCardView: View {
                 HStack(spacing: 3) {
                     ForEach(0..<insights.count, id: \.self) { i in
                         Circle()
-                            .fill(i == currentIndex ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textMuted.opacity(0.4))
+                            .fill(i == displayIndex ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textMuted.opacity(0.4))
                             .frame(width: 4, height: 4)
                     }
                 }

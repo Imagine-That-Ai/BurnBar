@@ -37,11 +37,11 @@ struct ChatFAB: View {
 
                 if hasNewInsights {
                     Circle()
-                        .fill(DesignSystem.Colors.gold)
+                        .fill(DesignSystem.Colors.amber)
                         .frame(width: 9, height: 9)
                         .offset(x: 3, y: -3)
                         .scaleEffect(pulse ? 1.2 : 0.85)
-                        .shadow(color: DesignSystem.Colors.gold.opacity(0.7), radius: 4)
+                        .shadow(color: DesignSystem.Colors.amber.opacity(0.7), radius: 4)
                 }
             }
         }

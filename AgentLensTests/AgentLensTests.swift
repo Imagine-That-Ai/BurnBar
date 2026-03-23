@@ -277,6 +277,23 @@ final class AgentLensTests: XCTestCase {
         )
     }
 
+    func test_cliBridge_codexArguments_defaultModelAndReasoning() {
+        XCTAssertEqual(
+            CLIBridge.codexArguments(prompt: "hello"),
+            [
+                "exec",
+                "--json",
+                "--ephemeral",
+                "--skip-git-repo-check",
+                "-m",
+                "gpt-5.4-mini",
+                "-c",
+                #"model_reasoning_effort="medium""#,
+                "hello"
+            ]
+        )
+    }
+
     func test_cliBridge_userManagedSearchDirectories_includeNodeManagerBins() throws {
         let fileManager = FileManager.default
         let tempHome = fileManager.temporaryDirectory
@@ -330,6 +347,28 @@ final class AgentLensTests: XCTestCase {
             ),
             codexPath.path
         )
+    }
+
+    func test_fileHandleReadLine_returnsNilAtEOF() throws {
+        let fileManager = FileManager.default
+        let tempFile = fileManager.temporaryDirectory
+            .appendingPathComponent("readline-\(UUID().uuidString).txt")
+        defer { try? fileManager.removeItem(at: tempFile) }
+
+        let created = fileManager.createFile(
+            atPath: tempFile.path,
+            contents: Data("first\n\nthird".utf8),
+            attributes: nil
+        )
+        XCTAssertTrue(created)
+
+        let handle = try FileHandle(forReadingFrom: tempFile)
+        defer { try? handle.close() }
+
+        XCTAssertEqual(handle.readLine(), "first")
+        XCTAssertEqual(handle.readLine(), "")
+        XCTAssertEqual(handle.readLine(), "third")
+        XCTAssertNil(handle.readLine())
     }
 
     // MARK: - Fixtures

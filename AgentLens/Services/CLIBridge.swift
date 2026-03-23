@@ -1,5 +1,13 @@
 import Foundation
 
+// MARK: - Stream events
+
+/// Parsed from Claude `stream-json` lines (and Codex text deltas).
+enum CLIChatStreamEvent: Hashable {
+    case text(String)
+    case toolUse(name: String, detail: String?)
+}
+
 // MARK: - CLI Bridge
 
 @MainActor
@@ -14,12 +22,13 @@ final class CLIBridge: ObservableObject {
     private var runningProcess: Process?
 
     func detect() async {
-        if let path = await resolveExecutable(named: "claude") {
-            detectedBackend = .claudeCode(path: path)
-            return
-        }
+        // Prefer Codex when both are installed so chat remains available if Claude CLI auth/config is broken.
         if let path = await resolveExecutable(named: "codex") {
             detectedBackend = .codex(path: path)
+            return
+        }
+        if let path = await resolveExecutable(named: "claude") {
+            detectedBackend = .claudeCode(path: path)
             return
         }
         detectedBackend = nil
@@ -30,8 +39,8 @@ final class CLIBridge: ObservableObject {
         runningProcess = nil
     }
 
-    /// Streams assistant text from the detected CLI (Claude `--output-format stream-json`, or Codex `exec --json` JSONL).
-    func chat(systemPrompt: String, userMessage: String) -> AsyncThrowingStream<String, Error> {
+    /// Streams assistant text and tool-use events from the CLI (Claude `stream-json`, Codex JSONL text only).
+    func chat(systemPrompt: String, userMessage: String) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             Task.detached { [weak self] in
                 guard let self else {
@@ -72,15 +81,17 @@ final class CLIBridge: ObservableObject {
     nonisolated private func runClaudeStream(
         executable: String,
         prompt: String,
-        continuation: AsyncThrowingStream<String, Error>.Continuation
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = Self.claudeArguments(prompt: prompt)
+        process.environment = Self.enrichedProcessEnvironment(executablePath: executable)
 
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe()
+        // Must not leave stderr on an unread Pipe(): verbose CLI output can fill the buffer and deadlock the child.
+        process.standardError = FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice
 
         await MainActor.run {
@@ -97,8 +108,8 @@ final class CLIBridge: ObservableObject {
 
         let readHandle = pipe.fileHandleForReading
         while let line = readHandle.readLine() {
-            if let text = Self.extractStreamJSONText(from: line) {
-                continuation.yield(text)
+            for event in Self.events(fromStreamJSONLine: line) {
+                continuation.yield(event)
             }
         }
 
@@ -117,11 +128,12 @@ final class CLIBridge: ObservableObject {
     nonisolated private func runCodexStream(
         executable: String,
         prompt: String,
-        continuation: AsyncThrowingStream<String, Error>.Continuation
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = Self.codexArguments(prompt: prompt)
+        process.environment = Self.enrichedProcessEnvironment(executablePath: executable)
         process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
 
         let pipe = Pipe()
@@ -143,6 +155,7 @@ final class CLIBridge: ObservableObject {
 
         let readHandle = pipe.fileHandleForReading
         var lastAgentMessagePrefixLength = 0
+        var lastAgentMessageItemId: String?
 
         while let line = readHandle.readLine() {
             guard let data = line.data(using: .utf8),
@@ -153,6 +166,10 @@ final class CLIBridge: ObservableObject {
             if let type = obj["type"] as? String {
                 if type == "turn.started" || type == "thread.started" {
                     lastAgentMessagePrefixLength = 0
+                    lastAgentMessageItemId = nil
+                    if type == "turn.started" {
+                        continuation.yield(.toolUse(name: "Codex", detail: "Thinking…"))
+                    }
                 }
                 if type == "error" {
                     let msg = (obj["message"] as? String)
@@ -164,8 +181,19 @@ final class CLIBridge: ObservableObject {
                 }
             }
 
+            if let toolEvent = Self.codexToolEvent(from: obj) {
+                continuation.yield(toolEvent)
+            }
+
             guard let fullText = Self.extractCodexAgentMessageText(from: obj), !fullText.isEmpty else {
                 continue
+            }
+
+            if let itemId = Self.codexAgentMessageItemId(from: obj) {
+                if itemId != lastAgentMessageItemId {
+                    lastAgentMessagePrefixLength = 0
+                    lastAgentMessageItemId = itemId
+                }
             }
 
             if fullText.count < lastAgentMessagePrefixLength {
@@ -173,11 +201,25 @@ final class CLIBridge: ObservableObject {
             }
 
             if fullText.count > lastAgentMessagePrefixLength {
-                let start = fullText.index(fullText.startIndex, offsetBy: lastAgentMessagePrefixLength)
+                let previousPrefixLength = lastAgentMessagePrefixLength
+                let start = fullText.index(fullText.startIndex, offsetBy: previousPrefixLength)
                 let delta = String(fullText[start...])
                 lastAgentMessagePrefixLength = fullText.count
                 if !delta.isEmpty {
-                    continuation.yield(delta)
+                    let eventType = obj["type"] as? String ?? ""
+                    // Codex JSONL commonly emits a single final `item.completed` text blob. Chunk that blob so UI can
+                    // render progressive text instead of one large jump.
+                    let shouldSoftStream = eventType == "item.completed"
+                        && previousPrefixLength == 0
+                        && delta.count >= 120
+                    if shouldSoftStream {
+                        for chunk in Self.chunkedCodexText(delta) {
+                            continuation.yield(.text(chunk))
+                            try? await Task.sleep(nanoseconds: 16_000_000)
+                        }
+                    } else {
+                        continuation.yield(.text(delta))
+                    }
                 }
             }
         }
@@ -216,6 +258,49 @@ final class CLIBridge: ObservableObject {
         }
 
         return nil
+    }
+
+    /// Stable id for the Codex `agent_message` item when present (used to reset streaming deltas between messages).
+    nonisolated private static func codexAgentMessageItemId(from obj: [String: Any]) -> String? {
+        guard let item = obj["item"] as? [String: Any],
+              (item["type"] as? String) == "agent_message" else {
+            return nil
+        }
+        if let id = item["id"] as? String, !id.isEmpty { return id }
+        return nil
+    }
+
+    nonisolated private static func codexToolEvent(from obj: [String: Any]) -> CLIChatStreamEvent? {
+        guard (obj["type"] as? String) == "item.started",
+              let item = obj["item"] as? [String: Any],
+              (item["type"] as? String) == "command_execution" else {
+            return nil
+        }
+        let command = (item["command"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let command, !command.isEmpty else {
+            return .toolUse(name: "Bash", detail: nil)
+        }
+        return .toolUse(name: "Bash", detail: String(command.prefix(180)))
+    }
+
+    nonisolated private static func chunkedCodexText(_ text: String, maxChunkLength: Int = 44) -> [String] {
+        guard maxChunkLength > 0 else { return [text] }
+        var chunks: [String] = []
+        var current = ""
+        current.reserveCapacity(min(maxChunkLength, text.count))
+
+        for character in text {
+            current.append(character)
+            if character == "\n" || current.count >= maxChunkLength {
+                chunks.append(current)
+                current.removeAll(keepingCapacity: true)
+            }
+        }
+        if !current.isEmpty {
+            chunks.append(current)
+        }
+        return chunks
     }
 
     private func resolveExecutable(named name: String) async -> String? {
@@ -377,8 +462,38 @@ final class CLIBridge: ObservableObject {
             prompt,
             "--output-format",
             "stream-json",
-            "--verbose"
+            "--verbose",
         ]
+    }
+
+    /// GUI apps often have a minimal `PATH`; CLIs frequently invoke `node`/`python` via the shebang.
+    nonisolated private static func enrichedProcessEnvironment(executablePath: String? = nil) -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        let homeDirectory = NSHomeDirectory()
+        var extra = [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "\(homeDirectory)/.local/bin",
+        ]
+
+        if let executablePath {
+            let executableDirectory = URL(fileURLWithPath: executablePath)
+                .deletingLastPathComponent()
+                .standardizedFileURL
+                .path
+            extra.insert(executableDirectory, at: 0)
+        }
+
+        extra.append(contentsOf: userManagedExecutableSearchDirectories(homeDirectory: homeDirectory))
+
+        let existing = env["PATH"] ?? ""
+        let merged = (extra + existing.split(separator: ":").map(String.init))
+            .filter { !$0.isEmpty }
+        var seen = Set<String>()
+        env["PATH"] = merged.filter { seen.insert($0).inserted }.joined(separator: ":")
+        return env
     }
 
     nonisolated static func codexArguments(prompt: String) -> [String] {
@@ -387,6 +502,10 @@ final class CLIBridge: ObservableObject {
             "--json",
             "--ephemeral",
             "--skip-git-repo-check",
+            "-m",
+            "gpt-5.4-mini",
+            "-c",
+            #"model_reasoning_effort="medium""#,
             prompt
         ]
     }
@@ -427,12 +546,54 @@ final class CLIBridge: ObservableObject {
         "'" + string.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
     }
 
-    nonisolated private static func extractStreamJSONText(from line: String) -> String? {
+    /// Emits ordered `.text` / `.toolUse` events for one NDJSON line from Claude Code `stream-json`.
+    nonisolated private static func events(fromStreamJSONLine line: String) -> [CLIChatStreamEvent] {
         guard let data = line.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
+            return []
         }
 
+        if let message = obj["message"] as? [String: Any],
+           let content = message["content"] as? [[String: Any]], !content.isEmpty {
+            var out: [CLIChatStreamEvent] = []
+            for block in content {
+                let kind = block["type"] as? String ?? ""
+                if kind == "text", let text = block["text"] as? String, !text.isEmpty {
+                    out.append(.text(text))
+                } else if kind == "tool_use", let pair = toolUsePayload(from: block) {
+                    out.append(.toolUse(name: pair.0, detail: pair.1))
+                }
+            }
+            if !out.isEmpty { return out }
+        }
+
+        if (obj["type"] as? String) == "tool_use", let pair = toolUsePayload(from: obj) {
+            return [.toolUse(name: pair.0, detail: pair.1)]
+        }
+
+        if let text = extractStreamJSONText(from: obj), !text.isEmpty {
+            return [.text(text)]
+        }
+
+        return []
+    }
+
+    nonisolated private static func toolUsePayload(from obj: [String: Any]) -> (String, String?)? {
+        let name = (obj["name"] as? String) ?? (obj["tool"] as? String)
+        guard let name, !name.isEmpty else { return nil }
+        return (name, toolInputSummary(obj["input"] as? [String: Any]))
+    }
+
+    nonisolated private static func toolInputSummary(_ input: [String: Any]?) -> String? {
+        guard let input else { return nil }
+        if let p = input["path"] as? String ?? input["file_path"] as? String, !p.isEmpty { return p }
+        if let c = input["command"] as? String, !c.isEmpty { return String(c.prefix(160)) }
+        if let p = input["pattern"] as? String, !p.isEmpty { return p }
+        if let q = input["query"] as? String, !q.isEmpty { return String(q.prefix(120)) }
+        return nil
+    }
+
+    nonisolated private static func extractStreamJSONText(from obj: [String: Any]) -> String? {
         if let delta = obj["delta"] as? [String: Any] {
             if let text = delta["text"] as? String { return text }
             if let inner = delta["delta"] as? [String: Any], let text = inner["text"] as? String {
@@ -469,6 +630,9 @@ enum CLIBridgeError: LocalizedError {
         case .noCLI:
             return "No claude or codex CLI found in PATH. Install one to use chat."
         case .processExit(let code):
+            if code == 127 {
+                return "CLI exited with status 127 (runtime command not found). BurnBar can see the CLI binary, but one of its dependencies (often `node`) is missing from app PATH."
+            }
             return "CLI exited with status \(code)."
         case .codexEvent(let message):
             return message

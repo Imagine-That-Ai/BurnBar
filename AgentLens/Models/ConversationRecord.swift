@@ -78,24 +78,61 @@ enum ChatMessageRole: String, Codable {
     case system
 }
 
+/// Ordered segments for assistant messages (text interleaved with tool calls). User messages use `content` only.
+struct ChatTranscriptPiece: Codable, Identifiable, Hashable {
+    enum Kind: String, Codable {
+        case text
+        case toolUse
+    }
+
+    let id: String
+    let kind: Kind
+    /// Prose for `.text`; tool label (e.g. Read, Bash) for `.toolUse`.
+    var value: String
+    let detail: String?
+
+    init(id: String = UUID().uuidString, kind: Kind, value: String, detail: String? = nil) {
+        self.id = id
+        self.kind = kind
+        self.value = value
+        self.detail = detail
+    }
+}
+
 struct ChatMessageRecord: Codable, Identifiable, Hashable {
     let id: String
     let role: ChatMessageRole
     let content: String
     let timestamp: Date
     let cliUsed: String?
+    /// Populated for assistant streams that emit tool events; empty means treat `content` as plain text.
+    let transcriptPieces: [ChatTranscriptPiece]
 
     init(
         id: String = UUID().uuidString,
         role: ChatMessageRole,
         content: String,
         timestamp: Date = Date(),
-        cliUsed: String? = nil
+        cliUsed: String? = nil,
+        transcriptPieces: [ChatTranscriptPiece] = []
     ) {
         self.id = id
         self.role = role
         self.content = content
         self.timestamp = timestamp
         self.cliUsed = cliUsed
+        self.transcriptPieces = transcriptPieces
+    }
+
+    /// Pieces for display (legacy rows use a single synthetic text piece from `content`).
+    var displayTranscript: [ChatTranscriptPiece] {
+        if !transcriptPieces.isEmpty { return transcriptPieces }
+        guard !content.isEmpty else { return [] }
+        return [ChatTranscriptPiece(id: "\(id)-legacy", kind: .text, value: content, detail: nil)]
+    }
+
+    /// Joined text segments for persistence / search parity.
+    static func joinedText(from pieces: [ChatTranscriptPiece]) -> String {
+        pieces.filter { $0.kind == .text }.map(\.value).joined()
     }
 }

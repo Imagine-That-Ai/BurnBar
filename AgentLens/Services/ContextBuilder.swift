@@ -16,7 +16,8 @@ enum ContextBuilder {
             .sorted { $0.startTime > $1.startTime }
 
         var lines: [String] = []
-        lines.append("You are a personal AI coding assistant with access to this developer's recent agent session history.")
+        lines.append("You are BurnBar's in-app AI coding assistant with access to this developer's recent agent session history.")
+        lines.append("This product is named BurnBar. Never refer to it as Agent Lens or AgentLens.")
         lines.append("")
         lines.append("## Recent work (last 7 days)")
 

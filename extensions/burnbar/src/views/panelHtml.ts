@@ -59,7 +59,8 @@ export function buildPanelHtml(
       </section>
 
       <section class="bb-runs" id="bb-runs">
-        <!-- Active run card and history rendered by JS -->
+        <!-- Active run card injected before history by JS -->
+        <div class="bb-history-runs" id="bb-history-runs"></div>
         <div class="bb-no-runs-msg" id="bb-no-runs-msg" data-visible="false">
           Start a run to see BurnBar control the daemon here.
         </div>

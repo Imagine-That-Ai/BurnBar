@@ -1,83 +1,80 @@
-import AppKit
 import SwiftUI
-
-// MARK: - Adaptive Color Helper
-
-extension Color {
-    /// Creates a Color that automatically adapts to macOS dark/light appearance.
-    static func adaptive(light: String, dark: String) -> Color {
-        Color(NSColor(name: nil) { appearance in
-            let hex = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
-            var int: UInt64 = 0
-            Scanner(string: hex).scanHexInt64(&int)
-            return NSColor(
-                srgbRed:   CGFloat((int >> 16) & 0xFF) / 255,
-                green:     CGFloat((int >>  8) & 0xFF) / 255,
-                blue:      CGFloat( int        & 0xFF) / 255,
-                alpha: 1
-            )
-        })
-    }
-}
 
 // MARK: - Design System
 
 /// Unified design tokens for BurnBar.
-/// Uses macOS 26+ GlassButtonStyle / GlassProminentButtonStyle where available,
-/// with dark glass fallbacks on older OS versions.
+/// Warm glassmorphic aesthetic: botanical cream (light) / bark (dark)
+/// with ember, amber, blaze, and whimsy accents.
 enum DesignSystem {
 
     // MARK: - Colors
 
     enum Colors {
-        // Brand accents — shift slightly between modes for proper contrast
-        static let coral  = Color.adaptive(light: "D96B5A", dark: "E07868")
-        static let purple = Color.adaptive(light: "7E74C4", dark: "8E86D0")
-        static let teal   = Color.adaptive(light: "1DAAAF", dark: "2CBEC8")
-        static let gold   = Color.adaptive(light: "D49A3A", dark: "D49A3A")
+        // Brand accents — warm spectrum + whimsy contrast
+        static let ember   = Color.adaptive(light: "F45B69", dark: "FA5053")
+        static let amber   = Color.adaptive(light: "D49000", dark: "FFA800")
+        static let blaze   = Color.adaptive(light: "D45800", dark: "E86100")
+        static let whimsy  = Color.adaptive(light: "6A5ACD", dark: "8B7FE8")
 
-        // Surfaces
-        static let background     = Color.adaptive(light: "F5F0EB", dark: "0D1117")
-        static let surface        = Color.adaptive(light: "FAF7F4", dark: "161B22")
-        static let surfaceElevated = Color.adaptive(light: "FFFFFF", dark: "1C2128")
-        static let border         = Color.adaptive(light: "DDD8D1", dark: "30363D")
-        static let borderSubtle   = Color.adaptive(light: "EDE9E4", dark: "21262D")
+        // Legacy aliases (keeps ProviderTheme and other references compiling)
+        static let coral  = ember
+        static let purple = whimsy
+        static let teal   = whimsy
+        static let gold   = amber
 
-        // Text
-        static let textPrimary   = Color.adaptive(light: "1A1208", dark: "FFFFFF")
-        static let textSecondary = Color.adaptive(light: "4A4038", dark: "8B949E")
-        static let textMuted     = Color.adaptive(light: "8A7E72", dark: "6E7681")
+        // Surfaces — botanical cream light / bark dark
+        static let background      = Color.adaptive(light: "F5F0E6", dark: "151210")
+        static let surface         = Color.adaptive(light: "FAF7F0", dark: "1D1914")
+        static let surfaceElevated = Color.adaptive(light: "FFFCF5", dark: "282220")
+        static let border          = Color.adaptive(light: "D9CDBA", dark: "3D342A")
+        static let borderSubtle    = Color.adaptive(light: "E8DFD0", dark: "2D261F")
+
+        // Text — warm brown light / warm off-white dark
+        static let textPrimary   = Color.adaptive(light: "2A1F14", dark: "F2EBE0")
+        static let textSecondary = Color.adaptive(light: "6B5D4E", dark: "A89A8A")
+        static let textMuted     = Color.adaptive(light: "9A8B7A", dark: "7A6E62")
 
         // Semantic
-        static let success = Color.adaptive(light: "2E8B57", dark: "34D399")
-        static let warning = Color.adaptive(light: "C97F1A", dark: "FBBF24")
-        static let error   = Color.adaptive(light: "C93D3D", dark: "F45B69")
+        static let success = Color.adaptive(light: "3A7835", dark: "38D898")
+        static let warning = Color.adaptive(light: "C47800", dark: "FFA800")
+        static let error   = Color.adaptive(light: "D43030", dark: "FA5053")
+
+        /// Chat bubbles: user outline (whimsy) / assistant accent (ember).
+        static let chatUserStroke = Color(hex: "6A5ACD")
+        static let chatAssistantStroke = Color(hex: "F45B69")
 
         static let primaryGradient = LinearGradient(
-            colors: [coral, purple],
+            colors: [ember, amber],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
 
         static let accentGradient = LinearGradient(
-            colors: [teal, purple],
+            colors: [whimsy, ember],
             startPoint: .leading,
             endPoint: .trailing
         )
 
         static let cardGradient = LinearGradient(
             colors: [
-                coral.opacity(0.08),
-                purple.opacity(0.06),
-                teal.opacity(0.04)
+                ember.opacity(0.06),
+                amber.opacity(0.04),
+                blaze.opacity(0.03)
             ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        /// Whimsy gradient for "Cool down" states and contrast moments.
+        static let whimsyGradient = LinearGradient(
+            colors: [whimsy, whimsy.opacity(0.6)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
 
         static func primary(for provider: AgentProvider) -> Color {
             switch provider {
-            case .factory: return purple
+            case .factory: return whimsy
             case .claudeCode: return Color(hex: "CC785C")
             case .copilot: return Color(hex: "23EA3B")
             case .aider: return Color(hex: "FF6B35")
@@ -91,10 +88,10 @@ enum DesignSystem {
 
         static func accent(for provider: AgentProvider) -> Color {
             switch provider {
-            case .factory: return coral
+            case .factory: return ember
             case .claudeCode: return Color(hex: "D4A574")
             case .copilot: return Color(hex: "0969DA")
-            case .aider: return teal
+            case .aider: return blaze
             case .cursor: return Color(hex: "007AFF")
             case .codex: return Color(hex: "00C48C")
             case .zai: return Color(hex: "A78BFA")
@@ -105,11 +102,11 @@ enum DesignSystem {
 
         static func chartPalette(for provider: AgentProvider) -> [Color] {
             switch provider {
-            case .factory: return [purple, coral, teal, Color(hex: "A78BFA")]
+            case .factory: return [whimsy, ember, amber, Color(hex: "A78BFA")]
             case .claudeCode: return [Color(hex: "CC785C"), Color(hex: "D4A574"), Color(hex: "8B949E"), Color(hex: "E8C4A0")]
-            case .copilot: return [Color(hex: "23EA3B"), Color(hex: "0969DA"), coral, purple]
-            case .aider: return [Color(hex: "FF6B35"), teal, coral, purple]
-            case .cursor: return [Color(hex: "AC8C57"), Color(hex: "007AFF"), teal, coral]
+            case .copilot: return [Color(hex: "23EA3B"), Color(hex: "0969DA"), ember, whimsy]
+            case .aider: return [Color(hex: "FF6B35"), blaze, ember, whimsy]
+            case .cursor: return [Color(hex: "AC8C57"), Color(hex: "007AFF"), amber, ember]
             case .codex: return [Color(hex: "00A67E"), Color(hex: "00C48C"), Color(hex: "7FDBDA"), Color(hex: "66CDAA")]
             case .zai: return [Color(hex: "8B5CF6"), Color(hex: "A78BFA"), Color(hex: "6366F1"), Color(hex: "7C3AED")]
             case .minimax: return [Color(hex: "F59E0B"), Color(hex: "FCD34D"), Color(hex: "D97706"), Color(hex: "FBBF24")]

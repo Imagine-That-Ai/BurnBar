@@ -48,6 +48,7 @@ final class UsageAggregator {
     func refreshAll() async {
         guard !isRefreshing else { return }
         isRefreshing = true
+        defer { isRefreshing = false }
         errors = [:]
         parserHealth = [:]
 
@@ -93,11 +94,23 @@ final class UsageAggregator {
             print("UsageAggregator: Failed to store usages: \(error)")
         }
 
+        // Unblock scan UI immediately after local parsing/persistence completes.
         isRefreshing = false
 
         // Upload unsynced rows to Firestore (no-op if not signed in)
         await cloudSync?.uploadPending()
         await cloudSync?.uploadPendingConversations()
+    }
+
+    /// Clears local usage rows so the dashboard resets immediately, then re-parses all providers.
+    func recountAll() async {
+        guard !isRefreshing else { return }
+        do {
+            try dataStore.deleteAll()
+        } catch {
+            print("UsageAggregator: Failed to clear usage rows before recount: \(error)")
+        }
+        await refreshAll()
     }
     
     // MARK: - Refresh Single Provider
@@ -244,6 +257,7 @@ final class CodexParser: LogParser {
 final class ModelFilterParser: LogParser {
     let provider: AgentProvider
     private let modelPattern: String
+    private let ignoredContentKeys: Set<String> = ["type", "role", "id", "tool_use_id", "name"]
 
     init(modelPattern: String, provider: AgentProvider) {
         self.modelPattern = modelPattern.lowercased()
@@ -317,19 +331,19 @@ final class ModelFilterParser: LogParser {
         if let data = try? Data(contentsOf: settingsURL),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             if let m = json["model"] as? String {
-                // Strip "custom:" prefix that Factory prepends to user-configured models
-                settingsModel = m.hasPrefix("custom:") ? String(m.dropFirst(7)) : m
+                settingsModel = normalizeModelName(m)
             }
             if let tokenUsage = json["tokenUsage"] as? [String: Any] {
-                let input = tokenUsage["inputTokens"] as? Int ?? 0
-                let output = tokenUsage["outputTokens"] as? Int ?? 0
-                let cc = tokenUsage["cacheCreationTokens"] as? Int ?? 0
-                let cr = tokenUsage["cacheReadTokens"] as? Int ?? 0
-                if input > 0 || output > 0 || cc > 0 || cr > 0 {
-                    inputTokens = input
-                    outputTokens = output
-                    cacheCreationTokens = cc
-                    cacheReadTokens = cr
+                let extracted = extractUsageTokens(
+                    tokenUsage,
+                    userCharHint: 0,
+                    assistantCharHint: 0
+                )
+                if extracted.input > 0 || extracted.output > 0 || extracted.cacheCreation > 0 || extracted.cacheRead > 0 {
+                    inputTokens = extracted.input
+                    outputTokens = extracted.output
+                    cacheCreationTokens = extracted.cacheCreation
+                    cacheReadTokens = extracted.cacheRead
                     usedSettingsTotals = true
                 }
             }
@@ -337,11 +351,16 @@ final class ModelFilterParser: LogParser {
 
         var startTime: Date?
         var endTime: Date?
-        // Character counts for estimation when no usage data is present in the logs
+        // Character counts for estimation when no usage data is present in the logs.
+        // We include tool_result payloads and assistant reasoning signatures to avoid
+        // severely undercounting sessions where providers omit explicit usage.
         var userCharCount = 0
         var assistantCharCount = 0
+        var assistantReasoningCharCount = 0
+        var userMessageCount = 0
+        var assistantMessageCount = 0
 
-        while let line = handle.readLine(), !line.isEmpty {
+        for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 continue
@@ -349,29 +368,29 @@ final class ModelFilterParser: LogParser {
 
             conv.ingest(jsonLine: json)
 
-            if let message = json["message"] as? [String: Any],
-               let content = message["content"] as? [[String: Any]] {
-                let role = message["role"] as? String
-                var charCount = 0
-                for item in content {
-                    if let text = item["text"] as? String {
-                        charCount += text.count
-                        if text.lowercased().contains("model:") {
-                            if let range = text.range(of: "Model: ", options: .caseInsensitive) {
-                                let afterModel = text[range.upperBound...]
-                                let endIndex = afterModel.firstIndex(of: "\n") ?? afterModel.endIndex
-                                let modelName = String(afterModel[..<endIndex]).trimmingCharacters(in: .whitespaces)
-                                if modelName.lowercased().contains(modelPattern) {
-                                    inlineModel = modelName
-                                }
-                            }
+            if let message = json["message"] as? [String: Any] {
+                let role = (message["role"] as? String)?.lowercased()
+                if let content = message["content"] {
+                    let metrics = contentMetrics(from: content)
+                    if role == "user" {
+                        let chars = metrics.visibleChars + metrics.reasoningChars
+                        if chars > 0 {
+                            userCharCount += chars
+                            userMessageCount += 1
                         }
-                    } else if let input = item["input"] {
-                        charCount += String(describing: input).count
+                    } else if role == "assistant" {
+                        let chars = metrics.visibleChars + metrics.reasoningChars
+                        if chars > 0 {
+                            assistantMessageCount += 1
+                        }
+                        assistantCharCount += metrics.visibleChars
+                        assistantReasoningCharCount += metrics.reasoningChars
+                    }
+
+                    if inlineModel == nil, let detectedModel = detectModelHint(from: content) {
+                        inlineModel = normalizeModelName(detectedModel)
                     }
                 }
-                if role == "user" { userCharCount += charCount }
-                else if role == "assistant" { assistantCharCount += charCount }
             }
 
             if usedSettingsTotals {
@@ -386,12 +405,17 @@ final class ModelFilterParser: LogParser {
             }
 
             if let message = json["message"] as? [String: Any],
-               message["role"] as? String == "assistant",
+               (message["role"] as? String)?.lowercased() == "assistant",
                let usage = message["usage"] as? [String: Any] {
-                inputTokens += usage["input_tokens"] as? Int ?? usage["prompt_tokens"] as? Int ?? 0
-                outputTokens += usage["output_tokens"] as? Int ?? usage["completion_tokens"] as? Int ?? 0
-                cacheCreationTokens += usage["cache_creation_input_tokens"] as? Int ?? 0
-                cacheReadTokens += usage["cache_read_input_tokens"] as? Int ?? 0
+                let extracted = extractUsageTokens(
+                    usage,
+                    userCharHint: userCharCount,
+                    assistantCharHint: assistantCharCount + assistantReasoningCharCount
+                )
+                inputTokens += extracted.input
+                outputTokens += extracted.output
+                cacheCreationTokens += extracted.cacheCreation
+                cacheReadTokens += extracted.cacheRead
 
                 if let ts = json["timestamp"] as? String {
                     let date = ISO8601DateFormatter().date(from: ts)
@@ -404,12 +428,20 @@ final class ModelFilterParser: LogParser {
 
         conv.finalizeArrays()
 
-        // Factory does not write MiniMax token usage to the JSONL or settings file.
-        // Fall back to character-based estimation (~4 chars per token).
+        // Factory does not consistently write usage for routed providers.
+        // Fall back to content-aware estimation that includes tool results and
+        // assistant reasoning signatures.
         if inputTokens == 0 && outputTokens == 0 && cacheCreationTokens == 0 && cacheReadTokens == 0 {
-            guard userCharCount + assistantCharCount > 0 else { return nil }
-            inputTokens = userCharCount / 4
-            outputTokens = assistantCharCount / 4
+            guard userCharCount + assistantCharCount + assistantReasoningCharCount > 0 else { return nil }
+            let estimated = estimateFallbackTokens(
+                userVisibleChars: userCharCount,
+                assistantVisibleChars: assistantCharCount,
+                assistantReasoningChars: assistantReasoningCharCount,
+                userMessageCount: userMessageCount,
+                assistantMessageCount: assistantMessageCount
+            )
+            inputTokens = estimated.input
+            outputTokens = estimated.output
         }
 
         let modelFromSettings = settingsModel.flatMap { m in
@@ -471,5 +503,243 @@ final class ModelFilterParser: LogParser {
         )
 
         return (usage, conversation)
+    }
+
+    private func normalizeModelName(_ model: String) -> String {
+        model.hasPrefix("custom:") ? String(model.dropFirst(7)) : model
+    }
+
+    private func extractUsageTokens(
+        _ usage: [String: Any],
+        userCharHint: Int,
+        assistantCharHint: Int
+    ) -> (input: Int, output: Int, cacheCreation: Int, cacheRead: Int) {
+        var input = firstIntValue(
+            in: usage,
+            paths: [
+                ["input_tokens"],
+                ["prompt_tokens"],
+                ["inputTokens"],
+                ["promptTokens"]
+            ]
+        ) ?? 0
+
+        var output = firstIntValue(
+            in: usage,
+            paths: [
+                ["output_tokens"],
+                ["completion_tokens"],
+                ["outputTokens"],
+                ["completionTokens"]
+            ]
+        ) ?? 0
+
+        let cacheCreation = firstIntValue(
+            in: usage,
+            paths: [
+                ["cache_creation_input_tokens"],
+                ["cache_creation_tokens"],
+                ["cacheCreationTokens"]
+            ]
+        ) ?? 0
+
+        let cacheRead = firstIntValue(
+            in: usage,
+            paths: [
+                ["cache_read_input_tokens"],
+                ["cache_read_tokens"],
+                ["cacheReadTokens"],
+                ["prompt_tokens_details", "cached_tokens"],
+                ["promptTokensDetails", "cachedTokens"],
+                ["cached_tokens"],
+                ["cachedTokens"]
+            ]
+        ) ?? 0
+
+        let thinking = firstIntValue(
+            in: usage,
+            paths: [
+                ["thinking_tokens"],
+                ["reasoning_tokens"],
+                ["thinkingTokens"],
+                ["reasoningTokens"],
+                ["completion_tokens_details", "reasoning_tokens"],
+                ["output_tokens_details", "reasoning_tokens"]
+            ]
+        ) ?? 0
+
+        let total = firstIntValue(
+            in: usage,
+            paths: [
+                ["total_tokens"],
+                ["totalTokens"]
+            ]
+        ) ?? 0
+
+        let explicitPayloadTotal = max(input, 0) + max(output, 0) + max(cacheCreation, 0) + max(cacheRead, 0)
+        let normalizedTotal = max(total, explicitPayloadTotal)
+
+        if normalizedTotal > 0 {
+            let availableForInOut = max(normalizedTotal - cacheCreation - cacheRead, 0)
+
+            if input == 0 && output == 0 && availableForInOut > 0 {
+                let combinedHints = userCharHint + assistantCharHint
+                let inputRatio = combinedHints > 0
+                    ? Double(userCharHint) / Double(combinedHints)
+                    : 0.62
+                input = Int((Double(availableForInOut) * inputRatio).rounded())
+                output = max(availableForInOut - input, 0)
+            } else if input == 0 && output > 0 && availableForInOut > output {
+                input = availableForInOut - output
+            } else if output == 0 && input > 0 && availableForInOut > input {
+                output = availableForInOut - input
+            } else if input + output < availableForInOut {
+                output += availableForInOut - (input + output)
+            }
+        }
+
+        if thinking > 0 && total == 0 {
+            output += thinking
+        }
+
+        return (
+            input: max(input, 0),
+            output: max(output, 0),
+            cacheCreation: max(cacheCreation, 0),
+            cacheRead: max(cacheRead, 0)
+        )
+    }
+
+    private func firstIntValue(in dictionary: [String: Any], paths: [[String]]) -> Int? {
+        for path in paths {
+            if let value = nestedValue(in: dictionary, path: path),
+               let intValue = parseInt(value) {
+                return intValue
+            }
+        }
+        return nil
+    }
+
+    private func nestedValue(in dictionary: [String: Any], path: [String]) -> Any? {
+        var cursor: Any = dictionary
+        for key in path {
+            guard let dict = cursor as? [String: Any], let next = dict[key] else {
+                return nil
+            }
+            cursor = next
+        }
+        return cursor
+    }
+
+    private func parseInt(_ value: Any?) -> Int? {
+        guard let value else { return nil }
+        if let intValue = value as? Int {
+            return max(intValue, 0)
+        }
+        if let int64Value = value as? Int64 {
+            return max(Int(int64Value), 0)
+        }
+        if let doubleValue = value as? Double {
+            return max(Int(doubleValue.rounded()), 0)
+        }
+        if let numberValue = value as? NSNumber {
+            return max(numberValue.intValue, 0)
+        }
+        if let stringValue = value as? String {
+            let trimmed = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let intValue = Int(trimmed) {
+                return max(intValue, 0)
+            }
+            if let doubleValue = Double(trimmed) {
+                return max(Int(doubleValue.rounded()), 0)
+            }
+        }
+        return nil
+    }
+
+    private func detectModelHint(from value: Any) -> String? {
+        switch value {
+        case let text as String:
+            guard text.lowercased().contains("model:") else { return nil }
+            guard let range = text.range(of: "model:", options: .caseInsensitive) else { return nil }
+            let afterModel = text[range.upperBound...]
+            let endIndex = afterModel.firstIndex(of: "\n") ?? afterModel.endIndex
+            let model = String(afterModel[..<endIndex]).trimmingCharacters(in: .whitespaces)
+            return model.isEmpty ? nil : model
+        case let array as [Any]:
+            for item in array {
+                if let found = detectModelHint(from: item) {
+                    return found
+                }
+            }
+            return nil
+        case let dictionary as [String: Any]:
+            for (_, nestedValue) in dictionary {
+                if let found = detectModelHint(from: nestedValue) {
+                    return found
+                }
+            }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    private func contentMetrics(from value: Any, key: String? = nil) -> (visibleChars: Int, reasoningChars: Int) {
+        switch value {
+        case let text as String:
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return (0, 0) }
+            if key == "signature" {
+                return (0, trimmed.count)
+            }
+            if let key, ignoredContentKeys.contains(key) {
+                return (0, 0)
+            }
+            return (trimmed.count, 0)
+        case let array as [Any]:
+            var visible = 0
+            var reasoning = 0
+            for item in array {
+                let nested = contentMetrics(from: item)
+                visible += nested.visibleChars
+                reasoning += nested.reasoningChars
+            }
+            return (visible, reasoning)
+        case let dictionary as [String: Any]:
+            var visible = 0
+            var reasoning = 0
+            for (nestedKey, nestedValue) in dictionary {
+                let nested = contentMetrics(from: nestedValue, key: nestedKey)
+                visible += nested.visibleChars
+                reasoning += nested.reasoningChars
+            }
+            return (visible, reasoning)
+        default:
+            return (0, 0)
+        }
+    }
+
+    private func estimateFallbackTokens(
+        userVisibleChars: Int,
+        assistantVisibleChars: Int,
+        assistantReasoningChars: Int,
+        userMessageCount: Int,
+        assistantMessageCount: Int
+    ) -> (input: Int, output: Int) {
+        let userTokens = estimatedTokenCount(for: userVisibleChars, charsPerToken: 3.35) + (userMessageCount * 9)
+        let assistantVisibleTokens = estimatedTokenCount(for: assistantVisibleChars, charsPerToken: 3.35)
+        let assistantReasoningTokens = estimatedTokenCount(for: assistantReasoningChars, charsPerToken: 2.45)
+        let assistantTokens = assistantVisibleTokens + assistantReasoningTokens + (assistantMessageCount * 7)
+
+        return (
+            input: max(userTokens, 0),
+            output: max(assistantTokens, 0)
+        )
+    }
+
+    private func estimatedTokenCount(for characters: Int, charsPerToken: Double) -> Int {
+        guard characters > 0 else { return 0 }
+        return Int((Double(characters) / charsPerToken).rounded(.up))
     }
 }

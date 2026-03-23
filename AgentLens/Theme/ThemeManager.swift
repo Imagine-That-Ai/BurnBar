@@ -9,15 +9,13 @@ import Combine
 final class ThemeManager {
     static let shared = ThemeManager()
 
-    // Re-export DesignSystem for convenience
     typealias DS = DesignSystem
 
-    // Chart palette — used for multi-provider charts
     static let chartPalette: [Color] = [
-        DesignSystem.Colors.coral,
-        DesignSystem.Colors.purple,
-        DesignSystem.Colors.teal,
-        DesignSystem.Colors.gold,
+        DesignSystem.Colors.ember,
+        DesignSystem.Colors.amber,
+        DesignSystem.Colors.blaze,
+        DesignSystem.Colors.whimsy,
         Color(hex: "34D399"),
         Color(hex: "F472B6"),
     ]

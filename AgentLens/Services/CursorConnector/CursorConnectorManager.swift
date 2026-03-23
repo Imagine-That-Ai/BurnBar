@@ -490,10 +490,11 @@ final class CursorConnectorManager {
                       let provider = ConnectorProvider(rawValue: providerRaw),
                       let model = json["model"] as? String else { continue }
 
-                let promptTokens = json["prompt_tokens"] as? Int ?? 0
-                let completionTokens = json["completion_tokens"] as? Int ?? 0
-                let cacheReadTokens = json["cache_read_tokens"] as? Int ?? 0
-                let totalTokens = json["total_tokens"] as? Int ?? (promptTokens + completionTokens + cacheReadTokens)
+                let normalizedUsage = Self.normalizeUsageEvent(json)
+                let promptTokens = normalizedUsage.promptTokens
+                let completionTokens = normalizedUsage.completionTokens
+                let cacheReadTokens = normalizedUsage.cacheReadTokens
+                let totalTokens = normalizedUsage.totalTokens
                 let timestamp = (json["timestamp"] as? String).flatMap(Self.isoDateFormatter.date(from:)) ?? Date()
                 let cost = ModelPricing.lookup(model: model).cost(
                     inputTokens: promptTokens,
@@ -608,6 +609,156 @@ final class CursorConnectorManager {
             bytes[8], bytes[9],
             bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
         ))
+    }
+
+    private struct NormalizedUsageEvent {
+        let promptTokens: Int
+        let completionTokens: Int
+        let cacheReadTokens: Int
+        let totalTokens: Int
+    }
+
+    private static func normalizeUsageEvent(_ json: [String: Any]) -> NormalizedUsageEvent {
+        var prompt = firstIntValue(
+            in: json,
+            paths: [
+                ["prompt_tokens"],
+                ["input_tokens"],
+                ["promptTokens"],
+                ["inputTokens"]
+            ]
+        ) ?? 0
+
+        var completion = firstIntValue(
+            in: json,
+            paths: [
+                ["completion_tokens"],
+                ["output_tokens"],
+                ["completionTokens"],
+                ["outputTokens"]
+            ]
+        ) ?? 0
+
+        let cacheRead = firstIntValue(
+            in: json,
+            paths: [
+                ["cache_read_tokens"],
+                ["cache_read_input_tokens"],
+                ["cacheReadTokens"],
+                ["prompt_tokens_details", "cached_tokens"],
+                ["promptTokensDetails", "cachedTokens"],
+                ["cached_tokens"],
+                ["cachedTokens"]
+            ]
+        ) ?? 0
+
+        let total = firstIntValue(
+            in: json,
+            paths: [
+                ["total_tokens"],
+                ["totalTokens"]
+            ]
+        ) ?? 0
+
+        let inputCharHint = firstIntValue(
+            in: json,
+            paths: [
+                ["input_char_estimate"],
+                ["inputCharEstimate"]
+            ]
+        ) ?? 0
+
+        let outputCharHint = firstIntValue(
+            in: json,
+            paths: [
+                ["output_char_estimate"],
+                ["outputCharEstimate"]
+            ]
+        ) ?? 0
+
+        let explicitTotal = prompt + completion + cacheRead
+        let normalizedTotal = max(total, explicitTotal)
+
+        if normalizedTotal > 0 {
+            let availableForInOut = max(normalizedTotal - cacheRead, 0)
+            if prompt == 0 && completion == 0 && availableForInOut > 0 {
+                let combinedHintChars = inputCharHint + outputCharHint
+                let inputRatio = combinedHintChars > 0
+                    ? Double(inputCharHint) / Double(combinedHintChars)
+                    : 0.62
+                prompt = Int((Double(availableForInOut) * inputRatio).rounded())
+                completion = max(availableForInOut - prompt, 0)
+            } else if prompt == 0 && completion > 0 && availableForInOut > completion {
+                prompt = availableForInOut - completion
+            } else if completion == 0 && prompt > 0 && availableForInOut > prompt {
+                completion = availableForInOut - prompt
+            } else if prompt + completion < availableForInOut {
+                completion += availableForInOut - (prompt + completion)
+            }
+        }
+
+        if prompt == 0 && completion == 0 && cacheRead == 0 && inputCharHint + outputCharHint > 0 {
+            if inputCharHint > 0 {
+                prompt = max(Int((Double(inputCharHint) / 3.35).rounded(.up)), 1)
+            }
+            if outputCharHint > 0 {
+                completion = max(Int((Double(outputCharHint) / 3.35).rounded(.up)), 1)
+            }
+        }
+
+        return NormalizedUsageEvent(
+            promptTokens: max(prompt, 0),
+            completionTokens: max(completion, 0),
+            cacheReadTokens: max(cacheRead, 0),
+            totalTokens: max(normalizedTotal, prompt + completion + cacheRead)
+        )
+    }
+
+    private static func firstIntValue(in dictionary: [String: Any], paths: [[String]]) -> Int? {
+        for path in paths {
+            if let value = nestedValue(in: dictionary, path: path),
+               let intValue = parseInt(value) {
+                return intValue
+            }
+        }
+        return nil
+    }
+
+    private static func nestedValue(in dictionary: [String: Any], path: [String]) -> Any? {
+        var cursor: Any = dictionary
+        for key in path {
+            guard let dict = cursor as? [String: Any], let next = dict[key] else {
+                return nil
+            }
+            cursor = next
+        }
+        return cursor
+    }
+
+    private static func parseInt(_ value: Any?) -> Int? {
+        guard let value else { return nil }
+        if let intValue = value as? Int {
+            return max(intValue, 0)
+        }
+        if let int64Value = value as? Int64 {
+            return max(Int(int64Value), 0)
+        }
+        if let doubleValue = value as? Double {
+            return max(Int(doubleValue.rounded()), 0)
+        }
+        if let numberValue = value as? NSNumber {
+            return max(numberValue.intValue, 0)
+        }
+        if let stringValue = value as? String {
+            let trimmed = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let intValue = Int(trimmed) {
+                return max(intValue, 0)
+            }
+            if let doubleValue = Double(trimmed) {
+                return max(Int(doubleValue.rounded()), 0)
+            }
+        }
+        return nil
     }
 
     static func supportedModel(_ model: String) -> Bool {
@@ -762,6 +913,182 @@ final class CursorConnectorManager {
                 return [content["text"]]
             return []
 
+        def int_value(value):
+            if value is None or isinstance(value, bool):
+                return None
+            if isinstance(value, (int, float)):
+                return max(int(round(value)), 0)
+            if isinstance(value, str):
+                stripped = value.strip()
+                if not stripped:
+                    return None
+                try:
+                    return max(int(round(float(stripped))), 0)
+                except ValueError:
+                    return None
+            return None
+
+        def usage_number(usage, *paths):
+            if not isinstance(usage, dict):
+                return 0
+            for path in paths:
+                cursor = usage
+                valid_path = True
+                for key in path:
+                    if not isinstance(cursor, dict):
+                        valid_path = False
+                        break
+                    cursor = cursor.get(key)
+                if not valid_path:
+                    continue
+                parsed = int_value(cursor)
+                if parsed is not None:
+                    return parsed
+            return 0
+
+        def estimate_prompt_chars(request_payload):
+            if not isinstance(request_payload, dict):
+                return 0
+            messages = request_payload.get("messages")
+            if not isinstance(messages, list):
+                return 0
+            total = 0
+            for message in messages:
+                if not isinstance(message, dict):
+                    continue
+                text = "\\n".join(extract_text_parts(message.get("content")))
+                if text:
+                    total += len(text)
+            return total
+
+        def extract_chat_completion_text(payload):
+            if not isinstance(payload, dict):
+                return ""
+            choice = (payload.get("choices") or [{}])[0]
+            if not isinstance(choice, dict):
+                return ""
+            message = choice.get("message") or {}
+            if not isinstance(message, dict):
+                return ""
+            return "\\n".join(extract_text_parts(message.get("content")))
+
+        def normalize_usage(usage, prompt_char_estimate=0, output_char_estimate=0):
+            prompt = usage_number(
+                usage,
+                ("prompt_tokens",),
+                ("input_tokens",),
+                ("promptTokens",),
+                ("inputTokens",)
+            )
+            completion = usage_number(
+                usage,
+                ("completion_tokens",),
+                ("output_tokens",),
+                ("completionTokens",),
+                ("outputTokens",)
+            )
+            cache_read = usage_number(
+                usage,
+                ("cache_read_tokens",),
+                ("cache_read_input_tokens",),
+                ("cacheReadTokens",),
+                ("prompt_tokens_details", "cached_tokens"),
+                ("promptTokensDetails", "cachedTokens"),
+                ("cached_tokens",),
+                ("cachedTokens",)
+            )
+            thinking = usage_number(
+                usage,
+                ("thinking_tokens",),
+                ("reasoning_tokens",),
+                ("thinkingTokens",),
+                ("reasoningTokens",),
+                ("completion_tokens_details", "reasoning_tokens"),
+                ("output_tokens_details", "reasoning_tokens")
+            )
+            total = usage_number(usage, ("total_tokens",), ("totalTokens",))
+
+            explicit_total = prompt + completion + cache_read
+            normalized_total = max(total, explicit_total)
+            if normalized_total > 0:
+                available_for_in_out = max(normalized_total - cache_read, 0)
+                if prompt == 0 and completion == 0 and available_for_in_out > 0:
+                    combined_hint = prompt_char_estimate + output_char_estimate
+                    if combined_hint > 0:
+                        ratio = prompt_char_estimate / combined_hint
+                    else:
+                        ratio = 0.62
+                    prompt = int(round(available_for_in_out * ratio))
+                    completion = max(available_for_in_out - prompt, 0)
+                elif prompt == 0 and completion > 0 and available_for_in_out > completion:
+                    prompt = available_for_in_out - completion
+                elif completion == 0 and prompt > 0 and available_for_in_out > prompt:
+                    completion = available_for_in_out - prompt
+                elif prompt + completion < available_for_in_out:
+                    completion += available_for_in_out - (prompt + completion)
+
+            if thinking > 0 and total == 0:
+                completion += thinking
+
+            if prompt == 0 and completion == 0 and cache_read == 0 and (prompt_char_estimate + output_char_estimate) > 0:
+                if prompt_char_estimate > 0:
+                    prompt = max(int(round(prompt_char_estimate / 3.35)), 1)
+                if output_char_estimate > 0:
+                    completion = max(int(round(output_char_estimate / 3.35)), 1)
+
+            return {
+                "prompt_tokens": max(prompt, 0),
+                "completion_tokens": max(completion, 0),
+                "cache_read_tokens": max(cache_read, 0),
+                "total_tokens": max(normalized_total, prompt + completion + cache_read),
+            }
+
+        def parse_stream_usage(stream_bytes):
+            text = stream_bytes.decode("utf-8", errors="ignore")
+            usage = {}
+            output_parts = []
+            event_id = None
+
+            for raw_line in text.splitlines():
+                line = raw_line.strip()
+                if not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if not payload or payload == "[DONE]":
+                    continue
+                try:
+                    event = json.loads(payload)
+                except json.JSONDecodeError:
+                    continue
+
+                if event_id is None and isinstance(event.get("id"), str):
+                    event_id = event.get("id")
+
+                if isinstance(event.get("usage"), dict):
+                    usage = event.get("usage") or usage
+
+                choices = event.get("choices")
+                if isinstance(choices, list) and choices:
+                    first_choice = choices[0] if isinstance(choices[0], dict) else {}
+                    delta = first_choice.get("delta") or {}
+                    if isinstance(delta, dict):
+                        output_parts.extend(extract_text_parts(delta.get("content")))
+                    message = first_choice.get("message")
+                    if isinstance(message, dict):
+                        output_parts.extend(extract_text_parts(message.get("content")))
+
+                if isinstance(event.get("output_text"), str):
+                    output_parts.append(event["output_text"])
+
+            if not usage and not output_parts:
+                return None
+
+            return {
+                "id": event_id or f"stream_{uuid.uuid4().hex}",
+                "usage": usage,
+                "output_text": "\\n".join([part for part in output_parts if part]),
+            }
+
         def responses_to_chat_payload(payload):
             messages = []
             instructions = payload.get("instructions")
@@ -801,7 +1128,7 @@ final class CursorConnectorManager {
                 text = content
             else:
                 text = "\\n".join(extract_text_parts(content))
-            usage = payload.get("usage") or {}
+            normalized_usage = normalize_usage(payload.get("usage") or {})
             return {
                 "id": payload.get("id") or f"resp_{uuid.uuid4().hex}",
                 "object": "response",
@@ -817,22 +1144,30 @@ final class CursorConnectorManager {
                 }],
                 "output_text": text,
                 "usage": {
-                    "input_tokens": usage.get("prompt_tokens"),
-                    "output_tokens": usage.get("completion_tokens"),
-                    "total_tokens": usage.get("total_tokens"),
+                    "input_tokens": normalized_usage.get("prompt_tokens"),
+                    "output_tokens": normalized_usage.get("completion_tokens"),
+                    "total_tokens": normalized_usage.get("total_tokens"),
                 },
             }
 
-        def log_usage(config, provider, model, payload):
-            usage = payload.get("usage") or {}
+        def log_usage(config, provider, model, payload, request_payload=None, output_text=""):
+            prompt_char_estimate = estimate_prompt_chars(request_payload)
+            output_char_estimate = len(output_text) if isinstance(output_text, str) else 0
+            normalized_usage = normalize_usage(
+                payload.get("usage") or {},
+                prompt_char_estimate=prompt_char_estimate,
+                output_char_estimate=output_char_estimate
+            )
             event = {
                 "request_id": payload.get("id") or uuid.uuid4().hex,
                 "provider": provider,
                 "model": model,
-                "prompt_tokens": usage.get("prompt_tokens", 0) or 0,
-                "completion_tokens": usage.get("completion_tokens", 0) or 0,
-                "cache_read_tokens": usage.get("prompt_tokens_details", {}).get("cached_tokens", 0) if isinstance(usage.get("prompt_tokens_details"), dict) else 0,
-                "total_tokens": usage.get("total_tokens", 0) or 0,
+                "prompt_tokens": normalized_usage.get("prompt_tokens", 0) or 0,
+                "completion_tokens": normalized_usage.get("completion_tokens", 0) or 0,
+                "cache_read_tokens": normalized_usage.get("cache_read_tokens", 0) or 0,
+                "total_tokens": normalized_usage.get("total_tokens", 0) or 0,
+                "input_char_estimate": prompt_char_estimate,
+                "output_char_estimate": output_char_estimate,
                 "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
             }
             with open(config["usage_log"], "a", encoding="utf-8") as f:
@@ -893,12 +1228,37 @@ final class CursorConnectorManager {
                         upstream_body = resp.read()
                         content_type = resp.headers.get("Content-Type", "application/json")
                         response_body = upstream_body
+                        is_stream_request = bool(outbound.get("stream"))
+                        did_log_usage = False
                         if "application/json" in content_type:
-                            response_json = json.loads(upstream_body.decode("utf-8"))
-                            log_usage(config, route["provider"], model, response_json)
-                            if is_responses:
-                                response_body = json.dumps(chat_to_responses_payload(model, response_json)).encode("utf-8")
-                                content_type = "application/json"
+                            try:
+                                response_json = json.loads(upstream_body.decode("utf-8"))
+                                assistant_text = extract_chat_completion_text(response_json)
+                                log_usage(
+                                    config,
+                                    route["provider"],
+                                    model,
+                                    response_json,
+                                    request_payload=outbound,
+                                    output_text=assistant_text
+                                )
+                                did_log_usage = True
+                                if is_responses:
+                                    response_body = json.dumps(chat_to_responses_payload(model, response_json)).encode("utf-8")
+                                    content_type = "application/json"
+                            except json.JSONDecodeError:
+                                pass
+                        if not did_log_usage and ("text/event-stream" in content_type or is_stream_request):
+                            stream_meta = parse_stream_usage(upstream_body)
+                            if stream_meta is not None:
+                                log_usage(
+                                    config,
+                                    route["provider"],
+                                    model,
+                                    {"id": stream_meta.get("id"), "usage": stream_meta.get("usage") or {}},
+                                    request_payload=outbound,
+                                    output_text=stream_meta.get("output_text", "")
+                                )
                         self.send_response(resp.getcode())
                         self.send_header("Content-Type", content_type)
                         self.send_header("Content-Length", str(len(response_body)))

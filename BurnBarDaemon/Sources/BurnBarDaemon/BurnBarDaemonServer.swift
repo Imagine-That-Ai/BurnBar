@@ -295,6 +295,18 @@ public actor BurnBarDaemonServer {
                     result: arbitration
                 )
                 return encode(response)
+            case .clientClaimControl:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarClientClaimControlRequest>.self,
+                    from: requestData
+                )
+                let arbitration = try await clientRegistry.claimControl(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: arbitration
+                )
+                return encode(response)
             case .runCreate:
                 let typedRequest = try decoder.decode(
                     BurnBarRPCRequestEnvelopeWithParams<BurnBarRunCreateRequest>.self,

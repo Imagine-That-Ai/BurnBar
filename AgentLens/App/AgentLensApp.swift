@@ -164,6 +164,7 @@ struct BurnBarApp: App {
                 isRefreshing: aggregator?.isRefreshing ?? false
             )
             .task {
+                await Task.yield()
                 guard aggregator == nil else { return }
                 let sync = CloudSyncService(dataStore: dataStore, accountManager: accountManager)
                 cloudSyncService = sync
@@ -264,41 +265,48 @@ struct MenuBarLabel: View {
         .help(balanceTooltip)
         .accessibilityLabel("\(BurnBarIdentity.productName), \(balanceTooltip)")
         .onChange(of: isRefreshing) { _, new in
-            if !new {
+            guard !new else { return }
+            Task { @MainActor in
                 bounceTick &+= 1
             }
         }
         .onChange(of: bounceTick) { _, _ in
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.55)) {
-                logoBounceScale = 1.14
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            Task { @MainActor in
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.55)) {
-                    logoBounceScale = 1
+                    logoBounceScale = 1.14
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.55)) {
+                        logoBounceScale = 1
+                    }
                 }
             }
         }
         .onChange(of: totalCostToday) { oldValue, newValue in
             guard newValue > oldValue, oldValue > 0 else { return }
-            withAnimation(.easeIn(duration: 0.2)) {
-                showCostIncrease = true
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                withAnimation(.easeOut(duration: 0.3)) {
-                    showCostIncrease = false
+            Task { @MainActor in
+                withAnimation(.easeIn(duration: 0.2)) {
+                    showCostIncrease = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        showCostIncrease = false
+                    }
                 }
             }
         }
         .onChange(of: shouldDailyPulse) { _, pulse in
             guard pulse, lastDailyCostPulseDay != todayDayKey else { return }
-            lastDailyCostPulseDay = todayDayKey
-            pulseGlow = 0
-            withAnimation(.easeInOut(duration: 0.45)) {
-                pulseGlow = 1
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                withAnimation(.easeOut(duration: 0.6)) {
-                    pulseGlow = 0
+            Task { @MainActor in
+                lastDailyCostPulseDay = todayDayKey
+                pulseGlow = 0
+                withAnimation(.easeInOut(duration: 0.45)) {
+                    pulseGlow = 1
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    withAnimation(.easeOut(duration: 0.6)) {
+                        pulseGlow = 0
+                    }
                 }
             }
         }

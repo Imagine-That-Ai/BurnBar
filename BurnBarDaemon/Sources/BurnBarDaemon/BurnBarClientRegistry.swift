@@ -128,6 +128,34 @@ public actor BurnBarClientRegistry {
         return arbitration
     }
 
+    public func claimControl(_ request: BurnBarClientClaimControlRequest) throws -> BurnBarClientArbitrationSnapshot {
+        guard let attachedClient = attachedClients[request.clientID] else {
+            throw BurnBarClientRegistryError.clientNotAttached(request.clientID)
+        }
+        guard attachedClient.sessionID == request.sessionID else {
+            throw BurnBarClientRegistryError.sessionMismatch(expected: attachedClient.sessionID, actual: request.sessionID)
+        }
+
+        let reason: String
+        if activeClientID == request.clientID {
+            reason = "controller_already_active"
+        } else {
+            activeClientID = request.clientID
+            reason = "controller_transferred_to_requesting_client"
+        }
+
+        let arbitration = arbitrationSnapshot(reason: reason)
+        logger.notice(
+            "client_control_claimed",
+            metadata: [
+                "client_id": request.clientID.rawValue,
+                "reason": reason
+            ]
+        )
+
+        return arbitration
+    }
+
     public func arbitration() -> BurnBarClientArbitrationSnapshot {
         arbitrationSnapshot(reason: nil)
     }

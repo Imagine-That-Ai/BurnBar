@@ -46,6 +46,11 @@ function makeConnectedClient(overrides: Partial<ConstructorParameters<typeof Bur
       attachedClientID: "test-client",
       negotiatedProtocolVersion: 1
     }),
+    claimControl: vi.fn().mockResolvedValue({
+      activeClientID: "test-client",
+      attachedClientIDs: ["other-client", "test-client"],
+      reason: "controller_transferred_to_requesting_client"
+    }),
     detach: vi.fn().mockResolvedValue({
       activeClientID: "test-client",
       attachedClientIDs: ["test-client"],
@@ -597,6 +602,87 @@ describe("BurnBarExtensionController", () => {
         succeeded: true
       })
     );
+  });
+
+  it("claims controller role and retries when a run action is rejected as observer-only", async () => {
+    const createRun = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Client 'test-client' is attached as an observer and cannot control runs."))
+      .mockResolvedValue({
+        runID: "run-claimed",
+        phase: "planning"
+      });
+    const claimControl = vi.fn().mockResolvedValue({
+      activeClientID: "test-client",
+      attachedClientIDs: ["other-client", "test-client"],
+      reason: "controller_transferred_to_requesting_client"
+    });
+    const client = makeConnectedClient({
+      createRun,
+      claimControl,
+      pollRuns: vi
+        .fn()
+        .mockResolvedValueOnce({
+          runs: [],
+          approvals: [],
+          pendingToolCalls: [],
+          arbitration: {
+            activeClientID: "other-client",
+            attachedClientIDs: ["other-client", "test-client"],
+            reason: "observer_attached_controller_retained"
+          },
+          emittedAt: "2026-03-22T10:00:00.000Z"
+        })
+        .mockResolvedValue({
+          runs: [
+            {
+              runID: "run-claimed",
+              clientID: "test-client",
+              sessionID: "session-1",
+              phase: "planning",
+              modelID: "glm-4.6",
+              updatedAt: "2026-03-22T10:00:01.000Z"
+            }
+          ],
+          approvals: [],
+          pendingToolCalls: [],
+          arbitration: {
+            activeClientID: "test-client",
+            attachedClientIDs: ["other-client", "test-client"],
+            reason: "controller_transferred_to_requesting_client"
+          },
+          emittedAt: "2026-03-22T10:00:01.000Z"
+        })
+    });
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "BurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    await controller.startRun({
+      prompt: "Need control",
+      modelID: "glm-4.6"
+    });
+
+    expect(claimControl).toHaveBeenCalledWith({
+      clientID: "test-client",
+      sessionID: "session-1"
+    });
+    expect(createRun).toHaveBeenCalledTimes(2);
   });
 
   it("maps trust-gated workspace refusals into structured daemon tool errors", async () => {

@@ -11,6 +11,14 @@ struct InsightBriefSnapshot {
     var modelShiftHeadline: String?
     var incompleteHint: String?
 
+    /// True when the inline ribbon in `ChatPanel` would show at least one row.
+    var hasInlineContent: Bool {
+        whereLeftOff != nil
+            || (heaviestTaskTitle != nil && heaviestTaskCost != nil && heaviestTaskProject != nil)
+            || modelShiftHeadline != nil
+            || incompleteHint != nil
+    }
+
     @MainActor
     static func build(from dataStore: DataStore) -> InsightBriefSnapshot {
         let calendar = Calendar.current

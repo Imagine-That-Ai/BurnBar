@@ -22,48 +22,52 @@ Colors are **adaptive** — they flip between dark and warm-neutral light based 
 
 The dark palette is the primary experience (most developers run dark mode). The light palette is a warm neutral — cream-toned, not clinical white — so the app feels premium in both modes.
 
-### Dark Mode (primary)
+### Dark Mode (primary) — Warm Charcoal
+
+Not GitHub dark. Near-black with a brown undertone, off-white text, earthy borders. Cohesive with botanical cream light mode.
 
 | Token | Value | Role |
 |-------|-------|------|
-| `background` | `#0D1117` | Page/window background |
-| `surface` | `#161B22` | Cards, panels |
-| `surfaceElevated` | `#1C2128` | Input backgrounds, popovers-on-cards |
-| `border` | `#30363D` | Dividers, card outlines |
-| `borderSubtle` | `#21262D` | Section separators |
-| `textPrimary` | `#FFFFFF` | Headings, values |
-| `textSecondary` | `#8B949E` | Labels, section headers |
-| `textMuted` | `#6E7681` | Hints, annotations, timestamps |
-| `success` | `#34D399` | Positive states, "path exists" |
-| `warning` | `#FBBF24` | Partial support, alerts |
-| `error` | `#F45B69` | Errors, destructive actions |
+| `background` | `#0E0D0B` | Warm near-black |
+| `surface` | `#171510` | Dark warm charcoal |
+| `surfaceElevated` | `#201E18` | Elevated warm surface |
+| `border` | `#302C22` | Earthy dark border |
+| `borderSubtle` | `#1E1C16` | Subtle warm separator |
+| `textPrimary` | `#F0EBE2` | Warm off-white — not clinical pure white |
+| `textSecondary` | `#9A9088` | Warm gray |
+| `textMuted` | `#7A7268` | Warm muted |
+| `success` | `#38D898` | Vivid green |
+| `warning` | `#F0C040` | Rich amber |
+| `error` | `#F06070` | Rich red |
 
-### Light Mode — Warm Neutral
+### Light Mode — Botanical Cream
+
+Inspired by herbarium paper and botanical illustration: cream with a clear green undertone, sage borders, forest-ink text. Reads premium and distinct — not generic Mac beige.
 
 | Token | Value | Role |
 |-------|-------|------|
-| `background` | `#F5F0EB` | Page/window background |
-| `surface` | `#FAF7F4` | Cards, panels |
-| `surfaceElevated` | `#FFFFFF` | Input backgrounds, elevated content |
-| `border` | `#DDD8D1` | Dividers, card outlines |
-| `borderSubtle` | `#EDE9E4` | Section separators |
-| `textPrimary` | `#1A1208` | Headings, values |
-| `textSecondary` | `#4A4038` | Labels, section headers |
-| `textMuted` | `#8A7E72` | Hints, annotations, timestamps |
-| `success` | `#2E8B57` | Positive states |
-| `warning` | `#C97F1A` | Partial support, alerts |
-| `error` | `#C93D3D` | Errors, destructive actions |
+| `background` | `#EDF0E5` | Herbarium paper — cream with green cast |
+| `surface` | `#F4F6EE` | Lighter botanical paper |
+| `surfaceElevated` | `#FAFAF5` | Near-white with green tint |
+| `border` | `#C5CEB6` | Pressed sage |
+| `borderSubtle` | `#D8E2CA` | Light sage separator |
+| `textPrimary` | `#1C2014` | Botanical ink — near-black with green cast |
+| `textSecondary` | `#4A5442` | Aged ink |
+| `textMuted` | `#7A8572` | Faded sage text |
+| `success` | `#3A7835` | Forest green |
+| `warning` | `#A87018` | Amber |
+| `error` | `#BF3030` | Deep red |
 
 ### Brand Accents
 
-Accent colors shift slightly between modes to maintain saturation and contrast:
+Accents shift between modes — botanical light uses earthier, nature-grounded variants:
 
 | Color | Dark | Light | Usage |
 |-------|------|-------|-------|
-| Coral | `#E07868` | `#D96B5A` | Claude Code, gradients, highlights |
-| Purple | `#8E86D0` | `#7E74C4` | Factory Droid, charts |
-| Teal | `#2CBEC8` | `#1DAAAF` | Kimi, success states, cache hits |
-| Gold | `#D49A3A` | `#D49A3A` | MiniMax, warnings |
+| Coral | `#E87060` | `#C8604E` | Claude Code, gradients |
+| Purple | `#9080D8` | `#6868B8` | Factory Droid, charts |
+| Teal | `#2CCAC0` | `#1A9A8C` | Kimi, cache hits |
+| Gold | `#E0A030` | `#A47A1E` | MiniMax, warnings |
 
 ---
 
@@ -172,7 +176,9 @@ The static `coral`, `purple`, `teal`, `gold` in DesignSystem are currently hardc
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | 2026-03-22 | Initial design system documented | Created by /design-consultation based on existing codebase audit |
-| 2026-03-22 | Light mode: Warm Neutral palette | Cream tones (#F5F0EB bg) chosen over GitHub cool-gray for warmer feel alongside light-mode IDEs |
+| 2026-03-22 | Light mode: Botanical Cream palette | Replaced Warm Neutral — herbarium paper (#EDF0E5) with sage borders and forest-ink text; distinct identity vs generic beige apps |
+| 2026-03-22 | Dark mode: Warm Charcoal palette | Replaced GitHub dark clone (#0D1117) — warm near-black (#0E0D0B) with brown undertone, off-white text, earthy borders |
+| 2026-03-22 | Color.adaptive extracted to ColorAdaptive.swift | Isolated AppKit import from DesignSystem.swift to prevent SourceKit false-positive errors on AgentProvider/Color(hex:) references |
 | 2026-03-22 | Light mode activation: follows macOS system appearance | Native macOS behavior, zero extra UI, no settings burden |
 | 2026-03-22 | Adaptive color strategy: NSColor dynamic provider | Works with existing Color(hex:) extension, no asset catalog required |
 | 2026-03-22 | Settings layout: NavigationSplitView sidebar | Replaced TabView — macOS HIG standard for Settings; fixes text contrast and navigation clarity |

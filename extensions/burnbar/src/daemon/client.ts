@@ -10,6 +10,7 @@ import {
   type BurnBarClientArbitrationSnapshot,
   type BurnBarClientAttachRequest,
   type BurnBarClientAttachResponse,
+  type BurnBarClientClaimControlRequest,
   type BurnBarClientDetachRequest,
   type BurnBarConfigResponse,
   type BurnBarHealthResponse,
@@ -69,6 +70,7 @@ export interface BurnBarDaemonClientLike {
   config(): Promise<BurnBarConfigResponse["snapshot"]>;
   recentUsage(limit?: number): Promise<BurnBarRecentUsageResponse["usage"]>;
   attach(params: BurnBarClientAttachRequest): Promise<BurnBarClientAttachResponse>;
+  claimControl(params: BurnBarClientClaimControlRequest): Promise<BurnBarClientArbitrationSnapshot>;
   detach(params: BurnBarClientDetachRequest): Promise<BurnBarClientArbitrationSnapshot>;
   createRun(params: BurnBarRunCreateRequest): Promise<BurnBarRunCreateResponse>;
   listRuns(params: BurnBarRunListRequest): Promise<BurnBarRunListResponse["runs"]>;
@@ -113,6 +115,10 @@ export class BurnBarDaemonClient implements BurnBarDaemonClientLike {
 
   async attach(params: BurnBarClientAttachRequest): Promise<BurnBarClientAttachResponse> {
     return this.send("client.attach", params);
+  }
+
+  async claimControl(params: BurnBarClientClaimControlRequest): Promise<BurnBarClientArbitrationSnapshot> {
+    return this.send("client.claimControl", params);
   }
 
   async detach(params: BurnBarClientDetachRequest): Promise<BurnBarClientArbitrationSnapshot> {

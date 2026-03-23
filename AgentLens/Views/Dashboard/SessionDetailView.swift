@@ -69,7 +69,7 @@ struct SessionDetailView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(DesignSystem.Colors.teal)
+                .foregroundStyle(DesignSystem.Colors.whimsy)
                 .disabled(summarizing || conversation?.fullText.isEmpty != false || cliBridge.detectedBackend == nil)
             }
 
@@ -111,9 +111,11 @@ struct SessionDetailView: View {
                 systemPrompt: "You are a precise technical editor. Follow the user's format instructions exactly.",
                 userMessage: userPrompt
             )
-            for try await chunk in stream {
-                acc += chunk
-                summaryText = acc
+            for try await event in stream {
+                if case .text(let chunk) = event {
+                    acc += chunk
+                    summaryText = acc
+                }
             }
             try dataStore.updateConversationSummary(id: conv.id, summary: acc)
             conversation = try? dataStore.fetchConversation(id: conv.id)

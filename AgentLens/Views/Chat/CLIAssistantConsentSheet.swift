@@ -15,8 +15,8 @@ struct CLIAssistantConsentSheet: View {
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    DesignSystem.Colors.teal.opacity(0.35),
-                                    DesignSystem.Colors.purple.opacity(0.25)
+                                    DesignSystem.Colors.whimsy.opacity(0.35),
+                                    DesignSystem.Colors.ember.opacity(0.25)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -50,7 +50,7 @@ struct CLIAssistantConsentSheet: View {
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 } icon: {
                     Image(systemName: "lock.shield")
-                        .foregroundStyle(DesignSystem.Colors.teal.opacity(0.9))
+                        .foregroundStyle(DesignSystem.Colors.whimsy.opacity(0.9))
                 }
 
                 Label {
@@ -79,19 +79,30 @@ struct CLIAssistantConsentSheet: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .tint(DesignSystem.Colors.teal)
+                .tint(DesignSystem.Colors.whimsy)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(DesignSystem.Spacing.xl)
         .frame(minWidth: 420)
         .background {
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                .fill(DesignSystem.Colors.surfaceElevated)
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                        .stroke(DesignSystem.Colors.border.opacity(0.6), lineWidth: 0.5)
-                )
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.15), DesignSystem.Colors.border.opacity(0.35)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.5
+                    )
+            )
         }
     }
 }

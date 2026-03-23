@@ -380,6 +380,12 @@ final class DataStore {
             }
         }
 
+        migrator.registerMigration("v8_chat_transcript_pieces") { db in
+            try db.alter(table: "chat_messages") { t in
+                t.add(column: "transcriptPiecesJSON", .text)
+            }
+        }
+
         return migrator
     }
     
@@ -761,18 +767,25 @@ final class DataStore {
     // MARK: - Chat messages (persisted)
 
     func saveChatMessage(_ message: ChatMessageRecord) throws {
+        let piecesJSON: String?
+        if message.transcriptPieces.isEmpty {
+            piecesJSON = nil
+        } else {
+            piecesJSON = try Self.encodeTranscriptPieces(message.transcriptPieces)
+        }
         try dbQueue.write { db in
             try db.execute(
                 sql: """
-                INSERT OR REPLACE INTO chat_messages (id, role, content, timestamp, cliUsed)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO chat_messages (id, role, content, timestamp, cliUsed, transcriptPiecesJSON)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     message.id,
                     message.role.rawValue,
                     message.content,
                     message.timestamp,
-                    message.cliUsed
+                    message.cliUsed,
+                    piecesJSON
                 ]
             )
         }
@@ -787,12 +800,14 @@ final class DataStore {
                       let role = ChatMessageRole(rawValue: roleRaw),
                       let content = row["content"] as? String,
                       let ts = parseDate(row["timestamp"]) else { return nil }
+                let pieces = Self.decodeTranscriptPieces(row["transcriptPiecesJSON"] as? String) ?? []
                 return ChatMessageRecord(
                     id: id,
                     role: role,
                     content: content,
                     timestamp: ts,
-                    cliUsed: row["cliUsed"] as? String
+                    cliUsed: row["cliUsed"] as? String,
+                    transcriptPieces: pieces
                 )
             }
         }
@@ -929,6 +944,18 @@ final class DataStore {
     private static func encodeJSON<T: Encodable>(_ value: T) throws -> String {
         let data = try JSONEncoder().encode(value)
         return String(data: data, encoding: .utf8) ?? "[]"
+    }
+
+    private static func encodeTranscriptPieces(_ value: [ChatTranscriptPiece]) throws -> String {
+        try encodeJSON(value)
+    }
+
+    private static func decodeTranscriptPieces(_ string: String?) -> [ChatTranscriptPiece]? {
+        guard let string, !string.isEmpty, let data = string.data(using: .utf8),
+              let arr = try? JSONDecoder().decode([ChatTranscriptPiece].self, from: data) else {
+            return nil
+        }
+        return arr
     }
 
     /// Fields that are mirrored to Firestore for conversation backup (excludes local-only columns like `fullText`).

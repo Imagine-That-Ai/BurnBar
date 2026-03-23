@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // MARK: - Dashboard Main Route
@@ -41,6 +42,28 @@ struct DashboardView: View {
 
     private var isScanning: Bool { aggregator?.isRefreshing ?? false }
 
+    private func runScan() {
+        guard let agg = aggregator else { return }
+        Task { await agg.refreshAll() }
+    }
+
+    private func runRecount() {
+        guard let agg = aggregator else { return }
+        Task { await agg.recountAll() }
+    }
+
+    /// Opens Cursor’s extension install flow for BurnBar (`extensions/burnbar` package id).
+    private func openBurnBarCursorExtension() {
+        let id = "burnbar.burnbar"
+        let candidates = [
+            URL(string: "cursor:extension/\(id)"),
+            URL(string: "vscode:extension/\(id)"),
+        ].compactMap { $0 }
+        for url in candidates {
+            if NSWorkspace.shared.open(url) { return }
+        }
+    }
+
     var body: some View {
         @Bindable var chatController = chatController
         return NavigationSplitView {
@@ -63,39 +86,45 @@ struct DashboardView: View {
                 dataStore: dataStore
             )
         }
-        .overlay(alignment: chatDockAlignment) {
-            VStack(spacing: 12) {
-                if chatPanelOpen {
-                    ChatPanel(
-                        controller: chatController,
-                        dataStore: dataStore,
-                        settingsManager: settingsManager,
-                        onClose: {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                                chatPanelOpen = false
-                                UserDefaults.standard.set(dataStore.usages.count, forKey: "lastSeenSessionCountForChatBadge")
+        .overlay {
+            GeometryReader { geo in
+                VStack(spacing: 12) {
+                    if chatPanelOpen {
+                        ChatPanel(
+                            controller: chatController,
+                            dataStore: dataStore,
+                            settingsManager: settingsManager,
+                            containerSize: geo.size,
+                            edgePadding: 20,
+                            onClose: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                    chatPanelOpen = false
+                                    UserDefaults.standard.set(dataStore.usages.count, forKey: "lastSeenSessionCountForChatBadge")
+                                }
                             }
-                        }
-                    )
-                    .transition(.asymmetric(
-                        insertion: .move(edge: chatController.dock == .bottom ? .bottom : (chatController.dock == .leading ? .leading : .trailing)).combined(with: .opacity),
-                        removal: .opacity
-                    ))
-                }
-                if !chatPanelOpen {
-                    ChatFAB(hasNewInsights: hasNewInsightPulse) {
-                        if !settingsManager.cliAssistantConsentShown {
-                            showCLIConsentSheet = true
-                            return
-                        }
-                        Task { await chatController.cliBridge.detect() }
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                            chatPanelOpen = true
+                        )
+                        .offset(x: chatController.panelFloatOffset.width, y: chatController.panelFloatOffset.height)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                    }
+                    if !chatPanelOpen {
+                        ChatFAB(hasNewInsights: hasNewInsightPulse) {
+                            if !settingsManager.cliAssistantConsentShown {
+                                showCLIConsentSheet = true
+                                return
+                            }
+                            Task { await chatController.cliBridge.detect() }
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                chatPanelOpen = true
+                            }
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding(EdgeInsets(top: 24, leading: 20, bottom: 20, trailing: 20))
             }
-            .padding(chatController.dock == .bottom ? EdgeInsets(top: 0, leading: 20, bottom: 20, trailing: 20) : EdgeInsets(top: 24, leading: 20, bottom: 24, trailing: 20))
         }
         .onAppear {
             if !settingsManager.conversationIndexingConsentShown {
@@ -120,14 +149,6 @@ struct DashboardView: View {
                 showCLIConsentSheet = false
             }
             .presentationBackground(Material.ultraThinMaterial)
-        }
-    }
-
-    private var chatDockAlignment: Alignment {
-        switch chatController.dock {
-        case .bottom: return .bottom
-        case .leading: return .bottomLeading
-        case .trailing: return .bottomTrailing
         }
     }
 
@@ -172,11 +193,16 @@ struct DashboardView: View {
                     icon: isScanning ? "arrow.triangle.2.circlepath" : "arrow.clockwise",
                     isLoading: isScanning,
                     label: "Scan",
-                    action: {
-                        guard let agg = aggregator else { return }
-                        Task { await agg.refreshAll() }
-                    }
+                    action: runScan
                 )
+
+                GlassToolbarButton(
+                    icon: "arrow.counterclockwise",
+                    label: "Recount",
+                    action: runRecount,
+                    helpText: "Clear the board and recount all sessions"
+                )
+                .disabled(isScanning || aggregator == nil)
 
                 // Settings
                 Button {
@@ -276,6 +302,49 @@ struct DashboardView: View {
                         Text("\(activeProviderCount) active providers")
                             .font(DesignSystem.Typography.caption)
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(DesignSystem.Spacing.md)
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        Text("Cursor")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .textCase(.uppercase)
+
+                        Button(action: openBurnBarCursorExtension) {
+                            HStack(spacing: DesignSystem.Spacing.md) {
+                                ZStack {
+                                    Circle()
+                                        .fill(DesignSystem.Colors.surfaceElevated)
+                                        .frame(width: 36, height: 36)
+
+                                    ProviderLogoView(provider: .cursor, size: 24, useFallbackColor: false)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Add BurnBar to Cursor")
+                                        .font(DesignSystem.Typography.body)
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                        .multilineTextAlignment(.leading)
+
+                                    Text("Opens the extension install page")
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                }
+
+                                Spacer(minLength: 0)
+
+                                Image(systemName: "arrow.up.forward.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Install BurnBar in Cursor (burnbar.burnbar)")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(DesignSystem.Spacing.md)
@@ -423,9 +492,9 @@ struct DashboardView: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                DesignSystem.Colors.coral.opacity(0.18),
-                                DesignSystem.Colors.purple.opacity(0.12),
-                                DesignSystem.Colors.teal.opacity(0.08),
+                                DesignSystem.Colors.ember.opacity(0.14),
+                                DesignSystem.Colors.amber.opacity(0.08),
+                                DesignSystem.Colors.whimsy.opacity(0.05),
                                 Color.clear
                             ],
                             startPoint: .topLeading,
@@ -522,7 +591,7 @@ struct DashboardView: View {
             StatCard(
                 title: "Today",
                 value: settingsManager.formatUsageMetric(cost: dataStore.totalCostToday, tokens: dataStore.totalTokensToday),
-                accent: DesignSystem.Colors.coral,
+                accent: DesignSystem.Colors.ember,
                 detail: settingsManager.usageDisplayMode == .currency ? "Live spend" : "Tokens today",
                 moodLabel: dataStore.moodLabel,
                 moodColor: dataStore.moodColor
@@ -533,7 +602,7 @@ struct DashboardView: View {
             StatCard(
                 title: "This Week",
                 value: settingsManager.formatUsageMetric(cost: dataStore.totalCostThisWeek, tokens: dataStore.totalTokensThisWeek),
-                accent: DesignSystem.Colors.purple,
+                accent: DesignSystem.Colors.amber,
                 detail: "7-day window",
                 moodLabel: nil,
                 moodColor: nil
@@ -544,7 +613,7 @@ struct DashboardView: View {
             StatCard(
                 title: "This Month",
                 value: settingsManager.formatUsageMetric(cost: dataStore.totalCostThisMonth, tokens: dataStore.totalTokensThisMonth),
-                accent: DesignSystem.Colors.teal,
+                accent: DesignSystem.Colors.blaze,
                 detail: "Rolling 30 days",
                 moodLabel: nil,
                 moodColor: nil
@@ -555,7 +624,7 @@ struct DashboardView: View {
             StatCard(
                 title: "All Time",
                 value: settingsManager.formatUsageMetric(cost: dataStore.totalCostAllTime, tokens: dataStore.totalTokensAllTime),
-                accent: DesignSystem.Colors.gold,
+                accent: DesignSystem.Colors.whimsy,
                 detail: dataStore.lastRefresh.map { "Updated \($0.formatted(date: .omitted, time: .shortened))" } ?? "Historical total",
                 moodLabel: nil,
                 moodColor: nil
@@ -728,11 +797,25 @@ struct DashboardView: View {
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.surfaceElevated.opacity(0.82))
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.45))
+            }
+        }
         .clipShape(.rect(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                .stroke(DesignSystem.Colors.border.opacity(0.7), lineWidth: 0.5)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.5
+                )
         )
     }
 
@@ -751,7 +834,7 @@ private struct CloudTotalCard: View {
                 HStack(spacing: DesignSystem.Spacing.xs) {
                     Image(systemName: "cloud.fill")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.teal)
+                        .foregroundStyle(DesignSystem.Colors.whimsy)
                     Text("All devices (90 days)")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -767,7 +850,7 @@ private struct CloudTotalCard: View {
                 HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.xs) {
                     Text(cloudTotal.formatAsCost())
                         .font(DesignSystem.Typography.monoSmall)
-                        .foregroundStyle(DesignSystem.Colors.teal)
+                        .foregroundStyle(DesignSystem.Colors.whimsy)
 
                     Text("vs \(localTotal.formatAsCost()) local")
                         .font(DesignSystem.Typography.tiny)
@@ -866,12 +949,12 @@ private struct SidebarProjectsRow: View {
             HStack(spacing: DesignSystem.Spacing.md) {
                 ZStack {
                     Circle()
-                        .fill(isSelected ? DesignSystem.Colors.teal.opacity(0.18) : DesignSystem.Colors.surfaceElevated)
+                        .fill(isSelected ? DesignSystem.Colors.amber.opacity(0.18) : DesignSystem.Colors.surfaceElevated)
                         .frame(width: 34, height: 34)
 
                     Image(systemName: "folder.fill")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(isSelected ? DesignSystem.Colors.teal : DesignSystem.Colors.textSecondary)
+                        .foregroundStyle(isSelected ? DesignSystem.Colors.amber : DesignSystem.Colors.textSecondary)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -888,17 +971,17 @@ private struct SidebarProjectsRow: View {
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(isSelected ? DesignSystem.Colors.teal.opacity(0.8) : DesignSystem.Colors.textMuted)
+                    .foregroundStyle(isSelected ? DesignSystem.Colors.amber.opacity(0.8) : DesignSystem.Colors.textMuted)
             }
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.sm)
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
-                    .fill(isSelected ? DesignSystem.Colors.teal.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(0.35))
+                    .fill(isSelected ? DesignSystem.Colors.amber.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(0.35))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
-                    .stroke(isSelected ? DesignSystem.Colors.teal.opacity(0.3) : DesignSystem.Colors.border.opacity(0.35), lineWidth: 1)
+                    .stroke(isSelected ? DesignSystem.Colors.amber.opacity(0.3) : DesignSystem.Colors.border.opacity(0.35), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -985,12 +1068,26 @@ private struct GlassPicker<Option: Identifiable & Hashable>: View {
             }
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.sm)
-            .background(DesignSystem.Colors.surface)
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.5))
+                }
+            }
             .foregroundStyle(DesignSystem.Colors.textPrimary)
             .clipShape(.rect(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.5
+                    )
             )
         }
         .menuStyle(.borderlessButton)
@@ -1016,11 +1113,25 @@ struct GlassBadge<Content: View>: View {
         content()
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.sm)
-            .background(DesignSystem.Colors.surfaceElevated)
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(DesignSystem.Colors.surfaceElevated.opacity(0.5))
+                }
+            }
             .clipShape(.rect(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .stroke(DesignSystem.Colors.border.opacity(0.6), lineWidth: 0.5)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.5
+                    )
             )
     }
 }
@@ -1032,6 +1143,7 @@ private struct GlassToolbarButton: View {
     var isLoading: Bool = false
     let label: String
     let action: () -> Void
+    var helpText: String = "Scan agent logs for new sessions"
 
     var body: some View {
         Button(action: action) {
@@ -1049,16 +1161,30 @@ private struct GlassToolbarButton: View {
             .foregroundStyle(DesignSystem.Colors.textPrimary.opacity(0.75))
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.sm)
-            .background(DesignSystem.Colors.surfaceElevated)
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(DesignSystem.Colors.surfaceElevated.opacity(0.5))
+                }
+            }
             .clipShape(.rect(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .stroke(DesignSystem.Colors.border.opacity(0.5), lineWidth: 0.5)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.5
+                    )
             )
         }
         .buttonStyle(.plain)
         .disabled(isLoading)
-        .help("Scan agent logs for new sessions")
+        .help(helpText)
     }
 }
 
@@ -1102,11 +1228,25 @@ private struct SessionPreviewRow: View {
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.surfaceElevated.opacity(0.7))
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.4))
+            }
+        }
         .clipShape(.rect(cornerRadius: DesignSystem.Radius.md, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .stroke(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.1), DesignSystem.Colors.border.opacity(0.3)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.5
+                )
         )
     }
 
@@ -1143,12 +1283,26 @@ private struct UsageModeToolbarPicker: View {
             }
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.sm)
-            .background(DesignSystem.Colors.surface)
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.5))
+                }
+            }
             .foregroundStyle(DesignSystem.Colors.textPrimary)
             .clipShape(.rect(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.5
+                    )
             )
         }
         .menuStyle(.borderlessButton)
@@ -1161,16 +1315,8 @@ private struct DashboardBackdrop: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    DesignSystem.Colors.background,
-                    DesignSystem.Colors.background,
-                    DesignSystem.Colors.background
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            DesignSystem.Colors.background
+                .ignoresSafeArea()
 
             BracketSwarmBackground(moodBand: moodBand)
                 .ignoresSafeArea()
@@ -1179,7 +1325,8 @@ private struct DashboardBackdrop: View {
 
             RadialGradient(
                 colors: [
-                    DesignSystem.Colors.coral.opacity(0.08),
+                    DesignSystem.Colors.ember.opacity(0.09),
+                    DesignSystem.Colors.amber.opacity(0.04),
                     Color.clear
                 ],
                 center: .topLeading,
@@ -1190,7 +1337,7 @@ private struct DashboardBackdrop: View {
 
             RadialGradient(
                 colors: [
-                    DesignSystem.Colors.teal.opacity(0.07),
+                    DesignSystem.Colors.whimsy.opacity(0.06),
                     Color.clear
                 ],
                 center: .bottomTrailing,
@@ -1271,13 +1418,20 @@ struct BracketSwarmBackground: View {
                 }
             }
             .onAppear {
-                regenerateSwarmsIfNeeded(size: proxy.size)
+                Task { @MainActor in
+                    regenerateSwarmsIfNeeded(size: proxy.size)
+                }
             }
             .onChange(of: proxy.size) { _, newSize in
-                regenerateSwarmsIfNeeded(size: newSize)
+                Task { @MainActor in
+                    regenerateSwarmsIfNeeded(size: newSize)
+                }
             }
             .onChange(of: moodBand) { _, _ in
-                regenerateSwarmsIfNeeded(size: proxy.size, force: true)
+                let size = proxy.size
+                Task { @MainActor in
+                    regenerateSwarmsIfNeeded(size: size, force: true)
+                }
             }
         }
     }
@@ -1285,20 +1439,20 @@ struct BracketSwarmBackground: View {
     private var bracePalettes: [DashboardBracePalette] {
         [
             DashboardBracePalette(
-                primary: DesignSystem.Colors.purple.opacity(0.64),
-                glow: DesignSystem.Colors.purple.opacity(0.28)
+                primary: DesignSystem.Colors.ember.opacity(0.58),
+                glow: DesignSystem.Colors.ember.opacity(0.24)
             ),
             DashboardBracePalette(
-                primary: DesignSystem.Colors.coral.opacity(0.58),
-                glow: DesignSystem.Colors.coral.opacity(0.24)
+                primary: DesignSystem.Colors.amber.opacity(0.54),
+                glow: DesignSystem.Colors.amber.opacity(0.22)
             ),
             DashboardBracePalette(
-                primary: DesignSystem.Colors.teal.opacity(0.54),
-                glow: DesignSystem.Colors.teal.opacity(0.22)
+                primary: DesignSystem.Colors.blaze.opacity(0.50),
+                glow: DesignSystem.Colors.blaze.opacity(0.20)
             ),
             DashboardBracePalette(
-                primary: DesignSystem.Colors.gold.opacity(0.50),
-                glow: DesignSystem.Colors.gold.opacity(0.18)
+                primary: DesignSystem.Colors.whimsy.opacity(0.48),
+                glow: DesignSystem.Colors.whimsy.opacity(0.18)
             ),
         ]
     }

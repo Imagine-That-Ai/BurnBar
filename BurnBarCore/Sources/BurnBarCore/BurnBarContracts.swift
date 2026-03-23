@@ -25,6 +25,7 @@ public enum BurnBarRPCMethod: String, Codable, Hashable, Sendable {
     case workspaceToolResult = "workspace.toolResult"
     case approvalRespond = "approval.respond"
     case clientAttach = "client.attach"
+    case clientClaimControl = "client.claimControl"
     case clientDetach = "client.detach"
 }
 
@@ -760,6 +761,16 @@ public struct BurnBarClientAttachResponse: Codable, Hashable, Sendable {
     public init(attachedClientID: BurnBarClientID, negotiatedProtocolVersion: Int?) {
         self.attachedClientID = attachedClientID
         self.negotiatedProtocolVersion = negotiatedProtocolVersion
+    }
+}
+
+public struct BurnBarClientClaimControlRequest: Codable, Hashable, Sendable {
+    public let clientID: BurnBarClientID
+    public let sessionID: BurnBarSessionID
+
+    public init(clientID: BurnBarClientID, sessionID: BurnBarSessionID) {
+        self.clientID = clientID
+        self.sessionID = sessionID
     }
 }
 

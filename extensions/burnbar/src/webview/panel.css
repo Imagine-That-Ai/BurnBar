@@ -1,88 +1,165 @@
 /* ============================================================
    BurnBar VS Code Webview Panel — panel.css
+   Glassmorphic warm aesthetic: botanical cream / bark
+   Brand: ember #F45B69 / #FA5053 · amber #FFA800
    ============================================================ */
 
-/* ----------------------------------------------------------
-   BurnBar accent tokens
-   ---------------------------------------------------------- */
+/* ── Design tokens ─────────────────────────────────────────
+   Light: botanical cream. Dark: bark.
+   VS Code injects .vscode-light / .vscode-dark on <body>.
+   ─────────────────────────────────────────────────────────── */
 :root {
-  --bb-ember:     #E8624A;
-  --bb-teal:      #4ABFB0;
-  --bb-gold:      #D4A017;
-  --bb-ember-dim: rgba(232, 98, 74, 0.15);
-  --bb-teal-dim:  rgba(74, 191, 176, 0.12);
-  --bb-gold-dim:  rgba(212, 160, 23, 0.15);
+  /* Brand */
+  --bb-ember:       #F45B69;
+  --bb-amber:       #FFA800;
+  --bb-ember-dim:   rgba(244, 91, 105, 0.11);
+  --bb-amber-dim:   rgba(255, 168, 0,  0.10);
+
+  /* Botanical cream — light mode surfaces */
+  --bb-bg:          #F5F0E6;
+  --bb-glass:       rgba(255, 252, 245, 0.68);
+  --bb-glass-hi:    rgba(255, 250, 240, 0.84);
+  --bb-border:      rgba(209, 184, 147, 0.45);
+  --bb-border-hi:   rgba(244, 91,  105, 0.22);
+
+  /* Text */
+  --bb-text:        #2A1F14;
+  --bb-text-2:      #6B5D4E;
+  --bb-text-3:      #9A8B7A;
+
+  /* Semantic */
+  --bb-success:     #3A7835;
+  --bb-success-dim: rgba(58, 120, 53,  0.10);
+  --bb-error-dim:   rgba(212, 48,  48,  0.09);
+  --bb-gold:        #C47800;
+  --bb-gold-dim:    rgba(196, 120, 0,   0.11);
+  --bb-teal:        #1A9A8C;
+  --bb-teal-dim:    rgba(26,  154, 140, 0.10);
+
+  /* Elevation */
+  --bb-shadow:      0 2px 12px rgba(42, 31, 20, 0.07), 0 1px 3px rgba(42, 31, 20, 0.04);
+  --bb-shadow-lg:   0 8px 28px rgba(42, 31, 20, 0.11), 0 2px 7px rgba(42, 31, 20, 0.05);
+  --bb-shadow-ember:0 4px 20px rgba(244, 91, 105, 0.20);
+
+  /* Blur */
+  --bb-blur: blur(18px) saturate(1.55);
+
+  /* Geometry */
+  --bb-r-sm: 6px;
+  --bb-r-md: 10px;
+  --bb-r-lg: 14px;
+  --bb-r-xl: 20px;
+  --bb-r-pill: 999px;
 }
 
-/* ----------------------------------------------------------
-   Keyframe animations
-   ---------------------------------------------------------- */
+/* Dark mode — bark */
+.vscode-dark,
+.vscode-high-contrast {
+  --bb-ember:       #FA5053;
+
+  --bb-bg:          #151210;
+  --bb-glass:       rgba(28, 20, 14, 0.62);
+  --bb-glass-hi:    rgba(38, 28, 18, 0.76);
+  --bb-border:      rgba(61, 52, 42, 0.55);
+  --bb-border-hi:   rgba(250, 80, 83, 0.20);
+
+  --bb-text:        #F2EBE0;
+  --bb-text-2:      #A89A8A;
+  --bb-text-3:      #7A6E62;
+
+  --bb-success:     #38D898;
+  --bb-success-dim: rgba(56, 216, 152, 0.11);
+  --bb-error-dim:   rgba(250, 80,  83,  0.11);
+  --bb-gold:        #FFA800;
+  --bb-gold-dim:    rgba(255, 168, 0,   0.11);
+  --bb-teal:        #2CBEC8;
+  --bb-teal-dim:    rgba(44, 190, 200,  0.11);
+
+  --bb-shadow:      0 2px 16px rgba(0, 0, 0, 0.38), 0 1px 4px rgba(0, 0, 0, 0.25);
+  --bb-shadow-lg:   0 8px 32px rgba(0, 0, 0, 0.52), 0 3px 9px  rgba(0, 0, 0, 0.32);
+  --bb-shadow-ember:0 4px 24px rgba(250, 80, 83, 0.26);
+}
+
+/* ── Keyframes ─────────────────────────────────────────────── */
 @keyframes bb-pulse {
-  0%,
-  100% { opacity: 1; }
-  50%  { opacity: 0.35; }
+  0%, 100% { opacity: 1;    transform: scale(1);    }
+  50%       { opacity: 0.4;  transform: scale(0.82); }
 }
 
 @keyframes bb-slide-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(-5px); }
+  to   { opacity: 1; transform: translateY(0);    }
 }
 
-/* ----------------------------------------------------------
-   Base / reset
-   ---------------------------------------------------------- */
-*,
-*::before,
-*::after {
+@keyframes bb-ember-ring {
+  0%, 100% { box-shadow: var(--bb-shadow-ember), 0 0 0 0   rgba(244, 91, 105, 0.14); }
+  50%       { box-shadow: var(--bb-shadow-ember), 0 0 0 5px rgba(244, 91, 105, 0);   }
+}
+
+/* ── Reset ─────────────────────────────────────────────────── */
+*, *::before, *::after {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
+/* ── Body — botanical cream / bark with gradient mesh ──────── */
 body {
-  background:  var(--vscode-sideBar-background);
-  color:       var(--vscode-sideBar-foreground);
-  font-family: var(--vscode-font-family);
+  background-color: var(--bb-bg);
+  /* Subtle ember glow top-right, amber glow bottom-left */
+  background-image:
+    radial-gradient(ellipse 65% 50% at 100%   0%, rgba(244, 91,  105, 0.09) 0%, transparent 62%),
+    radial-gradient(ellipse 50% 60% at   0% 100%, rgba(255, 168,  0,  0.07) 0%, transparent 62%);
+  color:       var(--bb-text);
+  font-family: var(--vscode-font-family, -apple-system, system-ui, sans-serif);
   font-size:   var(--vscode-font-size, 13px);
-  margin:      0;
-  padding:     0;
   line-height: 1.5;
+  min-height:  100vh;
 }
 
-/* ----------------------------------------------------------
-   Root container
-   ---------------------------------------------------------- */
+/* ── Root ──────────────────────────────────────────────────── */
 #bb-root {
-  padding:        8px 12px;
+  padding:        10px 12px 20px;
   display:        flex;
   flex-direction: column;
-  gap:            12px;
+  gap:            10px;
   min-height:     100vh;
 }
 
-/* ----------------------------------------------------------
-   Visibility helper — applied by JS
-   ---------------------------------------------------------- */
-[data-visible="false"] {
-  display: none !important;
-}
+/* ── Visibility ────────────────────────────────────────────── */
+[data-visible="false"] { display: none !important; }
 
-/* ----------------------------------------------------------
-   Header
-   ---------------------------------------------------------- */
+/* ── Header ────────────────────────────────────────────────── */
 .bb-header {
   display:         flex;
   align-items:     center;
   justify-content: space-between;
-  padding:         6px 0;
-  border-bottom:   1px solid rgba(128, 128, 128, 0.15);
   gap:             8px;
+  padding:         8px 12px;
+
+  background:             var(--bb-glass);
+  backdrop-filter:        var(--bb-blur);
+  -webkit-backdrop-filter: var(--bb-blur);
+  border:          1px solid var(--bb-border);
+  border-top:      1px solid rgba(255, 255, 255, 0.28);
+  border-radius:   var(--bb-r-lg);
+  box-shadow:      var(--bb-shadow);
 }
 
+.vscode-dark .bb-header {
+  border-top-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Ember → amber gradient wordmark */
 .bb-wordmark {
-  font-weight:     600;
-  font-size:       13px;
-  letter-spacing:  0.02em;
-  color:           var(--bb-ember);
-  flex-shrink:     0;
+  font-weight:    700;
+  font-size:      13px;
+  letter-spacing: 0.02em;
+  background:     linear-gradient(120deg, var(--bb-ember) 0%, var(--bb-amber) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  flex-shrink:    0;
 }
 
 .bb-header-chips {
@@ -97,13 +174,11 @@ body {
 .bb-header-actions {
   display:     flex;
   align-items: center;
-  gap:         4px;
+  gap:         2px;
   flex-shrink: 0;
 }
 
-/* ----------------------------------------------------------
-   Status orb
-   ---------------------------------------------------------- */
+/* ── Status orb ────────────────────────────────────────────── */
 .bb-orb {
   width:         8px;
   height:        8px;
@@ -113,87 +188,187 @@ body {
 }
 
 .bb-orb--connected {
-  background: var(--bb-teal);
+  background: var(--bb-success);
+  box-shadow: 0 0 0 3px var(--bb-success-dim);
 }
 
 .bb-orb--connecting,
 .bb-orb--repairing {
-  background: var(--bb-gold);
+  background: var(--bb-amber);
+  box-shadow: 0 0 0 3px var(--bb-amber-dim);
   animation:  bb-pulse 2s ease-in-out infinite;
 }
 
 .bb-orb--disconnected {
-  background: var(--vscode-editorError-foreground, #f48771);
+  background: var(--bb-ember);
+  box-shadow: 0 0 0 3px var(--bb-ember-dim);
 }
 
-/* ----------------------------------------------------------
-   Chip
-   ---------------------------------------------------------- */
+/* ── Chips (header) ────────────────────────────────────────── */
 .bb-chip {
   display:       inline-flex;
   align-items:   center;
-  background:    var(--vscode-badge-background);
-  color:         var(--vscode-badge-foreground);
-  border-radius: 4px;
-  padding:       2px 7px;
+  background:    rgba(128, 128, 128, 0.07);
+  color:         var(--bb-text-2);
+  border:        1px solid var(--bb-border);
+  border-radius: var(--bb-r-sm);
+  padding:       2px 8px;
   font-size:     11px;
   white-space:   nowrap;
   overflow:      hidden;
   text-overflow: ellipsis;
   max-width:     160px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
-.bb-chip--trusted  { border-left: 2px solid var(--bb-teal); }
-.bb-chip--untrusted { border-left: 2px solid var(--bb-gold); }
+.bb-chip--trusted   { border-left: 2px solid var(--bb-success); }
+.bb-chip--untrusted { border-left: 2px solid var(--bb-amber); }
 
-/* ----------------------------------------------------------
-   Icon buttons (header)
-   ---------------------------------------------------------- */
+/* ── Icon buttons ──────────────────────────────────────────── */
 .bb-icon-btn {
   background:    transparent;
-  border:        none;
-  color:         var(--vscode-sideBar-foreground);
+  border:        1px solid transparent;
+  color:         var(--bb-text-3);
   cursor:        pointer;
-  padding:       3px 5px;
-  border-radius: 4px;
+  padding:       4px 6px;
+  border-radius: var(--bb-r-sm);
   font-size:     14px;
   line-height:   1;
-  opacity:       0.65;
-  transition:    opacity 120ms ease, background 120ms ease;
+  transition:    all 150ms ease;
 }
 
 .bb-icon-btn:hover {
-  opacity:    1;
-  background: rgba(128, 128, 128, 0.15);
+  color:        var(--bb-text);
+  background:   var(--bb-glass-hi);
+  border-color: var(--bb-border);
+  backdrop-filter:        blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .bb-icon-btn:focus-visible {
-  outline:        2px solid var(--vscode-focusBorder);
+  outline:        2px solid var(--bb-ember);
   outline-offset: 2px;
 }
 
-/* ----------------------------------------------------------
-   Recovery block
-   ---------------------------------------------------------- */
+/* ── Buttons ───────────────────────────────────────────────── */
+.bb-btn {
+  display:         inline-flex;
+  align-items:     center;
+  justify-content: center;
+  gap:             5px;
+  border-radius:   var(--bb-r-md);
+  font-family:     var(--vscode-font-family, inherit);
+  font-size:       13px;
+  font-weight:     500;
+  cursor:          pointer;
+  padding:         7px 16px;
+  transition:      all 160ms ease;
+  white-space:     nowrap;
+}
+
+.bb-btn:focus-visible {
+  outline:        2px solid var(--bb-ember);
+  outline-offset: 2px;
+}
+
+.bb-btn:disabled {
+  opacity: 0.36;
+  cursor:  not-allowed;
+}
+
+/* Primary — ember → amber gradient CTA */
+.bb-btn--primary {
+  background:  linear-gradient(130deg, var(--bb-ember) 0%, var(--bb-amber) 100%);
+  color:       #fff;
+  border:      none;
+  box-shadow:  var(--bb-shadow-ember);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.bb-btn--primary:hover:not(:disabled) {
+  filter:    brightness(1.07);
+  box-shadow:0 6px 26px rgba(244, 91, 105, 0.32);
+  transform: translateY(-1px);
+}
+
+.bb-btn--primary:active:not(:disabled) {
+  transform: translateY(0);
+  filter:    brightness(0.95);
+}
+
+/* Secondary — glass */
+.bb-btn--secondary {
+  background:             var(--bb-glass);
+  backdrop-filter:        var(--bb-blur);
+  -webkit-backdrop-filter: var(--bb-blur);
+  color:       var(--bb-text);
+  border:      1px solid var(--bb-border);
+  box-shadow:  var(--bb-shadow);
+}
+
+.bb-btn--secondary:hover:not(:disabled) {
+  background:   var(--bb-glass-hi);
+  border-color: var(--bb-border-hi);
+  box-shadow:   var(--bb-shadow-lg);
+  transform:    translateY(-1px);
+}
+
+/* Danger */
+.bb-btn--danger {
+  background:  var(--bb-error-dim);
+  color:       var(--bb-ember);
+  border:      1px solid rgba(244, 91, 105, 0.28);
+  backdrop-filter:        blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.bb-btn--danger:hover:not(:disabled) {
+  background:   rgba(244, 91, 105, 0.17);
+  border-color: var(--bb-ember);
+}
+
+/* Small variant */
+.bb-btn--sm {
+  padding:   3px 10px;
+  font-size: 12px;
+}
+
+/* ── Recovery block ────────────────────────────────────────── */
 .bb-recovery {
-  background:    rgba(244, 135, 113, 0.08);
-  border:        1px solid rgba(244, 135, 113, 0.3);
-  border-radius: 6px;
-  padding:       10px 12px;
-  display:       flex;
+  background:             var(--bb-error-dim);
+  backdrop-filter:        var(--bb-blur);
+  -webkit-backdrop-filter: var(--bb-blur);
+  border:         1px solid rgba(244, 91, 105, 0.28);
+  border-radius:  var(--bb-r-lg);
+  padding:        12px 14px;
+  display:        flex;
   flex-direction: column;
-  gap:           8px;
+  gap:            8px;
+  animation:      bb-slide-in 200ms ease-out;
+}
+
+.bb-recovery-header {
+  display:     flex;
+  align-items: center;
+  gap:         8px;
 }
 
 .bb-recovery-icon {
-  font-size: 18px;
+  font-size:   18px;
   line-height: 1;
+  flex-shrink: 0;
+}
+
+.bb-recovery-title {
+  font-size:   13px;
+  font-weight: 600;
+  color:       var(--bb-ember);
 }
 
 .bb-recovery-msg {
-  margin:    0;
   font-size: 12px;
-  opacity:   0.85;
+  color:     var(--bb-text-2);
 }
 
 .bb-recovery-actions {
@@ -202,235 +377,202 @@ body {
   flex-wrap: wrap;
 }
 
-/* ----------------------------------------------------------
-   Buttons
-   ---------------------------------------------------------- */
-.bb-btn {
-  display:       inline-flex;
-  align-items:   center;
-  justify-content: center;
-  gap:           4px;
-  border-radius: 4px;
-  font-family:   var(--vscode-font-family);
-  font-size:     13px;
-  cursor:        pointer;
-  padding:       6px 14px;
-  transition:    background 120ms ease, opacity 120ms ease, border-color 120ms ease;
-  white-space:   nowrap;
-}
-
-.bb-btn:focus-visible {
-  outline:        2px solid var(--vscode-focusBorder);
-  outline-offset: 2px;
-}
-
-.bb-btn:disabled {
-  opacity: 0.45;
-  cursor:  not-allowed;
-}
-
-/* Primary — ember CTA */
-.bb-btn--primary {
-  background: var(--bb-ember);
-  color:      #fff;
-  border:     none;
-}
-
-.bb-btn--primary:hover:not(:disabled) {
-  background: rgba(232, 98, 74, 0.82);
-}
-
-/* Secondary — subtle */
-.bb-btn--secondary {
-  background: var(--vscode-button-secondaryBackground, var(--vscode-input-background));
-  color:      var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-  border:     1px solid var(--vscode-input-border);
-}
-
-.bb-btn--secondary:hover:not(:disabled) {
-  background: var(--vscode-list-activeSelectionBackground);
-}
-
-/* Danger */
-.bb-btn--danger {
-  background: transparent;
-  color:      var(--vscode-editorError-foreground, #f48771);
-  border:     1px solid currentColor;
-}
-
-.bb-btn--danger:hover:not(:disabled) {
-  background: rgba(244, 135, 113, 0.1);
-}
-
-/* Small variant */
-.bb-btn--sm {
-  padding:   2px 8px;
-  font-size: 12px;
-}
-
-/* ----------------------------------------------------------
-   Composer
-   ---------------------------------------------------------- */
+/* ── Composer ───────────────────────────────────────────────── */
 .bb-composer {
   display:        flex;
   flex-direction: column;
-  gap:            8px;
+  gap:            0;
+
+  background:             var(--bb-glass);
+  backdrop-filter:        var(--bb-blur);
+  -webkit-backdrop-filter: var(--bb-blur);
+  border:         1px solid var(--bb-border);
+  border-top:     1px solid rgba(255, 255, 255, 0.24);
+  border-radius:  var(--bb-r-lg);
+  overflow:       hidden;
+  box-shadow:     var(--bb-shadow);
+  transition:     border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.vscode-dark .bb-composer {
+  border-top-color: rgba(255, 255, 255, 0.05);
+}
+
+.bb-composer:focus-within {
+  border-color: var(--bb-border-hi);
+  box-shadow:   var(--bb-shadow-ember);
 }
 
 .bb-composer-input {
-  width:         100%;
-  background:    var(--vscode-input-background);
-  color:         var(--vscode-input-foreground);
-  border:        1px solid var(--vscode-input-border);
-  border-radius: 4px;
-  padding:       8px 10px;
-  font-family:   var(--vscode-font-family);
-  font-size:     var(--vscode-font-size, 13px);
-  resize:        vertical;
-  min-height:    64px;
-  line-height:   1.45;
-  outline:       none;
-  transition:    border-color 150ms ease;
+  width:       100%;
+  background:  transparent;
+  color:       var(--bb-text);
+  border:      none;
+  padding:     12px 14px 8px;
+  font-family: var(--vscode-font-family, inherit);
+  font-size:   var(--vscode-font-size, 13px);
+  resize:      vertical;
+  min-height:  64px;
+  line-height: 1.5;
+  outline:     none;
 }
 
 .bb-composer-input::placeholder {
-  opacity: 0.5;
-}
-
-.bb-composer-input:focus {
-  border-color: var(--vscode-focusBorder);
+  color:   var(--bb-text-3);
+  opacity: 1;
 }
 
 .bb-composer-input:disabled {
-  opacity: 0.45;
+  opacity: 0.36;
   cursor:  not-allowed;
 }
 
-/* Controls row: model select + mode chips */
+/* Controls row */
 .bb-composer-controls {
   display:     flex;
   align-items: center;
   gap:         8px;
   flex-wrap:   wrap;
+  padding:     8px 14px;
+  border-top:  1px solid var(--bb-border);
 }
 
 .bb-model-select {
-  background:    var(--vscode-input-background);
-  color:         var(--vscode-input-foreground);
-  border:        1px solid var(--vscode-input-border);
-  border-radius: 4px;
-  padding:       3px 7px;
-  font-family:   var(--vscode-font-family);
-  font-size:     12px;
-  cursor:        pointer;
-  outline:       none;
-  min-width:     120px;
-  max-width:     200px;
+  background:  rgba(128, 128, 128, 0.07);
+  color:       var(--bb-text-2);
+  border:      1px solid var(--bb-border);
+  border-radius: var(--bb-r-sm);
+  padding:     3px 8px;
+  font-family: var(--vscode-font-family, inherit);
+  font-size:   12px;
+  cursor:      pointer;
+  outline:     none;
+  min-width:   120px;
+  max-width:   200px;
+  transition:  border-color 150ms;
 }
 
-.bb-model-select:focus {
-  border-color: var(--vscode-focusBorder);
-}
+.bb-model-select:focus  { border-color: var(--bb-ember); }
+.bb-model-select:disabled { opacity: 0.36; cursor: not-allowed; }
 
-.bb-model-select:disabled {
-  opacity: 0.45;
-  cursor:  not-allowed;
-}
-
-/* Mode chips row */
+/* Mode chip pills */
 .bb-mode-chips {
-  display:     flex;
-  gap:         4px;
-  flex-wrap:   wrap;
+  display:   flex;
+  gap:       4px;
+  flex-wrap: wrap;
 }
 
 .bb-mode-chip {
   background:    transparent;
-  color:         var(--vscode-sideBar-foreground);
-  border:        1px solid var(--vscode-input-border);
-  border-radius: 4px;
-  padding:       2px 9px;
-  font-family:   var(--vscode-font-family);
+  color:         var(--bb-text-3);
+  border:        1px solid var(--bb-border);
+  border-radius: var(--bb-r-pill);
+  padding:       2px 12px;
+  font-family:   var(--vscode-font-family, inherit);
   font-size:     11px;
+  font-weight:   500;
   cursor:        pointer;
-  opacity:       0.65;
-  transition:    opacity 120ms ease, background 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition:    all 160ms ease;
 }
 
 .bb-mode-chip:hover {
-  opacity: 1;
+  color:        var(--bb-text);
+  border-color: var(--bb-border-hi);
 }
 
 .bb-mode-chip--active {
-  background:   var(--bb-ember-dim);
+  background:   linear-gradient(120deg, var(--bb-ember-dim), var(--bb-amber-dim));
   border-color: var(--bb-ember);
   color:        var(--bb-ember);
-  opacity:      1;
 }
 
 .bb-mode-chip:focus-visible {
-  outline:        2px solid var(--vscode-focusBorder);
+  outline:        2px solid var(--bb-ember);
   outline-offset: 2px;
 }
 
-/* Start run button — full width */
+/* Start run button */
 .bb-start-run {
-  width: 100%;
+  width:         100%;
+  border-radius: 0 0 calc(var(--bb-r-lg) - 1px) calc(var(--bb-r-lg) - 1px);
+  border-top:    1px solid rgba(244, 91, 105, 0.18);
+  padding:       9px 16px;
 }
 
 .bb-composer-disabled-msg {
-  margin:    0;
-  font-size: 11px;
-  opacity:   0.55;
+  font-size:  11px;
+  color:      var(--bb-text-3);
   text-align: center;
+  padding:    6px 14px 10px;
 }
 
-/* ----------------------------------------------------------
-   Runs section
-   ---------------------------------------------------------- */
+/* ── No-runs placeholder ───────────────────────────────────── */
+.bb-no-runs-msg {
+  font-size:  12px;
+  color:      var(--bb-text-3);
+  text-align: center;
+  padding:    16px 0 8px;
+}
+
+/* ── Runs section ──────────────────────────────────────────── */
 .bb-runs {
   display:        flex;
   flex-direction: column;
   gap:            8px;
 }
 
-/* Base run card */
+/* Glass run card */
 .bb-run-card {
-  background:    var(--vscode-editor-background);
-  border-radius: 6px;
-  padding:       10px 12px;
-  border:        1px solid rgba(128, 128, 128, 0.12);
+  background:             var(--bb-glass);
+  backdrop-filter:        var(--bb-blur);
+  -webkit-backdrop-filter: var(--bb-blur);
+  border-radius: var(--bb-r-lg);
+  padding:       12px 14px;
+  border:        1px solid var(--bb-border);
+  border-top:    1px solid rgba(255, 255, 255, 0.22);
   display:       flex;
   flex-direction: column;
   gap:           8px;
-  animation:     bb-slide-in 150ms ease-out;
+  box-shadow:    var(--bb-shadow);
+  animation:     bb-slide-in 180ms ease-out;
+  transition:    box-shadow 180ms ease, border-color 180ms ease, transform 180ms ease;
 }
 
-/* Active run */
+.vscode-dark .bb-run-card {
+  border-top-color: rgba(255, 255, 255, 0.04);
+}
+
+/* Active run — ember glow ring */
 .bb-run-card--active {
-  border-color: var(--bb-ember);
-  background:   var(--bb-ember-dim);
+  border-color: rgba(244, 91, 105, 0.55);
+  background:   linear-gradient(150deg, var(--bb-ember-dim) 0%, var(--bb-glass) 55%);
+  animation:    bb-ember-ring 3s ease-in-out infinite, bb-slide-in 180ms ease-out;
 }
 
-/* Selected run (non-active) */
+.vscode-dark .bb-run-card--active {
+  border-color: rgba(250, 80, 83, 0.45);
+}
+
+/* Selected run */
 .bb-run-card--selected {
-  border-color: var(--vscode-focusBorder);
+  border-color: rgba(255, 168, 0, 0.50);
 }
 
 /* Compact history card */
 .bb-run-card--compact {
-  padding: 7px 12px;
-  cursor:  pointer;
-  opacity: 0.85;
-  gap:     4px;
-  transition: opacity 120ms ease;
+  padding:    9px 14px;
+  cursor:     pointer;
+  gap:        4px;
+  transition: all 160ms ease;
 }
 
 .bb-run-card--compact:hover {
-  opacity: 1;
+  transform:    translateY(-1px);
+  border-color: var(--bb-border-hi);
+  box-shadow:   var(--bb-shadow-lg);
 }
 
-/* Run card header row */
+/* Card header */
 .bb-run-card-header {
   display:         flex;
   align-items:     center;
@@ -442,69 +584,75 @@ body {
   font-family:   monospace;
   font-size:     12px;
   font-weight:   600;
+  color:         var(--bb-text);
   overflow:      hidden;
   text-overflow: ellipsis;
   white-space:   nowrap;
 }
 
-/* Run meta row */
+/* Meta row */
 .bb-run-card-meta {
   display:     flex;
   align-items: center;
   gap:         10px;
   font-size:   11px;
-  opacity:     0.65;
+  color:       var(--bb-text-3);
 }
 
 .bb-run-note {
-  margin:    0;
   font-size: 12px;
-  opacity:   0.8;
+  color:     var(--bb-text-2);
 }
 
-/* ----------------------------------------------------------
-   Phase chips
-   ---------------------------------------------------------- */
+/* ── Phase chips ───────────────────────────────────────────── */
 .bb-phase-chip {
   display:       inline-flex;
   align-items:   center;
-  border-radius: 4px;
-  padding:       2px 7px;
+  border-radius: var(--bb-r-pill);
+  padding:       2px 9px;
   font-size:     10px;
-  font-weight:   600;
-  letter-spacing: 0.03em;
+  font-weight:   700;
+  letter-spacing: 0.04em;
   white-space:   nowrap;
   flex-shrink:   0;
+  backdrop-filter:        blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .bb-phase-chip--active {
-  background: var(--bb-ember-dim);
-  color:      var(--bb-ember);
+  background:   var(--bb-ember-dim);
+  border:       1px solid rgba(244, 91, 105, 0.30);
+  color:        var(--bb-ember);
 }
 
 .bb-phase-chip--warning {
-  background: var(--bb-gold-dim);
-  color:      var(--bb-gold);
+  background:   var(--bb-gold-dim);
+  border:       1px solid rgba(255, 168, 0, 0.28);
+  color:        var(--bb-gold);
 }
 
 .bb-phase-chip--success {
-  background: var(--bb-teal-dim);
-  color:      var(--bb-teal);
+  background:   var(--bb-success-dim);
+  border:       1px solid rgba(56, 216, 152, 0.24);
+  color:        var(--bb-success);
 }
 
-.bb-phase-chip--error,
+.bb-phase-chip--error {
+  background:   var(--bb-error-dim);
+  border:       1px solid rgba(244, 91, 105, 0.28);
+  color:        var(--bb-ember);
+}
+
 .bb-phase-chip--muted {
-  background: rgba(128, 128, 128, 0.12);
-  color:      var(--vscode-foreground);
-  opacity:    0.7;
+  background:   rgba(128, 128, 128, 0.08);
+  border:       1px solid var(--bb-border);
+  color:        var(--bb-text-3);
 }
 
-/* ----------------------------------------------------------
-   Approval block
-   ---------------------------------------------------------- */
+/* ── Approval block ────────────────────────────────────────── */
 .bb-approval {
-  border-top: 1px solid var(--bb-gold);
-  margin-top: 10px;
+  border-top:  1px solid var(--bb-border);
+  margin-top:  6px;
   padding-top: 10px;
   display:     flex;
   flex-direction: column;
@@ -512,16 +660,14 @@ body {
 }
 
 .bb-approval-title {
-  margin:      0;
   font-size:   12px;
   font-weight: 600;
-  color:       var(--bb-gold);
+  color:       var(--bb-amber);
 }
 
 .bb-approval-msg {
-  margin:    0;
   font-size: 12px;
-  opacity:   0.8;
+  color:     var(--bb-text-2);
 }
 
 .bb-approval-actions {
@@ -530,12 +676,10 @@ body {
   flex-wrap: wrap;
 }
 
-/* ----------------------------------------------------------
-   Inline detail sections (collapsible)
-   ---------------------------------------------------------- */
+/* ── Collapsible detail sections ───────────────────────────── */
 .bb-detail-sections {
-  border-top: 1px solid rgba(128, 128, 128, 0.1);
-  margin-top: 4px;
+  border-top:  1px solid var(--bb-border);
+  margin-top:  2px;
   padding-top: 4px;
   display:     flex;
   flex-direction: column;
@@ -549,70 +693,57 @@ body {
 
 .bb-detail-section summary {
   cursor:         pointer;
-  font-size:      11px;
-  font-weight:    600;
+  font-size:      10px;
+  font-weight:    700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  opacity:        0.6;
+  letter-spacing: 0.07em;
+  color:          var(--bb-text-3);
   padding:        4px 0;
   list-style:     none;
   user-select:    none;
-  transition:     opacity 120ms ease;
+  transition:     color 120ms ease;
 }
 
-.bb-detail-section summary::-webkit-details-marker {
-  display: none;
-}
+.bb-detail-section summary::-webkit-details-marker { display: none; }
 
 .bb-detail-section summary::before {
   content:      "▶";
   display:      inline-block;
   margin-right: 5px;
   font-size:    9px;
+  opacity:      0.55;
   transition:   transform 150ms ease;
-  opacity:      0.7;
 }
 
-.bb-detail-section[open] summary::before {
-  transform: rotate(90deg);
-}
-
-.bb-detail-section summary:hover {
-  opacity: 1;
-}
+.bb-detail-section[open] summary::before { transform: rotate(90deg); }
+.bb-detail-section summary:hover { color: var(--bb-text-2); }
 
 .bb-detail-content {
   padding:    4px 0 6px 14px;
   font-size:  12px;
+  color:      var(--bb-text-2);
   max-height: 300px;
   overflow-y: auto;
-  transition: max-height 200ms ease;
 }
 
-/* ----------------------------------------------------------
-   Run actions row
-   ---------------------------------------------------------- */
+/* ── Run actions ───────────────────────────────────────────── */
 .bb-run-actions {
-  display:   flex;
-  gap:       6px;
-  flex-wrap: wrap;
-  border-top: 1px solid rgba(128, 128, 128, 0.1);
+  display:     flex;
+  gap:         6px;
+  flex-wrap:   wrap;
+  border-top:  1px solid var(--bb-border);
   padding-top: 8px;
-  margin-top: 2px;
+  margin-top:  2px;
 }
 
-/* ----------------------------------------------------------
-   History runs container
-   ---------------------------------------------------------- */
+/* ── History runs container ────────────────────────────────── */
 .bb-history-runs {
   display:        flex;
   flex-direction: column;
   gap:            6px;
 }
 
-/* ----------------------------------------------------------
-   Capability chips
-   ---------------------------------------------------------- */
+/* ── Capability chips ──────────────────────────────────────── */
 .bb-capabilities {
   display:     flex;
   gap:         6px;
@@ -623,108 +754,111 @@ body {
 .bb-cap-chip {
   display:       inline-flex;
   align-items:   center;
-  border-radius: 4px;
-  padding:       2px 8px;
+  border-radius: var(--bb-r-sm);
+  padding:       2px 9px;
   font-size:     11px;
-  background:    rgba(128, 128, 128, 0.08);
-  border:        1px solid rgba(128, 128, 128, 0.15);
+  background:    rgba(128, 128, 128, 0.07);
+  border:        1px solid var(--bb-border);
+  color:         var(--bb-text-3);
+  backdrop-filter:        blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .bb-cap-chip--ready {
-  color:        var(--bb-teal);
-  border-color: rgba(74, 191, 176, 0.25);
   background:   var(--bb-teal-dim);
+  border-color: rgba(44, 190, 200, 0.25);
+  color:        var(--bb-teal);
+}
+
+.vscode-light .bb-cap-chip--ready {
+  background:   rgba(26, 154, 140, 0.09);
+  border-color: rgba(26, 154, 140, 0.22);
+  color:        var(--bb-teal);
 }
 
 .bb-cap-chip--locked {
-  color:        var(--bb-gold);
-  border-color: rgba(212, 160, 23, 0.25);
   background:   var(--bb-gold-dim);
+  border-color: rgba(255, 168, 0, 0.25);
+  color:        var(--bb-gold);
 }
 
 .bb-cap-chip--warning {
-  color: var(--vscode-editorWarning-foreground, #cca700);
+  background:   var(--bb-gold-dim);
+  border-color: rgba(255, 168, 0, 0.25);
+  color:        var(--bb-gold);
 }
 
-/* ----------------------------------------------------------
-   System drawer
-   ---------------------------------------------------------- */
+/* ── System drawer ─────────────────────────────────────────── */
 .bb-system-drawer {
-  border-top: 1px solid rgba(128, 128, 128, 0.15);
+  border-top: 1px solid var(--bb-border);
   margin-top: 4px;
 }
 
 .bb-system-drawer-summary {
   cursor:         pointer;
-  font-size:      11px;
-  font-weight:    600;
+  font-size:      10px;
+  font-weight:    700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  opacity:        0.6;
+  letter-spacing: 0.07em;
+  color:          var(--bb-text-3);
   padding:        6px 0;
   list-style:     none;
   user-select:    none;
-  transition:     opacity 120ms ease;
+  transition:     color 120ms ease;
 }
 
-.bb-system-drawer-summary::-webkit-details-marker {
-  display: none;
-}
+.bb-system-drawer-summary::-webkit-details-marker { display: none; }
 
 .bb-system-drawer-summary::before {
   content:      "▶";
   display:      inline-block;
   margin-right: 5px;
   font-size:    9px;
+  opacity:      0.55;
   transition:   transform 150ms ease;
-  opacity:      0.7;
 }
 
-.bb-system-drawer[open] .bb-system-drawer-summary::before {
-  transform: rotate(90deg);
-}
-
-.bb-system-drawer-summary:hover {
-  opacity: 1;
-}
+.bb-system-drawer[open] .bb-system-drawer-summary::before { transform: rotate(90deg); }
+.bb-system-drawer-summary:hover { color: var(--bb-text-2); }
 
 .bb-system-content {
-  padding:   4px 0 8px 0;
-  font-size: 11px;
-  display:   flex;
+  padding:        4px 0 8px 0;
+  font-size:      11px;
+  display:        flex;
   flex-direction: column;
-  gap:       4px;
+  gap:            4px;
 }
 
 .bb-system-kv {
-  display:   flex;
-  gap:       8px;
+  display:     flex;
+  gap:         8px;
   align-items: baseline;
 }
 
 .bb-system-kv-key {
   font-family: monospace;
-  opacity:     0.55;
+  color:       var(--bb-text-3);
   flex-shrink: 0;
   min-width:   100px;
 }
 
 .bb-system-kv-value {
   font-family:   monospace;
+  color:         var(--bb-text-2);
   overflow:      hidden;
   text-overflow: ellipsis;
   white-space:   nowrap;
 }
 
-/* ----------------------------------------------------------
-   Error banner (injected by showError)
-   ---------------------------------------------------------- */
+/* ── Error banner ──────────────────────────────────────────── */
 .bb-error-banner {
-  background:    rgba(244, 135, 113, 0.12);
-  border:        1px solid rgba(244, 135, 113, 0.4);
-  border-radius: 4px;
-  padding:       7px 10px;
-  font-size:     12px;
-  color:         var(--vscode-editorError-foreground, #f48771);
-  animation:     bb-slide-in 150ms ease-out;
+  background:             var(--bb-error-dim);
+  backdrop-filter:        blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border:         1px solid rgba(244, 91, 105, 0.32);
+  border-radius:  var(--bb-r-md);
+  padding:        8px 12px;
+  font-size:      12px;
+  color:          var(--bb-ember);
+  animation:      bb-slide-in 160ms ease-out;
 }

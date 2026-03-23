@@ -3,7 +3,7 @@ import SwiftUI
 
 struct MiniSparkline: View {
     let data: [Double]
-    var color: Color = DesignSystem.Colors.purple
+    var color: Color = DesignSystem.Colors.ember
     var width: CGFloat = 60
     var height: CGFloat = 20
 

@@ -30,11 +30,11 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
 
     var accentColor: Color {
         switch self {
-        case .general: return DesignSystem.Colors.teal
-        case .account: return DesignSystem.Colors.purple
-        case .providers: return DesignSystem.Colors.coral
-        case .alerts: return DesignSystem.Colors.warning
-        case .notifications: return DesignSystem.Colors.teal
+        case .general: return DesignSystem.Colors.amber
+        case .account: return DesignSystem.Colors.whimsy
+        case .providers: return DesignSystem.Colors.ember
+        case .alerts: return DesignSystem.Colors.blaze
+        case .notifications: return DesignSystem.Colors.whimsy
         }
     }
 }
@@ -899,6 +899,18 @@ private struct AccountSettingsView: View {
     @State private var isSigningInApple = false
     @State private var signInError: String?
 
+    /// Prefers Firebase/Auth `userInfo` keys over the generic `localizedDescription` (e.g. keychain errors).
+    private static func signInErrorMessage(_ error: Error) -> String {
+        let ns = error as NSError
+        if let reason = ns.userInfo[NSLocalizedFailureReasonErrorKey] as? String, !reason.isEmpty {
+            return reason
+        }
+        if let suggestion = ns.userInfo[NSLocalizedRecoverySuggestionErrorKey] as? String, !suggestion.isEmpty {
+            return suggestion
+        }
+        return error.localizedDescription
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
@@ -947,11 +959,11 @@ private struct AccountSettingsView: View {
                 HStack(spacing: DesignSystem.Spacing.md) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(DesignSystem.Colors.purple.opacity(0.15))
+                            .fill(DesignSystem.Colors.whimsy.opacity(0.15))
                             .frame(width: 40, height: 40)
                         Image(systemName: "person.fill")
                             .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(DesignSystem.Colors.purple)
+                            .foregroundStyle(DesignSystem.Colors.whimsy)
                     }
 
                     VStack(alignment: .leading, spacing: 3) {
@@ -1037,7 +1049,7 @@ private struct AccountSettingsView: View {
                                 do {
                                     try await accountManager.signInWithGoogle(presentingWindow: window)
                                 } catch {
-                                    signInError = error.localizedDescription
+                                    signInError = Self.signInErrorMessage(error)
                                 }
                             }
                         }
@@ -1056,12 +1068,12 @@ private struct AccountSettingsView: View {
                                         try await accountManager.signInWithAppleAuthorization(authorization)
                                     } catch {
                                         if (error as NSError).code != ASAuthorizationError.canceled.rawValue {
-                                            signInError = error.localizedDescription
+                                            signInError = Self.signInErrorMessage(error)
                                         }
                                     }
                                 case .failure(let error):
                                     if (error as NSError).code != ASAuthorizationError.canceled.rawValue {
-                                        signInError = error.localizedDescription
+                                        signInError = Self.signInErrorMessage(error)
                                     }
                                 }
                             }
@@ -1090,11 +1102,25 @@ private struct AccountSettingsView: View {
         content()
             .padding(DesignSystem.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(DesignSystem.Colors.surface)
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.55))
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                    .stroke(DesignSystem.Colors.border.opacity(0.55), lineWidth: 0.5)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.5
+                    )
             )
     }
 

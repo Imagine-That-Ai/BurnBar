@@ -77,11 +77,16 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             throw BurnBarProviderExecutorError.invalidResponse
         }
 
+        let usage = decoded.usage.normalized(
+            inputHint: max(1, prompt.count / 4),
+            outputHint: max(1, choice.message.content.count / 4)
+        )
+
         return BurnBarProviderExecutionResult(
             outputText: choice.message.content,
-            inputTokens: decoded.usage.prompt_tokens,
-            outputTokens: decoded.usage.completion_tokens,
-            cacheReadTokens: decoded.usage.prompt_tokens_details?.cached_tokens ?? 0
+            inputTokens: usage.promptTokens,
+            outputTokens: usage.completionTokens,
+            cacheReadTokens: usage.cacheReadTokens
         )
     }
 }
@@ -161,6 +166,33 @@ private struct ProviderCompletionResponse: Decodable {
     struct Choice: Decodable {
         struct Message: Decodable {
             let content: String
+
+            private struct ContentPart: Decodable {
+                let text: String?
+                let type: String?
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case content
+            }
+
+            init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                if let stringContent = try? container.decode(String.self, forKey: .content) {
+                    content = stringContent
+                    return
+                }
+                if let contentParts = try? container.decode([ContentPart].self, forKey: .content) {
+                    content = contentParts
+                        .compactMap { part in
+                            if let text = part.text, !text.isEmpty { return text }
+                            return nil
+                        }
+                        .joined(separator: "\n")
+                    return
+                }
+                content = ""
+            }
         }
 
         let message: Message
@@ -168,12 +200,145 @@ private struct ProviderCompletionResponse: Decodable {
 
     struct UsageDetails: Decodable {
         let cached_tokens: Int?
+        let cachedTokens: Int?
+        let cache_read_tokens: Int?
+        let cacheReadTokens: Int?
+
+        private enum CodingKeys: String, CodingKey {
+            case cached_tokens
+            case cachedTokens
+            case cache_read_tokens
+            case cacheReadTokens
+        }
     }
 
     struct Usage: Decodable {
-        let prompt_tokens: Int
-        let completion_tokens: Int
+        let prompt_tokens: Int?
+        let completion_tokens: Int?
+        let input_tokens: Int?
+        let output_tokens: Int?
+        let promptTokens: Int?
+        let completionTokens: Int?
+        let inputTokens: Int?
+        let outputTokens: Int?
+        let total_tokens: Int?
+        let totalTokens: Int?
+        let cache_read_tokens: Int?
+        let cache_read_input_tokens: Int?
+        let cacheReadTokens: Int?
+        let cached_tokens: Int?
+        let cachedTokens: Int?
         let prompt_tokens_details: UsageDetails?
+        let promptTokensDetails: UsageDetails?
+        let thinking_tokens: Int?
+        let reasoning_tokens: Int?
+        let thinkingTokens: Int?
+        let reasoningTokens: Int?
+
+        private enum CodingKeys: String, CodingKey {
+            case prompt_tokens
+            case completion_tokens
+            case input_tokens
+            case output_tokens
+            case promptTokens
+            case completionTokens
+            case inputTokens
+            case outputTokens
+            case total_tokens
+            case totalTokens
+            case cache_read_tokens
+            case cache_read_input_tokens
+            case cacheReadTokens
+            case cached_tokens
+            case cachedTokens
+            case prompt_tokens_details
+            case promptTokensDetails
+            case thinking_tokens
+            case reasoning_tokens
+            case thinkingTokens
+            case reasoningTokens
+        }
+
+        struct NormalizedUsage {
+            let promptTokens: Int
+            let completionTokens: Int
+            let cacheReadTokens: Int
+        }
+
+        private func firstValue(_ values: Int?...) -> Int {
+            for value in values {
+                if let value {
+                    return value
+                }
+            }
+            return 0
+        }
+
+        func normalized(inputHint: Int, outputHint: Int) -> NormalizedUsage {
+            var prompt = prompt_tokens
+                ?? input_tokens
+                ?? promptTokens
+                ?? inputTokens
+                ?? 0
+
+            var completion = completion_tokens
+                ?? output_tokens
+                ?? completionTokens
+                ?? outputTokens
+                ?? 0
+
+            let cacheRead = firstValue(
+                cache_read_tokens,
+                cache_read_input_tokens,
+                cacheReadTokens,
+                cached_tokens,
+                cachedTokens,
+                prompt_tokens_details?.cached_tokens,
+                prompt_tokens_details?.cachedTokens,
+                prompt_tokens_details?.cache_read_tokens,
+                prompt_tokens_details?.cacheReadTokens,
+                promptTokensDetails?.cached_tokens,
+                promptTokensDetails?.cachedTokens,
+                promptTokensDetails?.cache_read_tokens,
+                promptTokensDetails?.cacheReadTokens
+            )
+
+            let thinking = firstValue(
+                thinking_tokens,
+                reasoning_tokens,
+                thinkingTokens,
+                reasoningTokens
+            )
+
+            let total = total_tokens ?? totalTokens ?? 0
+            let explicitTotal = prompt + completion + cacheRead
+            let normalizedTotal = max(total, explicitTotal)
+            let availableForInOut = max(normalizedTotal - cacheRead, 0)
+
+            if prompt == 0 && completion == 0 && availableForInOut > 0 {
+                let safeInputHint = max(inputHint, 1)
+                let safeOutputHint = max(outputHint, 1)
+                let ratio = Double(safeInputHint) / Double(safeInputHint + safeOutputHint)
+                prompt = Int((Double(availableForInOut) * ratio).rounded())
+                completion = max(availableForInOut - prompt, 0)
+            } else if prompt == 0 && completion > 0 && availableForInOut > completion {
+                prompt = availableForInOut - completion
+            } else if completion == 0 && prompt > 0 && availableForInOut > prompt {
+                completion = availableForInOut - prompt
+            } else if prompt + completion < availableForInOut {
+                completion += availableForInOut - (prompt + completion)
+            }
+
+            if thinking > 0 && total == 0 {
+                completion += thinking
+            }
+
+            return NormalizedUsage(
+                promptTokens: max(prompt, 0),
+                completionTokens: max(completion, 0),
+                cacheReadTokens: max(cacheRead, 0)
+            )
+        }
     }
 
     let choices: [Choice]

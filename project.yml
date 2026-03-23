@@ -19,6 +19,11 @@ settings:
     INFOPLIST_KEY_LSUIElement: true
     GENERATE_INFOPLIST_FILE: YES
 
+# macOS Debug: the BurnBar target uses keychain-access-groups (Firebase Auth). Xcode must sign with a
+# development identity. Under targets.BurnBar.settings.base add:
+#   DEVELOPMENT_TEAM: <your 10-character Team ID>
+# (Xcode → Settings → Accounts → your Apple ID → Team ID; or developer.apple.com → Membership.)
+
 packages:
   BurnBarCore:
     path: BurnBarCore
@@ -36,6 +41,14 @@ targets:
   BurnBar:
     type: application
     platform: macOS
+    # CFBundleURLTypes does not reliably merge via INFOPLIST_KEY_* with GENERATE_INFOPLIST_FILE; XcodeGen generates this plist (Google Sign-In redirect). Regenerated on `xcodegen generate`.
+    info:
+      path: AgentLens/Resources/BurnBar-Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLSchemes:
+              - com.googleusercontent.apps.246956661961-k53p0e4oln229kmmed459fm6i8i5vtoo
     sources:
       - path: AgentLens
         excludes:
@@ -47,8 +60,6 @@ targets:
         CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/BurnBar.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: BurnBar
         INFOPLIST_KEY_CFBundleName: BurnBar
-        # Replace the URL scheme with the full REVERSED_CLIENT_ID string from GoogleService-Info.plist (Google Sign-In).
-        INFOPLIST_KEY_CFBundleURLTypes: [{CFBundleTypeRole: Editor, CFBundleURLSchemes: [com.googleusercontent.apps.246956661961-i74r5s7m66jdkjibne3k2hrkg7isdug5]}]
     dependencies:
       - target: BurnBarDaemonExecutable
         link: false

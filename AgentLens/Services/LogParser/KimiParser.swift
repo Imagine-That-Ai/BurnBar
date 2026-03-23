@@ -79,7 +79,7 @@ final class KimiParser: LogParser {
         var assistantWords = 0
         var messageCount = 0
 
-        while let line = handle.readLine(), !line.isEmpty {
+        for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 continue

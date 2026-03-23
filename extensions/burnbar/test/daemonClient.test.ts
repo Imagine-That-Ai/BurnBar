@@ -204,6 +204,46 @@ describe("BurnBarDaemonClient", () => {
 
     await close(server);
   });
+
+  it("sends client.claimControl RPC payloads", async () => {
+    const socketPath = makeSocketPath("claim-control");
+    const server = createServer((socket) => {
+      socket.on("data", (chunk) => {
+        const request = JSON.parse(chunk.toString("utf8").trim());
+        expect(request.method).toBe("client.claimControl");
+        expect(request.params).toEqual({
+          clientID: "client-a",
+          sessionID: "session-a"
+        });
+        socket.end(
+          JSON.stringify({
+            id: request.id,
+            protocolVersion: 1,
+            result: {
+              activeClientID: "client-a",
+              attachedClientIDs: ["other-client", "client-a"],
+              reason: "controller_transferred_to_requesting_client"
+            }
+          }) + "\n"
+        );
+      });
+    });
+
+    await listen(server, socketPath);
+
+    const client = new BurnBarDaemonClient({ socketPath });
+    await expect(
+      client.claimControl({
+        clientID: "client-a",
+        sessionID: "session-a"
+      })
+    ).resolves.toMatchObject({
+      activeClientID: "client-a",
+      attachedClientIDs: ["other-client", "client-a"]
+    });
+
+    await close(server);
+  });
 });
 
 function makeSocketPath(name: string): string {

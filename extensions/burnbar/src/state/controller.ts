@@ -283,13 +283,15 @@ export class BurnBarExtensionController {
   async startRun(options: BurnBarStartRunOptions): Promise<BurnBarRunCreateResponse> {
     await this.ensureClientAttachment();
 
-    const response = await this.dependencies.client.createRun({
-      clientID: this.clientID,
-      sessionID: this.sessionID,
-      prompt: options.prompt,
-      modelID: options.modelID,
-      metadata: options.metadata ?? {}
-    });
+    const response = await this.withControllerRetry(() =>
+      this.dependencies.client.createRun({
+        clientID: this.clientID,
+        sessionID: this.sessionID,
+        prompt: options.prompt,
+        modelID: options.modelID,
+        metadata: options.metadata ?? {}
+      })
+    );
 
     await this.refresh();
     await this.selectRun(response.runID);
@@ -299,11 +301,13 @@ export class BurnBarExtensionController {
   async cancelRun(runId: string, reason = "Cancelled from the BurnBar sidebar."): Promise<BurnBarRunDetailResponse> {
     await this.ensureClientAttachment();
 
-    const response = await this.dependencies.client.cancelRun({
-      runID: runId,
-      clientID: this.clientID,
-      reason
-    });
+    const response = await this.withControllerRetry(() =>
+      this.dependencies.client.cancelRun({
+        runID: runId,
+        clientID: this.clientID,
+        reason
+      })
+    );
 
     await this.refresh();
     await this.selectRun(runId);
@@ -313,10 +317,12 @@ export class BurnBarExtensionController {
   async retryRun(runId: string): Promise<BurnBarRunDetailResponse> {
     await this.ensureClientAttachment();
 
-    const response = await this.dependencies.client.retryRun({
-      runID: runId,
-      clientID: this.clientID
-    });
+    const response = await this.withControllerRetry(() =>
+      this.dependencies.client.retryRun({
+        runID: runId,
+        clientID: this.clientID
+      })
+    );
 
     await this.refresh();
     await this.selectRun(runId);
@@ -336,7 +342,8 @@ export class BurnBarExtensionController {
       throw new Error(`Run '${runId}' does not have an active BurnBar approval request.`);
     }
 
-      const response = await this.dependencies.client.respondToApproval({
+    const response = await this.withControllerRetry(() =>
+      this.dependencies.client.respondToApproval({
         response: {
           approvalID,
           clientID: this.clientID,
@@ -344,7 +351,8 @@ export class BurnBarExtensionController {
           note,
           respondedAt: toBurnBarTimestamp()
         }
-      });
+      })
+    );
 
     await this.refresh();
     await this.selectRun(runId);
@@ -437,6 +445,23 @@ export class BurnBarExtensionController {
           ? "BurnBar could not negotiate a shared daemon protocol version."
           : `BurnBar protocol mismatch. Expected ${BURNBAR_PROTOCOL_VERSION}, negotiated ${response.negotiatedProtocolVersion}.`
       );
+    }
+  }
+
+  private async withControllerRetry<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isObserverControlError(error)) {
+        throw error;
+      }
+
+      const arbitration = await this.dependencies.client.claimControl({
+        clientID: this.clientID,
+        sessionID: this.sessionID
+      });
+      this.patchState({ arbitration });
+      return await operation();
     }
   }
 
@@ -677,6 +702,15 @@ export class BurnBarExtensionController {
 
 function toBurnBarTimestamp(date = new Date()): number {
   return date.getTime() / 1000 - 978_307_200;
+}
+
+function isObserverControlError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes("attached as an observer") && message.includes("cannot control runs");
 }
 
 function chooseSelectedRunId(runs: BurnBarState["runs"], currentSelectedRunId?: string): string | undefined {

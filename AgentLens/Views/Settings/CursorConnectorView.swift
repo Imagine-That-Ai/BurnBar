@@ -30,8 +30,8 @@ struct CursorConnectorView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            DesignSystem.Colors.coral.opacity(0.16),
-                            DesignSystem.Colors.teal.opacity(0.14),
+                            DesignSystem.Colors.ember.opacity(0.16),
+                            DesignSystem.Colors.whimsy.opacity(0.14),
                             DesignSystem.Colors.background
                         ],
                         startPoint: .topLeading,
@@ -356,7 +356,7 @@ struct CursorConnectorView: View {
                 .clipShape(.capsule)
                 .overlay(
                     Capsule()
-                        .stroke(selected ? DesignSystem.Colors.teal.opacity(0.55) : DesignSystem.Colors.border.opacity(0.55), lineWidth: 0.7)
+                        .stroke(selected ? DesignSystem.Colors.whimsy.opacity(0.55) : DesignSystem.Colors.border.opacity(0.55), lineWidth: 0.7)
                 )
         }
         .buttonStyle(.plain)
