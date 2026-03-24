@@ -9,14 +9,1112 @@ struct SearchResult: Identifiable {
     let rank: Double
 }
 
+struct EmbeddingModelDescriptor: Equatable, Sendable {
+    let provider: String
+    let modelName: String
+    let dimensions: Int
+    let distanceMetric: EmbeddingDistanceMetric
+    let versionTag: String
+    let chunkerVersion: String
+    let normalizationVersion: String
+    let promptVersion: String
+
+    init(
+        provider: String,
+        modelName: String,
+        dimensions: Int,
+        distanceMetric: EmbeddingDistanceMetric,
+        versionTag: String,
+        chunkerVersion: String,
+        normalizationVersion: String,
+        promptVersion: String
+    ) {
+        self.provider = provider.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.modelName = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.dimensions = max(1, dimensions)
+        self.distanceMetric = distanceMetric
+        self.versionTag = versionTag.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.chunkerVersion = chunkerVersion.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.normalizationVersion = normalizationVersion.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.promptVersion = promptVersion.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+enum EmbeddingIdentity {
+    static func modelID(for descriptor: EmbeddingModelDescriptor) -> String {
+        let payload = [
+            descriptor.provider.lowercased(),
+            descriptor.modelName.lowercased(),
+            String(descriptor.dimensions),
+            descriptor.distanceMetric.rawValue
+        ].joined(separator: "|")
+        return "embedding-model-\(ProjectionIdentity.sha256Hex(payload))"
+    }
+
+    static func versionID(for descriptor: EmbeddingModelDescriptor) -> String {
+        let payload = [
+            modelID(for: descriptor),
+            descriptor.versionTag.lowercased(),
+            descriptor.chunkerVersion.lowercased(),
+            descriptor.normalizationVersion.lowercased(),
+            descriptor.promptVersion.lowercased()
+        ].joined(separator: "|")
+        return "embedding-version-\(ProjectionIdentity.sha256Hex(payload))"
+    }
+}
+
+protocol ChunkEmbeddingProviding {
+    var descriptor: EmbeddingModelDescriptor { get }
+    func embedding(for text: String) throws -> [Float]
+}
+
+extension ChunkEmbeddingProviding {
+    func embeddings(for texts: [String]) throws -> [[Float]] {
+        try texts.map { try embedding(for: $0) }
+    }
+}
+
+struct DeterministicFakeEmbeddingProvider: ChunkEmbeddingProviding, Sendable {
+    let descriptor: EmbeddingModelDescriptor
+    private let seed: String
+
+    init(
+        provider: String = "burnbar",
+        modelName: String = "deterministic-fake-embedding",
+        dimensions: Int = 96,
+        distanceMetric: EmbeddingDistanceMetric = .cosine,
+        versionTag: String = "ci-v1",
+        chunkerVersion: String = "burnbar-chunker-v1",
+        normalizationVersion: String = "unit-l2-v1",
+        promptVersion: String = "plain-text-v1",
+        seed: String = "burnbar-deterministic-embedding-seed-v1"
+    ) {
+        self.descriptor = EmbeddingModelDescriptor(
+            provider: provider,
+            modelName: modelName,
+            dimensions: dimensions,
+            distanceMetric: distanceMetric,
+            versionTag: versionTag,
+            chunkerVersion: chunkerVersion,
+            normalizationVersion: normalizationVersion,
+            promptVersion: promptVersion
+        )
+        self.seed = seed
+    }
+
+    func embedding(for text: String) throws -> [Float] {
+        let normalized = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        var vector = [Float](repeating: 0, count: descriptor.dimensions)
+        let tokens = normalized
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline || $0.isPunctuation })
+            .map(String.init)
+            .filter { $0.isEmpty == false }
+
+        let sourceTokens = tokens.isEmpty ? [normalized] : tokens
+        for (position, token) in sourceTokens.enumerated() {
+            let payload = "\(seed)|\(position)|\(token)"
+            let digest = ProjectionIdentity.sha256Hex(payload)
+            let bytes = digest.utf8.map { UInt8($0) }
+            let weight = 1.0 / Float(max(1, position + 1))
+            apply(bytes: bytes, weight: weight, into: &vector)
+        }
+
+        if sourceTokens.isEmpty {
+            vector[0] = 1
+        }
+        return VectorMath.l2Normalized(vector)
+    }
+
+    private func apply(bytes: [UInt8], weight: Float, into vector: inout [Float]) {
+        guard vector.isEmpty == false, bytes.isEmpty == false else { return }
+        let width = min(16, bytes.count)
+        for lane in 0..<width {
+            let index = (Int(bytes[lane]) + lane * 131) % vector.count
+            let sign: Float = (lane % 2 == 0) ? 1 : -1
+            let magnitude = (Float(bytes[lane] % 31) / 30.0) + 0.15
+            vector[index] += sign * magnitude * weight
+        }
+    }
+}
+
+@MainActor
+final class DeterministicQueryEmbeddingProvider: QueryEmbeddingProviding {
+    private let embedder: DeterministicFakeEmbeddingProvider
+
+    init(embedder: DeterministicFakeEmbeddingProvider = DeterministicFakeEmbeddingProvider()) {
+        self.embedder = embedder
+    }
+
+    var descriptor: EmbeddingModelDescriptor { embedder.descriptor }
+
+    func embedding(for text: String) async throws -> [Float] {
+        try embedder.embedding(for: text)
+    }
+}
+
+enum VectorBlobCodec {
+    static func encode(_ vector: [Float]) -> Data {
+        guard vector.isEmpty == false else { return Data() }
+        return vector.withUnsafeBufferPointer { buffer in
+            Data(buffer: buffer)
+        }
+    }
+
+    static func decode(_ data: Data) -> [Float]? {
+        let stride = MemoryLayout<Float>.size
+        guard data.isEmpty == false, data.count % stride == 0 else { return nil }
+        let count = data.count / stride
+        return data.withUnsafeBytes { rawBuffer in
+            guard let base = rawBuffer.bindMemory(to: Float.self).baseAddress else { return nil }
+            return Array(UnsafeBufferPointer(start: base, count: count))
+        }
+    }
+}
+
+enum VectorMath {
+    static func similarity(lhs: [Float], rhs: [Float], metric: EmbeddingDistanceMetric) -> Double {
+        switch metric {
+        case .cosine:
+            return cosineSimilarity(lhs: lhs, rhs: rhs)
+        case .dotProduct:
+            return dotProduct(lhs: lhs, rhs: rhs)
+        case .euclidean:
+            return -euclideanDistance(lhs: lhs, rhs: rhs)
+        }
+    }
+
+    static func l2Normalized(_ vector: [Float]) -> [Float] {
+        guard vector.isEmpty == false else { return vector }
+        var sumSquares: Double = 0
+        for value in vector {
+            let cast = Double(value)
+            sumSquares += cast * cast
+        }
+        guard sumSquares > 0 else { return vector }
+        let norm = Float(sqrt(sumSquares))
+        guard norm > 0 else { return vector }
+        return vector.map { $0 / norm }
+    }
+
+    private static func cosineSimilarity(lhs: [Float], rhs: [Float]) -> Double {
+        guard lhs.count == rhs.count, lhs.isEmpty == false else { return 0 }
+        var dot: Double = 0
+        var lhsNorm: Double = 0
+        var rhsNorm: Double = 0
+        for index in lhs.indices {
+            let l = Double(lhs[index])
+            let r = Double(rhs[index])
+            dot += l * r
+            lhsNorm += l * l
+            rhsNorm += r * r
+        }
+        guard lhsNorm > 0, rhsNorm > 0 else { return 0 }
+        return dot / (sqrt(lhsNorm) * sqrt(rhsNorm))
+    }
+
+    private static func dotProduct(lhs: [Float], rhs: [Float]) -> Double {
+        guard lhs.count == rhs.count, lhs.isEmpty == false else { return 0 }
+        var dot: Double = 0
+        for index in lhs.indices {
+            dot += Double(lhs[index]) * Double(rhs[index])
+        }
+        return dot
+    }
+
+    private static func euclideanDistance(lhs: [Float], rhs: [Float]) -> Double {
+        guard lhs.count == rhs.count, lhs.isEmpty == false else { return 0 }
+        var sumSquares: Double = 0
+        for index in lhs.indices {
+            let diff = Double(lhs[index] - rhs[index])
+            sumSquares += diff * diff
+        }
+        return sqrt(sumSquares)
+    }
+}
+
+enum VectorBackendKind: String, Codable, CaseIterable, Sendable {
+    case ann
+    case exact
+}
+
+enum VectorIndexBackendError: LocalizedError {
+    case dimensionMismatch(expected: Int, actual: Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .dimensionMismatch(let expected, let actual):
+            return "Vector dimension mismatch. Expected \(expected), got \(actual)."
+        }
+    }
+}
+
+struct VectorIndexEntry: Sendable {
+    let chunkID: String
+    let vector: [Float]
+}
+
+struct VectorIndexCandidate: Sendable {
+    let chunkID: String
+    let score: Double
+}
+
+protocol VectorCandidateBackend: AnyObject {
+    var id: String { get }
+    func rebuild(entries: [VectorIndexEntry], distanceMetric: EmbeddingDistanceMetric) throws
+    func candidates(for queryVector: [Float], limit: Int) throws -> [VectorIndexCandidate]
+}
+
+final class ExactVectorCandidateBackend: VectorCandidateBackend {
+    let id = "exact_scan_v1"
+    private var entries: [VectorIndexEntry] = []
+    private var distanceMetric: EmbeddingDistanceMetric = .cosine
+    private var dimensions = 0
+
+    func rebuild(entries: [VectorIndexEntry], distanceMetric: EmbeddingDistanceMetric) throws {
+        self.entries = entries
+        self.distanceMetric = distanceMetric
+        self.dimensions = entries.first?.vector.count ?? 0
+    }
+
+    func candidates(for queryVector: [Float], limit: Int) throws -> [VectorIndexCandidate] {
+        guard limit > 0, entries.isEmpty == false else { return [] }
+        guard dimensions == 0 || queryVector.count == dimensions else {
+            throw VectorIndexBackendError.dimensionMismatch(expected: dimensions, actual: queryVector.count)
+        }
+
+        var scored: [VectorIndexCandidate] = []
+        scored.reserveCapacity(entries.count)
+        for entry in entries {
+            let score = VectorMath.similarity(lhs: queryVector, rhs: entry.vector, metric: distanceMetric)
+            guard score.isFinite else { continue }
+            scored.append(VectorIndexCandidate(chunkID: entry.chunkID, score: score))
+        }
+
+        scored.sort {
+            if $0.score == $1.score {
+                return $0.chunkID < $1.chunkID
+            }
+            return $0.score > $1.score
+        }
+
+        if scored.count > limit {
+            return Array(scored.prefix(limit))
+        }
+        return scored
+    }
+}
+
+final class SignpostANNVectorCandidateBackend: VectorCandidateBackend {
+    let id = "ann_signpost_v1"
+
+    private let bucketBits: Int
+    private let candidateMultiplier: Int
+    private let maxHammingDistance: Int
+    private var distanceMetric: EmbeddingDistanceMetric = .cosine
+    private var dimensions = 0
+    private var buckets: [UInt64: [VectorIndexEntry]] = [:]
+    private var allEntries: [VectorIndexEntry] = []
+
+    init(
+        bucketBits: Int = 12,
+        candidateMultiplier: Int = 6,
+        maxHammingDistance: Int = 1
+    ) {
+        self.bucketBits = max(4, min(bucketBits, 24))
+        self.candidateMultiplier = max(2, candidateMultiplier)
+        self.maxHammingDistance = max(0, min(maxHammingDistance, 2))
+    }
+
+    func rebuild(entries: [VectorIndexEntry], distanceMetric: EmbeddingDistanceMetric) throws {
+        self.distanceMetric = distanceMetric
+        self.dimensions = entries.first?.vector.count ?? 0
+        self.buckets.removeAll(keepingCapacity: true)
+        self.allEntries = entries.sorted { $0.chunkID < $1.chunkID }
+
+        for entry in allEntries {
+            guard dimensions == 0 || entry.vector.count == dimensions else { continue }
+            let signature = signature(for: entry.vector)
+            buckets[signature, default: []].append(entry)
+        }
+    }
+
+    func candidates(for queryVector: [Float], limit: Int) throws -> [VectorIndexCandidate] {
+        guard limit > 0, allEntries.isEmpty == false else { return [] }
+        guard dimensions == 0 || queryVector.count == dimensions else {
+            throw VectorIndexBackendError.dimensionMismatch(expected: dimensions, actual: queryVector.count)
+        }
+
+        let signature = signature(for: queryVector)
+        let targetCount = min(allEntries.count, max(limit * candidateMultiplier, limit))
+        var selectedIDs: [String] = []
+        selectedIDs.reserveCapacity(targetCount)
+        var seen = Set<String>()
+
+        func appendBucket(_ key: UInt64) {
+            guard let entries = buckets[key], entries.isEmpty == false else { return }
+            for entry in entries {
+                guard seen.insert(entry.chunkID).inserted else { continue }
+                selectedIDs.append(entry.chunkID)
+                if selectedIDs.count >= targetCount { break }
+            }
+        }
+
+        appendBucket(signature)
+
+        if selectedIDs.count < targetCount, maxHammingDistance > 0 {
+            for distance in 1...maxHammingDistance {
+                for neighbor in neighbors(of: signature, distance: distance).sorted() {
+                    appendBucket(neighbor)
+                    if selectedIDs.count >= targetCount { break }
+                }
+                if selectedIDs.count >= targetCount { break }
+            }
+        }
+
+        if selectedIDs.count < limit {
+            for entry in allEntries {
+                guard seen.insert(entry.chunkID).inserted else { continue }
+                selectedIDs.append(entry.chunkID)
+                if selectedIDs.count >= targetCount { break }
+            }
+        }
+
+        let selectedEntries = Dictionary(uniqueKeysWithValues: allEntries.map { ($0.chunkID, $0) })
+        var scored: [VectorIndexCandidate] = []
+        scored.reserveCapacity(selectedIDs.count)
+        for chunkID in selectedIDs {
+            guard let entry = selectedEntries[chunkID] else { continue }
+            let score = VectorMath.similarity(lhs: queryVector, rhs: entry.vector, metric: distanceMetric)
+            guard score.isFinite else { continue }
+            scored.append(VectorIndexCandidate(chunkID: entry.chunkID, score: score))
+        }
+
+        scored.sort {
+            if $0.score == $1.score {
+                return $0.chunkID < $1.chunkID
+            }
+            return $0.score > $1.score
+        }
+        if scored.count > limit {
+            return Array(scored.prefix(limit))
+        }
+        return scored
+    }
+
+    private func signature(for vector: [Float]) -> UInt64 {
+        guard vector.isEmpty == false else { return 0 }
+        var signature: UInt64 = 0
+        for bit in 0..<bucketBits {
+            let index = dimension(forBit: bit, dimensions: vector.count)
+            if vector[index] >= 0 {
+                signature |= (UInt64(1) << UInt64(bit))
+            }
+        }
+        return signature
+    }
+
+    private func dimension(forBit bit: Int, dimensions: Int) -> Int {
+        let prime = 2_147_483_647
+        let raw = (bit * 73_856_093 + 19_349_663) % prime
+        return raw % max(1, dimensions)
+    }
+
+    private func neighbors(of signature: UInt64, distance: Int) -> [UInt64] {
+        guard distance > 0 else { return [signature] }
+        if distance == 1 {
+            return (0..<bucketBits).map { bit in
+                signature ^ (UInt64(1) << UInt64(bit))
+            }
+        }
+
+        guard distance == 2 else { return [signature] }
+        var values: [UInt64] = []
+        values.reserveCapacity(bucketBits * max(0, bucketBits - 1) / 2)
+        for first in 0..<bucketBits {
+            for second in (first + 1)..<bucketBits {
+                values.append(signature ^ (UInt64(1) << UInt64(first)) ^ (UInt64(1) << UInt64(second)))
+            }
+        }
+        return values
+    }
+}
+
+enum RetrievalOwnershipFilter: String, CaseIterable {
+    case any
+    case personal
+    case shared
+
+    var visibilityScope: SearchVisibilityScope {
+        switch self {
+        case .any:
+            return .all
+        case .personal:
+            return .personalOnly
+        case .shared:
+            return .sharedOnly
+        }
+    }
+}
+
+struct RetrievalFilters {
+    var provider: AgentProvider?
+    var projectName: String?
+    var artifactTypes: Set<SearchSourceKind>?
+    var dateRange: ClosedRange<Date>?
+    var ownership: RetrievalOwnershipFilter
+    var sourceIDs: Set<String>?
+    var conversationSources: Set<ConversationSourceType>?
+
+    init(
+        provider: AgentProvider? = nil,
+        projectName: String? = nil,
+        artifactTypes: Set<SearchSourceKind>? = nil,
+        dateRange: ClosedRange<Date>? = nil,
+        ownership: RetrievalOwnershipFilter = .any,
+        sourceIDs: Set<String>? = nil,
+        conversationSources: Set<ConversationSourceType>? = nil
+    ) {
+        self.provider = provider
+        self.projectName = projectName
+        self.artifactTypes = artifactTypes
+        self.dateRange = dateRange
+        self.ownership = ownership
+        self.sourceIDs = sourceIDs
+        self.conversationSources = conversationSources
+    }
+}
+
+struct RetrievalQuery {
+    var text: String
+    var filters: RetrievalFilters
+    var lexicalCandidateLimit: Int
+    var semanticCandidateLimit: Int
+    var rerankCandidateLimit: Int
+    var resultLimit: Int
+
+    init(
+        text: String,
+        filters: RetrievalFilters = RetrievalFilters(),
+        lexicalCandidateLimit: Int = 120,
+        semanticCandidateLimit: Int = 120,
+        rerankCandidateLimit: Int = 200,
+        resultLimit: Int = 50
+    ) {
+        self.text = text
+        self.filters = filters
+        self.lexicalCandidateLimit = lexicalCandidateLimit
+        self.semanticCandidateLimit = semanticCandidateLimit
+        self.rerankCandidateLimit = rerankCandidateLimit
+        self.resultLimit = resultLimit
+    }
+}
+
+struct RetrievalResult: Identifiable {
+    let chunkID: String
+    let documentID: String
+    let sourceKind: SearchSourceKind
+    let sourceID: String
+    let provider: AgentProvider?
+    let providerRawValue: String?
+    let projectName: String?
+    let title: String
+    let subtitle: String?
+    let snippet: String
+    let sectionPath: String?
+    let startOffset: Int
+    let endOffset: Int
+    let sourceUpdatedAt: Date?
+    let indexedAt: Date
+    let lexicalRank: Double?
+    let semanticScore: Double?
+    let rerankScore: Double
+    let conversation: ConversationRecord?
+
+    var id: String { chunkID }
+}
+
+struct SemanticCandidate {
+    let chunkID: String
+    let score: Double
+}
+
+@MainActor
+protocol SemanticCandidateProviding {
+    func semanticCandidates(for query: String, filters: RetrievalFilters, limit: Int) async throws -> [SemanticCandidate]
+}
+
+@MainActor
+protocol QueryEmbeddingProviding {
+    func embedding(for text: String) async throws -> [Float]
+}
+
+@MainActor
+final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
+    private struct ActiveEmbeddingSelection {
+        let model: EmbeddingModelRecord
+        let version: EmbeddingVersionRecord
+    }
+
+    private let dataStore: DataStore
+    private let queryEmbedder: QueryEmbeddingProviding
+    private let configuredEmbeddingVersionID: String?
+    private let backend: VectorBackendKind
+    private let exactRerankEnabled: Bool
+    private let exactRerankLimit: Int
+    private let nowProvider: () -> Date
+    private let annBackend: SignpostANNVectorCandidateBackend
+    private let exactBackend: ExactVectorCandidateBackend
+
+    private var vectorsByChunkID: [String: [Float]] = [:]
+    private var indexFingerprint: String?
+    private var indexedEmbeddingVersionID: String?
+    private var indexedDistanceMetric: EmbeddingDistanceMetric = .cosine
+    private var indexedVectorCount = 0
+    private var indexedDimensions = 0
+
+    init(
+        dataStore: DataStore,
+        queryEmbedder: QueryEmbeddingProviding,
+        embeddingVersionID: String? = nil,
+        backend: VectorBackendKind = .ann,
+        exactRerankEnabled: Bool = true,
+        exactRerankLimit: Int = 320,
+        annCandidateMultiplier: Int = 6,
+        nowProvider: @escaping () -> Date = Date.init
+    ) {
+        self.dataStore = dataStore
+        self.queryEmbedder = queryEmbedder
+        self.configuredEmbeddingVersionID = embeddingVersionID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.backend = backend
+        self.exactRerankEnabled = exactRerankEnabled
+        self.exactRerankLimit = max(1, min(exactRerankLimit, 5_000))
+        self.nowProvider = nowProvider
+        self.annBackend = SignpostANNVectorCandidateBackend(candidateMultiplier: annCandidateMultiplier)
+        self.exactBackend = ExactVectorCandidateBackend()
+    }
+
+    func semanticCandidates(for query: String, filters _: RetrievalFilters, limit: Int) async throws -> [SemanticCandidate] {
+        guard limit > 0 else { return [] }
+
+        let queryVector: [Float]
+        do {
+            queryVector = try await queryEmbedder.embedding(for: query)
+        } catch {
+            try? upsertSemanticHealth(
+                status: .failed,
+                backendUsed: backend.rawValue,
+                embeddingVersionID: indexedEmbeddingVersionID,
+                vectorCount: indexedVectorCount,
+                queryDimensions: nil,
+                candidateCount: 0,
+                fallbackUsed: false,
+                errorCode: "SEMANTIC_QUERY_EMBEDDING_FAILED",
+                errorMessage: error.localizedDescription
+            )
+            throw error
+        }
+        guard queryVector.isEmpty == false else { return [] }
+
+        do {
+            try refreshIndexIfNeeded(queryDimensions: queryVector.count)
+        } catch {
+            try? upsertSemanticHealth(
+                status: .failed,
+                backendUsed: backend.rawValue,
+                embeddingVersionID: indexedEmbeddingVersionID,
+                vectorCount: indexedVectorCount,
+                queryDimensions: queryVector.count,
+                candidateCount: 0,
+                fallbackUsed: false,
+                errorCode: "SEMANTIC_INDEX_BUILD_FAILED",
+                errorMessage: error.localizedDescription
+            )
+            throw error
+        }
+
+        guard indexedVectorCount > 0 else {
+            try? upsertSemanticHealth(
+                status: .degraded,
+                backendUsed: backend.rawValue,
+                embeddingVersionID: indexedEmbeddingVersionID,
+                vectorCount: indexedVectorCount,
+                queryDimensions: queryVector.count,
+                candidateCount: 0,
+                fallbackUsed: false,
+                errorCode: "SEMANTIC_NO_EMBEDDINGS",
+                errorMessage: "No chunk embeddings are available for semantic retrieval."
+            )
+            return []
+        }
+
+        do {
+            let (candidates, fallbackUsed) = try gatherCandidates(queryVector: queryVector, limit: limit)
+            let semanticCandidates = candidates.map { SemanticCandidate(chunkID: $0.chunkID, score: $0.score) }
+            try? upsertSemanticHealth(
+                status: fallbackUsed ? .degraded : .healthy,
+                backendUsed: fallbackUsed ? VectorBackendKind.exact.rawValue : backend.rawValue,
+                embeddingVersionID: indexedEmbeddingVersionID,
+                vectorCount: indexedVectorCount,
+                queryDimensions: queryVector.count,
+                candidateCount: semanticCandidates.count,
+                fallbackUsed: fallbackUsed,
+                errorCode: fallbackUsed ? "SEMANTIC_ANN_FALLBACK_TO_EXACT" : nil,
+                errorMessage: fallbackUsed ? "ANN candidate generation failed; exact fallback path served the query." : nil
+            )
+            return semanticCandidates
+        } catch {
+            try? upsertSemanticHealth(
+                status: .failed,
+                backendUsed: backend.rawValue,
+                embeddingVersionID: indexedEmbeddingVersionID,
+                vectorCount: indexedVectorCount,
+                queryDimensions: queryVector.count,
+                candidateCount: 0,
+                fallbackUsed: false,
+                errorCode: "SEMANTIC_BACKEND_QUERY_FAILED",
+                errorMessage: error.localizedDescription
+            )
+            throw error
+        }
+    }
+
+    private func gatherCandidates(queryVector: [Float], limit: Int) throws -> ([VectorIndexCandidate], Bool) {
+        let boundedLimit = min(limit, indexedVectorCount)
+        switch backend {
+        case .exact:
+            return (try exactBackend.candidates(for: queryVector, limit: boundedLimit), false)
+        case .ann:
+            do {
+                let candidateLimit = min(indexedVectorCount, max(boundedLimit, exactRerankEnabled ? exactRerankLimit : boundedLimit))
+                let annCandidates = try annBackend.candidates(for: queryVector, limit: candidateLimit)
+                if exactRerankEnabled {
+                    return (exactRerank(candidates: annCandidates, queryVector: queryVector, limit: boundedLimit), false)
+                }
+                return (Array(annCandidates.prefix(boundedLimit)), false)
+            } catch {
+                return (try exactBackend.candidates(for: queryVector, limit: boundedLimit), true)
+            }
+        }
+    }
+
+    private func exactRerank(candidates: [VectorIndexCandidate], queryVector: [Float], limit: Int) -> [VectorIndexCandidate] {
+        guard candidates.isEmpty == false else { return [] }
+        var reranked: [VectorIndexCandidate] = []
+        reranked.reserveCapacity(candidates.count)
+
+        for candidate in candidates {
+            guard let vector = vectorsByChunkID[candidate.chunkID] else { continue }
+            let exactScore = VectorMath.similarity(lhs: queryVector, rhs: vector, metric: indexedDistanceMetric)
+            guard exactScore.isFinite else { continue }
+            reranked.append(VectorIndexCandidate(chunkID: candidate.chunkID, score: exactScore))
+        }
+
+        reranked.sort {
+            if $0.score == $1.score {
+                return $0.chunkID < $1.chunkID
+            }
+            return $0.score > $1.score
+        }
+        if reranked.count > limit {
+            return Array(reranked.prefix(limit))
+        }
+        return reranked
+    }
+
+    private func refreshIndexIfNeeded(queryDimensions: Int) throws {
+        guard let selection = try resolveEmbeddingSelection() else {
+            resetIndex()
+            return
+        }
+
+        let embeddings = try dataStore.fetchChunkEmbeddings(embeddingVersionID: selection.version.id)
+        let sortedEmbeddings = embeddings.sorted {
+            if $0.chunkID == $1.chunkID {
+                return $0.updatedAt < $1.updatedAt
+            }
+            return $0.chunkID < $1.chunkID
+        }
+        let newestEmbeddingEpoch = sortedEmbeddings.map(\.updatedAt.timeIntervalSince1970).max() ?? 0
+        let fingerprint = [
+            selection.version.id,
+            selection.model.distanceMetric.rawValue,
+            String(selection.model.dimensions),
+            String(sortedEmbeddings.count),
+            String(Int(newestEmbeddingEpoch))
+        ].joined(separator: "|")
+
+        if fingerprint == indexFingerprint,
+           indexedDimensions == selection.model.dimensions,
+           indexedEmbeddingVersionID == selection.version.id {
+            if indexedDimensions != queryDimensions {
+                throw VectorIndexBackendError.dimensionMismatch(expected: indexedDimensions, actual: queryDimensions)
+            }
+            return
+        }
+
+        var entries: [VectorIndexEntry] = []
+        entries.reserveCapacity(sortedEmbeddings.count)
+        var vectors: [String: [Float]] = [:]
+        vectors.reserveCapacity(sortedEmbeddings.count)
+
+        for embedding in sortedEmbeddings {
+            guard let vector = VectorBlobCodec.decode(embedding.vectorBlob) else { continue }
+            guard vector.count == selection.model.dimensions else { continue }
+            entries.append(VectorIndexEntry(chunkID: embedding.chunkID, vector: vector))
+            vectors[embedding.chunkID] = vector
+        }
+
+        guard entries.isEmpty == false else {
+            resetIndex()
+            indexedEmbeddingVersionID = selection.version.id
+            indexedDistanceMetric = selection.model.distanceMetric
+            indexedDimensions = selection.model.dimensions
+            return
+        }
+
+        try annBackend.rebuild(entries: entries, distanceMetric: selection.model.distanceMetric)
+        try exactBackend.rebuild(entries: entries, distanceMetric: selection.model.distanceMetric)
+
+        vectorsByChunkID = vectors
+        indexFingerprint = fingerprint
+        indexedEmbeddingVersionID = selection.version.id
+        indexedDistanceMetric = selection.model.distanceMetric
+        indexedVectorCount = entries.count
+        indexedDimensions = selection.model.dimensions
+
+        if indexedDimensions != queryDimensions {
+            throw VectorIndexBackendError.dimensionMismatch(expected: indexedDimensions, actual: queryDimensions)
+        }
+    }
+
+    private func resolveEmbeddingSelection() throws -> ActiveEmbeddingSelection? {
+        let models = try dataStore.fetchEmbeddingModels()
+        guard models.isEmpty == false else { return nil }
+        let modelByID = Dictionary(uniqueKeysWithValues: models.map { ($0.id, $0) })
+        let versions = try dataStore.fetchEmbeddingVersions()
+        guard versions.isEmpty == false else { return nil }
+
+        let selectedVersion: EmbeddingVersionRecord?
+        if let configuredEmbeddingVersionID, configuredEmbeddingVersionID.isEmpty == false {
+            selectedVersion = versions.first(where: { $0.id == configuredEmbeddingVersionID })
+        } else {
+            selectedVersion = versions.first(where: { $0.isActive }) ?? versions.first
+        }
+        guard let version = selectedVersion, let model = modelByID[version.modelID] else {
+            return nil
+        }
+        return ActiveEmbeddingSelection(model: model, version: version)
+    }
+
+    private func resetIndex() {
+        vectorsByChunkID = [:]
+        indexFingerprint = nil
+        indexedEmbeddingVersionID = nil
+        indexedDistanceMetric = .cosine
+        indexedVectorCount = 0
+        indexedDimensions = 0
+    }
+
+    private func upsertSemanticHealth(
+        status: RetrievalHealthStatus,
+        backendUsed: String,
+        embeddingVersionID: String?,
+        vectorCount: Int,
+        queryDimensions: Int?,
+        candidateCount: Int,
+        fallbackUsed: Bool,
+        errorCode: String?,
+        errorMessage: String?
+    ) throws {
+        let now = nowProvider()
+        let details = SemanticRetrievalHealthDetails(
+            backend: backendUsed,
+            configuredBackend: backend.rawValue,
+            embeddingVersionID: embeddingVersionID,
+            indexedVectorCount: vectorCount,
+            indexedDimensions: indexedDimensions,
+            queryDimensions: queryDimensions,
+            candidateCount: candidateCount,
+            fallbackToExact: fallbackUsed,
+            exactRerankEnabled: exactRerankEnabled
+        )
+        let detailsData = try JSONEncoder().encode(details)
+        let detailsJSON = String(data: detailsData, encoding: .utf8)
+        try dataStore.upsertRetrievalHealth(
+            RetrievalHealthRecord(
+                subsystem: .semantic,
+                status: status,
+                errorCode: errorCode,
+                errorMessage: errorMessage,
+                detailsJSON: detailsJSON,
+                observedAt: now,
+                updatedAt: now
+            )
+        )
+    }
+}
+
+private struct SemanticRetrievalHealthDetails: Codable {
+    let backend: String
+    let configuredBackend: String
+    let embeddingVersionID: String?
+    let indexedVectorCount: Int
+    let indexedDimensions: Int
+    let queryDimensions: Int?
+    let candidateCount: Int
+    let fallbackToExact: Bool
+    let exactRerankEnabled: Bool
+}
+
 // MARK: - Search Service
 
 @MainActor
 final class SearchService {
     private let dataStore: DataStore
+    private let semanticProvider: SemanticCandidateProviding?
+    private let nowProvider: () -> Date
 
-    init(dataStore: DataStore) {
+    init(
+        dataStore: DataStore,
+        semanticProvider: SemanticCandidateProviding? = nil,
+        nowProvider: @escaping () -> Date = Date.init
+    ) {
         self.dataStore = dataStore
+        self.semanticProvider = semanticProvider
+        self.nowProvider = nowProvider
+    }
+
+    func retrieve(_ query: RetrievalQuery) async -> [RetrievalResult] {
+        let trimmed = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return [] }
+
+        let lexicalLimit = max(1, min(query.lexicalCandidateLimit, 1_000))
+        let semanticLimit = max(0, min(query.semanticCandidateLimit, 1_000))
+        let rerankLimit = max(1, min(query.rerankCandidateLimit, 1_000))
+        let resultLimit = max(1, min(query.resultLimit, rerankLimit))
+
+        let sourceKinds = normalizedSourceKinds(query.filters.artifactTypes)
+        let sourceIDs = normalizedSourceIDs(query.filters.sourceIDs)
+
+        let lexicalMatches: [SearchChunkLexicalMatch]
+        do {
+            lexicalMatches = try dataStore.searchLexicalChunks(
+                query: trimmed,
+                provider: query.filters.provider,
+                projectName: query.filters.projectName,
+                sourceKinds: sourceKinds,
+                dateRange: query.filters.dateRange,
+                visibility: query.filters.ownership.visibilityScope,
+                sourceIDs: sourceIDs,
+                limit: lexicalLimit
+            )
+        } catch {
+            return []
+        }
+
+        var candidates: [String: CandidateAccumulator] = [:]
+        var lexicalChunkMap: [String: SearchChunkRecord] = [:]
+        var lexicalDocumentMap: [String: SearchDocumentRecord] = [:]
+
+        for match in lexicalMatches {
+            candidates[match.chunkID] = CandidateAccumulator(
+                lexicalRank: match.lexicalRank,
+                semanticScore: nil,
+                lexicalSnippet: match.snippet
+            )
+            lexicalChunkMap[match.chunkID] = SearchChunkRecord(
+                id: match.chunkID,
+                documentID: match.documentID,
+                sourceKind: match.sourceKind,
+                sourceID: match.sourceID,
+                sourceVersionID: match.sourceVersionID,
+                ordinal: match.chunkOrdinal,
+                startOffset: match.startOffset,
+                endOffset: match.endOffset,
+                messageStartOffset: nil,
+                messageEndOffset: nil,
+                sectionPath: match.sectionPath,
+                text: match.chunkText,
+                createdAt: match.indexedAt,
+                updatedAt: match.indexedAt
+            )
+            lexicalDocumentMap[match.documentID] = SearchDocumentRecord(
+                id: match.documentID,
+                sourceKind: match.sourceKind,
+                sourceID: match.sourceID,
+                sourceVersionID: match.sourceVersionID,
+                provider: match.provider,
+                projectName: match.projectName,
+                title: match.title,
+                subtitle: match.subtitle,
+                bodyPreview: match.bodyPreview,
+                sourceUpdatedAt: match.sourceUpdatedAt,
+                indexedAt: match.indexedAt,
+                contentHash: nil,
+                createdAt: match.indexedAt,
+                updatedAt: match.indexedAt
+            )
+        }
+
+        if semanticLimit > 0, let semanticProvider {
+            do {
+                let semanticCandidates = try await semanticProvider.semanticCandidates(
+                    for: trimmed,
+                    filters: query.filters,
+                    limit: semanticLimit
+                )
+                for semanticCandidate in semanticCandidates {
+                    let normalizedScore = max(0, semanticCandidate.score)
+                    if var existing = candidates[semanticCandidate.chunkID] {
+                        if let semantic = existing.semanticScore {
+                            existing.semanticScore = max(semantic, normalizedScore)
+                        } else {
+                            existing.semanticScore = normalizedScore
+                        }
+                        candidates[semanticCandidate.chunkID] = existing
+                    } else {
+                        candidates[semanticCandidate.chunkID] = CandidateAccumulator(
+                            lexicalRank: nil,
+                            semanticScore: normalizedScore,
+                            lexicalSnippet: nil
+                        )
+                    }
+                }
+            } catch {
+                // Lexical fallback is mandatory.
+            }
+        }
+
+        guard candidates.isEmpty == false else { return [] }
+
+        let boundedChunkIDs = Array(
+            candidates
+                .sorted {
+                    let lhs = preliminaryScore(for: $0.value)
+                    let rhs = preliminaryScore(for: $1.value)
+                    if lhs == rhs {
+                        return $0.key < $1.key
+                    }
+                    return lhs > rhs
+                }
+                .prefix(rerankLimit)
+                .map(\.key)
+        )
+
+        let missingChunkIDs = boundedChunkIDs.filter { lexicalChunkMap[$0] == nil }
+        let fetchedChunks = (try? dataStore.fetchSearchChunks(ids: missingChunkIDs)) ?? []
+        var chunkMap = lexicalChunkMap
+        for chunk in fetchedChunks {
+            chunkMap[chunk.id] = chunk
+        }
+
+        let allDocumentIDs = Set(
+            boundedChunkIDs.compactMap { chunkID in
+                chunkMap[chunkID]?.documentID
+            }
+        )
+        let missingDocumentIDs = allDocumentIDs.filter { lexicalDocumentMap[$0] == nil }
+        let fetchedDocuments = (try? dataStore.fetchSearchDocuments(ids: Array(missingDocumentIDs))) ?? []
+        var documentMap = lexicalDocumentMap
+        for document in fetchedDocuments {
+            documentMap[document.id] = document
+        }
+
+        var conversationCache: [String: ConversationRecord?] = [:]
+        var scoredResults: [RetrievalResult] = []
+        scoredResults.reserveCapacity(boundedChunkIDs.count)
+
+        let tokens = Self.queryTokens(from: trimmed)
+
+        for chunkID in boundedChunkIDs {
+            guard
+                let candidate = candidates[chunkID],
+                let chunk = chunkMap[chunkID],
+                let document = documentMap[chunk.documentID]
+            else {
+                continue
+            }
+
+            let conversation: ConversationRecord?
+            if document.sourceKind == .conversation {
+                if let cached = conversationCache[document.sourceID] {
+                    conversation = cached
+                } else {
+                    let loaded = try? dataStore.fetchConversation(id: document.sourceID)
+                    conversationCache[document.sourceID] = loaded
+                    conversation = loaded
+                }
+            } else {
+                conversation = nil
+            }
+
+            guard matchesFilters(document: document, conversation: conversation, filters: query.filters) else {
+                continue
+            }
+
+            let lexicalScore = Self.normalizedLexicalScore(candidate.lexicalRank)
+            let semanticScore = max(0, candidate.semanticScore ?? 0)
+            let exactScore = Self.exactTokenCoverageScore(tokens: tokens, title: document.title, chunkText: chunk.text)
+            let recency = recencyScore(document.sourceUpdatedAt ?? document.indexedAt)
+            let rerank = (lexicalScore * 0.52) + (semanticScore * 0.33) + (exactScore * 0.10) + (recency * 0.05)
+
+            let snippet = Self.makeSnippet(
+                lexicalSnippet: candidate.lexicalSnippet,
+                chunkText: chunk.text,
+                fallback: document.bodyPreview ?? document.title
+            )
+
+            scoredResults.append(
+                RetrievalResult(
+                    chunkID: chunk.id,
+                    documentID: document.id,
+                    sourceKind: document.sourceKind,
+                    sourceID: document.sourceID,
+                    provider: document.provider.flatMap(AgentProvider.init(rawValue:)),
+                    providerRawValue: document.provider,
+                    projectName: document.projectName,
+                    title: document.title,
+                    subtitle: document.subtitle,
+                    snippet: snippet,
+                    sectionPath: chunk.sectionPath,
+                    startOffset: chunk.startOffset,
+                    endOffset: chunk.endOffset,
+                    sourceUpdatedAt: document.sourceUpdatedAt,
+                    indexedAt: document.indexedAt,
+                    lexicalRank: candidate.lexicalRank,
+                    semanticScore: candidate.semanticScore,
+                    rerankScore: rerank,
+                    conversation: conversation
+                )
+            )
+        }
+
+        guard scoredResults.isEmpty == false else { return [] }
+
+        scoredResults.sort { lhs, rhs in
+            if lhs.rerankScore == rhs.rerankScore {
+                if lhs.indexedAt == rhs.indexedAt {
+                    return lhs.chunkID < rhs.chunkID
+                }
+                return lhs.indexedAt > rhs.indexedAt
+            }
+            return lhs.rerankScore > rhs.rerankScore
+        }
+
+        var seenDocuments: Set<String> = []
+        var dedupedResults: [RetrievalResult] = []
+        dedupedResults.reserveCapacity(min(resultLimit, scoredResults.count))
+        for result in scoredResults {
+            guard seenDocuments.insert(result.documentID).inserted else { continue }
+            dedupedResults.append(result)
+            if dedupedResults.count >= resultLimit { break }
+        }
+
+        return dedupedResults
     }
 
     func search(
@@ -25,11 +1123,155 @@ final class SearchService {
         projectName: String? = nil,
         dateRange: ClosedRange<Date>? = nil
     ) async -> [SearchResult] {
-        (try? dataStore.searchConversationsFTS(
-            query: query,
-            provider: provider,
-            projectName: projectName,
-            dateRange: dateRange
-        )) ?? []
+        let retrievalResults = await retrieve(
+            RetrievalQuery(
+                text: query,
+                filters: RetrievalFilters(
+                    provider: provider,
+                    projectName: projectName,
+                    artifactTypes: [.conversation],
+                    dateRange: dateRange,
+                    ownership: .personal
+                ),
+                lexicalCandidateLimit: 120,
+                semanticCandidateLimit: 120,
+                rerankCandidateLimit: 200,
+                resultLimit: 50
+            )
+        )
+
+        return retrievalResults.compactMap { result in
+            guard let conversation = result.conversation else { return nil }
+            return SearchResult(
+                conversation: conversation,
+                snippet: result.snippet,
+                rank: result.rerankScore
+            )
+        }
     }
+
+    private func normalizedSourceKinds(_ kinds: Set<SearchSourceKind>?) -> [SearchSourceKind]? {
+        guard let kinds, kinds.isEmpty == false else { return nil }
+        return kinds.sorted { $0.rawValue < $1.rawValue }
+    }
+
+    private func normalizedSourceIDs(_ ids: Set<String>?) -> [String]? {
+        guard let ids else { return nil }
+        let cleaned = ids
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .sorted()
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
+    private func matchesFilters(
+        document: SearchDocumentRecord,
+        conversation: ConversationRecord?,
+        filters: RetrievalFilters
+    ) -> Bool {
+        if let provider = filters.provider, document.provider != provider.rawValue {
+            return false
+        }
+
+        if let projectName = filters.projectName?.trimmingCharacters(in: .whitespacesAndNewlines), projectName.isEmpty == false {
+            if (document.projectName ?? "").caseInsensitiveCompare(projectName) != .orderedSame {
+                return false
+            }
+        }
+
+        if let artifactTypes = filters.artifactTypes, artifactTypes.isEmpty == false, artifactTypes.contains(document.sourceKind) == false {
+            return false
+        }
+
+        if let sourceIDs = filters.sourceIDs, sourceIDs.isEmpty == false, sourceIDs.contains(document.sourceID) == false {
+            return false
+        }
+
+        switch filters.ownership {
+        case .any:
+            break
+        case .personal:
+            if document.sourceKind == .sharedArtifact { return false }
+        case .shared:
+            if document.sourceKind != .sharedArtifact { return false }
+        }
+
+        if let dateRange = filters.dateRange {
+            let date = document.sourceUpdatedAt ?? document.indexedAt
+            if date < dateRange.lowerBound || date > dateRange.upperBound {
+                return false
+            }
+        }
+
+        if let conversationSources = filters.conversationSources, conversationSources.isEmpty == false {
+            guard document.sourceKind == .conversation, let conversation else { return false }
+            if conversationSources.contains(conversation.sourceType) == false {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    private func recencyScore(_ date: Date) -> Double {
+        let ageSeconds = max(0, nowProvider().timeIntervalSince(date))
+        let ageDays = ageSeconds / 86_400
+        return 1.0 / (1.0 + (ageDays / 30.0))
+    }
+
+    private func preliminaryScore(for candidate: CandidateAccumulator) -> Double {
+        (Self.normalizedLexicalScore(candidate.lexicalRank) * 0.7) + (max(0, candidate.semanticScore ?? 0) * 0.3)
+    }
+
+    private static func normalizedLexicalScore(_ lexicalRank: Double?) -> Double {
+        guard let lexicalRank else { return 0 }
+        return 1.0 / (1.0 + abs(lexicalRank))
+    }
+
+    private static func queryTokens(from query: String) -> [String] {
+        query
+            .lowercased()
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline || $0.isPunctuation })
+            .map(String.init)
+            .filter { $0.count >= 2 }
+    }
+
+    private static func exactTokenCoverageScore(tokens: [String], title: String, chunkText: String) -> Double {
+        guard tokens.isEmpty == false else { return 0 }
+        let loweredTitle = title.lowercased()
+        let loweredChunk = chunkText.lowercased()
+
+        var weightedMatches = 0.0
+        for token in tokens {
+            if loweredTitle.contains(token) {
+                weightedMatches += 2.0
+            } else if loweredChunk.contains(token) {
+                weightedMatches += 1.0
+            }
+        }
+
+        let denominator = Double(tokens.count) * 2.0
+        guard denominator > 0 else { return 0 }
+        return min(1.0, weightedMatches / denominator)
+    }
+
+    private static func makeSnippet(lexicalSnippet: String?, chunkText: String, fallback: String) -> String {
+        let cleanedLexical = lexicalSnippet?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if cleanedLexical.isEmpty == false {
+            return cleanedLexical
+        }
+
+        let cleanedChunk = chunkText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanedChunk.isEmpty == false {
+            return String(cleanedChunk.prefix(220))
+        }
+
+        return String(fallback.trimmingCharacters(in: .whitespacesAndNewlines).prefix(220))
+    }
+}
+
+private struct CandidateAccumulator {
+    var lexicalRank: Double?
+    var semanticScore: Double?
+    var lexicalSnippet: String?
 }

@@ -4,6 +4,9 @@ import Foundation
 
 final class ClaudeCodeParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .claudeCode
+    private let fileManager: FileManager
+    private let appPaths: BurnBarAppPaths
+    private let cacheURL: URL
 
     private static let iso8601Basic: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -17,18 +20,34 @@ final class ClaudeCodeParser: LogParser, @unchecked Sendable {
         return formatter
     }()
 
+    init(
+        fileManager: FileManager = .default,
+        appPaths: BurnBarAppPaths = .live()
+    ) {
+        self.fileManager = fileManager
+        self.appPaths = appPaths
+        self.cacheURL = appPaths.claudeCodeParserCacheURL
+        _ = try? BurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
+    }
+
     func parse() async throws -> ParseResult {
         let projectsPath = (provider.logDirectory as NSString).expandingTildeInPath
         let projectsURL = URL(fileURLWithPath: projectsPath)
 
-        guard FileManager.default.fileExists(atPath: projectsPath) else {
+        guard fileManager.fileExists(atPath: projectsPath) else {
             return ParseResult(usages: [], conversations: [])
         }
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var parseCache = loadParseCache()
+        var activePaths = Set<String>()
+        var cacheMutated = false
 
-        guard let projectDirs = try? FileManager.default.contentsOfDirectory(at: projectsURL, includingPropertiesForKeys: nil) else {
+        guard let projectDirs = try? fileManager.contentsOfDirectory(
+            at: projectsURL,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ) else {
             return ParseResult(usages: [], conversations: [])
         }
 
@@ -37,7 +56,7 @@ final class ClaudeCodeParser: LogParser, @unchecked Sendable {
         for projectDir in filteredDirs {
             let projectName = decodeProjectName(projectDir.lastPathComponent)
 
-            guard let files = try? FileManager.default.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil) else {
+            guard let files = try? fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil) else {
                 continue
             }
 
@@ -45,15 +64,28 @@ final class ClaudeCodeParser: LogParser, @unchecked Sendable {
 
             for jsonlFile in jsonlFiles {
                 let sessionId = jsonlFile.deletingPathExtension().lastPathComponent
+                let cacheKey = cachePath(for: jsonlFile)
+                activePaths.insert(cacheKey)
 
-                if let pair = try? parseClaudeSession(
-                    file: jsonlFile,
-                    sessionId: sessionId,
-                    projectName: projectName
-                ), let usage = pair.usage {
-                    usages.append(usage)
-                    if let conv = pair.conversation {
-                        conversations.append(conv)
+                if let signature = fileSignature(for: jsonlFile),
+                   let cached = parseCache.fileEntries[cacheKey],
+                   cached.signature == signature {
+                    appendCached(cached, includeConversation: true, usages: &usages, conversations: &conversations)
+                } else {
+                    let parsed = try? parseClaudeSession(
+                        file: jsonlFile,
+                        sessionId: sessionId,
+                        projectName: projectName
+                    )
+                    appendParsed(parsed, includeConversation: true, usages: &usages, conversations: &conversations)
+
+                    if let signature = fileSignature(for: jsonlFile) {
+                        parseCache.fileEntries[cacheKey] = ClaudeCodeCachedSession(
+                            signature: signature,
+                            usage: parsed?.usage,
+                            conversation: parsed?.conversation
+                        )
+                        cacheMutated = true
                     }
                 }
 
@@ -61,7 +93,7 @@ final class ClaudeCodeParser: LogParser, @unchecked Sendable {
                 let subagentsDir = projectDir
                     .appendingPathComponent(sessionId)
                     .appendingPathComponent("subagents")
-                if let subagentFiles = try? FileManager.default.contentsOfDirectory(
+                if let subagentFiles = try? fileManager.contentsOfDirectory(
                     at: subagentsDir,
                     includingPropertiesForKeys: nil
                 ) {
@@ -71,17 +103,45 @@ final class ClaudeCodeParser: LogParser, @unchecked Sendable {
                     for agentFile in agentJsonlFiles {
                         let agentId = agentFile.deletingPathExtension().lastPathComponent
                         let subSessionId = "\(sessionId)/\(agentId)"
-                        if let pair = try? parseClaudeSession(
-                            file: agentFile,
-                            sessionId: subSessionId,
-                            projectName: projectName
-                        ), let usage = pair.usage {
-                            usages.append(usage)
-                            // Skip conversation records for subagents — they're fragments
+                        let subagentCacheKey = cachePath(for: agentFile)
+                        activePaths.insert(subagentCacheKey)
+
+                        if let signature = fileSignature(for: agentFile),
+                           let cached = parseCache.fileEntries[subagentCacheKey],
+                           cached.signature == signature {
+                            appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
+                        } else {
+                            let parsed = try? parseClaudeSession(
+                                file: agentFile,
+                                sessionId: subSessionId,
+                                projectName: projectName
+                            )
+                            appendParsed(parsed, includeConversation: false, usages: &usages, conversations: &conversations)
+
+                            if let signature = fileSignature(for: agentFile) {
+                                parseCache.fileEntries[subagentCacheKey] = ClaudeCodeCachedSession(
+                                    signature: signature,
+                                    usage: parsed?.usage,
+                                    conversation: parsed?.conversation
+                                )
+                                cacheMutated = true
+                            }
                         }
                     }
                 }
             }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
+        }
+
+        if cacheMutated {
+            persistParseCache(parseCache)
         }
 
         return ParseResult(usages: usages, conversations: conversations)
@@ -234,7 +294,81 @@ final class ClaudeCodeParser: LogParser, @unchecked Sendable {
     }
 
     private func modificationDate(of url: URL) -> Date? {
-        (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+        (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+    }
+
+    private func cachePath(for file: URL) -> String {
+        file.standardizedFileURL.path
+    }
+
+    private func appendCached(
+        _ cached: ClaudeCodeCachedSession,
+        includeConversation: Bool,
+        usages: inout [TokenUsage],
+        conversations: inout [ConversationRecord]
+    ) {
+        if let usage = cached.usage {
+            usages.append(usage)
+        }
+        if includeConversation, let conversation = cached.conversation {
+            conversations.append(conversation)
+        }
+    }
+
+    private func appendParsed(
+        _ parsed: (usage: TokenUsage?, conversation: ConversationRecord?)?,
+        includeConversation: Bool,
+        usages: inout [TokenUsage],
+        conversations: inout [ConversationRecord]
+    ) {
+        guard let parsed else { return }
+        if let usage = parsed.usage {
+            usages.append(usage)
+        }
+        if includeConversation, let conversation = parsed.conversation {
+            conversations.append(conversation)
+        }
+    }
+
+    private func loadParseCache() -> ClaudeCodeParserCache {
+        guard fileManager.fileExists(atPath: cacheURL.path) else { return .empty }
+        do {
+            let data = try Data(contentsOf: cacheURL)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let cache = try decoder.decode(ClaudeCodeParserCache.self, from: data)
+            guard cache.schemaVersion == ClaudeCodeParserCache.empty.schemaVersion else {
+                return .empty
+            }
+            return cache
+        } catch {
+            return .empty
+        }
+    }
+
+    private func persistParseCache(_ cache: ClaudeCodeParserCache) {
+        do {
+            if !fileManager.fileExists(atPath: appPaths.supportDirectory.path) {
+                try fileManager.createDirectory(at: appPaths.supportDirectory, withIntermediateDirectories: true)
+            }
+            var persisted = cache
+            persisted.lastUpdatedAt = Date()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(persisted)
+            try data.write(to: cacheURL, options: .atomic)
+        } catch {
+            print("ClaudeCodeParser: Failed to persist parser cache: \(error)")
+        }
+    }
+
+    private func fileSignature(for file: URL) -> ClaudeCodeFileSignature? {
+        let values = try? file.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey])
+        guard values?.isRegularFile == true else { return nil }
+        let modifiedAt = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
+        let sizeBytes = Int64(values?.fileSize ?? 0)
+        return ClaudeCodeFileSignature(modifiedAt: modifiedAt, sizeBytes: sizeBytes)
     }
 
     private static func parseTimestamp(_ raw: Any?) -> Date? {
@@ -261,6 +395,29 @@ final class ClaudeCodeParser: LogParser, @unchecked Sendable {
         let seconds = epoch > 100_000_000_000 ? epoch / 1000.0 : epoch
         return Date(timeIntervalSince1970: seconds)
     }
+}
+
+private struct ClaudeCodeFileSignature: Codable, Equatable {
+    let modifiedAt: TimeInterval
+    let sizeBytes: Int64
+}
+
+private struct ClaudeCodeCachedSession: Codable, Equatable {
+    let signature: ClaudeCodeFileSignature
+    let usage: TokenUsage?
+    let conversation: ConversationRecord?
+}
+
+private struct ClaudeCodeParserCache: Codable, Equatable {
+    var schemaVersion: Int
+    var fileEntries: [String: ClaudeCodeCachedSession]
+    var lastUpdatedAt: Date?
+
+    static let empty = ClaudeCodeParserCache(
+        schemaVersion: 1,
+        fileEntries: [:],
+        lastUpdatedAt: nil
+    )
 }
 
 // MARK: - Session Accumulator (class so modifications persist)

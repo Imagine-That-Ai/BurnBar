@@ -157,6 +157,36 @@ struct SearchChunkRecord: Identifiable, Equatable, Sendable {
     }
 }
 
+enum SearchVisibilityScope: String, Codable, CaseIterable, Sendable {
+    case all
+    case personalOnly = "personal_only"
+    case sharedOnly = "shared_only"
+}
+
+struct SearchChunkLexicalMatch: Identifiable, Equatable, Sendable {
+    let chunkID: String
+    let documentID: String
+    let sourceKind: SearchSourceKind
+    let sourceID: String
+    let sourceVersionID: String
+    let provider: String?
+    let projectName: String?
+    let title: String
+    let subtitle: String?
+    let bodyPreview: String?
+    let sourceUpdatedAt: Date?
+    let indexedAt: Date
+    let chunkOrdinal: Int
+    let startOffset: Int
+    let endOffset: Int
+    let sectionPath: String?
+    let chunkText: String
+    let snippet: String
+    let lexicalRank: Double
+
+    var id: String { chunkID }
+}
+
 struct ProjectionJobRecord: Identifiable, Equatable, Sendable {
     let id: String
     let jobType: ProjectionJobType
@@ -1614,6 +1644,8 @@ final class DataStore {
                 ]
             )
         }
+
+        try enqueueConversationProjectionJob(conversationID: id, jobType: .reproject)
     }
 
     /// Candidate conversations for auto-summarization.
@@ -1842,6 +1874,38 @@ final class DataStore {
 
     // MARK: - Local search substrate (derived/rebuildable)
 
+    func enqueueConversationProjectionJob(
+        conversationID: String,
+        jobType: ProjectionJobType = .reproject,
+        priority: Int = 5,
+        now: Date = Date()
+    ) throws {
+        guard let conversation = try fetchConversation(id: conversationID) else { return }
+        let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
+        try enqueueProjectionJob(
+            ProjectionJobRecord(
+                id: ProjectionIdentity.jobID(
+                    jobType: jobType,
+                    sourceKind: .conversation,
+                    sourceID: conversation.id,
+                    sourceVersionID: sourceVersionID
+                ),
+                jobType: jobType,
+                sourceKind: .conversation,
+                sourceID: conversation.id,
+                sourceVersionID: sourceVersionID,
+                status: .queued,
+                priority: min(max(priority, 0), 10_000),
+                attempts: 0,
+                maxAttempts: 5,
+                scheduledAt: now,
+                availableAt: now,
+                createdAt: now,
+                updatedAt: now
+            )
+        )
+    }
+
     func upsertSearchDocument(_ document: SearchDocumentRecord) throws {
         try localSearchStore.upsertDocument(document)
     }
@@ -1850,12 +1914,55 @@ final class DataStore {
         try localSearchStore.fetchDocuments(limit: limit)
     }
 
+    func fetchSearchDocuments(ids: [String]) throws -> [SearchDocumentRecord] {
+        try localSearchStore.fetchDocuments(ids: ids)
+    }
+
+    func fetchSearchDocuments(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchDocumentRecord] {
+        try localSearchStore.fetchDocuments(sourceKind: sourceKind, sourceID: sourceID)
+    }
+
     func replaceSearchChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) throws {
         try localSearchStore.replaceChunks(documentID: documentID, title: title, chunks: chunks)
     }
 
     func fetchSearchChunks(documentID: String) throws -> [SearchChunkRecord] {
         try localSearchStore.fetchChunks(documentID: documentID)
+    }
+
+    func fetchSearchChunks(ids: [String]) throws -> [SearchChunkRecord] {
+        try localSearchStore.fetchChunks(ids: ids)
+    }
+
+    func fetchSearchChunks(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchChunkRecord] {
+        try localSearchStore.fetchChunks(sourceKind: sourceKind, sourceID: sourceID)
+    }
+
+    func searchLexicalChunks(
+        query: String,
+        provider: AgentProvider? = nil,
+        projectName: String? = nil,
+        sourceKinds: [SearchSourceKind]? = nil,
+        dateRange: ClosedRange<Date>? = nil,
+        visibility: SearchVisibilityScope = .all,
+        sourceIDs: [String]? = nil,
+        limit: Int = 120
+    ) throws -> [SearchChunkLexicalMatch] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        let ftsQuery = Self.fts5SafeQuery(from: trimmed)
+        guard !ftsQuery.isEmpty else { return [] }
+
+        return try localSearchStore.searchLexicalChunks(
+            ftsQuery: ftsQuery,
+            provider: provider?.rawValue,
+            projectName: projectName,
+            sourceKinds: sourceKinds,
+            dateRange: dateRange,
+            visibility: visibility,
+            sourceIDs: sourceIDs,
+            limit: limit
+        )
     }
 
     func upsertSourceArtifact(_ artifact: SourceArtifactRecord) throws -> SourceArtifactWriteDisposition {
@@ -1874,6 +1981,10 @@ final class DataStore {
         )
     }
 
+    func fetchSourceArtifact(id: String, includeDeleted: Bool = false) throws -> SourceArtifactRecord? {
+        try localSearchStore.fetchSourceArtifact(id: id, includeDeleted: includeDeleted)
+    }
+
     @discardableResult
     func markSourceArtifactDeleted(id: String, deletedAt: Date = Date()) throws -> Bool {
         try localSearchStore.markSourceArtifactDeleted(id: id, deletedAt: deletedAt)
@@ -1888,6 +1999,18 @@ final class DataStore {
         limit: Int = 100
     ) throws -> [ProjectionJobRecord] {
         try localSearchStore.fetchProjectionJobs(statuses: statuses, limit: limit)
+    }
+
+    func leaseNextProjectionJob(
+        leaseOwner: String,
+        leaseDuration: TimeInterval,
+        now: Date = Date()
+    ) throws -> ProjectionJobRecord? {
+        try localSearchStore.leaseNextJob(
+            leaseOwner: leaseOwner,
+            leaseExpiresAt: now.addingTimeInterval(leaseDuration),
+            now: now
+        )
     }
 
     func markProjectionJobLeased(
@@ -1924,6 +2047,24 @@ final class DataStore {
         )
     }
 
+    func markProjectionJobCanceled(
+        id: String,
+        errorCode: String?,
+        errorMessage: String?,
+        updatedAt: Date = Date()
+    ) throws {
+        try localSearchStore.markJobCanceled(
+            id: id,
+            errorCode: errorCode,
+            errorMessage: errorMessage,
+            updatedAt: updatedAt
+        )
+    }
+
+    func deleteSearchDocuments(sourceKind: SearchSourceKind, sourceID: String) throws {
+        try localSearchStore.deleteDocuments(sourceKind: sourceKind, sourceID: sourceID)
+    }
+
     func upsertEmbeddingModel(_ model: EmbeddingModelRecord) throws {
         try localSearchStore.upsertEmbeddingModel(model)
     }
@@ -1946,6 +2087,10 @@ final class DataStore {
 
     func fetchChunkEmbeddings(chunkID: String? = nil) throws -> [ChunkEmbeddingRecord] {
         try localSearchStore.fetchChunkEmbeddings(chunkID: chunkID)
+    }
+
+    func fetchChunkEmbeddings(embeddingVersionID: String) throws -> [ChunkEmbeddingRecord] {
+        try localSearchStore.fetchChunkEmbeddings(embeddingVersionID: embeddingVersionID)
     }
 
     func upsertRetrievalHealth(_ health: RetrievalHealthRecord) throws {
@@ -2132,6 +2277,8 @@ final class DataStore {
             sourceType: .cliAssistant
         )
         try upsertConversation(record)
+
+        try enqueueConversationProjectionJob(conversationID: record.id, jobType: .reproject)
     }
 
     // MARK: - Sync Helpers (private)
@@ -2241,6 +2388,39 @@ private struct LocalSearchStore {
         }
     }
 
+    func fetchDocuments(ids: [String]) throws -> [SearchDocumentRecord] {
+        let uniqueIDs = Array(Set(ids)).sorted()
+        guard uniqueIDs.isEmpty == false else { return [] }
+
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM search_documents
+                WHERE id IN (\(Self.sqlPlaceholders(count: uniqueIDs.count)))
+                ORDER BY indexedAt DESC, createdAt DESC
+                """,
+                arguments: StatementArguments(uniqueIDs)
+            )
+            return rows.compactMap(Self.document(from:))
+        }
+    }
+
+    func fetchDocuments(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchDocumentRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM search_documents
+                WHERE sourceKind = ? AND sourceID = ?
+                ORDER BY indexedAt DESC, createdAt DESC
+                """,
+                arguments: [sourceKind.rawValue, sourceID]
+            )
+            return rows.compactMap(Self.document(from:))
+        }
+    }
+
     func replaceChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) throws {
         try dbQueue.write { db in
             try db.execute(
@@ -2302,6 +2482,136 @@ private struct LocalSearchStore {
                 arguments: [documentID]
             )
             return rows.compactMap(Self.chunk(from:))
+        }
+    }
+
+    func fetchChunks(ids: [String]) throws -> [SearchChunkRecord] {
+        let uniqueIDs = Array(Set(ids)).sorted()
+        guard uniqueIDs.isEmpty == false else { return [] }
+
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM search_chunks
+                WHERE id IN (\(Self.sqlPlaceholders(count: uniqueIDs.count)))
+                ORDER BY documentID ASC, ordinal ASC
+                """,
+                arguments: StatementArguments(uniqueIDs)
+            )
+            return rows.compactMap(Self.chunk(from:))
+        }
+    }
+
+    func fetchChunks(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchChunkRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM search_chunks
+                WHERE sourceKind = ? AND sourceID = ?
+                ORDER BY documentID ASC, ordinal ASC
+                """,
+                arguments: [sourceKind.rawValue, sourceID]
+            )
+            return rows.compactMap(Self.chunk(from:))
+        }
+    }
+
+    func searchLexicalChunks(
+        ftsQuery: String,
+        provider: String?,
+        projectName: String?,
+        sourceKinds: [SearchSourceKind]?,
+        dateRange: ClosedRange<Date>?,
+        visibility: SearchVisibilityScope,
+        sourceIDs: [String]?,
+        limit: Int
+    ) throws -> [SearchChunkLexicalMatch] {
+        guard ftsQuery.isEmpty == false, limit > 0 else { return [] }
+
+        let normalizedSourceKinds = Array(Set(sourceKinds ?? [])).sorted { $0.rawValue < $1.rawValue }
+        let normalizedSourceIDs = Array(Set((sourceIDs ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })).sorted()
+        let normalizedProject = projectName?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var clauses: [String] = ["search_chunks_fts MATCH ?"]
+        var args: [any DatabaseValueConvertible] = [ftsQuery]
+
+        if let provider, provider.isEmpty == false {
+            clauses.append("d.provider = ?")
+            args.append(provider)
+        }
+
+        if let normalizedProject, normalizedProject.isEmpty == false {
+            clauses.append("d.projectName = ?")
+            args.append(normalizedProject)
+        }
+
+        if normalizedSourceKinds.isEmpty == false {
+            clauses.append("d.sourceKind IN (\(Self.sqlPlaceholders(count: normalizedSourceKinds.count)))")
+            args.append(contentsOf: normalizedSourceKinds.map(\.rawValue))
+        }
+
+        if normalizedSourceIDs.isEmpty == false {
+            clauses.append("d.sourceID IN (\(Self.sqlPlaceholders(count: normalizedSourceIDs.count)))")
+            args.append(contentsOf: normalizedSourceIDs)
+        }
+
+        if let dateRange {
+            clauses.append("COALESCE(d.sourceUpdatedAt, d.indexedAt) >= ?")
+            clauses.append("COALESCE(d.sourceUpdatedAt, d.indexedAt) <= ?")
+            args.append(dateRange.lowerBound)
+            args.append(dateRange.upperBound)
+        }
+
+        switch visibility {
+        case .all:
+            break
+        case .personalOnly:
+            clauses.append("d.sourceKind != ?")
+            args.append(SearchSourceKind.sharedArtifact.rawValue)
+        case .sharedOnly:
+            clauses.append("d.sourceKind = ?")
+            args.append(SearchSourceKind.sharedArtifact.rawValue)
+        }
+
+        let whereSQL = clauses.joined(separator: " AND ")
+        args.append(limit)
+
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT
+                    search_chunks_fts.chunkID AS chunkID,
+                    search_chunks_fts.documentID AS documentID,
+                    bm25(search_chunks_fts) AS lexicalRank,
+                    snippet(search_chunks_fts, 3, '<b>', '</b>', '…', 16) AS snippet,
+                    d.sourceKind AS sourceKind,
+                    d.sourceID AS sourceID,
+                    d.sourceVersionID AS sourceVersionID,
+                    d.provider AS provider,
+                    d.projectName AS projectName,
+                    d.title AS title,
+                    d.subtitle AS subtitle,
+                    d.bodyPreview AS bodyPreview,
+                    d.sourceUpdatedAt AS sourceUpdatedAt,
+                    d.indexedAt AS indexedAt,
+                    c.ordinal AS chunkOrdinal,
+                    c.startOffset AS startOffset,
+                    c.endOffset AS endOffset,
+                    c.sectionPath AS sectionPath,
+                    c.text AS chunkText
+                FROM search_chunks_fts
+                JOIN search_chunks AS c ON c.id = search_chunks_fts.chunkID
+                JOIN search_documents AS d ON d.id = search_chunks_fts.documentID
+                WHERE \(whereSQL)
+                ORDER BY lexicalRank ASC, d.indexedAt DESC, c.ordinal ASC
+                LIMIT ?
+                """,
+                arguments: StatementArguments(args)
+            )
+            return rows.compactMap(Self.lexicalMatch(from:))
         }
     }
 
@@ -2438,6 +2748,25 @@ private struct LocalSearchStore {
         }
     }
 
+    func fetchSourceArtifact(id: String, includeDeleted: Bool) throws -> SourceArtifactRecord? {
+        try dbQueue.read { db in
+            guard
+                let row = try Row.fetchOne(
+                    db,
+                    sql: "SELECT * FROM source_artifacts WHERE id = ?",
+                    arguments: [id]
+                ),
+                let artifact = Self.sourceArtifact(from: row)
+            else {
+                return nil
+            }
+            if includeDeleted == false, artifact.status == .deleted {
+                return nil
+            }
+            return artifact
+        }
+    }
+
     @discardableResult
     func markSourceArtifactDeleted(id: String, deletedAt: Date) throws -> Bool {
         try dbQueue.write { db in
@@ -2488,6 +2817,7 @@ private struct LocalSearchStore {
                     leaseOwner = excluded.leaseOwner,
                     leaseExpiresAt = excluded.leaseExpiresAt,
                     updatedAt = excluded.updatedAt
+                WHERE projection_jobs.status IN ('queued', 'failed', 'canceled')
                 """,
                 arguments: [
                     job.id,
@@ -2535,6 +2865,63 @@ private struct LocalSearchStore {
         }
     }
 
+    func leaseNextJob(leaseOwner: String, leaseExpiresAt: Date, now: Date) throws -> ProjectionJobRecord? {
+        try dbQueue.write { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT * FROM projection_jobs
+                WHERE (
+                    (
+                        status IN (?, ?)
+                        AND availableAt <= ?
+                    )
+                    OR (
+                        status IN (?, ?)
+                        AND leaseExpiresAt IS NOT NULL
+                        AND leaseExpiresAt <= ?
+                    )
+                )
+                AND attempts < maxAttempts
+                ORDER BY priority ASC, availableAt ASC, createdAt ASC
+                LIMIT 1
+                """,
+                arguments: [
+                    ProjectionJobStatus.queued.rawValue,
+                    ProjectionJobStatus.failed.rawValue,
+                    now,
+                    ProjectionJobStatus.leased.rawValue,
+                    ProjectionJobStatus.running.rawValue,
+                    now
+                ]
+            ) else {
+                return nil
+            }
+
+            guard let job = Self.projectionJob(from: row) else { return nil }
+            try db.execute(
+                sql: """
+                UPDATE projection_jobs
+                SET status = ?, leaseOwner = ?, leaseExpiresAt = ?, startedAt = COALESCE(startedAt, ?), updatedAt = ?
+                WHERE id = ?
+                """,
+                arguments: [
+                    ProjectionJobStatus.running.rawValue,
+                    leaseOwner,
+                    leaseExpiresAt,
+                    now,
+                    now,
+                    job.id
+                ]
+            )
+            return try Row.fetchOne(
+                db,
+                sql: "SELECT * FROM projection_jobs WHERE id = ?",
+                arguments: [job.id]
+            ).flatMap(Self.projectionJob(from:))
+        }
+    }
+
     func markJobLeased(id: String, leaseOwner: String, leaseExpiresAt: Date, updatedAt: Date) throws {
         try dbQueue.write { db in
             try db.execute(
@@ -2578,6 +2965,54 @@ private struct LocalSearchStore {
                 WHERE id = ?
                 """,
                 arguments: [ProjectionJobStatus.failed.rawValue, errorCode, errorMessage, retryAt, updatedAt, id]
+            )
+        }
+    }
+
+    func markJobCanceled(
+        id: String,
+        errorCode: String?,
+        errorMessage: String?,
+        updatedAt: Date
+    ) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE projection_jobs
+                SET status = ?, leaseOwner = NULL, leaseExpiresAt = NULL,
+                    lastErrorCode = ?, lastErrorMessage = ?, updatedAt = ?
+                WHERE id = ?
+                """,
+                arguments: [ProjectionJobStatus.canceled.rawValue, errorCode, errorMessage, updatedAt, id]
+            )
+        }
+    }
+
+    func deleteDocuments(sourceKind: SearchSourceKind, sourceID: String) throws {
+        try dbQueue.write { db in
+            let documentIDs = try String.fetchAll(
+                db,
+                sql: """
+                SELECT id
+                FROM search_documents
+                WHERE sourceKind = ? AND sourceID = ?
+                """,
+                arguments: [sourceKind.rawValue, sourceID]
+            )
+
+            for documentID in documentIDs {
+                try db.execute(
+                    sql: "DELETE FROM search_chunks_fts WHERE documentID = ?",
+                    arguments: [documentID]
+                )
+            }
+
+            try db.execute(
+                sql: """
+                DELETE FROM search_documents
+                WHERE sourceKind = ? AND sourceID = ?
+                """,
+                arguments: [sourceKind.rawValue, sourceID]
             )
         }
     }
@@ -2731,6 +3166,21 @@ private struct LocalSearchStore {
                     """
                 )
             }
+            return rows.compactMap(Self.chunkEmbedding(from:))
+        }
+    }
+
+    func fetchChunkEmbeddings(embeddingVersionID: String) throws -> [ChunkEmbeddingRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM chunk_embeddings
+                WHERE embeddingVersionID = ?
+                ORDER BY chunkID ASC
+                """,
+                arguments: [embeddingVersionID]
+            )
             return rows.compactMap(Self.chunkEmbedding(from:))
         }
     }
@@ -2891,6 +3341,46 @@ private struct LocalSearchStore {
             text: text,
             createdAt: createdAt,
             updatedAt: updatedAt
+        )
+    }
+
+    private static func lexicalMatch(from row: Row) -> SearchChunkLexicalMatch? {
+        guard
+            let chunkID = row["chunkID"] as? String,
+            let documentID = row["documentID"] as? String,
+            let sourceKindRaw = row["sourceKind"] as? String,
+            let sourceKind = SearchSourceKind(rawValue: sourceKindRaw),
+            let sourceID = row["sourceID"] as? String,
+            let title = row["title"] as? String
+        else {
+            return nil
+        }
+
+        let lexicalRankRaw = (row["lexicalRank"] as? Double) ?? Double(row["lexicalRank"] as? Int64 ?? 0)
+        let chunkOrdinal = (row["chunkOrdinal"] as? Int) ?? Int(row["chunkOrdinal"] as? Int64 ?? 0)
+        let startOffset = (row["startOffset"] as? Int) ?? Int(row["startOffset"] as? Int64 ?? 0)
+        let endOffset = (row["endOffset"] as? Int) ?? Int(row["endOffset"] as? Int64 ?? 0)
+
+        return SearchChunkLexicalMatch(
+            chunkID: chunkID,
+            documentID: documentID,
+            sourceKind: sourceKind,
+            sourceID: sourceID,
+            sourceVersionID: (row["sourceVersionID"] as? String) ?? "",
+            provider: row["provider"] as? String,
+            projectName: row["projectName"] as? String,
+            title: title,
+            subtitle: row["subtitle"] as? String,
+            bodyPreview: row["bodyPreview"] as? String,
+            sourceUpdatedAt: parseDateValue(row["sourceUpdatedAt"]),
+            indexedAt: parseDateValue(row["indexedAt"]) ?? Date.distantPast,
+            chunkOrdinal: chunkOrdinal,
+            startOffset: startOffset,
+            endOffset: endOffset,
+            sectionPath: row["sectionPath"] as? String,
+            chunkText: (row["chunkText"] as? String) ?? "",
+            snippet: (row["snippet"] as? String) ?? "",
+            lexicalRank: lexicalRankRaw
         )
     }
 

@@ -43,6 +43,66 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.buckets.first(where: { $0.label == "7-day window" })?.remainingPercent?.rounded(), 80)
     }
 
+    func test_codexRefresh_readsQuotaSnapshotFromLargeRolloutTail() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let rolloutDirectory = home
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("sessions/2026/03/24", isDirectory: true)
+        try FileManager.default.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+
+        let rolloutURL = rolloutDirectory.appendingPathComponent("rollout-2026-03-24T11-00-00.jsonl")
+        let fillerLine = #"{"timestamp":"2026-03-24T10:59:00Z","type":"event_msg","payload":{"type":"assistant_message","text":"filler"}}"#
+        let quotaLine = """
+        {"timestamp":"2026-03-24T11:00:01Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"plan_type":"pro","primary":{"used_percent":35.0,"window_minutes":300,"resets_at":1774359600},"secondary":{"used_percent":42.0,"window_minutes":10080,"resets_at":1774801258}}}}
+        """
+        let payload = Array(repeating: fillerLine, count: 7000).joined(separator: "\n") + "\n" + quotaLine
+        try Data(payload.utf8).write(to: rolloutURL)
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport
+        )
+
+        await service.refresh(provider: .codex, dataStore: DataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .codex))
+
+        XCTAssertEqual(snapshot.source, .localSession)
+        XCTAssertEqual(snapshot.buckets.first(where: { $0.label == "5-hour window" })?.remainingPercent?.rounded(), 65)
+        XCTAssertEqual(snapshot.buckets.first(where: { $0.label == "7-day window" })?.remainingPercent?.rounded(), 58)
+    }
+
+    func test_codexRefresh_reusesPersistedScanCacheForUnchangedFiles() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let rolloutDirectory = home
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("sessions/2026/03/24", isDirectory: true)
+        try FileManager.default.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+
+        let rolloutURL = rolloutDirectory.appendingPathComponent("rollout-2026-03-24T12-00-00.jsonl")
+        let payload = """
+        {"timestamp":"2026-03-24T12:00:01Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"plan_type":"pro","primary":{"used_percent":41.0,"window_minutes":300,"resets_at":1774359600},"secondary":{"used_percent":33.0,"window_minutes":10080,"resets_at":1774801258}}}}
+        """
+        try Data(payload.utf8).write(to: rolloutURL)
+
+        let paths = BurnBarAppPaths(applicationSupportRoot: appSupport)
+        let first = makeService(home: home, appSupportRoot: appSupport)
+        await first.refresh(provider: .codex, dataStore: DataStore())
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.codexRolloutScanCacheURL.path))
+
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: rolloutURL.path)
+
+        let second = makeService(home: home, appSupportRoot: appSupport)
+        await second.refresh(provider: .codex, dataStore: DataStore())
+        let snapshot = try XCTUnwrap(second.snapshot(for: .codex))
+
+        XCTAssertEqual(snapshot.source, .localSession)
+        XCTAssertEqual(snapshot.buckets.first(where: { $0.label == "5-hour window" })?.remainingPercent?.rounded(), 59)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: rolloutURL.path)
+    }
+
     func test_claudeBridge_installAndRemove_roundTripsStatusLineCommand() throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
@@ -198,6 +258,101 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.source, .officialAPI)
         XCTAssertEqual(snapshot.buckets.count, 2)
         XCTAssertEqual(snapshot.buckets.first?.remainingPercent?.rounded(), 75)
+    }
+
+    func test_miniMaxRefresh_parsesStringHeavyTokenPlanPayload() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let keyStore = try makeKeyStore(provider: "minimax", value: "mm-token")
+        let session = makeStubSession { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://www.minimax.io/v1/api/openplatform/coding_plan/remains")
+
+            let body = """
+            {
+              "data": {
+                "quota_list": [
+                  {
+                    "quota_name": "M2.7 requests",
+                    "quota_cycle": "5 hour",
+                    "quota_usage": "225 / 1,500 requests",
+                    "quota_remain": "1,275 requests",
+                    "next_reset_time": "2026-03-24T10:15:00Z"
+                  },
+                  {
+                    "resource_name": "image-01",
+                    "window": "daily",
+                    "used_num": "12 images",
+                    "quota_limit": "50 images"
+                  }
+                ]
+              }
+            }
+            """
+            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            keyStore: keyStore,
+            session: session,
+            miniMaxModeProvider: { .tokenPlan }
+        )
+
+        await service.refresh(provider: .minimax, dataStore: DataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
+
+        XCTAssertEqual(snapshot.buckets.count, 2)
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "M2.7 Requests" && $0.remainingValue?.rounded() == 1_275 }))
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "Image 01" && $0.limitValue?.rounded() == 50 }))
+    }
+
+    func test_miniMaxRefresh_parsesModelRemainsPayload() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let keyStore = try makeKeyStore(provider: "minimax", value: "mm-token")
+        let session = makeStubSession { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://www.minimax.io/v1/api/openplatform/coding_plan/remains")
+
+            let body = """
+            {
+              "base_resp": {
+                "status_code": 0,
+                "status_msg": "success"
+              },
+              "model_remains": [
+                {
+                  "model_name": "MiniMax-M2.7-HighSpeed",
+                  "start_time": 1774320000000,
+                  "end_time": 1774338000000,
+                  "remains_time": 7200000,
+                  "current_interval_total_count": 1500,
+                  "current_interval_usage_count": 1437
+                }
+              ]
+            }
+            """
+            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            keyStore: keyStore,
+            session: session,
+            miniMaxModeProvider: { .tokenPlan }
+        )
+
+        await service.refresh(provider: .minimax, dataStore: DataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
+        let bucket = try XCTUnwrap(snapshot.primaryBucket)
+
+        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(bucket.label, "Minimax M2.7 Highspeed")
+        XCTAssertEqual(bucket.limitValue?.rounded(), 1_500)
+        XCTAssertEqual(bucket.remainingValue?.rounded(), 1_437)
+        XCTAssertEqual(bucket.usedValue?.rounded(), 63)
+        XCTAssertEqual(bucket.windowKind, .rollingHours)
     }
 
     func test_zaiRefresh_usesOfficialMonitorEndpoints() async throws {

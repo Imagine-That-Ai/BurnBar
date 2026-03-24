@@ -45,6 +45,7 @@ export interface BurnBarPanelApprovalState {
 
 export interface BurnBarPanelSelectedRunDetail {
   summary: string;
+  responseText?: string;
   usageText?: string;
   recoveryMessage?: string;
   arbitrationInfo?: string;
@@ -414,7 +415,9 @@ function buildSelectedRunDetail(state: BurnBarState): BurnBarPanelSelectedRunDet
     loopDecisionText = `Loop ${loopState.iterationCount}: ${loopState.lastDecision.action}${tool} — ${loopState.lastDecision.rationale}`;
   }
 
-  return { summary, usageText, recoveryMessage, arbitrationInfo, loopDecisionText };
+  const responseText = loopState?.lastDecision?.message ?? undefined;
+
+  return { summary, responseText, usageText, recoveryMessage, arbitrationInfo, loopDecisionText };
 }
 
 function buildRecoveryMessage(state: BurnBarState): string | undefined {

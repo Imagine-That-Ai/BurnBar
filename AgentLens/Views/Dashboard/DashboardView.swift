@@ -22,6 +22,7 @@ struct DashboardView: View {
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     @State private var mainRoute: DashboardMainRoute = .overview
+    @State private var routeHistory: [DashboardMainRoute] = []
     @State private var selectedTimeRange: TimeRange = .today
     @AppStorage("dashboardViewMode") private var viewMode: DashboardViewMode = .agents
     @State private var showingSettings = false
@@ -60,6 +61,41 @@ struct DashboardView: View {
     private func runRecount() {
         guard let agg = aggregator else { return }
         Task { await agg.recountAll() }
+    }
+
+    private var canGoBack: Bool {
+        !routeHistory.isEmpty || mainRoute != .overview
+    }
+
+    private func navigate(to route: DashboardMainRoute) {
+        guard route != mainRoute else { return }
+        routeHistory.append(mainRoute)
+        mainRoute = route
+    }
+
+    private func goBack() {
+        if let previous = routeHistory.popLast() {
+            mainRoute = previous
+        } else if mainRoute != .overview {
+            mainRoute = .overview
+        }
+    }
+
+    private var backButtonHelpText: String {
+        if let previous = routeHistory.last {
+            return "Back to \(routeTitle(previous))"
+        }
+        return "Back to Overview"
+    }
+
+    private func routeTitle(_ route: DashboardMainRoute) -> String {
+        switch route {
+        case .overview: return "Overview"
+        case .projects: return "Projects"
+        case .sessionLogs: return "Session Logs"
+        case .provider(let provider): return provider.displayName
+        case .model(let modelName): return modelName
+        }
     }
 
     /// Opens Cursor’s extension install flow for BurnBar (`extensions/burnbar` package id).
@@ -184,7 +220,38 @@ struct DashboardView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         // Leading: flat brand mark (not grouped with trailing controls in the system glass capsule).
-        ToolbarItem(placement: .navigation) {
+        ToolbarItemGroup(placement: .navigation) {
+            Button {
+                guard canGoBack else { return }
+                withAnimation(DesignSystem.Animation.standard) {
+                    goBack()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.backward")
+                        .font(.system(size: 13, weight: .semibold))
+
+                    Text("Back")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                }
+                .foregroundStyle(canGoBack ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textMuted)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(DesignSystem.Colors.surfaceElevated.opacity(canGoBack ? 0.62 : 0.34))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(DesignSystem.Colors.borderSubtle.opacity(canGoBack ? 0.70 : 0.30), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(!canGoBack)
+            .keyboardShortcut("[", modifiers: [.command])
+            .help(canGoBack ? backButtonHelpText : "Back")
+            .accessibilityLabel(canGoBack ? backButtonHelpText : "Back")
+
             HStack(alignment: .center, spacing: 10) {
                 AppLogoView(size: 22)
                 Text("BurnBar")
@@ -205,6 +272,7 @@ struct DashboardView: View {
             .frame(width: 160)
             .onChange(of: viewMode) { _, _ in
                 withAnimation(DesignSystem.Animation.standard) {
+                    routeHistory.removeAll()
                     mainRoute = .overview
                 }
             }
@@ -296,6 +364,7 @@ struct DashboardView: View {
                         sessionCount: filteredUsages.count
                     ) {
                         withAnimation(DesignSystem.Animation.standard) {
+                            routeHistory.removeAll()
                             mainRoute = .overview
                         }
                     }
@@ -310,7 +379,7 @@ struct DashboardView: View {
                                 sessionCount: summary.sessionCount
                             ) {
                                 withAnimation(DesignSystem.Animation.standard) {
-                                    mainRoute = .provider(summary.provider)
+                                    navigate(to: .provider(summary.provider))
                                 }
                             }
                             .focusable()
@@ -328,7 +397,7 @@ struct DashboardView: View {
                                 isSelected: mainRoute == .model(summary.modelName)
                             ) {
                                 withAnimation(DesignSystem.Animation.standard) {
-                                    mainRoute = .model(summary.modelName)
+                                    navigate(to: .model(summary.modelName))
                                 }
                             }
                             .focusable()
@@ -346,14 +415,14 @@ struct DashboardView: View {
                         projectCount: Set(filteredUsages.map(\.projectName)).count
                     ) {
                         withAnimation(DesignSystem.Animation.standard) {
-                            mainRoute = .projects
+                            navigate(to: .projects)
                         }
                     }
                     .focusable()
 
                     SidebarSessionLogsRow(isSelected: mainRoute == .sessionLogs) {
                         withAnimation(DesignSystem.Animation.standard) {
-                            mainRoute = .sessionLogs
+                            navigate(to: .sessionLogs)
                         }
                     }
                     .focusable()
@@ -460,15 +529,17 @@ struct DashboardView: View {
             guard let idx = order.firstIndex(of: mainRoute) else { return }
             switch direction {
             case .up, .left:
-                if idx > 0 { mainRoute = order[idx - 1] }
+                if idx > 0 { navigate(to: order[idx - 1]) }
             case .down, .right:
-                if idx + 1 < order.count { mainRoute = order[idx + 1] }
+                if idx + 1 < order.count { navigate(to: order[idx + 1]) }
             default:
                 break
             }
         }
         .onKeyPress(.escape) {
-            mainRoute = .overview
+            withAnimation(DesignSystem.Animation.standard) {
+                goBack()
+            }
             return .handled
         }
         .onAppear { sidebarAppeared = true }
@@ -557,7 +628,7 @@ struct DashboardView: View {
                         dataStore: dataStore,
                         onSelectProvider: { provider in
                             withAnimation(DesignSystem.Animation.standard) {
-                                mainRoute = .provider(provider)
+                                navigate(to: .provider(provider))
                             }
                         }
                     )
@@ -787,7 +858,7 @@ struct DashboardView: View {
                     ForEach(Array(dashboardProviderSummaries.enumerated()), id: \.element.id) { index, summary in
                         ProviderCard(summary: summary, rank: index + 1) {
                             withAnimation(DesignSystem.Animation.standard) {
-                                mainRoute = .provider(summary.provider)
+                                navigate(to: .provider(summary.provider))
                             }
                         }
                         .opacity(overviewAppeared ? 1 : 0)
@@ -825,7 +896,7 @@ struct DashboardView: View {
                     ForEach(Array(dashboardModelSummaries.enumerated()), id: \.element.id) { index, summary in
                         ModelCard(summary: summary, rank: index + 1) {
                             withAnimation(DesignSystem.Animation.standard) {
-                                mainRoute = .model(summary.modelName)
+                                navigate(to: .model(summary.modelName))
                             }
                         }
                         .opacity(overviewAppeared ? 1 : 0)
@@ -1491,7 +1562,7 @@ private struct SessionPreviewRow: View {
 // MARK: - Mining Pick Animation
 
 /// Renders the animated_mining_pick.svg using WKWebView so CSS @keyframes play natively.
-private struct AnimatedMiningPickView: NSViewRepresentable {
+struct AnimatedMiningPickView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let webView = WKWebView(frame: .zero)
         webView.setValue(false, forKey: "drawsBackground")

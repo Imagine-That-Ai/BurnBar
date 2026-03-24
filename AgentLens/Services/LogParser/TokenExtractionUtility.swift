@@ -329,3 +329,48 @@ enum TokenExtractionUtility {
         return nil
     }
 }
+
+// MARK: - Timestamp Normalization
+
+/// Normalizes timestamps originating from heterogeneous logs/storage (seconds/ms/us/ns),
+/// and guarantees Firestore-safe Date values.
+enum TimestampNormalizationUtility {
+    /// Firestore Timestamp supports year 0001 through 9999.
+    static let firestoreMinEpochSeconds = -62_135_596_800.0
+    static let firestoreMaxEpochSeconds = 253_402_300_799.0
+
+    static func normalizedEpochSeconds(_ raw: Double?) -> Double? {
+        guard var seconds = raw, seconds.isFinite else { return nil }
+
+        var attempts = 0
+        while abs(seconds) > firestoreMaxEpochSeconds && attempts < 4 {
+            seconds /= 1000.0
+            attempts += 1
+        }
+
+        guard seconds >= firestoreMinEpochSeconds,
+              seconds <= firestoreMaxEpochSeconds else {
+            return nil
+        }
+        return seconds
+    }
+
+    static func date(fromEpoch raw: Double?, fallback: Date = Date()) -> Date {
+        if let seconds = normalizedEpochSeconds(raw) {
+            return Date(timeIntervalSince1970: seconds)
+        }
+        return firestoreSafeDate(fallback)
+    }
+
+    static func firestoreSafeDate(_ date: Date, fallback: Date = Date()) -> Date {
+        if let seconds = normalizedEpochSeconds(date.timeIntervalSince1970) {
+            return Date(timeIntervalSince1970: seconds)
+        }
+        if let fallbackSeconds = normalizedEpochSeconds(fallback.timeIntervalSince1970) {
+            return Date(timeIntervalSince1970: fallbackSeconds)
+        }
+        let now = Date().timeIntervalSince1970
+        let clamped = min(max(now, firestoreMinEpochSeconds), firestoreMaxEpochSeconds)
+        return Date(timeIntervalSince1970: clamped)
+    }
+}

@@ -79,6 +79,21 @@ final class SettingsManager {
         didSet { save() }
     }
 
+    /// Enables discovery and ingestion of skill/agent source artifacts from registered roots.
+    var artifactDiscoveryEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// JSON string storage for registered discovery roots.
+    var artifactDiscoveryRegisteredRootsJSON: String {
+        didSet { save() }
+    }
+
+    /// JSON string storage for additional basename patterns (supports `*` wildcard).
+    var artifactDiscoveryAdditionalKnownPatternsJSON: String {
+        didSet { save() }
+    }
+
     /// User allowed the app to invoke `claude` / `codex` CLIs for the in-app assistant.
     var cliAssistantAllowed: Bool {
         didSet {
@@ -212,6 +227,16 @@ final class SettingsManager {
         return deduped
     }
 
+    var artifactDiscoveryRegisteredRoots: [String] {
+        get { Self.decodeJSONStringArray(artifactDiscoveryRegisteredRootsJSON) }
+        set { artifactDiscoveryRegisteredRootsJSON = Self.encodeJSONStringArray(newValue) }
+    }
+
+    var artifactDiscoveryAdditionalKnownPatterns: [String] {
+        get { Self.decodeJSONStringArray(artifactDiscoveryAdditionalKnownPatternsJSON) }
+        set { artifactDiscoveryAdditionalKnownPatternsJSON = Self.encodeJSONStringArray(newValue) }
+    }
+
     /// Persists provider priority as CSV (see `summaryProviderOrderCSV`).
     func setSummaryProviderOrder(_ order: [SummaryProviderID]) {
         summaryProviderOrderCSV = order.map(\.rawValue).joined(separator: ",")
@@ -267,6 +292,13 @@ final class SettingsManager {
         } else {
             self.conversationIndexingEnabled = false
         }
+        if defaults.object(forKey: "artifactDiscoveryEnabled") != nil {
+            self.artifactDiscoveryEnabled = defaults.bool(forKey: "artifactDiscoveryEnabled")
+        } else {
+            self.artifactDiscoveryEnabled = false
+        }
+        self.artifactDiscoveryRegisteredRootsJSON = defaults.string(forKey: "artifactDiscoveryRegisteredRootsJSON") ?? "[]"
+        self.artifactDiscoveryAdditionalKnownPatternsJSON = defaults.string(forKey: "artifactDiscoveryAdditionalKnownPatternsJSON") ?? "[]"
 
         self.conversationCloudBackupEnabled = defaults.bool(forKey: "conversationCloudBackupEnabled")
 
@@ -389,6 +421,9 @@ final class SettingsManager {
         defaults.set(dailyDigestEnabled, forKey: "dailyDigestEnabled")
         defaults.set(dailyDigestHour, forKey: "dailyDigestHour")
         defaults.set(conversationIndexingEnabled, forKey: "conversationIndexingEnabled")
+        defaults.set(artifactDiscoveryEnabled, forKey: "artifactDiscoveryEnabled")
+        defaults.set(artifactDiscoveryRegisteredRootsJSON, forKey: "artifactDiscoveryRegisteredRootsJSON")
+        defaults.set(artifactDiscoveryAdditionalKnownPatternsJSON, forKey: "artifactDiscoveryAdditionalKnownPatternsJSON")
         defaults.set(conversationCloudBackupEnabled, forKey: "conversationCloudBackupEnabled")
         defaults.set(iCloudSessionMirrorEnabled, forKey: "iCloudSessionMirrorEnabled")
         defaults.set(sessionLogCloudBackupEnabled, forKey: "sessionLogCloudBackupEnabled")
@@ -424,6 +459,25 @@ final class SettingsManager {
         defaults.set(summaryTimeLimitMinutes, forKey: "summaryTimeLimitMinutes")
         defaults.set(miniMaxQuotaMode.rawValue, forKey: "miniMaxQuotaMode")
         defaults.set(factoryQuotaPlanTier.rawValue, forKey: "factoryQuotaPlanTier")
+    }
+
+    private static func decodeJSONStringArray(_ json: String) -> [String] {
+        guard let data = json.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return decoded.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    private static func encodeJSONStringArray(_ values: [String]) -> String {
+        let normalized = values
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard let data = try? JSONEncoder().encode(normalized),
+              let json = String(data: data, encoding: .utf8) else {
+            return "[]"
+        }
+        return json
     }
 
     /// Formats a usage row or aggregate for the current display preference.

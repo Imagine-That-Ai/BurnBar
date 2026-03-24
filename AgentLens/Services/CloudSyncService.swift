@@ -168,7 +168,11 @@ final class CloudSyncService {
     // MARK: - Encoding
 
     private func encodeUsage(_ usage: TokenUsage, deviceId: String) -> [String: Any] {
-        [
+        let safeStart = TimestampNormalizationUtility.firestoreSafeDate(usage.startTime, fallback: usage.createdAt)
+        let safeEndCandidate = TimestampNormalizationUtility.firestoreSafeDate(usage.endTime, fallback: safeStart)
+        let safeEnd = max(safeStart, safeEndCandidate)
+
+        return [
             "id": usage.id.uuidString,
             "deviceId": deviceId,
             "provider": usage.provider.rawValue,
@@ -181,8 +185,8 @@ final class CloudSyncService {
             "cacheReadTokens": usage.cacheReadTokens,
             "totalTokens": usage.totalTokens,
             "cost": usage.cost,
-            "startTime": Timestamp(date: usage.startTime),
-            "endTime": Timestamp(date: usage.endTime),
+            "startTime": Timestamp(date: safeStart),
+            "endTime": Timestamp(date: safeEnd),
             "updatedAt": FieldValue.serverTimestamp()
         ]
     }
@@ -204,12 +208,21 @@ final class CloudSyncService {
             "lastAssistantMessage": capLastAssistantMessage(record.lastAssistantMessage),
             "updatedAt": FieldValue.serverTimestamp()
         ]
-        if let start = record.startTime {
+        let safeStart = record.startTime.map { TimestampNormalizationUtility.firestoreSafeDate($0) }
+        let safeEnd = record.endTime.map { rawEnd in
+            let normalizedEnd = TimestampNormalizationUtility.firestoreSafeDate(rawEnd, fallback: safeStart ?? rawEnd)
+            if let safeStart {
+                return max(safeStart, normalizedEnd)
+            }
+            return normalizedEnd
+        }
+
+        if let start = safeStart {
             data["startTime"] = Timestamp(date: start)
         } else {
             data["startTime"] = NSNull()
         }
-        if let end = record.endTime {
+        if let end = safeEnd {
             data["endTime"] = Timestamp(date: end)
         } else {
             data["endTime"] = NSNull()
@@ -295,8 +308,16 @@ final class CloudSyncService {
                     "byteCount": markdown.utf8.count,
                     "updatedAt": FieldValue.serverTimestamp()
                 ]
-                if let start = record.startTime { manifest["startTime"] = Timestamp(date: start) }
-                if let end = record.endTime { manifest["endTime"] = Timestamp(date: end) }
+                let safeStart = record.startTime.map { TimestampNormalizationUtility.firestoreSafeDate($0) }
+                let safeEnd = record.endTime.map { rawEnd in
+                    let normalizedEnd = TimestampNormalizationUtility.firestoreSafeDate(rawEnd, fallback: safeStart ?? rawEnd)
+                    if let safeStart {
+                        return max(safeStart, normalizedEnd)
+                    }
+                    return normalizedEnd
+                }
+                if let safeStart { manifest["startTime"] = Timestamp(date: safeStart) }
+                if let safeEnd { manifest["endTime"] = Timestamp(date: safeEnd) }
 
                 try await manifestRef.setData(manifest, merge: true)
 

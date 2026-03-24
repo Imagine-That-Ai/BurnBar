@@ -68,47 +68,85 @@ struct ProviderQuotaOverviewPanel: View {
     private func quotaRow(for provider: AgentProvider) -> some View {
         let snapshot = quotaService.snapshot(for: provider)
         let theme = ProviderTheme.theme(for: provider)
+        let isActive = quotaService.isRefreshing(provider)
+        let summaryText = snapshot?.summaryText
+            ?? snapshot?.statusMessage
+            ?? (isActive ? "Refreshing quota signal…" : "No quota snapshot yet.")
 
         return Button {
             onSelectProvider(provider)
         } label: {
-            HStack(spacing: DesignSystem.Spacing.md) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(theme.primaryColor.opacity(0.14))
-                        .frame(width: 34, height: 34)
-                    ProviderLogoView(provider: provider, size: 22, useFallbackColor: false)
-                }
+            HStack(spacing: DesignSystem.Spacing.lg) {
+                ProviderQuotaIdentityOrb(provider: provider, isActive: isActive)
 
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     Text(provider == .factory ? "Factory / Droid" : provider.displayName)
                         .font(DesignSystem.Typography.body)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                    Text(snapshot?.summaryText ?? snapshot?.statusMessage ?? "No quota snapshot yet.")
+                    Text(summaryText)
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(3)
                 }
 
                 Spacer()
 
-                if let snapshot {
-                    QuotaSourceBadge(source: snapshot.source, confidence: snapshot.confidence)
+                Group {
+                    if let primaryBucket = snapshot?.primaryBucket {
+                        QuotaSignalView(bucket: primaryBucket, provider: provider, compact: true)
+                            .frame(width: 126, height: 68)
+                    } else {
+                        QuotaSignalPlaceholder(provider: provider, isActive: isActive, compact: true)
+                            .frame(width: 126, height: 68)
+                    }
                 }
+                .padding(.trailing, DesignSystem.Spacing.xs)
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xs) {
+                    if isActive {
+                        ProviderQuotaActivityBadge(provider: provider, compact: true)
+                    }
+
+                    if let snapshot {
+                        QuotaSourceBadge(source: snapshot.source, confidence: snapshot.confidence)
+                    }
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
             }
             .padding(.horizontal, DesignSystem.Spacing.md)
-            .padding(.vertical, DesignSystem.Spacing.sm)
+            .padding(.vertical, DesignSystem.Spacing.md)
             .background(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(theme.primaryColor.opacity(0.06))
+                ZStack {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                        .fill(DesignSystem.Colors.surfaceElevated.opacity(0.56))
+
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    theme.primaryColor.opacity(isActive ? 0.18 : 0.10),
+                                    theme.accentColor.opacity(0.08),
+                                    Color.clear
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .stroke(theme.primaryColor.opacity(isActive ? 0.26 : 0.12), lineWidth: 1)
+            )
+            .shadow(color: theme.primaryColor.opacity(isActive ? 0.16 : 0.06), radius: isActive ? 18 : 8, y: 6)
         }
         .buttonStyle(.plain)
+        .animation(DesignSystem.Animation.gentle, value: isActive)
     }
 }
 
@@ -119,6 +157,10 @@ struct ProviderDashboardQuotaPanel: View {
 
     private var snapshot: ProviderQuotaSnapshot? {
         quotaService.snapshot(for: provider)
+    }
+
+    private var isRefreshing: Bool {
+        quotaService.isRefreshing(provider)
     }
 
     var body: some View {
@@ -138,25 +180,35 @@ struct ProviderDashboardQuotaPanel: View {
 
                         Spacer()
 
-                        if let snapshot {
-                            QuotaSourceBadge(source: snapshot.source, confidence: snapshot.confidence)
+                        VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xs) {
+                            if isRefreshing {
+                                ProviderQuotaActivityBadge(provider: provider)
+                            }
+
+                            if let snapshot {
+                                QuotaSourceBadge(source: snapshot.source, confidence: snapshot.confidence)
+                            }
                         }
                     }
 
                     if let snapshot, !snapshot.buckets.isEmpty {
-                        VStack(spacing: DesignSystem.Spacing.sm) {
+                        VStack(spacing: DesignSystem.Spacing.md) {
                             ForEach(snapshot.buckets) { bucket in
                                 ProviderQuotaBucketRow(bucket: bucket, provider: provider)
                             }
                         }
-                    } else if let error = quotaService.errors[provider] {
-                        Text(error)
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.warning)
                     } else {
-                        Text(snapshot?.statusMessage ?? "No quota snapshot yet.")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        QuotaStatusCallout(
+                            provider: provider,
+                            title: isRefreshing
+                                ? "Gathering live quota"
+                                : (quotaService.errors[provider] != nil ? "Could not refresh quota" : "Quota signal not ready"),
+                            message: quotaService.errors[provider]
+                                ?? snapshot?.statusMessage
+                                ?? "No quota snapshot yet.",
+                            isActive: isRefreshing,
+                            isWarning: quotaService.errors[provider] != nil
+                        )
                     }
 
                     HStack(spacing: DesignSystem.Spacing.md) {
@@ -213,17 +265,16 @@ private struct ProviderQuotaSettingsCard: View {
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
 
+    private var isRefreshing: Bool {
+        quotaService.isRefreshing(provider)
+    }
+
     var body: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
                     HStack(spacing: DesignSystem.Spacing.md) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(theme.primaryColor.opacity(0.14))
-                                .frame(width: 34, height: 34)
-                            ProviderLogoView(provider: provider, size: 22, useFallbackColor: false)
-                        }
+                        ProviderQuotaIdentityOrb(provider: provider, isActive: isRefreshing)
 
                         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                             Text(providerTitle)
@@ -239,29 +290,33 @@ private struct ProviderQuotaSettingsCard: View {
 
                     Spacer()
 
-                    if let snapshot {
-                        QuotaSourceBadge(source: snapshot.source, confidence: snapshot.confidence)
+                    VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xs) {
+                        if isRefreshing {
+                            ProviderQuotaActivityBadge(provider: provider)
+                        }
+
+                        if let snapshot {
+                            QuotaSourceBadge(source: snapshot.source, confidence: snapshot.confidence)
+                        }
                     }
                 }
 
                 if let snapshot, !snapshot.buckets.isEmpty {
-                    VStack(spacing: DesignSystem.Spacing.sm) {
+                    VStack(spacing: DesignSystem.Spacing.md) {
                         ForEach(snapshot.buckets) { bucket in
                             ProviderQuotaBucketRow(bucket: bucket, provider: provider)
                         }
                     }
                 } else {
-                    Text(statusLine)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(provider == .claudeCode ? DesignSystem.Colors.warning : DesignSystem.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if let error = quotaService.errors[provider] {
-                    Text(error)
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.warning)
-                        .fixedSize(horizontal: false, vertical: true)
+                    QuotaStatusCallout(
+                        provider: provider,
+                        title: isRefreshing
+                            ? "Refreshing provider signal"
+                            : (quotaService.errors[provider] != nil ? "Refresh needs attention" : "Readable quota not available yet"),
+                        message: quotaService.errors[provider] ?? statusLine,
+                        isActive: isRefreshing,
+                        isWarning: quotaService.errors[provider] != nil || provider == .claudeCode
+                    )
                 }
 
                 if let snapshot {
@@ -407,44 +462,652 @@ private struct ProviderQuotaBucketRow: View {
     let provider: AgentProvider
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
+    private var signalStatus: QuotaSignalStatus {
+        QuotaSignalStatus.resolve(bucket: bucket, theme: theme)
+    }
+    private var windowBadgeText: String? {
+        switch bucket.windowKind {
+        case .rollingHours: return "Rolling hours"
+        case .rollingDays: return "Rolling days"
+        case .daily: return "Daily"
+        case .weekly: return "Weekly"
+        case .monthly: return "Monthly"
+        case .custom: return nil
+        }
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-            HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
-                Text(bucket.label)
-                    .font(DesignSystem.Typography.body)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Text(bucket.label)
+                            .font(DesignSystem.Typography.headline)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                        QuotaMicroBadge(text: signalStatus.label, tint: signalStatus.tint)
+
+                        if let windowBadgeText {
+                            QuotaMicroBadge(text: windowBadgeText, tint: theme.primaryColor)
+                        }
+                    }
+
+                    Text(bucket.usageText)
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 Spacer()
 
-                Text(bucket.remainingText)
-                    .font(DesignSystem.Typography.monoSmall)
-                    .foregroundStyle(theme.gradient)
+                QuotaFigureTile(bucket: bucket, provider: provider)
             }
 
-            ProgressView(value: bucket.progressFraction)
-                .tint(theme.primaryColor)
+            QuotaSignalView(bucket: bucket, provider: provider)
+                .frame(height: 104)
 
-            HStack(spacing: DesignSystem.Spacing.md) {
-                Text(bucket.usageText)
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-
+            HStack(spacing: DesignSystem.Spacing.sm) {
                 if let resetsAt = bucket.resetsAt {
-                    Text("Resets \(resetsAt.formatted(date: .abbreviated, time: .shortened))")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    QuotaMicroBadge(
+                        text: "Resets \(resetsAt.formatted(date: .abbreviated, time: .shortened))",
+                        tint: DesignSystem.Colors.textMuted
+                    )
                 }
 
                 if bucket.isEstimated {
-                    Text("Estimated")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.warning)
+                    QuotaMicroBadge(text: "Estimated", tint: DesignSystem.Colors.warning)
                 }
 
                 Spacer()
             }
         }
+        .padding(DesignSystem.Spacing.md)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.48))
+
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                theme.primaryColor.opacity(0.10),
+                                theme.accentColor.opacity(0.05),
+                                Color.clear
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .stroke(theme.primaryColor.opacity(0.12), lineWidth: 1)
+        )
+    }
+}
+
+private struct QuotaFigureTile: View {
+    let bucket: ProviderQuotaBucket
+    let provider: AgentProvider
+
+    private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
+    private var descriptor: String {
+        switch bucket.unit {
+        case .percent:
+            return "window left"
+        case .requests:
+            return "requests left"
+        case .tokens:
+            return "tokens left"
+        case .count:
+            return "remaining"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            Text(descriptor.uppercased())
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            Text(bucket.remainingText)
+                .font(.system(size: 26, weight: .bold, design: .monospaced))
+                .foregroundStyle(theme.gradient)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            Text(bucket.usageText)
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textPrimary.opacity(0.78))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.82))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(theme.primaryColor.opacity(0.16), lineWidth: 1)
+        )
+    }
+}
+
+private struct QuotaStatusCallout: View {
+    let provider: AgentProvider
+    let title: String
+    let message: String
+    let isActive: Bool
+    let isWarning: Bool
+
+    private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
+    private var tint: Color { isWarning ? DesignSystem.Colors.warning : theme.primaryColor }
+    private var iconName: String { isWarning ? "exclamationmark.triangle.fill" : "sparkles" }
+
+    var body: some View {
+        HStack(spacing: DesignSystem.Spacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(tint.opacity(0.12))
+                    .frame(width: 42, height: 42)
+
+                if isActive {
+                    AnimatedMiningPickView()
+                        .frame(width: 26, height: 26)
+                } else {
+                    Image(systemName: iconName)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(tint)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text(title)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                Text(message)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(4)
+            }
+
+            Spacer(minLength: DesignSystem.Spacing.md)
+
+            QuotaSignalPlaceholder(provider: provider, isActive: isActive, compact: true)
+                .frame(width: 138, height: 76)
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.74))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .stroke(tint.opacity(isWarning ? 0.24 : 0.14), lineWidth: 1)
+        )
+    }
+}
+
+private struct ProviderQuotaIdentityOrb: View {
+    let provider: AgentProvider
+    let isActive: Bool
+
+    private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            theme.primaryColor.opacity(0.22),
+                            theme.accentColor.opacity(0.12),
+                            DesignSystem.Colors.surfaceElevated.opacity(0.45)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            Circle()
+                .fill(theme.accentColor.opacity(isActive ? 0.22 : 0.12))
+                .frame(width: 18, height: 18)
+                .blur(radius: isActive ? 10 : 6)
+                .offset(x: 10, y: -10)
+
+            Circle()
+                .stroke(theme.primaryColor.opacity(isActive ? 0.36 : 0.18), lineWidth: 1)
+
+            ProviderLogoView(provider: provider, size: 22, useFallbackColor: false)
+        }
+        .frame(width: 42, height: 42)
+        .shadow(color: theme.primaryColor.opacity(isActive ? 0.20 : 0.08), radius: isActive ? 18 : 8, y: 5)
+        .overlay(alignment: .bottomTrailing) {
+            if isActive {
+                Circle()
+                    .fill(DesignSystem.Colors.amber)
+                    .frame(width: 9, height: 9)
+                    .overlay(
+                        Circle()
+                            .stroke(DesignSystem.Colors.surface, lineWidth: 1.5)
+                    )
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .animation(DesignSystem.Animation.gentle, value: isActive)
+    }
+}
+
+private struct ProviderQuotaActivityBadge: View {
+    let provider: AgentProvider
+    var compact = false
+
+    private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
+
+    var body: some View {
+        HStack(spacing: compact ? 6 : DesignSystem.Spacing.sm) {
+            AnimatedMiningPickView()
+                .frame(width: compact ? 20 : 26, height: compact ? 20 : 26)
+                .clipShape(.circle)
+
+            if !compact {
+                Text("At work")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(theme.gradient)
+            }
+        }
+        .padding(.horizontal, compact ? 8 : 10)
+        .padding(.vertical, compact ? 5 : 6)
+        .background(
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            theme.primaryColor.opacity(0.16),
+                            theme.accentColor.opacity(0.10)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+        )
+        .overlay(
+            Capsule()
+                .stroke(theme.primaryColor.opacity(0.18), lineWidth: 1)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(provider.displayName) quota refresh in progress")
+    }
+}
+
+private struct QuotaSignalStatus {
+    let label: String
+    let detail: String
+    let tint: Color
+
+    static func resolve(bucket: ProviderQuotaBucket, theme: ProviderTheme) -> QuotaSignalStatus {
+        let pressure = min(max(bucket.progressFraction, 0), 1)
+
+        switch pressure {
+        case ..<0.20:
+            return QuotaSignalStatus(
+                label: "Wide Open",
+                detail: "Plenty of headroom in this window.",
+                tint: theme.primaryColor
+            )
+        case ..<0.46:
+            return QuotaSignalStatus(
+                label: "Comfortable",
+                detail: "Healthy reserve remains.",
+                tint: theme.accentColor
+            )
+        case ..<0.74:
+            return QuotaSignalStatus(
+                label: "Narrowing",
+                detail: "Reserve is thinning.",
+                tint: DesignSystem.Colors.amber
+            )
+        default:
+            return QuotaSignalStatus(
+                label: "Near Edge",
+                detail: "Close to the active cap.",
+                tint: DesignSystem.Colors.warning
+            )
+        }
+    }
+}
+
+private struct QuotaSignalView: View {
+    let bucket: ProviderQuotaBucket
+    let provider: AgentProvider
+    var compact = false
+
+    private static let sampleCount = 40
+
+    private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
+    private var remainingFraction: Double {
+        if let remainingPercent = bucket.remainingPercent {
+            return min(max(remainingPercent / 100, 0), 1)
+        }
+        return min(max(1 - bucket.progressFraction, 0), 1)
+    }
+    private var pressureFraction: Double {
+        min(max(bucket.progressFraction, 0), 1)
+    }
+    private var cornerRadius: CGFloat { compact ? 18 : 20 }
+    private var signalStatus: QuotaSignalStatus {
+        QuotaSignalStatus.resolve(bucket: bucket, theme: theme)
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: compact ? 1.0 / 10.0 : 1.0 / 12.0)) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                DesignSystem.Colors.surface.opacity(0.96),
+                                DesignSystem.Colors.surfaceElevated.opacity(0.92),
+                                theme.primaryColor.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+
+                Canvas { context, size in
+                    drawInstrument(in: &context, size: size, time: time)
+                }
+                .padding(compact ? 8 : 10)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(signalStatus.label.uppercased())
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(signalStatus.tint.opacity(compact ? 0.92 : 0.86))
+
+                    if compact {
+                        Text(bucket.remainingText)
+                            .font(.system(size: 18, weight: .bold, design: .monospaced))
+                            .foregroundStyle(theme.gradient)
+                    } else {
+                        Text(signalStatus.detail)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary.opacity(0.82))
+                    }
+                }
+                .padding(compact ? 10 : 12)
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(theme.primaryColor.opacity(compact ? 0.16 : 0.20), lineWidth: 1)
+            )
+            .clipShape(.rect(cornerRadius: cornerRadius, style: .continuous))
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func drawInstrument(in context: inout GraphicsContext, size: CGSize, time: TimeInterval) {
+        let plotRect = CGRect(origin: .zero, size: size).insetBy(dx: compact ? 8 : 10, dy: compact ? 10 : 12)
+        let trackRect = plotRect.insetBy(dx: compact ? 2 : 6, dy: compact ? 8 : 12)
+        let baseline = trackRect.maxY - trackRect.height * (0.18 + pressureFraction * 0.60)
+        let phase = time * 0.55
+        let beaconPosition = 0.06 + remainingFraction * 0.88
+        let beaconPoint = pointOnTrack(normalizedX: beaconPosition, rect: trackRect, baseline: baseline, phase: phase)
+        let fullTrack = trackPath(in: trackRect, baseline: baseline, phase: phase, maxNormalizedX: 1)
+        let litTrack = trackPath(in: trackRect, baseline: baseline, phase: phase, maxNormalizedX: beaconPosition)
+        let fillPath = filledTrackPath(in: trackRect, baseline: baseline, phase: phase)
+
+        drawGrid(in: &context, rect: plotRect)
+
+        context.fill(
+            fillPath,
+            with: .linearGradient(
+                Gradient(colors: [
+                    theme.primaryColor.opacity(0.16),
+                    theme.accentColor.opacity(0.10),
+                    Color.clear
+                ]),
+                startPoint: CGPoint(x: trackRect.minX, y: trackRect.minY),
+                endPoint: CGPoint(x: trackRect.maxX, y: trackRect.maxY)
+            )
+        )
+
+        context.stroke(
+            fullTrack,
+            with: .color(theme.primaryColor.opacity(0.16)),
+            style: StrokeStyle(lineWidth: compact ? 1.2 : 1.4, dash: [3, 6])
+        )
+
+        context.stroke(
+            litTrack,
+            with: .linearGradient(
+                Gradient(colors: [theme.primaryColor, theme.accentColor, DesignSystem.Colors.amber.opacity(0.9)]),
+                startPoint: CGPoint(x: trackRect.minX, y: trackRect.midY),
+                endPoint: CGPoint(x: beaconPoint.x, y: beaconPoint.y)
+            ),
+            style: StrokeStyle(lineWidth: compact ? 2.0 : 2.4, lineCap: .round, lineJoin: .round)
+        )
+
+        context.stroke(
+            Path { path in
+                path.move(to: CGPoint(x: beaconPoint.x, y: trackRect.minY))
+                path.addLine(to: beaconPoint)
+            },
+            with: .color(theme.primaryColor.opacity(0.18)),
+            style: StrokeStyle(lineWidth: 1, dash: [2, 5])
+        )
+
+        let glowRadius = compact ? 10.0 : 13.0
+        let glowFrame = CGRect(
+            x: beaconPoint.x - glowRadius,
+            y: beaconPoint.y - glowRadius,
+            width: glowRadius * 2,
+            height: glowRadius * 2
+        )
+        context.fill(
+            Path(ellipseIn: glowFrame),
+            with: .radialGradient(
+                Gradient(colors: [
+                    DesignSystem.Colors.amber.opacity(0.90),
+                    theme.accentColor.opacity(0.55),
+                    Color.clear
+                ]),
+                center: beaconPoint,
+                startRadius: 1,
+                endRadius: glowRadius * 1.9
+            )
+        )
+
+        context.fill(
+            Path(ellipseIn: CGRect(x: beaconPoint.x - 4, y: beaconPoint.y - 4, width: 8, height: 8)),
+            with: .color(DesignSystem.Colors.surface)
+        )
+        context.stroke(
+            Path(ellipseIn: CGRect(x: beaconPoint.x - 5, y: beaconPoint.y - 5, width: 10, height: 10)),
+            with: .color(theme.primaryColor),
+            style: StrokeStyle(lineWidth: 1.6)
+        )
+
+        for marker in stride(from: 0.0, through: 1.0, by: 0.25) {
+            let point = pointOnTrack(normalizedX: marker, rect: trackRect, baseline: baseline, phase: phase)
+            context.fill(
+                Path(ellipseIn: CGRect(x: point.x - 1.5, y: trackRect.maxY + 4, width: 3, height: 3)),
+                with: .color(theme.primaryColor.opacity(marker <= beaconPosition ? 0.50 : 0.18))
+            )
+        }
+    }
+
+    private func drawGrid(in context: inout GraphicsContext, rect: CGRect) {
+        let horizontalFractions: [CGFloat] = compact ? [0.32, 0.64] : [0.22, 0.44, 0.66, 0.88]
+        for fraction in horizontalFractions {
+            let y = rect.minY + rect.height * fraction
+            context.stroke(
+                Path { path in
+                    path.move(to: CGPoint(x: rect.minX, y: y))
+                    path.addLine(to: CGPoint(x: rect.maxX, y: y))
+                },
+                with: .color(DesignSystem.Colors.borderSubtle.opacity(0.55)),
+                style: StrokeStyle(lineWidth: 1, dash: [2, 5])
+            )
+        }
+
+        for marker in stride(from: 0.0, through: 1.0, by: 0.2) {
+            let x = rect.minX + rect.width * marker
+            context.stroke(
+                Path { path in
+                    path.move(to: CGPoint(x: x, y: rect.minY + rect.height * 0.18))
+                    path.addLine(to: CGPoint(x: x, y: rect.maxY))
+                },
+                with: .color(DesignSystem.Colors.borderSubtle.opacity(0.32)),
+                style: StrokeStyle(lineWidth: 1, dash: [2, 7])
+            )
+        }
+    }
+
+    private func trackPath(
+        in rect: CGRect,
+        baseline: CGFloat,
+        phase: Double,
+        maxNormalizedX: Double
+    ) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: pointOnTrack(normalizedX: 0, rect: rect, baseline: baseline, phase: phase).y))
+        let sampleCap = max(1, Int((Double(Self.sampleCount) * maxNormalizedX).rounded(.up)))
+        for sample in 1...sampleCap {
+            let normalizedX = min(Double(sample) / Double(Self.sampleCount), maxNormalizedX)
+            path.addLine(
+                to: CGPoint(
+                    x: rect.minX + rect.width * normalizedX,
+                    y: pointOnTrack(normalizedX: normalizedX, rect: rect, baseline: baseline, phase: phase).y
+                )
+            )
+        }
+        return path
+    }
+
+    private func filledTrackPath(in rect: CGRect, baseline: CGFloat, phase: Double) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: pointOnTrack(normalizedX: 0, rect: rect, baseline: baseline, phase: phase).y))
+
+        for sample in 1...Self.sampleCount {
+            let normalizedX = Double(sample) / Double(Self.sampleCount)
+            path.addLine(
+                to: CGPoint(
+                    x: rect.minX + rect.width * normalizedX,
+                    y: pointOnTrack(normalizedX: normalizedX, rect: rect, baseline: baseline, phase: phase).y
+                )
+            )
+        }
+
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+
+    private func pointOnTrack(normalizedX: Double, rect: CGRect, baseline: CGFloat, phase: Double) -> CGPoint {
+        let amplitude = compact ? 3.0 : 4.6
+        let primary = sin(normalizedX * .pi * 1.9 + phase) * amplitude
+        let detail = cos(normalizedX * .pi * 4.6 + phase * 0.6) * amplitude * 0.24
+        return CGPoint(
+            x: rect.minX + rect.width * normalizedX,
+            y: baseline + CGFloat(primary + detail)
+        )
+    }
+}
+
+private struct QuotaSignalPlaceholder: View {
+    let provider: AgentProvider
+    let isActive: Bool
+    var compact = false
+
+    private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
+    private var cornerRadius: CGFloat { compact ? 18 : 20 }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            DesignSystem.Colors.surface.opacity(0.95),
+                            DesignSystem.Colors.surfaceElevated.opacity(0.90),
+                            theme.primaryColor.opacity(0.06)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            Canvas { context, size in
+                let rect = CGRect(origin: .zero, size: size).insetBy(dx: compact ? 8 : 10, dy: compact ? 10 : 12)
+                for fraction in stride(from: 0.25, through: 0.85, by: compact ? 0.30 : 0.20) {
+                    let y = rect.minY + rect.height * fraction
+                    context.stroke(
+                        Path { path in
+                            path.move(to: CGPoint(x: rect.minX, y: y))
+                            path.addLine(to: CGPoint(x: rect.maxX, y: y))
+                        },
+                        with: .color(DesignSystem.Colors.borderSubtle.opacity(0.45)),
+                        style: StrokeStyle(lineWidth: 1, dash: [2, 5])
+                    )
+                }
+
+                let baseline = rect.maxY - rect.height * 0.38
+                context.stroke(
+                    Path { path in
+                        path.move(to: CGPoint(x: rect.minX + rect.width * 0.08, y: baseline))
+                        path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.08, y: baseline))
+                    },
+                    with: .color(theme.primaryColor.opacity(isActive ? 0.35 : 0.16)),
+                    style: StrokeStyle(lineWidth: 1.6, dash: [3, 7])
+                )
+            }
+            .padding(compact ? 8 : 10)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isActive ? "REFRESHING" : "NO SIGNAL YET")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                Text(isActive ? "Provider at work" : "Waiting for a readable quota bucket")
+                    .font(compact ? DesignSystem.Typography.tiny : DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+            .padding(compact ? 10 : 12)
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(theme.primaryColor.opacity(0.14), lineWidth: 1)
+        )
+        .clipShape(.rect(cornerRadius: cornerRadius, style: .continuous))
+        .accessibilityHidden(true)
+    }
+}
+
+private struct QuotaMicroBadge: View {
+    let text: String
+    let tint: Color
+
+    var body: some View {
+        Text(text)
+            .font(DesignSystem.Typography.tiny)
+            .foregroundStyle(tint)
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, 5)
+            .background(tint.opacity(0.08))
+            .overlay(
+                Capsule()
+                    .stroke(tint.opacity(0.12), lineWidth: 1)
+            )
+            .clipShape(.capsule)
     }
 }
 
@@ -467,6 +1130,10 @@ private struct QuotaSourceBadge: View {
             .padding(.horizontal, DesignSystem.Spacing.sm)
             .padding(.vertical, 6)
             .background(foreground.opacity(0.08))
+            .overlay(
+                Capsule()
+                    .stroke(foreground.opacity(0.14), lineWidth: 1)
+            )
             .clipShape(.capsule)
     }
 }

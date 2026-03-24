@@ -1044,6 +1044,78 @@ describe("buildPanelViewModel", () => {
     expect(vm.activeRun?.hasApproval).toBe(true);
   });
 
+  it("surfaces loop rationale and final response text on the selected run", async () => {
+    const client = makeConnectedClient({
+      pollRuns: vi.fn().mockResolvedValue({
+        runs: [
+          {
+            runID: "run-loop",
+            clientID: "test-client",
+            sessionID: "session-1",
+            phase: "completed",
+            modelID: "glm-4.6",
+            updatedAt: "2026-03-22T10:04:00.000Z"
+          }
+        ],
+        approvals: [],
+        pendingToolCalls: [],
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        },
+        emittedAt: "2026-03-22T10:04:00.000Z"
+      }),
+      getRun: vi.fn().mockResolvedValue({
+        run: {
+          runID: "run-loop",
+          clientID: "test-client",
+          sessionID: "session-1",
+          phase: "completed",
+          modelID: "glm-4.6",
+          updatedAt: "2026-03-22T10:04:00.000Z"
+        },
+        approvalRequest: null,
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"],
+          reason: "first_controller_attached"
+        },
+        loopState: {
+          iterationCount: 3,
+          lastDecision: {
+            action: "complete",
+            rationale: "Enough evidence gathered to answer confidently.",
+            message: "BurnBar found the right file and finished the edit."
+          },
+          lastContextSnapshot: {
+            candidatePaths: ["src/state/controller.ts"],
+            searchHints: ["controller"],
+            searchResultPaths: ["src/state/controller.ts"]
+          },
+          lastExecutedTool: "apply_patch",
+          terminalPending: false
+        }
+      })
+    });
+
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: { repair: vi.fn().mockResolvedValue({ message: "ok" }) }
+      },
+      { clientID: "test-client", sessionID: "session-1" }
+    );
+
+    await controller.refresh();
+    const vm = buildPanelViewModel(controller.snapshot);
+
+    expect(vm.selectedRunDetail?.responseText).toContain("finished the edit");
+    expect(vm.selectedRunDetail?.loopDecisionText).toContain("Enough evidence gathered");
+  });
+
   it("places active runs first and completed runs in history", async () => {
     const client = makeConnectedClient({
       pollRuns: vi.fn().mockResolvedValue({

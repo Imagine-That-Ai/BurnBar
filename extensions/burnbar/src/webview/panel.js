@@ -196,6 +196,8 @@ function renderRunCard(run, isActive) {
 
   const sectionDefs = [
     { label: "Summary",  key: "summary" },
+    { label: "Response", key: "response" },
+    { label: "Loop",     key: "loop" },
     { label: "Usage",    key: "usage" },
     { label: "Recovery", key: "recovery" },
     { label: "System",   key: "system" },
@@ -234,6 +236,8 @@ function renderRunCard(run, isActive) {
           content.appendChild(row);
         }
       }
+    } else {
+      content.textContent = "No details yet.";
     }
 
     details.appendChild(summary);
@@ -337,7 +341,28 @@ function render(vm) {
     });
 
     if (vm.activeRun) {
-      const activeCard = renderRunCard(vm.activeRun, true);
+      const activeRunDetail = vm.selectedRunId && vm.activeRun.id === vm.selectedRunId
+        ? vm.selectedRunDetail
+        : undefined;
+      const activeCard = renderRunCard(
+        {
+          ...vm.activeRun,
+          approvalState: vm.selectedRunId && vm.activeRun.id === vm.selectedRunId ? vm.approvalState : undefined,
+          summary: activeRunDetail?.summary,
+          response: activeRunDetail?.responseText,
+          loop: activeRunDetail?.loopDecisionText,
+          usage: activeRunDetail?.usageText,
+          recovery: activeRunDetail?.recoveryMessage,
+          system: {
+            controller: activeRunDetail?.arbitrationInfo ?? safe(vm.systemInfo?.controllerState),
+            daemon: safe(vm.systemInfo?.daemonVersion),
+            protocol: safe(vm.systemInfo?.protocolVersion),
+            socket: safe(vm.systemInfo?.socketPath),
+            workspace: safe(vm.systemInfo?.workspaceHost)
+          }
+        },
+        true
+      );
       // Mark selected if applicable
       if (vm.selectedRunId && vm.activeRun.id === vm.selectedRunId) {
         activeCard.classList.add("bb-run-card--selected");

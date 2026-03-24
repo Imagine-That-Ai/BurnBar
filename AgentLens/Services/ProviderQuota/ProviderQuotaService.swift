@@ -242,6 +242,12 @@ enum FactoryQuotaPlanTier: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+private enum CodexQuotaScanPolicy {
+    static let freshnessWindow: TimeInterval = 7 * 24 * 60 * 60
+    static let tailReadBytes = 512 * 1024
+    static let maxTailLines = 4000
+}
+
 // MARK: - Quota Service
 
 @Observable
@@ -269,8 +275,10 @@ final class ProviderQuotaService {
     private(set) var snapshotsByProvider: [AgentProvider: ProviderQuotaSnapshot] = [:]
     private(set) var errors: [AgentProvider: String] = [:]
     private(set) var isFetching = false
+    private(set) var activeProviders: Set<AgentProvider> = []
     private(set) var lastFetch: Date?
     private(set) var claudeBridgeStatus: ClaudeQuotaBridgeStatus
+    private var codexRolloutScanCache: CodexRolloutScanCache = .empty
 
     init(
         keyStore: ProviderAPIKeyStore = .shared,
@@ -299,11 +307,16 @@ final class ProviderQuotaService {
 
         _ = try? BurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
         loadPersistedSnapshots()
+        loadPersistedCodexRolloutScanCache()
         refreshClaudeBridgeStatus()
     }
 
     func snapshot(for provider: AgentProvider) -> ProviderQuotaSnapshot? {
         snapshotsByProvider[provider]
+    }
+
+    func isRefreshing(_ provider: AgentProvider) -> Bool {
+        activeProviders.contains(provider)
     }
 
     func refreshIfNeeded(dataStore: DataStore, maxAge: TimeInterval = 5 * 60) async {
@@ -316,7 +329,10 @@ final class ProviderQuotaService {
     func refreshAll(dataStore: DataStore) async {
         guard !isFetching else { return }
         isFetching = true
-        defer { isFetching = false }
+        defer {
+            isFetching = false
+            activeProviders.removeAll()
+        }
         errors = [:]
         refreshClaudeBridgeStatus()
 
@@ -330,6 +346,8 @@ final class ProviderQuotaService {
 
     func refresh(provider: AgentProvider, dataStore: DataStore) async {
         guard Self.supportedProviders.contains(provider) else { return }
+        activeProviders.insert(provider)
+        defer { activeProviders.remove(provider) }
 
         do {
             let snapshot = try await fetchSnapshot(for: provider, dataStore: dataStore)
@@ -502,7 +520,7 @@ private extension ProviderQuotaService {
     func fetchSnapshot(for provider: AgentProvider, dataStore: DataStore) async throws -> ProviderQuotaSnapshot {
         switch provider {
         case .codex:
-            return try fetchCodexSnapshot()
+            return try await fetchCodexSnapshot()
         case .claudeCode:
             return try fetchClaudeSnapshot()
         case .minimax:
@@ -520,25 +538,29 @@ private extension ProviderQuotaService {
         }
     }
 
-    func fetchCodexSnapshot() throws -> ProviderQuotaSnapshot {
+    func fetchCodexSnapshot() async throws -> ProviderQuotaSnapshot {
         let candidateDirectories = [
             homeDirectoryURL.appendingPathComponent(".codex/sessions", isDirectory: true),
             homeDirectoryURL.appendingPathComponent(".codex/archived_sessions", isDirectory: true),
         ]
 
-        let now = Date()
-        let freshnessCutoff = now.addingTimeInterval(-7 * 24 * 60 * 60)
-        let files = candidateDirectories.flatMap(findRolloutFiles(in:))
-            .sorted { lhs, rhs in
-                (modificationDate(for: lhs) ?? .distantPast) > (modificationDate(for: rhs) ?? .distantPast)
-            }
+        let freshnessCutoff = Date().addingTimeInterval(-CodexQuotaScanPolicy.freshnessWindow)
+        let existingCache = codexRolloutScanCache
+        let scanResult = try await Task.detached(priority: .utility) {
+            try Self.scanCodexRateLimitEvents(
+                in: candidateDirectories,
+                freshnessCutoff: freshnessCutoff,
+                existingCache: existingCache
+            )
+        }.value
+        codexRolloutScanCache = scanResult.cache
+        if scanResult.didChangeCache {
+            persistCodexRolloutScanCache()
+        }
 
-        for file in files {
-            guard let event = try lastCodexRateLimitEvent(in: file) else { continue }
-            guard event.timestamp >= freshnessCutoff else { continue }
-
+        if let event = scanResult.latestEvent {
             var buckets: [ProviderQuotaBucket] = []
-            if let primary = event.rateLimits.primary {
+            if let primary = event.primary {
                 buckets.append(
                     ProviderQuotaBucket(
                         key: "codex-primary",
@@ -554,7 +576,7 @@ private extension ProviderQuotaService {
                     )
                 )
             }
-            if let secondary = event.rateLimits.secondary {
+            if let secondary = event.secondary {
                 buckets.append(
                     ProviderQuotaBucket(
                         key: "codex-secondary",
@@ -572,7 +594,7 @@ private extension ProviderQuotaService {
             }
 
             if !buckets.isEmpty {
-                let plan = event.rateLimits.planType?.capitalized ?? "Codex"
+                let plan = event.planType?.capitalized ?? "Codex"
                 return ProviderQuotaSnapshot(
                     provider: .codex,
                     fetchedAt: event.timestamp,
@@ -731,6 +753,13 @@ private extension ProviderQuotaService {
         }
 
         let object = try parseJSONObject(from: data)
+        if let inlineError = miniMaxInlineErrorMessage(from: object) {
+            return unavailableSnapshot(
+                for: .minimax,
+                source: .officialAPI,
+                message: inlineError
+            )
+        }
         let buckets = extractFlexibleBuckets(
             from: object,
             provider: .minimax,
@@ -885,6 +914,7 @@ private extension ProviderQuotaService {
             decoder.dateDecodingStrategy = .iso8601
             let snapshots = try decoder.decode([ProviderQuotaSnapshot].self, from: data)
             snapshotsByProvider = Dictionary(uniqueKeysWithValues: snapshots.map { ($0.provider, $0) })
+            lastFetch = snapshots.map(\.fetchedAt).max()
         } catch {
             snapshotsByProvider = [:]
         }
@@ -902,6 +932,35 @@ private extension ProviderQuotaService {
             try data.write(to: appPaths.providerQuotaSnapshotsURL, options: .atomic)
         } catch {
             print("ProviderQuotaService: Failed to persist snapshots: \(error)")
+        }
+    }
+
+    func loadPersistedCodexRolloutScanCache() {
+        guard fileManager.fileExists(atPath: appPaths.codexRolloutScanCacheURL.path) else { return }
+        do {
+            let data = try Data(contentsOf: appPaths.codexRolloutScanCacheURL)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            codexRolloutScanCache = try decoder.decode(CodexRolloutScanCache.self, from: data)
+        } catch {
+            codexRolloutScanCache = .empty
+        }
+    }
+
+    func persistCodexRolloutScanCache() {
+        do {
+            try ensureParentDirectory(for: appPaths.codexRolloutScanCacheURL)
+            var cache = codexRolloutScanCache
+            cache.lastUpdatedAt = Date()
+            codexRolloutScanCache = cache
+
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(cache)
+            try data.write(to: appPaths.codexRolloutScanCacheURL, options: .atomic)
+        } catch {
+            print("ProviderQuotaService: Failed to persist codex scan cache: \(error)")
         }
     }
 
@@ -929,7 +988,7 @@ private extension ProviderQuotaService {
         return values?.contentModificationDate
     }
 
-    func findRolloutFiles(in directory: URL) -> [URL] {
+    nonisolated static func findRolloutFiles(in directory: URL, fileManager: FileManager = .default) -> [URL] {
         guard fileManager.fileExists(atPath: directory.path) else { return [] }
         let enumerator = fileManager.enumerator(
             at: directory,
@@ -1019,31 +1078,79 @@ private extension ProviderQuotaService {
     }
 
     func makeBucket(from dictionary: [String: Any], provider: AgentProvider, path: [String]) -> ProviderQuotaBucket? {
+        let usageRatio = ratio(in: dictionary, keys: [
+            "usage", "usageInfo", "usage_info", "quotaUsage", "quota_usage", "quotaStatus", "quota_status", "status", "summary"
+        ])
         let usedPercent = number(in: dictionary, keys: [
-            "used_percent", "usedPercent", "used_percentage", "percentage", "usedRate"
+            "used_percent", "usedPercent", "used_percentage", "usage_percent", "usagePercent", "percentage", "usedRate", "usageRate"
         ])
-        let usedValue = number(in: dictionary, keys: [
-            "used", "usage", "currentUsage", "current_usage", "currentValue", "consumed", "current"
+        var usedValue = number(in: dictionary, keys: [
+            "used", "used_num", "usedNum", "currentUsage", "current_usage", "currentValue", "current_value",
+            "consumed", "consumed_num", "consumedNum", "current", "requestUsed", "requestsUsed",
+            "current_interval_used_count", "currentIntervalUsedCount"
         ])
-        let limitValue = number(in: dictionary, keys: [
-            "limit", "total", "max", "quota", "usage", "totalUsage"
+        var limitValue = number(in: dictionary, keys: [
+            "limit", "limit_num", "limitNum", "total", "totalLimit", "total_limit",
+            "max", "maxValue", "max_value", "quota", "quotaLimit", "quota_limit",
+            "usageLimit", "usage_limit", "requestLimit", "requestsLimit", "totalUsage",
+            "current_interval_total_count", "currentIntervalTotalCount"
         ])
-        let remainingValue = number(in: dictionary, keys: [
-            "remaining", "remain", "remainingValue", "available", "left"
+        var remainingValue = number(in: dictionary, keys: [
+            "remaining", "remain", "remain_num", "remainNum", "remaining_quota", "remainingQuota",
+            "quota_remain", "quotaRemain", "remainingValue", "available", "available_num", "availableNum", "left",
+            "current_interval_remaining_count", "currentIntervalRemainingCount",
+            "current_interval_remains_count", "currentIntervalRemainsCount"
         ])
-        let resetsAt = date(in: dictionary, keys: [
-            "resets_at", "reset_at", "resetTime", "reset_time", "nextResetAt", "expireAt", "expiresAt"
+        let resetsAt = resolvedResetDate(in: dictionary)
+        let intervalStart = date(in: dictionary, keys: ["start_time", "startTime"])
+        let intervalHint = string(in: dictionary, keys: [
+            "window", "quota_cycle", "quotaCycle", "cycle", "period", "period_name", "periodName"
         ])
+        let miniMaxRemainingUsageCount = provider == .minimax
+            ? number(in: dictionary, keys: [
+                "current_interval_usage_count", "currentIntervalUsageCount"
+            ])
+            : nil
+
+        if provider == .minimax, remainingValue == nil {
+            remainingValue = miniMaxRemainingUsageCount
+        }
+        if provider == .minimax, usedValue == nil, let limitValue, let miniMaxRemainingUsageCount {
+            usedValue = max(limitValue - miniMaxRemainingUsageCount, 0)
+        }
+
+        if usedValue == nil {
+            usedValue = usageRatio?.used
+        }
+        if limitValue == nil {
+            limitValue = usageRatio?.limit
+        }
+        if usedValue == nil, let remainingValue, let limitValue {
+            usedValue = max(limitValue - remainingValue, 0)
+        }
+        if remainingValue == nil, let usedValue, let limitValue {
+            remainingValue = max(limitValue - usedValue, 0)
+        }
 
         guard usedPercent != nil || usedValue != nil || limitValue != nil || remainingValue != nil else {
             return nil
         }
 
-        let rawLabel = string(in: dictionary, keys: ["label", "title", "name", "window", "type"])
-            ?? path.last
+        let rawLabel = string(in: dictionary, keys: [
+            "label", "title", "name",
+            "model", "model_name", "modelName",
+            "resource", "resource_name", "resourceName",
+            "quota_name", "quotaName"
+        ])
+            ?? bestPathLabel(from: path)
+            ?? string(in: dictionary, keys: ["window", "type"])
             ?? "quota"
         let label = normalizedBucketLabel(rawLabel, provider: provider)
-        let windowKind = inferWindowKind(from: rawLabel)
+        let windowKind = inferWindowKind(
+            from: intervalHint ?? rawLabel,
+            intervalStart: intervalStart,
+            resetsAt: resetsAt
+        )
         let unit = inferUnit(provider: provider, label: rawLabel, dictionary: dictionary, usedPercent: usedPercent, limitValue: limitValue)
         let normalizedRemaining: Double?
         if let remainingValue {
@@ -1057,7 +1164,7 @@ private extension ProviderQuotaService {
         }
 
         return ProviderQuotaBucket(
-            key: "\(provider.rawValue.lowercased())-\(sanitizeKey(label))",
+            key: "\(provider.rawValue.lowercased())-\(sanitizeKey(label))-\(sanitizeKey(bestPathLabel(from: path) ?? rawLabel))",
             label: label,
             windowKind: windowKind,
             usedValue: usedPercent != nil && unit == .percent ? usedPercent : usedValue,
@@ -1128,6 +1235,163 @@ private extension ProviderQuotaService {
 
     func claudeAPIBillingOverrideDetected() -> Bool {
         nonEmpty(environment["ANTHROPIC_API_KEY"]) != nil
+    }
+
+    func miniMaxInlineErrorMessage(from object: Any) -> String? {
+        guard let dictionary = unwrapDataEnvelope(object) as? [String: Any] else { return nil }
+        let baseResponse = (dictionary["base_resp"] as? [String: Any]) ?? dictionary
+
+        if let statusCode = number(in: baseResponse, keys: ["status_code", "statusCode", "code"]),
+           Int(statusCode.rounded()) != 0,
+           Int(statusCode.rounded()) != 200 {
+            let message = string(in: baseResponse, keys: ["status_msg", "statusMsg", "message", "msg", "error"])
+                ?? "code \(Int(statusCode.rounded()))"
+            return "MiniMax returned an API error: \(message)"
+        }
+
+        if let success = baseResponse["success"] as? Bool, !success {
+            let message = string(in: baseResponse, keys: ["status_msg", "statusMsg", "message", "msg", "error"])
+                ?? "request unsuccessful"
+            return "MiniMax returned an API error: \(message)"
+        }
+
+        return nil
+    }
+
+    func resolvedResetDate(in dictionary: [String: Any], now: Date = Date()) -> Date? {
+        if let explicitReset = date(in: dictionary, keys: [
+            "resets_at", "reset_at", "resetTime", "reset_time", "nextResetAt", "next_reset_at", "next_reset_time",
+            "expireAt", "expiresAt", "end_time", "endTime"
+        ]) {
+            return explicitReset
+        }
+
+        if let milliseconds = number(in: dictionary, keys: ["remains_time", "remainsTime"]), milliseconds > 0 {
+            return now.addingTimeInterval(milliseconds / 1000)
+        }
+
+        guard let seconds = number(in: dictionary, keys: ["remaining_time", "remainingTime"]), seconds > 0 else {
+            return nil
+        }
+        guard seconds > 0 else { return nil }
+        return now.addingTimeInterval(seconds)
+    }
+
+    func inferWindowKind(
+        from label: String,
+        intervalStart: Date? = nil,
+        resetsAt: Date? = nil
+    ) -> ProviderQuotaWindowKind {
+        let lowercased = label.lowercased()
+        if lowercased.contains("5hour") || lowercased.contains("5-hour") || lowercased.contains("five") {
+            return .rollingHours
+        }
+        if lowercased.contains("7day") || lowercased.contains("7-day") || lowercased.contains("seven") {
+            return .rollingDays
+        }
+        if lowercased.contains("day") {
+            return .daily
+        }
+        if lowercased.contains("week") {
+            return .weekly
+        }
+        if lowercased.contains("month") {
+            return .monthly
+        }
+        if let intervalStart, let resetsAt {
+            let duration = resetsAt.timeIntervalSince(intervalStart)
+            switch duration {
+            case 0..<(18 * 60 * 60):
+                return .rollingHours
+            case 18 * 60 * 60..<(36 * 60 * 60):
+                return .daily
+            case 36 * 60 * 60..<(9 * 24 * 60 * 60):
+                return .weekly
+            case 9 * 24 * 60 * 60...(45 * 24 * 60 * 60):
+                return .monthly
+            default:
+                break
+            }
+        }
+        return .custom
+    }
+
+    func inferUnit(
+        provider: AgentProvider,
+        label: String,
+        dictionary: [String: Any],
+        usedPercent: Double?,
+        limitValue: Double?
+    ) -> ProviderQuotaUnit {
+        if usedPercent != nil {
+            return .percent
+        }
+        let lowercased = label.lowercased()
+        if lowercased.contains("token") {
+            return .tokens
+        }
+        if lowercased.contains("request") || lowercased.contains("prompt") || lowercased.contains("usage") {
+            return .requests
+        }
+        if provider == .zai,
+           let type = string(in: dictionary, keys: ["type"])?.lowercased(),
+           type.contains("time_limit") {
+            return .requests
+        }
+        if provider == .minimax,
+           number(in: dictionary, keys: ["current_interval_total_count", "currentIntervalTotalCount"]) != nil {
+            return .requests
+        }
+        if limitValue != nil {
+            return .count
+        }
+        return .percent
+    }
+
+    func inferPercent(usedValue: Double?, limitValue: Double?) -> Double? {
+        guard let usedValue, let limitValue, limitValue > 0 else { return nil }
+        return min(max((usedValue / limitValue) * 100, 0), 100)
+    }
+
+    func sanitizeKey(_ value: String) -> String {
+        value.lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: "(", with: "")
+            .replacingOccurrences(of: ")", with: "")
+    }
+
+    nonisolated static func parseDateValue(_ value: Any) -> Date? {
+        if let date = value as? Date {
+            return date
+        }
+        if let number = value as? NSNumber {
+            let raw = number.doubleValue
+            if raw > 1_000_000_000_000 {
+                return Date(timeIntervalSince1970: raw / 1000)
+            }
+            if raw > 1_000_000_000 {
+                return Date(timeIntervalSince1970: raw)
+            }
+        }
+        if let string = value as? String {
+            if let isoDate = isoFormatter.date(from: string) {
+                return isoDate
+            }
+            if let isoDate = isoFormatterWithoutFractionalSeconds.date(from: string) {
+                return isoDate
+            }
+            if let numeric = Double(string), numeric > 1_000_000_000_000 {
+                return Date(timeIntervalSince1970: numeric / 1000)
+            }
+            if let numeric = Double(string), numeric > 1_000_000_000 {
+                return Date(timeIntervalSince1970: numeric)
+            }
+            if let date = zaiDateFormatter.date(from: string) {
+                return date
+            }
+        }
+        return nil
     }
 
     func zaiCandidateBaseURLs() -> [URL] {
@@ -1266,15 +1530,93 @@ private extension ProviderQuotaService {
         try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
     }
 
-    func lastCodexRateLimitEvent(in file: URL) throws -> CodexRateLimitEvent? {
-        let data = try Data(contentsOf: file)
+    nonisolated static func scanCodexRateLimitEvents(
+        in candidateDirectories: [URL],
+        freshnessCutoff: Date,
+        existingCache: CodexRolloutScanCache
+    ) throws -> CodexRateLimitScanResult {
+        let fileManager = FileManager.default
+        var updatedCache = existingCache
+        var didChangeCache = false
+
+        let files = candidateDirectories
+            .flatMap { findRolloutFiles(in: $0, fileManager: fileManager) }
+            .compactMap { file -> (URL, CodexRolloutFileSignature)? in
+                guard let signature = fileSignature(for: file) else { return nil }
+                return (file, signature)
+            }
+            .sorted { lhs, rhs in
+                lhs.1.modifiedAt > rhs.1.modifiedAt
+            }
+
+        let activePaths = Set(files.map { $0.0.standardizedFileURL.path })
+
+        for (file, signature) in files {
+            let path = file.standardizedFileURL.path
+            if let cachedEntry = updatedCache.fileEntries[path], cachedEntry.signature == signature {
+                continue
+            }
+
+            let event = try? lastCodexRateLimitEvent(in: file)
+            updatedCache.fileEntries[path] = CodexRolloutFileCacheEntry(
+                signature: signature,
+                latestRateLimitEvent: event
+            )
+            didChangeCache = true
+        }
+
+        let stalePaths = Set(updatedCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                updatedCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            didChangeCache = true
+        }
+
+        let latestEvent = updatedCache.fileEntries.values
+            .compactMap(\.latestRateLimitEvent)
+            .filter { $0.timestamp >= freshnessCutoff }
+            .max { lhs, rhs in
+                lhs.timestamp < rhs.timestamp
+            }
+        if updatedCache.latestRateLimitEvent != latestEvent {
+            updatedCache.latestRateLimitEvent = latestEvent
+            didChangeCache = true
+        }
+
+        return CodexRateLimitScanResult(
+            latestEvent: latestEvent,
+            cache: updatedCache,
+            didChangeCache: didChangeCache
+        )
+    }
+
+    nonisolated static func lastCodexRateLimitEvent(in file: URL) throws -> CodexRateLimitEvent? {
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+
+        let size = try handle.seekToEnd()
+        let bytesToRead = min(UInt64(CodexQuotaScanPolicy.tailReadBytes), size)
+        let startOffset = size - bytesToRead
+
+        try handle.seek(toOffset: startOffset)
+        guard let data = try handle.readToEnd(), !data.isEmpty else { return nil }
         guard let contents = String(data: data, encoding: .utf8) else { return nil }
+
+        var lines = contents.split(separator: "\n", omittingEmptySubsequences: true)
+        if startOffset > 0, !lines.isEmpty {
+            // Skip potentially truncated first line when reading from a file tail offset.
+            lines.removeFirst()
+        }
+        if lines.count > CodexQuotaScanPolicy.maxTailLines {
+            lines = Array(lines.suffix(CodexQuotaScanPolicy.maxTailLines))
+        }
+
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
-        var lastMatch: CodexRateLimitEvent?
-        for line in contents.split(separator: "\n") {
-            guard let lineData = line.data(using: .utf8) else { continue }
+        for line in lines.reversed() {
+            let lineData = Data(line.utf8)
             guard let event = try? decoder.decode(CodexRolloutEnvelope.self, from: lineData) else { continue }
             guard event.type == "event_msg",
                   event.payload.type == "token_count",
@@ -1282,12 +1624,34 @@ private extension ProviderQuotaService {
                 continue
             }
 
-            lastMatch = CodexRateLimitEvent(
+            return CodexRateLimitEvent(
                 timestamp: event.timestamp,
-                rateLimits: event.payload.rateLimits
+                planType: event.payload.rateLimits.planType,
+                primary: event.payload.rateLimits.primary.map {
+                    CodexRateLimitWindow(
+                        usedPercent: $0.usedPercent,
+                        resetsAt: $0.resetsAt
+                    )
+                },
+                secondary: event.payload.rateLimits.secondary.map {
+                    CodexRateLimitWindow(
+                        usedPercent: $0.usedPercent,
+                        resetsAt: $0.resetsAt
+                    )
+                }
             )
         }
-        return lastMatch
+        return nil
+    }
+
+    nonisolated static func fileSignature(for url: URL) -> CodexRolloutFileSignature? {
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey])
+        guard values?.isRegularFile == true else { return nil }
+        guard let modifiedAt = values?.contentModificationDate else { return nil }
+        return CodexRolloutFileSignature(
+            modifiedAt: modifiedAt.timeIntervalSince1970,
+            sizeBytes: Int64(values?.fileSize ?? 0)
+        )
     }
 
     func remainingPercent(from dictionary: [String: Any]) -> Double? {
@@ -1303,7 +1667,7 @@ private extension ProviderQuotaService {
                 if let number = value as? NSNumber {
                     return number.doubleValue
                 }
-                if let string = value as? String, let parsed = Double(string) {
+                if let string = value as? String, let parsed = parseNumericValue(from: string) {
                     return parsed
                 }
             }
@@ -1332,14 +1696,118 @@ private extension ProviderQuotaService {
 
     func value(in dictionary: [String: Any], matching requestedKey: String) -> Any? {
         let normalizedRequested = normalizeJSONKey(requestedKey)
-        for (key, value) in dictionary where normalizeJSONKey(key) == normalizedRequested {
-            return value
+        var bestMatch: (score: Int, value: Any)?
+        let allowAffixFuzzyMatch = normalizedRequested.count >= 8
+        let allowContainFuzzyMatch = normalizedRequested.count >= 12
+        let requestLooksTemporal = keyLooksTemporal(normalizedRequested)
+
+        for (key, value) in dictionary {
+            let normalizedKey = normalizeJSONKey(key)
+            let keyLooksTemporal = keyLooksTemporal(normalizedKey)
+            let score: Int
+            if normalizedKey == normalizedRequested {
+                score = 3
+            } else if allowAffixFuzzyMatch,
+                      keyLooksTemporal == requestLooksTemporal,
+                      (normalizedKey.hasSuffix(normalizedRequested) || normalizedKey.hasPrefix(normalizedRequested)) {
+                score = 2
+            } else if allowContainFuzzyMatch,
+                      keyLooksTemporal == requestLooksTemporal,
+                      normalizedKey.contains(normalizedRequested) {
+                score = 1
+            } else {
+                continue
+            }
+
+            if score > (bestMatch?.score ?? -1) {
+                bestMatch = (score, value)
+            }
         }
-        return nil
+
+        return bestMatch?.value
     }
 
     func normalizeJSONKey(_ key: String) -> String {
         key.lowercased().replacingOccurrences(of: "_", with: "").replacingOccurrences(of: "-", with: "")
+    }
+
+    func keyLooksTemporal(_ key: String) -> Bool {
+        key.hasSuffix("time")
+            || key.hasSuffix("at")
+            || key.contains("reset")
+            || key.contains("expire")
+            || key.contains("window")
+            || key.contains("period")
+    }
+
+    func ratio(in dictionary: [String: Any], keys: [String]) -> (used: Double, limit: Double)? {
+        for key in keys {
+            guard let value = value(in: dictionary, matching: key) else { continue }
+            if let string = value as? String, let parsed = parseRatioValues(from: string) {
+                return parsed
+            }
+            if let array = value as? [Any], array.count >= 2,
+               let first = array[0] as? NSNumber,
+               let second = array[1] as? NSNumber {
+                return (first.doubleValue, second.doubleValue)
+            }
+        }
+        return nil
+    }
+
+    func parseNumericValue(from string: String) -> Double? {
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard !trimmed.contains("/") else { return nil }
+
+        let normalized = trimmed.replacingOccurrences(of: ",", with: "")
+        if let direct = Double(normalized) {
+            return direct
+        }
+
+        let pattern = #"[-+]?\d*\.?\d+"#
+        guard let range = normalized.range(of: pattern, options: .regularExpression) else {
+            return nil
+        }
+        return Double(String(normalized[range]))
+    }
+
+    func parseRatioValues(from string: String) -> (used: Double, limit: Double)? {
+        let normalized = string.replacingOccurrences(of: ",", with: "")
+        let slashParts = normalized.split(separator: "/")
+        if slashParts.count == 2,
+           let used = parseNumericValue(from: String(slashParts[0])),
+           let limit = parseNumericValue(from: String(slashParts[1])) {
+            return (used, limit)
+        }
+
+        if normalized.localizedCaseInsensitiveContains(" of ")
+            || normalized.localizedCaseInsensitiveContains(" out of ") {
+            let matches = normalized
+                .components(separatedBy: CharacterSet(charactersIn: "0123456789.-").inverted)
+                .filter { !$0.isEmpty }
+            if matches.count >= 2,
+               let used = Double(matches[0]),
+               let limit = Double(matches[1]) {
+                return (used, limit)
+            }
+        }
+
+        return nil
+    }
+
+    func bestPathLabel(from path: [String]) -> String? {
+        path.reversed().first { component in
+            let normalized = normalizeJSONKey(component)
+            return !component.hasPrefix("item")
+                && normalized != "data"
+                && normalized != "minimax"
+                && normalized != "zai"
+                && normalized != "baseresp"
+                && normalized != "quotalist"
+                && normalized != "modelremains"
+                && normalized != "resourceremains"
+        }
     }
 
     func normalizedBucketLabel(_ label: String, provider: AgentProvider) -> String {
@@ -1370,100 +1838,6 @@ private extension ProviderQuotaService {
             .capitalized
     }
 
-    func inferWindowKind(from label: String) -> ProviderQuotaWindowKind {
-        let lowercased = label.lowercased()
-        if lowercased.contains("5hour") || lowercased.contains("5-hour") || lowercased.contains("five") {
-            return .rollingHours
-        }
-        if lowercased.contains("7day") || lowercased.contains("7-day") || lowercased.contains("seven") {
-            return .rollingDays
-        }
-        if lowercased.contains("day") {
-            return .daily
-        }
-        if lowercased.contains("week") {
-            return .weekly
-        }
-        if lowercased.contains("month") {
-            return .monthly
-        }
-        return .custom
-    }
-
-    func inferUnit(
-        provider: AgentProvider,
-        label: String,
-        dictionary: [String: Any],
-        usedPercent: Double?,
-        limitValue: Double?
-    ) -> ProviderQuotaUnit {
-        if usedPercent != nil {
-            return .percent
-        }
-        let lowercased = label.lowercased()
-        if lowercased.contains("token") {
-            return .tokens
-        }
-        if lowercased.contains("request") || lowercased.contains("prompt") || lowercased.contains("usage") {
-            return .requests
-        }
-        if provider == .zai,
-           let type = string(in: dictionary, keys: ["type"])?.lowercased(),
-           type.contains("time_limit") {
-            return .requests
-        }
-        if limitValue != nil {
-            return .count
-        }
-        return .percent
-    }
-
-    func inferPercent(usedValue: Double?, limitValue: Double?) -> Double? {
-        guard let usedValue, let limitValue, limitValue > 0 else { return nil }
-        return min(max((usedValue / limitValue) * 100, 0), 100)
-    }
-
-    func sanitizeKey(_ value: String) -> String {
-        value.lowercased()
-            .replacingOccurrences(of: " ", with: "-")
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: "(", with: "")
-            .replacingOccurrences(of: ")", with: "")
-    }
-
-    nonisolated static func parseDateValue(_ value: Any) -> Date? {
-        if let date = value as? Date {
-            return date
-        }
-        if let number = value as? NSNumber {
-            let raw = number.doubleValue
-            if raw > 1_000_000_000_000 {
-                return Date(timeIntervalSince1970: raw / 1000)
-            }
-            if raw > 1_000_000_000 {
-                return Date(timeIntervalSince1970: raw)
-            }
-        }
-        if let string = value as? String {
-            if let isoDate = isoFormatter.date(from: string) {
-                return isoDate
-            }
-            if let isoDate = isoFormatterWithoutFractionalSeconds.date(from: string) {
-                return isoDate
-            }
-            if let numeric = Double(string), numeric > 1_000_000_000_000 {
-                return Date(timeIntervalSince1970: numeric / 1000)
-            }
-            if let numeric = Double(string), numeric > 1_000_000_000 {
-                return Date(timeIntervalSince1970: numeric)
-            }
-            if let date = zaiDateFormatter.date(from: string) {
-                return date
-            }
-        }
-        return nil
-    }
-
     nonisolated(unsafe) static let isoFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -1487,9 +1861,46 @@ private extension ProviderQuotaService {
 // MARK: - Models
 
 private extension ProviderQuotaService {
-    struct CodexRateLimitEvent {
+    struct CodexRateLimitEvent: Codable, Equatable, Sendable {
         let timestamp: Date
-        let rateLimits: CodexRolloutEnvelope.Payload.RateLimits
+        let planType: String?
+        let primary: CodexRateLimitWindow?
+        let secondary: CodexRateLimitWindow?
+    }
+
+    struct CodexRateLimitWindow: Codable, Equatable, Sendable {
+        let usedPercent: Double?
+        let resetsAt: Date?
+    }
+
+    struct CodexRolloutFileSignature: Codable, Equatable, Sendable {
+        let modifiedAt: TimeInterval
+        let sizeBytes: Int64
+    }
+
+    struct CodexRolloutFileCacheEntry: Codable, Equatable, Sendable {
+        let signature: CodexRolloutFileSignature
+        let latestRateLimitEvent: CodexRateLimitEvent?
+    }
+
+    struct CodexRolloutScanCache: Codable, Equatable, Sendable {
+        var schemaVersion: Int
+        var fileEntries: [String: CodexRolloutFileCacheEntry]
+        var latestRateLimitEvent: CodexRateLimitEvent?
+        var lastUpdatedAt: Date?
+
+        static let empty = CodexRolloutScanCache(
+            schemaVersion: 1,
+            fileEntries: [:],
+            latestRateLimitEvent: nil,
+            lastUpdatedAt: nil
+        )
+    }
+
+    struct CodexRateLimitScanResult: Sendable {
+        let latestEvent: CodexRateLimitEvent?
+        let cache: CodexRolloutScanCache
+        let didChangeCache: Bool
     }
 
     struct CodexRolloutEnvelope: Decodable {

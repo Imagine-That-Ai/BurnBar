@@ -49,6 +49,18 @@ struct BurnBarAppPaths {
         supportDirectory.appendingPathComponent("provider_quotas.json")
     }
 
+    var codexRolloutScanCacheURL: URL {
+        supportDirectory.appendingPathComponent("codex_rollout_scan_cache.json")
+    }
+
+    var claudeCodeParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("claude_code_parser_cache.json")
+    }
+
+    var factoryDroidParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("factory_droid_parser_cache.json")
+    }
+
     var claudeStatuslineBridgeScriptURL: URL {
         supportDirectory.appendingPathComponent("claude_statusline_bridge.sh")
     }
