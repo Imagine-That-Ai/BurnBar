@@ -12,12 +12,409 @@ enum MoodBand: Equatable {
     case quiet
 }
 
+// MARK: - Local Search Records
+
+enum SearchSourceKind: String, Codable, CaseIterable, Sendable {
+    case conversation
+    case skillDoc = "skill_doc"
+    case agentDoc = "agent_doc"
+    case sharedArtifact = "shared_artifact"
+}
+
+enum ProjectionJobType: String, Codable, CaseIterable, Sendable {
+    case project
+    case reproject
+    case purge
+    case reembed
+    case rebuild
+}
+
+enum ProjectionJobStatus: String, Codable, CaseIterable, Sendable {
+    case queued
+    case leased
+    case running
+    case completed
+    case failed
+    case canceled
+}
+
+enum EmbeddingDistanceMetric: String, Codable, CaseIterable, Sendable {
+    case cosine
+    case dotProduct = "dot_product"
+    case euclidean
+}
+
+enum RetrievalSubsystem: String, Codable, CaseIterable, Sendable {
+    case lexical
+    case semantic
+    case projection
+    case discovery
+    case rebuild
+    case collaboration
+}
+
+enum RetrievalHealthStatus: String, Codable, CaseIterable, Sendable {
+    case healthy
+    case degraded
+    case failed
+}
+
+struct SearchDocumentRecord: Identifiable, Equatable, Sendable {
+    let id: String
+    let sourceKind: SearchSourceKind
+    let sourceID: String
+    let sourceVersionID: String
+    let provider: String?
+    let projectName: String?
+    let title: String
+    let subtitle: String?
+    let bodyPreview: String?
+    let sourceUpdatedAt: Date?
+    let indexedAt: Date
+    let contentHash: String?
+    let createdAt: Date
+    let updatedAt: Date
+
+    init(
+        id: String = UUID().uuidString,
+        sourceKind: SearchSourceKind,
+        sourceID: String,
+        sourceVersionID: String = "",
+        provider: String? = nil,
+        projectName: String? = nil,
+        title: String,
+        subtitle: String? = nil,
+        bodyPreview: String? = nil,
+        sourceUpdatedAt: Date? = nil,
+        indexedAt: Date = Date(),
+        contentHash: String? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.sourceKind = sourceKind
+        self.sourceID = sourceID
+        self.sourceVersionID = sourceVersionID
+        self.provider = provider
+        self.projectName = projectName
+        self.title = title
+        self.subtitle = subtitle
+        self.bodyPreview = bodyPreview
+        self.sourceUpdatedAt = sourceUpdatedAt
+        self.indexedAt = indexedAt
+        self.contentHash = contentHash
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+struct SearchChunkRecord: Identifiable, Equatable, Sendable {
+    let id: String
+    let documentID: String
+    let sourceKind: SearchSourceKind
+    let sourceID: String
+    let sourceVersionID: String
+    let ordinal: Int
+    let startOffset: Int
+    let endOffset: Int
+    let messageStartOffset: Int?
+    let messageEndOffset: Int?
+    let sectionPath: String?
+    let text: String
+    let createdAt: Date
+    let updatedAt: Date
+
+    init(
+        id: String = UUID().uuidString,
+        documentID: String,
+        sourceKind: SearchSourceKind,
+        sourceID: String,
+        sourceVersionID: String = "",
+        ordinal: Int,
+        startOffset: Int,
+        endOffset: Int,
+        messageStartOffset: Int? = nil,
+        messageEndOffset: Int? = nil,
+        sectionPath: String? = nil,
+        text: String,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.documentID = documentID
+        self.sourceKind = sourceKind
+        self.sourceID = sourceID
+        self.sourceVersionID = sourceVersionID
+        self.ordinal = ordinal
+        self.startOffset = startOffset
+        self.endOffset = endOffset
+        self.messageStartOffset = messageStartOffset
+        self.messageEndOffset = messageEndOffset
+        self.sectionPath = sectionPath
+        self.text = text
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+struct ProjectionJobRecord: Identifiable, Equatable, Sendable {
+    let id: String
+    let jobType: ProjectionJobType
+    let sourceKind: SearchSourceKind?
+    let sourceID: String?
+    let sourceVersionID: String
+    let status: ProjectionJobStatus
+    let priority: Int
+    let attempts: Int
+    let maxAttempts: Int
+    let payloadJSON: String?
+    let lastErrorCode: String?
+    let lastErrorMessage: String?
+    let scheduledAt: Date
+    let availableAt: Date
+    let startedAt: Date?
+    let completedAt: Date?
+    let leaseOwner: String?
+    let leaseExpiresAt: Date?
+    let createdAt: Date
+    let updatedAt: Date
+
+    init(
+        id: String = UUID().uuidString,
+        jobType: ProjectionJobType,
+        sourceKind: SearchSourceKind? = nil,
+        sourceID: String? = nil,
+        sourceVersionID: String = "",
+        status: ProjectionJobStatus = .queued,
+        priority: Int = 100,
+        attempts: Int = 0,
+        maxAttempts: Int = 5,
+        payloadJSON: String? = nil,
+        lastErrorCode: String? = nil,
+        lastErrorMessage: String? = nil,
+        scheduledAt: Date = Date(),
+        availableAt: Date = Date(),
+        startedAt: Date? = nil,
+        completedAt: Date? = nil,
+        leaseOwner: String? = nil,
+        leaseExpiresAt: Date? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.jobType = jobType
+        self.sourceKind = sourceKind
+        self.sourceID = sourceID
+        self.sourceVersionID = sourceVersionID
+        self.status = status
+        self.priority = priority
+        self.attempts = attempts
+        self.maxAttempts = maxAttempts
+        self.payloadJSON = payloadJSON
+        self.lastErrorCode = lastErrorCode
+        self.lastErrorMessage = lastErrorMessage
+        self.scheduledAt = scheduledAt
+        self.availableAt = availableAt
+        self.startedAt = startedAt
+        self.completedAt = completedAt
+        self.leaseOwner = leaseOwner
+        self.leaseExpiresAt = leaseExpiresAt
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+struct EmbeddingModelRecord: Identifiable, Equatable, Sendable {
+    let id: String
+    let provider: String
+    let modelName: String
+    let dimensions: Int
+    let distanceMetric: EmbeddingDistanceMetric
+    let createdAt: Date
+    let updatedAt: Date
+
+    init(
+        id: String = UUID().uuidString,
+        provider: String,
+        modelName: String,
+        dimensions: Int,
+        distanceMetric: EmbeddingDistanceMetric,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.provider = provider
+        self.modelName = modelName
+        self.dimensions = dimensions
+        self.distanceMetric = distanceMetric
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+struct EmbeddingVersionRecord: Identifiable, Equatable, Sendable {
+    let id: String
+    let modelID: String
+    let versionTag: String
+    let chunkerVersion: String
+    let normalizationVersion: String
+    let promptVersion: String
+    let isActive: Bool
+    let createdAt: Date
+    let updatedAt: Date
+
+    init(
+        id: String = UUID().uuidString,
+        modelID: String,
+        versionTag: String,
+        chunkerVersion: String,
+        normalizationVersion: String,
+        promptVersion: String,
+        isActive: Bool = false,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.modelID = modelID
+        self.versionTag = versionTag
+        self.chunkerVersion = chunkerVersion
+        self.normalizationVersion = normalizationVersion
+        self.promptVersion = promptVersion
+        self.isActive = isActive
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+struct ChunkEmbeddingRecord: Equatable, Sendable {
+    let chunkID: String
+    let embeddingVersionID: String
+    let vectorBlob: Data
+    let createdAt: Date
+    let updatedAt: Date
+
+    init(
+        chunkID: String,
+        embeddingVersionID: String,
+        vectorBlob: Data,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.chunkID = chunkID
+        self.embeddingVersionID = embeddingVersionID
+        self.vectorBlob = vectorBlob
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+struct RetrievalHealthRecord: Equatable, Sendable {
+    let subsystem: RetrievalSubsystem
+    let status: RetrievalHealthStatus
+    let errorCode: String?
+    let errorMessage: String?
+    let detailsJSON: String?
+    let observedAt: Date
+    let updatedAt: Date
+
+    init(
+        subsystem: RetrievalSubsystem,
+        status: RetrievalHealthStatus,
+        errorCode: String? = nil,
+        errorMessage: String? = nil,
+        detailsJSON: String? = nil,
+        observedAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.subsystem = subsystem
+        self.status = status
+        self.errorCode = errorCode
+        self.errorMessage = errorMessage
+        self.detailsJSON = detailsJSON
+        self.observedAt = observedAt
+        self.updatedAt = updatedAt
+    }
+}
+
+enum SourceArtifactStatus: String, Codable, CaseIterable, Sendable {
+    case active
+    case deleted
+}
+
+enum SourceArtifactWriteDisposition: String, Codable, CaseIterable, Sendable {
+    case inserted
+    case updated
+    case restored
+    case unchanged
+}
+
+struct SourceArtifactRecord: Identifiable, Equatable, Sendable {
+    let id: String
+    let sourceKind: SearchSourceKind
+    let canonicalPath: String
+    let rootPath: String
+    let relativePath: String
+    let provenance: String
+    let title: String
+    let body: String
+    let contentHash: String
+    let fileSizeBytes: Int
+    let fileModifiedAt: Date?
+    let status: SourceArtifactStatus
+    let discoveredAt: Date
+    let deletedAt: Date?
+    let createdAt: Date
+    let updatedAt: Date
+
+    init(
+        id: String = UUID().uuidString,
+        sourceKind: SearchSourceKind,
+        canonicalPath: String,
+        rootPath: String,
+        relativePath: String,
+        provenance: String,
+        title: String,
+        body: String,
+        contentHash: String,
+        fileSizeBytes: Int,
+        fileModifiedAt: Date? = nil,
+        status: SourceArtifactStatus = .active,
+        discoveredAt: Date = Date(),
+        deletedAt: Date? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.sourceKind = sourceKind
+        self.canonicalPath = canonicalPath
+        self.rootPath = rootPath
+        self.relativePath = relativePath
+        self.provenance = provenance
+        self.title = title
+        self.body = body
+        self.contentHash = contentHash
+        self.fileSizeBytes = fileSizeBytes
+        self.fileModifiedAt = fileModifiedAt
+        self.status = status
+        self.discoveredAt = discoveredAt
+        self.deletedAt = deletedAt
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+struct LocalSearchSchemaInventory: Equatable, Sendable {
+    let tables: [String]
+    let indexes: [String]
+}
+
 // MARK: - DataStore
 
 @Observable
 @MainActor
 final class DataStore {
     private let dbQueue: DatabaseQueue
+    private let localSearchStore: LocalSearchStore
     private(set) var usages: [TokenUsage] = []
     private(set) var isLoading = false
     private(set) var lastRefresh: Date?
@@ -297,15 +694,29 @@ final class DataStore {
     }
     
     // MARK: - Initialization
-    
-    init() {
+
+    convenience init() {
         let appDir = try! BurnBarMigration.prepareSupportDirectory()
         let dbPath = appDir.appendingPathComponent(BurnBarIdentity.databaseFileName).path
-        dbQueue = try! DatabaseQueue(path: dbPath)
-        
-        try! migrator.migrate(dbQueue)
+        let queue = try! DatabaseQueue(path: dbPath)
+        try! self.init(databaseQueue: queue)
+    }
 
-        refresh()
+    init(
+        databaseQueue: DatabaseQueue,
+        runMigrations: Bool = true,
+        refreshOnInit: Bool = true
+    ) throws {
+        dbQueue = databaseQueue
+        localSearchStore = LocalSearchStore(dbQueue: databaseQueue)
+
+        if runMigrations {
+            try migrator.migrate(databaseQueue)
+        }
+
+        if refreshOnInit {
+            refresh()
+        }
     }
     
     // MARK: - Database Schema
@@ -548,6 +959,219 @@ final class DataStore {
                     )
                 WHERE token_usage.provider = 'Claude Code'
                 """)
+        }
+
+        /// Derived local retrieval substrate for hybrid search, projection outbox,
+        /// embedding/version lineage, and typed subsystem health.
+        migrator.registerMigration("v14_local_search_substrate") { db in
+            try db.create(table: "search_documents") { t in
+                t.column("id", .text).primaryKey()
+                t.column("sourceKind", .text).notNull().indexed()
+                t.column("sourceID", .text).notNull()
+                t.column("sourceVersionID", .text).notNull().defaults(to: "")
+                t.column("provider", .text)
+                t.column("projectName", .text)
+                t.column("title", .text).notNull()
+                t.column("subtitle", .text)
+                t.column("bodyPreview", .text)
+                t.column("sourceUpdatedAt", .datetime)
+                t.column("indexedAt", .datetime).notNull().indexed()
+                t.column("contentHash", .text)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(
+                index: "search_documents_source_lookup_idx",
+                on: "search_documents",
+                columns: ["sourceKind", "sourceID", "sourceVersionID"],
+                unique: true
+            )
+            try db.create(
+                index: "search_documents_project_provider_idx",
+                on: "search_documents",
+                columns: ["projectName", "provider", "indexedAt"]
+            )
+
+            try db.create(table: "search_chunks") { t in
+                t.column("id", .text).primaryKey()
+                t.column("documentID", .text)
+                    .notNull()
+                    .references("search_documents", column: "id", onDelete: .cascade)
+                t.column("sourceKind", .text).notNull().indexed()
+                t.column("sourceID", .text).notNull()
+                t.column("sourceVersionID", .text).notNull().defaults(to: "")
+                t.column("ordinal", .integer).notNull()
+                t.column("startOffset", .integer).notNull()
+                t.column("endOffset", .integer).notNull()
+                t.column("messageStartOffset", .integer)
+                t.column("messageEndOffset", .integer)
+                t.column("sectionPath", .text)
+                t.column("text", .text).notNull()
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(
+                index: "search_chunks_unique_document_ordinal_idx",
+                on: "search_chunks",
+                columns: ["documentID", "ordinal"],
+                unique: true
+            )
+            try db.create(
+                index: "search_chunks_document_offset_idx",
+                on: "search_chunks",
+                columns: ["documentID", "startOffset", "endOffset"]
+            )
+            try db.create(
+                index: "search_chunks_source_lookup_idx",
+                on: "search_chunks",
+                columns: ["sourceKind", "sourceID", "sourceVersionID"]
+            )
+            try db.execute(
+                sql: """
+                CREATE VIRTUAL TABLE search_chunks_fts USING fts5(
+                    chunkID UNINDEXED,
+                    documentID UNINDEXED,
+                    title,
+                    chunkText,
+                    tokenize='porter unicode61'
+                )
+                """
+            )
+
+            try db.create(table: "projection_jobs") { t in
+                t.column("id", .text).primaryKey()
+                t.column("jobType", .text).notNull().indexed()
+                t.column("sourceKind", .text)
+                t.column("sourceID", .text)
+                t.column("sourceVersionID", .text).notNull().defaults(to: "")
+                t.column("status", .text).notNull().indexed()
+                t.column("priority", .integer).notNull().defaults(to: 100)
+                t.column("attempts", .integer).notNull().defaults(to: 0)
+                t.column("maxAttempts", .integer).notNull().defaults(to: 5)
+                t.column("payloadJSON", .text)
+                t.column("lastErrorCode", .text)
+                t.column("lastErrorMessage", .text)
+                t.column("scheduledAt", .datetime).notNull()
+                t.column("availableAt", .datetime).notNull().indexed()
+                t.column("startedAt", .datetime)
+                t.column("completedAt", .datetime)
+                t.column("leaseOwner", .text)
+                t.column("leaseExpiresAt", .datetime)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(
+                index: "projection_jobs_poll_idx",
+                on: "projection_jobs",
+                columns: ["status", "availableAt", "priority", "createdAt"]
+            )
+            try db.create(
+                index: "projection_jobs_source_lookup_idx",
+                on: "projection_jobs",
+                columns: ["sourceKind", "sourceID", "sourceVersionID"]
+            )
+
+            try db.create(table: "embedding_models") { t in
+                t.column("id", .text).primaryKey()
+                t.column("provider", .text).notNull()
+                t.column("modelName", .text).notNull()
+                t.column("dimensions", .integer).notNull()
+                t.column("distanceMetric", .text).notNull()
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(
+                index: "embedding_models_provider_model_idx",
+                on: "embedding_models",
+                columns: ["provider", "modelName"],
+                unique: true
+            )
+
+            try db.create(table: "embedding_versions") { t in
+                t.column("id", .text).primaryKey()
+                t.column("modelID", .text)
+                    .notNull()
+                    .references("embedding_models", column: "id", onDelete: .cascade)
+                t.column("versionTag", .text).notNull()
+                t.column("chunkerVersion", .text).notNull()
+                t.column("normalizationVersion", .text).notNull()
+                t.column("promptVersion", .text).notNull()
+                t.column("isActive", .boolean).notNull().defaults(to: false)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(
+                index: "embedding_versions_identity_idx",
+                on: "embedding_versions",
+                columns: ["modelID", "versionTag", "chunkerVersion", "normalizationVersion", "promptVersion"],
+                unique: true
+            )
+            try db.create(
+                index: "embedding_versions_active_idx",
+                on: "embedding_versions",
+                columns: ["modelID", "isActive"]
+            )
+
+            try db.create(table: "chunk_embeddings") { t in
+                t.column("chunkID", .text)
+                    .notNull()
+                    .references("search_chunks", column: "id", onDelete: .cascade)
+                t.column("embeddingVersionID", .text)
+                    .notNull()
+                    .references("embedding_versions", column: "id", onDelete: .cascade)
+                t.column("vectorBlob", .blob).notNull()
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+                t.primaryKey(["chunkID", "embeddingVersionID"])
+            }
+            try db.create(
+                index: "chunk_embeddings_version_lookup_idx",
+                on: "chunk_embeddings",
+                columns: ["embeddingVersionID"]
+            )
+
+            try db.create(table: "retrieval_health") { t in
+                t.column("subsystem", .text).primaryKey()
+                t.column("status", .text).notNull()
+                t.column("errorCode", .text)
+                t.column("errorMessage", .text)
+                t.column("detailsJSON", .text)
+                t.column("observedAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+        }
+
+        migrator.registerMigration("v15_source_artifact_registry") { db in
+            try db.create(table: "source_artifacts") { t in
+                t.column("id", .text).primaryKey()
+                t.column("sourceKind", .text).notNull().indexed()
+                t.column("canonicalPath", .text).notNull()
+                t.column("rootPath", .text).notNull().indexed()
+                t.column("relativePath", .text).notNull()
+                t.column("provenance", .text).notNull()
+                t.column("title", .text).notNull()
+                t.column("body", .text).notNull()
+                t.column("contentHash", .text).notNull()
+                t.column("fileSizeBytes", .integer).notNull().defaults(to: 0)
+                t.column("fileModifiedAt", .datetime)
+                t.column("status", .text).notNull().defaults(to: SourceArtifactStatus.active.rawValue).indexed()
+                t.column("discoveredAt", .datetime).notNull()
+                t.column("deletedAt", .datetime)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(
+                index: "source_artifacts_canonical_path_idx",
+                on: "source_artifacts",
+                columns: ["canonicalPath"],
+                unique: true
+            )
+            try db.create(
+                index: "source_artifacts_root_relative_idx",
+                on: "source_artifacts",
+                columns: ["rootPath", "relativePath"],
+                unique: true
+            )
         }
 
         return migrator
@@ -1216,6 +1840,126 @@ final class DataStore {
         }.joined(separator: " AND ")
     }
 
+    // MARK: - Local search substrate (derived/rebuildable)
+
+    func upsertSearchDocument(_ document: SearchDocumentRecord) throws {
+        try localSearchStore.upsertDocument(document)
+    }
+
+    func fetchSearchDocuments(limit: Int = 500) throws -> [SearchDocumentRecord] {
+        try localSearchStore.fetchDocuments(limit: limit)
+    }
+
+    func replaceSearchChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) throws {
+        try localSearchStore.replaceChunks(documentID: documentID, title: title, chunks: chunks)
+    }
+
+    func fetchSearchChunks(documentID: String) throws -> [SearchChunkRecord] {
+        try localSearchStore.fetchChunks(documentID: documentID)
+    }
+
+    func upsertSourceArtifact(_ artifact: SourceArtifactRecord) throws -> SourceArtifactWriteDisposition {
+        try localSearchStore.upsertSourceArtifact(artifact)
+    }
+
+    func fetchSourceArtifacts(
+        includeDeleted: Bool = false,
+        rootPaths: [String]? = nil,
+        sourceKinds: [SearchSourceKind] = [.skillDoc, .agentDoc, .sharedArtifact]
+    ) throws -> [SourceArtifactRecord] {
+        try localSearchStore.fetchSourceArtifacts(
+            includeDeleted: includeDeleted,
+            rootPaths: rootPaths,
+            sourceKinds: sourceKinds
+        )
+    }
+
+    @discardableResult
+    func markSourceArtifactDeleted(id: String, deletedAt: Date = Date()) throws -> Bool {
+        try localSearchStore.markSourceArtifactDeleted(id: id, deletedAt: deletedAt)
+    }
+
+    func enqueueProjectionJob(_ job: ProjectionJobRecord) throws {
+        try localSearchStore.enqueueProjectionJob(job)
+    }
+
+    func fetchProjectionJobs(
+        statuses: [ProjectionJobStatus] = [.queued, .leased, .running, .failed],
+        limit: Int = 100
+    ) throws -> [ProjectionJobRecord] {
+        try localSearchStore.fetchProjectionJobs(statuses: statuses, limit: limit)
+    }
+
+    func markProjectionJobLeased(
+        id: String,
+        leaseOwner: String,
+        leaseDuration: TimeInterval,
+        now: Date = Date()
+    ) throws {
+        try localSearchStore.markJobLeased(
+            id: id,
+            leaseOwner: leaseOwner,
+            leaseExpiresAt: now.addingTimeInterval(leaseDuration),
+            updatedAt: now
+        )
+    }
+
+    func markProjectionJobCompleted(id: String, completedAt: Date = Date()) throws {
+        try localSearchStore.markJobCompleted(id: id, completedAt: completedAt)
+    }
+
+    func markProjectionJobFailed(
+        id: String,
+        errorCode: String?,
+        errorMessage: String?,
+        retryAt: Date? = nil,
+        updatedAt: Date = Date()
+    ) throws {
+        try localSearchStore.markJobFailed(
+            id: id,
+            errorCode: errorCode,
+            errorMessage: errorMessage,
+            retryAt: retryAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    func upsertEmbeddingModel(_ model: EmbeddingModelRecord) throws {
+        try localSearchStore.upsertEmbeddingModel(model)
+    }
+
+    func fetchEmbeddingModels() throws -> [EmbeddingModelRecord] {
+        try localSearchStore.fetchEmbeddingModels()
+    }
+
+    func upsertEmbeddingVersion(_ version: EmbeddingVersionRecord) throws {
+        try localSearchStore.upsertEmbeddingVersion(version)
+    }
+
+    func fetchEmbeddingVersions(modelID: String? = nil) throws -> [EmbeddingVersionRecord] {
+        try localSearchStore.fetchEmbeddingVersions(modelID: modelID)
+    }
+
+    func upsertChunkEmbedding(_ embedding: ChunkEmbeddingRecord) throws {
+        try localSearchStore.upsertChunkEmbedding(embedding)
+    }
+
+    func fetchChunkEmbeddings(chunkID: String? = nil) throws -> [ChunkEmbeddingRecord] {
+        try localSearchStore.fetchChunkEmbeddings(chunkID: chunkID)
+    }
+
+    func upsertRetrievalHealth(_ health: RetrievalHealthRecord) throws {
+        try localSearchStore.upsertRetrievalHealth(health)
+    }
+
+    func fetchRetrievalHealth() throws -> [RetrievalHealthRecord] {
+        try localSearchStore.fetchRetrievalHealth()
+    }
+
+    func localSearchSchemaInventory() throws -> LocalSearchSchemaInventory {
+        try localSearchStore.schemaInventory()
+    }
+
     // MARK: - Conversation row mapping
 
     private static func fetchConversationRow(_ db: Database, id: String) throws -> ConversationRecord? {
@@ -1429,4 +2173,933 @@ final class DataStore {
         return coreUnchanged && summaryUnchanged
     }
 
+}
+
+// MARK: - Local Search Store
+
+private struct LocalSearchStore {
+    private let dbQueue: DatabaseQueue
+
+    init(dbQueue: DatabaseQueue) {
+        self.dbQueue = dbQueue
+    }
+
+    func upsertDocument(_ document: SearchDocumentRecord) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO search_documents (
+                    id, sourceKind, sourceID, sourceVersionID, provider, projectName, title, subtitle,
+                    bodyPreview, sourceUpdatedAt, indexedAt, contentHash, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    sourceKind = excluded.sourceKind,
+                    sourceID = excluded.sourceID,
+                    sourceVersionID = excluded.sourceVersionID,
+                    provider = excluded.provider,
+                    projectName = excluded.projectName,
+                    title = excluded.title,
+                    subtitle = excluded.subtitle,
+                    bodyPreview = excluded.bodyPreview,
+                    sourceUpdatedAt = excluded.sourceUpdatedAt,
+                    indexedAt = excluded.indexedAt,
+                    contentHash = excluded.contentHash,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    document.id,
+                    document.sourceKind.rawValue,
+                    document.sourceID,
+                    document.sourceVersionID,
+                    document.provider,
+                    document.projectName,
+                    document.title,
+                    document.subtitle,
+                    document.bodyPreview,
+                    document.sourceUpdatedAt,
+                    document.indexedAt,
+                    document.contentHash,
+                    document.createdAt,
+                    document.updatedAt
+                ]
+            )
+        }
+    }
+
+    func fetchDocuments(limit: Int) throws -> [SearchDocumentRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM search_documents
+                ORDER BY indexedAt DESC, createdAt DESC
+                LIMIT ?
+                """,
+                arguments: [limit]
+            )
+            return rows.compactMap(Self.document(from:))
+        }
+    }
+
+    func replaceChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM search_chunks_fts WHERE documentID = ?",
+                arguments: [documentID]
+            )
+            try db.execute(
+                sql: "DELETE FROM search_chunks WHERE documentID = ?",
+                arguments: [documentID]
+            )
+
+            for chunk in chunks.sorted(by: { $0.ordinal < $1.ordinal }) {
+                try db.execute(
+                    sql: """
+                    INSERT INTO search_chunks (
+                        id, documentID, sourceKind, sourceID, sourceVersionID, ordinal,
+                        startOffset, endOffset, messageStartOffset, messageEndOffset,
+                        sectionPath, text, createdAt, updatedAt
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    arguments: [
+                        chunk.id,
+                        chunk.documentID,
+                        chunk.sourceKind.rawValue,
+                        chunk.sourceID,
+                        chunk.sourceVersionID,
+                        chunk.ordinal,
+                        chunk.startOffset,
+                        chunk.endOffset,
+                        chunk.messageStartOffset,
+                        chunk.messageEndOffset,
+                        chunk.sectionPath,
+                        chunk.text,
+                        chunk.createdAt,
+                        chunk.updatedAt
+                    ]
+                )
+
+                try db.execute(
+                    sql: """
+                    INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    arguments: [chunk.id, chunk.documentID, title, chunk.text]
+                )
+            }
+        }
+    }
+
+    func fetchChunks(documentID: String) throws -> [SearchChunkRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM search_chunks
+                WHERE documentID = ?
+                ORDER BY ordinal ASC
+                """,
+                arguments: [documentID]
+            )
+            return rows.compactMap(Self.chunk(from:))
+        }
+    }
+
+    func upsertSourceArtifact(_ artifact: SourceArtifactRecord) throws -> SourceArtifactWriteDisposition {
+        guard artifact.sourceKind != .conversation else {
+            throw NSError(
+                domain: "DataStore.SourceArtifact",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "source_artifacts cannot store conversation sourceKind"]
+            )
+        }
+
+        return try dbQueue.write { db in
+            let existingRow = try Row.fetchOne(
+                db,
+                sql: "SELECT * FROM source_artifacts WHERE id = ?",
+                arguments: [artifact.id]
+            )
+            let existing = existingRow.flatMap(Self.sourceArtifact(from:))
+            let disposition: SourceArtifactWriteDisposition
+
+            if let existing {
+                let isUnchanged =
+                    existing.status == .active
+                    && existing.sourceKind == artifact.sourceKind
+                    && existing.canonicalPath == artifact.canonicalPath
+                    && existing.rootPath == artifact.rootPath
+                    && existing.relativePath == artifact.relativePath
+                    && existing.provenance == artifact.provenance
+                    && existing.title == artifact.title
+                    && existing.body == artifact.body
+                    && existing.contentHash == artifact.contentHash
+                    && existing.fileSizeBytes == artifact.fileSizeBytes
+                    && existing.fileModifiedAt == artifact.fileModifiedAt
+
+                if isUnchanged {
+                    try db.execute(
+                        sql: """
+                        UPDATE source_artifacts
+                        SET discoveredAt = ?, updatedAt = ?
+                        WHERE id = ?
+                        """,
+                        arguments: [artifact.discoveredAt, artifact.updatedAt, artifact.id]
+                    )
+                    return .unchanged
+                }
+                disposition = existing.status == .deleted ? .restored : .updated
+            } else {
+                disposition = .inserted
+            }
+
+            try db.execute(
+                sql: """
+                INSERT INTO source_artifacts (
+                    id, sourceKind, canonicalPath, rootPath, relativePath, provenance,
+                    title, body, contentHash, fileSizeBytes, fileModifiedAt, status,
+                    discoveredAt, deletedAt, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    sourceKind = excluded.sourceKind,
+                    canonicalPath = excluded.canonicalPath,
+                    rootPath = excluded.rootPath,
+                    relativePath = excluded.relativePath,
+                    provenance = excluded.provenance,
+                    title = excluded.title,
+                    body = excluded.body,
+                    contentHash = excluded.contentHash,
+                    fileSizeBytes = excluded.fileSizeBytes,
+                    fileModifiedAt = excluded.fileModifiedAt,
+                    status = excluded.status,
+                    discoveredAt = excluded.discoveredAt,
+                    deletedAt = excluded.deletedAt,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    artifact.id,
+                    artifact.sourceKind.rawValue,
+                    artifact.canonicalPath,
+                    artifact.rootPath,
+                    artifact.relativePath,
+                    artifact.provenance,
+                    artifact.title,
+                    artifact.body,
+                    artifact.contentHash,
+                    artifact.fileSizeBytes,
+                    artifact.fileModifiedAt,
+                    SourceArtifactStatus.active.rawValue,
+                    artifact.discoveredAt,
+                    nil,
+                    artifact.createdAt,
+                    artifact.updatedAt
+                ]
+            )
+            return disposition
+        }
+    }
+
+    func fetchSourceArtifacts(
+        includeDeleted: Bool,
+        rootPaths: [String]?,
+        sourceKinds: [SearchSourceKind]
+    ) throws -> [SourceArtifactRecord] {
+        guard sourceKinds.isEmpty == false else { return [] }
+        let normalizedRoots = (rootPaths ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let kindValues = sourceKinds.map(\.rawValue)
+        var clauses: [String] = []
+        var args: [any DatabaseValueConvertible] = []
+
+        if includeDeleted == false {
+            clauses.append("status != ?")
+            args.append(SourceArtifactStatus.deleted.rawValue)
+        }
+
+        clauses.append("sourceKind IN (\(Self.sqlPlaceholders(count: kindValues.count)))")
+        args.append(contentsOf: kindValues)
+
+        if normalizedRoots.isEmpty == false {
+            clauses.append("rootPath IN (\(Self.sqlPlaceholders(count: normalizedRoots.count)))")
+            args.append(contentsOf: normalizedRoots)
+        }
+
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM source_artifacts
+                \(whereSQL)
+                ORDER BY rootPath ASC, relativePath ASC
+                """,
+                arguments: StatementArguments(args)
+            )
+            return rows.compactMap(Self.sourceArtifact(from:))
+        }
+    }
+
+    @discardableResult
+    func markSourceArtifactDeleted(id: String, deletedAt: Date) throws -> Bool {
+        try dbQueue.write { db in
+            guard
+                let row = try Row.fetchOne(db, sql: "SELECT * FROM source_artifacts WHERE id = ?", arguments: [id]),
+                let existing = Self.sourceArtifact(from: row),
+                existing.status != .deleted
+            else {
+                return false
+            }
+            try db.execute(
+                sql: """
+                UPDATE source_artifacts
+                SET status = ?, deletedAt = ?, updatedAt = ?
+                WHERE id = ?
+                """,
+                arguments: [SourceArtifactStatus.deleted.rawValue, deletedAt, deletedAt, id]
+            )
+            return true
+        }
+    }
+
+    func enqueueProjectionJob(_ job: ProjectionJobRecord) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO projection_jobs (
+                    id, jobType, sourceKind, sourceID, sourceVersionID, status, priority, attempts,
+                    maxAttempts, payloadJSON, lastErrorCode, lastErrorMessage, scheduledAt, availableAt,
+                    startedAt, completedAt, leaseOwner, leaseExpiresAt, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    jobType = excluded.jobType,
+                    sourceKind = excluded.sourceKind,
+                    sourceID = excluded.sourceID,
+                    sourceVersionID = excluded.sourceVersionID,
+                    status = excluded.status,
+                    priority = excluded.priority,
+                    attempts = excluded.attempts,
+                    maxAttempts = excluded.maxAttempts,
+                    payloadJSON = excluded.payloadJSON,
+                    lastErrorCode = excluded.lastErrorCode,
+                    lastErrorMessage = excluded.lastErrorMessage,
+                    scheduledAt = excluded.scheduledAt,
+                    availableAt = excluded.availableAt,
+                    startedAt = excluded.startedAt,
+                    completedAt = excluded.completedAt,
+                    leaseOwner = excluded.leaseOwner,
+                    leaseExpiresAt = excluded.leaseExpiresAt,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    job.id,
+                    job.jobType.rawValue,
+                    job.sourceKind?.rawValue,
+                    job.sourceID,
+                    job.sourceVersionID,
+                    job.status.rawValue,
+                    job.priority,
+                    job.attempts,
+                    job.maxAttempts,
+                    job.payloadJSON,
+                    job.lastErrorCode,
+                    job.lastErrorMessage,
+                    job.scheduledAt,
+                    job.availableAt,
+                    job.startedAt,
+                    job.completedAt,
+                    job.leaseOwner,
+                    job.leaseExpiresAt,
+                    job.createdAt,
+                    job.updatedAt
+                ]
+            )
+        }
+    }
+
+    func fetchProjectionJobs(statuses: [ProjectionJobStatus], limit: Int) throws -> [ProjectionJobRecord] {
+        guard statuses.isEmpty == false else { return [] }
+        let placeholders = statuses.map { _ in "?" }.joined(separator: ", ")
+        var args: [any DatabaseValueConvertible] = statuses.map { $0.rawValue }
+        args.append(limit)
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM projection_jobs
+                WHERE status IN (\(placeholders))
+                ORDER BY priority ASC, availableAt ASC, createdAt ASC
+                LIMIT ?
+                """,
+                arguments: StatementArguments(args)
+            )
+            return rows.compactMap(Self.projectionJob(from:))
+        }
+    }
+
+    func markJobLeased(id: String, leaseOwner: String, leaseExpiresAt: Date, updatedAt: Date) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE projection_jobs
+                SET status = ?, leaseOwner = ?, leaseExpiresAt = ?, startedAt = COALESCE(startedAt, ?), updatedAt = ?
+                WHERE id = ?
+                """,
+                arguments: [ProjectionJobStatus.leased.rawValue, leaseOwner, leaseExpiresAt, updatedAt, updatedAt, id]
+            )
+        }
+    }
+
+    func markJobCompleted(id: String, completedAt: Date) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE projection_jobs
+                SET status = ?, completedAt = ?, leaseOwner = NULL, leaseExpiresAt = NULL,
+                    lastErrorCode = NULL, lastErrorMessage = NULL, updatedAt = ?
+                WHERE id = ?
+                """,
+                arguments: [ProjectionJobStatus.completed.rawValue, completedAt, completedAt, id]
+            )
+        }
+    }
+
+    func markJobFailed(
+        id: String,
+        errorCode: String?,
+        errorMessage: String?,
+        retryAt: Date?,
+        updatedAt: Date
+    ) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE projection_jobs
+                SET status = ?, attempts = attempts + 1, leaseOwner = NULL, leaseExpiresAt = NULL,
+                    lastErrorCode = ?, lastErrorMessage = ?, availableAt = COALESCE(?, availableAt), updatedAt = ?
+                WHERE id = ?
+                """,
+                arguments: [ProjectionJobStatus.failed.rawValue, errorCode, errorMessage, retryAt, updatedAt, id]
+            )
+        }
+    }
+
+    func upsertEmbeddingModel(_ model: EmbeddingModelRecord) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO embedding_models (
+                    id, provider, modelName, dimensions, distanceMetric, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    provider = excluded.provider,
+                    modelName = excluded.modelName,
+                    dimensions = excluded.dimensions,
+                    distanceMetric = excluded.distanceMetric,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    model.id,
+                    model.provider,
+                    model.modelName,
+                    model.dimensions,
+                    model.distanceMetric.rawValue,
+                    model.createdAt,
+                    model.updatedAt
+                ]
+            )
+        }
+    }
+
+    func fetchEmbeddingModels() throws -> [EmbeddingModelRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM embedding_models
+                ORDER BY provider ASC, modelName ASC
+                """
+            )
+            return rows.compactMap(Self.embeddingModel(from:))
+        }
+    }
+
+    func upsertEmbeddingVersion(_ version: EmbeddingVersionRecord) throws {
+        try dbQueue.write { db in
+            if version.isActive {
+                try db.execute(
+                    sql: "UPDATE embedding_versions SET isActive = 0, updatedAt = ? WHERE modelID = ?",
+                    arguments: [version.updatedAt, version.modelID]
+                )
+            }
+
+            try db.execute(
+                sql: """
+                INSERT INTO embedding_versions (
+                    id, modelID, versionTag, chunkerVersion, normalizationVersion,
+                    promptVersion, isActive, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    modelID = excluded.modelID,
+                    versionTag = excluded.versionTag,
+                    chunkerVersion = excluded.chunkerVersion,
+                    normalizationVersion = excluded.normalizationVersion,
+                    promptVersion = excluded.promptVersion,
+                    isActive = excluded.isActive,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    version.id,
+                    version.modelID,
+                    version.versionTag,
+                    version.chunkerVersion,
+                    version.normalizationVersion,
+                    version.promptVersion,
+                    version.isActive,
+                    version.createdAt,
+                    version.updatedAt
+                ]
+            )
+        }
+    }
+
+    func fetchEmbeddingVersions(modelID: String?) throws -> [EmbeddingVersionRecord] {
+        try dbQueue.read { db in
+            let rows: [Row]
+            if let modelID {
+                rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT * FROM embedding_versions
+                    WHERE modelID = ?
+                    ORDER BY isActive DESC, createdAt DESC
+                    """,
+                    arguments: [modelID]
+                )
+            } else {
+                rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT * FROM embedding_versions
+                    ORDER BY modelID ASC, isActive DESC, createdAt DESC
+                    """
+                )
+            }
+            return rows.compactMap(Self.embeddingVersion(from:))
+        }
+    }
+
+    func upsertChunkEmbedding(_ embedding: ChunkEmbeddingRecord) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO chunk_embeddings (
+                    chunkID, embeddingVersionID, vectorBlob, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(chunkID, embeddingVersionID) DO UPDATE SET
+                    vectorBlob = excluded.vectorBlob,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    embedding.chunkID,
+                    embedding.embeddingVersionID,
+                    embedding.vectorBlob,
+                    embedding.createdAt,
+                    embedding.updatedAt
+                ]
+            )
+        }
+    }
+
+    func fetchChunkEmbeddings(chunkID: String?) throws -> [ChunkEmbeddingRecord] {
+        try dbQueue.read { db in
+            let rows: [Row]
+            if let chunkID {
+                rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT * FROM chunk_embeddings
+                    WHERE chunkID = ?
+                    ORDER BY embeddingVersionID ASC
+                    """,
+                    arguments: [chunkID]
+                )
+            } else {
+                rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT * FROM chunk_embeddings
+                    ORDER BY chunkID ASC, embeddingVersionID ASC
+                    """
+                )
+            }
+            return rows.compactMap(Self.chunkEmbedding(from:))
+        }
+    }
+
+    func upsertRetrievalHealth(_ health: RetrievalHealthRecord) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO retrieval_health (
+                    subsystem, status, errorCode, errorMessage, detailsJSON, observedAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(subsystem) DO UPDATE SET
+                    status = excluded.status,
+                    errorCode = excluded.errorCode,
+                    errorMessage = excluded.errorMessage,
+                    detailsJSON = excluded.detailsJSON,
+                    observedAt = excluded.observedAt,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    health.subsystem.rawValue,
+                    health.status.rawValue,
+                    health.errorCode,
+                    health.errorMessage,
+                    health.detailsJSON,
+                    health.observedAt,
+                    health.updatedAt
+                ]
+            )
+        }
+    }
+
+    func fetchRetrievalHealth() throws -> [RetrievalHealthRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM retrieval_health
+                ORDER BY subsystem ASC
+                """
+            )
+            return rows.compactMap(Self.retrievalHealth(from:))
+        }
+    }
+
+    func schemaInventory() throws -> LocalSearchSchemaInventory {
+        let expectedTables = [
+            "search_documents",
+            "search_chunks",
+            "search_chunks_fts",
+            "projection_jobs",
+            "embedding_models",
+            "embedding_versions",
+            "chunk_embeddings",
+            "retrieval_health"
+        ]
+        let expectedIndexes = [
+            "search_documents_source_lookup_idx",
+            "search_documents_project_provider_idx",
+            "search_chunks_unique_document_ordinal_idx",
+            "search_chunks_document_offset_idx",
+            "search_chunks_source_lookup_idx",
+            "projection_jobs_poll_idx",
+            "projection_jobs_source_lookup_idx",
+            "embedding_models_provider_model_idx",
+            "embedding_versions_identity_idx",
+            "embedding_versions_active_idx",
+            "chunk_embeddings_version_lookup_idx"
+        ]
+
+        return try dbQueue.read { db in
+            let tables = try String.fetchAll(
+                db,
+                sql: """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'table' AND name IN (\(Self.sqlPlaceholders(count: expectedTables.count)))
+                ORDER BY name ASC
+                """,
+                arguments: StatementArguments(expectedTables)
+            )
+            let indexes = try String.fetchAll(
+                db,
+                sql: """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'index' AND name IN (\(Self.sqlPlaceholders(count: expectedIndexes.count)))
+                ORDER BY name ASC
+                """,
+                arguments: StatementArguments(expectedIndexes)
+            )
+            return LocalSearchSchemaInventory(tables: tables, indexes: indexes)
+        }
+    }
+
+    private static func document(from row: Row) -> SearchDocumentRecord? {
+        guard
+            let id = row["id"] as? String,
+            let sourceKindRaw = row["sourceKind"] as? String,
+            let sourceKind = SearchSourceKind(rawValue: sourceKindRaw),
+            let sourceID = row["sourceID"] as? String,
+            let title = row["title"] as? String
+        else {
+            return nil
+        }
+        let indexedAt = parseDateValue(row["indexedAt"]) ?? Date()
+        let createdAt = parseDateValue(row["createdAt"]) ?? indexedAt
+        let updatedAt = parseDateValue(row["updatedAt"]) ?? createdAt
+        return SearchDocumentRecord(
+            id: id,
+            sourceKind: sourceKind,
+            sourceID: sourceID,
+            sourceVersionID: (row["sourceVersionID"] as? String) ?? "",
+            provider: row["provider"] as? String,
+            projectName: row["projectName"] as? String,
+            title: title,
+            subtitle: row["subtitle"] as? String,
+            bodyPreview: row["bodyPreview"] as? String,
+            sourceUpdatedAt: parseDateValue(row["sourceUpdatedAt"]),
+            indexedAt: indexedAt,
+            contentHash: row["contentHash"] as? String,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func chunk(from row: Row) -> SearchChunkRecord? {
+        guard
+            let id = row["id"] as? String,
+            let documentID = row["documentID"] as? String,
+            let sourceKindRaw = row["sourceKind"] as? String,
+            let sourceKind = SearchSourceKind(rawValue: sourceKindRaw),
+            let sourceID = row["sourceID"] as? String
+        else {
+            return nil
+        }
+
+        let ordinal = (row["ordinal"] as? Int) ?? Int(row["ordinal"] as? Int64 ?? 0)
+        let startOffset = (row["startOffset"] as? Int) ?? Int(row["startOffset"] as? Int64 ?? 0)
+        let endOffset = (row["endOffset"] as? Int) ?? Int(row["endOffset"] as? Int64 ?? 0)
+        let messageStartOffset = (row["messageStartOffset"] as? Int) ?? Int(row["messageStartOffset"] as? Int64 ?? -1)
+        let messageEndOffset = (row["messageEndOffset"] as? Int) ?? Int(row["messageEndOffset"] as? Int64 ?? -1)
+        let createdAt = parseDateValue(row["createdAt"]) ?? Date.distantPast
+        let updatedAt = parseDateValue(row["updatedAt"]) ?? createdAt
+        let text = (row["text"] as? String) ?? ""
+        return SearchChunkRecord(
+            id: id,
+            documentID: documentID,
+            sourceKind: sourceKind,
+            sourceID: sourceID,
+            sourceVersionID: (row["sourceVersionID"] as? String) ?? "",
+            ordinal: ordinal,
+            startOffset: startOffset,
+            endOffset: endOffset,
+            messageStartOffset: messageStartOffset >= 0 ? messageStartOffset : nil,
+            messageEndOffset: messageEndOffset >= 0 ? messageEndOffset : nil,
+            sectionPath: row["sectionPath"] as? String,
+            text: text,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func sourceArtifact(from row: Row) -> SourceArtifactRecord? {
+        guard
+            let id = row["id"] as? String,
+            let sourceKindRaw = row["sourceKind"] as? String,
+            let sourceKind = SearchSourceKind(rawValue: sourceKindRaw),
+            let canonicalPath = row["canonicalPath"] as? String,
+            let rootPath = row["rootPath"] as? String,
+            let relativePath = row["relativePath"] as? String,
+            let provenance = row["provenance"] as? String,
+            let title = row["title"] as? String,
+            let body = row["body"] as? String,
+            let contentHash = row["contentHash"] as? String
+        else {
+            return nil
+        }
+        let fileSizeBytes = (row["fileSizeBytes"] as? Int) ?? Int(row["fileSizeBytes"] as? Int64 ?? 0)
+        let discoveredAt = parseDateValue(row["discoveredAt"]) ?? Date()
+        let createdAt = parseDateValue(row["createdAt"]) ?? discoveredAt
+        let updatedAt = parseDateValue(row["updatedAt"]) ?? createdAt
+        let deletedAt = parseDateValue(row["deletedAt"])
+        let statusRaw = (row["status"] as? String) ?? SourceArtifactStatus.active.rawValue
+        let status = SourceArtifactStatus(rawValue: statusRaw) ?? .active
+
+        return SourceArtifactRecord(
+            id: id,
+            sourceKind: sourceKind,
+            canonicalPath: canonicalPath,
+            rootPath: rootPath,
+            relativePath: relativePath,
+            provenance: provenance,
+            title: title,
+            body: body,
+            contentHash: contentHash,
+            fileSizeBytes: fileSizeBytes,
+            fileModifiedAt: parseDateValue(row["fileModifiedAt"]),
+            status: status,
+            discoveredAt: discoveredAt,
+            deletedAt: deletedAt,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func projectionJob(from row: Row) -> ProjectionJobRecord? {
+        guard
+            let id = row["id"] as? String,
+            let jobTypeRaw = row["jobType"] as? String,
+            let jobType = ProjectionJobType(rawValue: jobTypeRaw),
+            let statusRaw = row["status"] as? String,
+            let status = ProjectionJobStatus(rawValue: statusRaw)
+        else {
+            return nil
+        }
+
+        let priority = (row["priority"] as? Int) ?? Int(row["priority"] as? Int64 ?? 0)
+        let attempts = (row["attempts"] as? Int) ?? Int(row["attempts"] as? Int64 ?? 0)
+        let maxAttempts = (row["maxAttempts"] as? Int) ?? Int(row["maxAttempts"] as? Int64 ?? 0)
+        let scheduledAt = parseDateValue(row["scheduledAt"]) ?? Date()
+        let availableAt = parseDateValue(row["availableAt"]) ?? scheduledAt
+        let createdAt = parseDateValue(row["createdAt"]) ?? scheduledAt
+        let updatedAt = parseDateValue(row["updatedAt"]) ?? createdAt
+        let sourceKind = (row["sourceKind"] as? String).flatMap(SearchSourceKind.init(rawValue:))
+
+        return ProjectionJobRecord(
+            id: id,
+            jobType: jobType,
+            sourceKind: sourceKind,
+            sourceID: row["sourceID"] as? String,
+            sourceVersionID: (row["sourceVersionID"] as? String) ?? "",
+            status: status,
+            priority: priority,
+            attempts: attempts,
+            maxAttempts: maxAttempts,
+            payloadJSON: row["payloadJSON"] as? String,
+            lastErrorCode: row["lastErrorCode"] as? String,
+            lastErrorMessage: row["lastErrorMessage"] as? String,
+            scheduledAt: scheduledAt,
+            availableAt: availableAt,
+            startedAt: parseDateValue(row["startedAt"]),
+            completedAt: parseDateValue(row["completedAt"]),
+            leaseOwner: row["leaseOwner"] as? String,
+            leaseExpiresAt: parseDateValue(row["leaseExpiresAt"]),
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func embeddingModel(from row: Row) -> EmbeddingModelRecord? {
+        guard
+            let id = row["id"] as? String,
+            let provider = row["provider"] as? String,
+            let modelName = row["modelName"] as? String,
+            let distanceMetricRaw = row["distanceMetric"] as? String,
+            let distanceMetric = EmbeddingDistanceMetric(rawValue: distanceMetricRaw)
+        else {
+            return nil
+        }
+        let dimensions = (row["dimensions"] as? Int) ?? Int(row["dimensions"] as? Int64 ?? 0)
+        let createdAt = parseDateValue(row["createdAt"]) ?? Date()
+        let updatedAt = parseDateValue(row["updatedAt"]) ?? createdAt
+        return EmbeddingModelRecord(
+            id: id,
+            provider: provider,
+            modelName: modelName,
+            dimensions: dimensions,
+            distanceMetric: distanceMetric,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func embeddingVersion(from row: Row) -> EmbeddingVersionRecord? {
+        guard
+            let id = row["id"] as? String,
+            let modelID = row["modelID"] as? String,
+            let versionTag = row["versionTag"] as? String,
+            let chunkerVersion = row["chunkerVersion"] as? String,
+            let normalizationVersion = row["normalizationVersion"] as? String,
+            let promptVersion = row["promptVersion"] as? String
+        else {
+            return nil
+        }
+        let isActiveRaw: Bool
+        if let boolValue = row["isActive"] as? Bool {
+            isActiveRaw = boolValue
+        } else if let intValue = row["isActive"] as? Int {
+            isActiveRaw = intValue == 1
+        } else if let int64Value = row["isActive"] as? Int64 {
+            isActiveRaw = int64Value == 1
+        } else {
+            isActiveRaw = false
+        }
+        let createdAt = parseDateValue(row["createdAt"]) ?? Date()
+        let updatedAt = parseDateValue(row["updatedAt"]) ?? createdAt
+        return EmbeddingVersionRecord(
+            id: id,
+            modelID: modelID,
+            versionTag: versionTag,
+            chunkerVersion: chunkerVersion,
+            normalizationVersion: normalizationVersion,
+            promptVersion: promptVersion,
+            isActive: isActiveRaw,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func chunkEmbedding(from row: Row) -> ChunkEmbeddingRecord? {
+        guard
+            let chunkID = row["chunkID"] as? String,
+            let embeddingVersionID = row["embeddingVersionID"] as? String,
+            let vectorBlob = row["vectorBlob"] as? Data
+        else {
+            return nil
+        }
+        let createdAt = parseDateValue(row["createdAt"]) ?? Date()
+        let updatedAt = parseDateValue(row["updatedAt"]) ?? createdAt
+        return ChunkEmbeddingRecord(
+            chunkID: chunkID,
+            embeddingVersionID: embeddingVersionID,
+            vectorBlob: vectorBlob,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func retrievalHealth(from row: Row) -> RetrievalHealthRecord? {
+        guard
+            let subsystemRaw = row["subsystem"] as? String,
+            let subsystem = RetrievalSubsystem(rawValue: subsystemRaw),
+            let statusRaw = row["status"] as? String,
+            let status = RetrievalHealthStatus(rawValue: statusRaw)
+        else {
+            return nil
+        }
+        let observedAt = parseDateValue(row["observedAt"]) ?? Date()
+        let updatedAt = parseDateValue(row["updatedAt"]) ?? observedAt
+        return RetrievalHealthRecord(
+            subsystem: subsystem,
+            status: status,
+            errorCode: row["errorCode"] as? String,
+            errorMessage: row["errorMessage"] as? String,
+            detailsJSON: row["detailsJSON"] as? String,
+            observedAt: observedAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func sqlPlaceholders(count: Int) -> String {
+        Array(repeating: "?", count: max(0, count)).joined(separator: ", ")
+    }
+
+    private static func parseDateValue(_ value: Any?) -> Date? {
+        if let date = value as? Date { return date }
+        if let string = value as? String {
+            if let parsed = sqliteDateFormatter.date(from: string) { return parsed }
+            return ISO8601DateFormatter().date(from: string)
+        }
+        return nil
+    }
+
+    private static let sqliteDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        return formatter
+    }()
 }

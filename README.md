@@ -13,6 +13,9 @@ For the paranoid-and-proud crowd: analytics stay **local-first**. No API keys, n
 
 **Cursor deep dives** (for humans and agents):
 
+- [BurnBar Mission](docs/MISSION.md)
+- [BurnBar Direction](docs/DIRECTION.md)
+- [BurnBar Roadmap](docs/ROADMAP.md)
 - [BurnBar + Cursor Agent Onboarding](docs/BURNBAR_CURSOR_AGENT_ONBOARDING.md)
 - [BurnBar Current Release Architecture](docs/BURNBAR_RELEASE_ARCHITECTURE.md)
 
@@ -40,7 +43,7 @@ For the paranoid-and-proud crowd: analytics stay **local-first**. No API keys, n
 |---|---|---|---|---|
 | Claude Code | Supported | `~/.claude/projects/*.jsonl` | Exact | Supported via Claude statusline bridge (5-hour / 7-day %) |
 | Factory (Droid) | Supported | `~/.factory/sessions/*.jsonl` | Exact | Estimated via plan tier + BurnBar-tracked monthly Factory tokens |
-| Codex (OpenAI) | Partial | `~/.codex/state_5.sqlite` + rollout JSONL | Estimated | Supported via local Codex session / CLI rate-limit percentages |
+| Codex (OpenAI) | Partial | `~/.codex/state_5.sqlite` + rollout JSONL | Estimated | Supported via the latest local Codex rollout/session rate-limit snapshot |
 | Kimi (Moonshot) | Partial | `~/.kimi/sessions/*.jsonl` | Estimated | Unavailable |
 | Z.ai | Partial | via Factory sessions | Estimated | Supported via official monitor quota endpoints |
 | MiniMax | Partial | via Factory sessions | Estimated | Supported for Token Plan via official remains endpoint |
@@ -52,7 +55,7 @@ For the paranoid-and-proud crowd: analytics stay **local-first**. No API keys, n
 
 **Estimated** = we applied math and hope — e.g. Codex may only give totals without an input/output split, so BurnBar shrugs and assumes 50/50. Costs everywhere use **public pricing tables**, not your invoice. Good for trends; bad for tax audits.
 
-Quota reporting is separate from spend history. Codex and Claude Code quota come from first-party local runtime/session signals, MiniMax and Z.ai use official API responses, and Factory / Droid remaining is an explicit estimate.
+Quota reporting is separate from spend history. Codex quota comes from the latest local rollout/session snapshot, Claude Code quota comes from the local statusline bridge, MiniMax and Z.ai use official API responses, and Factory / Droid remaining is an explicit estimate from BurnBar-tracked raw monthly tokens rather than Factory billable tokens.
 
 ### Cursor agent provider scope (narrower on purpose)
 
@@ -126,7 +129,7 @@ The Mac app sources live under **`AgentLens/`** because renaming folders is a pe
 | `BurnBarCore/` | Shared types and RPC contracts for app ↔ daemon |
 | `BurnBarDaemon/` | Local JSON-RPC daemon + executable wrapper |
 | `extensions/burnbar/` | TypeScript extension for Cursor / VS Code |
-| `docs/` | Architecture, onboarding, roadmap, and other words we meant |
+| `docs/` | Mission, direction, roadmap, architecture, onboarding, and other words we meant |
 
 ---
 

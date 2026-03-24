@@ -33,6 +33,7 @@ struct DashboardView: View {
     @State private var showCLIConsentSheet = false
     @State private var showSessionLogCloudConsent = false
     @State private var chatController: ChatSessionController
+    @State private var quotaService = ProviderQuotaService.shared
 
     init(
         dataStore: DataStore,
@@ -550,6 +551,16 @@ struct DashboardView: View {
                     overviewHero
 
                     statsRow
+
+                    ProviderQuotaOverviewPanel(
+                        quotaService: quotaService,
+                        dataStore: dataStore,
+                        onSelectProvider: { provider in
+                            withAnimation(DesignSystem.Animation.standard) {
+                                mainRoute = .provider(provider)
+                            }
+                        }
+                    )
 
                     HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
                         if viewMode == .agents {

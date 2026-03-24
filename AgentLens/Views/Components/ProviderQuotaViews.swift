@@ -11,7 +11,7 @@ struct ProviderQuotaSettingsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            Text("Quota reporting stays separate from spend history. BurnBar reads official APIs when they exist and falls back to first-party local signals for Codex, Claude Code, and Factory / Droid.")
+            Text("Quota reporting stays separate from spend history. BurnBar uses official APIs where they exist and otherwise shows the best verifiable local signal it can: Codex rollout snapshots, Claude statusline JSON, and Factory / Droid monthly token estimates. Review provider-level quota here or in each provider dashboard.")
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
@@ -27,6 +27,88 @@ struct ProviderQuotaSettingsSection: View {
         .task {
             await quotaService.refreshIfNeeded(dataStore: dataStore)
         }
+    }
+}
+
+struct ProviderQuotaOverviewPanel: View {
+    @Bindable var quotaService: ProviderQuotaService
+    let dataStore: DataStore
+    let onSelectProvider: (AgentProvider) -> Void
+
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                        Text("Quota Watch")
+                            .font(DesignSystem.Typography.headline)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                        Text("Review remaining quota across supported providers. Select a provider row for bucket-level detail.")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+
+                    Spacer()
+                }
+
+                VStack(spacing: DesignSystem.Spacing.sm) {
+                    ForEach(ProviderQuotaService.supportedProviders, id: \.self) { provider in
+                        quotaRow(for: provider)
+                    }
+                }
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+        .task {
+            await quotaService.refreshIfNeeded(dataStore: dataStore)
+        }
+    }
+
+    private func quotaRow(for provider: AgentProvider) -> some View {
+        let snapshot = quotaService.snapshot(for: provider)
+        let theme = ProviderTheme.theme(for: provider)
+
+        return Button {
+            onSelectProvider(provider)
+        } label: {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(theme.primaryColor.opacity(0.14))
+                        .frame(width: 34, height: 34)
+                    ProviderLogoView(provider: provider, size: 22, useFallbackColor: false)
+                }
+
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Text(provider == .factory ? "Factory / Droid" : provider.displayName)
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                    Text(snapshot?.summaryText ?? snapshot?.statusMessage ?? "No quota snapshot yet.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                if let snapshot {
+                    QuotaSourceBadge(source: snapshot.source, confidence: snapshot.confidence)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(theme.primaryColor.opacity(0.06))
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 

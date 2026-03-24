@@ -159,7 +159,12 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
 
     var primaryBucket: ProviderQuotaBucket? {
         buckets.sorted {
-            ($0.remainingPercent ?? -1) > ($1.remainingPercent ?? -1)
+            let lhsRemaining = $0.remainingPercent ?? .infinity
+            let rhsRemaining = $1.remainingPercent ?? .infinity
+            if lhsRemaining == rhsRemaining {
+                return ($0.resetsAt ?? .distantFuture) < ($1.resetsAt ?? .distantFuture)
+            }
+            return lhsRemaining < rhsRemaining
         }.first
     }
 
@@ -590,6 +595,14 @@ private extension ProviderQuotaService {
     func fetchClaudeSnapshot() throws -> ProviderQuotaSnapshot {
         refreshClaudeBridgeStatus()
 
+        if claudeAPIBillingOverrideDetected() {
+            return unavailableSnapshot(
+                for: .claudeCode,
+                source: .unavailable,
+                message: "ANTHROPIC_API_KEY is set for this app process. Claude Code may be using API billing instead of a Claude plan, so BurnBar will not claim remaining plan quota."
+            )
+        }
+
         switch claudeBridgeStatus.state {
         case .notInstalled, .invalidConfiguration:
             return unavailableSnapshot(
@@ -754,6 +767,7 @@ private extension ProviderQuotaService {
 
         let candidateBaseURLs = zaiCandidateBaseURLs()
         let queryItems = zaiUsageQueryItems()
+        var lastInlineError: String?
 
         for baseURL in candidateBaseURLs {
             do {
@@ -787,13 +801,26 @@ private extension ProviderQuotaService {
                     fetchedAt: Date(),
                     source: .officialAPI,
                     confidence: .exact,
-                    managementURL: "https://docs.z.ai/devpack/extension/usage-query-plugin",
+                    managementURL: "https://bigmodel.cn/usercenter/glm-coding/usage",
                     statusMessage: "Quota fetched from Z.ai usage monitor. Model rows: \(modelRows) · tool rows: \(toolRows).",
                     buckets: buckets
                 )
+            } catch let error as QuotaServiceError {
+                if case let .invalidResponse(message) = error {
+                    lastInlineError = message
+                }
+                continue
             } catch {
                 continue
             }
+        }
+
+        if let lastInlineError {
+            return unavailableSnapshot(
+                for: .zai,
+                source: .officialAPI,
+                message: lastInlineError
+            )
         }
 
         return unavailableSnapshot(
@@ -841,7 +868,7 @@ private extension ProviderQuotaService {
             source: .manualEstimate,
             confidence: .estimated,
             managementURL: "https://www.factory.ai/pricing",
-            statusMessage: "Estimated from BurnBar-tracked Factory / Droid tokens this month.",
+            statusMessage: "Estimated from BurnBar-tracked Factory / Droid raw tokens this month, not Factory billable tokens.",
             buckets: [bucket]
         )
     }
@@ -945,7 +972,11 @@ private extension ProviderQuotaService {
         guard (200..<300).contains(http.statusCode) else {
             throw QuotaServiceError.httpStatus(provider: .zai, code: http.statusCode)
         }
-        return try JSONSerialization.jsonObject(with: data)
+        let object = try JSONSerialization.jsonObject(with: data)
+        if let inlineError = zaiInlineErrorMessage(from: object) {
+            throw QuotaServiceError.invalidResponse(inlineError)
+        }
+        return object
     }
 
     func parseJSONObject(from data: Data) throws -> Any {
@@ -1095,6 +1126,10 @@ private extension ProviderQuotaService {
             ?? nonEmpty(environment["ANTHROPIC_AUTH_TOKEN"])
     }
 
+    func claudeAPIBillingOverrideDetected() -> Bool {
+        nonEmpty(environment["ANTHROPIC_API_KEY"]) != nil
+    }
+
     func zaiCandidateBaseURLs() -> [URL] {
         var candidates: [URL] = []
         if let configured = environment["ANTHROPIC_BASE_URL"], let url = URL(string: configured) {
@@ -1139,6 +1174,38 @@ private extension ProviderQuotaService {
             URLQueryItem(name: "startTime", value: formatter.string(from: startWindow)),
             URLQueryItem(name: "endTime", value: formatter.string(from: endWindow)),
         ]
+    }
+
+    func zaiInlineErrorMessage(from object: Any) -> String? {
+        guard let dictionary = object as? [String: Any] else { return nil }
+
+        if let success = dictionary["success"] as? Bool, !success {
+            let message = string(in: dictionary, keys: ["msg", "message", "error"])
+                ?? "Z.ai monitor returned an unsuccessful response."
+            return "Z.ai monitor returned an inline error: \(message)"
+        }
+
+        if let code = number(in: dictionary, keys: ["code", "status"]),
+           code != 0, code != 200 {
+            let message = string(in: dictionary, keys: ["msg", "message", "error"])
+                ?? "code \(Int(code.rounded()))"
+            if Int(code.rounded()) == 401 || Int(code.rounded()) == 1001 {
+                return "Z.ai monitor rejected the configured key: \(message)"
+            }
+            return "Z.ai monitor returned an inline error: \(message)"
+        }
+
+        if let code = string(in: dictionary, keys: ["code", "status"]),
+           let parsed = Double(code),
+           parsed != 0, parsed != 200 {
+            let message = string(in: dictionary, keys: ["msg", "message", "error"]) ?? code
+            if Int(parsed.rounded()) == 401 || Int(parsed.rounded()) == 1001 {
+                return "Z.ai monitor rejected the configured key: \(message)"
+            }
+            return "Z.ai monitor returned an inline error: \(message)"
+        }
+
+        return nil
     }
 
     func cursorConnectorKey(for account: String) -> String? {

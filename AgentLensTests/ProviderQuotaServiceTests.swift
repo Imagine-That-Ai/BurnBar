@@ -81,6 +81,23 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(restoredStatusLine["command"] as? String, "echo original-status")
     }
 
+    func test_claudeRefresh_isUnavailableWhenAPIBillingOverrideDetected() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            environment: ["ANTHROPIC_API_KEY": "sk-ant-test"]
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: DataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.statusMessage.contains("API billing"))
+    }
+
     func test_factoryRefresh_estimatesRemainingFromPlanTierAndMonthlyUsage() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
@@ -251,6 +268,73 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label.lowercased().contains("token") }))
     }
 
+    func test_zaiRefresh_surfacesInlineAuthErrors() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let keyStore = try makeKeyStore(provider: "zai", value: "bad-key")
+        let session = makeStubSession { request in
+            let url = try XCTUnwrap(request.url)
+            return try self.httpResponse(
+                url: url,
+                statusCode: 200,
+                body: #"{"code":401,"msg":"invalid token"}"#
+            )
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            keyStore: keyStore,
+            session: session
+        )
+
+        await service.refresh(provider: .zai, dataStore: DataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .zai))
+
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.statusMessage.contains("rejected the configured key"))
+    }
+
+    func test_snapshotPrimaryBucket_prefersMostConstrainedWindow() {
+        let snapshot = ProviderQuotaSnapshot(
+            provider: .minimax,
+            fetchedAt: Date(),
+            source: .officialAPI,
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Quota fetched.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "loose",
+                    label: "Weekly",
+                    windowKind: .weekly,
+                    usedValue: 10,
+                    limitValue: 100,
+                    remainingValue: 90,
+                    usedPercent: 10,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                ),
+                ProviderQuotaBucket(
+                    key: "tight",
+                    label: "5-hour",
+                    windowKind: .rollingHours,
+                    usedValue: 75,
+                    limitValue: 100,
+                    remainingValue: 25,
+                    usedPercent: 75,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                ),
+            ]
+        )
+
+        XCTAssertEqual(snapshot.primaryBucket?.label, "5-hour")
+        XCTAssertEqual(snapshot.summaryText, "5-hour: 25% left")
+    }
+
     private func makeService(
         home: URL,
         appSupportRoot: URL,
@@ -258,6 +342,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             keychain: KeychainStore(service: "tests.\(UUID().uuidString)", legacyServices: [], backend: TestKeychainBackend())
         ),
         session: URLSession = .shared,
+        environment: [String: String] = [:],
         miniMaxModeProvider: @escaping () -> MiniMaxQuotaMode = { .payAsYouGo },
         factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier = { .unknown }
     ) -> ProviderQuotaService {
@@ -266,7 +351,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             appPaths: BurnBarAppPaths(applicationSupportRoot: appSupportRoot),
             fileManager: .default,
             session: session,
-            environment: [:],
+            environment: environment,
             homeDirectoryURL: home,
             miniMaxModeProvider: miniMaxModeProvider,
             factoryPlanProvider: factoryPlanProvider

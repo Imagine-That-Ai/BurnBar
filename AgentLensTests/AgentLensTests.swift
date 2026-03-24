@@ -1,4 +1,5 @@
 import XCTest
+import GRDB
 @testable import BurnBar
 
 @MainActor
@@ -522,5 +523,253 @@ final class AgentLensTests: XCTestCase {
             )
         }
         return list
+    }
+}
+
+@MainActor
+final class LocalSearchSchemaStoreTests: XCTestCase {
+
+    func test_localSearchSchemaInventory_containsExpectedObjects() throws {
+        let store = try makeInMemoryStore()
+        let inventory = try store.localSearchSchemaInventory()
+
+        XCTAssertEqual(
+            Set(inventory.tables),
+            Set([
+                "chunk_embeddings",
+                "embedding_models",
+                "embedding_versions",
+                "projection_jobs",
+                "retrieval_health",
+                "search_chunks",
+                "search_chunks_fts",
+                "search_documents"
+            ])
+        )
+        XCTAssertEqual(
+            Set(inventory.indexes),
+            Set([
+                "chunk_embeddings_version_lookup_idx",
+                "embedding_models_provider_model_idx",
+                "embedding_versions_active_idx",
+                "embedding_versions_identity_idx",
+                "projection_jobs_poll_idx",
+                "projection_jobs_source_lookup_idx",
+                "search_chunks_document_offset_idx",
+                "search_chunks_source_lookup_idx",
+                "search_chunks_unique_document_ordinal_idx",
+                "search_documents_project_provider_idx",
+                "search_documents_source_lookup_idx"
+            ])
+        )
+    }
+
+    func test_localSearchStore_roundTrips_document_chunk_job_embedding_and_health() throws {
+        let store = try makeInMemoryStore()
+        let now = Date(timeIntervalSince1970: 1_742_009_600)
+
+        let document = SearchDocumentRecord(
+            id: "doc-1",
+            sourceKind: .conversation,
+            sourceID: "conv-1",
+            sourceVersionID: "v1",
+            provider: AgentProvider.claudeCode.rawValue,
+            projectName: "BurnBar",
+            title: "Conversation about store split",
+            subtitle: "P01",
+            bodyPreview: "Schema + repository split",
+            sourceUpdatedAt: now,
+            indexedAt: now,
+            contentHash: "hash-1",
+            createdAt: now,
+            updatedAt: now
+        )
+        try store.upsertSearchDocument(document)
+
+        let chunks = [
+            SearchChunkRecord(
+                id: "chunk-1",
+                documentID: "doc-1",
+                sourceKind: .conversation,
+                sourceID: "conv-1",
+                sourceVersionID: "v1",
+                ordinal: 0,
+                startOffset: 0,
+                endOffset: 32,
+                text: "First chunk text",
+                createdAt: now,
+                updatedAt: now
+            ),
+            SearchChunkRecord(
+                id: "chunk-2",
+                documentID: "doc-1",
+                sourceKind: .conversation,
+                sourceID: "conv-1",
+                sourceVersionID: "v1",
+                ordinal: 1,
+                startOffset: 33,
+                endOffset: 70,
+                text: "Second chunk text",
+                createdAt: now,
+                updatedAt: now
+            )
+        ]
+        try store.replaceSearchChunks(documentID: "doc-1", title: document.title, chunks: chunks)
+
+        let fetchedDocuments = try store.fetchSearchDocuments(limit: 10)
+        XCTAssertEqual(fetchedDocuments.count, 1)
+        XCTAssertEqual(fetchedDocuments.first?.id, "doc-1")
+
+        let fetchedChunks = try store.fetchSearchChunks(documentID: "doc-1")
+        XCTAssertEqual(fetchedChunks.map(\.id), ["chunk-1", "chunk-2"])
+        XCTAssertEqual(fetchedChunks.map(\.startOffset), [0, 33])
+        XCTAssertEqual(fetchedChunks.map(\.endOffset), [32, 70])
+
+        let queuedJob = ProjectionJobRecord(
+            id: "job-1",
+            jobType: .project,
+            sourceKind: .conversation,
+            sourceID: "conv-1",
+            sourceVersionID: "v1",
+            status: .queued,
+            priority: 5,
+            attempts: 0,
+            maxAttempts: 5,
+            scheduledAt: now,
+            availableAt: now,
+            createdAt: now,
+            updatedAt: now
+        )
+        try store.enqueueProjectionJob(queuedJob)
+        XCTAssertEqual(try store.fetchProjectionJobs(statuses: [.queued], limit: 10).count, 1)
+
+        try store.markProjectionJobLeased(id: "job-1", leaseOwner: "worker-1", leaseDuration: 120, now: now)
+        XCTAssertEqual(try store.fetchProjectionJobs(statuses: [.leased], limit: 10).first?.id, "job-1")
+        try store.markProjectionJobCompleted(id: "job-1", completedAt: now.addingTimeInterval(60))
+        XCTAssertEqual(try store.fetchProjectionJobs(statuses: [.completed], limit: 10).first?.id, "job-1")
+
+        let model = EmbeddingModelRecord(
+            id: "model-1",
+            provider: "openai",
+            modelName: "text-embedding-3-large",
+            dimensions: 3072,
+            distanceMetric: .cosine,
+            createdAt: now,
+            updatedAt: now
+        )
+        try store.upsertEmbeddingModel(model)
+        XCTAssertEqual(try store.fetchEmbeddingModels().map(\.id), ["model-1"])
+
+        let version = EmbeddingVersionRecord(
+            id: "version-1",
+            modelID: "model-1",
+            versionTag: "2026-03-24",
+            chunkerVersion: "chunker-v1",
+            normalizationVersion: "norm-v1",
+            promptVersion: "prompt-v1",
+            isActive: true,
+            createdAt: now,
+            updatedAt: now
+        )
+        try store.upsertEmbeddingVersion(version)
+        XCTAssertEqual(try store.fetchEmbeddingVersions(modelID: "model-1").map(\.id), ["version-1"])
+
+        let embedding = ChunkEmbeddingRecord(
+            chunkID: "chunk-1",
+            embeddingVersionID: "version-1",
+            vectorBlob: Data([0, 1, 2, 3]),
+            createdAt: now,
+            updatedAt: now
+        )
+        try store.upsertChunkEmbedding(embedding)
+        let fetchedEmbeddings = try store.fetchChunkEmbeddings(chunkID: "chunk-1")
+        XCTAssertEqual(fetchedEmbeddings.count, 1)
+        XCTAssertEqual(fetchedEmbeddings.first?.vectorBlob, Data([0, 1, 2, 3]))
+
+        try store.upsertRetrievalHealth(
+            RetrievalHealthRecord(
+                subsystem: .projection,
+                status: .degraded,
+                errorCode: "PROJECTOR_TIMEOUT",
+                errorMessage: "Projection worker exceeded lease",
+                detailsJSON: "{\"queueDepth\":12}",
+                observedAt: now,
+                updatedAt: now
+            )
+        )
+        let healthRows = try store.fetchRetrievalHealth()
+        XCTAssertEqual(healthRows.count, 1)
+        XCTAssertEqual(healthRows.first?.subsystem, .projection)
+        XCTAssertEqual(healthRows.first?.status, .degraded)
+        XCTAssertEqual(healthRows.first?.errorCode, "PROJECTOR_TIMEOUT")
+    }
+
+    func test_projectionJobs_queueOrdering_and_failureRetryState() throws {
+        let store = try makeInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_100_000)
+
+        try store.enqueueProjectionJob(
+            ProjectionJobRecord(
+                id: "job-ready",
+                jobType: .project,
+                status: .queued,
+                priority: 1,
+                scheduledAt: base,
+                availableAt: base,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+        try store.enqueueProjectionJob(
+            ProjectionJobRecord(
+                id: "job-later",
+                jobType: .project,
+                status: .queued,
+                priority: 1,
+                scheduledAt: base,
+                availableAt: base.addingTimeInterval(120),
+                createdAt: base.addingTimeInterval(1),
+                updatedAt: base.addingTimeInterval(1)
+            )
+        )
+        try store.enqueueProjectionJob(
+            ProjectionJobRecord(
+                id: "job-low-priority",
+                jobType: .project,
+                status: .queued,
+                priority: 20,
+                scheduledAt: base,
+                availableAt: base,
+                createdAt: base.addingTimeInterval(2),
+                updatedAt: base.addingTimeInterval(2)
+            )
+        )
+
+        let queued = try store.fetchProjectionJobs(statuses: [.queued], limit: 10)
+        XCTAssertEqual(queued.map(\.id), ["job-ready", "job-later", "job-low-priority"])
+
+        let retryAt = base.addingTimeInterval(300)
+        try store.markProjectionJobFailed(
+            id: "job-ready",
+            errorCode: "EMBEDDING_UNAVAILABLE",
+            errorMessage: "Embedder offline",
+            retryAt: retryAt,
+            updatedAt: retryAt
+        )
+
+        let failed = try store.fetchProjectionJobs(statuses: [.failed], limit: 10)
+        XCTAssertEqual(failed.count, 1)
+        guard let failedJob = failed.first else {
+            return XCTFail("Expected one failed job record")
+        }
+        XCTAssertEqual(failedJob.id, "job-ready")
+        XCTAssertEqual(failedJob.attempts, 1)
+        XCTAssertEqual(failedJob.lastErrorCode, "EMBEDDING_UNAVAILABLE")
+        XCTAssertEqual(failedJob.availableAt.timeIntervalSince1970, retryAt.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    private func makeInMemoryStore() throws -> DataStore {
+        let queue = try DatabaseQueue(path: ":memory:")
+        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
 }
