@@ -45,6 +45,34 @@ struct BurnBarAppPaths {
         supportDirectory.appendingPathComponent(BurnBarIdentity.databaseFileName)
     }
 
+    var providerQuotaSnapshotsURL: URL {
+        supportDirectory.appendingPathComponent("provider_quotas.json")
+    }
+
+    var claudeStatuslineBridgeScriptURL: URL {
+        supportDirectory.appendingPathComponent("claude_statusline_bridge.sh")
+    }
+
+    var claudeStatuslineSnapshotURL: URL {
+        supportDirectory.appendingPathComponent("claude_statusline_snapshot.json")
+    }
+
+    var claudeStatuslineBridgeMetadataURL: URL {
+        supportDirectory.appendingPathComponent("claude_statusline_bridge_metadata.json")
+    }
+
+    var claudeQuotaBridgeScriptURL: URL {
+        claudeStatuslineBridgeScriptURL
+    }
+
+    var claudeQuotaSnapshotURL: URL {
+        claudeStatuslineSnapshotURL
+    }
+
+    var claudeQuotaBridgeMetadataURL: URL {
+        claudeStatuslineBridgeMetadataURL
+    }
+
     var legacyDatabaseCandidates: [URL] {
         var candidates = [supportDirectory.appendingPathComponent(BurnBarIdentity.databaseFileName)]
         for legacyName in BurnBarIdentity.legacyDatabaseFileNames {

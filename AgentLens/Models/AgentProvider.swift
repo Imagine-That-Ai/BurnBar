@@ -232,6 +232,16 @@ struct TokenUsage: Codable, Identifiable, Hashable {
             return String(format: "%ds", seconds)
         }
     }
+
+    /// Whether this session's time span overlaps `dateRange` (inclusive `ClosedRange` semantics).
+    /// Using interval overlap instead of `range.contains(startTime)` includes sessions that
+    /// started before the window but ended inside it (or span it), matching user expectations
+    /// for "Today" / "Last 7 days" etc.
+    func intersects(dateRange: ClosedRange<Date>) -> Bool {
+        let s = min(startTime, endTime)
+        let e = max(startTime, endTime)
+        return s <= dateRange.upperBound && e >= dateRange.lowerBound
+    }
 }
 
 // MARK: - Daily Summary

@@ -1,10 +1,18 @@
+import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { promisify } from "node:util";
+
 import * as vscode from "vscode";
 import { BurnBarExtensionController } from "../state/controller";
 import { buildPanelViewModel } from "../state/panelViewModel";
 import type { BurnBarJSONValue } from "../types";
 import type { BurnBarPanelWebviewMessage } from "./panelProtocol";
 import { buildPanelHtml } from "./panelHtml";
+
+const execFileAsync = promisify(execFile);
+
+/** Bundle ID of the macOS menu bar app (see project.yml BurnBar target). */
+const BURNBAR_MACOS_BUNDLE_ID = "com.burnbar.app";
 
 export class BurnBarPanelView implements vscode.WebviewViewProvider {
   public static readonly viewType = "burnbar.panel";
@@ -36,9 +44,12 @@ export class BurnBarPanelView implements vscode.WebviewViewProvider {
     const jsUri = webviewView.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, "src", "webview", "panel.js")
     );
+    const logoUri = webviewView.webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extensionUri, "media", "app-icon-128.png")
+    );
     const nonce = generateNonce();
 
-    webviewView.webview.html = buildPanelHtml(webviewView.webview, cssUri, jsUri, nonce);
+    webviewView.webview.html = buildPanelHtml(webviewView.webview, cssUri, jsUri, logoUri, nonce);
 
     // Post initial snapshot
     this.postSnapshot();
@@ -70,7 +81,9 @@ export class BurnBarPanelView implements vscode.WebviewViewProvider {
     if (!this.view) {
       return;
     }
-    const viewModel = buildPanelViewModel(this.controller.snapshot);
+    const viewModel = buildPanelViewModel(this.controller.snapshot, {
+      showOpenBurnBarApp: process.platform === "darwin"
+    });
     void this.view.webview.postMessage({ type: "snapshot", viewModel });
   }
 
@@ -119,6 +132,17 @@ export class BurnBarPanelView implements vscode.WebviewViewProvider {
           break;
         case "rejectRun":
           await this.controller.respondToApproval(message.runId, "reject");
+          break;
+        case "openApp":
+          if (process.platform === "darwin") {
+            try {
+              await execFileAsync("open", ["-b", BURNBAR_MACOS_BUNDLE_ID]);
+            } catch {
+              void vscode.window.showWarningMessage(
+                "Could not open BurnBar. Install the BurnBar app, then try again."
+              );
+            }
+          }
           break;
       }
     } catch (error) {

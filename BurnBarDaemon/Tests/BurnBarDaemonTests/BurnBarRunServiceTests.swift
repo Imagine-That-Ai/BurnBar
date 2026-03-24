@@ -225,6 +225,41 @@ final class BurnBarRunServiceTests: XCTestCase {
         XCTAssertEqual(listedRuns.runs.first?.runID, run.runID)
     }
 
+    func testCreateRunSkipsIncompatiblePersistedCheckpointFiles() async throws {
+        let harness = try makeHarness(name: "skip-invalid-checkpoint")
+        let clientID = BurnBarClientID(rawValue: "client-invalid-checkpoint")
+        let sessionID = BurnBarSessionID(rawValue: "session-invalid-checkpoint")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Checkpoint Client",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let checkpointsDirectory = harness.rootURL.appendingPathComponent("run-checkpoints", isDirectory: true)
+        try FileManager.default.createDirectory(at: checkpointsDirectory, withIntermediateDirectories: true)
+        let staleCheckpointURL = checkpointsDirectory.appendingPathComponent("stale-run.json", isDirectory: false)
+        try #"{"runID":"stale-run","phase":"planning"}"#
+            .data(using: .utf8)?
+            .write(to: staleCheckpointURL, options: .atomic)
+
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "search for BurnBarRunService",
+                modelID: "glm-5"
+            )
+        )
+
+        XCTAssertNotNil(createResponse.runID)
+        XCTAssertNotEqual(createResponse.phase, .failed)
+    }
+
     func testRunServiceCompletesThroughProviderExecutorPath() async throws {
         let harness = try makeHarness(name: "provider-executor")
         let clientID = BurnBarClientID(rawValue: "client-provider")

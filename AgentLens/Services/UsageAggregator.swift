@@ -10,6 +10,16 @@ enum ParserHealth {
     case notConfigured
 }
 
+// MARK: - Summary Queue Item
+
+struct SummaryQueueItem: Identifiable {
+    let id: String          // conversation ID
+    let title: String
+    enum Status { case pending, processing, done, failed }
+    var status: Status = .pending
+    var provider: String?   // set when done
+}
+
 // MARK: - Usage Aggregator
 
 @Observable
@@ -20,9 +30,19 @@ final class UsageAggregator {
     private weak var cloudSync: CloudSyncService?
     private weak var sessionMirror: ICloudSessionMirrorService?
     private let settingsManager: SettingsManager
+    private let providerAPIKeyStore: ProviderAPIKeyStore
     private(set) var usageAPIService: ProviderUsageAPIService?
+    private let quotaService: ProviderQuotaService
+    private var hasCompletedInitialSummarySweep = false
 
     private(set) var isRefreshing = false
+    private(set) var isSummarizing = false
+    private(set) var summaryProgressDone: Int = 0
+    private(set) var summaryProgressTotal: Int = 0
+    private(set) var summaryCurrentTitle: String = ""
+    private(set) var summaryQueue: [SummaryQueueItem] = []
+    /// Seconds remaining until the time limit, nil if no limit is set.
+    private(set) var summaryTimeRemaining: TimeInterval? = nil
     private(set) var lastRefresh: Date?
     private(set) var errors: [AgentProvider: String] = [:]
     private(set) var parserHealth: [AgentProvider: ParserHealth] = [:]
@@ -34,13 +54,17 @@ final class UsageAggregator {
         cloudSync: CloudSyncService? = nil,
         sessionMirror: ICloudSessionMirrorService? = nil,
         settingsManager: SettingsManager = .shared,
-        usageAPIService: ProviderUsageAPIService? = nil
+        usageAPIService: ProviderUsageAPIService? = nil,
+        providerAPIKeyStore: ProviderAPIKeyStore = .shared,
+        quotaService: ProviderQuotaService = .shared
     ) {
         self.dataStore = dataStore
         self.cloudSync = cloudSync
         self.sessionMirror = sessionMirror
         self.settingsManager = settingsManager
         self.usageAPIService = usageAPIService
+        self.providerAPIKeyStore = providerAPIKeyStore
+        self.quotaService = quotaService
         self.parsers = [
             .factory: FactoryDroidParser(),
             .claudeCode: ClaudeCodeParser(),
@@ -115,11 +139,15 @@ final class UsageAggregator {
         // Unblock scan UI immediately after local parsing/persistence completes.
         isRefreshing = false
 
+        launchAutoSummarySweep()
+
         // Fetch from provider billing APIs (complementary to log parsing)
         if let apiService = usageAPIService, !apiService.configuredProviders.isEmpty {
             let thirtyDaysAgo = Date().addingTimeInterval(-30 * 86400)
             apiUsages = await apiService.fetchAll(since: thirtyDaysAgo)
         }
+
+        await quotaService.refreshAll(dataStore: dataStore)
 
         // Upload unsynced rows to Firestore (no-op if not signed in)
         await cloudSync?.uploadPending()
@@ -157,9 +185,531 @@ final class UsageAggregator {
             }
             dataStore.refresh()
             errors.removeValue(forKey: provider)
+            launchAutoSummarySweep()
+            if ProviderQuotaService.supportedProviders.contains(provider) {
+                await quotaService.refresh(provider: provider, dataStore: dataStore)
+            }
         } catch {
             errors[provider] = error.localizedDescription
         }
+    }
+}
+
+private struct SessionSummaryPayload: Decodable {
+    let title: String
+    let summary: String
+}
+
+private struct AutoSummaryResult {
+    let title: String
+    let summary: String
+    let provider: SummaryProviderID
+    let model: String
+    let estimatedCostUSD: Double
+}
+
+private extension UsageAggregator {
+    func launchAutoSummarySweep() {
+        guard settingsManager.conversationIndexingEnabled,
+              settingsManager.autoSessionSummariesEnabled else { return }
+
+        Task(priority: .utility) { [weak self] in
+            await self?.runAutoSummarySweep()
+        }
+    }
+
+    /// Called from `withTaskGroup` via `MainActor.run` so queue / store updates stay on the main actor.
+    func recordParallelSummaryResult(id: String, result: AutoSummaryResult?, failedIDs: inout Set<String>) {
+        if let result {
+            try? dataStore.updateConversationSummary(
+                id: id, title: result.title, summary: result.summary,
+                provider: result.provider.rawValue, model: result.model,
+                runCostUSD: result.estimatedCostUSD
+            )
+            if let idx = summaryQueue.firstIndex(where: { $0.id == id }) {
+                summaryQueue[idx].status = .done
+                summaryQueue[idx].provider = result.provider.rawValue
+            }
+        } else {
+            failedIDs.insert(id)
+            if let idx = summaryQueue.firstIndex(where: { $0.id == id }) {
+                summaryQueue[idx].status = .failed
+            }
+        }
+        summaryProgressDone += 1
+    }
+
+    func markSummaryItemProcessing(_ conversation: ConversationRecord) {
+        if let idx = summaryQueue.firstIndex(where: { $0.id == conversation.id }) {
+            summaryQueue[idx].status = .processing
+        }
+        summaryCurrentTitle = conversation.inferredTaskTitle.isEmpty
+            ? conversation.sessionId : conversation.inferredTaskTitle
+    }
+
+    func runAutoSummarySweep() async {
+        guard settingsManager.conversationIndexingEnabled,
+              settingsManager.autoSessionSummariesEnabled,
+              !isSummarizing else { return }
+
+        isSummarizing = true
+        summaryProgressDone = 0
+        summaryProgressTotal = 0
+        summaryCurrentTitle = ""
+        summaryQueue = []
+        summaryTimeRemaining = nil
+        defer {
+            isSummarizing = false
+            summaryCurrentTitle = ""
+            summaryTimeRemaining = nil
+        }
+
+        let isInitialSweep = !hasCompletedInitialSummarySweep
+        let batchLimit = isInitialSweep
+            ? max(settingsManager.summaryFirstLoadBatchSize, 1)
+            : max(settingsManager.summaryBatchSize, 1)
+
+        // Compute optional wall-clock deadline
+        let limitMinutes = settingsManager.summaryTimeLimitMinutes
+        let deadline: Date? = limitMinutes > 0
+            ? Date().addingTimeInterval(Double(limitMinutes) * 60)
+            : nil
+
+        // Start a 1-second ticker that publishes remaining time
+        if let deadline {
+            Task { @MainActor [weak self] in
+                while self?.isSummarizing == true {
+                    let remaining = deadline.timeIntervalSinceNow
+                    self?.summaryTimeRemaining = max(remaining, 0)
+                    if remaining <= 0 { break }
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                }
+            }
+        }
+
+        // Get real total up-front
+        let allPending = (try? dataStore.fetchConversationsNeedingSummary(limit: 10_000)) ?? []
+        summaryProgressTotal = allPending.count
+        summaryQueue = allPending.map {
+            SummaryQueueItem(
+                id: $0.id,
+                title: $0.inferredTaskTitle.isEmpty ? $0.sessionId : $0.inferredTaskTitle
+            )
+        }
+
+        var failedIDs = Set<String>()
+        var loopsRemaining = isInitialSweep ? 12 : 1
+
+        while loopsRemaining > 0, !Task.isCancelled {
+            // Respect time limit
+            if let deadline, Date() >= deadline { break }
+
+            guard var candidates = try? dataStore.fetchConversationsNeedingSummary(limit: batchLimit),
+                  !candidates.isEmpty else { break }
+            candidates.removeAll { failedIDs.contains($0.id) }
+            if candidates.isEmpty { break }
+
+            // Unified parallel pool — local and cloud compete for the same slots.
+            // summarizeConversation already falls through the full provider list, so
+            // sessions that miss local capacity naturally spill to cloud and vice versa.
+            let maxConcurrent = max(settingsManager.summaryMaxConcurrency, 1)
+
+            await withTaskGroup(of: (String, AutoSummaryResult?).self) { group in
+                var inFlight = 0
+
+                for conversation in candidates {
+                    if Task.isCancelled { break }
+                    if let deadline, Date() >= deadline { break }
+
+                    await MainActor.run { markSummaryItemProcessing(conversation) }
+
+                    if inFlight >= maxConcurrent, let (id, result) = await group.next() {
+                        await MainActor.run {
+                            recordParallelSummaryResult(id: id, result: result, failedIDs: &failedIDs)
+                        }
+                        inFlight -= 1
+                    }
+
+                    // Check deadline again after draining
+                    if let deadline, Date() >= deadline { break }
+
+                    let conv = conversation
+                    group.addTask { [weak self] in
+                        guard let self else { return (conv.id, nil) }
+                        return (conv.id, await self.summarizeConversation(conv))
+                    }
+                    inFlight += 1
+                }
+
+                for await (id, result) in group {
+                    await MainActor.run {
+                        recordParallelSummaryResult(id: id, result: result, failedIDs: &failedIDs)
+                    }
+                }
+            }
+
+            loopsRemaining -= 1
+            if !isInitialSweep || candidates.count < batchLimit { break }
+        }
+
+        hasCompletedInitialSummarySweep = true
+    }
+
+    func summarizeConversation(_ conversation: ConversationRecord) async -> AutoSummaryResult? {
+        let prompt = ContextBuilder.summarizeSessionJSONPrompt(
+            fullText: conversation.fullText,
+            maxChars: settingsManager.summaryMaxPromptChars
+        )
+
+        for provider in settingsManager.summaryProviderOrder {
+            switch provider {
+            case .local:
+                if let payload = await summarizeWithOllama(prompt: prompt) {
+                    let clean = sanitizeSummaryPayload(payload, fallbackTitle: conversation.inferredTaskTitle)
+                    if let clean {
+                        return AutoSummaryResult(
+                            title: clean.title,
+                            summary: clean.summary,
+                            provider: .local,
+                            model: settingsManager.summaryLocalModel,
+                            estimatedCostUSD: 0
+                        )
+                    }
+                }
+
+            case .mlx:
+                let base = settingsManager.summaryMLXBaseURL
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                guard !base.isEmpty, !settingsManager.summaryMLXModel.isEmpty else { continue }
+                if let result = await summarizeWithOpenAICompatibleProvider(
+                    provider: .mlx,
+                    baseURL: base + "/v1",
+                    apiKey: "",
+                    model: settingsManager.summaryMLXModel,
+                    prompt: prompt,
+                    fallbackTitle: conversation.inferredTaskTitle
+                ) {
+                    return result
+                }
+
+            case .minimax:
+                guard let key = resolveAPIKey(for: .minimax) else { continue }
+                let model = settingsManager.summaryMiniMaxModel
+                if let result = await summarizeWithOpenAICompatibleProvider(
+                    provider: .minimax,
+                    baseURL: "https://api.minimax.io/v1",
+                    apiKey: key,
+                    model: model,
+                    prompt: prompt,
+                    fallbackTitle: conversation.inferredTaskTitle
+                ) {
+                    return result
+                }
+
+            case .openrouter:
+                guard let key = resolveAPIKey(for: .openrouter) else { continue }
+                let models = [settingsManager.summaryOpenRouterPrimaryModel, settingsManager.summaryOpenRouterFallbackModel]
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+
+                for model in models {
+                    if let result = await summarizeWithOpenAICompatibleProvider(
+                        provider: .openrouter,
+                        baseURL: "https://openrouter.ai/api/v1",
+                        apiKey: key,
+                        model: model,
+                        prompt: prompt,
+                        fallbackTitle: conversation.inferredTaskTitle,
+                        openRouterHeaders: true
+                    ) {
+                        return result
+                    }
+                }
+
+            case .zai:
+                guard let key = resolveAPIKey(for: .zai) else { continue }
+                let model = settingsManager.summaryZaiModel
+                if let result = await summarizeWithOpenAICompatibleProvider(
+                    provider: .zai,
+                    baseURL: "https://api.z.ai/api/coding/paas/v4",
+                    apiKey: key,
+                    model: model,
+                    prompt: prompt,
+                    fallbackTitle: conversation.inferredTaskTitle
+                ) {
+                    return result
+                }
+            }
+        }
+
+        return nil
+    }
+
+    func summarizeWithOpenAICompatibleProvider(
+        provider: SummaryProviderID,
+        baseURL: String,
+        apiKey: String,
+        model: String,
+        prompt: String,
+        fallbackTitle: String,
+        openRouterHeaders: Bool = false
+    ) async -> AutoSummaryResult? {
+        let requestTimeout = settingsManager.summaryRequestTimeoutSeconds
+        let outputTokens = settingsManager.summaryMaxOutputTokens
+        let estimatedInputTokens = max(prompt.count / 4, 1)
+        let estimatedOutputTokens = max(outputTokens / 2, 100)
+        let estimatedCost = estimateCostUSD(
+            provider: provider,
+            model: model,
+            inputTokens: estimatedInputTokens,
+            outputTokens: estimatedOutputTokens
+        )
+
+        if provider != .local, provider != .mlx, exceedsCloudDailyCap(adding: estimatedCost) {
+            return nil
+        }
+
+        let retryCount = max(settingsManager.summaryRetryCount, 0)
+        for _ in 0...retryCount {
+            if Task.isCancelled { return nil }
+            guard let body = await callOpenAICompatibleCompletion(
+                baseURL: baseURL,
+                apiKey: apiKey,
+                model: model,
+                prompt: prompt,
+                timeout: requestTimeout,
+                maxOutputTokens: outputTokens,
+                includeOpenRouterHeaders: openRouterHeaders
+            ) else {
+                continue
+            }
+
+            guard let payload = parseSummaryPayload(from: body) else { continue }
+            let clean = sanitizeSummaryPayload(payload, fallbackTitle: fallbackTitle)
+            guard let clean else { continue }
+
+            let outputEstimate = max((clean.title.count + clean.summary.count) / 4, 60)
+            let finalCost = estimateCostUSD(
+                provider: provider,
+                model: model,
+                inputTokens: estimatedInputTokens,
+                outputTokens: outputEstimate
+            )
+
+            return AutoSummaryResult(
+                title: clean.title,
+                summary: clean.summary,
+                provider: provider,
+                model: model,
+                estimatedCostUSD: max(finalCost, 0)
+            )
+        }
+        return nil
+    }
+
+    func summarizeWithOllama(prompt: String) async -> SessionSummaryPayload? {
+        let base = settingsManager.summaryLocalBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let baseURL = URL(string: base), !settingsManager.summaryLocalModel.isEmpty else { return nil }
+        let endpoint = baseURL.appendingPathComponent("api/generate")
+
+        var request = URLRequest(url: endpoint)
+        request.timeoutInterval = settingsManager.summaryRequestTimeoutSeconds
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let payload: [String: Any] = [
+            "model": settingsManager.summaryLocalModel,
+            "prompt": prompt,
+            "stream": false,
+            "options": [
+                "temperature": 0.1,
+                "num_predict": settingsManager.summaryMaxOutputTokens
+            ]
+        ]
+
+        guard let body = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
+        request.httpBody = body
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let text = json["response"] as? String else {
+            return nil
+        }
+
+        return parseSummaryPayload(from: text)
+    }
+
+    func callOpenAICompatibleCompletion(
+        baseURL: String,
+        apiKey: String,
+        model: String,
+        prompt: String,
+        timeout: Double,
+        maxOutputTokens: Int,
+        includeOpenRouterHeaders: Bool
+    ) async -> String? {
+        guard let url = URL(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines) + "/chat/completions") else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = timeout
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if includeOpenRouterHeaders {
+            request.setValue("https://burnbar.app", forHTTPHeaderField: "HTTP-Referer")
+            request.setValue("BurnBar", forHTTPHeaderField: "X-Title")
+        }
+
+        let body: [String: Any] = [
+            "model": model,
+            "messages": [
+                ["role": "system", "content": "Return strict JSON with keys title and summary."],
+                ["role": "user", "content": prompt]
+            ],
+            "temperature": 0.1,
+            "max_tokens": maxOutputTokens
+        ]
+
+        guard let requestBody = try? JSONSerialization.data(withJSONObject: body) else { return nil }
+        request.httpBody = requestBody
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = root["choices"] as? [[String: Any]],
+              let first = choices.first,
+              let message = first["message"] as? [String: Any] else {
+            return nil
+        }
+
+        if let content = message["content"] as? String {
+            return content
+        }
+        if let blocks = message["content"] as? [[String: Any]] {
+            let joined = blocks.compactMap { block -> String? in
+                if let text = block["text"] as? String { return text }
+                return nil
+            }.joined()
+            return joined.isEmpty ? nil : joined
+        }
+        return nil
+    }
+
+    func parseSummaryPayload(from text: String) -> SessionSummaryPayload? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let data = trimmed.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode(SessionSummaryPayload.self, from: data) {
+            return decoded
+        }
+
+        guard let start = trimmed.firstIndex(of: "{"),
+              let end = trimmed.lastIndex(of: "}") else {
+            return nil
+        }
+        let candidate = String(trimmed[start...end])
+        guard let data = candidate.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(SessionSummaryPayload.self, from: data)
+    }
+
+    func sanitizeSummaryPayload(_ payload: SessionSummaryPayload, fallbackTitle: String) -> SessionSummaryPayload? {
+        let cleanedSummary = payload.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedSummary.isEmpty else { return nil }
+
+        let cleanedTitleRaw = payload.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedTitle = cleanedTitleRaw.isEmpty ? fallbackTitle : cleanedTitleRaw
+        let normalizedTitle = cleanedTitle
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let finalTitle = String(normalizedTitle.prefix(100))
+        let finalSummary = String(cleanedSummary.prefix(2_000))
+        guard !finalTitle.isEmpty else { return nil }
+        return SessionSummaryPayload(title: finalTitle, summary: finalSummary)
+    }
+
+    func resolveAPIKey(for provider: SummaryProviderID) -> String? {
+        func nonEmpty(_ value: String?) -> String? {
+            guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+                return nil
+            }
+            return trimmed
+        }
+
+        func cursorConnectorKey(for account: String) -> String? {
+            let keychain = KeychainStore()
+            let raw = try? keychain.string(for: account)
+            return nonEmpty(raw ?? nil)
+        }
+
+        let env = ProcessInfo.processInfo.environment
+        switch provider {
+        case .local, .mlx:
+            return nil
+        case .openrouter:
+            return nonEmpty(providerAPIKeyStore.apiKey(for: "openrouter"))
+                ?? nonEmpty(env["OPENROUTER_API_KEY"])
+        case .minimax:
+            return nonEmpty(providerAPIKeyStore.apiKey(for: "minimax"))
+                ?? cursorConnectorKey(for: "provider.minimax.apiKey")
+                ?? nonEmpty(env["MINIMAX_API_KEY"])
+        case .zai:
+            return nonEmpty(providerAPIKeyStore.apiKey(for: "zai"))
+                ?? cursorConnectorKey(for: "provider.zai.apiKey")
+                ?? nonEmpty(env["ZAI_API_KEY"])
+        }
+    }
+
+    func exceedsCloudDailyCap(adding estimatedCost: Double) -> Bool {
+        guard let cap = settingsManager.summaryDailyCapUSD else { return false }
+        let spentToday = (try? dataStore.summarySpendToday()) ?? 0
+        return spentToday + max(estimatedCost, 0) > cap
+    }
+
+    func estimateCostUSD(
+        provider: SummaryProviderID,
+        model: String,
+        inputTokens: Int,
+        outputTokens: Int
+    ) -> Double {
+        let normalized = model.lowercased()
+        let inputPerM: Double
+        let outputPerM: Double
+
+        switch provider {
+        case .local, .mlx:
+            return 0
+        case .minimax:
+            inputPerM = 0.69
+            outputPerM = 0.69
+        case .zai:
+            inputPerM = 0.07
+            outputPerM = 0.07
+        case .openrouter:
+            if normalized.contains("gpt-5-nano") {
+                inputPerM = 0.05
+                outputPerM = 0.40
+            } else if normalized.contains("qwen3.5-9b") {
+                inputPerM = 0.05
+                outputPerM = 0.15
+            } else if normalized.contains("qwen") {
+                inputPerM = 0.08
+                outputPerM = 0.24
+            } else {
+                inputPerM = 0.10
+                outputPerM = 0.40
+            }
+        }
+
+        return (Double(inputTokens) * inputPerM / 1_000_000)
+            + (Double(outputTokens) * outputPerM / 1_000_000)
     }
 }
 
@@ -168,7 +718,7 @@ final class UsageAggregator {
 /// Parses Copilot CLI sessions from ~/.copilot/session-state/*/events.jsonl.
 /// Post-Feb 2026 Copilot CLI persists assistant.usage and session.shutdown events with exact token counts.
 /// Falls back to CompactionProcessor log deltas for older CLI versions.
-final class CopilotParser: LogParser {
+final class CopilotParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .copilot
 
     func parse() async throws -> ParseResult {
@@ -480,7 +1030,7 @@ private struct CopilotMetadataSummary {
 
 /// Parses Aider analytics JSONL logs for exact per-message token usage.
 /// Requires user to configure: `analytics-log: ~/.aider/analytics.jsonl` in .aider.conf.yml
-final class AiderParser: LogParser {
+final class AiderParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .aider
 
     func parse() async throws -> ParseResult {
@@ -649,7 +1199,7 @@ private struct AiderSession {
 
 /// Parses Cursor's ai-code-tracking.db for code provenance data and model usage distribution.
 /// Token-level tracking requires the CursorConnector BYOK proxy.
-final class CursorParser: LogParser {
+final class CursorParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .cursor
 
     func parse() async throws -> ParseResult {
@@ -731,7 +1281,7 @@ final class CursorParser: LogParser {
 
 /// Reads token usage from Codex's SQLite store and JSONL session files.
 /// Prefers exact token breakdowns from JSONL `token_count` events over the aggregate `tokens_used` in SQLite.
-final class CodexParser: LogParser {
+final class CodexParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .codex
 
     func parse() async throws -> ParseResult {
@@ -886,7 +1436,7 @@ final class CodexParser: LogParser {
 
 // MARK: - Model Filter Parser (for Zai/MiniMax which use Factory sessions)
 
-final class ModelFilterParser: LogParser {
+final class ModelFilterParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider
     private let modelPattern: String
 

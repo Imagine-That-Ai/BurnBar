@@ -5,7 +5,7 @@ import Foundation
 /// Scaffold parser for Augment Code VS Code extension.
 /// Checks globalStorage directory and attempts best-effort JSON parsing.
 /// Returns empty if the format is unrecognizable.
-final class AugmentParser: LogParser {
+final class AugmentParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .augment
 
     func parse() async throws -> ParseResult {

@@ -104,19 +104,20 @@ struct MenuBarPopoverView: View {
 
                 Spacer()
 
-                GlassIconButton(
-                    icon: "arrow.counterclockwise",
-                    action: runRecount
-                )
+                GlassIconButton(action: runRecount) {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
                 .disabled(isScanning || aggregator == nil)
-                .help("Recount from scratch (clear board and scan again)")
+                .help("Rebuild usage totals from saved sessions (clears derived numbers, then tallies again).")
 
-                GlassIconButton(
-                    icon: isScanning ? "arrow.triangle.2.circlepath" : "arrow.clockwise",
-                    isLoading: isScanning,
-                    action: runScan
-                )
-                .help("Scan for new sessions")
+                GlassIconButton(isLoading: isScanning, action: runScan) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+                .help("Import new and updated sessions from your agent log folders.")
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
             .padding(.vertical, DesignSystem.Spacing.md)
@@ -304,12 +305,13 @@ struct MenuBarPopoverView: View {
                 onOpenSettings()
             }
 
-            GlassIconButton(
-                icon: "power",
-                action: {
-                    NSApplication.shared.terminate(nil)
-                }
-            )
+            GlassIconButton(action: {
+                NSApplication.shared.terminate(nil)
+            }) {
+                Image(systemName: "power")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
         }
         .padding(DesignSystem.Spacing.md)
     }
@@ -540,10 +542,16 @@ struct GlassButton: View {
 
 // MARK: - Glass Icon Button
 
-struct GlassIconButton: View {
-    let icon: String
+struct GlassIconButton<Label: View>: View {
     var isLoading: Bool = false
     let action: () -> Void
+    @ViewBuilder private var label: () -> Label
+
+    init(isLoading: Bool = false, action: @escaping () -> Void, @ViewBuilder label: @escaping () -> Label) {
+        self.isLoading = isLoading
+        self.action = action
+        self.label = label
+    }
 
     var body: some View {
         Button(action: action) {
@@ -565,9 +573,7 @@ struct GlassIconButton: View {
                     ProgressView()
                         .controlSize(.mini)
                 } else {
-                    Image(systemName: icon)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    label()
                 }
             }
             .frame(width: 28, height: 28)

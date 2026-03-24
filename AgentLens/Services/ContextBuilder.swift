@@ -98,4 +98,29 @@ enum ContextBuilder {
         \(body)
         """
     }
+
+    static func summarizeSessionJSONPrompt(fullText: String, maxChars: Int = 80_000) -> String {
+        let trimmed: String
+        if fullText.count > maxChars {
+            trimmed = String(fullText.prefix(maxChars / 4))
+                + "\n\n… [middle section omitted for length] …\n\n"
+                + String(fullText.suffix(maxChars - (maxChars / 4)))
+        } else {
+            trimmed = fullText
+        }
+
+        return """
+        You are generating a structured session summary for a coding transcript.
+        Return strict JSON only with this schema:
+        {"title":"string","summary":"string"}
+
+        Rules:
+        - title: 4-12 words, specific and searchable, no trailing punctuation.
+        - summary: 2-4 short sentences with concrete technical details and current state.
+        - no markdown, no code fences, no extra keys.
+
+        Session transcript:
+        \(trimmed)
+        """
+    }
 }

@@ -129,14 +129,15 @@ enum InsightEngine {
         }
 
         let todayProviders = Set(todayUsages.map { $0.provider })
+        let todaySessionCount = distinctSessionCount(in: todayUsages)
         insights.append(
             Insight(
                 type: .newSessions,
                 icon: "bolt.fill",
                 sentiment: .neutral,
-                headline: "\(todayUsages.count) new session\(todayUsages.count == 1 ? "" : "s") today",
+                headline: "\(todaySessionCount) new session\(todaySessionCount == 1 ? "" : "s") today",
                 detail: "Across \(todayProviders.count) provider\(todayProviders.count == 1 ? "" : "s")",
-                metric: Double(todayUsages.count),
+                metric: Double(todaySessionCount),
                 delta: nil
             )
         )
@@ -202,7 +203,7 @@ enum InsightEngine {
         }
 
         if todayUsages.isEmpty {
-            let total = usages.count
+            let total = distinctSessionCount(in: usages)
             return Insight(
                 type: .narrative,
                 icon: "bed.double.fill",
@@ -214,7 +215,7 @@ enum InsightEngine {
             )
         }
 
-        let n = todayUsages.count
+        let n = distinctSessionCount(in: todayUsages)
         let cost = todayUsages.reduce(0.0) { $0 + $1.cost }
         let providers = Set(todayUsages.map { $0.provider.displayName })
         let providerList = providers.sorted().joined(separator: " & ")
@@ -246,6 +247,21 @@ enum InsightEngine {
             metric: cost,
             delta: nil
         )
+    }
+
+    private static func distinctSessionCount(in usages: [TokenUsage]) -> Int {
+        Set(usages.map { usage in
+            "\(usage.provider.rawValue)|\(canonicalSessionID(for: usage))"
+        }).count
+    }
+
+    private static func canonicalSessionID(for usage: TokenUsage) -> String {
+        if usage.provider == .claudeCode {
+            return usage.sessionId.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
+                .first
+                .map(String.init) ?? usage.sessionId
+        }
+        return usage.sessionId
     }
 
     private static func topProvider(in usages: [TokenUsage]) -> AgentProvider? {

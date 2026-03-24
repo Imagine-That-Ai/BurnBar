@@ -75,6 +75,7 @@ export class BurnBarExtensionController {
   private disposed = false;
   private toolLoopRunning = false;
   private toolLoopRequested = false;
+  private refreshQueue: Promise<void> = Promise.resolve();
   private state: BurnBarState = {
     connectionStatus: "connecting",
     clientAttached: false,
@@ -117,6 +118,12 @@ export class BurnBarExtensionController {
   }
 
   async refresh(): Promise<void> {
+    const queuedRefresh = this.refreshQueue.catch(() => undefined).then(() => this.performRefresh());
+    this.refreshQueue = queuedRefresh;
+    await queuedRefresh;
+  }
+
+  private async performRefresh(): Promise<void> {
     this.patchState({
       connectionStatus: "connecting",
       lastError: undefined,
@@ -165,17 +172,21 @@ export class BurnBarExtensionController {
 
       if (clientAttached) {
         try {
-          const polled = await this.dependencies.client.pollRuns({
-            clientID: this.clientID,
-            sessionID: this.sessionID
-          });
+          const polled = await this.withSessionRetry(() =>
+            this.dependencies.client.pollRuns({
+              clientID: this.clientID,
+              sessionID: this.sessionID
+            })
+          );
           daemonRuns = polled.runs;
           pendingToolCalls = polled.pendingToolCalls;
           arbitration = polled.arbitration ?? undefined;
         } catch (error) {
           const message = error instanceof Error ? error.message : "Run poll request failed.";
           if (message.includes("run.poll")) {
-            daemonRuns = await this.dependencies.client.listRuns({ clientID: this.clientID });
+            daemonRuns = await this.withSessionRetry(() =>
+              this.dependencies.client.listRuns({ clientID: this.clientID })
+            );
             pendingToolCalls = [];
             arbitration = undefined;
           } else {
@@ -266,10 +277,12 @@ export class BurnBarExtensionController {
   async getRunDetail(runId: string): Promise<BurnBarRunDetailResponse | undefined> {
     await this.ensureClientAttachment();
 
-    const detail = await this.dependencies.client.getRun({
-      runID: runId,
-      clientID: this.clientID
-    });
+    const detail = await this.withSessionRetry(() =>
+      this.dependencies.client.getRun({
+        runID: runId,
+        clientID: this.clientID
+      })
+    );
 
     const selectedRunId = this.state.selectedRunId === runId ? runId : this.state.selectedRunId;
     this.patchState({
@@ -450,17 +463,36 @@ export class BurnBarExtensionController {
 
   private async withControllerRetry<T>(operation: () => Promise<T>): Promise<T> {
     try {
-      return await operation();
+      return await this.withSessionRetry(operation);
     } catch (error) {
       if (!isObserverControlError(error)) {
         throw error;
       }
 
-      const arbitration = await this.dependencies.client.claimControl({
-        clientID: this.clientID,
-        sessionID: this.sessionID
-      });
+      const arbitration = await this.withSessionRetry(() =>
+        this.dependencies.client.claimControl({
+          clientID: this.clientID,
+          sessionID: this.sessionID
+        })
+      );
       this.patchState({ arbitration });
+      return await this.withSessionRetry(operation);
+    }
+  }
+
+  private async withSessionRetry<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isSessionMismatchError(error)) {
+        throw error;
+      }
+
+      await this.attachClientSession();
+      this.patchState({
+        clientAttached: true,
+        lastError: undefined
+      });
       return await operation();
     }
   }
@@ -481,10 +513,12 @@ export class BurnBarExtensionController {
     }
 
     try {
-      const detail = await this.dependencies.client.getRun({
-        runID: runId,
-        clientID: this.clientID
-      });
+      const detail = await this.withSessionRetry(() =>
+        this.dependencies.client.getRun({
+          runID: runId,
+          clientID: this.clientID
+        })
+      );
 
       if (!this.disposed && this.state.selectedRunId === runId) {
         this.patchState({
@@ -544,31 +578,37 @@ export class BurnBarExtensionController {
     }
 
     while (!this.disposed) {
-      const claimed = await this.dependencies.client.executeTool({
-        clientID: this.clientID,
-        sessionID: this.sessionID
-      });
+      const claimed = await this.withControllerRetry(() =>
+        this.dependencies.client.executeTool({
+          clientID: this.clientID,
+          sessionID: this.sessionID
+        })
+      );
 
       if (claimed.disposition !== "dispatched" || !claimed.toolCall) {
         return;
       }
 
       const submission = await this.executeWorkspaceTool(claimed.toolCall);
-      await this.dependencies.client.submitToolResult({
-        clientID: this.clientID,
-        sessionID: this.sessionID,
-        ...submission
-      });
+      await this.withControllerRetry(() =>
+        this.dependencies.client.submitToolResult({
+          clientID: this.clientID,
+          sessionID: this.sessionID,
+          ...submission
+        })
+      );
       await this.refreshPolledRuns();
     }
   }
 
   private async refreshPolledRuns(): Promise<void> {
     try {
-      const polled = await this.dependencies.client.pollRuns({
-        clientID: this.clientID,
-        sessionID: this.sessionID
-      });
+      const polled = await this.withSessionRetry(() =>
+        this.dependencies.client.pollRuns({
+          clientID: this.clientID,
+          sessionID: this.sessionID
+        })
+      );
 
       this.patchState({
         daemonRuns: polled.runs,
@@ -711,6 +751,14 @@ function isObserverControlError(error: unknown): boolean {
 
   const message = error.message.toLowerCase();
   return message.includes("attached as an observer") && message.includes("cannot control runs");
+}
+
+function isSessionMismatchError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message.toLowerCase().includes("client session mismatch");
 }
 
 function chooseSelectedRunId(runs: BurnBarState["runs"], currentSelectedRunId?: string): string | undefined {

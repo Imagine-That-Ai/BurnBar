@@ -21,12 +21,20 @@ final class ClaudeConversationAccumulator {
 
     private let titleMax = 120
 
+    private static let iso8601Basic: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
     func ingest(jsonLine: [String: Any]) {
-        if let ts = jsonLine["timestamp"] as? String,
-           let date = ISO8601DateFormatter().date(from: ts) {
-            if startTime == nil { startTime = date }
-            endTime = date
-        }
+        applyTimeline(from: jsonLine)
 
         guard let type = jsonLine["type"] as? String else { return }
 
@@ -44,6 +52,50 @@ final class ClaudeConversationAccumulator {
         default:
             break
         }
+    }
+
+    /// Picks up timestamps from several Factory / Claude JSONL shapes (string ISO8601, epoch seconds/ms, camelCase keys).
+    private func applyTimeline(from json: [String: Any]) {
+        let keys = ["timestamp", "created_at", "createdAt"]
+        for key in keys {
+            if let s = json[key] as? String, let date = Self.parseFlexibleISO8601(s) {
+                noteTimeline(date)
+                return
+            }
+            if let n = json[key] as? NSNumber {
+                noteTimeline(Self.dateFromEpoch(n.doubleValue))
+                return
+            }
+            if let n = json[key] as? Double {
+                noteTimeline(Self.dateFromEpoch(n))
+                return
+            }
+            if let n = json[key] as? Int64 {
+                noteTimeline(Self.dateFromEpoch(Double(n)))
+                return
+            }
+            if let n = json[key] as? Int {
+                noteTimeline(Self.dateFromEpoch(Double(n)))
+                return
+            }
+        }
+    }
+
+    private func noteTimeline(_ date: Date) {
+        if startTime == nil { startTime = date }
+        endTime = date
+    }
+
+    private static func parseFlexibleISO8601(_ s: String) -> Date? {
+        if let d = iso8601Fractional.date(from: s) { return d }
+        if let d = iso8601Basic.date(from: s) { return d }
+        return nil
+    }
+
+    /// Interprets JSON numeric timestamps as seconds or milliseconds since 1970.
+    private static func dateFromEpoch(_ n: Double) -> Date {
+        let sec = n > 100_000_000_000 ? n / 1000.0 : n
+        return Date(timeIntervalSince1970: sec)
     }
 
     private func processContentBlocks(_ blocks: [[String: Any]], isAssistant: Bool) {

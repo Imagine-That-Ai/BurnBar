@@ -36,21 +36,23 @@ For the paranoid-and-proud crowd: analytics stay **local-first**. No API keys, n
 
 ## Provider support
 
-| Provider | Status | Log location | Confidence |
-|---|---|---|---|
-| Claude Code | Supported | `~/.claude/projects/*.jsonl` | Exact |
-| Factory (Droid) | Supported | `~/.factory/sessions/*.jsonl` | Exact |
-| Codex (OpenAI) | Partial | `~/.codex/state_5.sqlite` | Estimated |
-| Kimi (Moonshot) | Partial | `~/.kimi/sessions/*.jsonl` | Estimated |
-| Z.ai | Partial | via Factory sessions | Estimated |
-| MiniMax | Partial | via Factory sessions | Estimated |
-| Copilot | Planned | — | — |
-| Aider | Planned | — | — |
-| Cursor connector | Supported (optional) | Cursor BYOK + BurnBar local router | Exact |
+| Provider | Usage tracking | Source | Confidence | Quota reporting |
+|---|---|---|---|---|
+| Claude Code | Supported | `~/.claude/projects/*.jsonl` | Exact | Supported via Claude statusline bridge (5-hour / 7-day %) |
+| Factory (Droid) | Supported | `~/.factory/sessions/*.jsonl` | Exact | Estimated via plan tier + BurnBar-tracked monthly Factory tokens |
+| Codex (OpenAI) | Partial | `~/.codex/state_5.sqlite` + rollout JSONL | Estimated | Supported via local Codex session / CLI rate-limit percentages |
+| Kimi (Moonshot) | Partial | `~/.kimi/sessions/*.jsonl` | Estimated | Unavailable |
+| Z.ai | Partial | via Factory sessions | Estimated | Supported via official monitor quota endpoints |
+| MiniMax | Partial | via Factory sessions | Estimated | Supported for Token Plan via official remains endpoint |
+| Copilot | Planned | — | — | Unavailable |
+| Aider | Planned | — | — | Unavailable |
+| Cursor connector | Supported (optional) | Cursor BYOK + BurnBar local router | Exact | Unavailable |
 
 **Exact** = the log format actually told us the numbers; we're not guessing.
 
 **Estimated** = we applied math and hope — e.g. Codex may only give totals without an input/output split, so BurnBar shrugs and assumes 50/50. Costs everywhere use **public pricing tables**, not your invoice. Good for trends; bad for tax audits.
+
+Quota reporting is separate from spend history. Codex and Claude Code quota come from first-party local runtime/session signals, MiniMax and Z.ai use official API responses, and Factory / Droid remaining is an explicit estimate.
 
 ### Cursor agent provider scope (narrower on purpose)
 
@@ -187,7 +189,7 @@ BurnBar is a happy offline hermit by default. Cloud sync is for people who use m
 **Pieces:**
 
 - **Primary store:** GRDB + SQLite — fast, local, yours
-- **Sync store:** Firestore at `users/{uid}/usage/{deviceId}_{usageId}`
+- **Sync store:** Firestore under `users/{uid}/` — `usage`, `conversations` (optional metadata backup), `session_logs` (+ `chunks` for full log backup when enabled)
 - **Auth:** Firebase Auth — **Google** and/or **Sign in with Apple**
 - **Device identity:** random UUID in Keychain (survives reinstalls, judges silently)
 - **iCloud mirror (optional):** copies parsed session log files into your **personal** iCloud Drive folder for the app (`Documents/BurnBar/SessionMirror/...`). Independent of Firebase; see below.
@@ -196,18 +198,20 @@ BurnBar is a happy offline hermit by default. Cloud sync is for people who use m
 
 1. Create a [Firebase](https://console.firebase.google.com) project and add a **macOS** app with bundle ID `com.burnbar.app`.
 2. Enable **Authentication** providers: **Google** and **Apple** (and whatever else you need for your own sanity).
-3. Create a Firestore database (production mode) and deploy rules like:
+3. Create a Firestore database (production mode) and deploy rules that cover **every** collection the app uses (not only `usage`). If rules allow only `usage`, enabling **Back Up Session History** or full session-log backup yields **“Missing or insufficient permissions.”** Use a single subtree rule (same as [firestore.rules](firestore.rules) in this repo):
 
 ```
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/usage/{doc} {
+    match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
 ```
+
+   Paste into **Firebase Console → Firestore → Rules** and publish, or add `firestore.rules` to your Firebase CLI project and run `firebase deploy --only firestore:rules`.
 
 4. Download `GoogleService-Info.plist` → `AgentLens/Resources/GoogleService-Info.plist` (gitignored; never commit). See `AgentLens/Resources/GoogleService-Info.plist.example` for the shape of the thing.
 5. Configure the **Google Sign-In** URL scheme / OAuth client as Firebase/Google Cloud demand (the app ships `BurnBar-Info.plist` entries for the bundled client; yours will differ in a fork).

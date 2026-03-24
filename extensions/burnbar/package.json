@@ -4,6 +4,7 @@
   "description": "BurnBar sidebar shell for Cursor and VS Code.",
   "version": "0.0.1",
   "publisher": "burnbar",
+  "icon": "media/app-icon-128.png",
   "license": "UNLICENSED",
   "engines": {
     "vscode": "^1.95.0"

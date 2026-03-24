@@ -64,22 +64,56 @@ export class BurnBarRepairService implements BurnBarRepairServiceLike {
     }
 
     const launchctlDomain = `gui/${this.uid}`;
+    const launchctlServiceTarget = `${launchctlDomain}/${BURNBAR_DAEMON_LAUNCH_AGENT_LABEL}`;
 
     try {
-      await this.execFile("/bin/launchctl", ["bootout", launchctlDomain, this.paths.launchAgentPlistPath]);
-    } catch {
-      // Ignore unload failures so repair still retries bootstrap and kickstart.
+      if (await this.isServiceLoaded(launchctlServiceTarget)) {
+        await this.execFile("/bin/launchctl", ["kickstart", "-k", launchctlServiceTarget]);
+        return {
+          message: "BurnBar daemon restart requested."
+        };
+      }
+    } catch (error) {
+      if (!(await this.isServiceLoaded(launchctlServiceTarget))) {
+        throw error;
+      }
     }
 
-    await this.execFile("/bin/launchctl", ["bootstrap", launchctlDomain, this.paths.launchAgentPlistPath]);
-    await this.execFile("/bin/launchctl", [
-      "kickstart",
-      "-k",
-      `${launchctlDomain}/${BURNBAR_DAEMON_LAUNCH_AGENT_LABEL}`
-    ]);
+    try {
+      await this.execFile("/bin/launchctl", ["bootstrap", launchctlDomain, this.paths.launchAgentPlistPath]);
+    } catch (error) {
+      if (!(await this.isServiceLoaded(launchctlServiceTarget))) {
+        throw error;
+      }
+    }
+
+    try {
+      await this.execFile("/bin/launchctl", ["kickstart", "-k", launchctlServiceTarget]);
+    } catch (error) {
+      if (!(await this.isServiceLoaded(launchctlServiceTarget))) {
+        try {
+          await this.execFile("/bin/launchctl", ["bootstrap", launchctlDomain, this.paths.launchAgentPlistPath]);
+        } catch {
+          // Ignore the retry bootstrap failure if the service appears on the next print probe.
+        }
+
+        if (!(await this.isServiceLoaded(launchctlServiceTarget))) {
+          throw error;
+        }
+      }
+    }
 
     return {
       message: "BurnBar daemon restart requested."
     };
+  }
+
+  private async isServiceLoaded(serviceTarget: string): Promise<boolean> {
+    try {
+      await this.execFile("/bin/launchctl", ["print", serviceTarget]);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

@@ -4,7 +4,7 @@ import Foundation
 
 /// FactoryDroidParser extracts token usage from Factory Droid sessions and categorizes
 /// them by the underlying model provider (MiniMax, Z.ai, Claude, etc.)
-final class FactoryDroidParser: LogParser {
+final class FactoryDroidParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .factory
 
     func parse() async throws -> ParseResult {
@@ -209,7 +209,10 @@ final class FactoryDroidParser: LogParser {
         let resolvedModel = inlineModel ?? tokenData.model
         tokenData.model = TokenExtractionUtility.normalizeModelName(resolvedModel)
 
-        let startTime = conv.startTime ?? tokenData.startTime ?? Date()
+        // When JSONL has no parseable timestamps (common for token-only / metadata lines),
+        // use the log file's modification time — not Date(), or every re-scan lands in "Today".
+        let fallbackActivity = mtime ?? Date()
+        let startTime = conv.startTime ?? tokenData.startTime ?? fallbackActivity
         let endTime = conv.endTime ?? tokenData.endTime ?? startTime
 
         let detectedProvider = detectProviderFromModel(tokenData.model)

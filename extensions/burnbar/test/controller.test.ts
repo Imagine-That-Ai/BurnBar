@@ -317,6 +317,50 @@ describe("BurnBarExtensionController", () => {
     expect(capabilities).toHaveBeenCalledTimes(2);
   });
 
+  it("reattaches and retries when a run RPC hits a session mismatch", async () => {
+    const client = makeConnectedClient({
+      createRun: vi
+        .fn()
+        .mockRejectedValueOnce(
+          new Error(
+            "Client session mismatch. Expected 'old-session', received 'session-1'."
+          )
+        )
+        .mockResolvedValue({
+          runID: "run-new",
+          phase: "awaiting_approval"
+        })
+    });
+
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "BurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    const result = await controller.startRun({
+      prompt: "Search for BurnBarRunService",
+      modelID: "glm-4.6"
+    });
+
+    expect(result.runID).toBe("run-new");
+    expect(client.createRun).toHaveBeenCalledTimes(2);
+    expect(client.attach).toHaveBeenCalledTimes(3);
+  });
+
   it("surfaces a no-workspace empty state without claiming tools are ready", async () => {
     const client = makeConnectedClient({
       pollRuns: vi.fn().mockResolvedValue({
@@ -918,6 +962,27 @@ describe("buildPanelViewModel", () => {
     ]);
     expect(vm.noRunsYet).toBe(true);
     expect(vm.isConnected).toBe(true);
+    expect(vm.showOpenBurnBarApp).toBe(false);
+  });
+
+  it("respects showOpenBurnBarApp host flag", async () => {
+    const client = makeConnectedClient();
+    const controller = new BurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: { repair: vi.fn().mockResolvedValue({ message: "ok" }) }
+      },
+      { clientID: "test-client" }
+    );
+
+    await controller.refresh();
+    expect(buildPanelViewModel(controller.snapshot).showOpenBurnBarApp).toBe(false);
+    expect(
+      buildPanelViewModel(controller.snapshot, { showOpenBurnBarApp: true }).showOpenBurnBarApp
+    ).toBe(true);
   });
 
   it("produces daemon-unavailable state with recovery message", async () => {

@@ -55,6 +55,7 @@ struct ProviderUsageRecord: Sendable {
 // MARK: - API Key Store
 
 /// Manages API keys for provider usage APIs via Keychain.
+@MainActor
 final class ProviderAPIKeyStore {
     static let shared = ProviderAPIKeyStore()
 

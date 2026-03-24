@@ -91,9 +91,22 @@ enum SessionLogMarkdownFormatter {
     private static func providerMarkdown(_ record: ConversationRecord) -> String {
         var lines: [String] = []
 
-        let title = record.inferredTaskTitle.isEmpty ? "Session" : record.inferredTaskTitle
+        let title = displayTitle(for: record)
         lines.append("# \(title)")
         lines.append("")
+
+        if let summary = record.summary, summary.isEmpty == false {
+            lines.append("## Session Summary")
+            lines.append("")
+            if let summaryTitle = record.summaryTitle, summaryTitle.isEmpty == false {
+                lines.append("**Name:** \(summaryTitle)")
+                lines.append("")
+            }
+            lines.append(summary)
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+        }
 
         // Metadata table
         lines.append("| Field | Value |")
@@ -126,15 +139,6 @@ enum SessionLogMarkdownFormatter {
             lines.append(record.fullText)
         }
 
-        if let summary = record.summary, summary.isEmpty == false {
-            lines.append("")
-            lines.append("---")
-            lines.append("")
-            lines.append("## Summary")
-            lines.append("")
-            lines.append(summary)
-        }
-
         return lines.joined(separator: "\n")
     }
 
@@ -149,5 +153,13 @@ enum SessionLogMarkdownFormatter {
 
     private static func formatDate(_ date: Date) -> String {
         dateFormatter.string(from: date)
+    }
+
+    private static func displayTitle(for record: ConversationRecord) -> String {
+        if let summaryTitle = record.summaryTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !summaryTitle.isEmpty {
+            return summaryTitle
+        }
+        return record.inferredTaskTitle.isEmpty ? "Session" : record.inferredTaskTitle
     }
 }

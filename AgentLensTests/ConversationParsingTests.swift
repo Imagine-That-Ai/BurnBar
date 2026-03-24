@@ -99,4 +99,5 @@ final class ConversationParsingTests: XCTestCase {
         let row = try store.fetchConversation(id: rec.id)
         XCTAssertNotNil(row)
     }
+
 }

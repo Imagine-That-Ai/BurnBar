@@ -11,21 +11,73 @@ private enum SessionLogSourceFilter: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+// MARK: - Group Mode
+
+private enum SessionLogGroupMode: String, CaseIterable, Identifiable {
+    case time = "Time"
+    case provider = "Provider"
+    case project = "Project"
+    var id: String { rawValue }
+    var icon: String {
+        switch self {
+        case .time: return "clock"
+        case .provider: return "cpu"
+        case .project: return "folder"
+        }
+    }
+}
+
+// MARK: - Data Source
+
+private enum SessionLogDataSource: String, CaseIterable, Identifiable {
+    case local  = "Local"
+    case cloud  = "Cloud"
+    case iCloud = "iCloud"
+    var id: String { rawValue }
+    var icon: String {
+        switch self {
+        case .local:  return "internaldrive"
+        case .cloud:  return "cloud"
+        case .iCloud: return "icloud"
+        }
+    }
+}
+
+// MARK: - Session Log Group
+
+private struct SessionLogGroup: Identifiable {
+    let id: String
+    let title: String
+    let systemImage: String
+    let accentColor: Color
+    let logs: [ConversationRecord]
+}
+
 // MARK: - Session Logs View
 
 struct SessionLogsView: View {
     var dataStore: DataStore
     var accountManager: AccountManager
     var settingsManager: SettingsManager
+    var cloudSyncService: CloudSyncService?
+    var iCloudMirrorService: ICloudSessionMirrorService?
 
     @State private var allLogs: [ConversationRecord] = []
     @State private var searchText = ""
     @State private var sourceFilter: SessionLogSourceFilter = .all
+    @State private var groupMode: SessionLogGroupMode = .time
+    @State private var expandedSections: Set<String> = []
+    @State private var sectionDisplayLimits: [String: Int] = [:]
     @State private var selectedId: String?
-    @State private var listAppeared = false
     @State private var isLoading = false
+    @State private var appeared = false
+    @State private var dataSource: SessionLogDataSource = .local
+    @State private var cloudBodyCache: [String: String] = [:]
+    @State private var dataSourceError: String?
 
-    // MARK: Filtered list
+    private let defaultDisplayLimit = 15
+
+    // MARK: - Filtering
 
     private var filteredLogs: [ConversationRecord] {
         var result = allLogs
@@ -34,12 +86,14 @@ struct SessionLogsView: View {
         case .provider:  result = result.filter { $0.sourceType == .providerLog }
         case .assistant: result = result.filter { $0.sourceType == .cliAssistant }
         }
-        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return result }
+        guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return result }
         let q = searchText.lowercased()
         return result.filter {
             $0.inferredTaskTitle.lowercased().contains(q)
+                || ($0.summaryTitle?.lowercased().contains(q) ?? false)
                 || $0.projectName.lowercased().contains(q)
                 || $0.provider.displayName.lowercased().contains(q)
+                || ($0.summary?.lowercased().contains(q) ?? false)
                 || $0.fullText.lowercased().contains(q)
         }
     }
@@ -49,12 +103,93 @@ struct SessionLogsView: View {
         return allLogs.first { $0.id == id }
     }
 
-    // MARK: Body
+    // MARK: - Grouping
+
+    private var logGroups: [SessionLogGroup] {
+        let logs = filteredLogs
+        switch groupMode {
+        case .time: return timeGroups(from: logs)
+        case .provider: return providerGroups(from: logs)
+        case .project: return projectGroups(from: logs)
+        }
+    }
+
+    private func timeGroups(from logs: [ConversationRecord]) -> [SessionLogGroup] {
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfToday = calendar.startOfDay(for: now)
+        let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
+        let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now))!
+        let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
+
+        var buckets: [String: [ConversationRecord]] = [
+            "today": [], "yesterday": [], "week": [], "month": [], "older": []
+        ]
+        for log in logs {
+            // Bucket by when the session actually occurred — start first, then end.
+            // Avoid preferring endTime alone (some pipelines align it with re-import);
+            // fileModifiedAt beats indexedAt for "last known log activity" when times are missing.
+            let date = log.startTime ?? log.endTime ?? log.fileModifiedAt ?? log.indexedAt
+            if date >= startOfToday {
+                buckets["today"]!.append(log)
+            } else if date >= startOfYesterday {
+                buckets["yesterday"]!.append(log)
+            } else if date >= startOfWeek {
+                buckets["week"]!.append(log)
+            } else if date >= startOfMonth {
+                buckets["month"]!.append(log)
+            } else {
+                buckets["older"]!.append(log)
+            }
+        }
+
+        let defs: [(id: String, title: String, icon: String, color: Color)] = [
+            ("today", "Today", "sun.max.fill", DesignSystem.Colors.ember),
+            ("yesterday", "Yesterday", "moon.fill", DesignSystem.Colors.amber),
+            ("week", "This Week", "calendar", DesignSystem.Colors.blaze),
+            ("month", "This Month", "calendar.badge.clock", DesignSystem.Colors.whimsy),
+            ("older", "Older", "archivebox.fill", DesignSystem.Colors.textMuted),
+        ]
+        return defs.compactMap { d in
+            guard let logs = buckets[d.id], !logs.isEmpty else { return nil }
+            return SessionLogGroup(id: d.id, title: d.title, systemImage: d.icon, accentColor: d.color, logs: logs)
+        }
+    }
+
+    private func providerGroups(from logs: [ConversationRecord]) -> [SessionLogGroup] {
+        Dictionary(grouping: logs) { $0.provider }
+            .map { provider, logs in
+                SessionLogGroup(
+                    id: "provider-\(provider.rawValue)",
+                    title: provider.displayName,
+                    systemImage: provider.iconName,
+                    accentColor: DesignSystem.Colors.primary(for: provider),
+                    logs: logs
+                )
+            }
+            .sorted { $0.logs.count > $1.logs.count }
+    }
+
+    private func projectGroups(from logs: [ConversationRecord]) -> [SessionLogGroup] {
+        Dictionary(grouping: logs) { $0.projectName }
+            .map { project, logs in
+                SessionLogGroup(
+                    id: "project-\(project)",
+                    title: project.isEmpty ? "Unknown" : project,
+                    systemImage: "folder.fill",
+                    accentColor: DesignSystem.Colors.amber,
+                    logs: logs
+                )
+            }
+            .sorted { $0.logs.count > $1.logs.count }
+    }
+
+    // MARK: - Body
 
     var body: some View {
         HStack(spacing: 0) {
-            listPane
-                .frame(width: 300)
+            commandCenter
+                .frame(width: 340)
 
             Divider().background(DesignSystem.Colors.border)
 
@@ -65,46 +200,48 @@ struct SessionLogsView: View {
         .task {
             await loadLogs()
         }
+        .onChange(of: groupMode) { _, _ in
+            sectionDisplayLimits = [:]
+            let groups = logGroups
+            expandedSections = Set(groups.prefix(1).map(\.id))
+        }
+        .onChange(of: dataSource) { _, _ in
+            selectedId = nil
+            cloudBodyCache = [:]
+            Task { await loadLogs() }
+        }
+        .onChange(of: selectedId) { _, newId in
+            guard dataSource == .cloud,
+                  let id = newId,
+                  let record = allLogs.first(where: { $0.id == id }),
+                  cloudBodyCache[record.sessionId] == nil else { return }
+            Task {
+                if let body = try? await cloudSyncService?.fetchCloudSessionLogBody(docId: record.sessionId) {
+                    cloudBodyCache[record.sessionId] = body
+                }
+            }
+        }
     }
 
-    // MARK: - List Pane
+    // MARK: - Command Center
 
-    private var listPane: some View {
+    private var commandCenter: some View {
         VStack(spacing: 0) {
-            // Header
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                HStack(spacing: DesignSystem.Spacing.xs) {
-                    Image(systemName: "scroll")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.ember)
-                    Text("Session Logs")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .textCase(.uppercase)
-                }
+            statsHeader
+                .padding(.horizontal, DesignSystem.Spacing.lg)
+                .padding(.top, DesignSystem.Spacing.lg)
+                .padding(.bottom, DesignSystem.Spacing.md)
 
-                Text("\(filteredLogs.count) log\(filteredLogs.count == 1 ? "" : "s")")
-                    .font(DesignSystem.Typography.headline)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, DesignSystem.Spacing.lg)
-            .padding(.top, DesignSystem.Spacing.lg)
-            .padding(.bottom, DesignSystem.Spacing.md)
-
-            // Search bar
             searchBar
                 .padding(.horizontal, DesignSystem.Spacing.lg)
                 .padding(.bottom, DesignSystem.Spacing.sm)
 
-            // Source filter chips
-            sourceFilterRow
+            filterBar
                 .padding(.horizontal, DesignSystem.Spacing.lg)
                 .padding(.bottom, DesignSystem.Spacing.md)
 
             Divider().background(DesignSystem.Colors.border.opacity(0.6))
 
-            // List
             if isLoading {
                 Spacer()
                 ProgressView()
@@ -112,28 +249,7 @@ struct SessionLogsView: View {
             } else if filteredLogs.isEmpty {
                 emptyListState
             } else {
-                ScrollView {
-                    LazyVStack(spacing: DesignSystem.Spacing.xs) {
-                        ForEach(Array(filteredLogs.enumerated()), id: \.element.id) { idx, record in
-                            SessionLogRow(
-                                record: record,
-                                isSelected: selectedId == record.id
-                            ) {
-                                withAnimation(DesignSystem.Animation.snappy) {
-                                    selectedId = record.id
-                                }
-                            }
-                            .opacity(listAppeared ? 1 : 0)
-                            .offset(y: listAppeared ? 0 : 6)
-                            .animation(
-                                DesignSystem.Animation.gentle.delay(Double(min(idx, 20)) * 0.025),
-                                value: listAppeared
-                            )
-                        }
-                    }
-                    .padding(DesignSystem.Spacing.md)
-                }
-                .scrollContentBackground(.hidden)
+                groupedList
             }
         }
         .background {
@@ -149,10 +265,49 @@ struct SessionLogsView: View {
                 )
             }
         }
-        .onAppear { listAppeared = true }
+        .onAppear { appeared = true }
     }
 
-    // MARK: Search bar
+    // MARK: - Stats Header
+
+    private var statsHeader: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Image(systemName: "scroll")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                Text("Session Logs")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .textCase(.uppercase)
+            }
+
+            Text("\(filteredLogs.count) log\(filteredLogs.count == 1 ? "" : "s")")
+                .font(DesignSystem.Typography.headline)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+            HStack(spacing: DesignSystem.Spacing.lg) {
+                let providerCount = Set(filteredLogs.map(\.provider)).count
+                let projectCount = Set(filteredLogs.map(\.projectName)).count
+                statPill(value: "\(providerCount)", label: "providers")
+                statPill(value: "\(projectCount)", label: "projects")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func statPill(value: String, label: String) -> some View {
+        HStack(spacing: DesignSystem.Spacing.xxs) {
+            Text(value)
+                .font(DesignSystem.Typography.monoSmall)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            Text(label)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+        }
+    }
+
+    // MARK: - Search Bar
 
     private var searchBar: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
@@ -160,12 +315,12 @@ struct SessionLogsView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(DesignSystem.Colors.textMuted)
 
-            TextField("Search logs…", text: $searchText)
+            TextField("Search by title, project, provider, or keyword…", text: $searchText)
                 .font(DesignSystem.Typography.caption)
                 .textFieldStyle(.plain)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-            if searchText.isEmpty == false {
+            if !searchText.isEmpty {
                 Button {
                     searchText = ""
                 } label: {
@@ -188,9 +343,9 @@ struct SessionLogsView: View {
         )
     }
 
-    // MARK: Source filter row
+    // MARK: - Filter Bar
 
-    private var sourceFilterRow: some View {
+    private var filterBar: some View {
         HStack(spacing: DesignSystem.Spacing.xs) {
             ForEach(SessionLogSourceFilter.allCases) { filter in
                 Button {
@@ -227,7 +382,59 @@ struct SessionLogsView: View {
                 }
                 .buttonStyle(.plain)
             }
-            Spacer(minLength: 0)
+
+            Spacer()
+
+            HStack(spacing: 2) {
+                ForEach(SessionLogGroupMode.allCases) { mode in
+                    Button {
+                        withAnimation(DesignSystem.Animation.snappy) {
+                            groupMode = mode
+                        }
+                    } label: {
+                        Image(systemName: mode.icon)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(groupMode == mode ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textMuted)
+                            .frame(width: 24, height: 20)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(groupMode == mode ? DesignSystem.Colors.surfaceElevated : Color.clear)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Group by \(mode.rawValue.lowercased())")
+                }
+            }
+            .padding(2)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.4))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .strokeBorder(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
+            )
+
+            Menu {
+                ForEach(SessionLogDataSource.allCases) { source in
+                    Button {
+                        withAnimation(DesignSystem.Animation.snappy) { dataSource = source }
+                    } label: {
+                        Label(source.rawValue, systemImage: source.icon)
+                    }
+                }
+            } label: {
+                Image(systemName: dataSource.icon)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(dataSource == .local ? DesignSystem.Colors.textMuted : DesignSystem.Colors.ember)
+                    .frame(width: 24, height: 20)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(dataSource == .local ? Color.clear : DesignSystem.Colors.ember.opacity(0.12))
+                    )
+            }
+            .menuStyle(.borderlessButton)
+            .help("Data source: \(dataSource.rawValue)")
         }
     }
 
@@ -239,16 +446,178 @@ struct SessionLogsView: View {
         }
     }
 
-    // MARK: Empty state
+    // MARK: - Grouped List
+
+    private var groupedList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                ForEach(logGroups) { group in
+                    Section {
+                        if expandedSections.contains(group.id) {
+                            sectionContent(for: group)
+                        }
+                    } header: {
+                        sectionHeader(for: group)
+                    }
+                }
+            }
+            .padding(.vertical, DesignSystem.Spacing.xs)
+        }
+        .scrollContentBackground(.hidden)
+    }
+
+    private func sectionHeader(for group: SessionLogGroup) -> some View {
+        let isExpanded = expandedSections.contains(group.id)
+        return Button {
+            withAnimation(DesignSystem.Animation.snappy) {
+                if isExpanded {
+                    expandedSections.remove(group.id)
+                } else {
+                    expandedSections.insert(group.id)
+                }
+            }
+        } label: {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(group.accentColor)
+                    .frame(width: 12, alignment: .center)
+
+                Image(systemName: group.systemImage)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(group.accentColor)
+
+                Text(group.title)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text("\(group.logs.count)")
+                    .font(DesignSystem.Typography.monoSmall)
+                    .foregroundStyle(group.accentColor)
+                    .padding(.horizontal, DesignSystem.Spacing.sm)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule().fill(group.accentColor.opacity(0.12))
+                    )
+            }
+            .padding(.horizontal, DesignSystem.Spacing.lg)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .background(DesignSystem.Colors.surface.opacity(0.95))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func sectionContent(for group: SessionLogGroup) -> some View {
+        let limit = sectionDisplayLimits[group.id] ?? defaultDisplayLimit
+        let showing = Array(group.logs.prefix(limit))
+
+        VStack(spacing: DesignSystem.Spacing.xxs) {
+            ForEach(showing) { record in
+                CompactSessionRow(
+                    record: record,
+                    isSelected: selectedId == record.id
+                ) {
+                    withAnimation(DesignSystem.Animation.snappy) {
+                        selectedId = record.id
+                    }
+                }
+            }
+
+            if group.logs.count > limit {
+                let remaining = group.logs.count - limit
+                Button {
+                    withAnimation(DesignSystem.Animation.gentle) {
+                        sectionDisplayLimits[group.id] = limit + min(30, remaining)
+                    }
+                } label: {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 9))
+                        Text("Show \(min(30, remaining)) more of \(remaining) remaining")
+                            .font(DesignSystem.Typography.tiny)
+                    }
+                    .foregroundStyle(group.accentColor)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, DesignSystem.Spacing.sm)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.bottom, DesignSystem.Spacing.sm)
+        .transition(.opacity)
+    }
+
+    // MARK: - Empty State
 
     private var emptyListState: some View {
         VStack(spacing: DesignSystem.Spacing.md) {
             Spacer()
-            Image(systemName: "scroll")
+            Image(systemName: dataSource.icon)
                 .font(.system(size: 36))
                 .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.5))
 
-            if !settingsManager.conversationIndexingEnabled && sourceFilter != .assistant {
+            if let error = dataSourceError {
+                Text("Could not load \(dataSource.rawValue) logs")
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(error)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+            } else if dataSource == .cloud {
+                if !accountManager.isSignedIn {
+                    Text("Sign in to load cloud logs")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("Cloud logs require a BurnBar account. Sign in via Settings.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, DesignSystem.Spacing.lg)
+                } else {
+                    Text(searchText.isEmpty ? "No cloud logs yet" : "No results")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(searchText.isEmpty
+                            ? "Enable session log cloud backup in Settings to store logs here."
+                            : "Try a different search term."
+                    )
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                }
+            } else if dataSource == .iCloud {
+                if !(iCloudMirrorService?.hasUbiquityIdentity ?? false) {
+                    Text("Sign in to iCloud")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("Sign in to iCloud in System Settings to access your mirrored sessions.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, DesignSystem.Spacing.lg)
+                } else {
+                    Text(searchText.isEmpty ? "No mirrored files found" : "No results")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(searchText.isEmpty
+                            ? "Enable iCloud session mirror in Settings and run a sync first."
+                            : "Try a different search term."
+                    )
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                }
+            } else if !settingsManager.conversationIndexingEnabled && sourceFilter != .assistant {
                 Text("Enable conversation indexing")
                     .font(DesignSystem.Typography.headline)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
@@ -280,8 +649,12 @@ struct SessionLogsView: View {
     @ViewBuilder
     private var detailPane: some View {
         if let log = selectedLog {
-            SessionLogDetailPane(record: log, dataStore: dataStore)
-                .id(log.id)
+            SessionLogDetailPane(
+                record: log,
+                dataStore: dataStore,
+                overrideBody: dataSource == .cloud ? cloudBodyCache[log.sessionId] : nil
+            )
+            .id(log.id)
         } else {
             VStack(spacing: DesignSystem.Spacing.lg) {
                 Spacer()
@@ -304,24 +677,46 @@ struct SessionLogsView: View {
 
     private func loadLogs() async {
         isLoading = true
+        dataSourceError = nil
         do {
-            // Synthesize CLI conversation from persisted messages
-            let messages = try dataStore.fetchChatMessages()
-            if messages.isEmpty == false {
-                try dataStore.upsertCLIConversation(from: messages)
+            switch dataSource {
+            case .local:
+                let messages = try dataStore.fetchChatMessages()
+                if !messages.isEmpty { try dataStore.upsertCLIConversation(from: messages) }
+                allLogs = try dataStore.fetchAllSessionLogs()
+
+            case .cloud:
+                guard let svc = cloudSyncService else {
+                    allLogs = []
+                    isLoading = false
+                    return
+                }
+                allLogs = try await svc.fetchCloudSessionLogs()
+
+            case .iCloud:
+                guard let svc = iCloudMirrorService else {
+                    allLogs = []
+                    isLoading = false
+                    return
+                }
+                allLogs = await svc.fetchConversations()
             }
-            allLogs = try dataStore.fetchAllSessionLogs()
+
             if selectedId == nil { selectedId = allLogs.first?.id }
+            if expandedSections.isEmpty, let firstId = logGroups.first?.id {
+                expandedSections = [firstId]
+            }
         } catch {
-            print("SessionLogsView: Failed to load logs: \(error)")
+            dataSourceError = error.localizedDescription
+            allLogs = []
         }
         isLoading = false
     }
 }
 
-// MARK: - Session Log Row
+// MARK: - Compact Session Row
 
-private struct SessionLogRow: View {
+private struct CompactSessionRow: View {
     let record: ConversationRecord
     let isSelected: Bool
     let action: () -> Void
@@ -329,13 +724,7 @@ private struct SessionLogRow: View {
     private var accentColor: Color {
         record.sourceType == .cliAssistant
             ? DesignSystem.Colors.whimsy
-            : DesignSystem.Colors.amber
-    }
-
-    private var sourceLabel: String {
-        record.sourceType == .cliAssistant
-            ? "Assistant"
-            : record.provider.displayName
+            : DesignSystem.Colors.primary(for: record.provider)
     }
 
     private var timeLabel: String {
@@ -345,71 +734,60 @@ private struct SessionLogRow: View {
         return date.relativeLabel
     }
 
+    private var displayTitle: String {
+        if let summaryTitle = record.summaryTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !summaryTitle.isEmpty {
+            return summaryTitle
+        }
+        return record.inferredTaskTitle.isEmpty ? "Session" : record.inferredTaskTitle
+    }
+
     var body: some View {
         Button(action: action) {
-            HStack(spacing: DesignSystem.Spacing.md) {
-                // Source indicator dot
+            HStack(spacing: DesignSystem.Spacing.sm) {
                 ZStack {
                     Circle()
-                        .fill(isSelected ? accentColor.opacity(0.22) : DesignSystem.Colors.surfaceElevated)
-                        .frame(width: 34, height: 34)
+                        .fill(isSelected ? accentColor.opacity(0.18) : DesignSystem.Colors.surfaceElevated.opacity(0.6))
+                        .frame(width: 28, height: 28)
 
                     if record.sourceType == .cliAssistant {
                         Image(systemName: "terminal.fill")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(isSelected ? accentColor : DesignSystem.Colors.textSecondary)
                     } else {
-                        ProviderLogoView(provider: record.provider, size: 20, useFallbackColor: false)
+                        ProviderLogoView(provider: record.provider, size: 16, useFallbackColor: false)
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(record.inferredTaskTitle.isEmpty ? "Session" : record.inferredTaskTitle)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(displayTitle)
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
                         .lineLimit(1)
 
                     HStack(spacing: DesignSystem.Spacing.xs) {
-                        Text(sourceLabel)
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(isSelected ? accentColor : DesignSystem.Colors.textMuted)
-
-                        Text("·")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-
                         Text(record.projectName)
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
                             .lineLimit(1)
+                        Text("·")
+                        Text("\(record.messageCount) msgs")
                     }
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
 
                 Spacer(minLength: 0)
 
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text(timeLabel)
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-
-                    Text("\(record.messageCount) msg\(record.messageCount == 1 ? "" : "s")")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
+                Text(timeLabel)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
             }
-            .padding(.horizontal, DesignSystem.Spacing.md)
-            .padding(.vertical, DesignSystem.Spacing.sm)
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, DesignSystem.Spacing.xs)
             .background(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
-                    .fill(isSelected ? accentColor.opacity(0.09) : DesignSystem.Colors.surfaceElevated.opacity(0.3))
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm)
+                    .fill(isSelected ? accentColor.opacity(0.08) : Color.clear)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
-                    .stroke(
-                        isSelected ? accentColor.opacity(0.35) : DesignSystem.Colors.border.opacity(0.3),
-                        lineWidth: 1
-                    )
-            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -420,6 +798,7 @@ private struct SessionLogRow: View {
 private struct SessionLogDetailPane: View {
     let record: ConversationRecord
     var dataStore: DataStore
+    var overrideBody: String?
 
     @State private var markdownBody = ""
     @State private var copyConfirmed = false
@@ -430,13 +809,19 @@ private struct SessionLogDetailPane: View {
             : DesignSystem.Colors.amber
     }
 
+    private var displayTitle: String {
+        if let summaryTitle = record.summaryTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !summaryTitle.isEmpty {
+            return summaryTitle
+        }
+        return record.inferredTaskTitle.isEmpty ? "Session" : record.inferredTaskTitle
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             detailHeader
             Divider().background(DesignSystem.Colors.border.opacity(0.5))
 
-            // Markdown preview
             ScrollView {
                 Text(.init(markdownBody.isEmpty ? "Loading…" : markdownBody))
                     .font(DesignSystem.Typography.body)
@@ -449,19 +834,18 @@ private struct SessionLogDetailPane: View {
 
             Divider().background(DesignSystem.Colors.border.opacity(0.5))
 
-            // Action bar
             actionBar
         }
         .background(Color.clear)
         .task { buildMarkdown() }
+        .onChange(of: overrideBody) { _, newBody in
+            if let newBody, !newBody.isEmpty { markdownBody = newBody }
+        }
     }
-
-    // MARK: Header
 
     private var detailHeader: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             HStack(spacing: DesignSystem.Spacing.sm) {
-                // Source badge
                 HStack(spacing: DesignSystem.Spacing.xs) {
                     if record.sourceType == .cliAssistant {
                         Image(systemName: "terminal.fill")
@@ -496,13 +880,12 @@ private struct SessionLogDetailPane: View {
                 }
             }
 
-            Text(record.inferredTaskTitle.isEmpty ? "Session" : record.inferredTaskTitle)
+            Text(displayTitle)
                 .font(DesignSystem.Typography.title)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
 
-            // Metadata chips
             HStack(spacing: DesignSystem.Spacing.sm) {
                 metaChip(icon: "bubble.left.and.bubble.right", label: "\(record.messageCount) messages")
                 if record.userWordCount > 0 {
@@ -538,13 +921,10 @@ private struct SessionLogDetailPane: View {
         )
     }
 
-    // MARK: Action bar
-
     private var actionBar: some View {
         HStack(spacing: DesignSystem.Spacing.md) {
             Spacer()
 
-            // Copy Markdown
             Button {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(markdownBody, forType: .string)
@@ -563,7 +943,6 @@ private struct SessionLogDetailPane: View {
             .buttonStyle(.plain)
             .disabled(markdownBody.isEmpty)
 
-            // Export .md
             Button {
                 exportMarkdown()
             } label: {
@@ -578,15 +957,17 @@ private struct SessionLogDetailPane: View {
         .padding(.vertical, DesignSystem.Spacing.md)
     }
 
-    // MARK: Helpers
-
     private func buildMarkdown() {
-        markdownBody = SessionLogMarkdownFormatter.markdown(for: record)
+        if let body = overrideBody, !body.isEmpty {
+            markdownBody = body
+        } else {
+            markdownBody = SessionLogMarkdownFormatter.markdown(for: record)
+        }
     }
 
     private func exportMarkdown() {
         let panel = NSSavePanel()
-        let slug = record.inferredTaskTitle.isEmpty ? "session" : record.inferredTaskTitle
+        let slug = displayTitle.isEmpty ? "session" : displayTitle
         let safe = slug
             .components(separatedBy: .alphanumerics.inverted)
             .filter { !$0.isEmpty }
@@ -635,7 +1016,6 @@ struct SessionLogCloudConsentSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            // Icon + title
             HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
                 ZStack {
                     Circle()
@@ -669,7 +1049,6 @@ struct SessionLogCloudConsentSheet: View {
                 }
             }
 
-            // Feature bullets
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                 featureBullet(
                     icon: "lock.icloud",
@@ -690,7 +1069,6 @@ struct SessionLogCloudConsentSheet: View {
 
             Divider().background(DesignSystem.Colors.border.opacity(0.5))
 
-            // Actions
             HStack(spacing: DesignSystem.Spacing.md) {
                 Button("Not now") {
                     settingsManager.sessionLogCloudBackupEnabled = false
@@ -721,7 +1099,6 @@ struct SessionLogCloudConsentSheet: View {
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
                     .fill(DesignSystem.Colors.surfaceElevated.opacity(0.55))
 
-                // Subtle ember glow at top
                 LinearGradient(
                     colors: [
                         DesignSystem.Colors.ember.opacity(0.06),

@@ -219,6 +219,21 @@ final class CloudSyncService {
         } else {
             data["summary"] = NSNull()
         }
+        if let summaryTitle = record.summaryTitle {
+            data["summaryTitle"] = summaryTitle
+        } else {
+            data["summaryTitle"] = NSNull()
+        }
+        if let summaryProvider = record.summaryProvider {
+            data["summaryProvider"] = summaryProvider
+        } else {
+            data["summaryProvider"] = NSNull()
+        }
+        if let summaryModel = record.summaryModel {
+            data["summaryModel"] = summaryModel
+        } else {
+            data["summaryModel"] = NSNull()
+        }
         return data
     }
 
@@ -305,6 +320,77 @@ final class CloudSyncService {
         }
 
         isSyncing = false
+    }
+
+    // MARK: - Session Log Download (Firestore read-back)
+
+    /// Fetches session log manifests from Firestore for the signed-in user.
+    /// Returns ConversationRecords with empty fullText; body is fetched lazily via fetchCloudSessionLogBody(docId:).
+    func fetchCloudSessionLogs(limit: Int = 200) async throws -> [ConversationRecord] {
+        guard FirebaseApp.app() != nil,
+              accountManager.isSignedIn,
+              let uid = Auth.auth().currentUser?.uid else { return [] }
+
+        let snapshot = try await db
+            .collection("users")
+            .document(uid)
+            .collection("session_logs")
+            .order(by: "updatedAt", descending: true)
+            .limit(to: limit)
+            .getDocuments()
+
+        return snapshot.documents.compactMap { doc -> ConversationRecord? in
+            let data = doc.data()
+            guard let rawProvider = data["provider"] as? String,
+                  let provider = AgentProvider(rawValue: rawProvider) else { return nil }
+
+            let id = data["id"] as? String ?? doc.documentID
+            let sourceTypeRaw = data["sourceType"] as? String ?? ConversationSourceType.providerLog.rawValue
+            let sourceType = ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog
+
+            return ConversationRecord(
+                id: id,
+                provider: provider,
+                // Store Firestore docId in sessionId so fetchCloudSessionLogBody can look up chunks
+                sessionId: doc.documentID,
+                projectName: data["projectName"] as? String ?? "",
+                startTime: (data["startTime"] as? Timestamp)?.dateValue(),
+                endTime: (data["endTime"] as? Timestamp)?.dateValue(),
+                messageCount: data["messageCount"] as? Int ?? 0,
+                userWordCount: 0,
+                assistantWordCount: 0,
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: data["inferredTaskTitle"] as? String ?? "",
+                lastAssistantMessage: "",
+                fullText: "",
+                indexedAt: Date(),
+                fileModifiedAt: nil,
+                summary: nil,
+                sourceType: sourceType
+            )
+        }
+    }
+
+    /// Reassembles chunk sub-documents into the full Markdown body for a session log.
+    /// - Parameter docId: The Firestore document ID (stored in `record.sessionId` for cloud-sourced records).
+    func fetchCloudSessionLogBody(docId: String) async throws -> String {
+        guard FirebaseApp.app() != nil,
+              let uid = Auth.auth().currentUser?.uid else { return "" }
+
+        let snapshot = try await db
+            .collection("users")
+            .document(uid)
+            .collection("session_logs")
+            .document(docId)
+            .collection("chunks")
+            .order(by: "index")
+            .getDocuments()
+
+        return snapshot.documents
+            .compactMap { $0.data()["body"] as? String }
+            .joined()
     }
 
     // MARK: - Chunking

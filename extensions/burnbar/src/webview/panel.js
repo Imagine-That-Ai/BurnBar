@@ -275,6 +275,12 @@ function renderRunCard(run, isActive) {
 function render(vm) {
   if (!vm) return;
 
+  // ── Open app (macOS) ────────────────────────────────────
+  const openAppBtn = document.querySelector(".bb-header-app-btn");
+  if (openAppBtn) {
+    openAppBtn.dataset.visible = vm.showOpenBurnBarApp ? "true" : "false";
+  }
+
   // ── Connection orb ──────────────────────────────────────
   const orb = document.querySelector(".bb-orb");
   if (orb) {
@@ -501,6 +507,9 @@ document.addEventListener("DOMContentLoaded", () => {
         break;
       case "rejectRun":
         vscode.postMessage({ type: "rejectRun", runId });
+        break;
+      case "openApp":
+        vscode.postMessage({ type: "openApp" });
         break;
       default:
         break;

@@ -42,6 +42,9 @@ final class WindowManager: ObservableObject {
             defer: false
         )
         window.title = BurnBarIdentity.productName
+        // Keep a real title for the Window menu / accessibility; hide the redundant title text
+        // in the title bar now that the in-toolbar brand mark carries the product name.
+        window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.backgroundColor = NSColor(DesignSystem.Colors.background)
         window.contentView = NSHostingView(rootView: contentView)
@@ -73,15 +76,19 @@ final class WindowManager: ObservableObject {
             iCloudSessionMirrorService: iCloudSessionMirrorService,
             dataStore: dataStore
         )
-        .frame(width: 600, height: 540)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        let initialWidth: CGFloat = 920
+        let initialHeight: CGFloat = 660
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 540),
-            styleMask: [.titled, .closable],
+            contentRect: NSRect(x: 0, y: 0, width: initialWidth, height: initialHeight),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Settings"
+        window.contentMinSize = NSSize(width: 780, height: 560)
         window.contentView = NSHostingView(rootView: contentView)
         window.center()
         window.makeKeyAndOrderFront(nil)
@@ -106,6 +113,7 @@ struct BurnBarApp: App {
     @State private var accountManager: AccountManager
     @State private var cloudSyncService: CloudSyncService?
     @State private var iCloudSessionMirrorService: ICloudSessionMirrorService?
+    @State private var periodicRefreshTask: Task<Void, Never>?
 
     @MainActor
     init() {
@@ -198,6 +206,16 @@ struct BurnBarApp: App {
                     if settingsManager.dailyDigestEnabled {
                         await DailyDigestManager.shared.requestAuthorization()
                         DailyDigestManager.shared.scheduleDigest(from: dataStore, at: settingsManager.dailyDigestHour)
+                    }
+                }
+                periodicRefreshTask?.cancel()
+                periodicRefreshTask = Task(priority: .utility) {
+                    while !Task.isCancelled {
+                        let seconds = max(settingsManager.refreshInterval, 30)
+                        let nanos = UInt64(seconds * 1_000_000_000)
+                        try? await Task.sleep(nanoseconds: nanos)
+                        if Task.isCancelled { break }
+                        await newAggregator.refreshAll()
                     }
                 }
             }

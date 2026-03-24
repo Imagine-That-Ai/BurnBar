@@ -4,7 +4,7 @@ import Foundation
 
 /// Scaffold parser for Hermes CLI agent sessions.
 /// Checks ~/.hermes/sessions/ for JSONL files and attempts best-effort parsing.
-final class HermesParser: LogParser {
+final class HermesParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .hermes
 
     func parse() async throws -> ParseResult {

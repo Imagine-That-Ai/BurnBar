@@ -1,6 +1,14 @@
 import Foundation
 import SwiftUI
 
+enum SummaryProviderID: String, CaseIterable, Codable {
+    case local
+    case mlx
+    case minimax
+    case openrouter
+    case zai
+}
+
 @Observable
 @MainActor
 final class SettingsManager {
@@ -89,11 +97,124 @@ final class SettingsManager {
         didSet { save() }
     }
 
+    /// Enables automatic conversation summaries after scan refresh.
+    var autoSessionSummariesEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// Comma-separated provider order, e.g. "local,minimax,openrouter,zai".
+    var summaryProviderOrderCSV: String {
+        didSet { save() }
+    }
+
+    /// Optional hard daily cap for cloud summarization spend (USD). Nil = unlimited.
+    var summaryDailyCapUSD: Double? {
+        didSet { save() }
+    }
+
+    var summaryOpenRouterPrimaryModel: String {
+        didSet { save() }
+    }
+
+    var summaryOpenRouterFallbackModel: String {
+        didSet { save() }
+    }
+
+    var summaryMiniMaxModel: String {
+        didSet { save() }
+    }
+
+    var summaryZaiModel: String {
+        didSet { save() }
+    }
+
+    var summaryLocalModel: String {
+        didSet { save() }
+    }
+
+    var summaryLocalBaseURL: String {
+        didSet { save() }
+    }
+
+    var summaryMLXModel: String {
+        didSet { save() }
+    }
+
+    var summaryMLXBaseURL: String {
+        didSet { save() }
+    }
+
+    var summaryMaxPromptChars: Int {
+        didSet { save() }
+    }
+
+    var summaryMaxOutputTokens: Int {
+        didSet { save() }
+    }
+
+    var summaryRetryCount: Int {
+        didSet { save() }
+    }
+
+    var summaryBatchSize: Int {
+        didSet { save() }
+    }
+
+    var summaryFirstLoadBatchSize: Int {
+        didSet { save() }
+    }
+
+    var summaryRequestTimeoutSeconds: Double {
+        didSet { save() }
+    }
+
+    /// Max parallel requests during a sweep (1 = sequential, 8 = default blast).
+    var summaryMaxConcurrency: Int {
+        didSet { save() }
+    }
+
+    /// Hard wall-clock limit per sweep in minutes (0 = no limit).
+    var summaryTimeLimitMinutes: Int {
+        didSet { save() }
+    }
+
+    var miniMaxQuotaMode: MiniMaxQuotaMode {
+        didSet { save() }
+    }
+
+    var factoryQuotaPlanTier: FactoryQuotaPlanTier {
+        didSet { save() }
+    }
+
     // MARK: - Computed
     
     var refreshIntervalMinutes: Double {
         get { refreshInterval / 60 }
         set { refreshInterval = newValue * 60 }
+    }
+
+    var summaryProviderOrder: [SummaryProviderID] {
+        let parsed = summaryProviderOrderCSV
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .compactMap(SummaryProviderID.init(rawValue:))
+        if parsed.isEmpty {
+            return [.local, .mlx, .minimax, .openrouter, .zai]
+        }
+
+        var deduped: [SummaryProviderID] = []
+        for id in parsed where !deduped.contains(id) {
+            deduped.append(id)
+        }
+        for id in SummaryProviderID.allCases where !deduped.contains(id) {
+            deduped.append(id)
+        }
+        return deduped
+    }
+
+    /// Persists provider priority as CSV (see `summaryProviderOrderCSV`).
+    func setSummaryProviderOrder(_ order: [SummaryProviderID]) {
+        summaryProviderOrderCSV = order.map(\.rawValue).joined(separator: ",")
     }
     
     // MARK: - Initialization
@@ -166,6 +287,81 @@ final class SettingsManager {
         } else {
             self.usageDisplayMode = .currency
         }
+
+        if defaults.object(forKey: "autoSessionSummariesEnabled") != nil {
+            self.autoSessionSummariesEnabled = defaults.bool(forKey: "autoSessionSummariesEnabled")
+        } else {
+            self.autoSessionSummariesEnabled = true
+        }
+        self.summaryProviderOrderCSV = defaults.string(forKey: "summaryProviderOrderCSV") ?? "local,mlx,minimax,openrouter,zai"
+        if defaults.bool(forKey: "hasSummaryDailyCapUSD") {
+            self.summaryDailyCapUSD = defaults.double(forKey: "summaryDailyCapUSD")
+        } else {
+            self.summaryDailyCapUSD = nil
+        }
+        self.summaryOpenRouterPrimaryModel = defaults.string(forKey: "summaryOpenRouterPrimaryModel") ?? "qwen/qwen3.5-9b"
+        self.summaryOpenRouterFallbackModel = defaults.string(forKey: "summaryOpenRouterFallbackModel") ?? "openai/gpt-5-nano"
+        self.summaryMiniMaxModel = defaults.string(forKey: "summaryMiniMaxModel") ?? "minimax-m2.7-highspeed"
+        self.summaryZaiModel = defaults.string(forKey: "summaryZaiModel") ?? "glm-5-turbo"
+        self.summaryLocalModel = defaults.string(forKey: "summaryLocalModel") ?? "qwen3.5:9b"
+        self.summaryLocalBaseURL = defaults.string(forKey: "summaryLocalBaseURL") ?? "http://127.0.0.1:11434"
+        self.summaryMLXModel = defaults.string(forKey: "summaryMLXModel") ?? "mlx-community/Qwen3-4B-4bit"
+        self.summaryMLXBaseURL = defaults.string(forKey: "summaryMLXBaseURL") ?? "http://127.0.0.1:8080"
+        if defaults.object(forKey: "summaryMaxPromptChars") != nil {
+            self.summaryMaxPromptChars = max(defaults.integer(forKey: "summaryMaxPromptChars"), 4_000)
+        } else {
+            self.summaryMaxPromptChars = 60_000
+        }
+        if defaults.object(forKey: "summaryMaxOutputTokens") != nil {
+            self.summaryMaxOutputTokens = max(defaults.integer(forKey: "summaryMaxOutputTokens"), 120)
+        } else {
+            self.summaryMaxOutputTokens = 280
+        }
+        if defaults.object(forKey: "summaryRetryCount") != nil {
+            self.summaryRetryCount = max(defaults.integer(forKey: "summaryRetryCount"), 0)
+        } else {
+            self.summaryRetryCount = 1
+        }
+        if defaults.object(forKey: "summaryBatchSize") != nil {
+            self.summaryBatchSize = max(defaults.integer(forKey: "summaryBatchSize"), 1)
+        } else {
+            self.summaryBatchSize = 25
+        }
+        if defaults.object(forKey: "summaryFirstLoadBatchSize") != nil {
+            self.summaryFirstLoadBatchSize = max(defaults.integer(forKey: "summaryFirstLoadBatchSize"), 1)
+        } else {
+            self.summaryFirstLoadBatchSize = 120
+        }
+        if defaults.object(forKey: "summaryRequestTimeoutSeconds") != nil {
+            let timeoutSeconds = defaults.double(forKey: "summaryRequestTimeoutSeconds")
+            self.summaryRequestTimeoutSeconds = timeoutSeconds > 0 ? timeoutSeconds : 20
+        } else {
+            self.summaryRequestTimeoutSeconds = 20
+        }
+        if defaults.object(forKey: "summaryMaxConcurrency") != nil {
+            self.summaryMaxConcurrency = max(defaults.integer(forKey: "summaryMaxConcurrency"), 1)
+        } else {
+            self.summaryMaxConcurrency = 8
+        }
+        if defaults.object(forKey: "summaryTimeLimitMinutes") != nil {
+            self.summaryTimeLimitMinutes = max(defaults.integer(forKey: "summaryTimeLimitMinutes"), 0)
+        } else {
+            self.summaryTimeLimitMinutes = 0
+        }
+
+        if let billingModeRaw = defaults.string(forKey: "miniMaxQuotaMode"),
+           let billingMode = MiniMaxQuotaMode(rawValue: billingModeRaw) {
+            self.miniMaxQuotaMode = billingMode
+        } else {
+            self.miniMaxQuotaMode = .tokenPlan
+        }
+
+        if let planTierRaw = defaults.string(forKey: "factoryQuotaPlanTier"),
+           let planTier = FactoryQuotaPlanTier(rawValue: planTierRaw) {
+            self.factoryQuotaPlanTier = planTier
+        } else {
+            self.factoryQuotaPlanTier = .unknown
+        }
     }
     
     // MARK: - Persistence
@@ -201,6 +397,33 @@ final class SettingsManager {
         defaults.set(cliAssistantAllowed, forKey: "cliAssistantAllowed")
         defaults.set(cliAssistantConsentShown, forKey: "cliAssistantConsentShown")
         defaults.set(usageDisplayMode.rawValue, forKey: "usageDisplayMode")
+
+        defaults.set(autoSessionSummariesEnabled, forKey: "autoSessionSummariesEnabled")
+        defaults.set(summaryProviderOrderCSV, forKey: "summaryProviderOrderCSV")
+        if let cap = summaryDailyCapUSD {
+            defaults.set(true, forKey: "hasSummaryDailyCapUSD")
+            defaults.set(cap, forKey: "summaryDailyCapUSD")
+        } else {
+            defaults.set(false, forKey: "hasSummaryDailyCapUSD")
+        }
+        defaults.set(summaryOpenRouterPrimaryModel, forKey: "summaryOpenRouterPrimaryModel")
+        defaults.set(summaryOpenRouterFallbackModel, forKey: "summaryOpenRouterFallbackModel")
+        defaults.set(summaryMiniMaxModel, forKey: "summaryMiniMaxModel")
+        defaults.set(summaryZaiModel, forKey: "summaryZaiModel")
+        defaults.set(summaryLocalModel, forKey: "summaryLocalModel")
+        defaults.set(summaryLocalBaseURL, forKey: "summaryLocalBaseURL")
+        defaults.set(summaryMLXModel, forKey: "summaryMLXModel")
+        defaults.set(summaryMLXBaseURL, forKey: "summaryMLXBaseURL")
+        defaults.set(summaryMaxPromptChars, forKey: "summaryMaxPromptChars")
+        defaults.set(summaryMaxOutputTokens, forKey: "summaryMaxOutputTokens")
+        defaults.set(summaryRetryCount, forKey: "summaryRetryCount")
+        defaults.set(summaryBatchSize, forKey: "summaryBatchSize")
+        defaults.set(summaryFirstLoadBatchSize, forKey: "summaryFirstLoadBatchSize")
+        defaults.set(summaryRequestTimeoutSeconds, forKey: "summaryRequestTimeoutSeconds")
+        defaults.set(summaryMaxConcurrency, forKey: "summaryMaxConcurrency")
+        defaults.set(summaryTimeLimitMinutes, forKey: "summaryTimeLimitMinutes")
+        defaults.set(miniMaxQuotaMode.rawValue, forKey: "miniMaxQuotaMode")
+        defaults.set(factoryQuotaPlanTier.rawValue, forKey: "factoryQuotaPlanTier")
     }
 
     /// Formats a usage row or aggregate for the current display preference.

@@ -83,7 +83,7 @@ struct SettingsView: View {
             }
             .listStyle(.sidebar)
             .navigationTitle("Settings")
-            .navigationSplitViewColumnWidth(min: 165, ideal: 190)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 280)
         } detail: {
             detailContent
                 .toolbar {
@@ -93,7 +93,12 @@ struct SettingsView: View {
                     }
                 }
         }
-        .frame(width: 720, height: 530)
+        .frame(
+            minWidth: 780,
+            idealWidth: 920,
+            minHeight: 560,
+            idealHeight: 660
+        )
     }
 
     @ViewBuilder
@@ -189,6 +194,10 @@ private struct GeneralSettingsView: View {
                 sectionHeader("Privacy & Search")
 
                 PrivacyIndexingSettingsView(settingsManager: settingsManager, dataStore: dataStore)
+
+                sectionHeader("Session Summaries")
+
+                SessionSummaryWizardView(settingsManager: settingsManager, dataStore: dataStore)
 
                 sectionHeader("Default View")
 
@@ -317,11 +326,1623 @@ private struct PrivacyIndexingSettingsView: View {
     }
 }
 
+// MARK: - Session Summary Wizard
+
+private extension SummaryProviderID {
+    var displayName: String {
+        switch self {
+        case .local: return "Local (Ollama)"
+        case .mlx: return "Local (MLX)"
+        case .openrouter: return "OpenRouter"
+        case .minimax: return "MiniMax"
+        case .zai: return "Z.ai"
+        }
+    }
+}
+
+// MARK: Ollama HTTP Service
+
+private enum OllamaService {
+    struct InstalledModel: Identifiable {
+        let id = UUID()
+        let name: String
+        let sizeBytes: Int64
+        var sizeGB: Double { Double(sizeBytes) / 1_073_741_824 }
+        var isSummaryCandidate: Bool {
+            let l = name.lowercased()
+            return l.contains("qwen") || l.contains("llama") || l.contains("phi") || l.contains("mistral") || l.contains("gemma")
+        }
+    }
+
+    static func listModels(baseURL: String) async throws -> [InstalledModel] {
+        guard let url = URL(string: "\(baseURL)/api/tags") else { throw URLError(.badURL) }
+        let (data, _) = try await URLSession.shared.data(from: url)
+        struct TagsResponse: Decodable {
+            struct Model: Decodable { let name: String; let size: Int64 }
+            let models: [Model]
+        }
+        let decoded = try JSONDecoder().decode(TagsResponse.self, from: data)
+        return decoded.models.map { InstalledModel(name: $0.name, sizeBytes: $0.size) }
+    }
+
+    struct PullProgress { let completed: Int64; let total: Int64; let status: String }
+
+    static func pullModel(_ model: String, baseURL: String) -> AsyncThrowingStream<PullProgress, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard let url = URL(string: "\(baseURL)/api/pull") else {
+                        continuation.finish(throwing: URLError(.badURL)); return
+                    }
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "POST"
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "stream": true])
+                    let (bytes, _) = try await URLSession.shared.bytes(for: req)
+                    var buf = Data()
+                    for try await byte in bytes {
+                        if byte == UInt8(ascii: "\n") {
+                            if !buf.isEmpty, let obj = try? JSONSerialization.jsonObject(with: buf) as? [String: Any] {
+                                let status = obj["status"] as? String ?? ""
+                                let completed = Int64(obj["completed"] as? Int ?? 0)
+                                let total = Int64(obj["total"] as? Int ?? 0)
+                                continuation.yield(PullProgress(completed: completed, total: total, status: status))
+                                if status == "success" { continuation.finish(); return }
+                            }
+                            buf = Data()
+                        } else { buf.append(byte) }
+                    }
+                    continuation.finish()
+                } catch { continuation.finish(throwing: error) }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    struct SpeedUpdate {
+        let tokenCount: Int
+        let elapsed: Double
+        let fragment: String       // latest generated text fragment
+        let finalTPS: Double?      // non-nil only on final update with Ollama's eval metrics
+    }
+
+    static func streamSpeedTest(model: String, baseURL: String) -> AsyncThrowingStream<SpeedUpdate, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard let url = URL(string: "\(baseURL)/api/generate") else {
+                        continuation.finish(throwing: URLError(.badURL)); return
+                    }
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "POST"
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.httpBody = try JSONSerialization.data(withJSONObject: [
+                        "model": model,
+                        "prompt": "Write a one-sentence summary of a software coding session.",
+                        "stream": true
+                    ])
+                    let (bytes, _) = try await URLSession.shared.bytes(for: req)
+                    struct GenChunk: Decodable {
+                        let done: Bool; let response: String?
+                        let eval_count: Int?; let eval_duration: Int?
+                    }
+                    var buf = Data()
+                    var tokenCount = 0
+                    let wallStart = Date()
+                    for try await byte in bytes {
+                        if byte == UInt8(ascii: "\n") {
+                            if !buf.isEmpty, let chunk = try? JSONDecoder().decode(GenChunk.self, from: buf) {
+                                let fragment = chunk.response ?? ""
+                                if !fragment.isEmpty { tokenCount += 1 }
+                                let elapsed = Date().timeIntervalSince(wallStart)
+                                if chunk.done {
+                                    let finalTPS: Double? = {
+                                        if let count = chunk.eval_count, let ns = chunk.eval_duration, ns > 0 {
+                                            return Double(count) / (Double(ns) / 1_000_000_000)
+                                        }
+                                        return elapsed > 0.1 ? Double(tokenCount) / elapsed : nil
+                                    }()
+                                    continuation.yield(SpeedUpdate(tokenCount: tokenCount, elapsed: elapsed, fragment: fragment, finalTPS: finalTPS))
+                                    continuation.finish()
+                                    return
+                                }
+                                continuation.yield(SpeedUpdate(tokenCount: tokenCount, elapsed: elapsed, fragment: fragment, finalTPS: nil))
+                            }
+                            buf = Data()
+                        } else { buf.append(byte) }
+                    }
+                    continuation.finish(throwing: NSError(domain: "OllamaSpeedTest", code: 0, userInfo: [NSLocalizedDescriptionKey: "No output — is Ollama running with this model?"]))
+                } catch { continuation.finish(throwing: error) }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
+
+// MARK: Wizard Step
+
+private enum SummaryWizardStep: Int, CaseIterable {
+    case enable = 0, localModel = 1, cloudProviders = 2, advanced = 3, done = 4
+
+    var title: String {
+        switch self {
+        case .enable: return "Enable"
+        case .localModel: return "Local AI"
+        case .cloudProviders: return "Cloud"
+        case .advanced: return "Advanced"
+        case .done: return "Done"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .enable: return "sparkles"
+        case .localModel: return "cpu"
+        case .cloudProviders: return "cloud"
+        case .advanced: return "slider.horizontal.3"
+        case .done: return "checkmark.seal.fill"
+        }
+    }
+}
+
+// MARK: Session Summary Wizard
+
+private struct SessionSummaryWizardView: View {
+    @Bindable var settingsManager: SettingsManager
+    var dataStore: DataStore
+
+    @State private var currentStep: SummaryWizardStep = .enable
+    @State private var goingForward = true
+
+    // Step 1
+    @State private var providerOrder: [SummaryProviderID] = []
+    @State private var dailyCapText = ""
+
+    private struct ModelPreset: Identifiable {
+        let id: String
+        var tag: String { id }
+        let size: String
+        let description: String
+        let recommended: Bool
+    }
+    private let modelPresets: [ModelPreset] = [
+        ModelPreset(id: "qwen3.5:9b",   size: "~5.8 GB", description: "Best quality summaries",        recommended: true),
+        ModelPreset(id: "qwen3.5:4b",   size: "~2.6 GB", description: "Good balance of speed/quality", recommended: false),
+        ModelPreset(id: "qwen3.5:2b",   size: "~1.5 GB", description: "Fast, lower quality",           recommended: false),
+        ModelPreset(id: "qwen3.5:0.8b", size: "~522 MB", description: "Fastest, minimal quality",      recommended: false),
+        ModelPreset(id: "llama3.2:3b",  size: "~2.0 GB", description: "Meta Llama 3.2 alternative",    recommended: false),
+        ModelPreset(id: "phi3.5:3.8b",  size: "~2.2 GB", description: "Microsoft Phi-3.5 alternative", recommended: false),
+    ]
+
+    // Step 2
+    @State private var installedModels: [OllamaService.InstalledModel] = []
+    @State private var isScanning = false
+    @State private var scanError: String?
+    @State private var dlCompleted: Int64 = 0
+    @State private var dlTotal: Int64 = 0
+    @State private var isDownloading = false
+    @State private var dlStatusText = ""
+    @State private var dlError: String?
+    @State private var speedTPS: Double?
+    @State private var isSpeedTesting = false
+    @State private var speedError: String?
+    @State private var pendingCount: Int = 0
+    @State private var liveTokenCount: Int = 0
+    @State private var liveElapsed: Double = 0
+    @State private var liveOutput: String = ""
+    @State private var showSpeedOptions = false
+
+    // Step 3
+    @State private var openRouterKey = ""
+    @State private var miniMaxKey = ""
+    @State private var zaiKey = ""
+    @State private var keySaved: [String: Bool] = [:]
+    @State private var keySaveError: String?
+
+    var body: some View {
+        GlassCard {
+            VStack(spacing: 0) {
+                wizardHeader
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                    .padding(.top, DesignSystem.Spacing.lg)
+                    .padding(.bottom, DesignSystem.Spacing.md)
+
+                Divider().background(DesignSystem.Colors.border)
+
+                stepContent
+                    .padding(DesignSystem.Spacing.lg)
+                    .frame(minHeight: 340)
+                    .animation(DesignSystem.Animation.standard, value: currentStep)
+
+                Divider().background(DesignSystem.Colors.border)
+
+                navBar
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                    .padding(.vertical, DesignSystem.Spacing.md)
+            }
+        }
+        .onAppear { loadState() }
+        .sheet(isPresented: $showSpeedOptions) {
+            SpeedOptionsSheet(
+                currentModel: settingsManager.summaryLocalModel,
+                tps: speedTPS ?? 0,
+                pendingCount: pendingCount,
+                onDiskNames: Set(installedModels.map(\.name)),
+                onSelectModel: { model in
+                    settingsManager.summaryLocalModel = model
+                    showSpeedOptions = false
+                },
+                onSelectMLX: { model in
+                    settingsManager.summaryMLXModel = model
+                    // Move .mlx to top of priority
+                    var order = providerOrder
+                    order.removeAll { $0 == .mlx }
+                    order.insert(.mlx, at: 0)
+                    providerOrder = order
+                    settingsManager.setSummaryProviderOrder(order)
+                    showSpeedOptions = false
+                },
+                onSelectCloud: { provider in
+                    var order = providerOrder
+                    order.removeAll { $0 == provider }
+                    order.insert(provider, at: 0)
+                    providerOrder = order
+                    settingsManager.setSummaryProviderOrder(order)
+                    showSpeedOptions = false
+                }
+            )
+        }
+    }
+
+    // MARK: - Header
+
+    private var wizardHeader: some View {
+        HStack(spacing: 0) {
+            ForEach(SummaryWizardStep.allCases, id: \.rawValue) { step in
+                if step.rawValue > 0 {
+                    Rectangle()
+                        .fill(step.rawValue <= currentStep.rawValue
+                              ? DesignSystem.Colors.amber : DesignSystem.Colors.border)
+                        .frame(height: 2)
+                        .frame(maxWidth: .infinity)
+                        .animation(DesignSystem.Animation.standard, value: currentStep)
+                }
+                Button {
+                    guard step.rawValue <= currentStep.rawValue + 1 else { return }
+                    withAnimation(DesignSystem.Animation.standard) {
+                        goingForward = step.rawValue > currentStep.rawValue
+                        currentStep = step
+                    }
+                } label: {
+                    VStack(spacing: 4) {
+                        ZStack {
+                            Circle()
+                                .fill(stepCircleColor(step))
+                                .frame(width: 34, height: 34)
+                                .animation(DesignSystem.Animation.standard, value: currentStep)
+                            if step.rawValue < currentStep.rawValue {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(.white)
+                            } else {
+                                Image(systemName: step.icon)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(step == currentStep ? .white : DesignSystem.Colors.textMuted)
+                            }
+                        }
+                        Text(step.title)
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(step == currentStep
+                                             ? DesignSystem.Colors.textPrimary
+                                             : DesignSystem.Colors.textMuted)
+                            .fontWeight(step == currentStep ? .semibold : .regular)
+                    }
+                }
+                .buttonStyle(.plain)
+                if step.rawValue < SummaryWizardStep.allCases.count - 1 {
+                    Rectangle()
+                        .fill(step.rawValue < currentStep.rawValue
+                              ? DesignSystem.Colors.amber : DesignSystem.Colors.border)
+                        .frame(height: 2)
+                        .frame(maxWidth: .infinity)
+                        .animation(DesignSystem.Animation.standard, value: currentStep)
+                }
+            }
+        }
+    }
+
+    private func stepCircleColor(_ step: SummaryWizardStep) -> Color {
+        if step.rawValue < currentStep.rawValue { return DesignSystem.Colors.amber }
+        if step == currentStep { return DesignSystem.Colors.blaze }
+        return DesignSystem.Colors.border
+    }
+
+    // MARK: - Step content
+
+    @ViewBuilder
+    private var stepContent: some View {
+        switch currentStep {
+        case .enable:
+            step1View
+                .transition(.asymmetric(
+                    insertion: .move(edge: goingForward ? .trailing : .leading).combined(with: .opacity),
+                    removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity)
+                ))
+                .id(SummaryWizardStep.enable)
+        case .localModel:
+            step2View
+                .transition(.asymmetric(
+                    insertion: .move(edge: goingForward ? .trailing : .leading).combined(with: .opacity),
+                    removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity)
+                ))
+                .id(SummaryWizardStep.localModel)
+        case .cloudProviders:
+            step3View
+                .transition(.asymmetric(
+                    insertion: .move(edge: goingForward ? .trailing : .leading).combined(with: .opacity),
+                    removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity)
+                ))
+                .id(SummaryWizardStep.cloudProviders)
+        case .advanced:
+            step4View
+                .transition(.asymmetric(
+                    insertion: .move(edge: goingForward ? .trailing : .leading).combined(with: .opacity),
+                    removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity)
+                ))
+                .id(SummaryWizardStep.advanced)
+        case .done:
+            step5View
+                .transition(.asymmetric(
+                    insertion: .move(edge: goingForward ? .trailing : .leading).combined(with: .opacity),
+                    removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity)
+                ))
+                .id(SummaryWizardStep.done)
+        }
+    }
+
+    // MARK: - Nav bar
+
+    private var navBar: some View {
+        HStack {
+            if currentStep != .enable {
+                Button("← Back") {
+                    withAnimation(DesignSystem.Animation.standard) {
+                        goingForward = false
+                        currentStep = SummaryWizardStep(rawValue: currentStep.rawValue - 1)!
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+            Spacer()
+            if currentStep != .done {
+                Button(currentStep == .advanced ? "Finish →" : "Next →") {
+                    withAnimation(DesignSystem.Animation.standard) {
+                        goingForward = true
+                        currentStep = SummaryWizardStep(rawValue: currentStep.rawValue + 1)!
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DesignSystem.Colors.blaze)
+            }
+        }
+    }
+
+    // MARK: - Step 1: Enable & Provider Order
+
+    private var step1View: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Auto-Summarize Sessions")
+                    .font(DesignSystem.Typography.title)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("After each scan, BurnBar generates a title and summary for new sessions using your provider priority.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Toggle(isOn: $settingsManager.autoSessionSummariesEnabled) {
+                Label("Enable auto-summarization", systemImage: "sparkles")
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            }
+            .toggleStyle(.switch)
+
+            if settingsManager.autoSessionSummariesEnabled {
+                providerOrderSection
+                dailyCapRow
+            }
+        }
+    }
+
+    private var providerOrderSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("Provider Priority")
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+            VStack(spacing: 0) {
+                ForEach(Array(providerOrder.enumerated()), id: \.element) { idx, provider in
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Image(systemName: "line.3.horizontal")
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .font(.system(size: 11))
+
+                        providerBadge(provider)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(provider.displayName)
+                                .font(DesignSystem.Typography.body)
+                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            Text("Priority \(idx + 1)")
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                        }
+
+                        Spacer()
+
+                        HStack(spacing: 4) {
+                            Button {
+                                guard idx > 0 else { return }
+                                withAnimation(DesignSystem.Animation.snappy) {
+                                    providerOrder.swapAt(idx, idx - 1)
+                                }
+                                syncOrder()
+                            } label: { Image(systemName: "chevron.up").font(.system(size: 11, weight: .semibold)) }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(idx == 0 ? DesignSystem.Colors.textMuted : DesignSystem.Colors.textPrimary)
+                            .disabled(idx == 0)
+
+                            Button {
+                                guard idx < providerOrder.count - 1 else { return }
+                                withAnimation(DesignSystem.Animation.snappy) {
+                                    providerOrder.swapAt(idx, idx + 1)
+                                }
+                                syncOrder()
+                            } label: { Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold)) }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(idx == providerOrder.count - 1 ? DesignSystem.Colors.textMuted : DesignSystem.Colors.textPrimary)
+                            .disabled(idx == providerOrder.count - 1)
+                        }
+                    }
+                    .padding(.horizontal, DesignSystem.Spacing.md)
+                    .padding(.vertical, DesignSystem.Spacing.sm)
+                    .background(DesignSystem.Colors.surface)
+
+                    if idx < providerOrder.count - 1 {
+                        Divider().background(DesignSystem.Colors.border)
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func providerBadge(_ provider: SummaryProviderID) -> some View {
+        switch provider {
+        case .local:
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color(hex: "615EFF").opacity(0.15))
+                Image(systemName: "cpu.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(hex: "615EFF"))
+            }
+            .frame(width: 28, height: 28)
+        case .mlx:
+            ModelProviderLogoView(modelKey: "mlx-community/model", size: 28)
+        case .openrouter:
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color(hex: "00A67E").opacity(0.15))
+                Image(systemName: "arrow.triangle.branch").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(hex: "00A67E"))
+            }
+            .frame(width: 28, height: 28)
+        case .minimax:
+            ModelProviderLogoView(modelKey: "minimax-m2.7-highspeed", size: 28)
+        case .zai:
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color(hex: "6366F1").opacity(0.15))
+                Text("Z").font(.system(size: 14, weight: .bold)).foregroundStyle(Color(hex: "6366F1"))
+            }
+            .frame(width: 28, height: 28)
+        }
+    }
+
+    private var dailyCapRow: some View {
+        HStack(spacing: DesignSystem.Spacing.md) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Daily cloud cap (USD)")
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("Limit for cloud providers; local is always free")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            Spacer()
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Toggle("Unlimited", isOn: unlimitedBinding).toggleStyle(.switch).labelsHidden()
+                TextField("1.00", text: Binding(
+                    get: {
+                        if let cap = settingsManager.summaryDailyCapUSD {
+                            return dailyCapText.isEmpty ? String(format: "%.2f", cap) : dailyCapText
+                        }
+                        return dailyCapText
+                    },
+                    set: { v in
+                        dailyCapText = v
+                        let f = v.filter { "0123456789.".contains($0) }
+                        if let val = Double(f), val > 0 { settingsManager.summaryDailyCapUSD = val }
+                    }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 80)
+                .disabled(settingsManager.summaryDailyCapUSD == nil)
+            }
+        }
+    }
+
+    private var unlimitedBinding: Binding<Bool> {
+        Binding(
+            get: { settingsManager.summaryDailyCapUSD == nil },
+            set: { unlimited in
+                if unlimited {
+                    settingsManager.summaryDailyCapUSD = nil
+                    dailyCapText = ""
+                } else if settingsManager.summaryDailyCapUSD == nil {
+                    settingsManager.summaryDailyCapUSD = 1.0
+                    dailyCapText = "1.00"
+                }
+            }
+        )
+    }
+
+    // MARK: - Step 2: Local Model
+
+    private var step2View: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(hex: "615EFF").opacity(0.15)).frame(width: 42, height: 42)
+                        Image(systemName: "cpu.fill").font(.system(size: 20, weight: .semibold)).foregroundStyle(Color(hex: "615EFF"))
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Local Model (Ollama)")
+                            .font(DesignSystem.Typography.title)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("Free, private, runs entirely on your Mac")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                }
+
+                // Scan for installed models
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    HStack {
+                        Text("Models on disk")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        Spacer()
+                        Button {
+                            Task { await scanModels() }
+                        } label: {
+                            if isScanning {
+                                HStack(spacing: 6) { ProgressView().controlSize(.mini); Text("Scanning…") }
+                            } else {
+                                Label("Scan system", systemImage: "magnifyingglass")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isScanning)
+                    }
+
+                    if let err = scanError {
+                        Label(err, systemImage: "exclamationmark.triangle")
+                            .font(DesignSystem.Typography.tiny).foregroundStyle(DesignSystem.Colors.error)
+                    } else if installedModels.isEmpty && !isScanning {
+                        Text("Tap \"Scan system\" to see models already on disk.")
+                            .font(DesignSystem.Typography.caption).foregroundStyle(DesignSystem.Colors.textMuted)
+                    } else if !installedModels.isEmpty {
+                        VStack(spacing: 0) {
+                            ForEach(installedModels) { model in
+                                HStack(spacing: DesignSystem.Spacing.sm) {
+                                    ModelProviderLogoView(modelKey: model.name, size: 22)
+                                    Text(model.name)
+                                        .font(DesignSystem.Typography.body)
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                        .lineLimit(1)
+                                    if model.isSummaryCandidate {
+                                        Text("recommended")
+                                            .font(DesignSystem.Typography.tiny)
+                                            .padding(.horizontal, 6).padding(.vertical, 2)
+                                            .background(DesignSystem.Colors.amber.opacity(0.15))
+                                            .foregroundStyle(DesignSystem.Colors.amber)
+                                            .clipShape(Capsule())
+                                    }
+                                    Spacer()
+                                    Text(String(format: "%.1f GB", model.sizeGB))
+                                        .font(DesignSystem.Typography.monoTiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    Button("Use") { settingsManager.summaryLocalModel = model.name }
+                                        .buttonStyle(.bordered).controlSize(.small)
+                                }
+                                .padding(.horizontal, DesignSystem.Spacing.md)
+                                .padding(.vertical, DesignSystem.Spacing.sm)
+                                .background(settingsManager.summaryLocalModel == model.name
+                                            ? DesignSystem.Colors.amber.opacity(0.08)
+                                            : DesignSystem.Colors.surface)
+                                if model.id != installedModels.last?.id {
+                                    Divider().background(DesignSystem.Colors.border)
+                                }
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                            .stroke(DesignSystem.Colors.border, lineWidth: 0.5))
+                    }
+                }
+
+                // Model picker + download
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    Text("Choose a model")
+                        .font(DesignSystem.Typography.caption).fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                    let onDiskNames = Set(installedModels.map(\.name))
+                    VStack(spacing: 0) {
+                        ForEach(modelPresets) { preset in
+                            let isSelected = settingsManager.summaryLocalModel == preset.tag
+                            let onDisk = onDiskNames.contains(preset.tag)
+                            Button { settingsManager.summaryLocalModel = preset.tag } label: {
+                                HStack(spacing: DesignSystem.Spacing.sm) {
+                                    ZStack {
+                                        Circle()
+                                            .stroke(isSelected ? DesignSystem.Colors.blaze : DesignSystem.Colors.border, lineWidth: isSelected ? 2 : 1)
+                                            .frame(width: 16, height: 16)
+                                        if isSelected {
+                                            Circle().fill(DesignSystem.Colors.blaze).frame(width: 8, height: 8)
+                                        }
+                                    }
+                                    ModelProviderLogoView(modelKey: preset.tag, size: 22)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack(spacing: 5) {
+                                            Text(preset.tag)
+                                                .font(DesignSystem.Typography.body)
+                                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                            if preset.recommended {
+                                                Text("recommended")
+                                                    .font(DesignSystem.Typography.tiny)
+                                                    .padding(.horizontal, 5).padding(.vertical, 1)
+                                                    .background(DesignSystem.Colors.amber.opacity(0.15))
+                                                    .foregroundStyle(DesignSystem.Colors.amber)
+                                                    .clipShape(Capsule())
+                                            }
+                                        }
+                                        Text(preset.description)
+                                            .font(DesignSystem.Typography.tiny)
+                                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    }
+                                    Spacer()
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text(preset.size)
+                                            .font(DesignSystem.Typography.monoTiny)
+                                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        if onDisk {
+                                            HStack(spacing: 3) {
+                                                Image(systemName: "checkmark.circle.fill").font(.system(size: 10))
+                                                Text("on disk").font(DesignSystem.Typography.tiny)
+                                            }
+                                            .foregroundStyle(DesignSystem.Colors.success)
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, DesignSystem.Spacing.md)
+                                .padding(.vertical, DesignSystem.Spacing.sm)
+                                .background(isSelected
+                                            ? DesignSystem.Colors.blaze.opacity(0.06)
+                                            : DesignSystem.Colors.surface)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            if preset.id != modelPresets.last?.id {
+                                Divider().background(DesignSystem.Colors.border)
+                            }
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .stroke(DesignSystem.Colors.border, lineWidth: 0.5))
+
+                    // Custom tag override + download button
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        ModelProviderLogoView(modelKey: settingsManager.summaryLocalModel, size: 20)
+                        TextField("or type custom tag…", text: $settingsManager.summaryLocalModel)
+                            .textFieldStyle(.roundedBorder)
+                            .font(DesignSystem.Typography.monoSmall)
+                        Button(isDownloading ? "Downloading…" : "Download") {
+                            Task { await download(settingsManager.summaryLocalModel) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DesignSystem.Colors.blaze)
+                        .disabled(isDownloading)
+                    }
+
+                    if isDownloading || !dlStatusText.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(dlStatusText)
+                                    .font(DesignSystem.Typography.tiny)
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                Spacer()
+                                if dlTotal > 0 {
+                                    Text(String(format: "%.2f / %.2f GB",
+                                               Double(dlCompleted) / 1_073_741_824,
+                                               Double(dlTotal) / 1_073_741_824))
+                                        .font(DesignSystem.Typography.monoTiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                }
+                            }
+                            if dlTotal > 0 {
+                                ProgressView(value: Double(dlCompleted), total: Double(dlTotal))
+                                    .tint(DesignSystem.Colors.amber)
+                            } else if isDownloading {
+                                ProgressView().controlSize(.small)
+                            }
+                        }
+                    }
+                    if let err = dlError {
+                        Label(err, systemImage: "exclamationmark.triangle")
+                            .font(DesignSystem.Typography.tiny).foregroundStyle(DesignSystem.Colors.error)
+                    }
+                }
+
+                // Speed test
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    HStack {
+                        Text("Speed test")
+                            .font(DesignSystem.Typography.caption).fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        Spacer()
+                        Button {
+                            Task { await speedTest() }
+                        } label: {
+                            Label("Test speed", systemImage: "gauge.with.needle")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isSpeedTesting || isDownloading)
+                    }
+
+                    if isSpeedTesting {
+                        // Live streaming output while test runs
+                        HStack(spacing: DesignSystem.Spacing.sm) {
+                            ProgressView().controlSize(.small)
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: DesignSystem.Spacing.xs) {
+                                    Text("Generating…")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                    if liveElapsed > 0.3, liveTokenCount > 0 {
+                                        Text("·")
+                                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        Text(String(format: "%.0f tok/s", Double(liveTokenCount) / liveElapsed))
+                                            .font(DesignSystem.Typography.monoTiny)
+                                            .foregroundStyle(DesignSystem.Colors.amber)
+                                            .fontWeight(.semibold)
+                                    }
+                                }
+                                if !liveOutput.isEmpty {
+                                    Text(liveOutput)
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .lineLimit(2)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                        .padding(DesignSystem.Spacing.sm)
+                        .background(DesignSystem.Colors.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .stroke(DesignSystem.Colors.border, lineWidth: 0.5))
+                    } else if let tps = speedTPS {
+                        speedResultCard(tps: tps)
+                    } else if let err = speedError {
+                        Label(err, systemImage: "exclamationmark.triangle")
+                            .font(DesignSystem.Typography.tiny).foregroundStyle(DesignSystem.Colors.error)
+                    } else {
+                        Text("Run a speed test to see real tokens/sec and a time estimate for pending sessions.")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                // MLX section (Apple Silicon)
+                Divider().background(DesignSystem.Colors.border)
+
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    ModelProviderLogoView(modelKey: "mlx-community/model", size: 42)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Apple MLX (Apple Silicon)")
+                            .font(DesignSystem.Typography.title)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("Fastest local option — uses GPU + Neural Engine via mlx_lm")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    Text("Setup")
+                        .font(DesignSystem.Typography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                    VStack(spacing: 0) {
+                        HStack(spacing: DesignSystem.Spacing.sm) {
+                            Image(systemName: "terminal.fill")
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                                .frame(width: 20)
+                            Text("pip install mlx-lm  &&  mlx_lm.server --model mlx-community/Qwen3-4B-4bit")
+                                .font(DesignSystem.Typography.monoTiny)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                .textSelection(.enabled)
+                        }
+                        .padding(DesignSystem.Spacing.sm)
+                        .background(DesignSystem.Colors.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+
+                        Divider().background(DesignSystem.Colors.border)
+
+                        HStack(spacing: DesignSystem.Spacing.xs) {
+                            Text("Base URL:").font(DesignSystem.Typography.caption).foregroundStyle(DesignSystem.Colors.textSecondary)
+                            TextField("http://127.0.0.1:8080", text: $settingsManager.summaryMLXBaseURL)
+                                .textFieldStyle(.roundedBorder)
+                                .font(DesignSystem.Typography.monoSmall)
+                        }
+                        .padding(DesignSystem.Spacing.sm)
+                        .background(DesignSystem.Colors.surface)
+
+                        Divider().background(DesignSystem.Colors.border)
+
+                        HStack(spacing: DesignSystem.Spacing.xs) {
+                            Text("Model:").font(DesignSystem.Typography.caption).foregroundStyle(DesignSystem.Colors.textSecondary)
+                            TextField("mlx-community/Qwen3-4B-4bit", text: $settingsManager.summaryMLXModel)
+                                .textFieldStyle(.roundedBorder)
+                                .font(DesignSystem.Typography.monoSmall)
+                        }
+                        .padding(DesignSystem.Spacing.sm)
+                        .background(DesignSystem.Colors.surface)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .stroke(DesignSystem.Colors.border, lineWidth: 0.5))
+
+                    Text("MLX models run via OpenAI-compatible API. Prioritize it in Step 1 to use MLX as your primary summarizer.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func speedResultCard(tps: Double) -> some View {
+        let estSeconds = pendingCount > 0 ? Double(pendingCount) * 3000.0 / 4.0 / tps : 0.0
+        VStack(spacing: 0) {
+            HStack(spacing: DesignSystem.Spacing.lg) {
+                VStack(alignment: .center, spacing: 4) {
+                    Text(String(format: tps >= 10 ? "%.0f" : "%.1f", tps))
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .foregroundStyle(tps >= 10 ? DesignSystem.Colors.success : DesignSystem.Colors.warning)
+                    Text("tok / sec")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                .frame(minWidth: 80)
+
+                if pendingCount > 0 && estSeconds > 0 {
+                    Divider().frame(height: 44)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(pendingCount) sessions unsummarized")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        Text("~\(humanDuration(estSeconds))")
+                            .font(.system(size: 20, weight: .semibold, design: .rounded))
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("to summarize all at this speed")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                }
+                Spacer()
+            }
+            .padding(DesignSystem.Spacing.md)
+
+            Divider().background(DesignSystem.Colors.border)
+
+            HStack {
+                Text("Not fast enough?")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Spacer()
+                Button("Optimize →") { showSpeedOptions = true }
+                    .buttonStyle(.plain)
+                    .font(DesignSystem.Typography.caption.weight(.semibold))
+                    .foregroundStyle(DesignSystem.Colors.amber)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+        }
+        .background(DesignSystem.Colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+            .stroke(DesignSystem.Colors.border, lineWidth: 0.5))
+    }
+
+    // MARK: - Step 3: Cloud Providers
+
+    private var step3View: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Cloud Providers")
+                    .font(DesignSystem.Typography.title)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("Used as fallback when local Ollama is unavailable. Add API keys for the providers you want to enable.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            cloudCard(
+                id: "openrouter",
+                name: "OpenRouter",
+                modelBinding: $settingsManager.summaryOpenRouterPrimaryModel,
+                modelPlaceholder: "qwen/qwen3.5-9b",
+                keyBinding: $openRouterKey,
+                keyPlaceholder: "sk-or-...",
+                icon: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color(hex: "00A67E").opacity(0.15))
+                        Image(systemName: "arrow.triangle.branch").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(hex: "00A67E"))
+                    }
+                    .frame(width: 38, height: 38)
+                }
+            )
+
+            cloudCard(
+                id: "minimax",
+                name: "MiniMax",
+                modelBinding: $settingsManager.summaryMiniMaxModel,
+                modelPlaceholder: "minimax-m2.7-highspeed",
+                keyBinding: $miniMaxKey,
+                keyPlaceholder: "sk-...",
+                icon: { ModelProviderLogoView(modelKey: "minimax-m2.7-highspeed", size: 38) }
+            )
+
+            cloudCard(
+                id: "zai",
+                name: "Z.ai",
+                modelBinding: $settingsManager.summaryZaiModel,
+                modelPlaceholder: "glm-5-turbo",
+                keyBinding: $zaiKey,
+                keyPlaceholder: "sk-...",
+                icon: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color(hex: "6366F1").opacity(0.15))
+                        Text("Z").font(.system(size: 17, weight: .bold)).foregroundStyle(Color(hex: "6366F1"))
+                    }
+                    .frame(width: 38, height: 38)
+                }
+            )
+
+            if let err = keySaveError {
+                Text(err).font(DesignSystem.Typography.tiny).foregroundStyle(DesignSystem.Colors.error)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cloudCard<Icon: View>(
+        id: String,
+        name: String,
+        modelBinding: Binding<String>,
+        modelPlaceholder: String,
+        keyBinding: Binding<String>,
+        keyPlaceholder: String,
+        @ViewBuilder icon: () -> Icon
+    ) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                icon()
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Text(name)
+                            .font(DesignSystem.Typography.body).fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        if keySaved[id] == true {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(DesignSystem.Colors.success)
+                                .font(.system(size: 13))
+                        }
+                    }
+                    Text(modelBinding.wrappedValue)
+                        .font(DesignSystem.Typography.tiny).foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                Spacer()
+            }
+            .padding(DesignSystem.Spacing.md)
+
+            Divider().background(DesignSystem.Colors.border)
+
+            VStack(spacing: DesignSystem.Spacing.sm) {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    SecureField(keyPlaceholder, text: keyBinding)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Save") {
+                        saveKey(keyBinding.wrappedValue, provider: id)
+                        keySaved[id] = true
+                    }
+                    .buttonStyle(.bordered)
+                }
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Text("Model:").font(DesignSystem.Typography.caption).foregroundStyle(DesignSystem.Colors.textSecondary)
+                    TextField(modelPlaceholder, text: modelBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .font(DesignSystem.Typography.monoSmall)
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+        }
+        .background(DesignSystem.Colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+            .stroke(DesignSystem.Colors.border, lineWidth: 0.5))
+    }
+
+    // MARK: - Step 4: Advanced
+
+    private var step4View: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                Text("Advanced")
+                    .font(DesignSystem.Typography.title)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                VStack(spacing: 0) {
+                    advRow("Ollama base URL", "Local Ollama endpoint") {
+                        TextField("http://127.0.0.1:11434", text: $settingsManager.summaryLocalBaseURL)
+                            .textFieldStyle(.roundedBorder).frame(width: 230)
+                    }
+                    Divider().background(DesignSystem.Colors.border)
+                    advRow("MLX base URL", "mlx_lm.server endpoint") {
+                        TextField("http://127.0.0.1:8080", text: $settingsManager.summaryMLXBaseURL)
+                            .textFieldStyle(.roundedBorder).frame(width: 230)
+                    }
+                    Divider().background(DesignSystem.Colors.border)
+                    advRow("MLX model", "HuggingFace model ID for mlx_lm") {
+                        TextField("mlx-community/Qwen3-4B-4bit", text: $settingsManager.summaryMLXModel)
+                            .textFieldStyle(.roundedBorder).frame(width: 230)
+                    }
+                    Divider().background(DesignSystem.Colors.border)
+                    advRow("OpenRouter fallback", "Quality fallback model") {
+                        TextField("openai/gpt-5-nano", text: $settingsManager.summaryOpenRouterFallbackModel)
+                            .textFieldStyle(.roundedBorder).frame(width: 200)
+                    }
+                    Divider().background(DesignSystem.Colors.border)
+                    advRow("Prompt chars", "Max transcript chars sent to model") {
+                        Stepper(value: $settingsManager.summaryMaxPromptChars, in: 4_000...200_000, step: 2_000) {
+                            Text("\(settingsManager.summaryMaxPromptChars)").font(DesignSystem.Typography.monoSmall)
+                        }
+                    }
+                    Divider().background(DesignSystem.Colors.border)
+                    advRow("Max output tokens", "Upper bound for generated summary") {
+                        Stepper(value: $settingsManager.summaryMaxOutputTokens, in: 120...1_200, step: 20) {
+                            Text("\(settingsManager.summaryMaxOutputTokens)").font(DesignSystem.Typography.monoSmall)
+                        }
+                    }
+                    Divider().background(DesignSystem.Colors.border)
+                    advRow("Retries", "Attempts per provider before fallback") {
+                        Stepper(value: $settingsManager.summaryRetryCount, in: 0...4) {
+                            Text("\(settingsManager.summaryRetryCount)").font(DesignSystem.Typography.monoSmall)
+                        }
+                    }
+                    Divider().background(DesignSystem.Colors.border)
+                    advRow("Batch size", "Per-scan incremental summary batch") {
+                        Stepper(value: $settingsManager.summaryBatchSize, in: 1...100) {
+                            Text("\(settingsManager.summaryBatchSize)").font(DesignSystem.Typography.monoSmall)
+                        }
+                    }
+                    Divider().background(DesignSystem.Colors.border)
+                    advRow("First-load batch", "Startup backfill batch size") {
+                        Stepper(value: $settingsManager.summaryFirstLoadBatchSize, in: 1...300) {
+                            Text("\(settingsManager.summaryFirstLoadBatchSize)").font(DesignSystem.Typography.monoSmall)
+                        }
+                    }
+                    Divider().background(DesignSystem.Colors.border)
+                    advRow("Request timeout", "Seconds per provider call") {
+                        Stepper(value: $settingsManager.summaryRequestTimeoutSeconds, in: 5...90, step: 1) {
+                            Text("\(Int(settingsManager.summaryRequestTimeoutSeconds))s").font(DesignSystem.Typography.monoSmall)
+                        }
+                    }
+                }
+                .background(DesignSystem.Colors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.border, lineWidth: 0.5))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func advRow<C: View>(_ title: String, _ subtitle: String, @ViewBuilder control: () -> C) -> some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(DesignSystem.Typography.body).foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(subtitle).font(DesignSystem.Typography.tiny).foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            Spacer()
+            control()
+        }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+    }
+
+    // MARK: - Step 5: Done
+
+    private var step5View: some View {
+        VStack(alignment: .center, spacing: DesignSystem.Spacing.lg) {
+            Spacer()
+
+            ZStack {
+                Circle().fill(DesignSystem.Colors.success.opacity(0.12)).frame(width: 76, height: 76)
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 38, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.success)
+            }
+
+            VStack(spacing: DesignSystem.Spacing.xs) {
+                Text("All set!").font(DesignSystem.Typography.title).foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("Summaries will be generated automatically after each scan.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(spacing: 0) {
+                summaryRow("sparkles", "Auto-summarize", settingsManager.autoSessionSummariesEnabled ? "On" : "Off")
+                Divider().background(DesignSystem.Colors.border)
+                summaryRow("list.number", "Provider order",
+                           providerOrder.map(\.displayName).joined(separator: " → "))
+                Divider().background(DesignSystem.Colors.border)
+                summaryRow("cpu.fill", "Local model", settingsManager.summaryLocalModel)
+                if let tps = speedTPS {
+                    Divider().background(DesignSystem.Colors.border)
+                    summaryRow("gauge.with.needle", "Speed", String(format: "%.0f tok/s", tps))
+                }
+                if pendingCount > 0, let tps = speedTPS {
+                    Divider().background(DesignSystem.Colors.border)
+                    summaryRow("clock", "Estimate",
+                               "~\(humanDuration(Double(pendingCount) * 3000.0 / 4.0 / tps)) for \(pendingCount) sessions")
+                }
+            }
+            .background(DesignSystem.Colors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.border, lineWidth: 0.5))
+            .frame(maxWidth: 380)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func summaryRow(_ icon: String, _ label: String, _ value: String) -> some View {
+        HStack {
+            Image(systemName: icon).font(.system(size: 12)).foregroundStyle(DesignSystem.Colors.textMuted).frame(width: 18)
+            Text(label).font(DesignSystem.Typography.caption).foregroundStyle(DesignSystem.Colors.textSecondary)
+            Spacer()
+            Text(value)
+                .font(DesignSystem.Typography.caption).fontWeight(.medium)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+    }
+
+    // MARK: - Helpers
+
+    private func loadState() {
+        providerOrder = settingsManager.summaryProviderOrder
+        if let cap = settingsManager.summaryDailyCapUSD {
+            dailyCapText = String(format: "%.2f", cap)
+        }
+        let ks = ProviderAPIKeyStore.shared
+        openRouterKey = ks.apiKey(for: "openrouter") ?? ""
+        miniMaxKey = ks.apiKey(for: "minimax") ?? ""
+        zaiKey = ks.apiKey(for: "zai") ?? ""
+        keySaved["openrouter"] = !(ks.apiKey(for: "openrouter") ?? "").isEmpty
+        keySaved["minimax"] = !(ks.apiKey(for: "minimax") ?? "").isEmpty
+        keySaved["zai"] = !(ks.apiKey(for: "zai") ?? "").isEmpty
+        pendingCount = (try? dataStore.fetchConversationsNeedingSummary(limit: 10_000).count) ?? 0
+    }
+
+    private func syncOrder() {
+        settingsManager.summaryProviderOrderCSV = providerOrder.map(\.rawValue).joined(separator: ",")
+    }
+
+    private func saveKey(_ raw: String, provider: String) {
+        let ks = ProviderAPIKeyStore.shared
+        do {
+            let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.isEmpty { try ks.removeAPIKey(for: provider) } else { try ks.setAPIKey(t, for: provider) }
+            keySaveError = nil
+        } catch { keySaveError = error.localizedDescription }
+    }
+
+    private func scanModels() async {
+        isScanning = true; scanError = nil
+        do {
+            installedModels = try await OllamaService.listModels(baseURL: settingsManager.summaryLocalBaseURL)
+            let names = Set(installedModels.map(\.name))
+            if !names.contains(settingsManager.summaryLocalModel),
+               let best = installedModels.first(where: { $0.isSummaryCandidate }) ?? installedModels.first {
+                settingsManager.summaryLocalModel = best.name
+            }
+        } catch { scanError = error.localizedDescription }
+        isScanning = false
+    }
+
+    private func download(_ model: String) async {
+        let m = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !m.isEmpty else { return }
+        isDownloading = true; dlError = nil; dlCompleted = 0; dlTotal = 0; dlStatusText = "Connecting…"
+        var lastUIFlush = Date.distantPast
+        var pendingCompleted: Int64 = 0
+        var pendingTotal: Int64 = 0
+        var pendingStatus = ""
+        do {
+            for try await p in OllamaService.pullModel(m, baseURL: settingsManager.summaryLocalBaseURL) {
+                pendingCompleted = p.completed; pendingTotal = p.total; pendingStatus = p.status
+                let now = Date()
+                // Throttle UI updates to ~10 fps to avoid layout recursion
+                if now.timeIntervalSince(lastUIFlush) >= 0.1 || p.status == "success" {
+                    lastUIFlush = now
+                    dlCompleted = pendingCompleted; dlTotal = pendingTotal; dlStatusText = pendingStatus
+                }
+            }
+            dlCompleted = pendingCompleted; dlTotal = pendingTotal
+            dlStatusText = "Downloaded \(m)"
+            await scanModels()
+        } catch { dlError = error.localizedDescription; dlStatusText = "" }
+        isDownloading = false
+    }
+
+    private func speedTest() async {
+        isSpeedTesting = true; speedError = nil; speedTPS = nil
+        liveTokenCount = 0; liveElapsed = 0; liveOutput = ""
+        do {
+            for try await update in OllamaService.streamSpeedTest(
+                model: settingsManager.summaryLocalModel,
+                baseURL: settingsManager.summaryLocalBaseURL
+            ) {
+                liveTokenCount = update.tokenCount
+                liveElapsed = update.elapsed
+                liveOutput += update.fragment
+                if let final = update.finalTPS {
+                    speedTPS = final
+                }
+            }
+            if speedTPS == nil, liveElapsed > 0.1, liveTokenCount > 0 {
+                speedTPS = Double(liveTokenCount) / liveElapsed
+            }
+        } catch { speedError = error.localizedDescription }
+        isSpeedTesting = false
+    }
+
+    private func humanDuration(_ seconds: Double) -> String {
+        if seconds < 60 { return String(format: "%.0f sec", seconds) }
+        if seconds < 3600 { return String(format: "%.0f min", seconds / 60) }
+        return String(format: "%.1f hr", seconds / 3600)
+    }
+}
+
+// MARK: - Speed Options Sheet
+
+private struct SpeedOptionsSheet: View {
+    let currentModel: String
+    let tps: Double
+    let pendingCount: Int
+    let onDiskNames: Set<String>
+    let onSelectModel: (String) -> Void
+    let onSelectMLX: (String) -> Void
+    let onSelectCloud: (SummaryProviderID) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    private struct LocalOption: Identifiable {
+        let id: String
+        let size: String
+        let description: String
+    }
+
+    private let options: [LocalOption] = [
+        LocalOption(id: "qwen3.5:9b",   size: "5.8 GB", description: "Best quality summaries"),
+        LocalOption(id: "qwen3.5:4b",   size: "2.6 GB", description: "Good balance of speed/quality"),
+        LocalOption(id: "qwen3.5:2b",   size: "1.5 GB", description: "Fast, lower quality"),
+        LocalOption(id: "qwen3.5:0.8b", size: "522 MB", description: "Fastest, minimal quality"),
+        LocalOption(id: "llama3.2:3b",  size: "2.0 GB", description: "Meta Llama 3.2 alternative"),
+        LocalOption(id: "phi3.5:3.8b",  size: "2.2 GB", description: "Microsoft Phi-3.5 alternative"),
+    ]
+
+    private var fasterOptions: [LocalOption] {
+        guard let idx = options.firstIndex(where: { $0.id == currentModel }) else {
+            return options.filter { $0.id != currentModel }
+        }
+        return Array(options[(idx + 1)...])
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Image(systemName: "gauge.medium.badge.plus")
+                            .foregroundStyle(DesignSystem.Colors.amber)
+                        Text("Optimize Speed")
+                            .font(DesignSystem.Typography.title)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    }
+                    Group {
+                        if pendingCount > 0 {
+                            Text("Current: \(currentModel) · \(String(format: "%.0f", tps)) tok/s · \(pendingCount) sessions pending")
+                        } else {
+                            Text("Current: \(currentModel) · \(String(format: "%.0f", tps)) tok/s")
+                        }
+                    }
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(DesignSystem.Spacing.lg)
+
+            Divider().background(DesignSystem.Colors.border)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+
+                    // Faster local models
+                    if !fasterOptions.isEmpty {
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                            Label("Faster Local Models", systemImage: "cpu")
+                                .font(DesignSystem.Typography.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            Text("Smaller models run significantly faster at the cost of summary quality.")
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            VStack(spacing: 0) {
+                                ForEach(fasterOptions) { option in
+                                    localOptionRow(option)
+                                    if option.id != fasterOptions.last?.id {
+                                        Divider().background(DesignSystem.Colors.border)
+                                    }
+                                }
+                            }
+                            .background(DesignSystem.Colors.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                                .stroke(DesignSystem.Colors.border, lineWidth: 0.5))
+                        }
+                    }
+
+                    // MLX option (Apple Silicon)
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        Label("Apple MLX (Fastest Local)", systemImage: "memorychip.fill")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        Text("Uses Apple GPU + Neural Engine. Requires mlx_lm.server running on port 8080.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        VStack(spacing: 0) {
+                            mlxOptionRow("mlx-community/Qwen3-4B-4bit", "~2.4 GB · Best for summarization")
+                            Divider().background(DesignSystem.Colors.border)
+                            mlxOptionRow("mlx-community/Qwen3-1.7B-4bit", "~1.0 GB · Ultra-fast, good quality")
+                            Divider().background(DesignSystem.Colors.border)
+                            mlxOptionRow("mlx-community/Llama-3.2-3B-Instruct-4bit", "~1.8 GB · Meta Llama 3.2")
+                        }
+                        .background(DesignSystem.Colors.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                            .stroke(DesignSystem.Colors.border, lineWidth: 0.5))
+                    }
+
+                    // Cloud providers
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        Label("Switch to Cloud", systemImage: "cloud")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        Text("Prioritize a cloud provider. Local Ollama becomes the fallback.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        VStack(spacing: 0) {
+                            cloudOptionRow(
+                                provider: .openrouter,
+                                name: "OpenRouter",
+                                description: "Fast inference, 200+ models, pay-per-token",
+                                icon: AnyView(
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                            .fill(Color(hex: "00A67E").opacity(0.15))
+                                        Image(systemName: "arrow.triangle.branch")
+                                            .font(.system(size: 15, weight: .semibold))
+                                            .foregroundStyle(Color(hex: "00A67E"))
+                                    }.frame(width: 34, height: 34)
+                                )
+                            )
+                            Divider().background(DesignSystem.Colors.border)
+                            cloudOptionRow(
+                                provider: .minimax,
+                                name: "MiniMax",
+                                description: "High-speed, low-cost cloud API",
+                                icon: AnyView(ModelProviderLogoView(modelKey: "minimax-m2.7-highspeed", size: 34))
+                            )
+                            Divider().background(DesignSystem.Colors.border)
+                            cloudOptionRow(
+                                provider: .zai,
+                                name: "Z.ai",
+                                description: "Sub-second cloud summaries",
+                                icon: AnyView(ModelProviderLogoView(modelKey: "glm-4", size: 34))
+                            )
+                        }
+                        .background(DesignSystem.Colors.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                            .stroke(DesignSystem.Colors.border, lineWidth: 0.5))
+                    }
+                }
+                .padding(DesignSystem.Spacing.lg)
+            }
+
+            Divider().background(DesignSystem.Colors.border)
+
+            HStack {
+                Spacer()
+                Button("Keep current model") { dismiss() }
+                    .buttonStyle(.plain)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.lg)
+            .padding(.vertical, DesignSystem.Spacing.md)
+        }
+        .frame(width: 480)
+        .frame(minHeight: 500)
+        .background(DesignSystem.Colors.background)
+    }
+
+    @ViewBuilder
+    private func localOptionRow(_ option: LocalOption) -> some View {
+        let isOnDisk = onDiskNames.contains(option.id)
+        HStack(spacing: DesignSystem.Spacing.md) {
+            ModelProviderLogoView(modelKey: option.id, size: 34)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Text(option.id)
+                        .font(DesignSystem.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    if isOnDisk {
+                        Text("on disk")
+                            .font(DesignSystem.Typography.tiny)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(DesignSystem.Colors.success.opacity(0.15))
+                            .foregroundStyle(DesignSystem.Colors.success)
+                            .clipShape(Capsule())
+                    }
+                }
+                HStack(spacing: 4) {
+                    Text(option.description)
+                    Text("·")
+                    Text(option.size)
+                }
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+
+            Spacer()
+
+            Button(isOnDisk ? "Use" : "Download & Use") {
+                onSelectModel(option.id)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .tint(isOnDisk ? DesignSystem.Colors.blaze : nil)
+        }
+        .padding(DesignSystem.Spacing.md)
+    }
+
+    @ViewBuilder
+    private func mlxOptionRow(_ modelId: String, _ subtitle: String) -> some View {
+        HStack(spacing: DesignSystem.Spacing.md) {
+            ModelProviderLogoView(modelKey: modelId, size: 34)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(modelId)
+                    .font(DesignSystem.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(subtitle)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            Spacer()
+            Button("Use") { onSelectMLX(modelId) }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+        .padding(DesignSystem.Spacing.md)
+    }
+
+    @ViewBuilder
+    private func cloudOptionRow(provider: SummaryProviderID, name: String, description: String, icon: AnyView) -> some View {
+        HStack(spacing: DesignSystem.Spacing.md) {
+            icon
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(DesignSystem.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(description)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+
+            Spacer()
+
+            Button("Prioritize") {
+                onSelectCloud(provider)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(DesignSystem.Colors.blaze)
+        }
+        .padding(DesignSystem.Spacing.md)
+    }
+}
+
 // MARK: - Providers Settings
 
 private struct ProvidersSettingsView: View {
     @Bindable var settingsManager: SettingsManager
     var dataStore: DataStore
+    @State private var quotaService = ProviderQuotaService.shared
 
     var body: some View {
         ScrollView {
@@ -333,7 +1954,13 @@ private struct ProvidersSettingsView: View {
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .padding(.bottom, DesignSystem.Spacing.sm)
 
-                CursorConnectorView(dataStore: dataStore)
+                sectionHeader("Quota Reporting")
+
+                ProviderQuotaSettingsSection(
+                    settingsManager: settingsManager,
+                    quotaService: quotaService,
+                    dataStore: dataStore
+                )
 
                 sectionHeader("Log File Paths")
 
@@ -1012,7 +2639,7 @@ private struct AccountSettingsView: View {
                 }
             }
 
-            sectionHeader("Cloud Sync")
+            sectionHeader("Firestore sync")
 
             accountPanel {
                 VStack(spacing: 0) {
@@ -1043,10 +2670,10 @@ private struct AccountSettingsView: View {
             accountPanel {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Cloud Sync")
+                        Text("Firestore sync")
                             .font(DesignSystem.Typography.headline)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        Text("Sign in with Google or Apple to sync usage totals across your Macs. Data stays in your Firebase project.")
+                        Text("Sign in with Google or Apple to sync usage totals across your Macs. Data stays in your Firebase project (Firestore).")
                             .font(DesignSystem.Typography.caption)
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -1242,10 +2869,18 @@ private struct AccountSettingsView: View {
 
     // MARK: - Sync Status Row
 
+    /// Firestore returns this when rules only allow `usage` but the app also writes `conversations` / `session_logs`.
+    private var firestorePermissionHint: String? {
+        guard let err = cloudSyncService?.lastSyncError else { return nil }
+        let e = err.lowercased()
+        guard e.contains("permission") || e.contains("insufficient") else { return nil }
+        return "Your Firebase security rules must allow read/write under your user path for usage, conversations, and session_logs (including chunks). This is not the iCloud mirror below. See README → Cloud sync, or use firestore.rules in the repo."
+    }
+
     private var syncStatusRow: some View {
         HStack(spacing: DesignSystem.Spacing.md) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Last sync")
+                Text("Last Firestore sync")
                     .font(DesignSystem.Typography.body)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
 
@@ -1262,6 +2897,13 @@ private struct AccountSettingsView: View {
                     }
                 }
                 .font(DesignSystem.Typography.caption)
+
+                if let hint = firestorePermissionHint {
+                    Text(hint)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Spacer()

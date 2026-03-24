@@ -161,6 +161,7 @@ struct ProviderDashboardView: View {
 
     @Bindable private var settingsManager = SettingsManager.shared
     @State private var selectedSession: TokenUsage?
+    @State private var quotaService = ProviderQuotaService.shared
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
 
@@ -168,6 +169,12 @@ struct ProviderDashboardView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                 providerHeader
+
+                ProviderDashboardQuotaPanel(
+                    provider: provider,
+                    quotaService: quotaService,
+                    dataStore: dataStore
+                )
 
                 if !usages.isEmpty {
                     analyticsDeck
@@ -332,27 +339,15 @@ struct ProviderDashboardView: View {
 
     private var sessionsSection: some View {
         GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    Text("Session Ledger")
-                        .font(DesignSystem.Typography.headline)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                    Text("Recent sessions with cost, model, and timing for \(provider.displayName).")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
-
-                if usages.isEmpty {
-                    emptySessionsView
-                } else {
-                    SessionsListRows(
-                        usages: Array(usages.prefix(15)),
-                        theme: theme,
-                        selectedSession: $selectedSession,
-                        displayMode: settingsManager.usageDisplayMode
-                    )
-                }
+            SessionLedgerSection(
+                usages: usages,
+                theme: theme,
+                selectedSession: $selectedSession,
+                displayMode: settingsManager.usageDisplayMode,
+                showsAgentBadge: false,
+                footerCaption: "Search paths, models, and session ids for \(provider.displayName). Groups use session start time within the range above."
+            ) {
+                emptySessionsView
             }
             .padding(DesignSystem.Spacing.lg)
         }
@@ -416,7 +411,7 @@ struct ProviderDashboardView: View {
     private var topModels: [ModelUsage] {
         Array(
             dataStore
-                .providerSummaries
+                .providerSummaries(in: timeRange.dateRange())
                 .first(where: { $0.provider == provider })?
                 .modelBreakdown
                 .prefix(5) ?? []
@@ -450,101 +445,6 @@ struct ProviderDashboardView: View {
 
     private func formatTokens(_ tokens: Int) -> String {
         tokens.formatAsTokens()
-    }
-}
-
-// MARK: - Sessions List Rows
-
-private struct SessionsListRows: View {
-    let usages: [TokenUsage]
-    let theme: ProviderTheme
-    @Binding var selectedSession: TokenUsage?
-    var displayMode: UsageDisplayMode
-
-    @State private var appeared = false
-
-    var body: some View {
-        VStack(spacing: DesignSystem.Spacing.xs) {
-            ForEach(Array(usages.enumerated()), id: \.element.id) { index, usage in
-                SessionRow(usage: usage, theme: theme, displayMode: displayMode) {
-                    selectedSession = usage
-                }
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 8)
-                .animation(DesignSystem.Animation.standard.delay(Double(index) * 0.06), value: appeared)
-            }
-        }
-        .onAppear { appeared = true }
-    }
-}
-
-// MARK: - Session Row
-
-private struct SessionRow: View {
-    let usage: TokenUsage
-    let theme: ProviderTheme
-    var displayMode: UsageDisplayMode
-    let onTap: () -> Void
-
-    private var cacheEfficient: Bool {
-        usage.totalTokens > 0 && Double(usage.cacheReadTokens) / Double(usage.totalTokens) > 0.5
-    }
-
-    var body: some View {
-        Button(action: onTap) {
-            GlassCard(interactive: true) {
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .fill(theme.gradient)
-                        .frame(width: 3)
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(formatTime(usage.startTime))
-                            .font(DesignSystem.Typography.monoSmall)
-                            .foregroundStyle(theme.primaryColor)
-
-                        Text(usage.projectName)
-                            .font(DesignSystem.Typography.body)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer()
-
-                    VStack(alignment: .trailing, spacing: 3) {
-                        Text(
-                            displayMode == .currency
-                                ? usage.cost.formatAsCost()
-                                : usage.totalTokens.formatAsTokenVolume()
-                        )
-                            .font(DesignSystem.Typography.mono)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                        Text(usage.model)
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                            .lineLimit(1)
-
-                        if cacheEfficient {
-                            Text("Cache efficient")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.success)
-                        }
-                    }
-                }
-                .padding(.horizontal, DesignSystem.Spacing.md)
-                .padding(.vertical, DesignSystem.Spacing.sm)
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                        .stroke(cacheEfficient ? DesignSystem.Colors.success : Color.clear, lineWidth: 1.5)
-                )
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func formatTime(_ date: Date) -> String {
-        date.formatted(date: .omitted, time: .shortened)
     }
 }
 

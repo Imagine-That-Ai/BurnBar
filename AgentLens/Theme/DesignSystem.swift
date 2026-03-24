@@ -89,6 +89,8 @@ enum DesignSystem {
             case .forgeDev: return Color(hex: "F97316")
             case .augment: return Color(hex: "3B82F6")
             case .hermes: return Color(hex: "A855F7")
+            case .geminiCLI: return Color(hex: "4285F4")
+            case .goose: return Color(hex: "0D9488")
             }
         }
 
@@ -109,6 +111,8 @@ enum DesignSystem {
             case .forgeDev: return Color(hex: "FB923C")
             case .augment: return Color(hex: "60A5FA")
             case .hermes: return Color(hex: "C084FC")
+            case .geminiCLI: return Color(hex: "8AB4F8")
+            case .goose: return Color(hex: "2DD4BF")
             }
         }
 
@@ -129,6 +133,8 @@ enum DesignSystem {
             case .forgeDev: return [Color(hex: "F97316"), Color(hex: "FB923C"), Color(hex: "EA580C"), Color(hex: "FDBA74")]
             case .augment: return [Color(hex: "3B82F6"), Color(hex: "60A5FA"), Color(hex: "2563EB"), Color(hex: "93C5FD")]
             case .hermes: return [Color(hex: "A855F7"), Color(hex: "C084FC"), Color(hex: "9333EA"), Color(hex: "D8B4FE")]
+            case .geminiCLI: return [Color(hex: "4285F4"), Color(hex: "8AB4F8"), Color(hex: "1A73E8"), Color(hex: "669DF6")]
+            case .goose: return [Color(hex: "0D9488"), Color(hex: "2DD4BF"), Color(hex: "0F766E"), Color(hex: "5EEAD4")]
             }
         }
 
@@ -136,17 +142,10 @@ enum DesignSystem {
 
         /// Deterministic color for a model name. Known families get brand colors; others hash into a palette.
         static func colorForModel(_ modelName: String) -> Color {
-            let key = modelName.lowercased()
-            if key.contains("claude") { return Color(hex: "CC785C") }
-            if key.contains("gpt") || key.hasPrefix("o1") || key.hasPrefix("o3") || key.hasPrefix("o4") { return Color(hex: "00A67E") }
-            if key.contains("gemini") { return Color(hex: "4285F4") }
-            if key.contains("deepseek") { return Color(hex: "6366F1") }
-            if key.contains("kimi") || key.contains("moonshot") { return Color(hex: "6366F1") }
-            if key.contains("minimax") { return Color(hex: "F59E0B") }
-            if key.contains("llama") || key.contains("meta") { return Color(hex: "0668E1") }
-            if key.contains("mistral") { return Color(hex: "FF7000") }
-            if key.contains("qwen") { return Color(hex: "615EFF") }
+            let brand = LLMModelBrand.infer(fromModelKey: modelName)
+            if brand != .unknown { return brand.emblemColor }
 
+            let key = modelName.lowercased()
             // Deterministic hash for unknown models
             let palette: [Color] = [
                 Color(hex: "D4A373"), Color(hex: "10B981"), Color(hex: "EC4899"),

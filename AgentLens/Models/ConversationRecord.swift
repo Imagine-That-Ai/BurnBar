@@ -32,6 +32,13 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
     let fileModifiedAt: Date?
     /// Populated after on-demand CLI summarization in Session detail.
     let summary: String?
+    /// Short generated session name for list/search usability.
+    let summaryTitle: String?
+    /// Last time summary/title were generated.
+    let summaryUpdatedAt: Date?
+    /// Provider/model provenance for generated summary.
+    let summaryProvider: String?
+    let summaryModel: String?
     /// Whether this record comes from a provider log file or the in-app CLI assistant thread.
     let sourceType: ConversationSourceType
 
@@ -54,6 +61,10 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
         indexedAt: Date = Date(),
         fileModifiedAt: Date?,
         summary: String? = nil,
+        summaryTitle: String? = nil,
+        summaryUpdatedAt: Date? = nil,
+        summaryProvider: String? = nil,
+        summaryModel: String? = nil,
         sourceType: ConversationSourceType = .providerLog
     ) {
         self.id = id
@@ -74,6 +85,10 @@ struct ConversationRecord: Codable, Identifiable, Hashable {
         self.indexedAt = indexedAt
         self.fileModifiedAt = fileModifiedAt
         self.summary = summary
+        self.summaryTitle = summaryTitle
+        self.summaryUpdatedAt = summaryUpdatedAt
+        self.summaryProvider = summaryProvider
+        self.summaryModel = summaryModel
         self.sourceType = sourceType
     }
 

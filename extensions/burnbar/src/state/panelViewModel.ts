@@ -104,13 +104,23 @@ export interface BurnBarPanelViewModel {
   // Error
   lastError?: string;
   lastUpdatedAt?: string;
+
+  /** macOS only: show control to launch the menu bar BurnBar app */
+  showOpenBurnBarApp: boolean;
+}
+
+export interface BuildPanelViewModelHostContext {
+  showOpenBurnBarApp?: boolean;
 }
 
 // ---------------------------------------------------------------------------
 // Main builder
 // ---------------------------------------------------------------------------
 
-export function buildPanelViewModel(state: BurnBarState): BurnBarPanelViewModel {
+export function buildPanelViewModel(
+  state: BurnBarState,
+  hostContext: BuildPanelViewModelHostContext = {}
+): BurnBarPanelViewModel {
   const isConnected = state.connectionStatus === "connected" && !!state.health;
   const isDaemonUnavailable =
     state.connectionStatus === "disconnected" || state.connectionStatus === "connecting";
@@ -171,7 +181,9 @@ export function buildPanelViewModel(state: BurnBarState): BurnBarPanelViewModel 
     systemInfo,
 
     lastError: state.lastError,
-    lastUpdatedAt: state.lastUpdatedAt
+    lastUpdatedAt: state.lastUpdatedAt,
+
+    showOpenBurnBarApp: hostContext.showOpenBurnBarApp === true
   };
 }
 

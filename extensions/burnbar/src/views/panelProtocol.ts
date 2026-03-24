@@ -15,4 +15,5 @@ export type BurnBarPanelWebviewMessage =
   | { type: "cancelRun"; runId: string }
   | { type: "retryRun"; runId: string }
   | { type: "approveRun"; runId: string }
-  | { type: "rejectRun"; runId: string };
+  | { type: "rejectRun"; runId: string }
+  | { type: "openApp" };

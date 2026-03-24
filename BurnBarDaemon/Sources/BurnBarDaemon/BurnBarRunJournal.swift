@@ -91,11 +91,22 @@ public actor BurnBarRunJournal {
             at: checkpointsDirectoryURL,
             includingPropertiesForKeys: nil
         )
-        return try fileURLs
+        return fileURLs
             .filter { $0.pathExtension == "json" }
-            .map { url in
-                let data = try Data(contentsOf: url)
-                return try decoder.decode(BurnBarRunJournalCheckpoint.self, from: data)
+            .compactMap { url in
+                do {
+                    let data = try Data(contentsOf: url)
+                    return try decoder.decode(BurnBarRunJournalCheckpoint.self, from: data)
+                } catch {
+                    logger.error(
+                        "run_journal_checkpoint_skipped",
+                        metadata: [
+                            "checkpoint_path": url.path,
+                            "error": error.localizedDescription
+                        ]
+                    )
+                    return nil
+                }
             }
             .sorted { $0.updatedAt > $1.updatedAt }
     }
@@ -112,8 +123,18 @@ public actor BurnBarRunJournal {
 
         let fileContents = try String(contentsOf: fileURL, encoding: .utf8)
         let lines = fileContents.split(whereSeparator: \.isNewline)
-        let events = try lines.map { line in
-            try decoder.decode(BurnBarRunJournalEvent.self, from: Data(line.utf8))
+        let events = lines.compactMap { line -> BurnBarRunJournalEvent? in
+            do {
+                return try decoder.decode(BurnBarRunJournalEvent.self, from: Data(line.utf8))
+            } catch {
+                logger.error(
+                    "run_journal_event_skipped",
+                    metadata: [
+                        "error": error.localizedDescription
+                    ]
+                )
+                return nil
+            }
         }
         cachedEvents = events
         return events

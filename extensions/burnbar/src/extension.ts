@@ -414,7 +414,7 @@ async function runCursorSmoke({
     const replacement = buildSmokeReplacement(readResult.content);
     const runID = await createRun(
       resolvedModelID,
-      `Find the numeric constant in the current file and update ${replacement.from} to ${replacement.to}.`,
+      `Please update the current file so the numeric constant becomes ${replacement.to}.`,
       {
         activeFilePath: filePath
       }

@@ -22,6 +22,7 @@ const supportDir = join(tempRoot, "burnbar-support");
 const smokeOutput = join(tempRoot, "smoke-output.json");
 const socketPath = join(tempRoot, "burnbar-daemon.sock");
 const logPath = join(tempRoot, "burnbar-daemon.log");
+const fakeProviderOutputsPath = join(tempRoot, "fake-provider-outputs.json");
 
 mkdirSync(userDataDir, { recursive: true });
 mkdirSync(extensionsDir, { recursive: true });
@@ -31,6 +32,48 @@ mkdirSync(join(userDataDir, "User"), { recursive: true });
 mkdirSync(join(workspaceDir, "src"), { recursive: true });
 
 writeFileSync(join(workspaceDir, "src", "example.ts"), "export const value = 42;\n", "utf8");
+writeFileSync(
+  fakeProviderOutputsPath,
+  JSON.stringify({
+    outputs: [
+      JSON.stringify({
+        action: "search_workspace",
+        requestedTool: "search_workspace",
+        arguments: {
+          query: "value"
+        },
+        rationale: "Find the target file before editing."
+      }),
+      JSON.stringify({
+        action: "read_file",
+        requestedTool: "read_file",
+        arguments: {
+          path: join(workspaceDir, "src", "example.ts")
+        },
+        rationale: "Inspect the current file contents before patching."
+      }),
+      JSON.stringify({
+        action: "apply_patch",
+        requestedTool: "apply_patch",
+        arguments: {
+          changes: [
+            {
+              path: join(workspaceDir, "src", "example.ts"),
+              text: "export const value = 43;\n"
+            }
+          ]
+        },
+        rationale: "Apply the requested constant update."
+      }),
+      JSON.stringify({
+        action: "complete",
+        rationale: "The file has been updated successfully.",
+        message: "Done."
+      })
+    ]
+  }, null, 2),
+  "utf8"
+);
 writeFileSync(
   join(userDataDir, "User", "settings.json"),
   JSON.stringify(
@@ -106,7 +149,8 @@ execFileSync("security", [
 const daemon = spawn(daemonBinary, ["--socket-path", socketPath, "--version", "cursor-smoke"], {
   env: {
     ...process.env,
-    BURNBAR_DAEMON_SUPPORT_DIR: supportDir
+    BURNBAR_DAEMON_SUPPORT_DIR: supportDir,
+    BURNBAR_FAKE_PROVIDER_OUTPUTS_FILE: fakeProviderOutputsPath
   },
   stdio: ["ignore", "ignore", "ignore"]
 });

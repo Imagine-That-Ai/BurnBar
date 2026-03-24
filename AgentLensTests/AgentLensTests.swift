@@ -237,6 +237,101 @@ final class AgentLensTests: XCTestCase {
         XCTAssertTrue(n.headline.contains("2") || n.headline.contains("sessions"))
     }
 
+    func test_narrativeTemplate_countsDistinctSessionIds() {
+        let store = DataStore()
+        let cal = Calendar.current
+        let day = cal.startOfDay(for: Date())
+        let u1 = TokenUsage(
+            provider: .factory,
+            sessionId: "dup-session",
+            projectName: "p",
+            model: "claude-sonnet",
+            inputTokens: 1,
+            outputTokens: 1,
+            costUSD: 0.1,
+            startTime: day.addingTimeInterval(100),
+            endTime: day.addingTimeInterval(200)
+        )
+        let u2 = TokenUsage(
+            provider: .factory,
+            sessionId: "dup-session",
+            projectName: "p",
+            model: "claude-opus",
+            inputTokens: 1,
+            outputTokens: 1,
+            costUSD: 0.1,
+            startTime: day.addingTimeInterval(300),
+            endTime: day.addingTimeInterval(400)
+        )
+        store.replaceUsages([u1, u2, pastDayUsage])
+        let n = InsightEngine.generateNarrative(from: store)
+        XCTAssertTrue(n.headline.hasPrefix("One "))
+    }
+
+    func test_insightCard_newSessions_countsDistinctSessionIds() {
+        let store = DataStore()
+        let cal = Calendar.current
+        let day = cal.startOfDay(for: Date())
+        let u1 = TokenUsage(
+            provider: .factory,
+            sessionId: "dup-session",
+            projectName: "p",
+            model: "claude-sonnet",
+            inputTokens: 1,
+            outputTokens: 1,
+            costUSD: 0.1,
+            startTime: day.addingTimeInterval(100),
+            endTime: day.addingTimeInterval(200)
+        )
+        let u2 = TokenUsage(
+            provider: .factory,
+            sessionId: "dup-session",
+            projectName: "p",
+            model: "claude-opus",
+            inputTokens: 1,
+            outputTokens: 1,
+            costUSD: 0.1,
+            startTime: day.addingTimeInterval(300),
+            endTime: day.addingTimeInterval(400)
+        )
+        store.replaceUsages([u1, u2, pastDayUsage])
+
+        let insights = InsightEngine.generate(from: store)
+        let newSessions = insights.first(where: { $0.type == .newSessions })
+        XCTAssertEqual(newSessions?.metric, 1)
+    }
+
+    func test_narrativeTemplate_collapsesClaudeSubagentSessionIds() {
+        let store = DataStore()
+        let cal = Calendar.current
+        let day = cal.startOfDay(for: Date())
+        let topLevel = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "root-session",
+            projectName: "p",
+            model: "claude-opus-4-6",
+            inputTokens: 1,
+            outputTokens: 1,
+            costUSD: 0.1,
+            startTime: day.addingTimeInterval(100),
+            endTime: day.addingTimeInterval(200)
+        )
+        let subagent = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "root-session/agent-abc123",
+            projectName: "p",
+            model: "claude-opus-4-6",
+            inputTokens: 1,
+            outputTokens: 1,
+            costUSD: 0.1,
+            startTime: day.addingTimeInterval(300),
+            endTime: day.addingTimeInterval(400)
+        )
+        store.replaceUsages([topLevel, subagent, pastDayUsage])
+        let narrative = InsightEngine.generateNarrative(from: store)
+        XCTAssertTrue(narrative.headline.hasPrefix("One "))
+    }
+
     func test_sparklineData_alwaysSevenPoints() {
         let store = DataStore()
         XCTAssertEqual(store.last7DayCosts.count, 7)

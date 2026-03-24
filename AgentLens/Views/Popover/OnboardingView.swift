@@ -24,10 +24,6 @@ struct OnboardingView: View {
         detection.values.contains(true)
     }
 
-    private var shouldPromoteCursorConnector: Bool {
-        detection[.factory] == true || detection[.cursor] == true
-    }
-
     private var allFailed: Bool {
         guard let agg = aggregator else { return false }
         let relevant = agg.parserHealth.filter { $0.key.supportLevel != .unsupported }
@@ -96,21 +92,6 @@ struct OnboardingView: View {
                     .foregroundStyle(DesignSystem.Colors.warning)
             }
 
-            if shouldPromoteCursorConnector {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    Text("New: connect your own Cursor models")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text("If you already use Factory or custom model keys, BurnBar can wire supported models into Cursor from Settings.")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(DesignSystem.Spacing.md)
-                .background(DesignSystem.Colors.surface)
-                .clipShape(.rect(cornerRadius: DesignSystem.Radius.md, style: .continuous))
-            }
-
             HStack {
                 Button("Skip") {
                     hasOnboarded = true
@@ -126,13 +107,6 @@ struct OnboardingView: View {
                         onOpenSettings()
                     }
                     .buttonStyle(.borderedProminent)
-                }
-
-                if shouldPromoteCursorConnector {
-                    Button("Connect Cursor") {
-                        onOpenSettings()
-                    }
-                    .buttonStyle(.bordered)
                 }
 
                 Button(anyDetected ? "Scan" : "Try scan anyway") {

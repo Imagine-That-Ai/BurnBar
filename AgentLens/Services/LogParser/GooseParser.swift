@@ -5,7 +5,7 @@ import GRDB
 
 /// Parses Goose (Block) sessions from ~/.local/share/goose/sessions/sessions.db (SQLite).
 /// Falls back to legacy JSONL files for pre-v1.10 installations.
-final class GooseParser: LogParser {
+final class GooseParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .goose
 
     func parse() async throws -> ParseResult {

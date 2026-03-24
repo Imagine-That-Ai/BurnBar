@@ -117,7 +117,13 @@ struct SessionDetailView: View {
                     summaryText = acc
                 }
             }
-            try dataStore.updateConversationSummary(id: conv.id, summary: acc)
+            try dataStore.updateConversationSummary(
+                id: conv.id,
+                title: conv.summaryTitle,
+                summary: acc,
+                provider: "cli-manual",
+                model: "local-cli"
+            )
             conversation = try? dataStore.fetchConversation(id: conv.id)
         } catch {
             summarizeError = error.localizedDescription

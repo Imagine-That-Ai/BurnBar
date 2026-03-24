@@ -89,7 +89,7 @@ export class BurnBarDaemonClient implements BurnBarDaemonClientLike {
 
   constructor(options: BurnBarDaemonClientOptions = {}) {
     this.socketPath = options.socketPath ?? resolveDefaultSocketPath();
-    this.timeoutMs = options.timeoutMs ?? 10_000;
+    this.timeoutMs = options.timeoutMs ?? 60_000;
   }
 
   async health(): Promise<BurnBarHealthResponse> {

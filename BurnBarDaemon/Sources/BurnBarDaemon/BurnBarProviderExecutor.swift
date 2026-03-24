@@ -79,6 +79,13 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         _ promptRequest: BurnBarStructuredPromptRequest,
         route: BurnBarProviderRoute
     ) async throws -> BurnBarProviderExecutionResult {
+        if let fakeResult = try BurnBarFakeProviderExecution.consumeNextResult(
+            promptRequest: promptRequest,
+            route: route
+        ) {
+            return fakeResult
+        }
+
         guard let baseURL = URL(string: route.baseURL) else {
             throw BurnBarProviderExecutorError.invalidBaseURL(route.baseURL)
         }
@@ -134,6 +141,51 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
     }
 }
 
+private enum BurnBarFakeProviderExecution {
+    private struct Payload: Codable {
+        var outputs: [String]
+    }
+
+    static func consumeNextResult(
+        promptRequest: BurnBarStructuredPromptRequest,
+        route: BurnBarProviderRoute
+    ) throws -> BurnBarProviderExecutionResult? {
+        guard let filePath = ProcessInfo.processInfo.environment["BURNBAR_FAKE_PROVIDER_OUTPUTS_FILE"],
+              !filePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        let fileURL = URL(fileURLWithPath: filePath, isDirectory: false)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            return nil
+        }
+
+        let data = try Data(contentsOf: fileURL)
+        var payload = try JSONDecoder().decode(Payload.self, from: data)
+        guard !payload.outputs.isEmpty else {
+            return BurnBarProviderExecutionResult(
+                outputText: #"{"action":"fail","rationale":"No fake provider outputs remaining.","message":"No fake provider outputs remaining."}"#,
+                inputTokens: max(1, promptRequest.userPrompt.count / 4),
+                outputTokens: 16,
+                cacheReadTokens: 0
+            )
+        }
+
+        let outputText = payload.outputs.removeFirst()
+        try JSONEncoder().encode(payload).write(to: fileURL, options: .atomic)
+
+        let inputPrompt = [promptRequest.systemPrompt, promptRequest.userPrompt]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
+        return BurnBarProviderExecutionResult(
+            outputText: outputText,
+            inputTokens: max(1, inputPrompt.count / 4),
+            outputTokens: max(1, outputText.count / 4),
+            cacheReadTokens: 0
+        )
+    }
+}
+
 public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     private let service: String
 
@@ -142,6 +194,11 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     }
 
     public func secret(for providerID: String) async throws -> String? {
+        if let fakeOutputs = ProcessInfo.processInfo.environment["BURNBAR_FAKE_PROVIDER_OUTPUTS_FILE"],
+           !fakeOutputs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "burnbar-fake-provider-key-\(providerID)"
+        }
+
         let account = "provider.\(providerID).apiKey"
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -165,6 +222,11 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     }
 
     public func setSecret(_ secret: String?, for providerID: String) async throws {
+        if let fakeOutputs = ProcessInfo.processInfo.environment["BURNBAR_FAKE_PROVIDER_OUTPUTS_FILE"],
+           !fakeOutputs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return
+        }
+
         let account = "provider.\(providerID).apiKey"
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

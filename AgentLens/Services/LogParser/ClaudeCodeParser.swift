@@ -2,8 +2,20 @@ import Foundation
 
 // MARK: - Claude Code Parser
 
-final class ClaudeCodeParser: LogParser {
+final class ClaudeCodeParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .claudeCode
+
+    private static let iso8601Basic: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 
     func parse() async throws -> ParseResult {
         let projectsPath = (provider.logDirectory as NSString).expandingTildeInPath
@@ -145,8 +157,7 @@ final class ClaudeCodeParser: LogParser {
                 continue
             }
 
-            if let timestamp = json["timestamp"] as? String {
-                let date = ISO8601DateFormatter().date(from: timestamp)
+            if let date = Self.parseTimestamp(json["timestamp"]) {
                 if acc.startTime == nil { acc.startTime = date }
                 acc.endTime = date
             }
@@ -181,6 +192,9 @@ final class ClaudeCodeParser: LogParser {
             cacheReadTokens: acc.cacheReadTokens
         )
 
+        let usageStartTime = acc.startTime ?? conv.startTime ?? mtime ?? Date()
+        let usageEndTime = acc.endTime ?? conv.endTime ?? mtime ?? usageStartTime
+
         let usage = TokenUsage(
             provider: .claudeCode,
             sessionId: sessionId,
@@ -191,8 +205,8 @@ final class ClaudeCodeParser: LogParser {
             cacheCreationTokens: acc.cacheCreationTokens,
             cacheReadTokens: acc.cacheReadTokens,
             costUSD: acc.totalCost,
-            startTime: acc.startTime ?? Date(),
-            endTime: acc.endTime ?? Date()
+            startTime: usageStartTime,
+            endTime: usageEndTime
         )
 
         let conversation = ConversationRecord(
@@ -221,6 +235,31 @@ final class ClaudeCodeParser: LogParser {
 
     private func modificationDate(of url: URL) -> Date? {
         (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+    }
+
+    private static func parseTimestamp(_ raw: Any?) -> Date? {
+        if let string = raw as? String {
+            if let parsed = iso8601Fractional.date(from: string) { return parsed }
+            if let parsed = iso8601Basic.date(from: string) { return parsed }
+            return nil
+        }
+
+        let epoch: Double?
+        if let number = raw as? NSNumber {
+            epoch = number.doubleValue
+        } else if let value = raw as? Double {
+            epoch = value
+        } else if let value = raw as? Int {
+            epoch = Double(value)
+        } else if let value = raw as? Int64 {
+            epoch = Double(value)
+        } else {
+            epoch = nil
+        }
+
+        guard let epoch else { return nil }
+        let seconds = epoch > 100_000_000_000 ? epoch / 1000.0 : epoch
+        return Date(timeIntervalSince1970: seconds)
     }
 }
 

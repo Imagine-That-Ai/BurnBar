@@ -109,7 +109,7 @@ public struct BurnBarProviderRouter: Sendable {
         }
 
         if let matchingProviderWithoutCredential = scopedConfigurations.first(where: {
-            resolveModel(named: trimmedModelName, in: $0) != nil && !$0.hasCredential
+            resolveModel(named: trimmedModelName, in: $0) != nil && effectiveAPIKey(for: $0) == nil
         }) {
             throw BurnBarProviderRouterError.missingCredential(matchingProviderWithoutCredential.provider.id)
         }
@@ -121,10 +121,9 @@ public struct BurnBarProviderRouter: Sendable {
         for modelName: String,
         configurations: [BurnBarResolvedProviderConfiguration]
     ) -> BurnBarProviderRoute? {
-        for configuration in configurations where configuration.hasCredential {
+        for configuration in configurations {
             guard let resolvedModel = resolveModel(named: modelName, in: configuration),
-                  let apiKey = configuration.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !apiKey.isEmpty else {
+                  let apiKey = effectiveAPIKey(for: configuration) else {
                 continue
             }
 
@@ -137,6 +136,20 @@ public struct BurnBarProviderRouter: Sendable {
                 apiKey: apiKey,
                 pricing: resolvedModel.pricing
             )
+        }
+
+        return nil
+    }
+
+    private func effectiveAPIKey(for configuration: BurnBarResolvedProviderConfiguration) -> String? {
+        if let apiKey = configuration.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !apiKey.isEmpty {
+            return apiKey
+        }
+
+        if let fakeOutputs = ProcessInfo.processInfo.environment["BURNBAR_FAKE_PROVIDER_OUTPUTS_FILE"],
+           !fakeOutputs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "burnbar-fake-provider-key"
         }
 
         return nil

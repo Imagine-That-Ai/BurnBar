@@ -148,17 +148,27 @@ final class DataStore {
         }
     }
 
+    /// All-time provider rollups (menu bar, etc.). Dashboard should use `providerSummaries(in:)`
+    /// with the same window as the toolbar time picker.
     var providerSummaries: [ProviderSummary] {
+        Self.makeProviderSummaries(from: usages)
+    }
+
+    /// Provider rollups for sessions whose span overlaps `dateRange`. Pass `nil` for all time.
+    func providerSummaries(in dateRange: ClosedRange<Date>?) -> [ProviderSummary] {
+        Self.makeProviderSummaries(from: usages(in: dateRange))
+    }
+
+    private static func makeProviderSummaries(from usages: [TokenUsage]) -> [ProviderSummary] {
         AgentProvider.allCases.compactMap { provider -> ProviderSummary? in
             let providerUsages = usages.filter { $0.provider == provider }
             guard !providerUsages.isEmpty else { return nil }
-            
+
             let totalCost = providerUsages.reduce(0) { $0 + $1.cost }
             let totalTokens = providerUsages.reduce(0) { $0 + $1.totalTokens }
             let totalInputTokens = providerUsages.reduce(0) { $0 + $1.inputTokens }
             let totalOutputTokens = providerUsages.reduce(0) { $0 + $1.outputTokens }
-            
-            // Model breakdown
+
             var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, cost: Double)] = [:]
             for usage in providerUsages {
                 let existing = modelData[usage.model] ?? (0, 0, 0, 0, 0)
@@ -170,7 +180,7 @@ final class DataStore {
                     existing.4 + usage.cost
                 )
             }
-            
+
             let modelBreakdown = modelData.map { modelName, data in
                 let totalModelTokens = data.input + data.output + data.cacheCreation + data.cacheRead
                 return ModelUsage(
@@ -184,7 +194,7 @@ final class DataStore {
                     percentage: totalCost > 0 ? (data.cost / totalCost) * 100 : 0
                 )
             }.sorted { $0.cost > $1.cost }
-            
+
             return ProviderSummary(
                 provider: provider,
                 totalCost: totalCost,
@@ -196,10 +206,18 @@ final class DataStore {
             )
         }.sorted { $0.totalCost > $1.totalCost }
     }
-    
+
     // MARK: - Model Summaries
 
     var modelSummaries: [ModelSummary] {
+        Self.makeModelSummaries(from: usages)
+    }
+
+    func modelSummaries(in dateRange: ClosedRange<Date>?) -> [ModelSummary] {
+        Self.makeModelSummaries(from: usages(in: dateRange))
+    }
+
+    private static func makeModelSummaries(from usages: [TokenUsage]) -> [ModelSummary] {
         let grouped = Dictionary(grouping: usages) {
             TokenExtractionUtility.normalizeModelKey($0.model)
         }
@@ -236,6 +254,12 @@ final class DataStore {
         }.sorted { $0.totalCost > $1.totalCost }
     }
 
+    /// Sessions overlapping `dateRange`. `nil` means no time filter (all stored sessions).
+    func usages(in dateRange: ClosedRange<Date>?) -> [TokenUsage] {
+        guard let dateRange else { return usages }
+        return usages.filter { $0.intersects(dateRange: dateRange) }
+    }
+
     func usages(forModel normalizedName: String) -> [TokenUsage] {
         usages.filter { TokenExtractionUtility.normalizeModelKey($0.model) == normalizedName }
     }
@@ -243,7 +267,7 @@ final class DataStore {
     func usages(forModel normalizedName: String, in dateRange: ClosedRange<Date>) -> [TokenUsage] {
         usages.filter {
             TokenExtractionUtility.normalizeModelKey($0.model) == normalizedName
-            && dateRange.contains($0.startTime)
+            && $0.intersects(dateRange: dateRange)
         }
     }
 
@@ -450,6 +474,82 @@ final class DataStore {
             }
         }
 
+        /// Auto-summary metadata and spend ledger for budget capping.
+        migrator.registerMigration("v11_auto_summary_metadata") { db in
+            try db.alter(table: "conversations") { t in
+                t.add(column: "summaryTitle", .text)
+                t.add(column: "summaryUpdatedAt", .datetime)
+                t.add(column: "summaryProvider", .text)
+                t.add(column: "summaryModel", .text)
+            }
+
+            try db.create(table: "summary_runs") { t in
+                t.column("id", .text).primaryKey()
+                t.column("conversationId", .text).notNull().indexed()
+                t.column("provider", .text).notNull()
+                t.column("model", .text).notNull()
+                t.column("costUSD", .double).notNull().defaults(to: 0)
+                t.column("createdAt", .datetime).notNull().indexed()
+            }
+        }
+
+        /// Prevent duplicate usage rows across repeated scans.
+        /// Keep the newest row per (provider, sessionId, model), then enforce uniqueness.
+        migrator.registerMigration("v12_token_usage_dedupe_unique_session_model") { db in
+            try db.execute(sql: """
+                DELETE FROM token_usage
+                WHERE rowid NOT IN (
+                    SELECT MAX(rowid)
+                    FROM token_usage
+                    GROUP BY provider, sessionId, model
+                )
+                """)
+            try db.execute(sql: """
+                CREATE UNIQUE INDEX IF NOT EXISTS token_usage_unique_session_model_idx
+                ON token_usage(provider, sessionId, model)
+                """)
+        }
+
+        /// Backfill Claude usage timestamps from indexed conversations.
+        /// Handles subagent session IDs by collapsing `root/agent-*` to `root`.
+        migrator.registerMigration("v13_backfill_claude_usage_timestamps") { db in
+            try db.execute(sql: """
+                UPDATE token_usage
+                SET
+                    startTime = COALESCE(
+                        (
+                            SELECT c.startTime
+                            FROM conversations c
+                            WHERE c.provider = token_usage.provider
+                              AND c.sessionId = CASE
+                                  WHEN instr(token_usage.sessionId, '/') > 0
+                                  THEN substr(token_usage.sessionId, 1, instr(token_usage.sessionId, '/') - 1)
+                                  ELSE token_usage.sessionId
+                              END
+                            ORDER BY COALESCE(c.endTime, c.startTime, c.indexedAt) DESC
+                            LIMIT 1
+                        ),
+                        token_usage.startTime
+                    ),
+                    endTime = COALESCE(
+                        (
+                            SELECT COALESCE(c.endTime, c.startTime)
+                            FROM conversations c
+                            WHERE c.provider = token_usage.provider
+                              AND c.sessionId = CASE
+                                  WHEN instr(token_usage.sessionId, '/') > 0
+                                  THEN substr(token_usage.sessionId, 1, instr(token_usage.sessionId, '/') - 1)
+                                  ELSE token_usage.sessionId
+                              END
+                            ORDER BY COALESCE(c.endTime, c.startTime, c.indexedAt) DESC
+                            LIMIT 1
+                        ),
+                        token_usage.endTime
+                    )
+                WHERE token_usage.provider = 'Claude Code'
+                """)
+        }
+
         return migrator
     }
     
@@ -459,11 +559,33 @@ final class DataStore {
         try dbQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT OR IGNORE INTO token_usage (
+                    INSERT INTO token_usage (
                         id, provider, sessionId, projectName, model,
                         inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
                         totalTokens, cost, startTime, endTime, createdAt
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(provider, sessionId, model) DO UPDATE SET
+                        projectName = excluded.projectName,
+                        inputTokens = excluded.inputTokens,
+                        outputTokens = excluded.outputTokens,
+                        cacheCreationTokens = excluded.cacheCreationTokens,
+                        cacheReadTokens = excluded.cacheReadTokens,
+                        totalTokens = excluded.totalTokens,
+                        cost = excluded.cost,
+                        startTime = excluded.startTime,
+                        endTime = excluded.endTime,
+                        createdAt = excluded.createdAt,
+                        syncedAt = NULL
+                    WHERE
+                        token_usage.projectName != excluded.projectName
+                        OR token_usage.inputTokens != excluded.inputTokens
+                        OR token_usage.outputTokens != excluded.outputTokens
+                        OR token_usage.cacheCreationTokens != excluded.cacheCreationTokens
+                        OR token_usage.cacheReadTokens != excluded.cacheReadTokens
+                        OR token_usage.totalTokens != excluded.totalTokens
+                        OR token_usage.cost != excluded.cost
+                        OR token_usage.startTime != excluded.startTime
+                        OR token_usage.endTime != excluded.endTime
                     """,
                 arguments: [
                     usage.id.uuidString,
@@ -692,7 +814,7 @@ final class DataStore {
     }
     
     func usages(for provider: AgentProvider, in dateRange: ClosedRange<Date>) -> [TokenUsage] {
-        usages.filter { $0.provider == provider && dateRange.contains($0.startTime) }
+        usages.filter { $0.provider == provider && $0.intersects(dateRange: dateRange) }
     }
     
     func topProviderToday() -> (provider: AgentProvider, cost: Double)? {
@@ -731,9 +853,33 @@ final class DataStore {
             if summaryOut == nil {
                 summaryOut = try String.fetchOne(db, sql: "SELECT summary FROM conversations WHERE id = ?", arguments: [record.id])
             }
+            var summaryTitleOut = record.summaryTitle
+            if summaryTitleOut == nil {
+                summaryTitleOut = try String.fetchOne(db, sql: "SELECT summaryTitle FROM conversations WHERE id = ?", arguments: [record.id])
+            }
+            var summaryUpdatedAtOut = record.summaryUpdatedAt
+            if summaryUpdatedAtOut == nil {
+                summaryUpdatedAtOut = try Date.fetchOne(db, sql: "SELECT summaryUpdatedAt FROM conversations WHERE id = ?", arguments: [record.id])
+            }
+            var summaryProviderOut = record.summaryProvider
+            if summaryProviderOut == nil {
+                summaryProviderOut = try String.fetchOne(db, sql: "SELECT summaryProvider FROM conversations WHERE id = ?", arguments: [record.id])
+            }
+            var summaryModelOut = record.summaryModel
+            if summaryModelOut == nil {
+                summaryModelOut = try String.fetchOne(db, sql: "SELECT summaryModel FROM conversations WHERE id = ?", arguments: [record.id])
+            }
 
             let preserve = existing.map {
-                Self.shouldPreserveConversationSyncedAt(existing: $0, incoming: record, resolvedSummary: summaryOut)
+                Self.shouldPreserveConversationSyncedAt(
+                    existing: $0,
+                    incoming: record,
+                    resolvedSummary: summaryOut,
+                    resolvedSummaryTitle: summaryTitleOut,
+                    resolvedSummaryUpdatedAt: summaryUpdatedAtOut,
+                    resolvedSummaryProvider: summaryProviderOut,
+                    resolvedSummaryModel: summaryModelOut
+                )
             } ?? false
 
             let conversationSyncedAt: Date? = preserve ? priorSyncedAt : nil
@@ -747,8 +893,9 @@ final class DataStore {
                     keyFiles, keyCommands, keyTools,
                     inferredTaskTitle, lastAssistantMessage, fullText,
                     indexedAt, fileModifiedAt, summary, conversationSyncedAt,
-                    sourceType, logSyncedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    sourceType, logSyncedAt, summaryTitle, summaryUpdatedAt,
+                    summaryProvider, summaryModel
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     record.id,
@@ -771,7 +918,11 @@ final class DataStore {
                     summaryOut,
                     conversationSyncedAt,
                     record.sourceType.rawValue,
-                    logSyncedAt
+                    logSyncedAt,
+                    summaryTitleOut,
+                    summaryUpdatedAtOut,
+                    summaryProviderOut,
+                    summaryModelOut
                 ]
             )
         }
@@ -804,18 +955,89 @@ final class DataStore {
         }
     }
 
-    func updateConversationSummary(id: String, summary: String?) throws {
+    func updateConversationSummary(
+        id: String,
+        title: String?,
+        summary: String?,
+        provider: String?,
+        model: String?,
+        updatedAt: Date = Date(),
+        runCostUSD: Double = 0
+    ) throws {
         try dbQueue.write { db in
             try db.execute(
-                sql: "UPDATE conversations SET summary = ?, indexedAt = ?, conversationSyncedAt = NULL WHERE id = ?",
-                arguments: [summary, Date(), id]
+                sql: """
+                UPDATE conversations
+                SET summary = ?, summaryTitle = ?, summaryUpdatedAt = ?, summaryProvider = ?, summaryModel = ?,
+                    indexedAt = ?, conversationSyncedAt = NULL, logSyncedAt = NULL
+                WHERE id = ?
+                """,
+                arguments: [summary, title, updatedAt, provider, model, updatedAt, id]
             )
+
+            try db.execute(
+                sql: """
+                INSERT INTO summary_runs (id, conversationId, provider, model, costUSD, createdAt)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    UUID().uuidString,
+                    id,
+                    provider ?? "unknown",
+                    model ?? "unknown",
+                    max(runCostUSD, 0),
+                    updatedAt
+                ]
+            )
+        }
+    }
+
+    /// Candidate conversations for auto-summarization.
+    /// - Missing summary/title metadata OR stale summary relative to latest indexed content.
+    func fetchConversationsNeedingSummary(limit: Int = 25) throws -> [ConversationRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM conversations
+                WHERE fullText <> ''
+                AND (
+                    summary IS NULL
+                    OR summaryTitle IS NULL
+                    OR summaryUpdatedAt IS NULL
+                    OR summaryUpdatedAt < indexedAt
+                )
+                ORDER BY COALESCE(endTime, startTime, indexedAt) DESC
+                LIMIT ?
+                """,
+                arguments: [limit]
+            )
+            return rows.compactMap { Self.conversation(from: $0) }
+        }
+    }
+
+    /// Sum of cloud summary cost (USD) for today's local day.
+    func summarySpendToday(now: Date = Date()) throws -> Double {
+        try dbQueue.read { db in
+            let calendar = Calendar.current
+            let start = calendar.startOfDay(for: now)
+            let end = calendar.date(byAdding: .day, value: 1, to: start) ?? now
+            return try Double.fetchOne(
+                db,
+                sql: """
+                SELECT COALESCE(SUM(costUSD), 0)
+                FROM summary_runs
+                WHERE createdAt >= ? AND createdAt < ?
+                """,
+                arguments: [start, end]
+            ) ?? 0
         }
     }
 
     func deleteAllIndexedConversations() throws {
         try dbQueue.write { db in
             try db.execute(sql: "DELETE FROM conversations")
+            try db.execute(sql: "DELETE FROM summary_runs")
         }
     }
 
@@ -928,12 +1150,60 @@ final class DataStore {
             sql += " ORDER BY rank ASC LIMIT 50"
 
             let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
-            return rows.compactMap { row -> SearchResult? in
+            var results = rows.compactMap { row -> SearchResult? in
                 guard let conv = Self.conversation(from: row) else { return nil }
                 let rank = (row["rank"] as? Double) ?? Double(row["rank"] as? Int64 ?? 0)
                 let snip = (row["snip"] as? String) ?? ""
                 return SearchResult(conversation: conv, snippet: snip, rank: rank)
             }
+
+            if results.count < 50 {
+                var fallbackSQL = """
+                SELECT c.*
+                FROM conversations AS c
+                WHERE (
+                    LOWER(COALESCE(c.summaryTitle, '')) LIKE ?
+                    OR LOWER(COALESCE(c.summary, '')) LIKE ?
+                )
+                """
+                var fallbackArgs: [any DatabaseValueConvertible] = [
+                    "%\(trimmed.lowercased())%",
+                    "%\(trimmed.lowercased())%"
+                ]
+
+                if let provider {
+                    fallbackSQL += " AND c.provider = ?"
+                    fallbackArgs.append(provider.rawValue)
+                }
+                if let projectName {
+                    fallbackSQL += " AND c.projectName = ?"
+                    fallbackArgs.append(projectName)
+                }
+                if let range = dateRange {
+                    fallbackSQL += " AND c.startTime >= ? AND c.startTime <= ?"
+                    fallbackArgs.append(range.lowerBound)
+                    fallbackArgs.append(range.upperBound)
+                }
+
+                fallbackSQL += " ORDER BY COALESCE(c.endTime, c.startTime, c.indexedAt) DESC LIMIT 50"
+                let fallbackRows = try Row.fetchAll(db, sql: fallbackSQL, arguments: StatementArguments(fallbackArgs))
+                var seen = Set(results.map { $0.conversation.id })
+                for row in fallbackRows {
+                    guard let conv = Self.conversation(from: row), !seen.contains(conv.id) else { continue }
+                    seen.insert(conv.id)
+                    let fallbackSnippet = conv.summary ?? conv.summaryTitle ?? conv.inferredTaskTitle
+                    results.append(
+                        SearchResult(
+                            conversation: conv,
+                            snippet: fallbackSnippet,
+                            rank: (results.last?.rank ?? 0) + 100
+                        )
+                    )
+                    if results.count >= 50 { break }
+                }
+            }
+
+            return results
         }
     }
 
@@ -1001,6 +1271,10 @@ final class DataStore {
             indexedAt: indexedAt,
             fileModifiedAt: fileModifiedAt,
             summary: row["summary"] as? String,
+            summaryTitle: row["summaryTitle"] as? String,
+            summaryUpdatedAt: Self.parseDateValue(row["summaryUpdatedAt"]),
+            summaryProvider: row["summaryProvider"] as? String,
+            summaryModel: row["summaryModel"] as? String,
             sourceType: sourceType
         )
     }
@@ -1123,9 +1397,14 @@ final class DataStore {
     private static func shouldPreserveConversationSyncedAt(
         existing: ConversationRecord,
         incoming: ConversationRecord,
-        resolvedSummary: String?
+        resolvedSummary: String?,
+        resolvedSummaryTitle: String?,
+        resolvedSummaryUpdatedAt: Date?,
+        resolvedSummaryProvider: String?,
+        resolvedSummaryModel: String?
     ) -> Bool {
-        existing.provider == incoming.provider
+        let coreUnchanged =
+            existing.provider == incoming.provider
             && existing.sessionId == incoming.sessionId
             && existing.projectName == incoming.projectName
             && existing.startTime == incoming.startTime
@@ -1139,7 +1418,15 @@ final class DataStore {
             && existing.inferredTaskTitle == incoming.inferredTaskTitle
             && existing.lastAssistantMessage == incoming.lastAssistantMessage
             && existing.fullText == incoming.fullText
-            && existing.summary == resolvedSummary
+
+        let summaryUnchanged =
+            existing.summary == resolvedSummary
+            && existing.summaryTitle == resolvedSummaryTitle
+            && existing.summaryUpdatedAt == resolvedSummaryUpdatedAt
+            && existing.summaryProvider == resolvedSummaryProvider
+            && existing.summaryModel == resolvedSummaryModel
+
+        return coreUnchanged && summaryUnchanged
     }
 
 }

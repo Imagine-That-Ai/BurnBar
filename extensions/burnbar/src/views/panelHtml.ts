@@ -4,6 +4,7 @@ export function buildPanelHtml(
   webview: vscode.Webview,
   cssUri: vscode.Uri,
   jsUri: vscode.Uri,
+  logoUri: vscode.Uri,
   nonce: string
 ): string {
   return `<!DOCTYPE html>
@@ -13,7 +14,7 @@ export function buildPanelHtml(
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';"
+      content="default-src 'none'; img-src ${webview.cspSource}; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';"
     />
     <title>BurnBar</title>
     <link rel="stylesheet" href="${cssUri}" nonce="${nonce}" />
@@ -21,14 +22,18 @@ export function buildPanelHtml(
   <body>
     <div id="bb-root">
       <header class="bb-header">
-        <span class="bb-wordmark">BurnBar</span>
+        <div class="bb-header-brand" aria-label="BurnBar">
+          <img class="bb-header-logo" src="${logoUri}" width="28" height="28" alt="" />
+          <span class="bb-wordmark">BurnBar</span>
+        </div>
         <div class="bb-header-chips">
-          <span class="bb-orb bb-orb--connecting"></span>
+          <span class="bb-orb bb-orb--connecting" aria-hidden="true"></span>
           <span class="bb-chip" id="bb-workspace-chip">—</span>
         </div>
         <div class="bb-header-actions">
-          <button class="bb-icon-btn" data-action="refresh" title="Refresh">⟳</button>
-          <button class="bb-icon-btn" data-action="repair" title="Repair daemon">⚙</button>
+          <button type="button" class="bb-header-app-btn" data-action="openApp" data-visible="false" title="Open BurnBar app">App</button>
+          <button type="button" class="bb-icon-btn" data-action="refresh" title="Refresh">⟳</button>
+          <button type="button" class="bb-icon-btn" data-action="repair" title="Repair daemon">⚙</button>
         </div>
       </header>
 

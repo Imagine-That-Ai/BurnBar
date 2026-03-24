@@ -150,6 +150,28 @@ body {
   border-top-color: rgba(255, 255, 255, 0.05);
 }
 
+/* Brand lockup — app icon + wordmark */
+.bb-header-brand {
+  display:     flex;
+  align-items: center;
+  gap:         8px;
+  min-width:   0;
+  flex-shrink: 0;
+}
+
+.bb-header-logo {
+  width:         28px;
+  height:        28px;
+  border-radius: 7px;
+  flex-shrink:   0;
+  object-fit:    cover;
+  box-shadow:    0 1px 4px rgba(42, 31, 20, 0.12);
+}
+
+.vscode-dark .bb-header-logo {
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+}
+
 /* Ember → amber gradient wordmark */
 .bb-wordmark {
   font-weight:    700;
@@ -160,6 +182,7 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   flex-shrink:    0;
+  white-space:    nowrap;
 }
 
 .bb-header-chips {
@@ -174,8 +197,35 @@ body {
 .bb-header-actions {
   display:     flex;
   align-items: center;
-  gap:         2px;
+  gap:         4px;
   flex-shrink: 0;
+}
+
+/* macOS: launch menu bar app */
+.bb-header-app-btn {
+  font:           inherit;
+  font-size:      11px;
+  font-weight:    600;
+  letter-spacing: 0.02em;
+  padding:        4px 8px;
+  border-radius:  var(--bb-r-sm);
+  border:         1px solid var(--bb-border);
+  background:     var(--bb-glass-hi);
+  color:          var(--bb-text-2);
+  cursor:         pointer;
+  flex-shrink:    0;
+  line-height:    1.2;
+}
+
+.bb-header-app-btn:hover {
+  color:        var(--bb-text);
+  border-color: var(--bb-border-hi);
+  background:   var(--bb-glass);
+}
+
+.bb-header-app-btn:focus-visible {
+  outline:        2px solid var(--bb-ember);
+  outline-offset: 1px;
 }
 
 /* ── Status orb ────────────────────────────────────────────── */

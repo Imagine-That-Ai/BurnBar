@@ -4,7 +4,7 @@ import Foundation
 
 /// Parses Forge CLI sessions from ~/.forge/sessions/ (JSONL format).
 /// Defensive: returns empty on unrecognized formats.
-final class ForgeDevParser: LogParser {
+final class ForgeDevParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .forgeDev
 
     func parse() async throws -> ParseResult {

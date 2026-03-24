@@ -61,7 +61,9 @@ private enum ICloudSessionMirrorEngine {
     static func perform(_ snapshot: ICloudSessionMirrorSnapshot) async -> ICloudSessionMirrorSyncResult {
         let fm = FileManager()
 
-        guard let base = fm.url(forUbiquityContainerIdentifier: snapshot.containerIdentifier) else {
+        guard let base =
+            fm.url(forUbiquityContainerIdentifier: snapshot.containerIdentifier)
+            ?? fallbackContainerURL(for: snapshot.containerIdentifier, fm: fm) else {
             return ICloudSessionMirrorSyncResult(
                 lastSyncDate: nil,
                 errorMessage: "iCloud Drive is not available. Sign in to iCloud and enable iCloud Drive in System Settings.",
@@ -159,6 +161,15 @@ private enum ICloudSessionMirrorEngine {
                 removedCount: removedCount
             )
         }
+    }
+
+    private static func fallbackContainerURL(for identifier: String, fm: FileManager) -> URL? {
+        let containerFolder = identifier.replacingOccurrences(of: ".", with: "~")
+        let fallback = fm.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Mobile Documents", isDirectory: true)
+            .appendingPathComponent(containerFolder, isDirectory: true)
+        return fm.fileExists(atPath: fallback.path) ? fallback : nil
     }
 
     // MARK: - Copy (write coordination only — avoids cross-volume read/write coordinator failures)
@@ -359,7 +370,15 @@ final class ICloudSessionMirrorService {
     }
 
     func ubiquityContainerURL() -> URL? {
-        fileManager.url(forUbiquityContainerIdentifier: ICloudSessionMirrorConstants.containerIdentifier)
+        if let url = fileManager.url(forUbiquityContainerIdentifier: ICloudSessionMirrorConstants.containerIdentifier) {
+            return url
+        }
+        let containerFolder = ICloudSessionMirrorConstants.containerIdentifier.replacingOccurrences(of: ".", with: "~")
+        let fallback = fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Mobile Documents", isDirectory: true)
+            .appendingPathComponent(containerFolder, isDirectory: true)
+        return fileManager.fileExists(atPath: fallback.path) ? fallback : nil
     }
 
     // MARK: - Public API
@@ -393,6 +412,113 @@ final class ICloudSessionMirrorService {
         lastSyncUpdatedCount = result.updatedCount
         lastSyncRemovedCount = result.removedCount
         isSyncing = false
+    }
+
+    /// Enumerates mirrored log files in the iCloud container and returns lightweight ConversationRecord stubs.
+    /// Uses minimal JSONL parsing — no full token extraction. fullText is always empty.
+    func fetchConversations() async -> [ConversationRecord] {
+        guard let mirrorRoot = mirrorRootDirectoryURL() else { return [] }
+        return await Task.detached(priority: .utility) {
+            Self.extractConversations(from: mirrorRoot)
+        }.value
+    }
+
+    // MARK: - iCloud lightweight extractor
+
+    private nonisolated static func extractConversations(from mirrorRoot: URL) -> [ConversationRecord] {
+        let fm = FileManager()
+        guard let slugDirs = try? fm.contentsOfDirectory(
+            at: mirrorRoot,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ) else { return [] }
+
+        var latestByCanonicalID: [String: ConversationRecord] = [:]
+
+        for slugDir in slugDirs {
+            let isDir = (try? slugDir.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            guard isDir else { continue }
+
+            let slug = slugDir.lastPathComponent
+            guard let provider = AgentProvider.allCases.first(where: {
+                $0.rawValue.replacingOccurrences(of: "/", with: "-") == slug
+            }) else { continue }
+
+            guard let enumerator = fm.enumerator(
+                at: slugDir,
+                includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+
+            for case let fileURL as URL in enumerator {
+                let isFile = (try? fileURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false
+                guard isFile else { continue }
+                let ext = fileURL.pathExtension.lowercased()
+                guard ext == "jsonl" || ext == "json" else { continue }
+                guard !shouldSkipMirroredFile(fileURL, provider: provider) else { continue }
+                if let record = lightweightParse(file: fileURL, provider: provider) {
+                    let canonicalID = "\(provider.rawValue)|\(record.sessionId)"
+                    if let existing = latestByCanonicalID[canonicalID] {
+                        let existingDate = existing.endTime ?? existing.startTime ?? existing.indexedAt
+                        let incomingDate = record.endTime ?? record.startTime ?? record.indexedAt
+                        if incomingDate > existingDate {
+                            latestByCanonicalID[canonicalID] = record
+                        }
+                    } else {
+                        latestByCanonicalID[canonicalID] = record
+                    }
+                }
+            }
+        }
+
+        let records = Array(latestByCanonicalID.values)
+        return records.sorted { ($0.startTime ?? .distantPast) > ($1.startTime ?? .distantPast) }
+    }
+
+    private nonisolated static func lightweightParse(file: URL, provider: AgentProvider) -> ConversationRecord? {
+        let attrs = try? file.resourceValues(forKeys: [.contentModificationDateKey])
+
+        let sessionId = file.deletingPathExtension().lastPathComponent
+        let projectName = file.deletingLastPathComponent().lastPathComponent
+        let activityTime = attrs?.contentModificationDate
+
+        return ConversationRecord(
+            id: ConversationRecord.stableId(provider: provider, sessionId: sessionId),
+            provider: provider,
+            sessionId: sessionId,
+            projectName: projectName,
+            startTime: activityTime,
+            endTime: activityTime,
+            messageCount: 0,
+            userWordCount: 0,
+            assistantWordCount: 0,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: sessionId,
+            lastAssistantMessage: "",
+            fullText: "",
+            indexedAt: Date(),
+            fileModifiedAt: nil,
+            summary: nil,
+            sourceType: .providerLog
+        )
+    }
+
+    private nonisolated static func shouldSkipMirroredFile(_ fileURL: URL, provider: AgentProvider) -> Bool {
+        let lowerPath = fileURL.path.lowercased()
+
+        if lowerPath.hasSuffix(".settings.json")
+            || lowerPath.hasSuffix(".metadata.json")
+            || lowerPath.hasSuffix(".meta.json") {
+            return true
+        }
+
+        // Claude subagent logs are fragments of a parent session and blow up list size.
+        if provider == .claudeCode, lowerPath.contains("/subagents/") {
+            return true
+        }
+
+        return false
     }
 
     // MARK: - Snapshot
