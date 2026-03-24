@@ -179,6 +179,11 @@ final class SettingsManager {
         didSet { save() }
     }
 
+    /// Persisted once a full initial auto-summary sweep has been attempted at least once.
+    var summaryInitialSweepCompleted: Bool {
+        didSet { save() }
+    }
+
     var summaryRequestTimeoutSeconds: Double {
         didSet { save() }
     }
@@ -364,6 +369,7 @@ final class SettingsManager {
         } else {
             self.summaryFirstLoadBatchSize = 120
         }
+        self.summaryInitialSweepCompleted = defaults.bool(forKey: "summaryInitialSweepCompleted")
         if defaults.object(forKey: "summaryRequestTimeoutSeconds") != nil {
             let timeoutSeconds = defaults.double(forKey: "summaryRequestTimeoutSeconds")
             self.summaryRequestTimeoutSeconds = timeoutSeconds > 0 ? timeoutSeconds : 20
@@ -454,6 +460,7 @@ final class SettingsManager {
         defaults.set(summaryRetryCount, forKey: "summaryRetryCount")
         defaults.set(summaryBatchSize, forKey: "summaryBatchSize")
         defaults.set(summaryFirstLoadBatchSize, forKey: "summaryFirstLoadBatchSize")
+        defaults.set(summaryInitialSweepCompleted, forKey: "summaryInitialSweepCompleted")
         defaults.set(summaryRequestTimeoutSeconds, forKey: "summaryRequestTimeoutSeconds")
         defaults.set(summaryMaxConcurrency, forKey: "summaryMaxConcurrency")
         defaults.set(summaryTimeLimitMinutes, forKey: "summaryTimeLimitMinutes")

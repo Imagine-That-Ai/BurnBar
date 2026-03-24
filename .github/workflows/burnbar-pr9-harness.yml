@@ -5,6 +5,10 @@ on:
     paths:
       - ".github/workflows/burnbar-pr9-harness.yml"
       - "scripts/**"
+      - "AgentLens/**"
+      - "AgentLensTests/**"
+      - "BurnBar.xcodeproj/**"
+      - "project.yml"
       - "extensions/burnbar/**"
       - "BurnBarCore/**"
       - "BurnBarDaemon/**"
@@ -14,6 +18,10 @@ on:
     paths:
       - ".github/workflows/burnbar-pr9-harness.yml"
       - "scripts/**"
+      - "AgentLens/**"
+      - "AgentLensTests/**"
+      - "BurnBar.xcodeproj/**"
+      - "project.yml"
       - "extensions/burnbar/**"
       - "BurnBarCore/**"
       - "BurnBarDaemon/**"
@@ -39,6 +47,9 @@ jobs:
 
       - name: Run BurnBar Swift tests
         run: ./scripts/test-burnbar-swift.sh
+
+      - name: Run BurnBar retrieval replay evals
+        run: ./scripts/test-burnbar-retrieval-evals.sh
 
       - name: Run BurnBar TypeScript unit tests
         run: ./scripts/test-burnbar-ts.sh

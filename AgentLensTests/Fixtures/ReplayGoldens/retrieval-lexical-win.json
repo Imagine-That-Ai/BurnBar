@@ -1,0 +1,26 @@
+{
+  "query" : "quartzwind",
+  "resultSourceIDs" : [
+    "conv-replay-lexical",
+    "conv-replay-semantic"
+  ],
+  "scenario" : "lexical-win",
+  "topResults" : [
+    {
+      "hasLexicalSignal" : true,
+      "hasSemanticSignal" : false,
+      "rank" : 1,
+      "sourceID" : "conv-replay-lexical",
+      "sourceKind" : "conversation",
+      "title" : "Fixture conv-replay-lexical"
+    },
+    {
+      "hasLexicalSignal" : false,
+      "hasSemanticSignal" : true,
+      "rank" : 2,
+      "sourceID" : "conv-replay-semantic",
+      "sourceKind" : "conversation",
+      "title" : "Fixture conv-replay-semantic"
+    }
+  ]
+}

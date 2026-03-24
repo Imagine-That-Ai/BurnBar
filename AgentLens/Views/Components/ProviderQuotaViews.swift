@@ -787,8 +787,6 @@ private struct QuotaSignalView: View {
     let provider: AgentProvider
     var compact = false
 
-    private static let sampleCount = 40
-
     private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
     private var remainingFraction: Double {
         if let remainingPercent = bucket.remainingPercent {
@@ -796,230 +794,144 @@ private struct QuotaSignalView: View {
         }
         return min(max(1 - bucket.progressFraction, 0), 1)
     }
-    private var pressureFraction: Double {
-        min(max(bucket.progressFraction, 0), 1)
-    }
-    private var cornerRadius: CGFloat { compact ? 18 : 20 }
     private var signalStatus: QuotaSignalStatus {
         QuotaSignalStatus.resolve(bucket: bucket, theme: theme)
     }
 
+    private var fillColor: Color {
+        switch remainingFraction {
+        case 0.75...: return theme.primaryColor
+        case 0.50..<0.75: return theme.primaryColor.opacity(0.72)
+        case 0.25..<0.50: return DesignSystem.Colors.amber
+        default: return DesignSystem.Colors.warning
+        }
+    }
+
+    private var fillGradient: LinearGradient {
+        switch remainingFraction {
+        case 0.75...:
+            return LinearGradient(
+                colors: [theme.primaryColor, theme.accentColor],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        case 0.50..<0.75:
+            return LinearGradient(
+                colors: [theme.primaryColor.opacity(0.72), theme.accentColor.opacity(0.56)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        case 0.25..<0.50:
+            return LinearGradient(
+                colors: [theme.primaryColor.opacity(0.48), DesignSystem.Colors.amber],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        default:
+            return LinearGradient(
+                colors: [DesignSystem.Colors.amber, DesignSystem.Colors.warning],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
+    }
+
+    private var batteryHeight: CGFloat { compact ? 28 : 36 }
+    private var batteryRadius: CGFloat { compact ? 6 : 8 }
+    private var terminalWidth: CGFloat { compact ? 4 : 5 }
+    private var terminalHeight: CGFloat { batteryHeight * 0.38 }
+    private var cornerRadius: CGFloat { compact ? 14 : 16 }
+
     var body: some View {
-        TimelineView(.periodic(from: .now, by: compact ? 1.0 / 10.0 : 1.0 / 12.0)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                DesignSystem.Colors.surface.opacity(0.96),
-                                DesignSystem.Colors.surfaceElevated.opacity(0.92),
-                                theme.primaryColor.opacity(0.08)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            DesignSystem.Colors.surface.opacity(0.96),
+                            DesignSystem.Colors.surfaceElevated.opacity(0.92),
+                            theme.primaryColor.opacity(0.06)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     )
+                )
 
-                Canvas { context, size in
-                    drawInstrument(in: &context, size: size, time: time)
-                }
-                .padding(compact ? 8 : 10)
-
-                VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: compact ? 4 : 8) {
+                HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
                     Text(signalStatus.label.uppercased())
                         .font(DesignSystem.Typography.monoTiny)
-                        .foregroundStyle(signalStatus.tint.opacity(compact ? 0.92 : 0.86))
+                        .foregroundStyle(signalStatus.tint.opacity(0.86))
 
                     if compact {
+                        Spacer()
                         Text(bucket.remainingText)
-                            .font(.system(size: 18, weight: .bold, design: .monospaced))
-                            .foregroundStyle(theme.gradient)
-                    } else {
-                        Text(signalStatus.detail)
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary.opacity(0.82))
+                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                            .foregroundStyle(fillColor)
                     }
                 }
-                .padding(compact ? 10 : 12)
+
+                if !compact {
+                    Text(signalStatus.detail)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary.opacity(0.82))
+                }
+
+                // Battery bar
+                HStack(spacing: 0) {
+                    // Battery body
+                    ZStack(alignment: .leading) {
+                        // Track (empty shell)
+                        RoundedRectangle(cornerRadius: batteryRadius, style: .continuous)
+                            .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: batteryRadius, style: .continuous)
+                                    .stroke(fillColor.opacity(0.22), lineWidth: 1.5)
+                            )
+
+                        // Fill bar
+                        GeometryReader { geo in
+                            let fillWidth = max(geo.size.width * remainingFraction, batteryRadius * 2)
+
+                            RoundedRectangle(cornerRadius: batteryRadius - 1.5, style: .continuous)
+                                .fill(fillGradient)
+                                .frame(width: remainingFraction > 0.02 ? fillWidth : 0)
+                                .padding(2)
+                                .shadow(color: fillColor.opacity(0.35), radius: 6, y: 0)
+                        }
+                    }
+                    .frame(height: batteryHeight)
+
+                    // Terminal nub
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(fillColor.opacity(0.32))
+                        .frame(width: terminalWidth, height: terminalHeight)
+                        .padding(.leading, 2)
+                }
+
+                if !compact {
+                    HStack {
+                        Text(bucket.remainingText + " remaining")
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(fillColor)
+
+                        Spacer()
+
+                        Text(bucket.usageText)
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                }
             }
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(theme.primaryColor.opacity(compact ? 0.16 : 0.20), lineWidth: 1)
-            )
-            .clipShape(.rect(cornerRadius: cornerRadius, style: .continuous))
+            .padding(compact ? 10 : 12)
         }
-        .accessibilityHidden(true)
-    }
-
-    private func drawInstrument(in context: inout GraphicsContext, size: CGSize, time: TimeInterval) {
-        let plotRect = CGRect(origin: .zero, size: size).insetBy(dx: compact ? 8 : 10, dy: compact ? 10 : 12)
-        let trackRect = plotRect.insetBy(dx: compact ? 2 : 6, dy: compact ? 8 : 12)
-        let baseline = trackRect.maxY - trackRect.height * (0.18 + pressureFraction * 0.60)
-        let phase = time * 0.55
-        let beaconPosition = 0.06 + remainingFraction * 0.88
-        let beaconPoint = pointOnTrack(normalizedX: beaconPosition, rect: trackRect, baseline: baseline, phase: phase)
-        let fullTrack = trackPath(in: trackRect, baseline: baseline, phase: phase, maxNormalizedX: 1)
-        let litTrack = trackPath(in: trackRect, baseline: baseline, phase: phase, maxNormalizedX: beaconPosition)
-        let fillPath = filledTrackPath(in: trackRect, baseline: baseline, phase: phase)
-
-        drawGrid(in: &context, rect: plotRect)
-
-        context.fill(
-            fillPath,
-            with: .linearGradient(
-                Gradient(colors: [
-                    theme.primaryColor.opacity(0.16),
-                    theme.accentColor.opacity(0.10),
-                    Color.clear
-                ]),
-                startPoint: CGPoint(x: trackRect.minX, y: trackRect.minY),
-                endPoint: CGPoint(x: trackRect.maxX, y: trackRect.maxY)
-            )
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(theme.primaryColor.opacity(compact ? 0.14 : 0.18), lineWidth: 1)
         )
-
-        context.stroke(
-            fullTrack,
-            with: .color(theme.primaryColor.opacity(0.16)),
-            style: StrokeStyle(lineWidth: compact ? 1.2 : 1.4, dash: [3, 6])
-        )
-
-        context.stroke(
-            litTrack,
-            with: .linearGradient(
-                Gradient(colors: [theme.primaryColor, theme.accentColor, DesignSystem.Colors.amber.opacity(0.9)]),
-                startPoint: CGPoint(x: trackRect.minX, y: trackRect.midY),
-                endPoint: CGPoint(x: beaconPoint.x, y: beaconPoint.y)
-            ),
-            style: StrokeStyle(lineWidth: compact ? 2.0 : 2.4, lineCap: .round, lineJoin: .round)
-        )
-
-        context.stroke(
-            Path { path in
-                path.move(to: CGPoint(x: beaconPoint.x, y: trackRect.minY))
-                path.addLine(to: beaconPoint)
-            },
-            with: .color(theme.primaryColor.opacity(0.18)),
-            style: StrokeStyle(lineWidth: 1, dash: [2, 5])
-        )
-
-        let glowRadius = compact ? 10.0 : 13.0
-        let glowFrame = CGRect(
-            x: beaconPoint.x - glowRadius,
-            y: beaconPoint.y - glowRadius,
-            width: glowRadius * 2,
-            height: glowRadius * 2
-        )
-        context.fill(
-            Path(ellipseIn: glowFrame),
-            with: .radialGradient(
-                Gradient(colors: [
-                    DesignSystem.Colors.amber.opacity(0.90),
-                    theme.accentColor.opacity(0.55),
-                    Color.clear
-                ]),
-                center: beaconPoint,
-                startRadius: 1,
-                endRadius: glowRadius * 1.9
-            )
-        )
-
-        context.fill(
-            Path(ellipseIn: CGRect(x: beaconPoint.x - 4, y: beaconPoint.y - 4, width: 8, height: 8)),
-            with: .color(DesignSystem.Colors.surface)
-        )
-        context.stroke(
-            Path(ellipseIn: CGRect(x: beaconPoint.x - 5, y: beaconPoint.y - 5, width: 10, height: 10)),
-            with: .color(theme.primaryColor),
-            style: StrokeStyle(lineWidth: 1.6)
-        )
-
-        for marker in stride(from: 0.0, through: 1.0, by: 0.25) {
-            let point = pointOnTrack(normalizedX: marker, rect: trackRect, baseline: baseline, phase: phase)
-            context.fill(
-                Path(ellipseIn: CGRect(x: point.x - 1.5, y: trackRect.maxY + 4, width: 3, height: 3)),
-                with: .color(theme.primaryColor.opacity(marker <= beaconPosition ? 0.50 : 0.18))
-            )
-        }
-    }
-
-    private func drawGrid(in context: inout GraphicsContext, rect: CGRect) {
-        let horizontalFractions: [CGFloat] = compact ? [0.32, 0.64] : [0.22, 0.44, 0.66, 0.88]
-        for fraction in horizontalFractions {
-            let y = rect.minY + rect.height * fraction
-            context.stroke(
-                Path { path in
-                    path.move(to: CGPoint(x: rect.minX, y: y))
-                    path.addLine(to: CGPoint(x: rect.maxX, y: y))
-                },
-                with: .color(DesignSystem.Colors.borderSubtle.opacity(0.55)),
-                style: StrokeStyle(lineWidth: 1, dash: [2, 5])
-            )
-        }
-
-        for marker in stride(from: 0.0, through: 1.0, by: 0.2) {
-            let x = rect.minX + rect.width * marker
-            context.stroke(
-                Path { path in
-                    path.move(to: CGPoint(x: x, y: rect.minY + rect.height * 0.18))
-                    path.addLine(to: CGPoint(x: x, y: rect.maxY))
-                },
-                with: .color(DesignSystem.Colors.borderSubtle.opacity(0.32)),
-                style: StrokeStyle(lineWidth: 1, dash: [2, 7])
-            )
-        }
-    }
-
-    private func trackPath(
-        in rect: CGRect,
-        baseline: CGFloat,
-        phase: Double,
-        maxNormalizedX: Double
-    ) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: pointOnTrack(normalizedX: 0, rect: rect, baseline: baseline, phase: phase).y))
-        let sampleCap = max(1, Int((Double(Self.sampleCount) * maxNormalizedX).rounded(.up)))
-        for sample in 1...sampleCap {
-            let normalizedX = min(Double(sample) / Double(Self.sampleCount), maxNormalizedX)
-            path.addLine(
-                to: CGPoint(
-                    x: rect.minX + rect.width * normalizedX,
-                    y: pointOnTrack(normalizedX: normalizedX, rect: rect, baseline: baseline, phase: phase).y
-                )
-            )
-        }
-        return path
-    }
-
-    private func filledTrackPath(in rect: CGRect, baseline: CGFloat, phase: Double) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: pointOnTrack(normalizedX: 0, rect: rect, baseline: baseline, phase: phase).y))
-
-        for sample in 1...Self.sampleCount {
-            let normalizedX = Double(sample) / Double(Self.sampleCount)
-            path.addLine(
-                to: CGPoint(
-                    x: rect.minX + rect.width * normalizedX,
-                    y: pointOnTrack(normalizedX: normalizedX, rect: rect, baseline: baseline, phase: phase).y
-                )
-            )
-        }
-
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.closeSubpath()
-        return path
-    }
-
-    private func pointOnTrack(normalizedX: Double, rect: CGRect, baseline: CGFloat, phase: Double) -> CGPoint {
-        let amplitude = compact ? 3.0 : 4.6
-        let primary = sin(normalizedX * .pi * 1.9 + phase) * amplitude
-        let detail = cos(normalizedX * .pi * 4.6 + phase * 0.6) * amplitude * 0.24
-        return CGPoint(
-            x: rect.minX + rect.width * normalizedX,
-            y: baseline + CGFloat(primary + detail)
-        )
+        .clipShape(.rect(cornerRadius: cornerRadius, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(provider.displayName) quota: \(bucket.remainingText) remaining")
     }
 }
 
@@ -1029,7 +941,11 @@ private struct QuotaSignalPlaceholder: View {
     var compact = false
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
-    private var cornerRadius: CGFloat { compact ? 18 : 20 }
+    private var cornerRadius: CGFloat { compact ? 14 : 16 }
+    private var batteryHeight: CGFloat { compact ? 28 : 36 }
+    private var batteryRadius: CGFloat { compact ? 6 : 8 }
+    private var terminalWidth: CGFloat { compact ? 4 : 5 }
+    private var terminalHeight: CGFloat { batteryHeight * 0.38 }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -1046,40 +962,35 @@ private struct QuotaSignalPlaceholder: View {
                     )
                 )
 
-            Canvas { context, size in
-                let rect = CGRect(origin: .zero, size: size).insetBy(dx: compact ? 8 : 10, dy: compact ? 10 : 12)
-                for fraction in stride(from: 0.25, through: 0.85, by: compact ? 0.30 : 0.20) {
-                    let y = rect.minY + rect.height * fraction
-                    context.stroke(
-                        Path { path in
-                            path.move(to: CGPoint(x: rect.minX, y: y))
-                            path.addLine(to: CGPoint(x: rect.maxX, y: y))
-                        },
-                        with: .color(DesignSystem.Colors.borderSubtle.opacity(0.45)),
-                        style: StrokeStyle(lineWidth: 1, dash: [2, 5])
-                    )
-                }
-
-                let baseline = rect.maxY - rect.height * 0.38
-                context.stroke(
-                    Path { path in
-                        path.move(to: CGPoint(x: rect.minX + rect.width * 0.08, y: baseline))
-                        path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.08, y: baseline))
-                    },
-                    with: .color(theme.primaryColor.opacity(isActive ? 0.35 : 0.16)),
-                    style: StrokeStyle(lineWidth: 1.6, dash: [3, 7])
-                )
-            }
-            .padding(compact ? 8 : 10)
-
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: compact ? 4 : 8) {
                 Text(isActive ? "REFRESHING" : "NO SIGNAL YET")
                     .font(DesignSystem.Typography.monoTiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
 
-                Text(isActive ? "Provider at work" : "Waiting for a readable quota bucket")
-                    .font(compact ? DesignSystem.Typography.tiny : DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                if !compact {
+                    Text(isActive ? "Provider at work" : "Waiting for quota data")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+
+                // Empty battery shell
+                HStack(spacing: 0) {
+                    RoundedRectangle(cornerRadius: batteryRadius, style: .continuous)
+                        .fill(DesignSystem.Colors.surfaceElevated.opacity(0.4))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: batteryRadius, style: .continuous)
+                                .stroke(
+                                    theme.primaryColor.opacity(isActive ? 0.22 : 0.12),
+                                    style: StrokeStyle(lineWidth: 1.5, dash: isActive ? [4, 4] : [])
+                                )
+                        )
+                        .frame(height: batteryHeight)
+
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(theme.primaryColor.opacity(0.14))
+                        .frame(width: terminalWidth, height: terminalHeight)
+                        .padding(.leading, 2)
+                }
             }
             .padding(compact ? 10 : 12)
         }

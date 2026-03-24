@@ -10,6 +10,8 @@ struct InsightBriefSnapshot {
     var heaviestTaskProject: String?
     var modelShiftHeadline: String?
     var incompleteHint: String?
+    var rollupFreshness: InsightRollupFreshness = .fresh
+    var rollupStatusMessage: String?
 
     /// True when the inline ribbon in `ChatPanel` would show at least one row.
     var hasInlineContent: Bool {
@@ -17,21 +19,40 @@ struct InsightBriefSnapshot {
             || (heaviestTaskTitle != nil && heaviestTaskCost != nil && heaviestTaskProject != nil)
             || modelShiftHeadline != nil
             || incompleteHint != nil
+            || rollupFreshness != .fresh
+    }
+
+    var rollupStatusLine: String? {
+        guard rollupFreshness != .fresh else { return nil }
+        if let rollupStatusMessage, rollupStatusMessage.isEmpty == false {
+            return rollupStatusMessage
+        }
+        switch rollupFreshness {
+        case .fresh:
+            return nil
+        case .stale:
+            return "Workflow insights are stale."
+        case .rebuilding:
+            return "Workflow insights are rebuilding."
+        case .unavailable:
+            return "Workflow insights are unavailable."
+        }
     }
 
     @MainActor
-    static func build(from dataStore: DataStore) -> InsightBriefSnapshot {
+    static func build(
+        from dataStore: DataStore,
+        intelligenceService: SearchService? = nil,
+        rollupService: WorkflowInsightRollupService? = nil
+    ) -> InsightBriefSnapshot {
         let calendar = Calendar.current
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
         let weekUsages = dataStore.usages.filter { $0.startTime >= weekAgo }
-
-        let conversations = (try? dataStore.fetchConversations(limit: 200)) ?? []
-
-        let latestConv = conversations.max { a, b in
-            let ad = a.endTime ?? a.startTime ?? .distantPast
-            let bd = b.endTime ?? b.startTime ?? .distantPast
-            return ad < bd
-        }
+        let retrieval = intelligenceService ?? SearchService(dataStore: dataStore)
+        let rollups = rollupService ?? WorkflowInsightRollupService(dataStore: dataStore)
+        let rollupSnapshot = rollups.snapshot(refreshIfStale: true)
+        let conversations = retrieval.recentConversations(limit: 200)
+        let latestConv = retrieval.latestConversation(in: conversations)
 
         let whereLeftOff = latestConv?.lastAssistantMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         let whereProject = latestConv?.projectName
@@ -45,8 +66,7 @@ struct InsightBriefSnapshot {
             weekUsages.filter { $0.projectName == u.projectName }.reduce(0.0) { $0 + $1.cost }
         }
 
-        let insights = InsightEngine.generate(from: dataStore)
-        let modelShift = insights.first { $0.type == .modelShift }
+        let modelShift = rollupSnapshot.insights.first { $0.type == .modelShift }
 
         let incomplete = latestConv.flatMap { conv -> String? in
             let t = conv.lastAssistantMessage.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -65,7 +85,9 @@ struct InsightBriefSnapshot {
             heaviestTaskCost: heaviestCost,
             heaviestTaskProject: heaviestUsage?.projectName,
             modelShiftHeadline: modelShift?.headline,
-            incompleteHint: incomplete
+            incompleteHint: incomplete,
+            rollupFreshness: rollupSnapshot.freshness,
+            rollupStatusMessage: rollupSnapshot.statusMessage
         )
     }
 }

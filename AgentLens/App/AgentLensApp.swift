@@ -3,6 +3,37 @@ import FirebaseCore
 import GoogleSignIn
 import SwiftUI
 
+extension Notification.Name {
+    static let burnBarOpenConversationSearch = Notification.Name("BurnBarOpenConversationSearch")
+}
+
+@MainActor
+final class AppCommandRouter {
+    static let shared = AppCommandRouter()
+
+    var openDashboard: (() -> Void)?
+    var openConversationSearch: (() -> Void)?
+
+    func handle(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "burnbar" else { return false }
+
+        let host = url.host?.lowercased() ?? ""
+        let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
+        let target = host.isEmpty ? path : host
+
+        switch target {
+        case "dashboard":
+            openDashboard?()
+            return true
+        case "search", "chat":
+            openConversationSearch?()
+            return true
+        default:
+            return false
+        }
+    }
+}
+
 // MARK: - Window Manager
 
 @MainActor
@@ -146,7 +177,35 @@ struct BurnBarApp: App {
         AccountManager.shared.onFirebaseConfigured()
     }
 
+    @MainActor
+    private func installCommandRouter() {
+        AppCommandRouter.shared.openDashboard = {
+            windowManager.openDashboard(
+                dataStore: dataStore,
+                aggregator: aggregator,
+                accountManager: accountManager,
+                cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService
+            )
+        }
+
+        AppCommandRouter.shared.openConversationSearch = {
+            windowManager.openDashboard(
+                dataStore: dataStore,
+                aggregator: aggregator,
+                accountManager: accountManager,
+                cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService
+            )
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                NotificationCenter.default.post(name: .burnBarOpenConversationSearch, object: nil)
+            }
+        }
+    }
+
     var body: some Scene {
+        let _ = installCommandRouter()
         MenuBarExtra {
             MenuBarPopoverView(
                 dataStore: dataStore,

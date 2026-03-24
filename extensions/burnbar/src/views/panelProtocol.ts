@@ -6,7 +6,7 @@ export type BurnBarPanelHostMessage =
   | { type: "error"; message: string }
   | { type: "theme"; kind: "dark" | "light" | "high-contrast" };
 
-// Webview → Host messages
+// Webview → Host messages (sidebar panel)
 export type BurnBarPanelWebviewMessage =
   | { type: "startRun"; prompt: string; modelID: string; mode: "explain" | "fix" | "inspect" }
   | { type: "refresh" }
@@ -16,4 +16,19 @@ export type BurnBarPanelWebviewMessage =
   | { type: "retryRun"; runId: string }
   | { type: "approveRun"; runId: string }
   | { type: "rejectRun"; runId: string }
-  | { type: "openApp" };
+  | { type: "openApp" }
+  | { type: "openWorkspace" };
+
+// Webview → Host messages (workspace editor pane)
+export type BurnBarWorkspaceWebviewMessage =
+  | { type: "startRun"; prompt: string; modelID: string; mode: "explain" | "fix" | "inspect" }
+  | { type: "refresh" }
+  | { type: "repair" }
+  | { type: "selectRun"; runId: string }
+  | { type: "cancelRun"; runId: string }
+  | { type: "retryRun"; runId: string }
+  | { type: "approveRun"; runId: string }
+  | { type: "rejectRun"; runId: string }
+  | { type: "openApp" }
+  | { type: "switchSection"; section: "command" | "runs" | "system" }
+  | { type: "openConversationSearch" };

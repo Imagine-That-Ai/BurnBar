@@ -205,11 +205,16 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            // Daemon reads must never surface interactive keychain prompts.
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecItemNotFound {
+        if status == errSecItemNotFound
+            || status == errSecInteractionNotAllowed
+            || status == errSecUserCanceled
+            || status == errSecAuthFailed {
             return nil
         }
         guard status == errSecSuccess else {

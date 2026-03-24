@@ -1,0 +1,73 @@
+{
+  "cases" : [
+    {
+      "generatedHasGroundingSection" : true,
+      "generatedHasReferenceCitation" : true,
+      "hasGroundingInstruction" : true,
+      "hasReferenceLabel" : true,
+      "includesExistingMarkdownBlock" : false,
+      "name" : "draft-skill",
+      "operation" : "draft",
+      "referenceKinds" : [
+        "skill_doc"
+      ],
+      "referenceSourceIDs" : [
+        "artifact-skill-context"
+      ],
+      "retrievalQuery" : "skill-grounding-needle",
+      "sourceKind" : "skill_doc"
+    },
+    {
+      "generatedHasGroundingSection" : true,
+      "generatedHasReferenceCitation" : true,
+      "hasGroundingInstruction" : true,
+      "hasReferenceLabel" : true,
+      "includesExistingMarkdownBlock" : true,
+      "name" : "refine-skill",
+      "operation" : "refine",
+      "referenceKinds" : [
+        "agent_doc"
+      ],
+      "referenceSourceIDs" : [
+        "artifact-agent-context"
+      ],
+      "retrievalQuery" : "agent-grounding-needle",
+      "sourceKind" : "skill_doc"
+    },
+    {
+      "generatedHasGroundingSection" : true,
+      "generatedHasReferenceCitation" : true,
+      "hasGroundingInstruction" : true,
+      "hasReferenceLabel" : true,
+      "includesExistingMarkdownBlock" : false,
+      "name" : "draft-agent-doc",
+      "operation" : "draft",
+      "referenceKinds" : [
+        "agent_doc"
+      ],
+      "referenceSourceIDs" : [
+        "artifact-agent-context"
+      ],
+      "retrievalQuery" : "agent-grounding-needle",
+      "sourceKind" : "agent_doc"
+    },
+    {
+      "generatedHasGroundingSection" : true,
+      "generatedHasReferenceCitation" : true,
+      "hasGroundingInstruction" : true,
+      "hasReferenceLabel" : true,
+      "includesExistingMarkdownBlock" : true,
+      "name" : "refine-agent-doc",
+      "operation" : "refine",
+      "referenceKinds" : [
+        "skill_doc"
+      ],
+      "referenceSourceIDs" : [
+        "artifact-skill-context"
+      ],
+      "retrievalQuery" : "skill-grounding-needle",
+      "sourceKind" : "agent_doc"
+    }
+  ],
+  "scenario" : "authoring-draft-refine-grounding"
+}

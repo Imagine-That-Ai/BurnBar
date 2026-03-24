@@ -1474,7 +1474,7 @@ private extension ProviderQuotaService {
 
     func cursorConnectorKey(for account: String) -> String? {
         let keychain = KeychainStore()
-        let raw = try? keychain.string(for: account)
+        let raw = try? keychain.string(for: account, allowUserInteraction: false)
         return nonEmpty(raw ?? nil)
     }
 

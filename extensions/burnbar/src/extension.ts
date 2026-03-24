@@ -19,9 +19,11 @@ import {
   type BurnBarRunDetailResponse
 } from "./types";
 import { BurnBarHealthTreeDataProvider } from "./views/healthView";
+import { openBurnBarAppOrWarn } from "./host/openBurnBarApp";
 import { BurnBarRunDetailTreeDataProvider } from "./views/runDetailView";
 import { BurnBarRunListTreeDataProvider, BurnBarRunTreeItem } from "./views/runListView";
 import { BurnBarPanelView } from "./views/panelView";
+import { BurnBarWorkspacePanel } from "./views/workspacePanel";
 import { activateBurnBarWorkspaceCompanion } from "./workspace/companion";
 import { BurnBarWorkspaceRpcClient } from "./workspace/rpc";
 
@@ -217,6 +219,19 @@ export async function activateBurnBarExtension(
   context.subscriptions.push(
     vscode.commands.registerCommand("burnbar.rejectRun", async (item?: BurnBarRunTreeItem) => {
       await handleApprovalResponse(controller, item, "reject");
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("burnbar.openWorkspace", () => {
+      BurnBarWorkspacePanel.open(controller, context.extensionUri);
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("burnbar.openConversationSearch", async () => {
+      await openBurnBarAppOrWarn(
+        "search",
+        "Could not open BurnBar for conversation search. Install the BurnBar app, then try again."
+      );
     })
   );
 

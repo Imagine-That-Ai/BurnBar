@@ -7,8 +7,46 @@ import GRDB
 enum ParserHealth {
     case healthy(sessionCount: Int)
     case empty
+    case degraded(sessionCount: Int, error: String)
     case failed(error: String)
     case notConfigured
+}
+
+private extension ParserHealth {
+    var statusLabel: String {
+        switch self {
+        case .healthy:
+            return "healthy"
+        case .empty:
+            return "empty"
+        case .degraded:
+            return "degraded"
+        case .failed:
+            return "failed"
+        case .notConfigured:
+            return "not_configured"
+        }
+    }
+
+    var sessionCount: Int {
+        switch self {
+        case .healthy(let count), .degraded(let count, _):
+            return max(0, count)
+        case .empty, .failed, .notConfigured:
+            return 0
+        }
+    }
+
+    var errorMessage: String? {
+        switch self {
+        case .degraded(_, let error):
+            return error
+        case .failed(let error):
+            return error
+        case .healthy, .empty, .notConfigured:
+            return nil
+        }
+    }
 }
 
 // MARK: - Summary Queue Item
@@ -37,6 +75,7 @@ final class UsageAggregator {
     private let artifactDiscoveryService: ArtifactDiscoveryService
     private let projectionPipelineService: ProjectionPipelineService
     private var hasCompletedInitialSummarySweep = false
+    private static let summaryFailureRetryCooldown: TimeInterval = 60 * 60
 
     private(set) var isRefreshing = false
     private(set) var isSummarizing = false
@@ -48,6 +87,7 @@ final class UsageAggregator {
     private(set) var summaryTimeRemaining: TimeInterval? = nil
     private(set) var lastRefresh: Date?
     private(set) var errors: [AgentProvider: String] = [:]
+    private(set) var parserImportError: String?
     private(set) var parserHealth: [AgentProvider: ParserHealth] = [:]
     /// Usage records fetched from provider billing APIs (separate from log-parsed data).
     private(set) var apiUsages: [ProviderUsageRecord] = []
@@ -74,6 +114,7 @@ final class UsageAggregator {
             ?? ArtifactDiscoveryService(dataStore: dataStore, settingsProvider: settingsManager)
         self.projectionPipelineService = projectionPipelineService
             ?? ProjectionPipelineService(dataStore: dataStore)
+        self.hasCompletedInitialSummarySweep = settingsManager.summaryInitialSweepCompleted
         self.parsers = [
             .factory: FactoryDroidParser(),
             .claudeCode: ClaudeCodeParser(),
@@ -109,6 +150,7 @@ final class UsageAggregator {
         isRefreshing = true
         defer { isRefreshing = false }
         errors = [:]
+        parserImportError = nil
         parserHealth = [:]
 
         var allUsages: [TokenUsage] = []
@@ -117,24 +159,25 @@ final class UsageAggregator {
             do {
                 let result = try await parser.parse()
                 let usages = result.usages
-                if usages.isEmpty {
-                    parserHealth[provider] = .empty
-                } else {
-                    parserHealth[provider] = .healthy(sessionCount: usages.count)
-                }
+                var providerHealth: ParserHealth = usages.isEmpty ? .empty : .healthy(sessionCount: usages.count)
                 allUsages.append(contentsOf: usages)
                 if settingsManager.conversationIndexingEnabled {
                     do {
                         try ConversationIndexer.shared.index(result.conversations, in: dataStore)
                     } catch {
-                        print("UsageAggregator: Conversation indexing failed for \(provider.rawValue): \(error.localizedDescription)")
+                        let message = "Conversation indexing failed for \(provider.displayName): \(error.localizedDescription)"
+                        providerHealth = .degraded(sessionCount: usages.count, error: message)
+                        errors[provider] = message
                     }
                 }
+                parserHealth[provider] = providerHealth
             } catch {
                 parserHealth[provider] = .failed(error: error.localizedDescription)
                 errors[provider] = error.localizedDescription
             }
         }
+
+        var persistenceError: String?
 
         // Store all usages
         do {
@@ -142,7 +185,15 @@ final class UsageAggregator {
             dataStore.replaceUsages(allUsages)
             lastRefresh = Date()
         } catch {
-            print("UsageAggregator: Failed to store usages: \(error)")
+            let message = "Failed to store imported usage rows: \(error.localizedDescription)"
+            parserImportError = message
+            persistenceError = message
+        }
+
+        do {
+            try upsertParserImportHealth(importedUsageCount: allUsages.count, persistenceError: persistenceError)
+        } catch {
+            parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
         }
 
         // Unblock scan UI immediately after local parsing/persistence completes.
@@ -158,12 +209,13 @@ final class UsageAggregator {
             apiUsages = await apiService.fetchAll(since: thirtyDaysAgo)
         }
 
-        await quotaService.refreshAll(dataStore: dataStore)
+        await quotaService.refreshIfNeeded(dataStore: dataStore)
 
         // Upload unsynced rows to Firestore (no-op if not signed in)
         await cloudSync?.uploadPending()
         await cloudSync?.uploadPendingConversations()
         await cloudSync?.uploadPendingSessionLogs()
+        await cloudSync?.syncSharedArtifacts()
 
         await sessionMirror?.syncIfNeeded()
     }
@@ -174,7 +226,13 @@ final class UsageAggregator {
         do {
             try dataStore.deleteAll()
         } catch {
-            print("UsageAggregator: Failed to clear usage rows before recount: \(error)")
+            let message = "Failed to clear usage rows before recount: \(error.localizedDescription)"
+            parserImportError = message
+            do {
+                try upsertParserImportHealth(importedUsageCount: 0, persistenceError: message)
+            } catch {
+                parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
+            }
         }
         await refreshAll()
     }
@@ -186,16 +244,30 @@ final class UsageAggregator {
 
         do {
             let result = try await parser.parse()
+            var providerHealth: ParserHealth = result.usages.isEmpty ? .empty : .healthy(sessionCount: result.usages.count)
             try dataStore.insert(result.usages)
             if settingsManager.conversationIndexingEnabled {
                 do {
                     try ConversationIndexer.shared.index(result.conversations, in: dataStore)
                 } catch {
-                    print("UsageAggregator: Conversation indexing failed for \(provider.rawValue): \(error.localizedDescription)")
+                    let message = "Conversation indexing failed for \(provider.displayName): \(error.localizedDescription)"
+                    providerHealth = .degraded(sessionCount: result.usages.count, error: message)
+                    errors[provider] = message
                 }
             }
+            parserHealth[provider] = providerHealth
             dataStore.refresh()
-            errors.removeValue(forKey: provider)
+            switch providerHealth {
+            case .degraded:
+                break
+            default:
+                errors.removeValue(forKey: provider)
+            }
+            do {
+                try upsertParserImportHealth(importedUsageCount: result.usages.count, persistenceError: nil)
+            } catch {
+                parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
+            }
             launchArtifactDiscoverySweep()
             launchAutoSummarySweep()
             launchProjectionSweep()
@@ -203,7 +275,15 @@ final class UsageAggregator {
                 await quotaService.refresh(provider: provider, dataStore: dataStore)
             }
         } catch {
+            parserHealth[provider] = .failed(error: error.localizedDescription)
             errors[provider] = error.localizedDescription
+            let message = "Provider refresh failed for \(provider.displayName): \(error.localizedDescription)"
+            parserImportError = message
+            do {
+                try upsertParserImportHealth(importedUsageCount: 0, persistenceError: message)
+            } catch {
+                parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
+            }
         }
     }
 }
@@ -222,6 +302,77 @@ private struct AutoSummaryResult {
 }
 
 private extension UsageAggregator {
+    func upsertParserImportHealth(importedUsageCount: Int, persistenceError: String?) throws {
+        let providers = parsers.keys.sorted { $0.rawValue < $1.rawValue }
+        let providerStates = providers.map { provider -> ParserImportHealthProviderState in
+            let health = parserHealth[provider] ?? .notConfigured
+            return ParserImportHealthProviderState(
+                provider: provider.rawValue,
+                status: health.statusLabel,
+                sessionCount: health.sessionCount,
+                errorMessage: health.errorMessage
+            )
+        }
+
+        let healthyCount = providerStates.filter { $0.status == "healthy" }.count
+        let emptyCount = providerStates.filter { $0.status == "empty" }.count
+        let degradedCount = providerStates.filter { $0.status == "degraded" }.count
+        let failedCount = providerStates.filter { $0.status == "failed" }.count
+
+        let status: RetrievalHealthStatus
+        let errorCode: String?
+        let errorMessage: String?
+
+        if let persistenceError, persistenceError.isEmpty == false {
+            status = .failed
+            errorCode = "PARSER_IMPORT_PERSISTENCE_FAILED"
+            errorMessage = persistenceError
+        } else if failedCount > 0 && failedCount == providerStates.count {
+            status = .failed
+            errorCode = "PARSER_IMPORT_ALL_PROVIDERS_FAILED"
+            errorMessage = "All parser imports failed during the latest refresh."
+        } else if failedCount > 0 || degradedCount > 0 {
+            status = .degraded
+            errorCode = "PARSER_IMPORT_PARTIAL_FAILURE"
+            errorMessage = "Parser import completed with partial failures."
+        } else {
+            status = .healthy
+            errorCode = nil
+            errorMessage = nil
+        }
+
+        let details = ParserImportHealthDetails(
+            scannedProviders: providerStates.count,
+            importedUsageCount: max(0, importedUsageCount),
+            healthyProviders: healthyCount,
+            emptyProviders: emptyCount,
+            degradedProviders: degradedCount,
+            failedProviders: failedCount,
+            conversationIndexingEnabled: settingsManager.conversationIndexingEnabled,
+            providerStates: providerStates
+        )
+        let detailsData = try JSONEncoder().encode(details)
+        let detailsJSON = String(data: detailsData, encoding: .utf8)
+        let now = Date()
+        try dataStore.upsertRetrievalHealth(
+            RetrievalHealthRecord(
+                subsystem: .parserImport,
+                status: status,
+                errorCode: errorCode,
+                errorMessage: errorMessage,
+                detailsJSON: detailsJSON,
+                observedAt: now,
+                updatedAt: now
+            )
+        )
+
+        if status == .healthy {
+            parserImportError = nil
+        } else if let errorMessage {
+            parserImportError = errorMessage
+        }
+    }
+
     func launchArtifactDiscoverySweep() {
         Task(priority: .utility) { [weak self] in
             await self?.runArtifactDiscoverySweep()
@@ -261,6 +412,7 @@ private extension UsageAggregator {
     func runProjectionSweep() async {
         do {
             _ = try projectionPipelineService.runSweep()
+            _ = WorkflowInsightRollupService(dataStore: dataStore).snapshot(refreshIfStale: true)
         } catch {
             let now = Date()
             do {
@@ -307,6 +459,7 @@ private extension UsageAggregator {
             if let idx = summaryQueue.firstIndex(where: { $0.id == id }) {
                 summaryQueue[idx].status = .failed
             }
+            try? dataStore.markConversationSummaryAttempt(id: id)
         }
         summaryProgressDone += 1
     }
@@ -360,7 +513,11 @@ private extension UsageAggregator {
         }
 
         // Get real total up-front
-        let allPending = (try? dataStore.fetchConversationsNeedingSummary(limit: 10_000)) ?? []
+        let allPending = (try? dataStore.fetchConversationsNeedingSummary(
+            limit: 10_000,
+            now: Date(),
+            retryCooldown: Self.summaryFailureRetryCooldown
+        )) ?? []
         summaryProgressTotal = allPending.count
         summaryQueue = allPending.map {
             SummaryQueueItem(
@@ -376,7 +533,11 @@ private extension UsageAggregator {
             // Respect time limit
             if let deadline, Date() >= deadline { break }
 
-            guard var candidates = try? dataStore.fetchConversationsNeedingSummary(limit: batchLimit),
+            guard var candidates = try? dataStore.fetchConversationsNeedingSummary(
+                limit: batchLimit,
+                now: Date(),
+                retryCooldown: Self.summaryFailureRetryCooldown
+            ),
                   !candidates.isEmpty else { break }
             candidates.removeAll { failedIDs.contains($0.id) }
             if candidates.isEmpty { break }
@@ -425,6 +586,7 @@ private extension UsageAggregator {
         }
 
         hasCompletedInitialSummarySweep = true
+        settingsManager.summaryInitialSweepCompleted = true
         await runProjectionSweep()
     }
 
@@ -718,7 +880,7 @@ private extension UsageAggregator {
 
         func cursorConnectorKey(for account: String) -> String? {
             let keychain = KeychainStore()
-            let raw = try? keychain.string(for: account)
+            let raw = try? keychain.string(for: account, allowUserInteraction: false)
             return nonEmpty(raw ?? nil)
         }
 
@@ -1359,12 +1521,25 @@ final class CursorParser: LogParser, @unchecked Sendable {
 /// Prefers exact token breakdowns from JSONL `token_count` events over the aggregate `tokens_used` in SQLite.
 final class CodexParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .codex
+    private let fileManager: FileManager
+    private let appPaths: BurnBarAppPaths
+    private let cacheURL: URL
+
+    init(
+        fileManager: FileManager = .default,
+        appPaths: BurnBarAppPaths = .live()
+    ) {
+        self.fileManager = fileManager
+        self.appPaths = appPaths
+        self.cacheURL = appPaths.supportDirectory.appendingPathComponent("codex_parser_cache.json")
+        _ = try? BurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
+    }
 
     func parse() async throws -> ParseResult {
         let basePath = (provider.logDirectory as NSString).expandingTildeInPath
         let dbPath = (basePath as NSString).appendingPathComponent("state_5.sqlite")
 
-        guard FileManager.default.fileExists(atPath: dbPath) else {
+        guard fileManager.fileExists(atPath: dbPath) else {
             return ParseResult(usages: [], conversations: [])
         }
 
@@ -1374,6 +1549,9 @@ final class CodexParser: LogParser, @unchecked Sendable {
 
     private func parseCodexDatabase(dbPath: String) throws -> [TokenUsage] {
         var usages: [TokenUsage] = []
+        var sessionCache = loadSessionCache()
+        var activePaths = Set<String>()
+        var cacheMutated = false
 
         var config = Configuration()
         config.readonly = true
@@ -1431,11 +1609,40 @@ final class CodexParser: LogParser, @unchecked Sendable {
 
                 if hasRolloutPath, let rolloutPath: String = row["rollout_path"] {
                     let expandedPath = (rolloutPath as NSString).expandingTildeInPath
-                    if let tokenUsage = parseCodexSessionJSONL(path: expandedPath) {
-                        inputTokens = tokenUsage.input
-                        outputTokens = tokenUsage.output
-                        cacheReadTokens = tokenUsage.cacheRead
-                        foundExact = true
+                    let cacheKey = URL(fileURLWithPath: expandedPath).standardizedFileURL.path
+                    activePaths.insert(cacheKey)
+
+                    if let signature = fileSignature(forPath: expandedPath),
+                       let cached = sessionCache.fileEntries[cacheKey],
+                       cached.signature == signature {
+                        if let tokenUsage = cached.tokenUsage {
+                            inputTokens = tokenUsage.input
+                            outputTokens = tokenUsage.output
+                            cacheReadTokens = tokenUsage.cacheRead
+                            foundExact = true
+                        }
+                    } else {
+                        let parsed = parseCodexSessionJSONL(path: expandedPath)
+                        if let parsed {
+                            inputTokens = parsed.input
+                            outputTokens = parsed.output
+                            cacheReadTokens = parsed.cacheRead
+                            foundExact = true
+                        }
+
+                        if let signature = fileSignature(forPath: expandedPath) {
+                            sessionCache.fileEntries[cacheKey] = CodexSessionCacheEntry(
+                                signature: signature,
+                                tokenUsage: parsed.map {
+                                    CodexSessionTokenUsage(
+                                        input: $0.input,
+                                        output: $0.output,
+                                        cacheRead: $0.cacheRead
+                                    )
+                                }
+                            )
+                            cacheMutated = true
+                        }
                     }
                 }
 
@@ -1472,12 +1679,24 @@ final class CodexParser: LogParser, @unchecked Sendable {
             }
         }
 
+        let stalePaths = Set(sessionCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                sessionCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
+        }
+
+        if cacheMutated {
+            persistSessionCache(sessionCache)
+        }
+
         return usages
     }
 
     /// Parse a Codex session JSONL file to extract the last `token_count` event with exact breakdowns.
     private func parseCodexSessionJSONL(path: String) -> (input: Int, output: Int, cacheRead: Int)? {
-        guard FileManager.default.fileExists(atPath: path),
+        guard fileManager.fileExists(atPath: path),
               let handle = FileHandle(forReadingAtPath: path) else {
             return nil
         }
@@ -1508,6 +1727,76 @@ final class CodexParser: LogParser, @unchecked Sendable {
 
         return found ? (input: lastInput, output: lastOutput, cacheRead: lastCacheRead) : nil
     }
+
+    private func loadSessionCache() -> CodexSessionParserCache {
+        guard fileManager.fileExists(atPath: cacheURL.path) else { return .empty }
+        do {
+            let data = try Data(contentsOf: cacheURL)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let cache = try decoder.decode(CodexSessionParserCache.self, from: data)
+            guard cache.schemaVersion == CodexSessionParserCache.empty.schemaVersion else {
+                return .empty
+            }
+            return cache
+        } catch {
+            return .empty
+        }
+    }
+
+    private func persistSessionCache(_ cache: CodexSessionParserCache) {
+        do {
+            if !fileManager.fileExists(atPath: appPaths.supportDirectory.path) {
+                try fileManager.createDirectory(at: appPaths.supportDirectory, withIntermediateDirectories: true)
+            }
+            var persisted = cache
+            persisted.lastUpdatedAt = Date()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(persisted)
+            try data.write(to: cacheURL, options: .atomic)
+        } catch {
+            print("CodexParser: Failed to persist session cache: \(error)")
+        }
+    }
+
+    private func fileSignature(forPath path: String) -> CodexSessionFileSignature? {
+        let fileURL = URL(fileURLWithPath: path)
+        let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey])
+        guard values?.isRegularFile == true else { return nil }
+        let modifiedAt = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
+        let sizeBytes = Int64(values?.fileSize ?? 0)
+        return CodexSessionFileSignature(modifiedAt: modifiedAt, sizeBytes: sizeBytes)
+    }
+}
+
+private struct CodexSessionFileSignature: Codable, Equatable {
+    let modifiedAt: TimeInterval
+    let sizeBytes: Int64
+}
+
+private struct CodexSessionTokenUsage: Codable, Equatable {
+    let input: Int
+    let output: Int
+    let cacheRead: Int
+}
+
+private struct CodexSessionCacheEntry: Codable, Equatable {
+    let signature: CodexSessionFileSignature
+    let tokenUsage: CodexSessionTokenUsage?
+}
+
+private struct CodexSessionParserCache: Codable, Equatable {
+    var schemaVersion: Int
+    var fileEntries: [String: CodexSessionCacheEntry]
+    var lastUpdatedAt: Date?
+
+    static let empty = CodexSessionParserCache(
+        schemaVersion: 1,
+        fileEntries: [:],
+        lastUpdatedAt: nil
+    )
 }
 
 // MARK: - Model Filter Parser (for Zai/MiniMax which use Factory sessions)
@@ -1515,41 +1804,88 @@ final class CodexParser: LogParser, @unchecked Sendable {
 final class ModelFilterParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider
     private let modelPattern: String
+    private let fileManager: FileManager
+    private let appPaths: BurnBarAppPaths
+    private let cacheURL: URL
 
-    init(modelPattern: String, provider: AgentProvider) {
+    init(
+        modelPattern: String,
+        provider: AgentProvider,
+        fileManager: FileManager = .default,
+        appPaths: BurnBarAppPaths = .live()
+    ) {
         self.modelPattern = modelPattern.lowercased()
         self.provider = provider
+        self.fileManager = fileManager
+        self.appPaths = appPaths
+
+        let providerKey = provider.rawValue
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "_")
+        self.cacheURL = appPaths.supportDirectory
+            .appendingPathComponent("model_filter_parser_\(providerKey).json")
+        _ = try? BurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
     }
 
     func parse() async throws -> ParseResult {
         let sessionsPath = "~/.factory/sessions"
         let sessionsURL = URL(fileURLWithPath: (sessionsPath as NSString).expandingTildeInPath)
 
-        guard FileManager.default.fileExists(atPath: sessionsURL.path) else {
+        guard fileManager.fileExists(atPath: sessionsURL.path) else {
             return ParseResult(usages: [], conversations: [])
         }
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var parseCache = loadParseCache()
+        var activePaths = Set<String>()
+        var cacheMutated = false
 
-        let projectDirs = try FileManager.default.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])
+        let projectDirs = try fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
         for projectDir in projectDirs {
             let projectName = decodeProjectName(projectDir.lastPathComponent)
 
-            let files = try FileManager.default.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)
+            let files = try fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)
                 .filter { $0.pathExtension == "jsonl" }
 
             for jsonlFile in files {
-                if let pair = try? parseSession(file: jsonlFile, projectName: projectName),
-                   let usage = pair.usage {
-                    usages.append(usage)
-                    if let conv = pair.conversation {
-                        conversations.append(conv)
+                let baseName = jsonlFile.deletingPathExtension().lastPathComponent
+                let settingsFile = projectDir.appendingPathComponent("\(baseName).settings.json")
+                let cacheKey = cachePath(for: jsonlFile)
+                activePaths.insert(cacheKey)
+
+                if let signature = compositeSignature(jsonlFile: jsonlFile, settingsFile: settingsFile),
+                   let cached = parseCache.fileEntries[cacheKey],
+                   cached.signature == signature {
+                    appendCached(cached, usages: &usages, conversations: &conversations)
+                } else {
+                    let parsed = try? parseSession(file: jsonlFile, projectName: projectName)
+                    appendParsed(parsed, usages: &usages, conversations: &conversations)
+
+                    if let signature = compositeSignature(jsonlFile: jsonlFile, settingsFile: settingsFile) {
+                        parseCache.fileEntries[cacheKey] = ModelFilterCachedSession(
+                            signature: signature,
+                            usage: parsed?.usage,
+                            conversation: parsed?.conversation
+                        )
+                        cacheMutated = true
                     }
                 }
             }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
+        }
+
+        if cacheMutated {
+            persistParseCache(parseCache)
         }
 
         return ParseResult(usages: usages, conversations: conversations)
@@ -1571,7 +1907,7 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
         }
         defer { try? handle.close() }
 
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
+        let mtime = (try? fileManager.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
         let conv = ClaudeConversationAccumulator()
 
         let baseName = file.deletingPathExtension().lastPathComponent
@@ -1750,6 +2086,115 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
 
         return (usage, conversation)
     }
+
+    private func cachePath(for file: URL) -> String {
+        file.standardizedFileURL.path
+    }
+
+    private func appendCached(
+        _ cached: ModelFilterCachedSession,
+        usages: inout [TokenUsage],
+        conversations: inout [ConversationRecord]
+    ) {
+        if let usage = cached.usage {
+            usages.append(usage)
+        }
+        if let conversation = cached.conversation {
+            conversations.append(conversation)
+        }
+    }
+
+    private func appendParsed(
+        _ parsed: (usage: TokenUsage?, conversation: ConversationRecord?)?,
+        usages: inout [TokenUsage],
+        conversations: inout [ConversationRecord]
+    ) {
+        guard let parsed else { return }
+        if let usage = parsed.usage {
+            usages.append(usage)
+        }
+        if let conversation = parsed.conversation {
+            conversations.append(conversation)
+        }
+    }
+
+    private func loadParseCache() -> ModelFilterParserCache {
+        guard fileManager.fileExists(atPath: cacheURL.path) else { return .empty }
+        do {
+            let data = try Data(contentsOf: cacheURL)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let cache = try decoder.decode(ModelFilterParserCache.self, from: data)
+            guard cache.schemaVersion == ModelFilterParserCache.empty.schemaVersion else {
+                return .empty
+            }
+            return cache
+        } catch {
+            return .empty
+        }
+    }
+
+    private func persistParseCache(_ cache: ModelFilterParserCache) {
+        do {
+            if !fileManager.fileExists(atPath: appPaths.supportDirectory.path) {
+                try fileManager.createDirectory(at: appPaths.supportDirectory, withIntermediateDirectories: true)
+            }
+            var persisted = cache
+            persisted.lastUpdatedAt = Date()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(persisted)
+            try data.write(to: cacheURL, options: .atomic)
+        } catch {
+            print("ModelFilterParser (\(provider.rawValue)): Failed to persist parser cache: \(error)")
+        }
+    }
+
+    private func compositeSignature(
+        jsonlFile: URL,
+        settingsFile: URL
+    ) -> ModelFilterCompositeSignature? {
+        guard let jsonl = fileSignature(for: jsonlFile) else { return nil }
+        let settings = fileSignature(for: settingsFile)
+        return ModelFilterCompositeSignature(jsonl: jsonl, settings: settings)
+    }
+
+    private func fileSignature(for file: URL) -> ModelFilterFileSignature? {
+        let values = try? file.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey])
+        guard values?.isRegularFile == true else { return nil }
+        let modifiedAt = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
+        let sizeBytes = Int64(values?.fileSize ?? 0)
+        return ModelFilterFileSignature(modifiedAt: modifiedAt, sizeBytes: sizeBytes)
+    }
+}
+
+private struct ModelFilterFileSignature: Codable, Equatable {
+    let modifiedAt: TimeInterval
+    let sizeBytes: Int64
+}
+
+private struct ModelFilterCompositeSignature: Codable, Equatable {
+    let jsonl: ModelFilterFileSignature
+    let settings: ModelFilterFileSignature?
+}
+
+private struct ModelFilterCachedSession: Codable, Equatable {
+    let signature: ModelFilterCompositeSignature
+    let usage: TokenUsage?
+    let conversation: ConversationRecord?
+}
+
+private struct ModelFilterParserCache: Codable, Equatable {
+    var schemaVersion: Int
+    var fileEntries: [String: ModelFilterCachedSession]
+    var lastUpdatedAt: Date?
+
+    static let empty = ModelFilterParserCache(
+        schemaVersion: 1,
+        fileEntries: [:],
+        lastUpdatedAt: nil
+    )
 }
 
 // MARK: - Artifact Discovery

@@ -6,10 +6,14 @@ enum ContextBuilder {
     private static let maxPromptChars = 6_000
 
     @MainActor
-    static func buildSystemPrompt(from dataStore: DataStore) -> String {
+    static func buildSystemPrompt(
+        from dataStore: DataStore,
+        intelligenceService: SearchService? = nil
+    ) -> String {
         let calendar = Calendar.current
         let now = Date()
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
+        let retrieval = intelligenceService ?? SearchService(dataStore: dataStore)
 
         let recentUsages = dataStore.usages
             .filter { $0.startTime >= weekAgo }
@@ -21,7 +25,7 @@ enum ContextBuilder {
         lines.append("")
         lines.append("## Recent work (last 7 days)")
 
-        let conversations = (try? dataStore.fetchConversations(limit: 80)) ?? []
+        let conversations = retrieval.recentConversations(limit: 80)
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
 
         for usage in recentUsages.prefix(24) {
@@ -57,11 +61,7 @@ enum ContextBuilder {
         lines.append("")
         lines.append("## Where you left off")
 
-        if let latest = conversations.max(by: { a, b in
-            let ad = a.endTime ?? a.startTime ?? .distantPast
-            let bd = b.endTime ?? b.startTime ?? .distantPast
-            return ad < bd
-        }), !latest.lastAssistantMessage.isEmpty {
+        if let latest = retrieval.latestConversation(in: conversations), !latest.lastAssistantMessage.isEmpty {
             lines.append(latest.lastAssistantMessage)
         } else {
             lines.append("(No recent assistant message indexed yet.)")

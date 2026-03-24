@@ -37,6 +37,75 @@ For the paranoid-and-proud crowd: analytics stay **local-first**. No API keys, n
 
 ---
 
+## Local-first retrieval architecture
+
+BurnBar search is now backed by a derived local retrieval substrate. `GRDB/SQLite` remains the interactive authority; Firestore is replication/collaboration infrastructure for shared artifacts, not the serving search path.
+
+### Projection pipeline
+
+```text
+ConversationIndexer + ArtifactDiscovery + SharedArtifactSync
+                        |
+                        v
+                 source rows in SQLite
+      (conversations + source_artifacts + sync state)
+                        |
+                        v
+                  projection_jobs queue
+                        |
+                        v
+            ProjectionPipelineService.runSweep()
+                        |
+                        +--> search_documents + search_chunks + FTS
+                        +--> chunk_embeddings + embedding_versions
+                        +--> retrieval_health (projection/semantic/rebuild)
+```
+
+### Retrieval pipeline
+
+```text
+SearchService.retrieve(query)
+        |
+        +--> lexical candidates from search_chunks_fts (always on)
+        +--> semantic candidates from vector index (optional)
+                ANN -> exact fallback -> exact bounded rerank baseline
+        |
+        v
+ candidate union -> bounded rerank -> source hydration -> RBAC/visibility filters
+        |
+        v
+ chat/session/context consumers
+```
+
+### Shared/team collaboration flow
+
+```text
+Local shared artifact edit
+        |
+        v
+CloudSyncService merge decision (local vs synced vs remote hash)
+        |
+        +--> Firestore shared artifact head + revision checks (optimistic concurrency)
+        +--> local permission snapshot + audit events
+        +--> projection reproject/purge jobs for local search parity
+```
+
+### Health, rebuild, and re-embed behavior
+
+- BurnBar materializes typed subsystem health in `retrieval_health` (parser/import, discovery, projection, lexical, semantic, rebuild, collaboration, insight rollups).
+- Degraded states surfaced to consumers include: **Index stale**, **Semantic unavailable**, **Rebuild in progress**, and **Cloud/shared unavailable**.
+- Rebuild/re-embed are durable queue jobs (`projection_jobs`) with retry/cancel semantics; lexical retrieval remains available when semantic indexing is degraded.
+
+### Test and eval entrypoints
+
+- `scripts/test-burnbar-swift.sh` — Swift package tests (`BurnBarCore`, `BurnBarDaemon`)
+- `scripts/test-burnbar-retrieval-evals.sh` — retrieval + authoring replay/golden suites
+- `scripts/test-burnbar-release-smoke.sh` — end-to-end release smoke (Swift + retrieval evals + extension tests + daemon health)
+
+Implementation detail and rollout notes live in [`docs/BURNBAR_SEARCH_ARCHITECTURE_SPINE.md`](docs/BURNBAR_SEARCH_ARCHITECTURE_SPINE.md).
+
+---
+
 ## Provider support
 
 | Provider | Usage tracking | Source | Confidence | Quota reporting |

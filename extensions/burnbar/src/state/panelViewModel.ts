@@ -108,10 +108,14 @@ export interface BurnBarPanelViewModel {
 
   /** macOS only: show control to launch the menu bar BurnBar app */
   showOpenBurnBarApp: boolean;
+
+  /** Compact footer line for the sidebar companion. */
+  statusLineText?: string;
 }
 
 export interface BuildPanelViewModelHostContext {
   showOpenBurnBarApp?: boolean;
+  sidebarStatusLineMode?: "smart" | "workspace" | "models" | "activeRun" | "socket" | "off";
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +152,16 @@ export function buildPanelViewModel(
   const catalogUnavailable = state.connectionStatus === "connected" && !state.catalog;
 
   const systemInfo = buildSystemInfo(state);
+  const statusLineText = buildStatusLineText(
+    hostContext.sidebarStatusLineMode ?? "smart",
+    {
+      activeRun,
+      workspaceDescription,
+      modelCount: publicModelOptions.length,
+      socketPath: state.health?.socketPath ?? undefined,
+      daemonVersion: state.health?.daemonVersion
+    }
+  );
 
   return {
     connectionStatus: state.connectionStatus,
@@ -184,7 +198,8 @@ export function buildPanelViewModel(
     lastError: state.lastError,
     lastUpdatedAt: state.lastUpdatedAt,
 
-    showOpenBurnBarApp: hostContext.showOpenBurnBarApp === true
+    showOpenBurnBarApp: hostContext.showOpenBurnBarApp === true,
+    statusLineText
   };
 }
 
@@ -457,4 +472,40 @@ function capitalize(value: string): string {
     return value;
   }
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function buildStatusLineText(
+  mode: NonNullable<BuildPanelViewModelHostContext["sidebarStatusLineMode"]>,
+  input: {
+    activeRun?: BurnBarPanelRunCard;
+    workspaceDescription: string;
+    modelCount: number;
+    socketPath?: string;
+    daemonVersion?: string;
+  }
+): string | undefined {
+  const activeRunText = input.activeRun
+    ? `${input.activeRun.title} • ${input.activeRun.phase}`
+    : "No active run";
+  const modelsText =
+    input.modelCount === 0 ? "No visible models" : `${input.modelCount} visible model${input.modelCount === 1 ? "" : "s"}`;
+  const socketText = input.socketPath ?? (input.daemonVersion ? `Daemon v${input.daemonVersion}` : undefined);
+
+  switch (mode) {
+    case "off":
+      return undefined;
+    case "workspace":
+      return input.workspaceDescription;
+    case "models":
+      return modelsText;
+    case "activeRun":
+      return activeRunText;
+    case "socket":
+      return socketText;
+    case "smart":
+    default:
+      return input.activeRun
+        ? activeRunText
+        : [input.workspaceDescription, modelsText].filter(Boolean).join(" • ");
+  }
 }

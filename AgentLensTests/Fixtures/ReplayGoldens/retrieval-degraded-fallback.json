@@ -1,0 +1,14 @@
+{
+  "degradedModes" : [
+    "semanticUnavailable"
+  ],
+  "lexicalErrorCode" : "SEMANTIC_FALLBACK_USED",
+  "lexicalHealthStatus" : "degraded",
+  "query" : "hardening checklist",
+  "resultSourceIDs" : [
+    "conv-semantic-fallback"
+  ],
+  "scenario" : "degraded-fallback",
+  "semanticErrorCode" : "SEMANTIC_PROVIDER_FALLBACK",
+  "semanticHealthStatus" : "degraded"
+}

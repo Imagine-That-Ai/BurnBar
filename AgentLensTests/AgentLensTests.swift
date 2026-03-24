@@ -526,6 +526,1151 @@ final class AgentLensTests: XCTestCase {
     }
 }
 
+private struct RetrievalReplayGoldenSnapshot: Codable, Equatable {
+    let scenario: String
+    let query: String
+    let resultSourceIDs: [String]
+    let topResults: [ReplayResultShape]
+}
+
+private struct ReplayResultShape: Codable, Equatable {
+    let rank: Int
+    let sourceID: String
+    let sourceKind: String
+    let title: String
+    let hasLexicalSignal: Bool
+    let hasSemanticSignal: Bool
+}
+
+private struct RetrievalDegradedFallbackGoldenSnapshot: Codable, Equatable {
+    let scenario: String
+    let query: String
+    let resultSourceIDs: [String]
+    let lexicalHealthStatus: String?
+    let lexicalErrorCode: String?
+    let semanticHealthStatus: String?
+    let semanticErrorCode: String?
+    let degradedModes: [String]
+}
+
+private struct RetrievalFilterGoldenSnapshot: Codable, Equatable {
+    let scenario: String
+    let query: String
+    let cases: [RetrievalFilterCaseSnapshot]
+}
+
+private struct RetrievalFilterCaseSnapshot: Codable, Equatable {
+    let name: String
+    let sourceIDs: [String]
+}
+
+private struct RetrievalANNBaselineGoldenSnapshot: Codable, Equatable {
+    let scenario: String
+    let query: String
+    let annTopCandidates: [SemanticCandidateSnapshot]
+    let exactTopCandidates: [SemanticCandidateSnapshot]
+}
+
+private struct SemanticCandidateSnapshot: Codable, Equatable {
+    let sourceID: String
+    let score: Double
+}
+
+private struct AuthoringReplayGoldenSnapshot: Codable, Equatable {
+    let scenario: String
+    let cases: [AuthoringReplayCaseSnapshot]
+}
+
+private struct AuthoringReplayCaseSnapshot: Codable, Equatable {
+    let name: String
+    let sourceKind: String
+    let operation: String
+    let retrievalQuery: String
+    let referenceSourceIDs: [String]
+    let referenceKinds: [String]
+    let hasGroundingInstruction: Bool
+    let hasReferenceLabel: Bool
+    let includesExistingMarkdownBlock: Bool
+    let generatedHasGroundingSection: Bool
+    let generatedHasReferenceCitation: Bool
+}
+
+private enum BurnBarReplayGoldens {
+    private static let updateEnvironmentKey = "BURNBAR_UPDATE_GOLDENS"
+
+    static func assertGolden<T: Codable & Equatable>(
+        _ actual: T,
+        fixtureFile: String,
+        sourceFilePath: StaticString = #filePath,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let fixtureURL = makeFixtureURL(fixtureFile: fixtureFile, sourceFilePath: sourceFilePath)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let actualData = try encoder.encode(actual)
+
+        if ProcessInfo.processInfo.environment[updateEnvironmentKey] == "1" {
+            try FileManager.default.createDirectory(
+                at: fixtureURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try actualData.write(to: fixtureURL, options: .atomic)
+            return
+        }
+
+        guard FileManager.default.fileExists(atPath: fixtureURL.path) else {
+            try FileManager.default.createDirectory(
+                at: fixtureURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try actualData.write(to: fixtureURL, options: .atomic)
+            XCTFail(
+                "Missing golden fixture at \(fixtureURL.path). Wrote a candidate fixture; re-run tests to validate.",
+                file: file,
+                line: line
+            )
+            return
+        }
+
+        let expectedData = try Data(contentsOf: fixtureURL)
+        let decoder = JSONDecoder()
+        let expected = try decoder.decode(T.self, from: expectedData)
+        guard expected == actual else {
+            let actualJSON = String(data: actualData, encoding: .utf8) ?? "<unprintable>"
+            XCTFail(
+                "Golden mismatch for \(fixtureFile).\nActual payload:\n\(actualJSON)",
+                file: file,
+                line: line
+            )
+            return
+        }
+    }
+
+    private static func makeFixtureURL(
+        fixtureFile: String,
+        sourceFilePath: StaticString
+    ) -> URL {
+        let sourceURL = URL(fileURLWithPath: sourceFilePath.description)
+        return sourceURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/ReplayGoldens", isDirectory: true)
+            .appendingPathComponent(fixtureFile, isDirectory: false)
+    }
+}
+
+@MainActor
+private final class ReplayStubSemanticCandidateProvider: SemanticCandidateProviding {
+    enum StubError: Error {
+        case forced
+    }
+
+    var responses: [String: [SemanticCandidate]]
+    var shouldThrow = false
+
+    init(responses: [String: [SemanticCandidate]] = [:]) {
+        self.responses = responses
+    }
+
+    func semanticCandidates(for query: String, filters _: RetrievalFilters, limit: Int) async throws -> [SemanticCandidate] {
+        if shouldThrow {
+            throw StubError.forced
+        }
+        return Array((responses[query] ?? []).prefix(max(0, limit)))
+    }
+}
+
+@MainActor
+private final class ReplayStubArtifactAuthoringTextGenerator: ArtifactAuthoringTextGenerating {
+    struct Call {
+        let systemPrompt: String
+        let userPrompt: String
+    }
+
+    private let responses: [String]
+    private var responseIndex = 0
+    private(set) var calls: [Call] = []
+
+    init(responses: [String]) {
+        self.responses = responses
+    }
+
+    func generate(systemPrompt: String, userPrompt: String) async throws -> String {
+        calls.append(Call(systemPrompt: systemPrompt, userPrompt: userPrompt))
+        guard responses.isEmpty == false else {
+            return "# Empty\n\n## Grounding\n- [R1] No response fixture configured."
+        }
+        let index = min(responseIndex, responses.count - 1)
+        responseIndex += 1
+        return responses[index]
+    }
+}
+
+@MainActor
+final class BurnBarRetrievalReplayGoldenTests: XCTestCase {
+    func test_replayGolden_lexicalWin() async throws {
+        let harness = try BurnBarSearchIntegrationHarness(name: "replay-lexical-win")
+        defer { harness.cleanup() }
+
+        let lexicalConversation = harness.makeConversationFixture(
+            id: "conv-replay-lexical",
+            provider: .claudeCode,
+            projectName: "Alpha",
+            fullText: "Discussion about quartzwind rollout and release hardening."
+        )
+        let semanticConversation = harness.makeConversationFixture(
+            id: "conv-replay-semantic",
+            provider: .codex,
+            projectName: "Beta",
+            fullText: "This thread focuses on runtime migration and queue tuning."
+        )
+
+        try harness.dataStore.upsertConversation(lexicalConversation)
+        try harness.dataStore.upsertConversation(semanticConversation)
+        _ = try harness.enqueueConversationProjection(conversationID: lexicalConversation.id, jobType: .project)
+        _ = try harness.enqueueConversationProjection(conversationID: semanticConversation.id, jobType: .project)
+        _ = try harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
+
+        let semanticDoc = try XCTUnwrap(
+            try harness.dataStore.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == semanticConversation.id })
+        )
+        let semanticChunk = try XCTUnwrap(try harness.dataStore.fetchSearchChunks(documentID: semanticDoc.id).first)
+
+        let semanticProvider = ReplayStubSemanticCandidateProvider(
+            responses: [
+                "quartzwind": [SemanticCandidate(chunkID: semanticChunk.id, score: 0.99)]
+            ]
+        )
+        let retrieval = SearchService(
+            dataStore: harness.dataStore,
+            semanticProvider: semanticProvider,
+            sharedArtifactAccessContextProvider: { harness.sharedAccessContext },
+            nowProvider: { harness.clock.now() }
+        )
+
+        let results = await retrieval.retrieve(
+            RetrievalQuery(
+                text: "quartzwind",
+                filters: RetrievalFilters(artifactTypes: [.conversation]),
+                resultLimit: 10
+            )
+        )
+
+        let snapshot = RetrievalReplayGoldenSnapshot(
+            scenario: "lexical-win",
+            query: "quartzwind",
+            resultSourceIDs: results.map(\.sourceID),
+            topResults: summarize(results, limit: 4)
+        )
+        try BurnBarReplayGoldens.assertGolden(snapshot, fixtureFile: "retrieval-lexical-win.json")
+    }
+
+    func test_replayGolden_semanticRescue() async throws {
+        let harness = try BurnBarSearchIntegrationHarness(name: "replay-semantic-rescue")
+        defer { harness.cleanup() }
+
+        let artifact = harness.makeSkillArtifactFixture(
+            id: "artifact-semantic-rescue",
+            relativePath: "skills/BOOTSTRAP.md",
+            title: "Bootstrap skill",
+            body: "Workstation bootstrap checklist for new machine setup."
+        )
+
+        _ = try harness.dataStore.upsertSourceArtifact(artifact)
+        _ = try harness.enqueueArtifactProjection(artifact, jobType: .project)
+        _ = try harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
+
+        let document = try XCTUnwrap(
+            try harness.dataStore.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == artifact.id })
+        )
+        let chunk = try XCTUnwrap(try harness.dataStore.fetchSearchChunks(documentID: document.id).first)
+
+        let semanticProvider = ReplayStubSemanticCandidateProvider(
+            responses: [
+                "onboarding runbook": [SemanticCandidate(chunkID: chunk.id, score: 0.92)]
+            ]
+        )
+        let retrieval = SearchService(
+            dataStore: harness.dataStore,
+            semanticProvider: semanticProvider,
+            sharedArtifactAccessContextProvider: { harness.sharedAccessContext },
+            nowProvider: { harness.clock.now() }
+        )
+        let results = await retrieval.retrieve(
+            RetrievalQuery(
+                text: "onboarding runbook",
+                filters: RetrievalFilters(artifactTypes: [.skillDoc]),
+                resultLimit: 10
+            )
+        )
+
+        let snapshot = RetrievalReplayGoldenSnapshot(
+            scenario: "semantic-rescue",
+            query: "onboarding runbook",
+            resultSourceIDs: results.map(\.sourceID),
+            topResults: summarize(results, limit: 4)
+        )
+        try BurnBarReplayGoldens.assertGolden(snapshot, fixtureFile: "retrieval-semantic-rescue.json")
+    }
+
+    func test_replayGolden_degradedModeFallback() async throws {
+        let harness = try BurnBarSearchIntegrationHarness(name: "replay-degraded-fallback")
+        defer { harness.cleanup() }
+
+        let conversation = harness.makeConversationFixture(
+            id: "conv-semantic-fallback",
+            provider: .claudeCode,
+            projectName: "Alpha",
+            fullText: "Rollout hardening checklist for lexical fallback coverage."
+        )
+        try harness.dataStore.upsertConversation(conversation)
+        _ = try harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
+        _ = try harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
+
+        let semanticProvider = ReplayStubSemanticCandidateProvider()
+        semanticProvider.shouldThrow = true
+        let retrieval = SearchService(
+            dataStore: harness.dataStore,
+            semanticProvider: semanticProvider,
+            sharedArtifactAccessContextProvider: { harness.sharedAccessContext },
+            nowProvider: { harness.clock.now() }
+        )
+        let results = await retrieval.retrieve(
+            RetrievalQuery(
+                text: "hardening checklist",
+                filters: RetrievalFilters(artifactTypes: [.conversation]),
+                resultLimit: 10
+            )
+        )
+
+        let lexicalHealth = try harness.retrievalHealthRecord(for: .lexical)
+        let semanticHealth = try harness.retrievalHealthRecord(for: .semantic)
+        let degradedModes = harness
+            .healthSnapshot(indexingEnabled: true, sharedFeaturesAvailable: true)
+            .degradedModes
+            .map(\.mode.rawValue)
+            .sorted()
+
+        let snapshot = RetrievalDegradedFallbackGoldenSnapshot(
+            scenario: "degraded-fallback",
+            query: "hardening checklist",
+            resultSourceIDs: results.map(\.sourceID),
+            lexicalHealthStatus: lexicalHealth?.status.rawValue,
+            lexicalErrorCode: lexicalHealth?.errorCode,
+            semanticHealthStatus: semanticHealth?.status.rawValue,
+            semanticErrorCode: semanticHealth?.errorCode,
+            degradedModes: degradedModes
+        )
+        try BurnBarReplayGoldens.assertGolden(snapshot, fixtureFile: "retrieval-degraded-fallback.json")
+    }
+
+    func test_replayGolden_filterCorrectness() async throws {
+        let harness = try BurnBarSearchIntegrationHarness(name: "replay-filter-correctness")
+        defer { harness.cleanup() }
+
+        let base = Date(timeIntervalSince1970: 1_742_720_000)
+
+        _ = harness.clock.set(base.addingTimeInterval(-86_400))
+        let convClaude = harness.makeConversationFixture(
+            id: "conv-filter-claude-alpha",
+            provider: .claudeCode,
+            projectName: "Alpha",
+            fullText: "filterneedle task continuity and release notes",
+            sourceType: .providerLog
+        )
+        _ = harness.clock.set(base.addingTimeInterval(-40 * 86_400))
+        let convCodex = harness.makeConversationFixture(
+            id: "conv-filter-codex-beta",
+            provider: .codex,
+            projectName: "Beta",
+            fullText: "filterneedle task continuity and release notes",
+            sourceType: .providerLog
+        )
+        _ = harness.clock.set(base.addingTimeInterval(-2 * 86_400))
+        let convCLI = harness.makeConversationFixture(
+            id: "conv-filter-cli-alpha",
+            provider: .factory,
+            projectName: "Alpha",
+            fullText: "filterneedle task continuity and release notes",
+            sourceType: .cliAssistant
+        )
+        _ = harness.clock.set(base)
+
+        try harness.dataStore.upsertConversation(convClaude)
+        try harness.dataStore.upsertConversation(convCodex)
+        try harness.dataStore.upsertConversation(convCLI)
+        _ = try harness.enqueueConversationProjection(conversationID: convClaude.id, jobType: .project)
+        _ = try harness.enqueueConversationProjection(conversationID: convCodex.id, jobType: .project)
+        _ = try harness.enqueueConversationProjection(conversationID: convCLI.id, jobType: .project)
+
+        _ = harness.clock.set(base.addingTimeInterval(-3 * 86_400))
+        let skillArtifact = harness.makeSkillArtifactFixture(
+            id: "artifact-filter-skill",
+            relativePath: "SKILL.md",
+            title: "Skill Alpha",
+            body: "filterneedle task continuity and release notes"
+        )
+        _ = harness.clock.set(base.addingTimeInterval(-4 * 86_400))
+        let sharedArtifact = harness.makeSharedArtifactFixture(
+            id: "artifact-filter-shared",
+            relativePath: "SHARED.md",
+            title: "Shared Alpha",
+            body: "filterneedle task continuity and release notes"
+        )
+        _ = harness.clock.set(base)
+
+        _ = try harness.dataStore.upsertSourceArtifact(skillArtifact)
+        _ = try harness.dataStore.upsertSourceArtifact(sharedArtifact)
+        _ = try harness.grantSharedReadAccess(to: sharedArtifact.id)
+        _ = try harness.enqueueArtifactProjection(skillArtifact, jobType: .project)
+        _ = try harness.enqueueArtifactProjection(sharedArtifact, jobType: .project)
+        _ = try harness.drainProjectionQueue(maxSweeps: 8, maxJobsPerSweep: 64, advanceClockBy: 1)
+
+        let retrieval = harness.makeSearchService(semanticEnabled: false)
+        let query = "filterneedle"
+
+        let providerFiltered = await retrieval.retrieve(
+            RetrievalQuery(
+                text: query,
+                filters: RetrievalFilters(provider: .claudeCode, artifactTypes: [.conversation]),
+                resultLimit: 20
+            )
+        )
+        let projectFiltered = await retrieval.retrieve(
+            RetrievalQuery(
+                text: query,
+                filters: RetrievalFilters(projectName: "Alpha", artifactTypes: [.conversation]),
+                resultLimit: 20
+            )
+        )
+        let artifactTypeFiltered = await retrieval.retrieve(
+            RetrievalQuery(
+                text: query,
+                filters: RetrievalFilters(artifactTypes: [.skillDoc]),
+                resultLimit: 20
+            )
+        )
+        let dateRangeFiltered = await retrieval.retrieve(
+            RetrievalQuery(
+                text: query,
+                filters: RetrievalFilters(
+                    artifactTypes: [.conversation],
+                    dateRange: base.addingTimeInterval(-7 * 86_400)...base
+                ),
+                resultLimit: 20
+            )
+        )
+        let sharedOnly = await retrieval.retrieve(
+            RetrievalQuery(
+                text: query,
+                filters: RetrievalFilters(ownership: .shared),
+                resultLimit: 20
+            )
+        )
+        let sourceFiltered = await retrieval.retrieve(
+            RetrievalQuery(
+                text: query,
+                filters: RetrievalFilters(sourceIDs: [skillArtifact.id]),
+                resultLimit: 20
+            )
+        )
+        let conversationSourceFiltered = await retrieval.retrieve(
+            RetrievalQuery(
+                text: query,
+                filters: RetrievalFilters(artifactTypes: [.conversation], conversationSources: [.cliAssistant]),
+                resultLimit: 20
+            )
+        )
+
+        let snapshot = RetrievalFilterGoldenSnapshot(
+            scenario: "filter-correctness",
+            query: query,
+            cases: [
+                RetrievalFilterCaseSnapshot(
+                    name: "provider_claude_conversation",
+                    sourceIDs: sortedUnique(providerFiltered.map(\.sourceID))
+                ),
+                RetrievalFilterCaseSnapshot(
+                    name: "project_alpha_conversation",
+                    sourceIDs: sortedUnique(projectFiltered.map(\.sourceID))
+                ),
+                RetrievalFilterCaseSnapshot(
+                    name: "artifact_type_skill_doc",
+                    sourceIDs: sortedUnique(artifactTypeFiltered.map(\.sourceID))
+                ),
+                RetrievalFilterCaseSnapshot(
+                    name: "date_range_recent_conversation",
+                    sourceIDs: sortedUnique(dateRangeFiltered.map(\.sourceID))
+                ),
+                RetrievalFilterCaseSnapshot(
+                    name: "ownership_shared_only",
+                    sourceIDs: sortedUnique(sharedOnly.map(\.sourceID))
+                ),
+                RetrievalFilterCaseSnapshot(
+                    name: "explicit_source_id",
+                    sourceIDs: sortedUnique(sourceFiltered.map(\.sourceID))
+                ),
+                RetrievalFilterCaseSnapshot(
+                    name: "conversation_source_cli_assistant",
+                    sourceIDs: sortedUnique(conversationSourceFiltered.map(\.sourceID))
+                )
+            ]
+        )
+        try BurnBarReplayGoldens.assertGolden(snapshot, fixtureFile: "retrieval-filter-correctness.json")
+    }
+
+    func test_replayGolden_annMatchesExactRerankBaseline() async throws {
+        let harness = try BurnBarSearchIntegrationHarness(name: "replay-ann-baseline")
+        defer { harness.cleanup() }
+
+        for index in 0..<48 {
+            _ = harness.clock.advance(seconds: 1)
+            let body: String
+            if index % 9 == 0 {
+                body = "reliability hardening checklist rollout runbook \(index)"
+            } else {
+                body = "generic notes \(index) queue metrics stabilization tracking"
+            }
+            let artifact = harness.makeSkillArtifactFixture(
+                id: "artifact-ann-\(index)",
+                relativePath: "skills/ann-\(index).md",
+                title: "ANN Candidate \(index)",
+                body: body
+            )
+            _ = try harness.dataStore.upsertSourceArtifact(artifact)
+            _ = try harness.enqueueArtifactProjection(artifact, jobType: .project)
+        }
+        _ = try harness.drainProjectionQueue(maxSweeps: 12, maxJobsPerSweep: 128, advanceClockBy: 1)
+
+        let annProvider = VectorSemanticCandidateProvider(
+            dataStore: harness.dataStore,
+            queryEmbedder: harness.queryEmbedder,
+            backend: .ann,
+            exactRerankEnabled: true,
+            exactRerankLimit: 256,
+            annCandidateMultiplier: 24,
+            nowProvider: { harness.clock.now() }
+        )
+        let exactProvider = VectorSemanticCandidateProvider(
+            dataStore: harness.dataStore,
+            queryEmbedder: harness.queryEmbedder,
+            backend: .exact,
+            exactRerankEnabled: true,
+            exactRerankLimit: 256,
+            annCandidateMultiplier: 24,
+            nowProvider: { harness.clock.now() }
+        )
+
+        let query = "reliability hardening checklist rollout"
+        let annCandidates = try await annProvider.semanticCandidates(
+            for: query,
+            filters: RetrievalFilters(artifactTypes: [.skillDoc]),
+            limit: 20
+        )
+        let exactCandidates = try await exactProvider.semanticCandidates(
+            for: query,
+            filters: RetrievalFilters(artifactTypes: [.skillDoc]),
+            limit: 20
+        )
+
+        XCTAssertEqual(annCandidates.map(\.chunkID), exactCandidates.map(\.chunkID))
+
+        let snapshot = RetrievalANNBaselineGoldenSnapshot(
+            scenario: "ann-vs-exact-rerank",
+            query: query,
+            annTopCandidates: try summarizeSemantic(annCandidates, limit: 12, dataStore: harness.dataStore),
+            exactTopCandidates: try summarizeSemantic(exactCandidates, limit: 12, dataStore: harness.dataStore)
+        )
+        try BurnBarReplayGoldens.assertGolden(snapshot, fixtureFile: "retrieval-ann-vs-exact-baseline.json")
+    }
+
+    private func summarize(_ results: [RetrievalResult], limit: Int) -> [ReplayResultShape] {
+        Array(results.prefix(limit)).enumerated().map { index, result in
+            ReplayResultShape(
+                rank: index + 1,
+                sourceID: result.sourceID,
+                sourceKind: result.sourceKind.rawValue,
+                title: result.title,
+                hasLexicalSignal: result.lexicalRank != nil,
+                hasSemanticSignal: result.semanticScore != nil
+            )
+        }
+    }
+
+    private func summarizeSemantic(
+        _ candidates: [SemanticCandidate],
+        limit: Int,
+        dataStore: DataStore
+    ) throws -> [SemanticCandidateSnapshot] {
+        let boundedCandidates = Array(candidates.prefix(limit))
+        let chunkIDs = Array(Set(boundedCandidates.map(\.chunkID)))
+        let chunks = try dataStore.fetchSearchChunks(ids: chunkIDs)
+        let chunkByID = Dictionary(uniqueKeysWithValues: chunks.map { ($0.id, $0) })
+        let documentIDs = Array(Set(chunks.map(\.documentID)))
+        let documents = try dataStore.fetchSearchDocuments(ids: documentIDs)
+        let documentByID = Dictionary(uniqueKeysWithValues: documents.map { ($0.id, $0) })
+
+        return boundedCandidates.map { candidate in
+            let sourceID = chunkByID[candidate.chunkID]
+                .flatMap { documentByID[$0.documentID]?.sourceID } ?? "missing-source"
+            return SemanticCandidateSnapshot(
+                sourceID: sourceID,
+                score: rounded(candidate.score)
+            )
+        }
+    }
+
+    private func rounded(_ value: Double, precision: Double = 1_000_000) -> Double {
+        (value * precision).rounded() / precision
+    }
+
+    private func sortedUnique(_ values: [String]) -> [String] {
+        Array(Set(values)).sorted()
+    }
+}
+
+@MainActor
+final class BurnBarAuthoringReplayGoldenTests: XCTestCase {
+    func test_replayGolden_draftAndRefineGrounding() async throws {
+        let harness = try BurnBarSearchIntegrationHarness(name: "replay-authoring-grounding")
+        defer { harness.cleanup() }
+
+        let now = harness.clock.now()
+        let skillContextDocument = SearchDocumentRecord(
+            id: "doc-authoring-skill-context",
+            sourceKind: .skillDoc,
+            sourceID: "artifact-skill-context",
+            sourceVersionID: "skill-context-v1",
+            provider: nil,
+            projectName: "BurnBar",
+            title: "Skill Grounding Context",
+            subtitle: "SKILL.md",
+            bodyPreview: "Skill context for release hardening.",
+            sourceUpdatedAt: now,
+            indexedAt: now,
+            contentHash: "hash-authoring-skill-context",
+            createdAt: now,
+            updatedAt: now
+        )
+        try harness.dataStore.upsertSearchDocument(skillContextDocument)
+        try harness.dataStore.replaceSearchChunks(
+            documentID: skillContextDocument.id,
+            title: skillContextDocument.title,
+            chunks: [
+                SearchChunkRecord(
+                    id: "chunk-authoring-skill-context",
+                    documentID: skillContextDocument.id,
+                    sourceKind: .skillDoc,
+                    sourceID: skillContextDocument.sourceID,
+                    sourceVersionID: skillContextDocument.sourceVersionID,
+                    ordinal: 0,
+                    startOffset: 0,
+                    endOffset: 140,
+                    sectionPath: "Release",
+                    text: "skill-grounding-needle release hardening checklist with rollback drills and smoke validations.",
+                    createdAt: now,
+                    updatedAt: now
+                )
+            ]
+        )
+
+        let agentContextDocument = SearchDocumentRecord(
+            id: "doc-authoring-agent-context",
+            sourceKind: .agentDoc,
+            sourceID: "artifact-agent-context",
+            sourceVersionID: "agent-context-v1",
+            provider: nil,
+            projectName: "BurnBar",
+            title: "Agent Grounding Context",
+            subtitle: "AGENTS.md",
+            bodyPreview: "Agent context for escalation policy.",
+            sourceUpdatedAt: now,
+            indexedAt: now,
+            contentHash: "hash-authoring-agent-context",
+            createdAt: now,
+            updatedAt: now
+        )
+        try harness.dataStore.upsertSearchDocument(agentContextDocument)
+        try harness.dataStore.replaceSearchChunks(
+            documentID: agentContextDocument.id,
+            title: agentContextDocument.title,
+            chunks: [
+                SearchChunkRecord(
+                    id: "chunk-authoring-agent-context",
+                    documentID: agentContextDocument.id,
+                    sourceKind: .agentDoc,
+                    sourceID: agentContextDocument.sourceID,
+                    sourceVersionID: agentContextDocument.sourceVersionID,
+                    ordinal: 0,
+                    startOffset: 0,
+                    endOffset: 144,
+                    sectionPath: "Escalation",
+                    text: "agent-grounding-needle escalation policy with handoff rules, ownership boundaries, and response contracts.",
+                    createdAt: now,
+                    updatedAt: now
+                )
+            ]
+        )
+
+        let generator = ReplayStubArtifactAuthoringTextGenerator(
+            responses: [
+                """
+                # Skill Draft
+                Add release hardening checks.
+
+                ## Grounding
+                - [R1] Skill context applied.
+                """,
+                """
+                # Skill Refine
+                Improve escalation and rollback sections.
+
+                ## Grounding
+                - [R1] Agent context applied.
+                """,
+                """
+                # Agent Draft
+                Define ownership and escalation boundaries.
+
+                ## Grounding
+                - [R1] Agent context applied.
+                """,
+                """
+                # Agent Refine
+                Tighten release sequencing and guardrails.
+
+                ## Grounding
+                - [R1] Skill context applied.
+                """
+            ]
+        )
+        let settings = BurnBarHarnessArtifactDiscoverySettings(
+            artifactDiscoveryEnabled: true,
+            artifactDiscoveryRegisteredRoots: [harness.fileRoots.registeredProjectRootURL.path],
+            artifactDiscoveryAdditionalKnownPatterns: []
+        )
+        let service = ArtifactAuthoringService(
+            dataStore: harness.dataStore,
+            retrievalService: harness.makeSearchService(semanticEnabled: false),
+            settingsProvider: settings,
+            textGenerator: generator,
+            nowProvider: { harness.clock.now() }
+        )
+
+        let draftSkill = try await service.draftSkill(
+            request: "Draft release hardening workflow steps.",
+            projectName: "BurnBar",
+            retrievalQuery: "skill-grounding-needle",
+            contextLimit: 4
+        )
+        let refineSkill = try await service.refineSkill(
+            existingMarkdown: "# Existing Skill\nCurrent checklist.",
+            instructions: "Refine with escalation and rollback details.",
+            projectName: "BurnBar",
+            retrievalQuery: "agent-grounding-needle",
+            contextLimit: 4
+        )
+        let draftAgent = try await service.draftAgentDoc(
+            request: "Draft ownership and escalation policy for agents.",
+            projectName: "BurnBar",
+            retrievalQuery: "agent-grounding-needle",
+            contextLimit: 4
+        )
+        let refineAgent = try await service.refineAgentDoc(
+            existingMarkdown: "# Existing Agent Doc\nCurrent operating policy.",
+            instructions: "Refine sequencing and release guardrails.",
+            projectName: "BurnBar",
+            retrievalQuery: "skill-grounding-needle",
+            contextLimit: 4
+        )
+
+        let snapshot = AuthoringReplayGoldenSnapshot(
+            scenario: "authoring-draft-refine-grounding",
+            cases: [
+                summarizeAuthoringCase(name: "draft-skill", draft: draftSkill),
+                summarizeAuthoringCase(name: "refine-skill", draft: refineSkill),
+                summarizeAuthoringCase(name: "draft-agent-doc", draft: draftAgent),
+                summarizeAuthoringCase(name: "refine-agent-doc", draft: refineAgent)
+            ]
+        )
+        try BurnBarReplayGoldens.assertGolden(snapshot, fixtureFile: "authoring-draft-refine-grounding.json")
+    }
+
+    func test_optionalSmoke_realProviderAuthoringIntegration() async throws {
+        guard ProcessInfo.processInfo.environment["BURNBAR_REAL_PROVIDER_SMOKE"] == "1" else {
+            throw XCTSkip("Set BURNBAR_REAL_PROVIDER_SMOKE=1 to run optional real provider smoke coverage.")
+        }
+
+        let harness = try BurnBarSearchIntegrationHarness(name: "real-provider-authoring-smoke")
+        defer { harness.cleanup() }
+
+        let now = harness.clock.now()
+        let contextDocument = SearchDocumentRecord(
+            id: "doc-smoke-context",
+            sourceKind: .skillDoc,
+            sourceID: "artifact-smoke-context",
+            sourceVersionID: "smoke-v1",
+            provider: nil,
+            projectName: "BurnBar",
+            title: "Smoke Context",
+            subtitle: "SKILL.md",
+            bodyPreview: "Smoke context for real provider test.",
+            sourceUpdatedAt: now,
+            indexedAt: now,
+            contentHash: "hash-smoke-context",
+            createdAt: now,
+            updatedAt: now
+        )
+        try harness.dataStore.upsertSearchDocument(contextDocument)
+        try harness.dataStore.replaceSearchChunks(
+            documentID: contextDocument.id,
+            title: contextDocument.title,
+            chunks: [
+                SearchChunkRecord(
+                    id: "chunk-smoke-context",
+                    documentID: contextDocument.id,
+                    sourceKind: .skillDoc,
+                    sourceID: contextDocument.sourceID,
+                    sourceVersionID: contextDocument.sourceVersionID,
+                    ordinal: 0,
+                    startOffset: 0,
+                    endOffset: 96,
+                    sectionPath: "Smoke",
+                    text: "smoke-grounding-needle release hardening smoke validation context.",
+                    createdAt: now,
+                    updatedAt: now
+                )
+            ]
+        )
+
+        let settings = BurnBarHarnessArtifactDiscoverySettings(
+            artifactDiscoveryEnabled: true,
+            artifactDiscoveryRegisteredRoots: [harness.fileRoots.registeredProjectRootURL.path],
+            artifactDiscoveryAdditionalKnownPatterns: []
+        )
+        let service = ArtifactAuthoringService(
+            dataStore: harness.dataStore,
+            retrievalService: harness.makeSearchService(semanticEnabled: false),
+            settingsProvider: settings,
+            textGenerator: CLIArtifactAuthoringTextGenerator(),
+            nowProvider: { harness.clock.now() }
+        )
+
+        do {
+            let draft = try await service.draftSkill(
+                request: "Draft two concise release hardening bullets.",
+                projectName: "BurnBar",
+                retrievalQuery: "smoke-grounding-needle",
+                contextLimit: 2
+            )
+            XCTAssertFalse(draft.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            XCTAssertTrue(draft.references.isEmpty == false)
+        } catch let error as ArtifactAuthoringError {
+            if case .cliUnavailable = error {
+                throw XCTSkip("No real CLI provider is available in this environment.")
+            }
+            throw error
+        }
+    }
+
+    private func summarizeAuthoringCase(name: String, draft: ArtifactAuthoringDraft) -> AuthoringReplayCaseSnapshot {
+        AuthoringReplayCaseSnapshot(
+            name: name,
+            sourceKind: draft.sourceKind.rawValue,
+            operation: draft.operation.rawValue,
+            retrievalQuery: draft.retrievalQuery,
+            referenceSourceIDs: draft.references.map(\.sourceID),
+            referenceKinds: draft.references.map(\.sourceKind.rawValue),
+            hasGroundingInstruction: draft.userPrompt.contains("## Grounding"),
+            hasReferenceLabel: draft.userPrompt.contains("[R1]"),
+            includesExistingMarkdownBlock: draft.userPrompt.contains("Existing markdown to refine:"),
+            generatedHasGroundingSection: draft.content.localizedCaseInsensitiveContains("## grounding"),
+            generatedHasReferenceCitation: draft.content.contains("[R1]")
+        )
+    }
+}
+
+@MainActor
+final class WorkflowInsightRollupServiceTests: XCTestCase {
+    func test_rollupSnapshot_materializesFreshAndPersistsHealth() throws {
+        let store = try makeRollupInMemoryStore()
+        store.replaceUsages(makeRollupFixtureUsages())
+
+        let snapshot = WorkflowInsightRollupService(dataStore: store).snapshot(refreshIfStale: true)
+
+        XCTAssertEqual(snapshot.freshness, .fresh)
+        XCTAssertFalse(snapshot.insights.isEmpty)
+        XCTAssertNotNil(snapshot.computedAt)
+        let health = try store.fetchRetrievalHealth().first(where: { $0.subsystem == .insightRollups })
+        XCTAssertEqual(health?.status, .healthy)
+        XCTAssertNil(health?.errorCode)
+    }
+
+    func test_rollupSnapshot_reportsStale_whenNewUsageArrivesAfterMaterialization() throws {
+        let store = try makeRollupInMemoryStore()
+        let fixture = makeRollupFixtureUsages()
+        store.replaceUsages(fixture)
+
+        let now = Date()
+        let initialService = WorkflowInsightRollupService(dataStore: store, nowProvider: { now })
+        _ = initialService.snapshot(refreshIfStale: true)
+
+        let futureUsage = TokenUsage(
+            provider: .factory,
+            sessionId: "rollup-future",
+            projectName: "BurnBar",
+            model: "future-model",
+            inputTokens: 12,
+            outputTokens: 8,
+            costUSD: 0.30,
+            startTime: now.addingTimeInterval(120),
+            endTime: now.addingTimeInterval(180)
+        )
+        store.replaceUsages(fixture + [futureUsage])
+
+        let staleSnapshot = initialService.snapshot(refreshIfStale: false)
+        XCTAssertEqual(staleSnapshot.freshness, .stale)
+
+        let refreshed = WorkflowInsightRollupService(
+            dataStore: store,
+            nowProvider: { now.addingTimeInterval(900) }
+        ).snapshot(refreshIfStale: true)
+        XCTAssertEqual(refreshed.freshness, .fresh)
+    }
+
+    func test_rollupSnapshot_reportsRebuilding_whenRebuildJobsArePending() throws {
+        let store = try makeRollupInMemoryStore()
+        store.replaceUsages(makeRollupFixtureUsages())
+        let service = WorkflowInsightRollupService(dataStore: store)
+        _ = service.snapshot(refreshIfStale: true)
+
+        let now = Date()
+        try store.enqueueProjectionJob(
+            ProjectionJobRecord(
+                id: "rollup-rebuild-pending",
+                jobType: .rebuild,
+                status: .queued,
+                priority: 1,
+                scheduledAt: now,
+                availableAt: now,
+                createdAt: now,
+                updatedAt: now
+            )
+        )
+
+        let snapshot = service.snapshot(refreshIfStale: false)
+        XCTAssertEqual(snapshot.freshness, .rebuilding)
+        XCTAssertFalse(snapshot.insights.isEmpty)
+    }
+
+    func test_rollupSnapshot_reportsUnavailable_whenNoInputsExist() throws {
+        let store = try makeRollupInMemoryStore()
+        store.replaceUsages([])
+
+        let snapshot = WorkflowInsightRollupService(dataStore: store).snapshot(refreshIfStale: false)
+
+        XCTAssertEqual(snapshot.freshness, .unavailable)
+        XCTAssertTrue(snapshot.insights.isEmpty)
+    }
+
+    private func makeRollupInMemoryStore() throws -> DataStore {
+        let queue = try DatabaseQueue(path: ":memory:")
+        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+    }
+
+    private func makeRollupFixtureUsages() -> [TokenUsage] {
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: Date())
+        let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: todayStart) ?? todayStart
+
+        return [
+            TokenUsage(
+                provider: .factory,
+                sessionId: "rollup-yesterday",
+                projectName: "BurnBar",
+                model: "gpt-5.4-mini",
+                inputTokens: 30,
+                outputTokens: 20,
+                costUSD: 0.90,
+                startTime: yesterdayStart.addingTimeInterval(120),
+                endTime: yesterdayStart.addingTimeInterval(180)
+            ),
+            TokenUsage(
+                provider: .claudeCode,
+                sessionId: "rollup-today",
+                projectName: "BurnBar",
+                model: "claude-sonnet",
+                inputTokens: 24,
+                outputTokens: 16,
+                costUSD: 0.50,
+                startTime: todayStart.addingTimeInterval(120),
+                endTime: todayStart.addingTimeInterval(180)
+            )
+        ]
+    }
+}
+
+@MainActor
+final class ArtifactAuthoringServiceTests: XCTestCase {
+    func test_draftSkill_buildsBoundedPromptWithRetrievedContext() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let now = Date(timeIntervalSince1970: 1_742_780_000)
+
+        let contextDocument = SearchDocumentRecord(
+            id: "doc-authoring-context",
+            sourceKind: .agentDoc,
+            sourceID: "artifact-context",
+            sourceVersionID: "context-v1",
+            provider: nil,
+            projectName: "BurnBar",
+            title: "Release Hardening Agent Guide",
+            subtitle: "AGENTS.md",
+            bodyPreview: "Checklist for release hardening.",
+            sourceUpdatedAt: now,
+            indexedAt: now,
+            contentHash: "hash-authoring-context",
+            createdAt: now,
+            updatedAt: now
+        )
+        try store.upsertSearchDocument(contextDocument)
+        try store.replaceSearchChunks(
+            documentID: contextDocument.id,
+            title: contextDocument.title,
+            chunks: [
+                SearchChunkRecord(
+                    id: "chunk-authoring-context",
+                    documentID: contextDocument.id,
+                    sourceKind: .agentDoc,
+                    sourceID: contextDocument.sourceID,
+                    sourceVersionID: contextDocument.sourceVersionID,
+                    ordinal: 0,
+                    startOffset: 0,
+                    endOffset: 96,
+                    sectionPath: "Hardening",
+                    text: "Release hardening requires smoke tests, rollback drills, and deployment health checks.",
+                    createdAt: now,
+                    updatedAt: now
+                )
+            ]
+        )
+
+        let generator = StubArtifactAuthoringTextGenerator(
+            response: """
+            # Release hardening skill
+            Keep rollback paths rehearsed.
+
+            ## Grounding
+            - [R1] Context applied.
+            """
+        )
+        let settings = StubArtifactDiscoverySettings(
+            artifactDiscoveryEnabled: true,
+            artifactDiscoveryRegisteredRoots: ["/tmp"]
+        )
+        let service = ArtifactAuthoringService(
+            dataStore: store,
+            retrievalService: SearchService(dataStore: store),
+            settingsProvider: settings,
+            textGenerator: generator,
+            nowProvider: { now }
+        )
+
+        let draft = try await service.draftSkill(
+            request: "Create a release hardening skill with deployment safeguards.",
+            projectName: "BurnBar",
+            retrievalQuery: "release hardening smoke tests rollback",
+            contextLimit: 4
+        )
+
+        XCTAssertEqual(draft.sourceKind, .skillDoc)
+        XCTAssertEqual(draft.operation, .draft)
+        XCTAssertEqual(draft.references.count, 1)
+        XCTAssertEqual(draft.references.first?.sourceID, "artifact-context")
+        XCTAssertTrue(draft.userPrompt.contains("[R1]"))
+        XCTAssertTrue(draft.userPrompt.localizedCaseInsensitiveContains("release hardening"))
+        XCTAssertTrue(draft.provenanceSummary.contains("artifact-context"))
+        XCTAssertEqual(generator.userPrompts.last, draft.userPrompt)
+    }
+
+    func test_saveDraft_roundTripsIntoProjectionAndSearch() async throws {
+        let fileManager = FileManager.default
+        let sandbox = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? fileManager.removeItem(at: sandbox) }
+        try fileManager.createDirectory(at: sandbox, withIntermediateDirectories: true)
+
+        let root = sandbox.appendingPathComponent("workspace", isDirectory: true)
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let store = try makeDiscoveryInMemoryStore()
+        let now = Date(timeIntervalSince1970: 1_742_790_000)
+        let generator = StubArtifactAuthoringTextGenerator(
+            response: """
+            # Bootstrap Skill
+            Use the orion-e2e-authoring-needle checklist before every release.
+
+            ## Grounding
+            - No historical references available.
+            """
+        )
+        let settings = StubArtifactDiscoverySettings(
+            artifactDiscoveryEnabled: true,
+            artifactDiscoveryRegisteredRoots: [root.path]
+        )
+        let service = ArtifactAuthoringService(
+            dataStore: store,
+            retrievalService: SearchService(dataStore: store),
+            settingsProvider: settings,
+            textGenerator: generator,
+            fileManager: fileManager,
+            nowProvider: { now }
+        )
+
+        let draft = try await service.draftSkill(
+            request: "Draft a bootstrap release skill.",
+            projectName: "BurnBar",
+            retrievalQuery: "bootstrap release checklist",
+            contextLimit: 3
+        )
+        let destinationPath = root.appendingPathComponent("SKILL.md").path
+        let saveResult = try service.saveDraft(draft, to: destinationPath)
+
+        XCTAssertEqual(saveResult.disposition, .inserted)
+        XCTAssertTrue(saveResult.projectionJobEnqueued)
+        XCTAssertNotNil(saveResult.projectionJobID)
+        XCTAssertTrue(saveResult.artifact.provenance.hasPrefix("authoring:draft|"))
+
+        let projector = ProjectionPipelineService(dataStore: store, leaseOwner: "authoring-roundtrip")
+        _ = try projector.runSweep(maxJobs: 10)
+
+        let retrieval = SearchService(dataStore: store)
+        let results = await retrieval.retrieve(
+            RetrievalQuery(
+                text: "orion-e2e-authoring-needle",
+                filters: RetrievalFilters(artifactTypes: [.skillDoc]),
+                resultLimit: 10
+            )
+        )
+        XCTAssertEqual(Set(results.map(\.sourceID)), Set([saveResult.artifact.id]))
+    }
+}
+
+@MainActor
+private final class StubArtifactAuthoringTextGenerator: ArtifactAuthoringTextGenerating {
+    var response: String
+    private(set) var systemPrompts: [String] = []
+    private(set) var userPrompts: [String] = []
+
+    init(response: String) {
+        self.response = response
+    }
+
+    func generate(systemPrompt: String, userPrompt: String) async throws -> String {
+        systemPrompts.append(systemPrompt)
+        userPrompts.append(userPrompt)
+        return response
+    }
+}
+
 @MainActor
 final class LocalSearchSchemaStoreTests: XCTestCase {
 
@@ -536,6 +1681,8 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         XCTAssertEqual(
             Set(inventory.tables),
             Set([
+                "artifact_permissions",
+                "audit_events",
                 "chunk_embeddings",
                 "embedding_models",
                 "embedding_versions",
@@ -549,6 +1696,11 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         XCTAssertEqual(
             Set(inventory.indexes),
             Set([
+                "artifact_permissions_principal_lookup_idx",
+                "artifact_permissions_source_lookup_idx",
+                "audit_events_action_time_idx",
+                "audit_events_scope_time_idx",
+                "audit_events_source_time_idx",
                 "chunk_embeddings_version_lookup_idx",
                 "embedding_models_provider_model_idx",
                 "embedding_versions_active_idx",
@@ -873,6 +2025,518 @@ final class SourceArtifactStoreTests: XCTestCase {
         )
         XCTAssertEqual(allArtifacts.count, 1)
         XCTAssertEqual(allArtifacts.first?.status, .deleted)
+    }
+}
+
+@MainActor
+final class SharedArtifactSyncStateStoreTests: XCTestCase {
+    func test_sharedArtifactSyncStateStore_roundTripLookupAndFiltering() throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_112_000)
+
+        let artifact = SourceArtifactRecord(
+            id: "shared-artifact-1",
+            sourceKind: .sharedArtifact,
+            canonicalPath: "shared://workspace/team/shared-artifact-1.md",
+            rootPath: "shared://workspace/team",
+            relativePath: "shared-artifact-1.md",
+            provenance: SharedArtifactCloudCodec.encodeProvenance(
+                workspaceID: "workspace-a",
+                teamID: "team-a",
+                remoteArtifactID: "remote-1",
+                ownerUserID: "user-1"
+            ),
+            title: "Shared Artifact",
+            body: "# Shared\nv1",
+            contentHash: "hash-shared-v1",
+            fileSizeBytes: 24,
+            fileModifiedAt: base,
+            status: .active,
+            discoveredAt: base,
+            deletedAt: nil,
+            createdAt: base,
+            updatedAt: base
+        )
+        _ = try store.upsertSourceArtifact(artifact)
+
+        let syncedState = SharedArtifactSyncStateRecord(
+            sourceArtifactID: artifact.id,
+            remoteArtifactID: "remote-1",
+            workspaceID: "workspace-a",
+            teamID: "team-a",
+            ownerUserID: "user-1",
+            revisionID: "rev-1",
+            remoteContentHash: "hash-shared-v1",
+            localContentHashAtSync: "hash-shared-v1",
+            remoteUpdatedAt: base,
+            lastPulledAt: base,
+            lastSyncedAt: base,
+            syncStatus: .synced,
+            lastErrorCode: nil,
+            lastErrorMessage: nil,
+            createdAt: base,
+            updatedAt: base
+        )
+        try store.upsertSharedArtifactSyncState(syncedState)
+
+        let fetchedBySource = try store.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
+        XCTAssertEqual(fetchedBySource?.remoteArtifactID, "remote-1")
+        XCTAssertEqual(fetchedBySource?.syncStatus, .synced)
+
+        let fetchedByRemote = try store.fetchSharedArtifactSyncState(remoteArtifactID: "remote-1")
+        XCTAssertEqual(fetchedByRemote?.sourceArtifactID, artifact.id)
+
+        let conflictedState = SharedArtifactSyncStateRecord(
+            sourceArtifactID: artifact.id,
+            remoteArtifactID: "remote-1",
+            workspaceID: "workspace-a",
+            teamID: "team-a",
+            ownerUserID: "user-1",
+            revisionID: "rev-2",
+            remoteContentHash: "hash-remote-v2",
+            localContentHashAtSync: "hash-shared-v1",
+            remoteUpdatedAt: base.addingTimeInterval(30),
+            lastPulledAt: base.addingTimeInterval(30),
+            lastSyncedAt: base,
+            syncStatus: .conflicted,
+            lastErrorCode: "SHARED_ARTIFACT_DIVERGED",
+            lastErrorMessage: "Local and remote content diverged.",
+            createdAt: base,
+            updatedAt: base.addingTimeInterval(30)
+        )
+        try store.upsertSharedArtifactSyncState(conflictedState)
+
+        let conflicted = try store.fetchSharedArtifactSyncStates(
+            workspaceID: "workspace-a",
+            teamID: "team-a",
+            statuses: [.conflicted],
+            limit: 20
+        )
+        XCTAssertEqual(conflicted.count, 1)
+        XCTAssertEqual(conflicted.first?.lastErrorCode, "SHARED_ARTIFACT_DIVERGED")
+    }
+
+    func test_sharedArtifactPermissionStore_roundTripFilteringAndReadableLookup() throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_125_000)
+
+        let artifact = SourceArtifactRecord(
+            id: "shared-permission-artifact-1",
+            sourceKind: .sharedArtifact,
+            canonicalPath: "shared://workspace-a/team-a/shared-permission-artifact-1.md",
+            rootPath: "shared://workspace-a/team-a",
+            relativePath: "shared-permission-artifact-1.md",
+            provenance: "shared-sync:workspace-a|team-a|remote-perm-1|user-1",
+            title: "Shared Permission Artifact",
+            body: "# Shared\npermissions",
+            contentHash: "hash-perm-v1",
+            fileSizeBytes: 24,
+            fileModifiedAt: base,
+            status: .active,
+            discoveredAt: base,
+            deletedAt: nil,
+            createdAt: base,
+            updatedAt: base
+        )
+        _ = try store.upsertSourceArtifact(artifact)
+
+        let ownerPermission = SharedArtifactPermissionRecord(
+            sourceArtifactID: artifact.id,
+            workspaceID: "workspace-a",
+            teamID: "team-a",
+            principalType: .user,
+            principalID: "user-1",
+            role: .owner,
+            visibility: .team,
+            canRead: true,
+            canWrite: true,
+            canShare: true,
+            createdAt: base,
+            updatedAt: base
+        )
+        XCTAssertEqual(try store.upsertSharedArtifactPermission(ownerPermission), .inserted)
+        XCTAssertEqual(try store.upsertSharedArtifactPermission(ownerPermission), .unchanged)
+
+        let updatedOwnerPermission = SharedArtifactPermissionRecord(
+            sourceArtifactID: artifact.id,
+            workspaceID: "workspace-a",
+            teamID: "team-a",
+            principalType: .user,
+            principalID: "user-1",
+            role: .editor,
+            visibility: .team,
+            canRead: true,
+            canWrite: true,
+            canShare: false,
+            createdAt: base,
+            updatedAt: base.addingTimeInterval(15)
+        )
+        XCTAssertEqual(try store.upsertSharedArtifactPermission(updatedOwnerPermission), .updated)
+
+        let fetchedPermissions = try store.fetchSharedArtifactPermissions(
+            sourceArtifactID: artifact.id,
+            workspaceID: "workspace-a",
+            teamID: "team-a",
+            principalType: .user,
+            principalID: "user-1",
+            limit: 10
+        )
+        XCTAssertEqual(fetchedPermissions.count, 1)
+        XCTAssertEqual(fetchedPermissions.first?.role, .editor)
+        XCTAssertEqual(fetchedPermissions.first?.canShare, false)
+
+        let readableForOwner = try store.fetchReadableSharedArtifactSourceIDs(
+            accessContext: SharedArtifactAccessContext(
+                userID: "user-1",
+                workspaceID: "workspace-a",
+                teamID: "team-a"
+            )
+        )
+        XCTAssertEqual(readableForOwner, Set([artifact.id]))
+
+        let readableForOther = try store.fetchReadableSharedArtifactSourceIDs(
+            accessContext: SharedArtifactAccessContext(
+                userID: "user-2",
+                workspaceID: "workspace-a",
+                teamID: "team-a"
+            )
+        )
+        XCTAssertTrue(readableForOther.isEmpty)
+    }
+
+    func test_sharedArtifactReadableLookup_includesSyncOwnerFallback() throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_127_500)
+
+        let artifact = SourceArtifactRecord(
+            id: "shared-owner-fallback-1",
+            sourceKind: .sharedArtifact,
+            canonicalPath: "shared://workspace-a/team-a/shared-owner-fallback-1.md",
+            rootPath: "shared://workspace-a/team-a",
+            relativePath: "shared-owner-fallback-1.md",
+            provenance: "shared-sync:workspace-a|team-a|remote-owner-1|user-owner",
+            title: "Shared Owner Fallback",
+            body: "owner fallback",
+            contentHash: "hash-owner-fallback",
+            fileSizeBytes: 14,
+            fileModifiedAt: base,
+            status: .active,
+            discoveredAt: base,
+            deletedAt: nil,
+            createdAt: base,
+            updatedAt: base
+        )
+        _ = try store.upsertSourceArtifact(artifact)
+        try store.upsertSharedArtifactSyncState(
+            SharedArtifactSyncStateRecord(
+                sourceArtifactID: artifact.id,
+                remoteArtifactID: "remote-owner-1",
+                workspaceID: "workspace-a",
+                teamID: "team-a",
+                ownerUserID: "user-owner",
+                revisionID: "rev-owner-1",
+                remoteContentHash: "hash-owner-fallback",
+                localContentHashAtSync: "hash-owner-fallback",
+                remoteUpdatedAt: base,
+                lastPulledAt: base,
+                lastSyncedAt: base,
+                syncStatus: .synced,
+                lastErrorCode: nil,
+                lastErrorMessage: nil,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+
+        let ownerReadable = try store.fetchReadableSharedArtifactSourceIDs(
+            accessContext: SharedArtifactAccessContext(
+                userID: "user-owner",
+                workspaceID: "workspace-a",
+                teamID: "team-a"
+            )
+        )
+        XCTAssertEqual(ownerReadable, Set([artifact.id]))
+
+        let otherReadable = try store.fetchReadableSharedArtifactSourceIDs(
+            accessContext: SharedArtifactAccessContext(
+                userID: "user-other",
+                workspaceID: "workspace-a",
+                teamID: "team-a"
+            )
+        )
+        XCTAssertTrue(otherReadable.isEmpty)
+    }
+
+    func test_sharedArtifactCloudCodec_roundTripSerialization() throws {
+        let updatedAt = Date(timeIntervalSince1970: 1_742_130_000)
+        let record = SharedArtifactCloudRecord(
+            artifactID: "remote-42",
+            workspaceID: "workspace-a",
+            teamID: "team-a",
+            ownerUserID: "user-1",
+            visibility: .workspace,
+            revisionID: "rev-42",
+            baseRevisionID: "rev-41",
+            title: "Shared Runbook",
+            body: "Body content",
+            contentHash: "hash-42",
+            relativePath: "docs/runbook.md",
+            isDeleted: false,
+            updatedByUserID: "user-2",
+            updatedByDeviceID: "device-7",
+            resolvedConflictRevisionID: "rev-40",
+            updatedAt: updatedAt
+        )
+
+        let encoded = SharedArtifactCloudCodec.encode(record, useServerTimestamp: false)
+        let decoded = try SharedArtifactCloudCodec.decode(documentID: "remote-42", data: encoded)
+
+        XCTAssertEqual(decoded.artifactID, record.artifactID)
+        XCTAssertEqual(decoded.workspaceID, record.workspaceID)
+        XCTAssertEqual(decoded.teamID, record.teamID)
+        XCTAssertEqual(decoded.ownerUserID, record.ownerUserID)
+        XCTAssertEqual(decoded.visibility, record.visibility)
+        XCTAssertEqual(decoded.revisionID, record.revisionID)
+        XCTAssertEqual(decoded.baseRevisionID, record.baseRevisionID)
+        XCTAssertEqual(decoded.title, record.title)
+        XCTAssertEqual(decoded.body, record.body)
+        XCTAssertEqual(decoded.contentHash, record.contentHash)
+        XCTAssertEqual(decoded.relativePath, record.relativePath)
+        XCTAssertEqual(decoded.isDeleted, record.isDeleted)
+        XCTAssertEqual(decoded.updatedByUserID, record.updatedByUserID)
+        XCTAssertEqual(decoded.updatedByDeviceID, record.updatedByDeviceID)
+        XCTAssertEqual(decoded.resolvedConflictRevisionID, record.resolvedConflictRevisionID)
+        guard let decodedUpdatedAt = decoded.updatedAt else {
+            return XCTFail("Expected decoded updatedAt timestamp.")
+        }
+        XCTAssertEqual(decodedUpdatedAt.timeIntervalSince1970, updatedAt.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func test_sharedArtifactOptimisticWriteGate_detectsStaleWriteRace() {
+        XCTAssertThrowsError(
+            try SharedArtifactOptimisticWriteGate.validate(
+                expectedRevisionID: "rev-base",
+                observedRevisionID: "rev-remote"
+            )
+        ) { error in
+            let conflict = SharedArtifactOptimisticWriteGate.conflict(from: error)
+            XCTAssertEqual(conflict?.expectedRevisionID, "rev-base")
+            XCTAssertEqual(conflict?.observedRevisionID, "rev-remote")
+        }
+    }
+
+    func test_sharedArtifactOptimisticWriteGate_allowsCreateAndMatchingHead() throws {
+        XCTAssertNoThrow(
+            try SharedArtifactOptimisticWriteGate.validate(
+                expectedRevisionID: nil,
+                observedRevisionID: nil
+            )
+        )
+        XCTAssertNoThrow(
+            try SharedArtifactOptimisticWriteGate.validate(
+                expectedRevisionID: "rev-9",
+                observedRevisionID: "rev-9"
+            )
+        )
+    }
+
+    func test_sharedArtifactConcurrentEdits_detectRaceAndAvoidSilentOverwrite() {
+        XCTAssertNoThrow(
+            try SharedArtifactOptimisticWriteGate.validate(
+                expectedRevisionID: "rev-base",
+                observedRevisionID: "rev-base"
+            )
+        )
+
+        XCTAssertThrowsError(
+            try SharedArtifactOptimisticWriteGate.validate(
+                expectedRevisionID: "rev-base",
+                observedRevisionID: "rev-peer"
+            )
+        ) { error in
+            let conflict = SharedArtifactOptimisticWriteGate.conflict(from: error)
+            XCTAssertEqual(conflict?.expectedRevisionID, "rev-base")
+            XCTAssertEqual(conflict?.observedRevisionID, "rev-peer")
+        }
+
+        XCTAssertEqual(
+            SharedArtifactSyncResolver.mergeDecision(
+                localContentHash: "hash-local-writer-b",
+                syncedContentHash: "hash-base",
+                remoteContentHash: "hash-local-writer-a"
+            ),
+            .conflict
+        )
+
+        XCTAssertEqual(
+            SharedArtifactSyncResolver.mergeDecision(
+                localContentHash: "hash-merged",
+                syncedContentHash: "hash-base",
+                remoteContentHash: "hash-merged"
+            ),
+            .noChange
+        )
+    }
+
+    func test_sharedArtifactAuditEvents_captureConflictAndRecoveryOutcomes() throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_140_000)
+
+        let artifact = SourceArtifactRecord(
+            id: "shared-audit-artifact-1",
+            sourceKind: .sharedArtifact,
+            canonicalPath: "shared://workspace-a/team-a/incident-runbook.md",
+            rootPath: "shared://workspace-a/team-a",
+            relativePath: "incident-runbook.md",
+            provenance: "shared-sync:workspace-a|team-a|remote-audit-1|user-1",
+            title: "Incident Runbook",
+            body: "v1",
+            contentHash: "hash-a",
+            fileSizeBytes: 2,
+            fileModifiedAt: base,
+            status: .active,
+            discoveredAt: base,
+            deletedAt: nil,
+            createdAt: base,
+            updatedAt: base
+        )
+        _ = try store.upsertSourceArtifact(artifact)
+        try store.upsertSharedArtifactSyncState(
+            SharedArtifactSyncStateRecord(
+                sourceArtifactID: artifact.id,
+                remoteArtifactID: "remote-audit-1",
+                workspaceID: "workspace-a",
+                teamID: "team-a",
+                ownerUserID: "user-1",
+                revisionID: "rev-base",
+                remoteContentHash: "hash-a",
+                localContentHashAtSync: "hash-a",
+                remoteUpdatedAt: base,
+                lastPulledAt: base,
+                lastSyncedAt: base,
+                syncStatus: .conflicted,
+                lastErrorCode: "SHARED_ARTIFACT_STALE_WRITE",
+                lastErrorMessage: "Stale write detected.",
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+
+        try store.appendSharedArtifactAuditEvent(
+            SharedArtifactAuditEventRecord(
+                sourceArtifactID: artifact.id,
+                remoteArtifactID: "remote-audit-1",
+                workspaceID: "workspace-a",
+                teamID: "team-a",
+                actorUserID: "user-1",
+                actorRole: .editor,
+                action: .conflictDetected,
+                detailsJSON: #"{"message":"conflict","revisionID":"rev-peer","baseRevisionID":"rev-base","conflictRevisionID":"rev-peer"}"#,
+                occurredAt: base.addingTimeInterval(5),
+                createdAt: base.addingTimeInterval(5)
+            )
+        )
+        try store.upsertSharedArtifactSyncState(
+            SharedArtifactSyncStateRecord(
+                sourceArtifactID: artifact.id,
+                remoteArtifactID: "remote-audit-1",
+                workspaceID: "workspace-a",
+                teamID: "team-a",
+                ownerUserID: "user-1",
+                revisionID: "rev-peer",
+                remoteContentHash: "hash-peer",
+                localContentHashAtSync: "hash-peer",
+                remoteUpdatedAt: base.addingTimeInterval(10),
+                lastPulledAt: base.addingTimeInterval(10),
+                lastSyncedAt: base.addingTimeInterval(10),
+                syncStatus: .synced,
+                lastErrorCode: nil,
+                lastErrorMessage: nil,
+                createdAt: base,
+                updatedAt: base.addingTimeInterval(10)
+            )
+        )
+        try store.appendSharedArtifactAuditEvent(
+            SharedArtifactAuditEventRecord(
+                sourceArtifactID: artifact.id,
+                remoteArtifactID: "remote-audit-1",
+                workspaceID: "workspace-a",
+                teamID: "team-a",
+                actorUserID: "user-1",
+                actorRole: .editor,
+                action: .conflictResolved,
+                detailsJSON: #"{"message":"resolved","resolution":"remote_pull","revisionID":"rev-peer","baseRevisionID":"rev-base","conflictRevisionID":"rev-peer"}"#,
+                occurredAt: base.addingTimeInterval(10),
+                createdAt: base.addingTimeInterval(10)
+            )
+        )
+
+        let syncState = try store.fetchSharedArtifactSyncState(sourceArtifactID: artifact.id)
+        XCTAssertEqual(syncState?.syncStatus, .synced)
+        XCTAssertEqual(syncState?.remoteArtifactID, "remote-audit-1")
+        XCTAssertEqual(syncState?.revisionID, "rev-peer")
+
+        let events = try store.fetchSharedArtifactAuditEvents(
+            sourceArtifactID: artifact.id,
+            workspaceID: "workspace-a",
+            teamID: "team-a",
+            actions: [.conflictDetected, .conflictResolved],
+            limit: 10
+        )
+        XCTAssertEqual(events.count, 2)
+        XCTAssertEqual(events.map(\.action), [.conflictResolved, .conflictDetected])
+        XCTAssertTrue(events.allSatisfy { $0.sourceArtifactID == artifact.id })
+        XCTAssertTrue(events.allSatisfy { $0.remoteArtifactID == "remote-audit-1" })
+
+        var detailsByAction: [SharedArtifactAuditAction: [String: String]] = [:]
+        for event in events {
+            detailsByAction[event.action] = try decodeAuditDetails(event.detailsJSON)
+        }
+        XCTAssertEqual(detailsByAction[.conflictDetected]?["baseRevisionID"], "rev-base")
+        XCTAssertEqual(detailsByAction[.conflictResolved]?["resolution"], "remote_pull")
+    }
+
+    private func decodeAuditDetails(_ raw: String?) throws -> [String: String] {
+        guard let raw, let data = raw.data(using: .utf8) else { return [:] }
+        return try JSONDecoder().decode([String: String].self, from: data)
+    }
+
+    func test_sharedArtifactSyncResolver_handlesDivergenceCases() {
+        XCTAssertEqual(
+            SharedArtifactSyncResolver.mergeDecision(
+                localContentHash: "hash-local",
+                syncedContentHash: "hash-base",
+                remoteContentHash: "hash-base"
+            ),
+            .pushLocal
+        )
+
+        XCTAssertEqual(
+            SharedArtifactSyncResolver.mergeDecision(
+                localContentHash: "hash-base",
+                syncedContentHash: "hash-base",
+                remoteContentHash: "hash-remote"
+            ),
+            .pullRemote
+        )
+
+        XCTAssertEqual(
+            SharedArtifactSyncResolver.mergeDecision(
+                localContentHash: "hash-local",
+                syncedContentHash: "hash-base",
+                remoteContentHash: "hash-remote"
+            ),
+            .conflict
+        )
+
+        XCTAssertEqual(
+            SharedArtifactSyncResolver.mergeDecision(
+                localContentHash: "hash-a",
+                syncedContentHash: nil,
+                remoteContentHash: "hash-b"
+            ),
+            .conflict
+        )
     }
 }
 
@@ -1593,6 +3257,27 @@ final class HybridRetrievalServiceTests: XCTestCase {
 
         _ = try store.upsertSourceArtifact(skillArtifact)
         _ = try store.upsertSourceArtifact(sharedArtifact)
+        let sharedAccess = SharedArtifactAccessContext(
+            userID: "user-alpha",
+            workspaceID: "workspace-alpha",
+            teamID: "team-alpha"
+        )
+        _ = try store.upsertSharedArtifactPermission(
+            SharedArtifactPermissionRecord(
+                sourceArtifactID: sharedArtifact.id,
+                workspaceID: sharedAccess.workspaceID,
+                teamID: sharedAccess.teamID,
+                principalType: .user,
+                principalID: sharedAccess.userID,
+                role: .editor,
+                visibility: .team,
+                canRead: true,
+                canWrite: true,
+                canShare: false,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
         try projector.enqueueSelectiveReproject(
             sourceKind: skillArtifact.sourceKind,
             sourceID: skillArtifact.id,
@@ -1610,7 +3295,11 @@ final class HybridRetrievalServiceTests: XCTestCase {
 
         _ = try projector.runSweep(maxJobs: 40)
 
-        let retrieval = SearchService(dataStore: store, nowProvider: { base })
+        let retrieval = SearchService(
+            dataStore: store,
+            sharedArtifactAccessContextProvider: { sharedAccess },
+            nowProvider: { base }
+        )
 
         let providerFiltered = await retrieval.retrieve(
             RetrievalQuery(
@@ -1680,6 +3369,150 @@ final class HybridRetrievalServiceTests: XCTestCase {
         )
         XCTAssertEqual(Set(conversationSourceFiltered.map(\.sourceID)), Set([convCLI.id]))
         XCTAssertTrue(conversationSourceFiltered.allSatisfy { $0.conversation?.sourceType == .cliAssistant })
+    }
+
+    func test_retrieval_sharedArtifactVisibility_requiresReadablePermission() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let projector = ProjectionPipelineService(dataStore: store, leaseOwner: "retrieval-rbac")
+        let base = Date(timeIntervalSince1970: 1_742_721_000)
+
+        let sharedArtifact = makeArtifact(
+            id: "artifact-shared-rbac",
+            sourceKind: .sharedArtifact,
+            rootPath: "/tmp/SharedRepo",
+            relativePath: "RBAC.md",
+            title: "Shared RBAC",
+            body: "rbacneedle team visibility and permissions",
+            contentHash: "hash-shared-rbac",
+            fileModifiedAt: base
+        )
+        _ = try store.upsertSourceArtifact(sharedArtifact)
+        try projector.enqueueSelectiveReproject(
+            sourceKind: .sharedArtifact,
+            sourceID: sharedArtifact.id,
+            sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: sharedArtifact.contentHash),
+            jobType: .project,
+            priority: 5
+        )
+        _ = try projector.runSweep(maxJobs: 20)
+
+        let noAccess = SharedArtifactAccessContext(
+            userID: "user-no-access",
+            workspaceID: "workspace-a",
+            teamID: "team-a"
+        )
+        let noAccessRetrieval = SearchService(
+            dataStore: store,
+            sharedArtifactAccessContextProvider: { noAccess },
+            nowProvider: { base }
+        )
+        let hiddenResults = await noAccessRetrieval.retrieve(
+            RetrievalQuery(
+                text: "rbacneedle",
+                filters: RetrievalFilters(ownership: .shared),
+                resultLimit: 20
+            )
+        )
+        XCTAssertTrue(hiddenResults.isEmpty)
+
+        _ = try store.upsertSharedArtifactPermission(
+            SharedArtifactPermissionRecord(
+                sourceArtifactID: sharedArtifact.id,
+                workspaceID: "workspace-a",
+                teamID: "team-a",
+                principalType: .team,
+                principalID: "team-a",
+                role: .viewer,
+                visibility: .team,
+                canRead: true,
+                canWrite: false,
+                canShare: false,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+
+        let teamMember = SharedArtifactAccessContext(
+            userID: "user-team-member",
+            workspaceID: "workspace-a",
+            teamID: "team-a"
+        )
+        let teamRetrieval = SearchService(
+            dataStore: store,
+            sharedArtifactAccessContextProvider: { teamMember },
+            nowProvider: { base }
+        )
+        let visibleResults = await teamRetrieval.retrieve(
+            RetrievalQuery(
+                text: "rbacneedle",
+                filters: RetrievalFilters(ownership: .shared),
+                resultLimit: 20
+            )
+        )
+        XCTAssertEqual(Set(visibleResults.map(\.sourceID)), Set([sharedArtifact.id]))
+
+        let differentTeam = SharedArtifactAccessContext(
+            userID: "user-other-team",
+            workspaceID: "workspace-a",
+            teamID: "team-b"
+        )
+        let blockedRetrieval = SearchService(
+            dataStore: store,
+            sharedArtifactAccessContextProvider: { differentTeam },
+            nowProvider: { base }
+        )
+        let blockedResults = await blockedRetrieval.retrieve(
+            RetrievalQuery(
+                text: "rbacneedle",
+                filters: RetrievalFilters(ownership: .shared),
+                resultLimit: 20
+            )
+        )
+        XCTAssertTrue(blockedResults.isEmpty)
+    }
+
+    func test_conversationSearch_keepsParityBetweenChatAndSessionLogs() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let projector = ProjectionPipelineService(dataStore: store, leaseOwner: "conversation-search-parity")
+        let base = Date(timeIntervalSince1970: 1_742_725_000)
+
+        let providerConversation = makeConversation(
+            id: "conv-parity-provider",
+            provider: .claudeCode,
+            projectName: "Parity",
+            fullText: "parityneedle release hardening and rollout checklist",
+            indexedAt: base.addingTimeInterval(-120),
+            sourceType: .providerLog
+        )
+        let assistantConversation = makeConversation(
+            id: "conv-parity-assistant",
+            provider: .factory,
+            projectName: "Parity",
+            fullText: "parityneedle follow-up in assistant context",
+            indexedAt: base.addingTimeInterval(-60),
+            sourceType: .cliAssistant
+        )
+
+        try store.upsertConversation(providerConversation)
+        try store.upsertConversation(assistantConversation)
+        try store.enqueueConversationProjectionJob(conversationID: providerConversation.id, jobType: .project, now: base)
+        try store.enqueueConversationProjectionJob(conversationID: assistantConversation.id, jobType: .project, now: base)
+        _ = try projector.runSweep(maxJobs: 20)
+
+        let chatSearch = SearchService.makeConversationSearchService(dataStore: store, nowProvider: { base })
+        let sessionLogSearch = SearchService.makeConversationSearchService(dataStore: store, nowProvider: { base })
+        let query = "parityneedle"
+
+        let chatResults = await chatSearch.search(query: query)
+        let sessionLogResults = await sessionLogSearch.search(query: query, conversationSources: nil)
+
+        XCTAssertEqual(chatResults.map(\.conversation.id), sessionLogResults.map(\.conversation.id))
+
+        let providerOnly = await sessionLogSearch.search(query: query, conversationSources: [.providerLog])
+        XCTAssertEqual(Set(providerOnly.map(\.conversation.id)), Set([providerConversation.id]))
+
+        let assistantOnly = await sessionLogSearch.search(query: query, conversationSources: [.cliAssistant])
+        XCTAssertEqual(Set(assistantOnly.map(\.conversation.id)), Set([assistantConversation.id]))
     }
 
     func test_vectorSemanticCandidates_annAndExactMatch_whenExactRerankEnabled() async throws {
@@ -1807,6 +3640,143 @@ final class HybridRetrievalServiceTests: XCTestCase {
         if let annTop = annCandidates.first?.score, let exactTop = exactCandidates.first?.score {
             XCTAssertEqual(annTop, exactTop, accuracy: 0.000001)
         }
+    }
+
+    func test_retrieval_semanticFallback_persistsDegradedSemanticHealth() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let projector = ProjectionPipelineService(dataStore: store, leaseOwner: "retrieval-semantic-fallback-health")
+        let base = Date(timeIntervalSince1970: 1_742_740_000)
+
+        let conversation = makeConversation(
+            id: "conv-semantic-fallback",
+            provider: .claudeCode,
+            projectName: "Alpha",
+            fullText: "Rollout hardening checklist for lexical fallback coverage.",
+            indexedAt: base,
+            sourceType: .providerLog
+        )
+        try store.upsertConversation(conversation)
+        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        _ = try projector.runSweep(maxJobs: 20)
+
+        let semanticProvider = StubSemanticCandidateProvider()
+        semanticProvider.shouldThrow = true
+        let retrieval = SearchService(dataStore: store, semanticProvider: semanticProvider, nowProvider: { base })
+        let results = await retrieval.retrieve(
+            RetrievalQuery(
+                text: "hardening checklist",
+                filters: RetrievalFilters(artifactTypes: [.conversation]),
+                resultLimit: 10
+            )
+        )
+
+        XCTAssertFalse(results.isEmpty)
+        let semanticHealth = try store.fetchRetrievalHealth().first(where: { $0.subsystem == .semantic })
+        XCTAssertEqual(semanticHealth?.status, .degraded)
+        XCTAssertEqual(semanticHealth?.errorCode, "SEMANTIC_PROVIDER_FALLBACK")
+    }
+
+    func test_retrievalHealthService_reportsDegradedModes_forIndexSemanticRebuildAndCloud() throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_750_000)
+
+        try store.upsertRetrievalHealth(
+            RetrievalHealthRecord(
+                subsystem: .projection,
+                status: .degraded,
+                errorCode: "PROJECTION_JOBS_DEGRADED",
+                errorMessage: "Projection queue has pending jobs.",
+                detailsJSON: #"{"queueDepth":3,"failedJobs":1}"#,
+                observedAt: base,
+                updatedAt: base
+            )
+        )
+        try store.upsertRetrievalHealth(
+            RetrievalHealthRecord(
+                subsystem: .semantic,
+                status: .degraded,
+                errorCode: "SEMANTIC_NO_EMBEDDINGS",
+                errorMessage: "No embeddings indexed yet.",
+                detailsJSON: #"{"backend":"ann","indexedVectorCount":0,"candidateCount":0}"#,
+                observedAt: base,
+                updatedAt: base
+            )
+        )
+        try store.enqueueProjectionJob(
+            ProjectionJobRecord(
+                id: "rebuild-job-1",
+                jobType: .rebuild,
+                sourceVersionID: "rebuild-v1",
+                status: .queued,
+                priority: 1,
+                attempts: 0,
+                maxAttempts: 3,
+                scheduledAt: base,
+                availableAt: base,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+
+        let service = RetrievalHealthService(dataStore: store, nowProvider: { base })
+        let snapshot = service.snapshot(indexingEnabled: true, sharedFeaturesAvailable: false)
+        let modes = Set(snapshot.degradedModes.map(\.mode))
+
+        XCTAssertTrue(modes.contains(.indexStale))
+        XCTAssertTrue(modes.contains(.semanticUnavailable))
+        XCTAssertTrue(modes.contains(.rebuildInProgress))
+        XCTAssertTrue(modes.contains(.cloudSharedUnavailable))
+    }
+
+    func test_retrievalHealthService_hidesIndexModesWhenIndexingDisabled() throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_760_000)
+
+        try store.upsertRetrievalHealth(
+            RetrievalHealthRecord(
+                subsystem: .projection,
+                status: .degraded,
+                errorCode: "PROJECTION_JOBS_DEGRADED",
+                errorMessage: "Projection queue has pending jobs.",
+                detailsJSON: #"{"queueDepth":2,"failedJobs":0}"#,
+                observedAt: base,
+                updatedAt: base
+            )
+        )
+        try store.upsertRetrievalHealth(
+            RetrievalHealthRecord(
+                subsystem: .semantic,
+                status: .failed,
+                errorCode: "SEMANTIC_BACKEND_QUERY_FAILED",
+                errorMessage: "Semantic backend failed.",
+                detailsJSON: #"{"backend":"ann","indexedVectorCount":0,"candidateCount":0}"#,
+                observedAt: base,
+                updatedAt: base
+            )
+        )
+        try store.enqueueProjectionJob(
+            ProjectionJobRecord(
+                id: "rebuild-job-2",
+                jobType: .rebuild,
+                sourceVersionID: "rebuild-v2",
+                status: .queued,
+                priority: 1,
+                attempts: 0,
+                maxAttempts: 3,
+                scheduledAt: base,
+                availableAt: base,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+
+        let service = RetrievalHealthService(dataStore: store, nowProvider: { base })
+        let snapshot = service.snapshot(indexingEnabled: false, sharedFeaturesAvailable: true)
+        let modes = Set(snapshot.degradedModes.map(\.mode))
+
+        XCTAssertFalse(modes.contains(.indexStale))
+        XCTAssertFalse(modes.contains(.semanticUnavailable))
+        XCTAssertFalse(modes.contains(.rebuildInProgress))
     }
 
     private func makeConversation(

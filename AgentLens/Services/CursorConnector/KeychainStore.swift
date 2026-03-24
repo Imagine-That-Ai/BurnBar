@@ -1,4 +1,5 @@
 import Foundation
+import LocalAuthentication
 import Security
 
 enum KeychainStoreError: Error {
@@ -8,7 +9,7 @@ enum KeychainStoreError: Error {
 
 protocol KeychainStoreBackend {
     func set(_ value: Data, service: String, account: String) throws
-    func data(for service: String, account: String) throws -> Data?
+    func data(for service: String, account: String, allowUserInteraction: Bool) throws -> Data?
     func delete(service: String, account: String) throws
 }
 
@@ -35,17 +36,29 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
         }
     }
 
-    func data(for service: String, account: String) throws -> Data? {
-        let query: [String: Any] = [
+    func data(for service: String, account: String, allowUserInteraction: Bool) throws -> Data? {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
+        if !allowUserInteraction {
+            let context = LAContext()
+            context.interactionNotAllowed = true
+            query[kSecUseAuthenticationContext as String] = context
+            // Force Security.framework to fail fast instead of presenting a keychain prompt.
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecItemNotFound { return nil }
+        if status == errSecItemNotFound
+            || status == errSecInteractionNotAllowed
+            || status == errSecUserCanceled
+            || status == errSecAuthFailed {
+            return nil
+        }
         guard status == errSecSuccess else {
             throw KeychainStoreError.unhandled(status)
         }
@@ -87,8 +100,12 @@ struct KeychainStore {
         try backend.set(Data(value.utf8), service: service, account: account)
     }
 
-    func string(for account: String) throws -> String? {
-        if let currentData = try backend.data(for: service, account: account) {
+    func string(for account: String, allowUserInteraction: Bool = true) throws -> String? {
+        if let currentData = try backend.data(
+            for: service,
+            account: account,
+            allowUserInteraction: allowUserInteraction
+        ) {
             guard let string = String(data: currentData, encoding: .utf8) else {
                 throw KeychainStoreError.unexpectedData
             }
@@ -96,7 +113,11 @@ struct KeychainStore {
         }
 
         for legacyService in legacyServices {
-            guard let legacyData = try backend.data(for: legacyService, account: account) else { continue }
+            guard let legacyData = try backend.data(
+                for: legacyService,
+                account: account,
+                allowUserInteraction: allowUserInteraction
+            ) else { continue }
             try backend.set(legacyData, service: service, account: account)
             guard let string = String(data: legacyData, encoding: .utf8) else {
                 throw KeychainStoreError.unexpectedData

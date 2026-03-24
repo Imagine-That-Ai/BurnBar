@@ -11,22 +11,45 @@ Working constraints:
 - `SearchService` remains the single app-facing search entrypoint during the transition.
 - `DataStore` is split into focused stores over one shared `DatabaseQueue`; it is not replaced with a second persistence stack.
 
+## Current implementation status on `main` (2026-03-24)
+
+The search stack is now live behind existing app seams, with the physical `DataStore.swift` file still hosting multiple focused stores while extraction to dedicated files remains a follow-up.
+
+- **Authoritative local rows:** `conversations` + `source_artifacts` remain local-first in SQLite.
+- **Derived retrieval substrate:** `search_documents`, `search_chunks`, `search_chunks_fts`, `projection_jobs`, `embedding_models`, `embedding_versions`, `chunk_embeddings`, `retrieval_health`.
+- **Shared/team model:** `shared_artifact_sync_state`, `artifact_permissions`, and `audit_events` are persisted locally and synced via `CloudSyncService`.
+- **Queue-driven indexing:** projection/rebuild/re-embed run via `ProjectionPipelineService.runSweep()` from `UsageAggregator`.
+- **Single retrieval entrypoint:** `SearchService.retrieve(...)` and `SearchService.search(...)` serve consumers with lexical-first hybrid retrieval.
+
+## Current module layout on `main`
+
+```text
+AgentLens/Services/
+  DataStore.swift                    # models + migrations + LocalSearchStore
+  ConversationIndexer.swift          # conversation source upsert + projection enqueue
+  UsageAggregator.swift              # parser orchestration + discovery + projection sweep triggers
+  ProjectionPipelineService.swift    # queue lease/process/retry + chunking + embeddings + rebuild/re-embed
+  SearchService.swift                # lexical + semantic retrieval, bounded rerank, degraded-mode health
+  CloudSyncService.swift             # shared artifact sync, RBAC snapshots, audit events, conflicts
+  InsightEngine.swift                # materialized workflow insight rollups + freshness health
+```
+
 ## Existing seams to keep and extend
 
 | Existing code | Keep | Attach new work here |
 | --- | --- | --- |
 | `AgentLens/Services/ConversationIndexer.swift` | Keep the unchanged-file short-circuit and conversation upsert flow. | After each successful upsert, enqueue projection work for the affected source artifact. |
 | `DataStore.upsertConversation(_:)`, `fetchConversation`, `fetchAllSessionLogs`, `searchConversationsFTS` | Keep current conversation/session authority until the new retrieval substrate is backfilled. | Split into `ConversationStore` + derived search stores behind the same `DatabaseQueue`. |
-| `UsageAggregator.refreshAll()` / `refresh(provider:)` | Keep parser orchestration and local persistence flow. | After `ConversationIndexer.shared.index(...)`, call a new `ProjectionCoordinator` instead of pushing indexing logic into views. |
-| `SearchService.search(...)` | Keep this as the only consumer-facing search API. | Swap internals to call `RetrievalService.search(...)` so views do not gain bespoke search logic. |
-| `ContextBuilder.buildSystemPrompt(...)` | Keep prompt formatting responsibility here. | Replace direct `DataStore.fetchConversations(...)` reads with retrieval-backed context packs once hybrid retrieval is ready. |
-| `InsightEngine` | Keep spend/token insight generation. | Feed search-specific rollups from a new projector instead of ad hoc queries in views. |
+| `UsageAggregator.refreshAll()` / `refresh(provider:)` | Keep parser orchestration and local persistence flow. | Continue launching artifact discovery + `ProjectionPipelineService.runSweep()` from this seam; do not push indexing into views. |
+| `SearchService.search(...)` | Keep this as the only consumer-facing search API. | Keep hybrid retrieval internals behind `SearchService` so views never own bespoke ranking paths. |
+| `ContextBuilder.buildSystemPrompt(...)` | Keep prompt formatting responsibility here. | Replace direct `DataStore.fetchConversations(...)` reads with `SearchService.retrieve(...)`-backed context packs. |
+| `InsightEngine` | Keep spend/token insight generation. | Keep using `WorkflowInsightRollupService` materialized refresh instead of ad hoc view-side recomputation. |
 | `CloudSyncService` | Keep personal usage/session backup behavior. | Add a separate shared-artifact sync layer instead of making Firestore the search source. |
 | `SessionLogsView` | Keep reading source transcripts directly. | Add health/status consumption only; do not add retrieval logic here. |
 
-## Target module layout
+## Planned extraction layout (next store split step)
 
-Use the existing empty `AgentLens/Services/DataStore/` directory as the split point.
+Use the existing empty `AgentLens/Services/DataStore/` directory as the split point when extracting the focused stores out of `DataStore.swift`.
 
 ```text
 AgentLens/Services/DataStore/
@@ -97,17 +120,20 @@ Keep source artifacts first-class instead of folding everything into derived sea
 - `chat_messages`
 - `summary_runs`
 
-### New local authority for non-conversation artifacts
+### Current local authority for non-conversation artifacts
 
-- `registered_roots`
-  - allowed discovery roots only
-  - stores root kind, local path or logical URI, enablement, last scan state
 - `source_artifacts`
-  - one row per skill doc, agent doc, shared doc, or future source artifact
-  - stores kind, stable source locator, local owner/team scope, latest version pointer
-- `artifact_versions`
-  - immutable content versions for local/team docs
-  - stores base version, hash, authored-by, created-at, sync state
+  - one row per discovered skill doc, agent doc, or shared artifact replica
+  - stores canonical path/provenance/content hash and active/deleted status
+- `shared_artifact_sync_state`
+  - local sync cursor between a source artifact and its remote artifact/revision
+  - tracks sync status (`synced`, `pending_upload`, `pending_pull`, `conflicted`, `failed`)
+- `artifact_permissions`
+  - local RBAC snapshot used by retrieval-time shared artifact filtering
+- `audit_events`
+  - local audit trail for create/update/share/permission/rebuild/conflict actions
+
+Registered discovery roots and extra pattern allowlists are currently persisted in `SettingsManager` user defaults (JSON arrays), then consumed by `ArtifactDiscoveryService`.
 
 Session transcripts can continue to live in `conversations` initially. The new retrieval substrate should point back to either `conversations` or `source_artifacts` through an explicit `(sourceKind, sourceID, sourceVersionID)` reference instead of forcing an early source-table migration.
 
@@ -133,14 +159,14 @@ These tables are derived and rebuildable:
   - chunk/vector rows keyed by `chunkID + embeddingVersionID`
 - `retrieval_health`
   - typed health/error state for lexical, semantic, projection, rebuild, and collaboration subsystems
+- `source_artifacts`
+  - authoritative source content indexed into derived rows
+- `shared_artifact_sync_state`
+  - sync cursor metadata used by collaboration merge decisions
 - `artifact_permissions`
-  - local permission snapshot used to filter search results
+  - local permission snapshot used to filter shared artifact results
 - `audit_events`
   - local mirror of create/update/share/permission/rebuild/conflict events
-- `collaboration_outbox`
-  - durable sync queue for shared/team artifact replication
-- `artifact_conflicts`
-  - unresolved optimistic concurrency collisions
 
 ### Chunking rules
 
@@ -153,43 +179,32 @@ These tables are derived and rebuildable:
 ## Projection pipeline
 
 ```text
-Provider parsers          Registered roots           Firestore shared replicas
-      |                         |                             |
-      v                         v                             v
-ConversationIndexer      ArtifactDiscoveryService     SharedArtifactSyncService
-      |                         |                             |
-      +----------- authoritative local source rows ----------+
-                              |
-                              v
-                 ConversationStore / SourceArtifactStore
-                              |
-                              v
-                   ProjectionJobStore.enqueue(...)
-                              |
-                              v
-                      ProjectionCoordinator
-                              |
-                  +-----------+-----------+
-                  |                       |
-                  v                       v
-          ArtifactChunker          permission/filter snapshot
-                  |                       |
-                  +-----------+-----------+
-                              v
-              SearchDocumentStore + SearchChunkStore + FTS
-                              |
-                              v
-                    EmbeddingStore + VectorIndex
-                              |
-                              v
-               RetrievalHealthStore + InsightRollupProjector
+Provider parsers + ConversationIndexer   ArtifactDiscoveryService   CloudSyncService(shared)
+                 |                                 |                          |
+                 +---------- authoritative local source rows in SQLite -------+
+                                            |
+                                            v
+                            conversations + source_artifacts
+                                            |
+                                            v
+                               projection_jobs enqueue
+                                            |
+                                            v
+                       ProjectionPipelineService.runSweep()
+                                            |
+                 +--------------------------+--------------------------+
+                 |                          |                          |
+                 v                          v                          v
+      search_documents + chunks + FTS   chunk_embeddings + versions   retrieval_health
+                 |                                                     + insight rollup trigger
+                 +------------------------------- persisted locally ---------------------------+
 ```
 
 ### Projection ownership
 
 1. Ingest persists authoritative source rows first.
 2. Ingest only enqueues projection work; it does not embed or rerank inline.
-3. `ProjectionCoordinator` leases jobs from `projection_jobs`.
+3. `ProjectionPipelineService.runSweep()` leases jobs from `projection_jobs`.
 4. Lexical projection is the first-class baseline; semantic enrichment is additive.
 5. Any source update, permission change, version bump, or rebuild request produces a durable job.
 6. Failures write typed health state and retry metadata; no silent `try?` / `print` failure on critical paths.
@@ -197,36 +212,28 @@ ConversationIndexer      ArtifactDiscoveryService     SharedArtifactSyncService
 ## Retrieval pipeline
 
 ```text
-SearchService / ContextBuilder / future search UI
+Chat / Session Logs / ContextBuilder / Authoring
                      |
                      v
-               RetrievalService
+          SearchService.retrieve(query)
                      |
-           query normalization + filters
+            query normalization + filters
                      |
-                     v
-          RetrievalHealthStore snapshot
-                     |
-          +----------+-----------+
-          |                      |
-          v                      v
-  LexicalRetriever        SemanticRetriever
-  (FTS, always on)        (VectorIndex, optional)
-          |                      |
-          +----------+-----------+
+        +------------+-------------+
+        |                          |
+        v                          v
+DataStore.searchLexicalChunks   VectorSemanticCandidateProvider
+ (FTS, always on)                (optional semantic path)
+                                   ANN -> exact fallback
+                                   -> exact bounded rerank baseline
+        |                          |
+        +------------+-------------+
                      v
               candidate union
                      v
-        exact bounded rerank baseline
-     (lexical + semantic + freshness + access)
-                     |
+      bounded rerank + source hydration
                      v
-      snippet/source hydration + context pack build
-                     |
-          +----------+-----------+
-          |                      |
-          v                      v
-     search results        prompt/context inputs
+  RBAC/visibility filters + snippets + context inputs
 ```
 
 ### Retrieval rules
@@ -235,14 +242,14 @@ SearchService / ContextBuilder / future search UI
 - Semantic search is skipped when health is degraded, embeddings are stale, or no active embedding version exists.
 - ANN only supplies candidates behind `VectorIndex`; final ranking remains exact bounded rerank.
 - Result hydration always resolves back to the source artifact/conversation before rendering snippets or building prompts.
-- `ContextBuilder` and any future search UI must call `RetrievalService`; they should not each invent their own ranking path.
+- `ContextBuilder` and any future search UI must call `SearchService.retrieve(...)`; they should not each invent their own ranking path.
 
 ## Discovery model for skills and agent docs
 
 Artifact discovery must be allowlisted and explicit:
 
-- roots come from `registered_roots`
-- matching rules live in `ArtifactDiscoveryRules.swift`
+- roots come from `SettingsManager.artifactDiscoveryRegisteredRoots`
+- matching rules live in `ArtifactDiscoveryRules` / `ArtifactDiscoveryService` (currently in `UsageAggregator.swift`)
 - initial known-pattern categories:
   - repo docs roots
   - `AGENTS.md` / `CLAUDE.md`-style agent docs
@@ -254,37 +261,28 @@ Do not add general markdown crawling over arbitrary directories. If a root or pa
 ## Team/shared artifact lifecycle
 
 ```text
-Local edit/create
+Local shared edit/create
       |
       v
-SourceArtifactStore.write(baseVersionID)
+DataStore.upsertSourceArtifact(...)
       |
-      +--> ProjectionJobStore.enqueue(reproject)
+      +--> enqueue projection job (reproject/purge)
       |
-      +--> AuditEventStore.append(local change)
-      |
-      v
-CollaborationOutbox.enqueue(sync op)
+      +--> append local audit event
       |
       v
-SharedArtifactSyncService
+CloudSyncService.syncSharedArtifacts()
       |
-      +--> Firestore teams/{teamId}/artifacts/{artifactId}
-      +--> Firestore .../versions/{versionId}
-      +--> Firestore .../permissions/{principalId}
-      +--> Firestore .../audit/{eventId}
-      +--> Firestore .../presence/{deviceId}
+      +--> Firestore workspaces/{workspaceID}/teams/{teamID}/artifacts/{artifactID}
+      +--> local permission snapshots + audit events
       |
       v
-Remote change listener
-      |
-      v
-ConflictResolver(baseVersion check)
-   | match                     | mismatch
-   v                           v
-apply local replica      store conflict + degraded UX
-   |                           |
-   +-------------> ProjectionJobStore.enqueue(...)
+Remote pull + merge decision(local/synced/remote hash)
+   | no conflict                     | stale write / mismatch
+   v                                 v
+upsert local replica            sync_status=conflicted + notice
+   |                                 |
+   +-------------> enqueue projection job for local search parity
 ```
 
 ### Firestore role
@@ -328,7 +326,7 @@ Firestore is not for:
 
 - use optimistic concurrency in v1, not CRDTs
 - every save carries `baseVersionID`
-- remote head mismatch creates an `artifact_conflicts` row instead of silent overwrite
+- remote head mismatch marks local sync state as `conflicted`, emits an audit event, and surfaces collaboration notice instead of silent overwrite
 - presence is ephemeral; versions and permissions are durable
 
 ### Audit events
@@ -352,7 +350,39 @@ Materialize only stable, expensive rollups:
 - team/shared artifact counts
 - rebuild progress
 
-Keep exploratory analysis on demand through `RetrievalService` and source hydration. Do not precompute speculative insight graphs into the database.
+Keep exploratory analysis on demand through `SearchService.retrieve(...)` and source hydration. Do not precompute speculative insight graphs into the database.
+
+## Operator runbook: health states and rebuild triggers
+
+### Degraded-mode states surfaced to search consumers
+
+| State | Trigger (current implementation) | Expected behavior |
+| --- | --- | --- |
+| `Index stale` | projection health is non-healthy, queue depth > 0, or failed projection jobs exist | Return best-effort local results and surface stale-index messaging |
+| `Semantic unavailable` | semantic health non-healthy or no indexed vectors | Continue lexical retrieval; semantic scoring is reduced/disabled |
+| `Rebuild in progress` | pending `.rebuild` or `.reembed` projection jobs | Search remains available while projection/re-embedding catches up |
+| `Cloud/shared unavailable` | collaboration health failed/degraded or cloud sync unavailable | Local search continues; shared/team features degrade explicitly |
+
+### Rebuild / re-embed triggers
+
+- **Initial backfill:** `ProjectionPipelineService` enqueues a rebuild when derived search rows are empty but source rows already exist.
+- **Conversation/source updates:** `ConversationIndexer`, `ArtifactDiscoveryService`, and `CloudSyncService` enqueue `project`/`reproject` jobs.
+- **Deletes or access revocation:** enqueue `purge` jobs for affected source artifacts.
+- **Embedding lineage changes:** enqueue `reembed` jobs (scoped or full) so lexical remains available during semantic refresh.
+- **Manual/programmatic maintenance:** callers can enqueue rebuild/re-embed directly through `ProjectionPipelineService`.
+
+### Test and eval entrypoints (current scripts)
+
+```bash
+# Swift package/unit checks
+scripts/test-burnbar-swift.sh
+
+# Retrieval + authoring replay/golden evals
+scripts/test-burnbar-retrieval-evals.sh
+
+# Full release smoke (Swift + retrieval evals + extension + daemon health)
+scripts/test-burnbar-release-smoke.sh
+```
 
 ## Test strategy
 
@@ -447,7 +477,7 @@ Suggested initial budgets:
 
 ### Phase 6: consumer cutover
 
-- move `SearchService` internals to `RetrievalService`
+- keep `SearchService` as the stable seam while fully serving from the derived hybrid retrieval path
 - move `ContextBuilder` to retrieval-backed context packs
 - add stable rollups for health/staleness/rebuild status
 
@@ -465,7 +495,7 @@ Do not ship two user-visible search paths. During migration:
 1. keep `SearchService` as the single entrypoint
 2. backfill new derived tables behind the scenes
 3. dual-read only long enough to verify parity
-4. cut over to `RetrievalService`
+4. cut over fully to the derived search path in `SearchService`
 5. remove direct `conversations_fts` dependence once parity and rebuild safety are proven
 
 ## Immediate implementation order

@@ -6,6 +6,7 @@ struct ChatPanel: View {
     @Bindable var controller: ChatSessionController
     var dataStore: DataStore
     var settingsManager: SettingsManager
+    var sharedFeaturesAvailable: Bool
     /// Overlay geometry for clamping drag offset (same space as `GeometryReader` wrapping the chat stack).
     var containerSize: CGSize
     var edgePadding: CGFloat = 20
@@ -125,13 +126,21 @@ struct ChatPanel: View {
                 )
         }
         .onAppear {
-            brief = InsightBriefSnapshot.build(from: dataStore)
+            brief = controller.buildInsightBriefSnapshot()
             controller.loadPersistedMessages()
+            controller.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
         }
         .onChange(of: dataStore.lastRefresh) { _, _ in
             Task { @MainActor in
-                brief = InsightBriefSnapshot.build(from: dataStore)
+                brief = controller.buildInsightBriefSnapshot()
+                controller.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
             }
+        }
+        .onChange(of: sharedFeaturesAvailable) { _, available in
+            controller.refreshRetrievalHealth(sharedFeaturesAvailable: available)
+        }
+        .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in
+            controller.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
         }
         .onChange(of: containerSize) { _, new in
             controller.reclampPanelOffset(container: new, padding: edgePadding)
@@ -225,6 +234,32 @@ struct ChatPanel: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                            if !controller.retrievalHealthSnapshot.degradedModes.isEmpty {
+                                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                                    ForEach(controller.retrievalHealthSnapshot.degradedModes) { state in
+                                        HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+                                            Image(systemName: "exclamationmark.triangle.fill")
+                                                .font(.system(size: 10))
+                                                .foregroundStyle(DesignSystem.Colors.warning)
+                                                .padding(.top, 2)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(state.title)
+                                                    .font(DesignSystem.Typography.tiny)
+                                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                                Text(state.message)
+                                                    .font(DesignSystem.Typography.tiny)
+                                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                            }
+                                        }
+                                        .padding(.horizontal, DesignSystem.Spacing.sm)
+                                        .padding(.vertical, DesignSystem.Spacing.xs)
+                                        .background(DesignSystem.Colors.warning.opacity(0.08))
+                                        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                                    }
+                                }
+                            }
+
                             if !settingsManager.conversationIndexingEnabled {
                                 Text("Conversation indexing is off. Enable it in Settings to unlock search and richer context.")
                                     .font(DesignSystem.Typography.caption)
@@ -317,6 +352,15 @@ struct ChatPanel: View {
 
     private var inlineAgentContextRibbon: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            if let statusLine = brief.rollupStatusLine {
+                Text(statusLine)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             if let w = brief.whereLeftOff {
                 Button {
                     controller.inputText = "Tell me more about my work on \(brief.whereLeftOffProject ?? "this project")"

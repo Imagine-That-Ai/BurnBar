@@ -45,12 +45,14 @@ enum EmbeddingDistanceMetric: String, Codable, CaseIterable, Sendable {
 }
 
 enum RetrievalSubsystem: String, Codable, CaseIterable, Sendable {
+    case parserImport = "parser_import"
     case lexical
     case semantic
     case projection
     case discovery
     case rebuild
     case collaboration
+    case insightRollups = "insight_rollups"
 }
 
 enum RetrievalHealthStatus: String, Codable, CaseIterable, Sendable {
@@ -430,6 +432,207 @@ struct SourceArtifactRecord: Identifiable, Equatable, Sendable {
         self.deletedAt = deletedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+}
+
+enum SharedArtifactSyncStatus: String, Codable, CaseIterable, Sendable {
+    case synced
+    case pendingUpload = "pending_upload"
+    case pendingPull = "pending_pull"
+    case conflicted
+    case failed
+}
+
+struct SharedArtifactSyncStateRecord: Identifiable, Equatable, Sendable {
+    let sourceArtifactID: String
+    let remoteArtifactID: String
+    let workspaceID: String
+    let teamID: String
+    let ownerUserID: String?
+    let revisionID: String
+    let remoteContentHash: String?
+    let localContentHashAtSync: String?
+    let remoteUpdatedAt: Date?
+    let lastPulledAt: Date?
+    let lastSyncedAt: Date?
+    let syncStatus: SharedArtifactSyncStatus
+    let lastErrorCode: String?
+    let lastErrorMessage: String?
+    let createdAt: Date
+    let updatedAt: Date
+
+    var id: String { sourceArtifactID }
+
+    init(
+        sourceArtifactID: String,
+        remoteArtifactID: String,
+        workspaceID: String,
+        teamID: String,
+        ownerUserID: String? = nil,
+        revisionID: String,
+        remoteContentHash: String? = nil,
+        localContentHashAtSync: String? = nil,
+        remoteUpdatedAt: Date? = nil,
+        lastPulledAt: Date? = nil,
+        lastSyncedAt: Date? = nil,
+        syncStatus: SharedArtifactSyncStatus = .pendingPull,
+        lastErrorCode: String? = nil,
+        lastErrorMessage: String? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.sourceArtifactID = sourceArtifactID
+        self.remoteArtifactID = remoteArtifactID
+        self.workspaceID = workspaceID
+        self.teamID = teamID
+        self.ownerUserID = ownerUserID
+        self.revisionID = revisionID
+        self.remoteContentHash = remoteContentHash
+        self.localContentHashAtSync = localContentHashAtSync
+        self.remoteUpdatedAt = remoteUpdatedAt
+        self.lastPulledAt = lastPulledAt
+        self.lastSyncedAt = lastSyncedAt
+        self.syncStatus = syncStatus
+        self.lastErrorCode = lastErrorCode
+        self.lastErrorMessage = lastErrorMessage
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+enum SharedArtifactVisibility: String, Codable, CaseIterable, Sendable {
+    case personal
+    case shared
+    case workspace
+    case team
+}
+
+enum SharedArtifactRole: String, Codable, CaseIterable, Sendable {
+    case owner
+    case editor
+    case viewer
+}
+
+enum SharedArtifactPrincipalType: String, Codable, CaseIterable, Sendable {
+    case user
+    case workspace
+    case team
+}
+
+enum SharedArtifactPermissionWriteDisposition: String, Codable, CaseIterable, Sendable {
+    case inserted
+    case updated
+    case unchanged
+}
+
+struct SharedArtifactPermissionRecord: Identifiable, Equatable, Sendable {
+    let sourceArtifactID: String
+    let workspaceID: String
+    let teamID: String
+    let principalType: SharedArtifactPrincipalType
+    let principalID: String
+    let role: SharedArtifactRole
+    let visibility: SharedArtifactVisibility
+    let canRead: Bool
+    let canWrite: Bool
+    let canShare: Bool
+    let createdAt: Date
+    let updatedAt: Date
+
+    var id: String {
+        "\(sourceArtifactID)|\(principalType.rawValue)|\(principalID)"
+    }
+
+    init(
+        sourceArtifactID: String,
+        workspaceID: String,
+        teamID: String,
+        principalType: SharedArtifactPrincipalType,
+        principalID: String,
+        role: SharedArtifactRole,
+        visibility: SharedArtifactVisibility,
+        canRead: Bool = true,
+        canWrite: Bool = false,
+        canShare: Bool = false,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.sourceArtifactID = sourceArtifactID
+        self.workspaceID = workspaceID
+        self.teamID = teamID
+        self.principalType = principalType
+        self.principalID = principalID
+        self.role = role
+        self.visibility = visibility
+        self.canRead = canRead
+        self.canWrite = canWrite
+        self.canShare = canShare
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+struct SharedArtifactAccessContext: Equatable, Sendable {
+    let userID: String
+    let workspaceID: String
+    let teamID: String
+
+    static func defaultScope(for userID: String) -> SharedArtifactAccessContext {
+        SharedArtifactAccessContext(
+            userID: userID,
+            workspaceID: "workspace-\(userID)",
+            teamID: "team-default"
+        )
+    }
+}
+
+enum SharedArtifactAuditAction: String, Codable, CaseIterable, Sendable {
+    case create
+    case update
+    case share
+    case permissionChange = "permission_change"
+    case rebuild
+    case conflictDetected = "conflict_detected"
+    case conflictResolved = "conflict_resolved"
+}
+
+struct SharedArtifactAuditEventRecord: Identifiable, Equatable, Sendable {
+    let id: String
+    let sourceArtifactID: String?
+    let remoteArtifactID: String?
+    let workspaceID: String
+    let teamID: String
+    let actorUserID: String?
+    let actorRole: SharedArtifactRole?
+    let action: SharedArtifactAuditAction
+    let detailsJSON: String?
+    let occurredAt: Date
+    let createdAt: Date
+
+    init(
+        id: String = UUID().uuidString,
+        sourceArtifactID: String? = nil,
+        remoteArtifactID: String? = nil,
+        workspaceID: String,
+        teamID: String,
+        actorUserID: String? = nil,
+        actorRole: SharedArtifactRole? = nil,
+        action: SharedArtifactAuditAction,
+        detailsJSON: String? = nil,
+        occurredAt: Date = Date(),
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.sourceArtifactID = sourceArtifactID
+        self.remoteArtifactID = remoteArtifactID
+        self.workspaceID = workspaceID
+        self.teamID = teamID
+        self.actorUserID = actorUserID
+        self.actorRole = actorRole
+        self.action = action
+        self.detailsJSON = detailsJSON
+        self.occurredAt = occurredAt
+        self.createdAt = createdAt
     }
 }
 
@@ -872,16 +1075,14 @@ final class DataStore {
             try db.execute(
                 sql: """
                 CREATE TRIGGER conversations_ad AFTER DELETE ON conversations BEGIN
-                    INSERT INTO conversations_fts(conversations_fts, rowid, inferredTaskTitle, fullText)
-                    VALUES('delete', old.rowid, old.inferredTaskTitle, old.fullText);
+                    DELETE FROM conversations_fts WHERE rowid = old.rowid;
                 END
                 """
             )
             try db.execute(
                 sql: """
                 CREATE TRIGGER conversations_au AFTER UPDATE ON conversations BEGIN
-                    INSERT INTO conversations_fts(conversations_fts, rowid, inferredTaskTitle, fullText)
-                    VALUES('delete', old.rowid, old.inferredTaskTitle, old.fullText);
+                    DELETE FROM conversations_fts WHERE rowid = old.rowid;
                     INSERT INTO conversations_fts(rowid, inferredTaskTitle, fullText)
                     VALUES (new.rowid, new.inferredTaskTitle, new.fullText);
                 END
@@ -1204,6 +1405,135 @@ final class DataStore {
             )
         }
 
+        migrator.registerMigration("v16_shared_artifact_sync_state") { db in
+            try db.create(table: "shared_artifact_sync_state") { t in
+                t.column("sourceArtifactID", .text)
+                    .primaryKey()
+                    .references("source_artifacts", column: "id", onDelete: .cascade)
+                t.column("remoteArtifactID", .text).notNull()
+                t.column("workspaceID", .text).notNull()
+                t.column("teamID", .text).notNull()
+                t.column("ownerUserID", .text)
+                t.column("revisionID", .text).notNull()
+                t.column("remoteContentHash", .text)
+                t.column("localContentHashAtSync", .text)
+                t.column("remoteUpdatedAt", .datetime)
+                t.column("lastPulledAt", .datetime)
+                t.column("lastSyncedAt", .datetime)
+                t.column("syncStatus", .text).notNull().defaults(to: SharedArtifactSyncStatus.pendingPull.rawValue)
+                t.column("lastErrorCode", .text)
+                t.column("lastErrorMessage", .text)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(
+                index: "shared_artifact_sync_remote_lookup_idx",
+                on: "shared_artifact_sync_state",
+                columns: ["remoteArtifactID"],
+                unique: true
+            )
+            try db.create(
+                index: "shared_artifact_sync_scope_idx",
+                on: "shared_artifact_sync_state",
+                columns: ["workspaceID", "teamID"]
+            )
+            try db.create(
+                index: "shared_artifact_sync_status_idx",
+                on: "shared_artifact_sync_state",
+                columns: ["syncStatus"]
+            )
+        }
+
+        migrator.registerMigration("v17_shared_artifact_permissions_and_audit") { db in
+            try db.create(table: "artifact_permissions") { t in
+                t.column("sourceArtifactID", .text)
+                    .notNull()
+                    .references("source_artifacts", column: "id", onDelete: .cascade)
+                t.column("workspaceID", .text).notNull()
+                t.column("teamID", .text).notNull()
+                t.column("principalType", .text).notNull()
+                t.column("principalID", .text).notNull()
+                t.column("role", .text).notNull()
+                t.column("visibility", .text).notNull()
+                t.column("canRead", .boolean).notNull().defaults(to: true)
+                t.column("canWrite", .boolean).notNull().defaults(to: false)
+                t.column("canShare", .boolean).notNull().defaults(to: false)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+                t.primaryKey(["sourceArtifactID", "principalType", "principalID"])
+            }
+            try db.create(
+                index: "artifact_permissions_principal_lookup_idx",
+                on: "artifact_permissions",
+                columns: ["workspaceID", "teamID", "principalType", "principalID", "canRead"]
+            )
+            try db.create(
+                index: "artifact_permissions_source_lookup_idx",
+                on: "artifact_permissions",
+                columns: ["sourceArtifactID", "canRead", "visibility"]
+            )
+
+            try db.create(table: "audit_events") { t in
+                t.column("id", .text).primaryKey()
+                t.column("sourceArtifactID", .text)
+                    .references("source_artifacts", column: "id", onDelete: .setNull)
+                t.column("remoteArtifactID", .text)
+                t.column("workspaceID", .text).notNull()
+                t.column("teamID", .text).notNull()
+                t.column("actorUserID", .text)
+                t.column("actorRole", .text)
+                t.column("action", .text).notNull()
+                t.column("detailsJSON", .text)
+                t.column("occurredAt", .datetime).notNull()
+                t.column("createdAt", .datetime).notNull()
+            }
+            try db.create(
+                index: "audit_events_source_time_idx",
+                on: "audit_events",
+                columns: ["sourceArtifactID", "occurredAt"]
+            )
+            try db.create(
+                index: "audit_events_scope_time_idx",
+                on: "audit_events",
+                columns: ["workspaceID", "teamID", "occurredAt"]
+            )
+            try db.create(
+                index: "audit_events_action_time_idx",
+                on: "audit_events",
+                columns: ["action", "occurredAt"]
+            )
+        }
+
+        /// Tracks the most recent summary attempt (success or failure) to throttle retries.
+        migrator.registerMigration("v18_summary_attempt_tracking") { db in
+            try db.alter(table: "conversations") { t in
+                t.add(column: "summaryAttemptedAt", .datetime)
+            }
+        }
+
+        /// Fixes FTS update/delete triggers to use direct rowid deletes for standalone FTS.
+        migrator.registerMigration("v19_conversation_fts_trigger_fix") { db in
+            try db.execute(sql: "DROP TRIGGER IF EXISTS conversations_ad")
+            try db.execute(sql: "DROP TRIGGER IF EXISTS conversations_au")
+
+            try db.execute(
+                sql: """
+                CREATE TRIGGER conversations_ad AFTER DELETE ON conversations BEGIN
+                    DELETE FROM conversations_fts WHERE rowid = old.rowid;
+                END
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE TRIGGER conversations_au AFTER UPDATE ON conversations BEGIN
+                    DELETE FROM conversations_fts WHERE rowid = old.rowid;
+                    INSERT INTO conversations_fts(rowid, inferredTaskTitle, fullText)
+                    VALUES (new.rowid, new.inferredTaskTitle, new.fullText);
+                END
+                """
+            )
+        }
+
         return migrator
     }
     
@@ -1358,6 +1688,18 @@ final class DataStore {
 
     private static func parseDateValue(_ value: Any?) -> Date? {
         if let date = value as? Date { return date }
+        if let timeInterval = value as? TimeInterval {
+            return Date(timeIntervalSince1970: timeInterval)
+        }
+        if let intValue = value as? Int {
+            return Date(timeIntervalSince1970: TimeInterval(intValue))
+        }
+        if let int64Value = value as? Int64 {
+            return Date(timeIntervalSince1970: TimeInterval(int64Value))
+        }
+        if let number = value as? NSNumber {
+            return Date(timeIntervalSince1970: number.doubleValue)
+        }
         if let string = value as? String {
             if let parsed = sqliteDateFormatterStatic.date(from: string) { return parsed }
             return ISO8601DateFormatter().date(from: string)
@@ -1368,6 +1710,7 @@ final class DataStore {
     private static let sqliteDateFormatterStatic: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
         return formatter
     }()
@@ -1515,6 +1858,14 @@ final class DataStore {
             if summaryUpdatedAtOut == nil {
                 summaryUpdatedAtOut = try Date.fetchOne(db, sql: "SELECT summaryUpdatedAt FROM conversations WHERE id = ?", arguments: [record.id])
             }
+            var summaryAttemptedAtOut: Date? = try Date.fetchOne(
+                db,
+                sql: "SELECT summaryAttemptedAt FROM conversations WHERE id = ?",
+                arguments: [record.id]
+            )
+            if summaryUpdatedAtOut != nil, summaryAttemptedAtOut == nil {
+                summaryAttemptedAtOut = summaryUpdatedAtOut
+            }
             var summaryProviderOut = record.summaryProvider
             if summaryProviderOut == nil {
                 summaryProviderOut = try String.fetchOne(db, sql: "SELECT summaryProvider FROM conversations WHERE id = ?", arguments: [record.id])
@@ -1547,9 +1898,9 @@ final class DataStore {
                     keyFiles, keyCommands, keyTools,
                     inferredTaskTitle, lastAssistantMessage, fullText,
                     indexedAt, fileModifiedAt, summary, conversationSyncedAt,
-                    sourceType, logSyncedAt, summaryTitle, summaryUpdatedAt,
+                    sourceType, logSyncedAt, summaryTitle, summaryUpdatedAt, summaryAttemptedAt,
                     summaryProvider, summaryModel
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     record.id,
@@ -1575,6 +1926,7 @@ final class DataStore {
                     logSyncedAt,
                     summaryTitleOut,
                     summaryUpdatedAtOut,
+                    summaryAttemptedAtOut,
                     summaryProviderOut,
                     summaryModelOut
                 ]
@@ -1622,11 +1974,11 @@ final class DataStore {
             try db.execute(
                 sql: """
                 UPDATE conversations
-                SET summary = ?, summaryTitle = ?, summaryUpdatedAt = ?, summaryProvider = ?, summaryModel = ?,
+                SET summary = ?, summaryTitle = ?, summaryUpdatedAt = ?, summaryAttemptedAt = ?, summaryProvider = ?, summaryModel = ?,
                     indexedAt = ?, conversationSyncedAt = NULL, logSyncedAt = NULL
                 WHERE id = ?
                 """,
-                arguments: [summary, title, updatedAt, provider, model, updatedAt, id]
+                arguments: [summary, title, updatedAt, updatedAt, provider, model, updatedAt, id]
             )
 
             try db.execute(
@@ -1648,10 +2000,30 @@ final class DataStore {
         try enqueueConversationProjectionJob(conversationID: id, jobType: .reproject)
     }
 
+    /// Records a failed summary attempt to throttle repeated retries for unchanged rows.
+    func markConversationSummaryAttempt(id: String, attemptedAt: Date = Date()) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE conversations
+                SET summaryAttemptedAt = ?
+                WHERE id = ?
+                """,
+                arguments: [attemptedAt, id]
+            )
+        }
+    }
+
     /// Candidate conversations for auto-summarization.
     /// - Missing summary/title metadata OR stale summary relative to latest indexed content.
-    func fetchConversationsNeedingSummary(limit: Int = 25) throws -> [ConversationRecord] {
-        try dbQueue.read { db in
+    /// - Failed attempts are throttled by `retryCooldown` unless content changed since attempt.
+    func fetchConversationsNeedingSummary(
+        limit: Int = 25,
+        now: Date = Date(),
+        retryCooldown: TimeInterval = 60 * 60
+    ) throws -> [ConversationRecord] {
+        let cutoff = now.addingTimeInterval(-max(retryCooldown, 0))
+        return try dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -1663,10 +2035,15 @@ final class DataStore {
                     OR summaryUpdatedAt IS NULL
                     OR summaryUpdatedAt < indexedAt
                 )
+                AND (
+                    summaryAttemptedAt IS NULL
+                    OR summaryAttemptedAt <= ?
+                    OR indexedAt > summaryAttemptedAt
+                )
                 ORDER BY COALESCE(endTime, startTime, indexedAt) DESC
                 LIMIT ?
                 """,
-                arguments: [limit]
+                arguments: [cutoff, limit]
             )
             return rows.compactMap { Self.conversation(from: $0) }
         }
@@ -1945,6 +2322,7 @@ final class DataStore {
         sourceKinds: [SearchSourceKind]? = nil,
         dateRange: ClosedRange<Date>? = nil,
         visibility: SearchVisibilityScope = .all,
+        sharedArtifactAccessContext: SharedArtifactAccessContext? = nil,
         sourceIDs: [String]? = nil,
         limit: Int = 120
     ) throws -> [SearchChunkLexicalMatch] {
@@ -1960,6 +2338,7 @@ final class DataStore {
             sourceKinds: sourceKinds,
             dateRange: dateRange,
             visibility: visibility,
+            sharedArtifactAccessContext: sharedArtifactAccessContext,
             sourceIDs: sourceIDs,
             limit: limit
         )
@@ -1988,6 +2367,96 @@ final class DataStore {
     @discardableResult
     func markSourceArtifactDeleted(id: String, deletedAt: Date = Date()) throws -> Bool {
         try localSearchStore.markSourceArtifactDeleted(id: id, deletedAt: deletedAt)
+    }
+
+    func upsertSharedArtifactSyncState(_ state: SharedArtifactSyncStateRecord) throws {
+        try localSearchStore.upsertSharedArtifactSyncState(state)
+    }
+
+    func fetchSharedArtifactSyncState(sourceArtifactID: String) throws -> SharedArtifactSyncStateRecord? {
+        try localSearchStore.fetchSharedArtifactSyncState(sourceArtifactID: sourceArtifactID)
+    }
+
+    func fetchSharedArtifactSyncState(remoteArtifactID: String) throws -> SharedArtifactSyncStateRecord? {
+        try localSearchStore.fetchSharedArtifactSyncState(remoteArtifactID: remoteArtifactID)
+    }
+
+    func fetchSharedArtifactSyncStates(
+        workspaceID: String? = nil,
+        teamID: String? = nil,
+        statuses: [SharedArtifactSyncStatus]? = nil,
+        limit: Int = 500
+    ) throws -> [SharedArtifactSyncStateRecord] {
+        try localSearchStore.fetchSharedArtifactSyncStates(
+            workspaceID: workspaceID,
+            teamID: teamID,
+            statuses: statuses,
+            limit: limit
+        )
+    }
+
+    func upsertSharedArtifactPermission(_ permission: SharedArtifactPermissionRecord) throws -> SharedArtifactPermissionWriteDisposition {
+        try localSearchStore.upsertSharedArtifactPermission(permission)
+    }
+
+    func replaceSharedArtifactPermissions(
+        sourceArtifactID: String,
+        permissions: [SharedArtifactPermissionRecord]
+    ) throws {
+        try localSearchStore.replaceSharedArtifactPermissions(
+            sourceArtifactID: sourceArtifactID,
+            permissions: permissions
+        )
+    }
+
+    func fetchSharedArtifactPermissions(
+        sourceArtifactID: String? = nil,
+        workspaceID: String? = nil,
+        teamID: String? = nil,
+        principalType: SharedArtifactPrincipalType? = nil,
+        principalID: String? = nil,
+        limit: Int = 500
+    ) throws -> [SharedArtifactPermissionRecord] {
+        try localSearchStore.fetchSharedArtifactPermissions(
+            sourceArtifactID: sourceArtifactID,
+            workspaceID: workspaceID,
+            teamID: teamID,
+            principalType: principalType,
+            principalID: principalID,
+            limit: limit
+        )
+    }
+
+    func fetchReadableSharedArtifactSourceIDs(
+        accessContext: SharedArtifactAccessContext,
+        limit: Int = 2_000
+    ) throws -> Set<String> {
+        Set(
+            try localSearchStore.fetchReadableSharedArtifactSourceIDs(
+                accessContext: accessContext,
+                limit: limit
+            )
+        )
+    }
+
+    func appendSharedArtifactAuditEvent(_ event: SharedArtifactAuditEventRecord) throws {
+        try localSearchStore.appendSharedArtifactAuditEvent(event)
+    }
+
+    func fetchSharedArtifactAuditEvents(
+        sourceArtifactID: String? = nil,
+        workspaceID: String? = nil,
+        teamID: String? = nil,
+        actions: [SharedArtifactAuditAction]? = nil,
+        limit: Int = 500
+    ) throws -> [SharedArtifactAuditEventRecord] {
+        try localSearchStore.fetchSharedArtifactAuditEvents(
+            sourceArtifactID: sourceArtifactID,
+            workspaceID: workspaceID,
+            teamID: teamID,
+            actions: actions,
+            limit: limit
+        )
     }
 
     func enqueueProjectionJob(_ job: ProjectionJobRecord) throws {
@@ -2525,6 +2994,7 @@ private struct LocalSearchStore {
         sourceKinds: [SearchSourceKind]?,
         dateRange: ClosedRange<Date>?,
         visibility: SearchVisibilityScope,
+        sharedArtifactAccessContext: SharedArtifactAccessContext?,
         sourceIDs: [String]?,
         limit: Int
     ) throws -> [SearchChunkLexicalMatch] {
@@ -2573,6 +3043,53 @@ private struct LocalSearchStore {
         case .sharedOnly:
             clauses.append("d.sourceKind = ?")
             args.append(SearchSourceKind.sharedArtifact.rawValue)
+        }
+
+        if visibility != .personalOnly {
+            if let access = sharedArtifactAccessContext {
+                clauses.append(
+                    """
+                    (
+                        d.sourceKind != ?
+                        OR EXISTS (
+                            SELECT 1
+                            FROM artifact_permissions AS ap
+                            WHERE ap.sourceArtifactID = d.sourceID
+                              AND ap.canRead = 1
+                              AND ap.workspaceID = ?
+                              AND (
+                                  (ap.principalType = ? AND ap.principalID = ?)
+                                  OR (ap.principalType = ? AND ap.principalID = ? AND ap.teamID = ?)
+                                  OR (ap.principalType = ? AND ap.principalID = ?)
+                              )
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM shared_artifact_sync_state AS sas
+                            WHERE sas.sourceArtifactID = d.sourceID
+                              AND sas.workspaceID = ?
+                              AND sas.teamID = ?
+                              AND sas.ownerUserID = ?
+                        )
+                    )
+                    """
+                )
+                args.append(SearchSourceKind.sharedArtifact.rawValue)
+                args.append(access.workspaceID)
+                args.append(SharedArtifactPrincipalType.user.rawValue)
+                args.append(access.userID)
+                args.append(SharedArtifactPrincipalType.team.rawValue)
+                args.append(access.teamID)
+                args.append(access.teamID)
+                args.append(SharedArtifactPrincipalType.workspace.rawValue)
+                args.append(access.workspaceID)
+                args.append(access.workspaceID)
+                args.append(access.teamID)
+                args.append(access.userID)
+            } else {
+                clauses.append("d.sourceKind != ?")
+                args.append(SearchSourceKind.sharedArtifact.rawValue)
+            }
         }
 
         let whereSQL = clauses.joined(separator: " AND ")
@@ -2786,6 +3303,406 @@ private struct LocalSearchStore {
                 arguments: [SourceArtifactStatus.deleted.rawValue, deletedAt, deletedAt, id]
             )
             return true
+        }
+    }
+
+    func upsertSharedArtifactSyncState(_ state: SharedArtifactSyncStateRecord) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO shared_artifact_sync_state (
+                    sourceArtifactID, remoteArtifactID, workspaceID, teamID, ownerUserID,
+                    revisionID, remoteContentHash, localContentHashAtSync, remoteUpdatedAt,
+                    lastPulledAt, lastSyncedAt, syncStatus, lastErrorCode, lastErrorMessage,
+                    createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(sourceArtifactID) DO UPDATE SET
+                    remoteArtifactID = excluded.remoteArtifactID,
+                    workspaceID = excluded.workspaceID,
+                    teamID = excluded.teamID,
+                    ownerUserID = excluded.ownerUserID,
+                    revisionID = excluded.revisionID,
+                    remoteContentHash = excluded.remoteContentHash,
+                    localContentHashAtSync = excluded.localContentHashAtSync,
+                    remoteUpdatedAt = excluded.remoteUpdatedAt,
+                    lastPulledAt = excluded.lastPulledAt,
+                    lastSyncedAt = excluded.lastSyncedAt,
+                    syncStatus = excluded.syncStatus,
+                    lastErrorCode = excluded.lastErrorCode,
+                    lastErrorMessage = excluded.lastErrorMessage,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    state.sourceArtifactID,
+                    state.remoteArtifactID,
+                    state.workspaceID,
+                    state.teamID,
+                    state.ownerUserID,
+                    state.revisionID,
+                    state.remoteContentHash,
+                    state.localContentHashAtSync,
+                    state.remoteUpdatedAt,
+                    state.lastPulledAt,
+                    state.lastSyncedAt,
+                    state.syncStatus.rawValue,
+                    state.lastErrorCode,
+                    state.lastErrorMessage,
+                    state.createdAt,
+                    state.updatedAt
+                ]
+            )
+        }
+    }
+
+    func fetchSharedArtifactSyncState(sourceArtifactID: String) throws -> SharedArtifactSyncStateRecord? {
+        try dbQueue.read { db in
+            guard
+                let row = try Row.fetchOne(
+                    db,
+                    sql: "SELECT * FROM shared_artifact_sync_state WHERE sourceArtifactID = ?",
+                    arguments: [sourceArtifactID]
+                )
+            else {
+                return nil
+            }
+            return Self.sharedArtifactSyncState(from: row)
+        }
+    }
+
+    func fetchSharedArtifactSyncState(remoteArtifactID: String) throws -> SharedArtifactSyncStateRecord? {
+        try dbQueue.read { db in
+            guard
+                let row = try Row.fetchOne(
+                    db,
+                    sql: "SELECT * FROM shared_artifact_sync_state WHERE remoteArtifactID = ?",
+                    arguments: [remoteArtifactID]
+                )
+            else {
+                return nil
+            }
+            return Self.sharedArtifactSyncState(from: row)
+        }
+    }
+
+    func fetchSharedArtifactSyncStates(
+        workspaceID: String?,
+        teamID: String?,
+        statuses: [SharedArtifactSyncStatus]?,
+        limit: Int
+    ) throws -> [SharedArtifactSyncStateRecord] {
+        if let statuses, statuses.isEmpty {
+            return []
+        }
+
+        let normalizedWorkspaceID = workspaceID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedTeamID = teamID?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var clauses: [String] = []
+        var args: [any DatabaseValueConvertible] = []
+
+        if let normalizedWorkspaceID, normalizedWorkspaceID.isEmpty == false {
+            clauses.append("workspaceID = ?")
+            args.append(normalizedWorkspaceID)
+        }
+
+        if let normalizedTeamID, normalizedTeamID.isEmpty == false {
+            clauses.append("teamID = ?")
+            args.append(normalizedTeamID)
+        }
+
+        if let statuses, statuses.isEmpty == false {
+            clauses.append("syncStatus IN (\(Self.sqlPlaceholders(count: statuses.count)))")
+            args.append(contentsOf: statuses.map(\.rawValue))
+        }
+
+        args.append(max(1, limit))
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM shared_artifact_sync_state
+                \(whereSQL)
+                ORDER BY updatedAt DESC, sourceArtifactID ASC
+                LIMIT ?
+                """,
+                arguments: StatementArguments(args)
+            )
+            return rows.compactMap(Self.sharedArtifactSyncState(from:))
+        }
+    }
+
+    func upsertSharedArtifactPermission(_ permission: SharedArtifactPermissionRecord) throws -> SharedArtifactPermissionWriteDisposition {
+        try dbQueue.write { db in
+            let existingRow = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT * FROM artifact_permissions
+                WHERE sourceArtifactID = ? AND principalType = ? AND principalID = ?
+                """,
+                arguments: [permission.sourceArtifactID, permission.principalType.rawValue, permission.principalID]
+            )
+            let existing = existingRow.flatMap(Self.sharedArtifactPermission(from:))
+            if let existing, Self.permissionSemanticsEqual(existing, permission) {
+                return .unchanged
+            }
+
+            let createdAt = existing?.createdAt ?? permission.createdAt
+            try db.execute(
+                sql: """
+                INSERT INTO artifact_permissions (
+                    sourceArtifactID, workspaceID, teamID, principalType, principalID,
+                    role, visibility, canRead, canWrite, canShare, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(sourceArtifactID, principalType, principalID) DO UPDATE SET
+                    workspaceID = excluded.workspaceID,
+                    teamID = excluded.teamID,
+                    role = excluded.role,
+                    visibility = excluded.visibility,
+                    canRead = excluded.canRead,
+                    canWrite = excluded.canWrite,
+                    canShare = excluded.canShare,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    permission.sourceArtifactID,
+                    permission.workspaceID,
+                    permission.teamID,
+                    permission.principalType.rawValue,
+                    permission.principalID,
+                    permission.role.rawValue,
+                    permission.visibility.rawValue,
+                    permission.canRead,
+                    permission.canWrite,
+                    permission.canShare,
+                    createdAt,
+                    permission.updatedAt
+                ]
+            )
+            return existing == nil ? .inserted : .updated
+        }
+    }
+
+    func replaceSharedArtifactPermissions(
+        sourceArtifactID: String,
+        permissions: [SharedArtifactPermissionRecord]
+    ) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM artifact_permissions WHERE sourceArtifactID = ?",
+                arguments: [sourceArtifactID]
+            )
+            guard permissions.isEmpty == false else { return }
+
+            for permission in permissions {
+                guard permission.sourceArtifactID == sourceArtifactID else { continue }
+                try db.execute(
+                    sql: """
+                    INSERT INTO artifact_permissions (
+                        sourceArtifactID, workspaceID, teamID, principalType, principalID,
+                        role, visibility, canRead, canWrite, canShare, createdAt, updatedAt
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    arguments: [
+                        permission.sourceArtifactID,
+                        permission.workspaceID,
+                        permission.teamID,
+                        permission.principalType.rawValue,
+                        permission.principalID,
+                        permission.role.rawValue,
+                        permission.visibility.rawValue,
+                        permission.canRead,
+                        permission.canWrite,
+                        permission.canShare,
+                        permission.createdAt,
+                        permission.updatedAt
+                    ]
+                )
+            }
+        }
+    }
+
+    func fetchSharedArtifactPermissions(
+        sourceArtifactID: String?,
+        workspaceID: String?,
+        teamID: String?,
+        principalType: SharedArtifactPrincipalType?,
+        principalID: String?,
+        limit: Int
+    ) throws -> [SharedArtifactPermissionRecord] {
+        var clauses: [String] = []
+        var args: [any DatabaseValueConvertible] = []
+
+        if let sourceArtifactID = sourceArtifactID?.trimmingCharacters(in: .whitespacesAndNewlines), sourceArtifactID.isEmpty == false {
+            clauses.append("sourceArtifactID = ?")
+            args.append(sourceArtifactID)
+        }
+        if let workspaceID = workspaceID?.trimmingCharacters(in: .whitespacesAndNewlines), workspaceID.isEmpty == false {
+            clauses.append("workspaceID = ?")
+            args.append(workspaceID)
+        }
+        if let teamID = teamID?.trimmingCharacters(in: .whitespacesAndNewlines), teamID.isEmpty == false {
+            clauses.append("teamID = ?")
+            args.append(teamID)
+        }
+        if let principalType {
+            clauses.append("principalType = ?")
+            args.append(principalType.rawValue)
+        }
+        if let principalID = principalID?.trimmingCharacters(in: .whitespacesAndNewlines), principalID.isEmpty == false {
+            clauses.append("principalID = ?")
+            args.append(principalID)
+        }
+
+        args.append(max(1, limit))
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM artifact_permissions
+                \(whereSQL)
+                ORDER BY updatedAt DESC, sourceArtifactID ASC, principalType ASC, principalID ASC
+                LIMIT ?
+                """,
+                arguments: StatementArguments(args)
+            )
+            return rows.compactMap(Self.sharedArtifactPermission(from:))
+        }
+    }
+
+    func fetchReadableSharedArtifactSourceIDs(
+        accessContext: SharedArtifactAccessContext,
+        limit: Int
+    ) throws -> [String] {
+        guard limit > 0 else { return [] }
+
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT DISTINCT s.id AS sourceArtifactID
+                FROM source_artifacts AS s
+                LEFT JOIN shared_artifact_sync_state AS sas
+                    ON sas.sourceArtifactID = s.id
+                WHERE s.sourceKind = ?
+                  AND s.status = ?
+                  AND (
+                      EXISTS (
+                          SELECT 1
+                          FROM artifact_permissions AS ap
+                          WHERE ap.sourceArtifactID = s.id
+                            AND ap.canRead = 1
+                            AND ap.workspaceID = ?
+                            AND (
+                                (ap.principalType = ? AND ap.principalID = ?)
+                                OR (ap.principalType = ? AND ap.principalID = ? AND ap.teamID = ?)
+                                OR (ap.principalType = ? AND ap.principalID = ?)
+                            )
+                      )
+                      OR (
+                          sas.workspaceID = ?
+                          AND sas.teamID = ?
+                          AND sas.ownerUserID = ?
+                      )
+                  )
+                ORDER BY s.updatedAt DESC, s.id ASC
+                LIMIT ?
+                """,
+                arguments: [
+                    SearchSourceKind.sharedArtifact.rawValue,
+                    SourceArtifactStatus.active.rawValue,
+                    accessContext.workspaceID,
+                    SharedArtifactPrincipalType.user.rawValue,
+                    accessContext.userID,
+                    SharedArtifactPrincipalType.team.rawValue,
+                    accessContext.teamID,
+                    accessContext.teamID,
+                    SharedArtifactPrincipalType.workspace.rawValue,
+                    accessContext.workspaceID,
+                    accessContext.workspaceID,
+                    accessContext.teamID,
+                    accessContext.userID,
+                    limit
+                ]
+            )
+            return rows.compactMap { $0["sourceArtifactID"] as? String }
+        }
+    }
+
+    func appendSharedArtifactAuditEvent(_ event: SharedArtifactAuditEventRecord) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO audit_events (
+                    id, sourceArtifactID, remoteArtifactID, workspaceID, teamID,
+                    actorUserID, actorRole, action, detailsJSON, occurredAt, createdAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                arguments: [
+                    event.id,
+                    event.sourceArtifactID,
+                    event.remoteArtifactID,
+                    event.workspaceID,
+                    event.teamID,
+                    event.actorUserID,
+                    event.actorRole?.rawValue,
+                    event.action.rawValue,
+                    event.detailsJSON,
+                    event.occurredAt,
+                    event.createdAt
+                ]
+            )
+        }
+    }
+
+    func fetchSharedArtifactAuditEvents(
+        sourceArtifactID: String?,
+        workspaceID: String?,
+        teamID: String?,
+        actions: [SharedArtifactAuditAction]?,
+        limit: Int
+    ) throws -> [SharedArtifactAuditEventRecord] {
+        if let actions, actions.isEmpty { return [] }
+
+        var clauses: [String] = []
+        var args: [any DatabaseValueConvertible] = []
+
+        if let sourceArtifactID = sourceArtifactID?.trimmingCharacters(in: .whitespacesAndNewlines), sourceArtifactID.isEmpty == false {
+            clauses.append("sourceArtifactID = ?")
+            args.append(sourceArtifactID)
+        }
+        if let workspaceID = workspaceID?.trimmingCharacters(in: .whitespacesAndNewlines), workspaceID.isEmpty == false {
+            clauses.append("workspaceID = ?")
+            args.append(workspaceID)
+        }
+        if let teamID = teamID?.trimmingCharacters(in: .whitespacesAndNewlines), teamID.isEmpty == false {
+            clauses.append("teamID = ?")
+            args.append(teamID)
+        }
+        if let actions, actions.isEmpty == false {
+            clauses.append("action IN (\(Self.sqlPlaceholders(count: actions.count)))")
+            args.append(contentsOf: actions.map(\.rawValue))
+        }
+
+        args.append(max(1, limit))
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM audit_events
+                \(whereSQL)
+                ORDER BY occurredAt DESC, id ASC
+                LIMIT ?
+                """,
+                arguments: StatementArguments(args)
+            )
+            return rows.compactMap(Self.sharedArtifactAuditEvent(from:))
         }
     }
 
@@ -3235,7 +4152,9 @@ private struct LocalSearchStore {
             "embedding_models",
             "embedding_versions",
             "chunk_embeddings",
-            "retrieval_health"
+            "retrieval_health",
+            "artifact_permissions",
+            "audit_events"
         ]
         let expectedIndexes = [
             "search_documents_source_lookup_idx",
@@ -3248,7 +4167,12 @@ private struct LocalSearchStore {
             "embedding_models_provider_model_idx",
             "embedding_versions_identity_idx",
             "embedding_versions_active_idx",
-            "chunk_embeddings_version_lookup_idx"
+            "chunk_embeddings_version_lookup_idx",
+            "artifact_permissions_principal_lookup_idx",
+            "artifact_permissions_source_lookup_idx",
+            "audit_events_source_time_idx",
+            "audit_events_scope_time_idx",
+            "audit_events_action_time_idx"
         ]
 
         return try dbQueue.read { db in
@@ -3427,6 +4351,122 @@ private struct LocalSearchStore {
         )
     }
 
+    private static func sharedArtifactSyncState(from row: Row) -> SharedArtifactSyncStateRecord? {
+        guard
+            let sourceArtifactID = row["sourceArtifactID"] as? String,
+            let remoteArtifactID = row["remoteArtifactID"] as? String,
+            let workspaceID = row["workspaceID"] as? String,
+            let teamID = row["teamID"] as? String,
+            let revisionID = row["revisionID"] as? String
+        else {
+            return nil
+        }
+
+        let statusRaw = (row["syncStatus"] as? String) ?? SharedArtifactSyncStatus.pendingPull.rawValue
+        let syncStatus = SharedArtifactSyncStatus(rawValue: statusRaw) ?? .pendingPull
+        let createdAt = parseDateValue(row["createdAt"]) ?? Date()
+        let updatedAt = parseDateValue(row["updatedAt"]) ?? createdAt
+
+        return SharedArtifactSyncStateRecord(
+            sourceArtifactID: sourceArtifactID,
+            remoteArtifactID: remoteArtifactID,
+            workspaceID: workspaceID,
+            teamID: teamID,
+            ownerUserID: row["ownerUserID"] as? String,
+            revisionID: revisionID,
+            remoteContentHash: row["remoteContentHash"] as? String,
+            localContentHashAtSync: row["localContentHashAtSync"] as? String,
+            remoteUpdatedAt: parseDateValue(row["remoteUpdatedAt"]),
+            lastPulledAt: parseDateValue(row["lastPulledAt"]),
+            lastSyncedAt: parseDateValue(row["lastSyncedAt"]),
+            syncStatus: syncStatus,
+            lastErrorCode: row["lastErrorCode"] as? String,
+            lastErrorMessage: row["lastErrorMessage"] as? String,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func sharedArtifactPermission(from row: Row) -> SharedArtifactPermissionRecord? {
+        guard
+            let sourceArtifactID = row["sourceArtifactID"] as? String,
+            let workspaceID = row["workspaceID"] as? String,
+            let teamID = row["teamID"] as? String,
+            let principalTypeRaw = row["principalType"] as? String,
+            let principalType = SharedArtifactPrincipalType(rawValue: principalTypeRaw),
+            let principalID = row["principalID"] as? String,
+            let roleRaw = row["role"] as? String,
+            let role = SharedArtifactRole(rawValue: roleRaw),
+            let visibilityRaw = row["visibility"] as? String,
+            let visibility = SharedArtifactVisibility(rawValue: visibilityRaw)
+        else {
+            return nil
+        }
+
+        let createdAt = parseDateValue(row["createdAt"]) ?? Date()
+        let updatedAt = parseDateValue(row["updatedAt"]) ?? createdAt
+
+        return SharedArtifactPermissionRecord(
+            sourceArtifactID: sourceArtifactID,
+            workspaceID: workspaceID,
+            teamID: teamID,
+            principalType: principalType,
+            principalID: principalID,
+            role: role,
+            visibility: visibility,
+            canRead: parseBoolValue(row["canRead"]) ?? true,
+            canWrite: parseBoolValue(row["canWrite"]) ?? false,
+            canShare: parseBoolValue(row["canShare"]) ?? false,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func sharedArtifactAuditEvent(from row: Row) -> SharedArtifactAuditEventRecord? {
+        guard
+            let id = row["id"] as? String,
+            let workspaceID = row["workspaceID"] as? String,
+            let teamID = row["teamID"] as? String,
+            let actionRaw = row["action"] as? String,
+            let action = SharedArtifactAuditAction(rawValue: actionRaw)
+        else {
+            return nil
+        }
+        let occurredAt = parseDateValue(row["occurredAt"]) ?? Date()
+        let createdAt = parseDateValue(row["createdAt"]) ?? occurredAt
+        let actorRole = (row["actorRole"] as? String).flatMap(SharedArtifactRole.init(rawValue:))
+
+        return SharedArtifactAuditEventRecord(
+            id: id,
+            sourceArtifactID: row["sourceArtifactID"] as? String,
+            remoteArtifactID: row["remoteArtifactID"] as? String,
+            workspaceID: workspaceID,
+            teamID: teamID,
+            actorUserID: row["actorUserID"] as? String,
+            actorRole: actorRole,
+            action: action,
+            detailsJSON: row["detailsJSON"] as? String,
+            occurredAt: occurredAt,
+            createdAt: createdAt
+        )
+    }
+
+    private static func permissionSemanticsEqual(
+        _ lhs: SharedArtifactPermissionRecord,
+        _ rhs: SharedArtifactPermissionRecord
+    ) -> Bool {
+        lhs.sourceArtifactID == rhs.sourceArtifactID
+            && lhs.workspaceID == rhs.workspaceID
+            && lhs.teamID == rhs.teamID
+            && lhs.principalType == rhs.principalType
+            && lhs.principalID == rhs.principalID
+            && lhs.role == rhs.role
+            && lhs.visibility == rhs.visibility
+            && lhs.canRead == rhs.canRead
+            && lhs.canWrite == rhs.canWrite
+            && lhs.canShare == rhs.canShare
+    }
+
     private static func projectionJob(from row: Row) -> ProjectionJobRecord? {
         guard
             let id = row["id"] as? String,
@@ -3578,9 +4618,39 @@ private struct LocalSearchStore {
 
     private static func parseDateValue(_ value: Any?) -> Date? {
         if let date = value as? Date { return date }
+        if let timeInterval = value as? TimeInterval {
+            return Date(timeIntervalSince1970: timeInterval)
+        }
+        if let intValue = value as? Int {
+            return Date(timeIntervalSince1970: TimeInterval(intValue))
+        }
+        if let int64Value = value as? Int64 {
+            return Date(timeIntervalSince1970: TimeInterval(int64Value))
+        }
+        if let number = value as? NSNumber {
+            return Date(timeIntervalSince1970: number.doubleValue)
+        }
         if let string = value as? String {
             if let parsed = sqliteDateFormatter.date(from: string) { return parsed }
             return ISO8601DateFormatter().date(from: string)
+        }
+        return nil
+    }
+
+    private static func parseBoolValue(_ value: Any?) -> Bool? {
+        if let value = value as? Bool { return value }
+        if let value = value as? Int { return value != 0 }
+        if let value = value as? Int64 { return value != 0 }
+        if let value = value as? NSNumber { return value.boolValue }
+        if let value = value as? String {
+            switch value.lowercased() {
+            case "1", "true", "yes":
+                return true
+            case "0", "false", "no":
+                return false
+            default:
+                return nil
+            }
         }
         return nil
     }

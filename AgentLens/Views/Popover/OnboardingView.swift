@@ -155,6 +155,10 @@ struct OnboardingView: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(DesignSystem.Colors.success)
                 .help("\(n) sessions")
+        case .degraded(let n, let error):
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(DesignSystem.Colors.warning)
+                .help("\(n) sessions parsed with warnings: \(error)")
         case .empty:
             Image(systemName: "minus.circle")
                 .foregroundStyle(DesignSystem.Colors.textMuted)

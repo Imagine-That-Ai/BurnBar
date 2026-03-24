@@ -1,18 +1,13 @@
-import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { promisify } from "node:util";
 
 import * as vscode from "vscode";
 import { BurnBarExtensionController } from "../state/controller";
 import { buildPanelViewModel } from "../state/panelViewModel";
+import { openBurnBarAppOrWarn } from "../host/openBurnBarApp";
 import type { BurnBarJSONValue } from "../types";
 import type { BurnBarPanelWebviewMessage } from "./panelProtocol";
 import { buildPanelHtml } from "./panelHtml";
-
-const execFileAsync = promisify(execFile);
-
-/** Bundle ID of the macOS menu bar app (see project.yml BurnBar target). */
-const BURNBAR_MACOS_BUNDLE_ID = "com.burnbar.app";
+import { BurnBarWorkspacePanel } from "./workspacePanel";
 
 export class BurnBarPanelView implements vscode.WebviewViewProvider {
   public static readonly viewType = "burnbar.panel";
@@ -82,7 +77,8 @@ export class BurnBarPanelView implements vscode.WebviewViewProvider {
       return;
     }
     const viewModel = buildPanelViewModel(this.controller.snapshot, {
-      showOpenBurnBarApp: process.platform === "darwin"
+      showOpenBurnBarApp: process.platform === "darwin",
+      sidebarStatusLineMode: readSidebarStatusLineMode()
     });
     void this.view.webview.postMessage({ type: "snapshot", viewModel });
   }
@@ -134,15 +130,13 @@ export class BurnBarPanelView implements vscode.WebviewViewProvider {
           await this.controller.respondToApproval(message.runId, "reject");
           break;
         case "openApp":
-          if (process.platform === "darwin") {
-            try {
-              await execFileAsync("open", ["-b", BURNBAR_MACOS_BUNDLE_ID]);
-            } catch {
-              void vscode.window.showWarningMessage(
-                "Could not open BurnBar. Install the BurnBar app, then try again."
-              );
-            }
-          }
+          await openBurnBarAppOrWarn(
+            "dashboard",
+            "Could not open BurnBar. Install the BurnBar app, then try again."
+          );
+          break;
+        case "openWorkspace":
+          BurnBarWorkspacePanel.open(this.controller, this.extensionUri);
           break;
       }
     } catch (error) {
@@ -158,4 +152,28 @@ export class BurnBarPanelView implements vscode.WebviewViewProvider {
 
 function generateNonce(): string {
   return randomBytes(16).toString("hex");
+}
+
+function readSidebarStatusLineMode():
+  | "smart"
+  | "workspace"
+  | "models"
+  | "activeRun"
+  | "socket"
+  | "off" {
+  const value = vscode.workspace
+    .getConfiguration("burnbar")
+    .get<string>("sidebar.statusLine", "smart");
+
+  switch (value) {
+    case "workspace":
+    case "models":
+    case "activeRun":
+    case "socket":
+    case "off":
+      return value;
+    case "smart":
+    default:
+      return "smart";
+  }
 }

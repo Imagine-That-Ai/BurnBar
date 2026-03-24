@@ -1,0 +1,50 @@
+{
+  "cases" : [
+    {
+      "name" : "provider_claude_conversation",
+      "sourceIDs" : [
+        "conv-filter-claude-alpha"
+      ]
+    },
+    {
+      "name" : "project_alpha_conversation",
+      "sourceIDs" : [
+        "conv-filter-claude-alpha",
+        "conv-filter-cli-alpha"
+      ]
+    },
+    {
+      "name" : "artifact_type_skill_doc",
+      "sourceIDs" : [
+        "artifact-filter-skill"
+      ]
+    },
+    {
+      "name" : "date_range_recent_conversation",
+      "sourceIDs" : [
+        "conv-filter-claude-alpha",
+        "conv-filter-cli-alpha"
+      ]
+    },
+    {
+      "name" : "ownership_shared_only",
+      "sourceIDs" : [
+        "artifact-filter-shared"
+      ]
+    },
+    {
+      "name" : "explicit_source_id",
+      "sourceIDs" : [
+        "artifact-filter-skill"
+      ]
+    },
+    {
+      "name" : "conversation_source_cli_assistant",
+      "sourceIDs" : [
+        "conv-filter-cli-alpha"
+      ]
+    }
+  ],
+  "query" : "filterneedle",
+  "scenario" : "filter-correctness"
+}

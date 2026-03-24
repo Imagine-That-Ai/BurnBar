@@ -6,6 +6,7 @@ import WebKit
 
 private enum DashboardMainRoute: Hashable {
     case overview
+    case database
     case projects
     case sessionLogs
     case provider(AgentProvider)
@@ -91,6 +92,7 @@ struct DashboardView: View {
     private func routeTitle(_ route: DashboardMainRoute) -> String {
         switch route {
         case .overview: return "Overview"
+        case .database: return "Database"
         case .projects: return "Projects"
         case .sessionLogs: return "Session Logs"
         case .provider(let provider): return provider.displayName
@@ -141,6 +143,7 @@ struct DashboardView: View {
                             controller: chatController,
                             dataStore: dataStore,
                             settingsManager: settingsManager,
+                            sharedFeaturesAvailable: accountManager.isSignedIn,
                             containerSize: geo.size,
                             edgePadding: 20,
                             onClose: {
@@ -204,8 +207,14 @@ struct DashboardView: View {
             .presentationBackground(Material.ultraThinMaterial)
         }
         .onChange(of: accountManager.isSignedIn) { _, isSignedIn in
+            chatController.refreshRetrievalHealth(sharedFeaturesAvailable: isSignedIn)
             if isSignedIn && !settingsManager.sessionLogCloudBackupConsentShown {
                 showSessionLogCloudConsent = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .burnBarOpenConversationSearch)) { _ in
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                chatPanelOpen = true
             }
         }
     }
@@ -410,6 +419,13 @@ struct DashboardView: View {
                         }
                     }
 
+                    SidebarDatabaseRow(isSelected: mainRoute == .database) {
+                        withAnimation(DesignSystem.Animation.standard) {
+                            navigate(to: .database)
+                        }
+                    }
+                    .focusable()
+
                     SidebarProjectsRow(
                         isSelected: mainRoute == .projects,
                         projectCount: Set(filteredUsages.map(\.projectName)).count
@@ -552,6 +568,7 @@ struct DashboardView: View {
         } else {
             routes.append(contentsOf: dashboardModelSummaries.map { .model($0.modelName) })
         }
+        routes.append(.database)
         routes.append(.projects)
         routes.append(.sessionLogs)
         return routes
@@ -565,6 +582,13 @@ struct DashboardView: View {
             switch mainRoute {
             case .overview:
                 overviewView
+            case .database:
+                DatabaseWorkspaceView(
+                    dataStore: dataStore,
+                    settingsManager: settingsManager,
+                    accountManager: accountManager,
+                    cloudSyncService: cloudSyncService
+                )
             case .projects:
                 ProjectsView(dataStore: dataStore)
             case .sessionLogs:
@@ -620,6 +644,7 @@ struct DashboardView: View {
                     trustStatusStrip
                     NarrativeCardView(dataStore: dataStore)
                     overviewHero
+                    databaseCTA
 
                     statsRow
 
@@ -749,6 +774,57 @@ struct DashboardView: View {
                     .offset(x: 40, y: 50)
             }
         }
+    }
+
+    private var databaseCTA: some View {
+        Button {
+            withAnimation(DesignSystem.Animation.standard) {
+                navigate(to: .database)
+            }
+        } label: {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(DesignSystem.Colors.blaze.opacity(0.15))
+                        .frame(width: 36, height: 36)
+
+                    Image(systemName: "cylinder.split.1x2.fill")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(DesignSystem.Colors.blaze)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Open Database")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("Corpus, search coverage, and system truth")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.blaze)
+            }
+            .padding(DesignSystem.Spacing.md)
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .fill(DesignSystem.Colors.blaze.opacity(0.04))
+                }
+            }
+            .clipShape(.rect(cornerRadius: DesignSystem.Radius.md))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .strokeBorder(DesignSystem.Colors.blaze.opacity(0.2), lineWidth: 0.5)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var trustStatusStrip: some View {
@@ -1235,6 +1311,56 @@ private struct ModelSidebarItem: View {
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
                     .stroke(isSelected ? theme.primaryColor.opacity(0.3) : DesignSystem.Colors.border.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Sidebar Database Row
+
+private struct SidebarDatabaseRow: View {
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? DesignSystem.Colors.blaze.opacity(0.18) : DesignSystem.Colors.surfaceElevated)
+                        .frame(width: 34, height: 34)
+
+                    Image(systemName: "cylinder.split.1x2.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(isSelected ? DesignSystem.Colors.blaze : DesignSystem.Colors.textSecondary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Database")
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
+
+                    Text("Corpus, search & system truth")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(isSelected ? DesignSystem.Colors.blaze.opacity(0.8) : DesignSystem.Colors.textMuted)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
+                    .fill(isSelected ? DesignSystem.Colors.blaze.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(0.35))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
+                    .stroke(isSelected ? DesignSystem.Colors.blaze.opacity(0.3) : DesignSystem.Colors.border.opacity(0.35), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

@@ -26,61 +26,41 @@ export function buildPanelHtml(
           <img class="bb-header-logo" src="${logoUri}" width="28" height="28" alt="" />
           <span class="bb-wordmark">BurnBar</span>
         </div>
-        <div class="bb-header-chips">
+        <div class="bb-header-status">
           <span class="bb-orb bb-orb--connecting" aria-hidden="true"></span>
-          <span class="bb-chip" id="bb-workspace-chip">—</span>
-        </div>
-        <div class="bb-header-actions">
-          <button type="button" class="bb-header-app-btn" data-action="openApp" data-visible="false" title="Open BurnBar app">App</button>
-          <button type="button" class="bb-icon-btn" data-action="refresh" title="Refresh">⟳</button>
-          <button type="button" class="bb-icon-btn" data-action="repair" title="Repair daemon">⚙</button>
+          <span class="bb-status-text" id="bb-status-text">\u2014</span>
         </div>
       </header>
 
       <div class="bb-recovery" data-visible="false">
         <div class="bb-recovery-header">
-          <span class="bb-recovery-icon">⚠</span>
-          <p class="bb-recovery-title">BurnBar daemon unavailable</p>
+          <span class="bb-recovery-icon">\u26A0</span>
+          <p class="bb-recovery-title">Daemon unavailable</p>
         </div>
         <p class="bb-recovery-msg" id="bb-recovery-msg"></p>
-        <div class="bb-recovery-actions">
-          <button class="bb-btn bb-btn--secondary" data-action="refresh">Reconnect</button>
-          <button class="bb-btn bb-btn--secondary" data-action="repair">Repair daemon</button>
-        </div>
       </div>
 
-      <section class="bb-composer">
-        <textarea class="bb-composer-input" placeholder="Describe what BurnBar should do…" rows="3"></textarea>
-        <div class="bb-composer-controls">
-          <select class="bb-model-select"></select>
-          <div class="bb-mode-chips">
-            <button class="bb-mode-chip bb-mode-chip--active" data-mode="explain">Explain</button>
-            <button class="bb-mode-chip" data-mode="fix">Fix</button>
-            <button class="bb-mode-chip" data-mode="inspect">Inspect</button>
-          </div>
+      <section class="bb-active-summary" id="bb-active-summary" data-visible="false">
+        <div class="bb-active-summary-header">
+          <span class="bb-active-dot" id="bb-active-dot"></span>
+          <span class="bb-active-title" id="bb-active-title">\u2014</span>
         </div>
-        <button class="bb-btn bb-btn--primary bb-start-run" data-action="startRun">Start Run</button>
-        <p class="bb-composer-disabled-msg" data-visible="false"></p>
+        <div class="bb-active-meta" id="bb-active-meta"></div>
       </section>
 
-      <section class="bb-runs" id="bb-runs">
-        <!-- Active run card injected before history by JS -->
-        <div class="bb-history-runs" id="bb-history-runs"></div>
-        <div class="bb-no-runs-msg" id="bb-no-runs-msg" data-visible="false">
-          Start a run to see BurnBar control the daemon here.
-        </div>
+      <section class="bb-launchers">
+        <button class="bb-btn bb-btn--primary bb-launcher" data-action="openWorkspace">Open Workspace</button>
+        <button class="bb-btn bb-btn--secondary bb-launcher" data-action="startRun">Start Run</button>
+        <button class="bb-btn bb-btn--secondary bb-launcher" data-action="openApp" data-visible="false">Search Conversations</button>
       </section>
 
-      <section class="bb-capabilities" id="bb-capabilities">
-        <!-- Capability chips rendered by JS -->
+      <section class="bb-compact-actions">
+        <button class="bb-icon-btn" data-action="refresh" title="Refresh">\u27F3</button>
+        <button class="bb-icon-btn" data-action="repair" title="Repair daemon">\u2699</button>
+        <button class="bb-header-app-btn" data-action="openApp" data-visible="false" title="Open BurnBar dashboard">Dashboard</button>
       </section>
 
-      <details class="bb-system-drawer">
-        <summary class="bb-system-drawer-summary">System</summary>
-        <div class="bb-system-content" id="bb-system-content">
-          <!-- Key-value rows rendered by JS -->
-        </div>
-      </details>
+      <footer class="bb-status-line" id="bb-status-line" data-visible="false"></footer>
     </div>
 
     <script nonce="${nonce}" src="${jsUri}"></script>

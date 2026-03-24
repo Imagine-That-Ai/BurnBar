@@ -1,5 +1,25 @@
 import Foundation
 import CryptoKit
+import Dispatch
+
+// Projection queue flow (local-first):
+// conversations/source_artifacts
+//   -> projection_jobs (project/reproject/purge/rebuild/reembed)
+//   -> ProjectionPipelineService.runSweep() lease/process/retry
+//   -> search_documents + search_chunks + search_chunks_fts
+//   -> chunk_embeddings + retrieval_health
+
+private enum BurnBarProjectionPerformanceTimer {
+    static func now() -> UInt64 {
+        DispatchTime.now().uptimeNanoseconds
+    }
+
+    static func elapsedMilliseconds(since start: UInt64) -> Double {
+        let end = DispatchTime.now().uptimeNanoseconds
+        guard end >= start else { return 0 }
+        return Double(end - start) / 1_000_000
+    }
+}
 
 enum ProjectionIdentity {
     static let projectorVersion = "burnbar-projector-v1"
@@ -212,6 +232,7 @@ final class ProjectionPipelineService {
         guard isSweeping == false else { return ProjectionSweepReport() }
         isSweeping = true
         defer { isSweeping = false }
+        let sweepStartedAt = BurnBarProjectionPerformanceTimer.now()
 
         try ensureBackfillSeededIfNeeded()
 
@@ -262,11 +283,22 @@ final class ProjectionPipelineService {
                     )
                     report.retriedJobs += 1
                 }
-                try? upsertSubsystemFailureHealth(for: leasedJob, errorCode: code, errorMessage: message)
+                do {
+                    try upsertSubsystemFailureHealth(for: leasedJob, errorCode: code, errorMessage: message)
+                } catch {
+                    lastErrorCode = "PROJECTION_HEALTH_WRITE_FAILED"
+                    lastErrorMessage = "Failed to persist projection subsystem failure health: \(error.localizedDescription)"
+                }
             }
         }
 
-        try upsertProjectionHealth(report: report, lastErrorCode: lastErrorCode, lastErrorMessage: lastErrorMessage)
+        let sweepDurationMs = BurnBarProjectionPerformanceTimer.elapsedMilliseconds(since: sweepStartedAt)
+        try upsertProjectionHealth(
+            report: report,
+            sweepDurationMs: sweepDurationMs,
+            lastErrorCode: lastErrorCode,
+            lastErrorMessage: lastErrorMessage
+        )
         return report
     }
 
@@ -785,12 +817,18 @@ final class ProjectionPipelineService {
 
     private func upsertProjectionHealth(
         report: ProjectionSweepReport,
+        sweepDurationMs: Double,
         lastErrorCode: String?,
         lastErrorMessage: String?
     ) throws {
         let now = nowProvider()
         let failedJobs = try dataStore.fetchProjectionJobs(statuses: [.failed], limit: 500).count
         let queuedJobs = try dataStore.fetchProjectionJobs(statuses: [.queued, .leased, .running], limit: 2_000).count
+        let latencySummary = try projectionJobLatencySummary(sampleLimit: 1_000)
+        let throughputJobsPerSecond: Double = {
+            guard report.completedJobs > 0, sweepDurationMs > 0 else { return 0 }
+            return Double(report.completedJobs) / (sweepDurationMs / 1_000)
+        }()
         let status: RetrievalHealthStatus = (failedJobs > 0 || report.canceledJobs > 0) ? .degraded : .healthy
         let details = ProjectionHealthDetails(
             leaseOwner: leaseOwner,
@@ -798,7 +836,12 @@ final class ProjectionPipelineService {
             chunkerVersion: ProjectionIdentity.chunkerVersion,
             queueDepth: queuedJobs,
             failedJobs: failedJobs,
-            sweep: report
+            sweep: report,
+            performance: ProjectionSweepPerformanceDetails(
+                sweepDurationMs: sweepDurationMs,
+                throughputJobsPerSecond: throughputJobsPerSecond
+            ),
+            latencySummary: latencySummary
         )
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
@@ -815,6 +858,56 @@ final class ProjectionPipelineService {
             )
         )
     }
+
+    private func projectionJobLatencySummary(sampleLimit: Int) throws -> ProjectionJobLatencySummary {
+        let completedJobs = try dataStore.fetchProjectionJobs(statuses: [.completed], limit: max(1, sampleLimit))
+        guard completedJobs.isEmpty == false else {
+            return ProjectionJobLatencySummary(
+                sampledCompletedJobs: 0,
+                queueWaitMs: nil,
+                processingMs: nil,
+                endToEndMs: nil
+            )
+        }
+
+        let queueWaitSamples = completedJobs.compactMap { job -> Double? in
+            guard let startedAt = job.startedAt else { return nil }
+            return max(0, startedAt.timeIntervalSince(job.availableAt) * 1_000)
+        }
+        let processingSamples = completedJobs.compactMap { job -> Double? in
+            guard let startedAt = job.startedAt, let completedAt = job.completedAt else { return nil }
+            return max(0, completedAt.timeIntervalSince(startedAt) * 1_000)
+        }
+        let endToEndSamples = completedJobs.compactMap { job -> Double? in
+            guard let completedAt = job.completedAt else { return nil }
+            return max(0, completedAt.timeIntervalSince(job.scheduledAt) * 1_000)
+        }
+
+        return ProjectionJobLatencySummary(
+            sampledCompletedJobs: completedJobs.count,
+            queueWaitMs: latencyDistribution(from: queueWaitSamples),
+            processingMs: latencyDistribution(from: processingSamples),
+            endToEndMs: latencyDistribution(from: endToEndSamples)
+        )
+    }
+
+    private func latencyDistribution(from samples: [Double]) -> ProjectionLatencyDistribution? {
+        guard samples.isEmpty == false else { return nil }
+        let sorted = samples.sorted()
+        return ProjectionLatencyDistribution(
+            count: sorted.count,
+            p50Ms: percentile(50, inSortedValues: sorted),
+            p95Ms: percentile(95, inSortedValues: sorted),
+            maxMs: sorted.last ?? 0
+        )
+    }
+
+    private func percentile(_ percentile: Double, inSortedValues sortedValues: [Double]) -> Double {
+        guard sortedValues.isEmpty == false else { return 0 }
+        let boundedPercentile = max(0, min(100, percentile))
+        let index = Int(round((boundedPercentile / 100) * Double(sortedValues.count - 1)))
+        return sortedValues[max(0, min(sortedValues.count - 1, index))]
+    }
 }
 
 private struct ProjectionHealthDetails: Codable {
@@ -824,6 +917,27 @@ private struct ProjectionHealthDetails: Codable {
     let queueDepth: Int
     let failedJobs: Int
     let sweep: ProjectionSweepReport
+    let performance: ProjectionSweepPerformanceDetails
+    let latencySummary: ProjectionJobLatencySummary
+}
+
+private struct ProjectionSweepPerformanceDetails: Codable {
+    let sweepDurationMs: Double
+    let throughputJobsPerSecond: Double
+}
+
+private struct ProjectionJobLatencySummary: Codable {
+    let sampledCompletedJobs: Int
+    let queueWaitMs: ProjectionLatencyDistribution?
+    let processingMs: ProjectionLatencyDistribution?
+    let endToEndMs: ProjectionLatencyDistribution?
+}
+
+private struct ProjectionLatencyDistribution: Codable {
+    let count: Int
+    let p50Ms: Double
+    let p95Ms: Double
+    let maxMs: Double
 }
 
 private struct SemanticProjectionHealthDetails: Codable {

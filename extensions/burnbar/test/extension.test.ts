@@ -77,6 +77,9 @@ vi.mock("vscode", () => {
     },
     workspace: {
       isTrusted: true,
+      getConfiguration: () => ({
+        get: (_key: string, fallback?: unknown) => fallback
+      }),
       workspaceFolders: [
         {
           uri: {
@@ -135,7 +138,28 @@ vi.mock("vscode", () => {
           show: () => undefined,
           sendText: () => undefined
         };
+      },
+      createWebviewPanel() {
+        return {
+          webview: {
+            html: "",
+            options: {},
+            asWebviewUri: (uri: unknown) => uri,
+            onDidReceiveMessage: () => new MockDisposable(),
+            postMessage: () => Promise.resolve(true),
+            cspSource: "https://test.example"
+          },
+          onDidDispose: () => new MockDisposable(),
+          reveal: () => undefined,
+          dispose: () => undefined
+        };
       }
+    },
+    ViewColumn: {
+      One: 1
+    },
+    Uri: {
+      joinPath: (...parts: unknown[]) => parts.join("/")
     }
   };
 }, { virtual: true });
@@ -239,7 +263,9 @@ describe("activateBurnBarExtension", () => {
       "burnbar.cancelRun",
       "burnbar.retryRun",
       "burnbar.approveRun",
-      "burnbar.rejectRun"
+      "burnbar.rejectRun",
+      "burnbar.openWorkspace",
+      "burnbar.openConversationSearch"
     ]);
     expect(context.subscriptions.length).toBeGreaterThanOrEqual(7);
   });
@@ -410,7 +436,9 @@ describe("activateBurnBarExtension", () => {
       "burnbar.cancelRun",
       "burnbar.retryRun",
       "burnbar.approveRun",
-      "burnbar.rejectRun"
+      "burnbar.rejectRun",
+      "burnbar.openWorkspace",
+      "burnbar.openConversationSearch"
     ]);
   });
 

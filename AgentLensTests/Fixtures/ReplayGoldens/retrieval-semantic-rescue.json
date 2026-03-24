@@ -1,0 +1,17 @@
+{
+  "query" : "onboarding runbook",
+  "resultSourceIDs" : [
+    "artifact-semantic-rescue"
+  ],
+  "scenario" : "semantic-rescue",
+  "topResults" : [
+    {
+      "hasLexicalSignal" : false,
+      "hasSemanticSignal" : true,
+      "rank" : 1,
+      "sourceID" : "artifact-semantic-rescue",
+      "sourceKind" : "skill_doc",
+      "title" : "Bootstrap skill"
+    }
+  ]
+}

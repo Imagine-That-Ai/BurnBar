@@ -14,11 +14,12 @@ struct MenuBarPopoverView: View {
     @AppStorage("hasOnboarded") private var hasOnboarded = false
     @State private var showScanFlash = false
     @State private var listAppeared = false
+    @State private var insightSnapshot: WorkflowInsightRollupSnapshot = .unavailable
 
     private var isScanning: Bool { aggregator?.isRefreshing ?? false }
 
     private var insights: [Insight] {
-        InsightEngine.generate(from: dataStore)
+        insightSnapshot.insights
     }
 
     private var menuBarSparklineSeries: [Double] {
@@ -44,6 +45,10 @@ struct MenuBarPopoverView: View {
         Task { await agg.recountAll() }
     }
 
+    private func refreshInsightRollups() {
+        insightSnapshot = WorkflowInsightRollupService(dataStore: dataStore).snapshot(refreshIfStale: true)
+    }
+
     var body: some View {
         Group {
             if !hasOnboarded && dataStore.usages.isEmpty, aggregator != nil {
@@ -59,7 +64,11 @@ struct MenuBarPopoverView: View {
                     headerView
                     freshnessBar
                     Divider().background(DesignSystem.Colors.border)
-                    InsightCardView(insights: insights)
+                    InsightCardView(
+                        insights: insights,
+                        freshness: insightSnapshot.freshness,
+                        freshnessMessage: insightSnapshot.statusMessage
+                    )
                     Divider().background(DesignSystem.Colors.border)
                     summaryView
                     Divider().background(DesignSystem.Colors.border)
@@ -73,6 +82,7 @@ struct MenuBarPopoverView: View {
         .background(DesignSystem.Colors.background)
         .onChange(of: isScanning) { oldValue, newValue in
             guard oldValue, !newValue else { return }
+            refreshInsightRollups()
             Task { @MainActor in
                 withAnimation(DesignSystem.Animation.gentle) {
                     showScanFlash = true
@@ -87,7 +97,11 @@ struct MenuBarPopoverView: View {
         .onAppear {
             Task { @MainActor in
                 listAppeared = true
+                refreshInsightRollups()
             }
+        }
+        .onChange(of: dataStore.lastRefresh) { _, _ in
+            refreshInsightRollups()
         }
     }
 

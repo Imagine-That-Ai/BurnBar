@@ -1,4 +1,24 @@
 import Foundation
+import Dispatch
+
+// Retrieval flow (shared service path):
+// query
+//   -> lexical candidates from search_chunks_fts (always)
+//   -> optional semantic candidates (ANN -> exact fallback)
+//   -> bounded rerank + source hydration
+//   -> RBAC/visibility filtering + snippets/context
+
+private enum BurnBarPerformanceTimer {
+    static func now() -> UInt64 {
+        DispatchTime.now().uptimeNanoseconds
+    }
+
+    static func elapsedMilliseconds(since start: UInt64) -> Double {
+        let end = DispatchTime.now().uptimeNanoseconds
+        guard end >= start else { return 0 }
+        return Double(end - start) / 1_000_000
+    }
+}
 
 // MARK: - Search Result
 
@@ -7,6 +27,457 @@ struct SearchResult: Identifiable {
     let conversation: ConversationRecord
     let snippet: String
     let rank: Double
+}
+
+enum RetrievalDegradedMode: String, CaseIterable, Identifiable, Sendable {
+    case indexStale
+    case semanticUnavailable
+    case rebuildInProgress
+    case cloudSharedUnavailable
+
+    var id: String { rawValue }
+}
+
+struct RetrievalDegradedState: Identifiable, Equatable, Sendable {
+    let mode: RetrievalDegradedMode
+    let title: String
+    let message: String
+
+    var id: String { mode.id }
+}
+
+struct ParserImportHealthProviderState: Codable, Equatable, Sendable {
+    let provider: String
+    let status: String
+    let sessionCount: Int
+    let errorMessage: String?
+}
+
+struct ParserImportHealthDetails: Codable, Equatable, Sendable {
+    let scannedProviders: Int
+    let importedUsageCount: Int
+    let healthyProviders: Int
+    let emptyProviders: Int
+    let degradedProviders: Int
+    let failedProviders: Int
+    let conversationIndexingEnabled: Bool
+    let providerStates: [ParserImportHealthProviderState]
+}
+
+struct ParserImportHealthState: Equatable, Sendable {
+    let status: RetrievalHealthStatus
+    let scannedProviders: Int
+    let importedUsageCount: Int
+    let healthyProviders: Int
+    let emptyProviders: Int
+    let degradedProviders: Int
+    let failedProviders: Int
+    let errorCode: String?
+    let errorMessage: String?
+}
+
+struct ProjectionQueueHealthState: Equatable, Sendable {
+    let status: RetrievalHealthStatus
+    let queueDepth: Int
+    let failedJobs: Int
+    let errorCode: String?
+    let errorMessage: String?
+}
+
+struct SemanticPipelineHealthState: Equatable, Sendable {
+    let status: RetrievalHealthStatus
+    let backend: String?
+    let embeddingVersionID: String?
+    let indexedVectorCount: Int
+    let fallbackToExact: Bool
+    let candidateCount: Int
+    let errorCode: String?
+    let errorMessage: String?
+}
+
+struct RebuildPipelineHealthState: Equatable, Sendable {
+    let status: RetrievalHealthStatus
+    let inProgress: Bool
+    let pendingRebuildJobs: Int
+    let pendingReembedJobs: Int
+    let errorCode: String?
+    let errorMessage: String?
+}
+
+struct RetrievalSystemHealthSnapshot: Equatable, Sendable {
+    let parserImport: ParserImportHealthState
+    let projectionQueue: ProjectionQueueHealthState
+    let semanticPipeline: SemanticPipelineHealthState
+    let rebuild: RebuildPipelineHealthState
+    let collaborationStatus: RetrievalHealthStatus?
+    let degradedModes: [RetrievalDegradedState]
+    let observedAt: Date
+
+    static let empty = RetrievalSystemHealthSnapshot(
+        parserImport: ParserImportHealthState(
+            status: .healthy,
+            scannedProviders: 0,
+            importedUsageCount: 0,
+            healthyProviders: 0,
+            emptyProviders: 0,
+            degradedProviders: 0,
+            failedProviders: 0,
+            errorCode: nil,
+            errorMessage: nil
+        ),
+        projectionQueue: ProjectionQueueHealthState(
+            status: .healthy,
+            queueDepth: 0,
+            failedJobs: 0,
+            errorCode: nil,
+            errorMessage: nil
+        ),
+        semanticPipeline: SemanticPipelineHealthState(
+            status: .healthy,
+            backend: nil,
+            embeddingVersionID: nil,
+            indexedVectorCount: 0,
+            fallbackToExact: false,
+            candidateCount: 0,
+            errorCode: nil,
+            errorMessage: nil
+        ),
+        rebuild: RebuildPipelineHealthState(
+            status: .healthy,
+            inProgress: false,
+            pendingRebuildJobs: 0,
+            pendingReembedJobs: 0,
+            errorCode: nil,
+            errorMessage: nil
+        ),
+        collaborationStatus: nil,
+        degradedModes: [],
+        observedAt: .distantPast
+    )
+}
+
+@MainActor
+final class RetrievalHealthService {
+    private struct ProjectionHealthDetailsPayload: Decodable {
+        let queueDepth: Int
+        let failedJobs: Int
+    }
+
+    private let dataStore: DataStore
+    private let nowProvider: () -> Date
+
+    private(set) var lastSnapshotError: String?
+
+    init(dataStore: DataStore, nowProvider: @escaping () -> Date = Date.init) {
+        self.dataStore = dataStore
+        self.nowProvider = nowProvider
+    }
+
+    func snapshot(
+        indexingEnabled: Bool,
+        sharedFeaturesAvailable: Bool
+    ) -> RetrievalSystemHealthSnapshot {
+        lastSnapshotError = nil
+        let observedAt = nowProvider()
+
+        let rows: [RetrievalHealthRecord]
+        do {
+            rows = try dataStore.fetchRetrievalHealth()
+        } catch {
+            lastSnapshotError = error.localizedDescription
+            let failedProjection = ProjectionQueueHealthState(
+                status: .failed,
+                queueDepth: 0,
+                failedJobs: 0,
+                errorCode: "RETRIEVAL_HEALTH_FETCH_FAILED",
+                errorMessage: error.localizedDescription
+            )
+            let failedSemantic = SemanticPipelineHealthState(
+                status: .failed,
+                backend: nil,
+                embeddingVersionID: nil,
+                indexedVectorCount: 0,
+                fallbackToExact: false,
+                candidateCount: 0,
+                errorCode: "RETRIEVAL_HEALTH_FETCH_FAILED",
+                errorMessage: error.localizedDescription
+            )
+            let rebuildCounts = pendingRebuildCounts()
+            let rebuild = RebuildPipelineHealthState(
+                status: .failed,
+                inProgress: rebuildCounts.rebuild > 0 || rebuildCounts.reembed > 0,
+                pendingRebuildJobs: rebuildCounts.rebuild,
+                pendingReembedJobs: rebuildCounts.reembed,
+                errorCode: "RETRIEVAL_HEALTH_FETCH_FAILED",
+                errorMessage: error.localizedDescription
+            )
+            return RetrievalSystemHealthSnapshot(
+                parserImport: RetrievalSystemHealthSnapshot.empty.parserImport,
+                projectionQueue: failedProjection,
+                semanticPipeline: failedSemantic,
+                rebuild: rebuild,
+                collaborationStatus: nil,
+                degradedModes: degradedModes(
+                    indexingEnabled: indexingEnabled,
+                    sharedFeaturesAvailable: sharedFeaturesAvailable,
+                    projection: failedProjection,
+                    semantic: failedSemantic,
+                    rebuild: rebuild,
+                    collaborationStatus: nil
+                ),
+                observedAt: observedAt
+            )
+        }
+
+        let healthBySubsystem = Dictionary(uniqueKeysWithValues: rows.map { ($0.subsystem, $0) })
+        let parserImport = parserImportState(from: healthBySubsystem[.parserImport])
+        let projection = projectionQueueState(from: healthBySubsystem[.projection])
+        let semantic = semanticPipelineState(from: healthBySubsystem[.semantic])
+        let rebuildCounts = pendingRebuildCounts()
+        let rebuild = rebuildState(
+            from: healthBySubsystem[.rebuild],
+            pendingRebuildJobs: rebuildCounts.rebuild,
+            pendingReembedJobs: rebuildCounts.reembed
+        )
+        let collaborationStatus = healthBySubsystem[.collaboration]?.status
+
+        return RetrievalSystemHealthSnapshot(
+            parserImport: parserImport,
+            projectionQueue: projection,
+            semanticPipeline: semantic,
+            rebuild: rebuild,
+            collaborationStatus: collaborationStatus,
+            degradedModes: degradedModes(
+                indexingEnabled: indexingEnabled,
+                sharedFeaturesAvailable: sharedFeaturesAvailable,
+                projection: projection,
+                semantic: semantic,
+                rebuild: rebuild,
+                collaborationStatus: collaborationStatus
+            ),
+            observedAt: observedAt
+        )
+    }
+
+    private func parserImportState(from row: RetrievalHealthRecord?) -> ParserImportHealthState {
+        guard let row else {
+            return RetrievalSystemHealthSnapshot.empty.parserImport
+        }
+
+        let details: ParserImportHealthDetails?
+        if let json = row.detailsJSON?.data(using: .utf8) {
+            details = try? JSONDecoder().decode(ParserImportHealthDetails.self, from: json)
+        } else {
+            details = nil
+        }
+
+        return ParserImportHealthState(
+            status: row.status,
+            scannedProviders: details?.scannedProviders ?? 0,
+            importedUsageCount: details?.importedUsageCount ?? 0,
+            healthyProviders: details?.healthyProviders ?? 0,
+            emptyProviders: details?.emptyProviders ?? 0,
+            degradedProviders: details?.degradedProviders ?? 0,
+            failedProviders: details?.failedProviders ?? 0,
+            errorCode: row.errorCode,
+            errorMessage: row.errorMessage
+        )
+    }
+
+    private func projectionQueueState(from row: RetrievalHealthRecord?) -> ProjectionQueueHealthState {
+        guard let row else {
+            return RetrievalSystemHealthSnapshot.empty.projectionQueue
+        }
+
+        let details: ProjectionHealthDetailsPayload?
+        if let json = row.detailsJSON?.data(using: .utf8) {
+            details = try? JSONDecoder().decode(ProjectionHealthDetailsPayload.self, from: json)
+        } else {
+            details = nil
+        }
+
+        return ProjectionQueueHealthState(
+            status: row.status,
+            queueDepth: max(0, details?.queueDepth ?? 0),
+            failedJobs: max(0, details?.failedJobs ?? 0),
+            errorCode: row.errorCode,
+            errorMessage: row.errorMessage
+        )
+    }
+
+    private func semanticPipelineState(from row: RetrievalHealthRecord?) -> SemanticPipelineHealthState {
+        guard let row else {
+            return RetrievalSystemHealthSnapshot.empty.semanticPipeline
+        }
+
+        var backend: String?
+        var embeddingVersionID: String?
+        var indexedVectorCount = 0
+        var fallbackToExact = false
+        var candidateCount = 0
+
+        if let rawDetails = decodeJSONDictionary(from: row.detailsJSON) {
+            backend = stringValue(from: rawDetails["backend"])
+            embeddingVersionID = stringValue(from: rawDetails["embeddingVersionID"])
+            indexedVectorCount = intValue(from: rawDetails["indexedVectorCount"])
+                ?? intValue(from: rawDetails["indexedChunkCount"])
+                ?? 0
+            fallbackToExact = boolValue(from: rawDetails["fallbackToExact"]) ?? false
+            candidateCount = intValue(from: rawDetails["candidateCount"]) ?? 0
+        }
+
+        return SemanticPipelineHealthState(
+            status: row.status,
+            backend: backend,
+            embeddingVersionID: embeddingVersionID,
+            indexedVectorCount: max(0, indexedVectorCount),
+            fallbackToExact: fallbackToExact,
+            candidateCount: max(0, candidateCount),
+            errorCode: row.errorCode,
+            errorMessage: row.errorMessage
+        )
+    }
+
+    private func rebuildState(
+        from row: RetrievalHealthRecord?,
+        pendingRebuildJobs: Int,
+        pendingReembedJobs: Int
+    ) -> RebuildPipelineHealthState {
+        let status = row?.status ?? .healthy
+        return RebuildPipelineHealthState(
+            status: status,
+            inProgress: pendingRebuildJobs > 0 || pendingReembedJobs > 0,
+            pendingRebuildJobs: pendingRebuildJobs,
+            pendingReembedJobs: pendingReembedJobs,
+            errorCode: row?.errorCode,
+            errorMessage: row?.errorMessage
+        )
+    }
+
+    private func pendingRebuildCounts() -> (rebuild: Int, reembed: Int) {
+        do {
+            let pending = try dataStore.fetchProjectionJobs(statuses: [.queued, .leased, .running], limit: 2_000)
+            let rebuild = pending.filter { $0.jobType == .rebuild }.count
+            let reembed = pending.filter { $0.jobType == .reembed }.count
+            return (rebuild, reembed)
+        } catch {
+            lastSnapshotError = error.localizedDescription
+            return (0, 0)
+        }
+    }
+
+    private func degradedModes(
+        indexingEnabled: Bool,
+        sharedFeaturesAvailable: Bool,
+        projection: ProjectionQueueHealthState,
+        semantic: SemanticPipelineHealthState,
+        rebuild: RebuildPipelineHealthState,
+        collaborationStatus: RetrievalHealthStatus?
+    ) -> [RetrievalDegradedState] {
+        var modes: [RetrievalDegradedState] = []
+
+        if indexingEnabled {
+            if rebuild.inProgress {
+                let rebuildMessage: String
+                if rebuild.pendingRebuildJobs > 0 {
+                    rebuildMessage = "Search rebuild is in progress. Results may lag until projection and re-embedding complete."
+                } else {
+                    rebuildMessage = "Re-embedding is in progress. Semantic ranking may be temporarily incomplete."
+                }
+                modes.append(
+                    RetrievalDegradedState(
+                        mode: .rebuildInProgress,
+                        title: "Rebuild in progress",
+                        message: rebuildMessage
+                    )
+                )
+            }
+
+            let indexStale = projection.status != .healthy || projection.queueDepth > 0 || projection.failedJobs > 0
+            if indexStale {
+                let indexMessage: String
+                if projection.failedJobs > 0 {
+                    indexMessage = "Search index is stale: \(projection.failedJobs) projection job(s) are failing."
+                } else if projection.queueDepth > 0 {
+                    indexMessage = "Search index is catching up: \(projection.queueDepth) projection job(s) are pending."
+                } else {
+                    indexMessage = projection.errorMessage ?? "Search index health is degraded."
+                }
+                modes.append(
+                    RetrievalDegradedState(
+                        mode: .indexStale,
+                        title: "Index stale",
+                        message: indexMessage
+                    )
+                )
+            }
+
+            let semanticUnavailable = semantic.status != .healthy || semantic.indexedVectorCount == 0
+            if semanticUnavailable {
+                let semanticMessage: String
+                if semantic.indexedVectorCount == 0 {
+                    semanticMessage = "Semantic retrieval is unavailable until chunk embeddings are indexed."
+                } else {
+                    semanticMessage = semantic.errorMessage ?? "Semantic retrieval is temporarily unavailable; lexical fallback remains active."
+                }
+                modes.append(
+                    RetrievalDegradedState(
+                        mode: .semanticUnavailable,
+                        title: "Semantic unavailable",
+                        message: semanticMessage
+                    )
+                )
+            }
+        }
+
+        if sharedFeaturesAvailable == false || collaborationStatus == .failed || collaborationStatus == .degraded {
+            modes.append(
+                RetrievalDegradedState(
+                    mode: .cloudSharedUnavailable,
+                    title: "Cloud/shared unavailable",
+                    message: "Cloud and shared artifact features are unavailable. Local search continues to work."
+                )
+            )
+        }
+
+        return modes
+    }
+
+    private func decodeJSONDictionary(from json: String?) -> [String: Any]? {
+        guard let json, let data = json.data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    private func stringValue(from raw: Any?) -> String? {
+        guard let value = raw as? String else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func intValue(from raw: Any?) -> Int? {
+        if let value = raw as? Int { return value }
+        if let value = raw as? Int64 { return Int(value) }
+        if let value = raw as? Double { return Int(value) }
+        if let value = raw as? NSNumber { return value.intValue }
+        if let value = raw as? String, let parsed = Int(value) { return parsed }
+        return nil
+    }
+
+    private func boolValue(from raw: Any?) -> Bool? {
+        if let value = raw as? Bool { return value }
+        if let value = raw as? NSNumber { return value.boolValue }
+        if let value = raw as? String {
+            switch value.lowercased() {
+            case "true", "1", "yes":
+                return true
+            case "false", "0", "no":
+                return false
+            default:
+                return nil
+            }
+        }
+        return nil
+    }
 }
 
 struct EmbeddingModelDescriptor: Equatable, Sendable {
@@ -559,6 +1030,13 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
         let version: EmbeddingVersionRecord
     }
 
+    private struct CandidateGatherMetrics {
+        var candidateGenerationLatencyMs: Double?
+        var annCandidateGenerationLatencyMs: Double?
+        var exactRerankLatencyMs: Double?
+        var fallbackExactLatencyMs: Double?
+    }
+
     private let dataStore: DataStore
     private let queryEmbedder: QueryEmbeddingProviding
     private let configuredEmbeddingVersionID: String?
@@ -575,6 +1053,7 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
     private var indexedDistanceMetric: EmbeddingDistanceMetric = .cosine
     private var indexedVectorCount = 0
     private var indexedDimensions = 0
+    private(set) var lastHealthWriteError: String?
 
     init(
         dataStore: DataStore,
@@ -599,12 +1078,18 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
 
     func semanticCandidates(for query: String, filters _: RetrievalFilters, limit: Int) async throws -> [SemanticCandidate] {
         guard limit > 0 else { return [] }
+        let queryStartedAt = BurnBarPerformanceTimer.now()
+        var queryEmbeddingLatencyMs: Double?
+        var indexRefreshLatencyMs: Double?
+        var gatherMetrics = CandidateGatherMetrics()
 
         let queryVector: [Float]
+        let queryEmbeddingStartedAt = BurnBarPerformanceTimer.now()
         do {
             queryVector = try await queryEmbedder.embedding(for: query)
+            queryEmbeddingLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: queryEmbeddingStartedAt)
         } catch {
-            try? upsertSemanticHealth(
+            persistSemanticHealth(
                 status: .failed,
                 backendUsed: backend.rawValue,
                 embeddingVersionID: indexedEmbeddingVersionID,
@@ -613,16 +1098,27 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
                 candidateCount: 0,
                 fallbackUsed: false,
                 errorCode: "SEMANTIC_QUERY_EMBEDDING_FAILED",
-                errorMessage: error.localizedDescription
+                errorMessage: error.localizedDescription,
+                performanceMetrics: SemanticQueryPerformanceMetrics(
+                    queryEmbeddingLatencyMs: BurnBarPerformanceTimer.elapsedMilliseconds(since: queryEmbeddingStartedAt),
+                    indexRefreshLatencyMs: indexRefreshLatencyMs,
+                    candidateGenerationLatencyMs: gatherMetrics.candidateGenerationLatencyMs,
+                    annCandidateGenerationLatencyMs: gatherMetrics.annCandidateGenerationLatencyMs,
+                    exactRerankLatencyMs: gatherMetrics.exactRerankLatencyMs,
+                    fallbackExactLatencyMs: gatherMetrics.fallbackExactLatencyMs,
+                    totalQueryLatencyMs: BurnBarPerformanceTimer.elapsedMilliseconds(since: queryStartedAt)
+                )
             )
             throw error
         }
         guard queryVector.isEmpty == false else { return [] }
 
+        let indexRefreshStartedAt = BurnBarPerformanceTimer.now()
         do {
             try refreshIndexIfNeeded(queryDimensions: queryVector.count)
+            indexRefreshLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: indexRefreshStartedAt)
         } catch {
-            try? upsertSemanticHealth(
+            persistSemanticHealth(
                 status: .failed,
                 backendUsed: backend.rawValue,
                 embeddingVersionID: indexedEmbeddingVersionID,
@@ -631,13 +1127,22 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
                 candidateCount: 0,
                 fallbackUsed: false,
                 errorCode: "SEMANTIC_INDEX_BUILD_FAILED",
-                errorMessage: error.localizedDescription
+                errorMessage: error.localizedDescription,
+                performanceMetrics: SemanticQueryPerformanceMetrics(
+                    queryEmbeddingLatencyMs: queryEmbeddingLatencyMs,
+                    indexRefreshLatencyMs: BurnBarPerformanceTimer.elapsedMilliseconds(since: indexRefreshStartedAt),
+                    candidateGenerationLatencyMs: gatherMetrics.candidateGenerationLatencyMs,
+                    annCandidateGenerationLatencyMs: gatherMetrics.annCandidateGenerationLatencyMs,
+                    exactRerankLatencyMs: gatherMetrics.exactRerankLatencyMs,
+                    fallbackExactLatencyMs: gatherMetrics.fallbackExactLatencyMs,
+                    totalQueryLatencyMs: BurnBarPerformanceTimer.elapsedMilliseconds(since: queryStartedAt)
+                )
             )
             throw error
         }
 
         guard indexedVectorCount > 0 else {
-            try? upsertSemanticHealth(
+            persistSemanticHealth(
                 status: .degraded,
                 backendUsed: backend.rawValue,
                 embeddingVersionID: indexedEmbeddingVersionID,
@@ -646,15 +1151,25 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
                 candidateCount: 0,
                 fallbackUsed: false,
                 errorCode: "SEMANTIC_NO_EMBEDDINGS",
-                errorMessage: "No chunk embeddings are available for semantic retrieval."
+                errorMessage: "No chunk embeddings are available for semantic retrieval.",
+                performanceMetrics: SemanticQueryPerformanceMetrics(
+                    queryEmbeddingLatencyMs: queryEmbeddingLatencyMs,
+                    indexRefreshLatencyMs: indexRefreshLatencyMs,
+                    candidateGenerationLatencyMs: gatherMetrics.candidateGenerationLatencyMs,
+                    annCandidateGenerationLatencyMs: gatherMetrics.annCandidateGenerationLatencyMs,
+                    exactRerankLatencyMs: gatherMetrics.exactRerankLatencyMs,
+                    fallbackExactLatencyMs: gatherMetrics.fallbackExactLatencyMs,
+                    totalQueryLatencyMs: BurnBarPerformanceTimer.elapsedMilliseconds(since: queryStartedAt)
+                )
             )
             return []
         }
 
         do {
-            let (candidates, fallbackUsed) = try gatherCandidates(queryVector: queryVector, limit: limit)
+            let (candidates, fallbackUsed, metrics) = try gatherCandidates(queryVector: queryVector, limit: limit)
+            gatherMetrics = metrics
             let semanticCandidates = candidates.map { SemanticCandidate(chunkID: $0.chunkID, score: $0.score) }
-            try? upsertSemanticHealth(
+            persistSemanticHealth(
                 status: fallbackUsed ? .degraded : .healthy,
                 backendUsed: fallbackUsed ? VectorBackendKind.exact.rawValue : backend.rawValue,
                 embeddingVersionID: indexedEmbeddingVersionID,
@@ -663,11 +1178,20 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
                 candidateCount: semanticCandidates.count,
                 fallbackUsed: fallbackUsed,
                 errorCode: fallbackUsed ? "SEMANTIC_ANN_FALLBACK_TO_EXACT" : nil,
-                errorMessage: fallbackUsed ? "ANN candidate generation failed; exact fallback path served the query." : nil
+                errorMessage: fallbackUsed ? "ANN candidate generation failed; exact fallback path served the query." : nil,
+                performanceMetrics: SemanticQueryPerformanceMetrics(
+                    queryEmbeddingLatencyMs: queryEmbeddingLatencyMs,
+                    indexRefreshLatencyMs: indexRefreshLatencyMs,
+                    candidateGenerationLatencyMs: metrics.candidateGenerationLatencyMs,
+                    annCandidateGenerationLatencyMs: metrics.annCandidateGenerationLatencyMs,
+                    exactRerankLatencyMs: metrics.exactRerankLatencyMs,
+                    fallbackExactLatencyMs: metrics.fallbackExactLatencyMs,
+                    totalQueryLatencyMs: BurnBarPerformanceTimer.elapsedMilliseconds(since: queryStartedAt)
+                )
             )
             return semanticCandidates
         } catch {
-            try? upsertSemanticHealth(
+            persistSemanticHealth(
                 status: .failed,
                 backendUsed: backend.rawValue,
                 embeddingVersionID: indexedEmbeddingVersionID,
@@ -676,27 +1200,85 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
                 candidateCount: 0,
                 fallbackUsed: false,
                 errorCode: "SEMANTIC_BACKEND_QUERY_FAILED",
-                errorMessage: error.localizedDescription
+                errorMessage: error.localizedDescription,
+                performanceMetrics: SemanticQueryPerformanceMetrics(
+                    queryEmbeddingLatencyMs: queryEmbeddingLatencyMs,
+                    indexRefreshLatencyMs: indexRefreshLatencyMs,
+                    candidateGenerationLatencyMs: gatherMetrics.candidateGenerationLatencyMs,
+                    annCandidateGenerationLatencyMs: gatherMetrics.annCandidateGenerationLatencyMs,
+                    exactRerankLatencyMs: gatherMetrics.exactRerankLatencyMs,
+                    fallbackExactLatencyMs: gatherMetrics.fallbackExactLatencyMs,
+                    totalQueryLatencyMs: BurnBarPerformanceTimer.elapsedMilliseconds(since: queryStartedAt)
+                )
             )
             throw error
         }
     }
 
-    private func gatherCandidates(queryVector: [Float], limit: Int) throws -> ([VectorIndexCandidate], Bool) {
+    private func persistSemanticHealth(
+        status: RetrievalHealthStatus,
+        backendUsed: String,
+        embeddingVersionID: String?,
+        vectorCount: Int,
+        queryDimensions: Int?,
+        candidateCount: Int,
+        fallbackUsed: Bool,
+        errorCode: String?,
+        errorMessage: String?,
+        performanceMetrics: SemanticQueryPerformanceMetrics?
+    ) {
+        do {
+            try upsertSemanticHealth(
+                status: status,
+                backendUsed: backendUsed,
+                embeddingVersionID: embeddingVersionID,
+                vectorCount: vectorCount,
+                queryDimensions: queryDimensions,
+                candidateCount: candidateCount,
+                fallbackUsed: fallbackUsed,
+                errorCode: errorCode,
+                errorMessage: errorMessage,
+                performanceMetrics: performanceMetrics
+            )
+            lastHealthWriteError = nil
+        } catch {
+            lastHealthWriteError = error.localizedDescription
+        }
+    }
+
+    private func gatherCandidates(queryVector: [Float], limit: Int) throws -> ([VectorIndexCandidate], Bool, CandidateGatherMetrics) {
         let boundedLimit = min(limit, indexedVectorCount)
+        var metrics = CandidateGatherMetrics()
         switch backend {
         case .exact:
-            return (try exactBackend.candidates(for: queryVector, limit: boundedLimit), false)
+            let exactStartedAt = BurnBarPerformanceTimer.now()
+            let candidates = try exactBackend.candidates(for: queryVector, limit: boundedLimit)
+            metrics.candidateGenerationLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: exactStartedAt)
+            return (candidates, false, metrics)
         case .ann:
+            let annStartedAt = BurnBarPerformanceTimer.now()
             do {
                 let candidateLimit = min(indexedVectorCount, max(boundedLimit, exactRerankEnabled ? exactRerankLimit : boundedLimit))
                 let annCandidates = try annBackend.candidates(for: queryVector, limit: candidateLimit)
+                let annLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: annStartedAt)
+                metrics.annCandidateGenerationLatencyMs = annLatencyMs
+                metrics.candidateGenerationLatencyMs = annLatencyMs
                 if exactRerankEnabled {
-                    return (exactRerank(candidates: annCandidates, queryVector: queryVector, limit: boundedLimit), false)
+                    let rerankStartedAt = BurnBarPerformanceTimer.now()
+                    let reranked = exactRerank(candidates: annCandidates, queryVector: queryVector, limit: boundedLimit)
+                    metrics.exactRerankLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: rerankStartedAt)
+                    return (reranked, false, metrics)
                 }
-                return (Array(annCandidates.prefix(boundedLimit)), false)
+                return (Array(annCandidates.prefix(boundedLimit)), false, metrics)
             } catch {
-                return (try exactBackend.candidates(for: queryVector, limit: boundedLimit), true)
+                let annLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: annStartedAt)
+                metrics.annCandidateGenerationLatencyMs = annLatencyMs
+                let fallbackStartedAt = BurnBarPerformanceTimer.now()
+                let fallbackCandidates = try exactBackend.candidates(for: queryVector, limit: boundedLimit)
+                let fallbackLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: fallbackStartedAt)
+                metrics.fallbackExactLatencyMs = fallbackLatencyMs
+                metrics.candidateGenerationLatencyMs = annLatencyMs + fallbackLatencyMs
+                return (fallbackCandidates, true, metrics)
             }
         }
     }
@@ -828,7 +1410,8 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
         candidateCount: Int,
         fallbackUsed: Bool,
         errorCode: String?,
-        errorMessage: String?
+        errorMessage: String?,
+        performanceMetrics: SemanticQueryPerformanceMetrics?
     ) throws {
         let now = nowProvider()
         let details = SemanticRetrievalHealthDetails(
@@ -840,7 +1423,14 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
             queryDimensions: queryDimensions,
             candidateCount: candidateCount,
             fallbackToExact: fallbackUsed,
-            exactRerankEnabled: exactRerankEnabled
+            exactRerankEnabled: exactRerankEnabled,
+            queryEmbeddingLatencyMs: performanceMetrics?.queryEmbeddingLatencyMs,
+            indexRefreshLatencyMs: performanceMetrics?.indexRefreshLatencyMs,
+            candidateGenerationLatencyMs: performanceMetrics?.candidateGenerationLatencyMs,
+            annCandidateGenerationLatencyMs: performanceMetrics?.annCandidateGenerationLatencyMs,
+            exactRerankLatencyMs: performanceMetrics?.exactRerankLatencyMs,
+            fallbackExactLatencyMs: performanceMetrics?.fallbackExactLatencyMs,
+            totalQueryLatencyMs: performanceMetrics?.totalQueryLatencyMs
         )
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
@@ -858,6 +1448,16 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
     }
 }
 
+private struct SemanticQueryPerformanceMetrics: Codable {
+    let queryEmbeddingLatencyMs: Double?
+    let indexRefreshLatencyMs: Double?
+    let candidateGenerationLatencyMs: Double?
+    let annCandidateGenerationLatencyMs: Double?
+    let exactRerankLatencyMs: Double?
+    let fallbackExactLatencyMs: Double?
+    let totalQueryLatencyMs: Double?
+}
+
 private struct SemanticRetrievalHealthDetails: Codable {
     let backend: String
     let configuredBackend: String
@@ -868,6 +1468,13 @@ private struct SemanticRetrievalHealthDetails: Codable {
     let candidateCount: Int
     let fallbackToExact: Bool
     let exactRerankEnabled: Bool
+    let queryEmbeddingLatencyMs: Double?
+    let indexRefreshLatencyMs: Double?
+    let candidateGenerationLatencyMs: Double?
+    let annCandidateGenerationLatencyMs: Double?
+    let exactRerankLatencyMs: Double?
+    let fallbackExactLatencyMs: Double?
+    let totalQueryLatencyMs: Double?
 }
 
 // MARK: - Search Service
@@ -876,21 +1483,70 @@ private struct SemanticRetrievalHealthDetails: Codable {
 final class SearchService {
     private let dataStore: DataStore
     private let semanticProvider: SemanticCandidateProviding?
+    private let sharedArtifactAccessContextProvider: () -> SharedArtifactAccessContext?
     private let nowProvider: () -> Date
+    private(set) var lastHealthWriteError: String?
 
     init(
         dataStore: DataStore,
         semanticProvider: SemanticCandidateProviding? = nil,
+        sharedArtifactAccessContextProvider: @escaping () -> SharedArtifactAccessContext? = SearchService.defaultSharedArtifactAccessContext,
         nowProvider: @escaping () -> Date = Date.init
     ) {
         self.dataStore = dataStore
         self.semanticProvider = semanticProvider
+        self.sharedArtifactAccessContextProvider = sharedArtifactAccessContextProvider
         self.nowProvider = nowProvider
+    }
+
+    static func makeConversationSearchService(
+        dataStore: DataStore,
+        nowProvider: @escaping () -> Date = Date.init
+    ) -> SearchService {
+        let queryEmbedder = DeterministicQueryEmbeddingProvider()
+        let semanticProvider = VectorSemanticCandidateProvider(
+            dataStore: dataStore,
+            queryEmbedder: queryEmbedder
+        )
+        return SearchService(
+            dataStore: dataStore,
+            semanticProvider: semanticProvider,
+            sharedArtifactAccessContextProvider: SearchService.defaultSharedArtifactAccessContext,
+            nowProvider: nowProvider
+        )
+    }
+
+    private static func defaultSharedArtifactAccessContext() -> SharedArtifactAccessContext? {
+        guard
+            let userID = AccountManager.shared.userID?.trimmingCharacters(in: .whitespacesAndNewlines),
+            userID.isEmpty == false
+        else {
+            return nil
+        }
+        return SharedArtifactAccessContext.defaultScope(for: userID)
+    }
+
+    func recentConversations(limit: Int = 80) -> [ConversationRecord] {
+        let bounded = max(1, min(limit, 1_000))
+        return (try? dataStore.fetchConversations(limit: bounded)) ?? []
+    }
+
+    func latestConversation(limit: Int = 200) -> ConversationRecord? {
+        latestConversation(in: recentConversations(limit: limit))
+    }
+
+    func latestConversation(in conversations: [ConversationRecord]) -> ConversationRecord? {
+        conversations.max(by: { a, b in
+            let ad = a.endTime ?? a.startTime ?? .distantPast
+            let bd = b.endTime ?? b.startTime ?? .distantPast
+            return ad < bd
+        })
     }
 
     func retrieve(_ query: RetrievalQuery) async -> [RetrievalResult] {
         let trimmed = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return [] }
+        let queryStartedAt = BurnBarPerformanceTimer.now()
 
         let lexicalLimit = max(1, min(query.lexicalCandidateLimit, 1_000))
         let semanticLimit = max(0, min(query.semanticCandidateLimit, 1_000))
@@ -899,8 +1555,45 @@ final class SearchService {
 
         let sourceKinds = normalizedSourceKinds(query.filters.artifactTypes)
         let sourceIDs = normalizedSourceIDs(query.filters.sourceIDs)
+        let sharedArtifactAccessContext = sharedArtifactAccessContextProvider()
+        var semanticFallbackUsed = false
+        var semanticCandidateCount = 0
+        var indexStale = false
+        var indexStaleError: String?
+        var lexicalQueryLatencyMs: Double?
+        var semanticQueryLatencyMs: Double?
+        var rerankLatencyMs: Double?
+        var hydrationLatencyMs: Double?
+
+        func persistQueryHealth(
+            status: RetrievalHealthStatus,
+            lexicalCandidateCount: Int,
+            resultCount: Int,
+            indexStale: Bool,
+            semanticFallbackUsed: Bool,
+            errorCode: String?,
+            errorMessage: String?
+        ) {
+            persistLexicalHealth(
+                status: status,
+                query: trimmed,
+                lexicalCandidateCount: lexicalCandidateCount,
+                semanticCandidateCount: semanticCandidateCount,
+                resultCount: resultCount,
+                indexStale: indexStale,
+                semanticFallbackUsed: semanticFallbackUsed,
+                errorCode: errorCode,
+                errorMessage: errorMessage,
+                totalQueryLatencyMs: BurnBarPerformanceTimer.elapsedMilliseconds(since: queryStartedAt),
+                lexicalQueryLatencyMs: lexicalQueryLatencyMs,
+                semanticQueryLatencyMs: semanticQueryLatencyMs,
+                rerankLatencyMs: rerankLatencyMs,
+                hydrationLatencyMs: hydrationLatencyMs
+            )
+        }
 
         let lexicalMatches: [SearchChunkLexicalMatch]
+        let lexicalStartedAt = BurnBarPerformanceTimer.now()
         do {
             lexicalMatches = try dataStore.searchLexicalChunks(
                 query: trimmed,
@@ -909,10 +1602,22 @@ final class SearchService {
                 sourceKinds: sourceKinds,
                 dateRange: query.filters.dateRange,
                 visibility: query.filters.ownership.visibilityScope,
+                sharedArtifactAccessContext: sharedArtifactAccessContext,
                 sourceIDs: sourceIDs,
                 limit: lexicalLimit
             )
+            lexicalQueryLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: lexicalStartedAt)
         } catch {
+            lexicalQueryLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: lexicalStartedAt)
+            persistQueryHealth(
+                status: .failed,
+                lexicalCandidateCount: 0,
+                resultCount: 0,
+                indexStale: true,
+                semanticFallbackUsed: false,
+                errorCode: "LEXICAL_QUERY_FAILED",
+                errorMessage: error.localizedDescription
+            )
             return []
         }
 
@@ -961,12 +1666,15 @@ final class SearchService {
         }
 
         if semanticLimit > 0, let semanticProvider {
+            let semanticStartedAt = BurnBarPerformanceTimer.now()
             do {
                 let semanticCandidates = try await semanticProvider.semanticCandidates(
                     for: trimmed,
                     filters: query.filters,
                     limit: semanticLimit
                 )
+                semanticQueryLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: semanticStartedAt)
+                semanticCandidateCount = semanticCandidates.count
                 for semanticCandidate in semanticCandidates {
                     let normalizedScore = max(0, semanticCandidate.score)
                     if var existing = candidates[semanticCandidate.chunkID] {
@@ -985,12 +1693,36 @@ final class SearchService {
                     }
                 }
             } catch {
-                // Lexical fallback is mandatory.
+                semanticQueryLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: semanticStartedAt)
+                semanticFallbackUsed = true
+                persistSemanticFallbackHealth(
+                    query: trimmed,
+                    lexicalCandidateCount: lexicalMatches.count,
+                    error: error
+                )
             }
         }
 
-        guard candidates.isEmpty == false else { return [] }
+        guard candidates.isEmpty == false else {
+            let lexicalStatus = lexicalHealthStatus(indexStale: indexStale, semanticFallbackUsed: semanticFallbackUsed)
+            let lexicalError = lexicalHealthError(
+                indexStale: indexStale,
+                semanticFallbackUsed: semanticFallbackUsed,
+                indexStaleError: indexStaleError
+            )
+            persistQueryHealth(
+                status: lexicalStatus,
+                lexicalCandidateCount: lexicalMatches.count,
+                resultCount: 0,
+                indexStale: indexStale,
+                semanticFallbackUsed: semanticFallbackUsed,
+                errorCode: lexicalError.code,
+                errorMessage: lexicalError.message
+            )
+            return []
+        }
 
+        let rerankStartedAt = BurnBarPerformanceTimer.now()
         let boundedChunkIDs = Array(
             candidates
                 .sorted {
@@ -1004,9 +1736,23 @@ final class SearchService {
                 .prefix(rerankLimit)
                 .map(\.key)
         )
+        rerankLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: rerankStartedAt)
+
+        let hydrationStartedAt = BurnBarPerformanceTimer.now()
 
         let missingChunkIDs = boundedChunkIDs.filter { lexicalChunkMap[$0] == nil }
-        let fetchedChunks = (try? dataStore.fetchSearchChunks(ids: missingChunkIDs)) ?? []
+        let fetchedChunks: [SearchChunkRecord]
+        if missingChunkIDs.isEmpty {
+            fetchedChunks = []
+        } else {
+            do {
+                fetchedChunks = try dataStore.fetchSearchChunks(ids: missingChunkIDs)
+            } catch {
+                fetchedChunks = []
+                indexStale = true
+                indexStaleError = indexStaleError ?? error.localizedDescription
+            }
+        }
         var chunkMap = lexicalChunkMap
         for chunk in fetchedChunks {
             chunkMap[chunk.id] = chunk
@@ -1018,10 +1764,34 @@ final class SearchService {
             }
         )
         let missingDocumentIDs = allDocumentIDs.filter { lexicalDocumentMap[$0] == nil }
-        let fetchedDocuments = (try? dataStore.fetchSearchDocuments(ids: Array(missingDocumentIDs))) ?? []
+        let fetchedDocuments: [SearchDocumentRecord]
+        if missingDocumentIDs.isEmpty {
+            fetchedDocuments = []
+        } else {
+            do {
+                fetchedDocuments = try dataStore.fetchSearchDocuments(ids: Array(missingDocumentIDs))
+            } catch {
+                fetchedDocuments = []
+                indexStale = true
+                indexStaleError = indexStaleError ?? error.localizedDescription
+            }
+        }
         var documentMap = lexicalDocumentMap
         for document in fetchedDocuments {
             documentMap[document.id] = document
+        }
+
+        let readableSharedSourceIDs: Set<String>?
+        if shouldEnforceSharedArtifactAccess(filters: query.filters, sourceKinds: sourceKinds) {
+            if let sharedArtifactAccessContext {
+                readableSharedSourceIDs = try? dataStore.fetchReadableSharedArtifactSourceIDs(
+                    accessContext: sharedArtifactAccessContext
+                )
+            } else {
+                readableSharedSourceIDs = Set<String>()
+            }
+        } else {
+            readableSharedSourceIDs = nil
         }
 
         var conversationCache: [String: ConversationRecord?] = [:]
@@ -1044,15 +1814,29 @@ final class SearchService {
                 if let cached = conversationCache[document.sourceID] {
                     conversation = cached
                 } else {
-                    let loaded = try? dataStore.fetchConversation(id: document.sourceID)
-                    conversationCache[document.sourceID] = loaded
-                    conversation = loaded
+                    do {
+                        let loaded = try dataStore.fetchConversation(id: document.sourceID)
+                        conversationCache[document.sourceID] = loaded
+                        conversation = loaded
+                    } catch {
+                        indexStale = true
+                        indexStaleError = indexStaleError ?? error.localizedDescription
+                        conversationCache[document.sourceID] = .some(nil)
+                        conversation = nil
+                    }
                 }
             } else {
                 conversation = nil
             }
 
-            guard matchesFilters(document: document, conversation: conversation, filters: query.filters) else {
+            guard
+                matchesFilters(
+                    document: document,
+                    conversation: conversation,
+                    filters: query.filters,
+                    readableSharedSourceIDs: readableSharedSourceIDs
+                )
+            else {
                 continue
             }
 
@@ -1093,7 +1877,25 @@ final class SearchService {
             )
         }
 
-        guard scoredResults.isEmpty == false else { return [] }
+        guard scoredResults.isEmpty == false else {
+            hydrationLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: hydrationStartedAt)
+            let lexicalStatus = lexicalHealthStatus(indexStale: indexStale, semanticFallbackUsed: semanticFallbackUsed)
+            let lexicalError = lexicalHealthError(
+                indexStale: indexStale,
+                semanticFallbackUsed: semanticFallbackUsed,
+                indexStaleError: indexStaleError
+            )
+            persistQueryHealth(
+                status: lexicalStatus,
+                lexicalCandidateCount: lexicalMatches.count,
+                resultCount: 0,
+                indexStale: indexStale,
+                semanticFallbackUsed: semanticFallbackUsed,
+                errorCode: lexicalError.code,
+                errorMessage: lexicalError.message
+            )
+            return []
+        }
 
         scoredResults.sort { lhs, rhs in
             if lhs.rerankScore == rhs.rerankScore {
@@ -1114,6 +1916,23 @@ final class SearchService {
             if dedupedResults.count >= resultLimit { break }
         }
 
+        hydrationLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: hydrationStartedAt)
+        let lexicalStatus = lexicalHealthStatus(indexStale: indexStale, semanticFallbackUsed: semanticFallbackUsed)
+        let lexicalError = lexicalHealthError(
+            indexStale: indexStale,
+            semanticFallbackUsed: semanticFallbackUsed,
+            indexStaleError: indexStaleError
+        )
+        persistQueryHealth(
+            status: lexicalStatus,
+            lexicalCandidateCount: lexicalMatches.count,
+            resultCount: dedupedResults.count,
+            indexStale: indexStale,
+            semanticFallbackUsed: semanticFallbackUsed,
+            errorCode: lexicalError.code,
+            errorMessage: lexicalError.message
+        )
+
         return dedupedResults
     }
 
@@ -1121,8 +1940,11 @@ final class SearchService {
         query: String,
         provider: AgentProvider? = nil,
         projectName: String? = nil,
-        dateRange: ClosedRange<Date>? = nil
+        dateRange: ClosedRange<Date>? = nil,
+        conversationSources: Set<ConversationSourceType>? = nil,
+        resultLimit: Int = 50
     ) async -> [SearchResult] {
+        let boundedLimit = max(1, min(resultLimit, 200))
         let retrievalResults = await retrieve(
             RetrievalQuery(
                 text: query,
@@ -1131,12 +1953,13 @@ final class SearchService {
                     projectName: projectName,
                     artifactTypes: [.conversation],
                     dateRange: dateRange,
-                    ownership: .personal
+                    ownership: .personal,
+                    conversationSources: conversationSources
                 ),
                 lexicalCandidateLimit: 120,
                 semanticCandidateLimit: 120,
                 rerankCandidateLimit: 200,
-                resultLimit: 50
+                resultLimit: boundedLimit
             )
         )
 
@@ -1147,6 +1970,116 @@ final class SearchService {
                 snippet: result.snippet,
                 rank: result.rerankScore
             )
+        }
+    }
+
+    private func lexicalHealthStatus(indexStale: Bool, semanticFallbackUsed: Bool) -> RetrievalHealthStatus {
+        if indexStale {
+            return .degraded
+        }
+        if semanticFallbackUsed {
+            return .degraded
+        }
+        return .healthy
+    }
+
+    private func lexicalHealthError(
+        indexStale: Bool,
+        semanticFallbackUsed: Bool,
+        indexStaleError: String?
+    ) -> (code: String?, message: String?) {
+        if indexStale {
+            return (
+                "INDEX_STALE_PARTIAL_RESULTS",
+                indexStaleError ?? "Search index metadata could not be fully loaded; partial results were returned."
+            )
+        }
+        if semanticFallbackUsed {
+            return (
+                "SEMANTIC_FALLBACK_USED",
+                "Semantic retrieval failed; lexical fallback served this query."
+            )
+        }
+        return (nil, nil)
+    }
+
+    private func persistLexicalHealth(
+        status: RetrievalHealthStatus,
+        query: String,
+        lexicalCandidateCount: Int,
+        semanticCandidateCount: Int,
+        resultCount: Int,
+        indexStale: Bool,
+        semanticFallbackUsed: Bool,
+        errorCode: String?,
+        errorMessage: String?,
+        totalQueryLatencyMs: Double?,
+        lexicalQueryLatencyMs: Double?,
+        semanticQueryLatencyMs: Double?,
+        rerankLatencyMs: Double?,
+        hydrationLatencyMs: Double?
+    ) {
+        let now = nowProvider()
+        let details = LexicalRetrievalHealthDetails(
+            queryLength: query.count,
+            lexicalCandidateCount: lexicalCandidateCount,
+            semanticCandidateCount: semanticCandidateCount,
+            resultCount: resultCount,
+            indexStale: indexStale,
+            semanticFallbackUsed: semanticFallbackUsed,
+            totalQueryLatencyMs: totalQueryLatencyMs,
+            lexicalQueryLatencyMs: lexicalQueryLatencyMs,
+            semanticQueryLatencyMs: semanticQueryLatencyMs,
+            rerankLatencyMs: rerankLatencyMs,
+            hydrationLatencyMs: hydrationLatencyMs
+        )
+        do {
+            let detailsData = try JSONEncoder().encode(details)
+            let detailsJSON = String(data: detailsData, encoding: .utf8)
+            try dataStore.upsertRetrievalHealth(
+                RetrievalHealthRecord(
+                    subsystem: .lexical,
+                    status: status,
+                    errorCode: errorCode,
+                    errorMessage: errorMessage,
+                    detailsJSON: detailsJSON,
+                    observedAt: now,
+                    updatedAt: now
+                )
+            )
+            lastHealthWriteError = nil
+        } catch {
+            lastHealthWriteError = error.localizedDescription
+        }
+    }
+
+    private func persistSemanticFallbackHealth(
+        query: String,
+        lexicalCandidateCount: Int,
+        error: Error
+    ) {
+        let now = nowProvider()
+        let details = SemanticFallbackHealthDetails(
+            queryLength: query.count,
+            lexicalCandidateCount: lexicalCandidateCount
+        )
+        do {
+            let detailsData = try JSONEncoder().encode(details)
+            let detailsJSON = String(data: detailsData, encoding: .utf8)
+            try dataStore.upsertRetrievalHealth(
+                RetrievalHealthRecord(
+                    subsystem: .semantic,
+                    status: .degraded,
+                    errorCode: "SEMANTIC_PROVIDER_FALLBACK",
+                    errorMessage: error.localizedDescription,
+                    detailsJSON: detailsJSON,
+                    observedAt: now,
+                    updatedAt: now
+                )
+            )
+            lastHealthWriteError = nil
+        } catch {
+            lastHealthWriteError = error.localizedDescription
         }
     }
 
@@ -1167,7 +2100,8 @@ final class SearchService {
     private func matchesFilters(
         document: SearchDocumentRecord,
         conversation: ConversationRecord?,
-        filters: RetrievalFilters
+        filters: RetrievalFilters,
+        readableSharedSourceIDs: Set<String>?
     ) -> Bool {
         if let provider = filters.provider, document.provider != provider.rawValue {
             return false
@@ -1185,6 +2119,15 @@ final class SearchService {
 
         if let sourceIDs = filters.sourceIDs, sourceIDs.isEmpty == false, sourceIDs.contains(document.sourceID) == false {
             return false
+        }
+
+        if document.sourceKind == .sharedArtifact {
+            guard
+                let readableSharedSourceIDs,
+                readableSharedSourceIDs.contains(document.sourceID)
+            else {
+                return false
+            }
         }
 
         switch filters.ownership {
@@ -1208,6 +2151,27 @@ final class SearchService {
             if conversationSources.contains(conversation.sourceType) == false {
                 return false
             }
+        }
+
+        return true
+    }
+
+    private func shouldEnforceSharedArtifactAccess(
+        filters: RetrievalFilters,
+        sourceKinds: [SearchSourceKind]?
+    ) -> Bool {
+        if filters.ownership == .personal {
+            return false
+        }
+
+        if let sourceKinds, sourceKinds.contains(.sharedArtifact) == false {
+            return false
+        }
+
+        if let artifactTypes = filters.artifactTypes,
+           artifactTypes.isEmpty == false,
+           artifactTypes.contains(.sharedArtifact) == false {
+            return false
         }
 
         return true
@@ -1268,6 +2232,25 @@ final class SearchService {
 
         return String(fallback.trimmingCharacters(in: .whitespacesAndNewlines).prefix(220))
     }
+}
+
+private struct LexicalRetrievalHealthDetails: Codable {
+    let queryLength: Int
+    let lexicalCandidateCount: Int
+    let semanticCandidateCount: Int
+    let resultCount: Int
+    let indexStale: Bool
+    let semanticFallbackUsed: Bool
+    let totalQueryLatencyMs: Double?
+    let lexicalQueryLatencyMs: Double?
+    let semanticQueryLatencyMs: Double?
+    let rerankLatencyMs: Double?
+    let hydrationLatencyMs: Double?
+}
+
+private struct SemanticFallbackHealthDetails: Codable {
+    let queryLength: Int
+    let lexicalCandidateCount: Int
 }
 
 private struct CandidateAccumulator {

@@ -14,6 +14,7 @@ final class ChatSessionController {
     var searchResults: [SearchResult] = []
     var isSearching = false
     var selectedContext: ConversationRecord?
+    var retrievalHealthSnapshot: RetrievalSystemHealthSnapshot = .empty
     /// Cumulative offset from the default bottom-trailing anchor (drag to reposition).
     var panelFloatOffset: CGSize = .zero
     var panelWidth: CGFloat = 400
@@ -28,15 +29,18 @@ final class ChatSessionController {
 
     private let dataStore: DataStore
     private let searchService: SearchService
+    private let retrievalHealthService: RetrievalHealthService
     private let settingsManager: SettingsManager
     let cliBridge: CLIBridge
 
     private var streamTask: Task<Void, Never>?
+    private var sharedFeaturesAvailable = true
 
     init(dataStore: DataStore, settingsManager: SettingsManager = .shared) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
-        self.searchService = SearchService(dataStore: dataStore)
+        self.searchService = SearchService.makeConversationSearchService(dataStore: dataStore)
+        self.retrievalHealthService = RetrievalHealthService(dataStore: dataStore)
         self.cliBridge = CLIBridge()
 
         let w = UserDefaults.standard.double(forKey: Self.udPanelW)
@@ -48,6 +52,8 @@ final class ChatSessionController {
         if ox != 0 || oy != 0 {
             panelFloatOffset = CGSize(width: CGFloat(ox), height: CGFloat(oy))
         }
+
+        refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
     }
 
     func clampedPanelOffset(_ proposed: CGSize, container: CGSize, padding: CGFloat) -> CGSize {
@@ -80,6 +86,7 @@ final class ChatSessionController {
         if let rows = try? dataStore.fetchChatMessages() {
             messages = rows
         }
+        refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
     }
 
     func clearChat() {
@@ -94,6 +101,7 @@ final class ChatSessionController {
         let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else {
             searchResults = []
+            refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
             return
         }
         isSearching = true
@@ -102,8 +110,17 @@ final class ChatSessionController {
             await MainActor.run {
                 self.searchResults = r
                 self.isSearching = false
+                self.refreshRetrievalHealth(sharedFeaturesAvailable: self.sharedFeaturesAvailable)
             }
         }
+    }
+
+    func refreshRetrievalHealth(sharedFeaturesAvailable: Bool) {
+        self.sharedFeaturesAvailable = sharedFeaturesAvailable
+        retrievalHealthSnapshot = retrievalHealthService.snapshot(
+            indexingEnabled: settingsManager.conversationIndexingEnabled,
+            sharedFeaturesAvailable: sharedFeaturesAvailable
+        )
     }
 
     func selectSearchResult(_ result: SearchResult) {
@@ -111,6 +128,10 @@ final class ChatSessionController {
         searchQuery = ""
         searchResults = []
         inputText = "Tell me more about my work on \(result.conversation.inferredTaskTitle)"
+    }
+
+    func buildInsightBriefSnapshot() -> InsightBriefSnapshot {
+        InsightBriefSnapshot.build(from: dataStore, intelligenceService: searchService)
     }
 
     func send() async {
@@ -146,7 +167,7 @@ final class ChatSessionController {
             return
         }
 
-        let system = ContextBuilder.buildSystemPrompt(from: dataStore)
+        let system = ContextBuilder.buildSystemPrompt(from: dataStore, intelligenceService: searchService)
         let augmentedSystem: String
         if let ctx = selectedContext {
             augmentedSystem = system + "\n\n## Focus session\nProject: \(ctx.projectName)\nTitle: \(ctx.inferredTaskTitle)\n\nTranscript excerpt:\n\(String(ctx.fullText.prefix(12_000)))"

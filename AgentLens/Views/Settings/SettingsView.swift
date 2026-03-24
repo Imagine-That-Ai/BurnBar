@@ -105,7 +105,11 @@ struct SettingsView: View {
     private var detailContent: some View {
         switch selectedTab ?? .general {
         case .general:
-            GeneralSettingsView(settingsManager: settingsManager, dataStore: dataStore)
+            GeneralSettingsView(
+                settingsManager: settingsManager,
+                dataStore: dataStore,
+                sharedFeaturesAvailable: accountManager.isSignedIn
+            )
                 .navigationTitle("General")
         case .account:
             AccountSettingsView(
@@ -143,6 +147,7 @@ private func sectionHeader(_ title: String) -> some View {
 private struct GeneralSettingsView: View {
     @Bindable var settingsManager: SettingsManager
     var dataStore: DataStore
+    var sharedFeaturesAvailable: Bool
 
     var body: some View {
         ScrollView {
@@ -193,7 +198,11 @@ private struct GeneralSettingsView: View {
 
                 sectionHeader("Privacy & Search")
 
-                PrivacyIndexingSettingsView(settingsManager: settingsManager, dataStore: dataStore)
+                PrivacyIndexingSettingsView(
+                    settingsManager: settingsManager,
+                    dataStore: dataStore,
+                    sharedFeaturesAvailable: sharedFeaturesAvailable
+                )
 
                 sectionHeader("Session Summaries")
 
@@ -251,8 +260,11 @@ private struct GeneralSettingsView: View {
 private struct PrivacyIndexingSettingsView: View {
     @Bindable var settingsManager: SettingsManager
     var dataStore: DataStore
+    var sharedFeaturesAvailable: Bool
     @State private var storageBytes: Int64 = 0
     @State private var deleteConfirm = false
+    @State private var deleteErrorMessage: String?
+    @State private var retrievalHealthSnapshot: RetrievalSystemHealthSnapshot = .empty
 
     var body: some View {
         GlassCard {
@@ -270,6 +282,35 @@ private struct PrivacyIndexingSettingsView: View {
                     subtitle: "Lets the in-app assistant run your local `claude` or `codex` binary. You can revoke this anytime.",
                     isOn: $settingsManager.cliAssistantAllowed
                 )
+
+                if !retrievalHealthSnapshot.degradedModes.isEmpty {
+                    Divider().background(DesignSystem.Colors.border)
+
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                        ForEach(retrievalHealthSnapshot.degradedModes) { state in
+                            HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(DesignSystem.Colors.warning)
+                                    .padding(.top, 2)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(state.title)
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    Text(state.message)
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            .padding(.horizontal, DesignSystem.Spacing.sm)
+                            .padding(.vertical, DesignSystem.Spacing.xs)
+                            .background(DesignSystem.Colors.warning.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                        }
+                    }
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                }
 
                 HStack {
                     Text("Approx. indexed text")
@@ -293,11 +334,26 @@ private struct PrivacyIndexingSettingsView: View {
                 .buttonStyle(.plain)
                 .padding(.horizontal, DesignSystem.Spacing.lg)
                 .padding(.bottom, DesignSystem.Spacing.md)
+
+                if let deleteErrorMessage {
+                    Text(deleteErrorMessage)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.error)
+                        .padding(.horizontal, DesignSystem.Spacing.lg)
+                        .padding(.bottom, DesignSystem.Spacing.md)
+                }
             }
         }
-        .onAppear { refreshStorage() }
+        .onAppear {
+            refreshStorage()
+            refreshHealth()
+        }
         .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in
             refreshStorage()
+            refreshHealth()
+        }
+        .onChange(of: sharedFeaturesAvailable) { _, _ in
+            refreshHealth()
         }
         .confirmationDialog(
             "Delete indexed conversation text?",
@@ -305,8 +361,14 @@ private struct PrivacyIndexingSettingsView: View {
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
-                try? dataStore.deleteAllIndexedConversations()
-                refreshStorage()
+                do {
+                    try dataStore.deleteAllIndexedConversations()
+                    deleteErrorMessage = nil
+                    refreshStorage()
+                    refreshHealth()
+                } catch {
+                    deleteErrorMessage = "Failed to delete indexed conversations: \(error.localizedDescription)"
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -315,7 +377,19 @@ private struct PrivacyIndexingSettingsView: View {
     }
 
     private func refreshStorage() {
-        storageBytes = (try? dataStore.approximateConversationStorageBytes()) ?? 0
+        do {
+            storageBytes = try dataStore.approximateConversationStorageBytes()
+        } catch {
+            storageBytes = 0
+        }
+    }
+
+    private func refreshHealth() {
+        let service = RetrievalHealthService(dataStore: dataStore)
+        retrievalHealthSnapshot = service.snapshot(
+            indexingEnabled: settingsManager.conversationIndexingEnabled,
+            sharedFeaturesAvailable: sharedFeaturesAvailable
+        )
     }
 
     private func formatBytes(_ n: Int64) -> String {
@@ -2877,6 +2951,20 @@ private struct AccountSettingsView: View {
         return "Your Firebase security rules must allow read/write under your user path for usage, conversations, and session_logs (including chunks). This is not the iCloud mirror below. See README → Cloud sync, or use firestore.rules in the repo."
     }
 
+    private var collaborationNoticeHint: (text: String, color: Color)? {
+        guard let notice = cloudSyncService?.lastCollaborationNotice else { return nil }
+        let relativeTime = notice.occurredAt.formatted(.relative(presentation: .named))
+        let text = "\(notice.kind.title): \(notice.message) (\(relativeTime))"
+        switch notice.kind {
+        case .remoteUpdateArrived:
+            return (text, DesignSystem.Colors.textSecondary)
+        case .editConflicted:
+            return (text, DesignSystem.Colors.error)
+        case .resolvedVersionSaved:
+            return (text, DesignSystem.Colors.success)
+        }
+    }
+
     private var syncStatusRow: some View {
         HStack(spacing: DesignSystem.Spacing.md) {
             VStack(alignment: .leading, spacing: 3) {
@@ -2902,6 +2990,13 @@ private struct AccountSettingsView: View {
                     Text(hint)
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let notice = collaborationNoticeHint {
+                    Text(notice.text)
+                        .font(.caption2)
+                        .foregroundStyle(notice.color)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

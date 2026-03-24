@@ -68,8 +68,8 @@ final class ProviderAPIKeyStore {
         self.keychain = keychain
     }
 
-    func apiKey(for provider: String) -> String? {
-        try? keychain.string(for: provider)
+    func apiKey(for provider: String, allowUserInteraction: Bool = false) -> String? {
+        try? keychain.string(for: provider, allowUserInteraction: allowUserInteraction)
     }
 
     func setAPIKey(_ key: String, for provider: String) throws {
@@ -81,7 +81,7 @@ final class ProviderAPIKeyStore {
     }
 
     func hasKey(for provider: String) -> Bool {
-        (try? keychain.string(for: provider)) != nil
+        apiKey(for: provider, allowUserInteraction: false) != nil
     }
 }
 

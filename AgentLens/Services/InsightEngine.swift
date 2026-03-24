@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Sentiment
 
-enum Sentiment {
+enum Sentiment: String, Codable, CaseIterable, Sendable {
     case positive
     case neutral
     case negative
@@ -10,19 +10,19 @@ enum Sentiment {
 
 // MARK: - Insight Type
 
-enum InsightType: Equatable {
-    case costChange
-    case newSessions
-    case rankMovement
-    case modelShift
+enum InsightType: String, Codable, CaseIterable, Equatable, Sendable {
+    case costChange = "cost_change"
+    case newSessions = "new_sessions"
+    case rankMovement = "rank_movement"
+    case modelShift = "model_shift"
     case neutral
     case narrative
-    case cacheEfficiency
+    case cacheEfficiency = "cache_efficiency"
 }
 
 // MARK: - Insight
 
-struct Insight: Identifiable {
+struct Insight: Identifiable, Equatable, Codable, Sendable {
     let id: UUID
     let type: InsightType
     let icon: String
@@ -50,6 +50,239 @@ struct Insight: Identifiable {
         self.detail = detail
         self.metric = metric
         self.delta = delta
+    }
+}
+
+// MARK: - Materialized Rollups
+
+enum InsightRollupFreshness: String, Codable, Equatable, Sendable {
+    case fresh
+    case stale
+    case rebuilding
+    case unavailable
+}
+
+struct WorkflowInsightRollupSnapshot: Equatable, Sendable {
+    let insights: [Insight]
+    let freshness: InsightRollupFreshness
+    let computedAt: Date?
+    let statusMessage: String?
+
+    static let unavailable = WorkflowInsightRollupSnapshot(
+        insights: [],
+        freshness: .unavailable,
+        computedAt: nil,
+        statusMessage: "Workflow insights are unavailable until BurnBar has indexed enough activity."
+    )
+}
+
+private struct MaterializedInsightRollupPayload: Codable, Sendable {
+    let schemaVersion: Int
+    let insights: [Insight]
+    let computedAt: Date
+    let latestUsageAt: Date?
+    let latestIndexedAt: Date?
+}
+
+private struct RollupContext {
+    let latestUsageAt: Date?
+    let latestIndexedAt: Date?
+    let pendingJobCount: Int
+    let failedJobCount: Int
+    let rebuildInProgress: Bool
+    let hasInputs: Bool
+}
+
+@MainActor
+final class WorkflowInsightRollupService {
+    private let dataStore: DataStore
+    private let nowProvider: () -> Date
+
+    init(dataStore: DataStore, nowProvider: @escaping () -> Date = Date.init) {
+        self.dataStore = dataStore
+        self.nowProvider = nowProvider
+    }
+
+    func snapshot(refreshIfStale: Bool = true) -> WorkflowInsightRollupSnapshot {
+        let context: RollupContext
+        do {
+            context = try buildContext()
+        } catch {
+            let message = "Workflow insights are unavailable: \(error.localizedDescription)"
+            try? upsertHealth(
+                payload: nil,
+                status: .failed,
+                errorCode: "INSIGHT_ROLLUP_CONTEXT_FAILED",
+                errorMessage: message
+            )
+            return WorkflowInsightRollupSnapshot(
+                insights: [],
+                freshness: .unavailable,
+                computedAt: nil,
+                statusMessage: message
+            )
+        }
+
+        var payload = loadMaterializedPayload()
+        var freshness = freshness(for: payload, context: context)
+
+        if refreshIfStale, freshness == .stale, context.hasInputs {
+            do {
+                let refreshed = try materialize(context: context)
+                payload = refreshed
+                freshness = .fresh
+            } catch {
+                let message = "Workflow insights could not refresh: \(error.localizedDescription)"
+                try? upsertHealth(
+                    payload: payload,
+                    status: .failed,
+                    errorCode: "INSIGHT_ROLLUP_MATERIALIZE_FAILED",
+                    errorMessage: message
+                )
+                return WorkflowInsightRollupSnapshot(
+                    insights: payload?.insights ?? [],
+                    freshness: payload == nil ? .unavailable : .stale,
+                    computedAt: payload?.computedAt,
+                    statusMessage: message
+                )
+            }
+        }
+
+        let status = healthStatus(for: freshness)
+        try? upsertHealth(
+            payload: payload,
+            status: status,
+            errorCode: nil,
+            errorMessage: nil
+        )
+
+        return WorkflowInsightRollupSnapshot(
+            insights: payload?.insights ?? [],
+            freshness: freshness,
+            computedAt: payload?.computedAt,
+            statusMessage: statusMessage(for: freshness, context: context)
+        )
+    }
+
+    private func buildContext() throws -> RollupContext {
+        let pending = try dataStore.fetchProjectionJobs(statuses: [.queued, .leased, .running], limit: 2_000)
+        let failed = try dataStore.fetchProjectionJobs(statuses: [.failed, .canceled], limit: 500)
+        let latestIndexedAt = try dataStore.fetchSearchDocuments(limit: 1).first?.indexedAt
+        let latestUsageAt = dataStore.usages.compactMap { $0.endTime ?? $0.startTime }.max()
+        let rebuildInProgress = pending.contains { $0.jobType == .rebuild || $0.jobType == .reembed }
+        let hasInputs = !dataStore.usages.isEmpty || latestIndexedAt != nil
+        return RollupContext(
+            latestUsageAt: latestUsageAt,
+            latestIndexedAt: latestIndexedAt,
+            pendingJobCount: pending.count,
+            failedJobCount: failed.count,
+            rebuildInProgress: rebuildInProgress,
+            hasInputs: hasInputs
+        )
+    }
+
+    private func freshness(
+        for payload: MaterializedInsightRollupPayload?,
+        context: RollupContext
+    ) -> InsightRollupFreshness {
+        if context.rebuildInProgress {
+            return .rebuilding
+        }
+
+        guard let payload else {
+            return context.hasInputs ? .stale : .unavailable
+        }
+
+        if context.pendingJobCount > 0 || context.failedJobCount > 0 {
+            return .stale
+        }
+        if let latestUsageAt = context.latestUsageAt, latestUsageAt > payload.computedAt {
+            return .stale
+        }
+        if let latestIndexedAt = context.latestIndexedAt, latestIndexedAt > payload.computedAt {
+            return .stale
+        }
+        return .fresh
+    }
+
+    private func materialize(context: RollupContext) throws -> MaterializedInsightRollupPayload {
+        let computedAt = nowProvider()
+        let payload = MaterializedInsightRollupPayload(
+            schemaVersion: 1,
+            insights: InsightEngine.generate(from: dataStore),
+            computedAt: computedAt,
+            latestUsageAt: context.latestUsageAt,
+            latestIndexedAt: context.latestIndexedAt
+        )
+        try upsertHealth(payload: payload, status: .healthy, errorCode: nil, errorMessage: nil)
+        return payload
+    }
+
+    private func loadMaterializedPayload() -> MaterializedInsightRollupPayload? {
+        guard
+            let row = try? dataStore.fetchRetrievalHealth().first(where: { $0.subsystem == .insightRollups }),
+            let json = row.detailsJSON?.data(using: .utf8)
+        else {
+            return nil
+        }
+        return try? JSONDecoder().decode(MaterializedInsightRollupPayload.self, from: json)
+    }
+
+    private func upsertHealth(
+        payload: MaterializedInsightRollupPayload?,
+        status: RetrievalHealthStatus,
+        errorCode: String?,
+        errorMessage: String?
+    ) throws {
+        let detailsJSON: String?
+        if let payload {
+            let data = try JSONEncoder().encode(payload)
+            detailsJSON = String(data: data, encoding: .utf8)
+        } else {
+            detailsJSON = nil
+        }
+        let now = nowProvider()
+        try dataStore.upsertRetrievalHealth(
+            RetrievalHealthRecord(
+                subsystem: .insightRollups,
+                status: status,
+                errorCode: errorCode,
+                errorMessage: errorMessage,
+                detailsJSON: detailsJSON,
+                observedAt: now,
+                updatedAt: now
+            )
+        )
+    }
+
+    private func healthStatus(for freshness: InsightRollupFreshness) -> RetrievalHealthStatus {
+        switch freshness {
+        case .fresh:
+            return .healthy
+        case .stale, .rebuilding:
+            return .degraded
+        case .unavailable:
+            return .failed
+        }
+    }
+
+    private func statusMessage(for freshness: InsightRollupFreshness, context: RollupContext) -> String? {
+        switch freshness {
+        case .fresh:
+            return nil
+        case .stale:
+            if context.failedJobCount > 0 {
+                return "Workflow insights are stale because \(context.failedJobCount) projection job(s) failed."
+            }
+            if context.pendingJobCount > 0 {
+                return "Workflow insights are stale while \(context.pendingJobCount) projection job(s) catch up."
+            }
+            return "Workflow insights are stale and will refresh on the next projection sweep."
+        case .rebuilding:
+            return "Workflow insights are rebuilding while projection and re-embedding complete."
+        case .unavailable:
+            return "Workflow insights are unavailable until BurnBar has indexed enough activity."
+        }
     }
 }
 

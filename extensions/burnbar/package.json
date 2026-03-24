@@ -37,7 +37,9 @@
     "onCommand:burnbar.retryRun",
     "onCommand:burnbar.approveRun",
     "onCommand:burnbar.rejectRun",
-    "onCommand:burnbar.private.workspace.rpc"
+    "onCommand:burnbar.private.workspace.rpc",
+    "onCommand:burnbar.openWorkspace",
+    "onCommand:burnbar.openConversationSearch"
   ],
   "contributes": {
     "viewsContainers": {
@@ -58,15 +60,18 @@
         },
         {
           "id": "burnbar.health",
-          "name": "Health"
+          "name": "Health",
+          "visibility": "collapsed"
         },
         {
           "id": "burnbar.runs",
-          "name": "Runs"
+          "name": "Runs",
+          "visibility": "collapsed"
         },
         {
           "id": "burnbar.runDetail",
-          "name": "Run Detail"
+          "name": "Run Detail",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -102,6 +107,14 @@
       {
         "command": "burnbar.rejectRun",
         "title": "BurnBar: Reject Run"
+      },
+      {
+        "command": "burnbar.openWorkspace",
+        "title": "BurnBar: Open Workspace"
+      },
+      {
+        "command": "burnbar.openConversationSearch",
+        "title": "BurnBar: Search Conversations"
       }
     ],
     "menus": {
@@ -167,6 +180,12 @@
           "type": "string",
           "default": "",
           "description": "Internal smoke-test model identifier for BurnBar Cursor validation."
+        },
+        "burnbar.sidebar.statusLine": {
+          "type": "string",
+          "enum": ["smart", "workspace", "models", "activeRun", "socket", "off"],
+          "default": "smart",
+          "description": "Controls what BurnBar shows in the sidebar status line."
         }
       }
     }

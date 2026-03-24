@@ -73,8 +73,11 @@ final class CursorConnectorManager {
         saveConfig()
     }
 
-    func apiKey(for provider: ConnectorProvider) -> String {
-        (try? keychain.string(for: keychainAccount(for: provider))) ?? ""
+    func apiKey(for provider: ConnectorProvider, allowUserInteraction: Bool = false) -> String {
+        (try? keychain.string(
+            for: keychainAccount(for: provider),
+            allowUserInteraction: allowUserInteraction
+        )) ?? ""
     }
 
     func setAPIKey(_ apiKey: String, for provider: ConnectorProvider) {

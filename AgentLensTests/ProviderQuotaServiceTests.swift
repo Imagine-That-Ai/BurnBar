@@ -564,7 +564,7 @@ private final class TestKeychainBackend: KeychainStoreBackend {
         storage[service, default: [:]][account] = value
     }
 
-    func data(for service: String, account: String) throws -> Data? {
+    func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
         storage[service]?[account]
     }
 

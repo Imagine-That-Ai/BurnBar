@@ -5,6 +5,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
 "$repo_root/scripts/test-burnbar-swift.sh"
+"$repo_root/scripts/test-burnbar-retrieval-evals.sh"
 "$repo_root/scripts/test-burnbar-ts.sh"
 "$repo_root/scripts/test-burnbar-replay-evals.sh"
 "$repo_root/scripts/test-burnbar-extension-host.sh"

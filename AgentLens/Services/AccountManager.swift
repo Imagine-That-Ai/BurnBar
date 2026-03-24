@@ -19,6 +19,7 @@ final class AccountManager {
     // MARK: - State
 
     private(set) var isSignedIn = false
+    private(set) var userID: String?
     private(set) var userEmail: String?
     private(set) var userDisplayName: String?
     private(set) var isCloudSyncEnabled = true
@@ -69,6 +70,7 @@ final class AccountManager {
         authStateListenerHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             Task { @MainActor [weak self] in
                 self?.isSignedIn = user != nil
+                self?.userID = user?.uid
                 self?.userEmail = user?.email
                 self?.userDisplayName = user?.displayName ?? user?.email
             }

@@ -74,27 +74,46 @@ struct SessionLogsView: View {
     @State private var dataSource: SessionLogDataSource = .local
     @State private var cloudBodyCache: [String: String] = [:]
     @State private var dataSourceError: String?
+    @State private var retrievalSearchService: SearchService?
+    @State private var retrievalHealthService: RetrievalHealthService?
+    @State private var retrievalMatchedIDs: [String] = []
+    @State private var isRetrievalSearching = false
+    @State private var retrievalHealthSnapshot: RetrievalSystemHealthSnapshot = .empty
 
     private let defaultDisplayLimit = 15
 
     // MARK: - Filtering
 
-    private var filteredLogs: [ConversationRecord] {
-        var result = allLogs
+    private var sourceFilteredLogs: [ConversationRecord] {
         switch sourceFilter {
-        case .all: break
-        case .provider:  result = result.filter { $0.sourceType == .providerLog }
-        case .assistant: result = result.filter { $0.sourceType == .cliAssistant }
+        case .all:
+            return allLogs
+        case .provider:
+            return allLogs.filter { $0.sourceType == .providerLog }
+        case .assistant:
+            return allLogs.filter { $0.sourceType == .cliAssistant }
         }
-        guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return result }
-        let q = searchText.lowercased()
-        return result.filter {
-            $0.inferredTaskTitle.lowercased().contains(q)
-                || ($0.summaryTitle?.lowercased().contains(q) ?? false)
-                || $0.projectName.lowercased().contains(q)
-                || $0.provider.displayName.lowercased().contains(q)
-                || ($0.summary?.lowercased().contains(q) ?? false)
-                || $0.fullText.lowercased().contains(q)
+    }
+
+    private var filteredLogs: [ConversationRecord] {
+        let result = sourceFilteredLogs
+        let trimmedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return result }
+
+        if dataSource == .local {
+            let byID = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
+            return retrievalMatchedIDs.compactMap { byID[$0] }
+        }
+
+        return substringFilteredLogs(from: result, query: trimmedQuery)
+    }
+
+    private var visibleDegradedModes: [RetrievalDegradedState] {
+        retrievalHealthSnapshot.degradedModes.filter { state in
+            if dataSource == .local {
+                return state.mode != .cloudSharedUnavailable
+            }
+            return true
         }
     }
 
@@ -200,6 +219,15 @@ struct SessionLogsView: View {
         .task {
             await loadLogs()
         }
+        .onChange(of: searchText) { _, _ in
+            Task { await runLocalRetrievalSearchIfNeeded() }
+        }
+        .onChange(of: sourceFilter) { _, _ in
+            Task {
+                await runLocalRetrievalSearchIfNeeded()
+                reconcileSelectionWithFilteredLogs()
+            }
+        }
         .onChange(of: groupMode) { _, _ in
             sectionDisplayLimits = [:]
             let groups = logGroups
@@ -209,6 +237,13 @@ struct SessionLogsView: View {
             selectedId = nil
             cloudBodyCache = [:]
             Task { await loadLogs() }
+        }
+        .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in
+            refreshRetrievalHealth()
+            Task { await runLocalRetrievalSearchIfNeeded() }
+        }
+        .onChange(of: accountManager.isSignedIn) { _, _ in
+            refreshRetrievalHealth()
         }
         .onChange(of: selectedId) { _, newId in
             guard dataSource == .cloud,
@@ -239,6 +274,12 @@ struct SessionLogsView: View {
             filterBar
                 .padding(.horizontal, DesignSystem.Spacing.lg)
                 .padding(.bottom, DesignSystem.Spacing.md)
+
+            if dataSource == .local, !visibleDegradedModes.isEmpty {
+                retrievalDegradedModeBanner
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                    .padding(.bottom, DesignSystem.Spacing.md)
+            }
 
             Divider().background(DesignSystem.Colors.border.opacity(0.6))
 
@@ -329,6 +370,10 @@ struct SessionLogsView: View {
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
                 .buttonStyle(.plain)
+            }
+
+            if dataSource == .local, isRetrievalSearching {
+                ProgressView().controlSize(.small)
             }
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
@@ -443,6 +488,32 @@ struct SessionLogsView: View {
         case .all:       return DesignSystem.Colors.ember
         case .provider:  return DesignSystem.Colors.amber
         case .assistant: return DesignSystem.Colors.whimsy
+        }
+    }
+
+    private var retrievalDegradedModeBanner: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            ForEach(visibleDegradedModes) { state in
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(DesignSystem.Colors.warning)
+                        .padding(.top, 2)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(state.title)
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text(state.message)
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.horizontal, DesignSystem.Spacing.sm)
+                .padding(.vertical, DesignSystem.Spacing.xs)
+                .background(DesignSystem.Colors.warning.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+            }
         }
     }
 
@@ -675,9 +746,115 @@ struct SessionLogsView: View {
 
     // MARK: - Data Loading
 
+    private func substringFilteredLogs(from logs: [ConversationRecord], query: String) -> [ConversationRecord] {
+        let q = query.lowercased()
+        return logs.filter {
+            $0.inferredTaskTitle.lowercased().contains(q)
+                || ($0.summaryTitle?.lowercased().contains(q) ?? false)
+                || $0.projectName.lowercased().contains(q)
+                || $0.provider.displayName.lowercased().contains(q)
+                || ($0.summary?.lowercased().contains(q) ?? false)
+                || $0.fullText.lowercased().contains(q)
+        }
+    }
+
+    private func selectedConversationSources() -> Set<ConversationSourceType>? {
+        switch sourceFilter {
+        case .all:
+            return nil
+        case .provider:
+            return [.providerLog]
+        case .assistant:
+            return [.cliAssistant]
+        }
+    }
+
+    private func ensureRetrievalServices() {
+        if retrievalSearchService == nil {
+            retrievalSearchService = SearchService.makeConversationSearchService(dataStore: dataStore)
+        }
+        if retrievalHealthService == nil {
+            retrievalHealthService = RetrievalHealthService(dataStore: dataStore)
+        }
+    }
+
+    private func refreshRetrievalHealth() {
+        ensureRetrievalServices()
+        guard let retrievalHealthService else {
+            retrievalHealthSnapshot = .empty
+            return
+        }
+
+        let sharedFeaturesAvailable: Bool
+        switch dataSource {
+        case .cloud:
+            sharedFeaturesAvailable = accountManager.isSignedIn
+        case .local, .iCloud:
+            sharedFeaturesAvailable = true
+        }
+
+        retrievalHealthSnapshot = retrievalHealthService.snapshot(
+            indexingEnabled: settingsManager.conversationIndexingEnabled,
+            sharedFeaturesAvailable: sharedFeaturesAvailable
+        )
+    }
+
+    private func runLocalRetrievalSearchIfNeeded() async {
+        refreshRetrievalHealth()
+        guard dataSource == .local else {
+            retrievalMatchedIDs = []
+            isRetrievalSearching = false
+            return
+        }
+
+        let trimmedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            retrievalMatchedIDs = []
+            isRetrievalSearching = false
+            return
+        }
+
+        ensureRetrievalServices()
+        guard let retrievalSearchService else {
+            retrievalMatchedIDs = []
+            isRetrievalSearching = false
+            return
+        }
+
+        let activeSources = selectedConversationSources()
+        let expectedFilter = sourceFilter
+        isRetrievalSearching = true
+        let results = await retrievalSearchService.search(
+            query: trimmedQuery,
+            conversationSources: activeSources
+        )
+
+        guard dataSource == .local,
+              searchText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedQuery,
+              sourceFilter == expectedFilter else {
+            isRetrievalSearching = false
+            return
+        }
+
+        retrievalMatchedIDs = results.map(\.conversation.id)
+        isRetrievalSearching = false
+        refreshRetrievalHealth()
+    }
+
+    private func reconcileSelectionWithFilteredLogs() {
+        guard let selectedId else {
+            self.selectedId = filteredLogs.first?.id
+            return
+        }
+        if filteredLogs.contains(where: { $0.id == selectedId }) == false {
+            self.selectedId = filteredLogs.first?.id
+        }
+    }
+
     private func loadLogs() async {
         isLoading = true
         dataSourceError = nil
+        refreshRetrievalHealth()
         do {
             switch dataSource {
             case .local:
@@ -686,29 +863,28 @@ struct SessionLogsView: View {
                 allLogs = try dataStore.fetchAllSessionLogs()
 
             case .cloud:
-                guard let svc = cloudSyncService else {
+                if let svc = cloudSyncService {
+                    allLogs = try await svc.fetchCloudSessionLogs()
+                } else {
                     allLogs = []
-                    isLoading = false
-                    return
                 }
-                allLogs = try await svc.fetchCloudSessionLogs()
 
             case .iCloud:
-                guard let svc = iCloudMirrorService else {
+                if let svc = iCloudMirrorService {
+                    allLogs = await svc.fetchConversations()
+                } else {
                     allLogs = []
-                    isLoading = false
-                    return
                 }
-                allLogs = await svc.fetchConversations()
-            }
-
-            if selectedId == nil { selectedId = allLogs.first?.id }
-            if expandedSections.isEmpty, let firstId = logGroups.first?.id {
-                expandedSections = [firstId]
             }
         } catch {
             dataSourceError = error.localizedDescription
             allLogs = []
+        }
+
+        await runLocalRetrievalSearchIfNeeded()
+        reconcileSelectionWithFilteredLogs()
+        if expandedSections.isEmpty, let firstId = logGroups.first?.id {
+            expandedSections = [firstId]
         }
         isLoading = false
     }
