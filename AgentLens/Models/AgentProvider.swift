@@ -137,7 +137,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .kimi: return "*.jsonl"
         case .cline, .kiloCode, .rooCode: return "*.json"
         case .forgeDev, .hermes: return "*.jsonl"
-        case .augment: return "*.json"
+        case .augment: return "*.jsonl"
         case .geminiCLI: return "*.json"
         case .goose: return "sessions.db"
         }
@@ -145,19 +145,23 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
 
     var supportLevel: ProviderSupportLevel {
         switch self {
-        case .factory, .claudeCode, .codex, .aider, .cline, .kiloCode, .rooCode, .geminiCLI, .goose:
+        case .factory, .claudeCode, .codex, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose:
             return .supported
-        case .copilot, .kimi, .zai, .minimax, .cursor, .forgeDev, .augment, .hermes:
+        case .copilot, .kimi, .zai, .minimax, .cursor:
             return .partial
+        case .augment:
+            return .unsupported
         }
     }
 
     var dataConfidence: DataConfidence {
         switch self {
-        case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode, .rooCode, .geminiCLI, .goose:
+        case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose:
             return .exact
-        case .zai, .minimax, .copilot, .cursor, .forgeDev, .augment, .hermes:
+        case .zai, .minimax, .copilot, .cursor:
             return .estimated
+        case .augment:
+            return .unavailable
         }
     }
 }

@@ -7,6 +7,15 @@ extension Notification.Name {
     static let burnBarOpenConversationSearch = Notification.Name("BurnBarOpenConversationSearch")
 }
 
+private enum BurnBarRuntime {
+    static var isRunningTests: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        return environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestSessionIdentifier"] != nil
+            || environment["XCTestBundlePath"] != nil
+    }
+}
+
 @MainActor
 final class AppCommandRouter {
     static let shared = AppCommandRouter()
@@ -148,7 +157,9 @@ struct BurnBarApp: App {
 
     @MainActor
     init() {
-        Self.configureFirebaseIfAvailable()
+        if !BurnBarRuntime.isRunningTests {
+            Self.configureFirebaseIfAvailable()
+        }
         BurnBarMigration.migrateUserDefaults()
         _ = try? BurnBarMigration.prepareSupportDirectory()
         _dataStore = State(initialValue: DataStore())
@@ -204,82 +215,96 @@ struct BurnBarApp: App {
         }
     }
 
-    var body: some Scene {
+    @SceneBuilder
+    private var liveMenuBarScene: some Scene {
         let _ = installCommandRouter()
         MenuBarExtra {
-            MenuBarPopoverView(
-                dataStore: dataStore,
-                aggregator: aggregator,
-                settingsManager: settingsManager,
-                onOpenDashboard: {
-                    windowManager.openDashboard(
-                        dataStore: dataStore,
-                        aggregator: aggregator,
-                        accountManager: accountManager,
-                        cloudSyncService: cloudSyncService,
-                        iCloudSessionMirrorService: iCloudSessionMirrorService
-                    )
-                },
-                onOpenSettings: {
-                    windowManager.openSettings(
-                        settingsManager: settingsManager,
-                        accountManager: accountManager,
-                        cloudSyncService: cloudSyncService,
-                        iCloudSessionMirrorService: iCloudSessionMirrorService,
-                        dataStore: dataStore
-                    )
-                }
-            )
-        } label: {
-            MenuBarLabel(
-                totalCostToday: dataStore.totalCostToday,
-                totalTokensToday: dataStore.totalTokensToday,
-                usageDisplayMode: settingsManager.usageDisplayMode,
-                rollingDailyAverage: dataStore.rollingDailyAverage,
-                isRefreshing: aggregator?.isRefreshing ?? false
-            )
-            .task {
-                await Task.yield()
-                guard aggregator == nil else { return }
-                let sync = CloudSyncService(dataStore: dataStore, accountManager: accountManager)
-                cloudSyncService = sync
-                let mirror = ICloudSessionMirrorService(settingsManager: settingsManager)
-                iCloudSessionMirrorService = mirror
-                let newAggregator = UsageAggregator(dataStore: dataStore, cloudSync: sync, sessionMirror: mirror)
-                aggregator = newAggregator
-                CursorConnectorManager.shared.attach(dataStore: dataStore)
-                if !hasShownInitialDashboard {
-                    hasShownInitialDashboard = true
-                    windowManager.openDashboard(
-                        dataStore: dataStore,
-                        aggregator: newAggregator,
-                        accountManager: accountManager,
-                        cloudSyncService: sync,
-                        iCloudSessionMirrorService: mirror
-                    )
-                }
-                // Don’t block the first frame on a long disk scan; the menu bar can appear while refresh runs.
-                Task(priority: .userInitiated) {
-                    await newAggregator.refreshAll()
-                    await sync.uploadPendingConversations()
-                    if settingsManager.dailyDigestEnabled {
-                        await DailyDigestManager.shared.requestAuthorization()
-                        DailyDigestManager.shared.scheduleDigest(from: dataStore, at: settingsManager.dailyDigestHour)
+            if BurnBarRuntime.isRunningTests {
+                EmptyView()
+            } else {
+                MenuBarPopoverView(
+                    dataStore: dataStore,
+                    aggregator: aggregator,
+                    settingsManager: settingsManager,
+                    onOpenDashboard: {
+                        windowManager.openDashboard(
+                            dataStore: dataStore,
+                            aggregator: aggregator,
+                            accountManager: accountManager,
+                            cloudSyncService: cloudSyncService,
+                            iCloudSessionMirrorService: iCloudSessionMirrorService
+                        )
+                    },
+                    onOpenSettings: {
+                        windowManager.openSettings(
+                            settingsManager: settingsManager,
+                            accountManager: accountManager,
+                            cloudSyncService: cloudSyncService,
+                            iCloudSessionMirrorService: iCloudSessionMirrorService,
+                            dataStore: dataStore
+                        )
                     }
-                }
-                periodicRefreshTask?.cancel()
-                periodicRefreshTask = Task(priority: .utility) {
-                    while !Task.isCancelled {
-                        let seconds = max(settingsManager.refreshInterval, 30)
-                        let nanos = UInt64(seconds * 1_000_000_000)
-                        try? await Task.sleep(nanoseconds: nanos)
-                        if Task.isCancelled { break }
+                )
+            }
+        } label: {
+            if BurnBarRuntime.isRunningTests {
+                EmptyView()
+            } else {
+                MenuBarLabel(
+                    totalCostToday: dataStore.totalCostToday,
+                    totalTokensToday: dataStore.totalTokensToday,
+                    usageDisplayMode: settingsManager.usageDisplayMode,
+                    rollingDailyAverage: dataStore.rollingDailyAverage,
+                    isRefreshing: aggregator?.isRefreshing ?? false
+                )
+                .task {
+                    await Task.yield()
+                    guard !BurnBarRuntime.isRunningTests else { return }
+                    guard aggregator == nil else { return }
+                    let sync = CloudSyncService(dataStore: dataStore, accountManager: accountManager)
+                    cloudSyncService = sync
+                    let mirror = ICloudSessionMirrorService(settingsManager: settingsManager)
+                    iCloudSessionMirrorService = mirror
+                    let newAggregator = UsageAggregator(dataStore: dataStore, cloudSync: sync, sessionMirror: mirror)
+                    aggregator = newAggregator
+                    CursorConnectorManager.shared.attach(dataStore: dataStore)
+                    if !hasShownInitialDashboard {
+                        hasShownInitialDashboard = true
+                        windowManager.openDashboard(
+                            dataStore: dataStore,
+                            aggregator: newAggregator,
+                            accountManager: accountManager,
+                            cloudSyncService: sync,
+                            iCloudSessionMirrorService: mirror
+                        )
+                    }
+                    // Don’t block the first frame on a long disk scan; the menu bar can appear while refresh runs.
+                    Task(priority: .userInitiated) {
                         await newAggregator.refreshAll()
+                        await sync.uploadPendingConversations()
+                        if settingsManager.dailyDigestEnabled {
+                            await DailyDigestManager.shared.requestAuthorization()
+                            DailyDigestManager.shared.scheduleDigest(from: dataStore, at: settingsManager.dailyDigestHour)
+                        }
+                    }
+                    periodicRefreshTask?.cancel()
+                    periodicRefreshTask = Task(priority: .utility) {
+                        while !Task.isCancelled {
+                            let seconds = max(settingsManager.refreshInterval, 30)
+                            let nanos = UInt64(seconds * 1_000_000_000)
+                            try? await Task.sleep(nanoseconds: nanos)
+                            if Task.isCancelled { break }
+                            await newAggregator.refreshAll()
+                        }
                     }
                 }
             }
         }
         .menuBarExtraStyle(.window)
+    }
+
+    var body: some Scene {
+        liveMenuBarScene
     }
 }
 

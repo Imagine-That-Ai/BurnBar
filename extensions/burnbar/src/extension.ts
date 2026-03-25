@@ -58,7 +58,19 @@ export async function activateBurnBarExtension(
     dependencies.controllerDependencies?.client ?? new BurnBarDaemonClient();
 
   if (shouldActivateWorkspaceCompanion) {
-    context.subscriptions.push(activateBurnBarWorkspaceCompanion(extensionKind === vscode.ExtensionKind.Workspace ? "workspace" : "ui"));
+    context.subscriptions.push(
+      activateBurnBarWorkspaceCompanion(extensionKind === vscode.ExtensionKind.Workspace ? "workspace" : "ui", {
+        indexedSearch: async (params) =>
+          daemonClient.searchQuery({
+            query: params.query,
+            providerRaw: params.providerRaw,
+            projectName: params.projectName,
+            dateRangeStartEpoch: params.dateRangeStartEpoch,
+            dateRangeEndEpoch: params.dateRangeEndEpoch,
+            resultLimit: params.resultLimit ?? 50
+          })
+      })
+    );
   }
 
   if (extensionKind !== vscode.ExtensionKind.UI) {

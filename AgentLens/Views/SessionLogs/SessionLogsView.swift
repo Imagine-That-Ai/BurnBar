@@ -242,6 +242,14 @@ struct SessionLogsView: View {
             refreshRetrievalHealth()
             Task { await runLocalRetrievalSearchIfNeeded() }
         }
+        .onChange(of: settingsManager.preferredIndexEmbeddingVersionID) { _, _ in
+            retrievalSearchService = SearchService.makeConversationSearchService(
+                dataStore: dataStore,
+                settingsManager: settingsManager
+            )
+            refreshRetrievalHealth()
+            Task { await runLocalRetrievalSearchIfNeeded() }
+        }
         .onChange(of: accountManager.isSignedIn) { _, _ in
             refreshRetrievalHealth()
         }
@@ -771,7 +779,10 @@ struct SessionLogsView: View {
 
     private func ensureRetrievalServices() {
         if retrievalSearchService == nil {
-            retrievalSearchService = SearchService.makeConversationSearchService(dataStore: dataStore)
+            retrievalSearchService = SearchService.makeConversationSearchService(
+                dataStore: dataStore,
+                settingsManager: settingsManager
+            )
         }
         if retrievalHealthService == nil {
             retrievalHealthService = RetrievalHealthService(dataStore: dataStore)

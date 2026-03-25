@@ -64,3 +64,10 @@ GoogleService-Info.plist
 .playwright-mcp/
 output/playwright/
 default.profraw
+
+# BurnBar local MCP (Python venv)
+tools/burnbar-mcp/.venv/
+
+# Local Xcode/SwiftPM caches used by scripts/build.sh
+.spm-cache/
+.derived-data/

@@ -19,7 +19,9 @@ import {
   type BurnBarRPCRequestEnvelopeWithParams,
   type BurnBarRPCMethod,
   type BurnBarRPCRequestEnvelope,
-  type BurnBarRPCResponseEnvelope
+  type BurnBarRPCResponseEnvelope,
+  type BurnBarSearchQueryDaemonResult,
+  type BurnBarSearchQueryParams
 } from "../types";
 import type {
   BurnBarApprovalRespondRequest,
@@ -81,6 +83,7 @@ export interface BurnBarDaemonClientLike {
   executeTool(params: BurnBarToolExecutionRequest): Promise<BurnBarToolExecutionResponse>;
   submitToolResult(params: BurnBarToolResultSubmissionRequest): Promise<BurnBarRunDetailResponse>;
   respondToApproval(params: BurnBarApprovalRespondRequest): Promise<BurnBarRunDetailResponse>;
+  searchQuery(params: BurnBarSearchQueryParams): Promise<BurnBarSearchQueryDaemonResult>;
 }
 
 export class BurnBarDaemonClient implements BurnBarDaemonClientLike {
@@ -160,6 +163,10 @@ export class BurnBarDaemonClient implements BurnBarDaemonClientLike {
 
   async respondToApproval(params: BurnBarApprovalRespondRequest): Promise<BurnBarRunDetailResponse> {
     return this.send("approval.respond", params);
+  }
+
+  async searchQuery(params: BurnBarSearchQueryParams): Promise<BurnBarSearchQueryDaemonResult> {
+    return this.send<BurnBarSearchQueryDaemonResult, BurnBarSearchQueryParams>("daemon.search.query", params);
   }
 
   private async send<Result, Params = undefined>(method: BurnBarRPCMethod, params?: Params): Promise<Result> {

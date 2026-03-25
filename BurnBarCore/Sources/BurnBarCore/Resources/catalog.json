@@ -9,12 +9,43 @@
       "capabilities": ["accounting"],
       "models": [
         {
-          "id": "claude-opus-family",
-          "displayName": "Claude Opus Family",
+          "id": "claude-opus-4-6-family",
+          "displayName": "Claude Opus 4.6 Family",
           "visibility": "hidden",
-          "aliases": [],
+          "aliases": ["claude-opus-4-6"],
           "matchers": [
-            { "all": ["claude", "opus"], "any": [], "none": [] }
+            { "all": ["claude", "opus", "4.6"], "any": [], "none": [] },
+            { "all": ["claude-opus-4-6"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 25,
+            "cacheReadPerMToken": 0.5
+          }
+        },
+        {
+          "id": "claude-opus-4-5-family",
+          "displayName": "Claude Opus 4.5 Family",
+          "visibility": "hidden",
+          "aliases": ["claude-opus-4-5"],
+          "matchers": [
+            { "all": ["claude", "opus", "4.5"], "any": [], "none": ["4.6"] },
+            { "all": ["claude-opus-4-5"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 25,
+            "cacheReadPerMToken": 0.5
+          }
+        },
+        {
+          "id": "claude-opus-4-1-family",
+          "displayName": "Claude Opus 4.1 Family",
+          "visibility": "hidden",
+          "aliases": ["claude-opus-4-1"],
+          "matchers": [
+            { "all": ["claude", "opus", "4.1"], "any": [], "none": [] },
+            { "all": ["claude-opus-4-1"], "any": [], "none": [] }
           ],
           "pricing": {
             "inputPerMToken": 15,
@@ -23,12 +54,44 @@
           }
         },
         {
-          "id": "claude-sonnet-family",
-          "displayName": "Claude Sonnet Family",
+          "id": "claude-opus-4-family",
+          "displayName": "Claude Opus 4 Family",
+          "visibility": "hidden",
+          "aliases": ["claude-opus-4-20250514"],
+          "matchers": [
+            { "all": ["claude", "opus", "4"], "any": [], "none": ["4.1", "4.5", "4.6"] },
+            { "all": ["claude-opus-4-0"], "any": [], "none": [] },
+            { "all": ["claude-opus-4-20250514"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 15,
+            "outputPerMToken": 75,
+            "cacheReadPerMToken": 1.5
+          }
+        },
+        {
+          "id": "claude-opus-3-family",
+          "displayName": "Claude Opus 3 Family",
           "visibility": "hidden",
           "aliases": [],
           "matchers": [
-            { "all": ["claude", "sonnet"], "any": [], "none": [] }
+            { "all": ["claude", "opus", "3"], "any": [], "none": ["4"] },
+            { "all": ["claude-3-opus"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 15,
+            "outputPerMToken": 75,
+            "cacheReadPerMToken": 1.5
+          }
+        },
+        {
+          "id": "claude-sonnet-4-6-family",
+          "displayName": "Claude Sonnet 4.6 Family",
+          "visibility": "hidden",
+          "aliases": ["claude-sonnet-4-6"],
+          "matchers": [
+            { "all": ["claude", "sonnet", "4.6"], "any": [], "none": [] },
+            { "all": ["claude-sonnet-4-6"], "any": [], "none": [] }
           ],
           "pricing": {
             "inputPerMToken": 3,
@@ -37,17 +100,108 @@
           }
         },
         {
-          "id": "claude-default-family",
-          "displayName": "Claude Default Family",
+          "id": "claude-sonnet-4-5-family",
+          "displayName": "Claude Sonnet 4.5 Family",
+          "visibility": "hidden",
+          "aliases": ["claude-sonnet-4-5"],
+          "matchers": [
+            { "all": ["claude", "sonnet", "4.5"], "any": [], "none": ["4.6"] },
+            { "all": ["claude-sonnet-4-5"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 3,
+            "outputPerMToken": 15,
+            "cacheReadPerMToken": 0.3
+          }
+        },
+        {
+          "id": "claude-sonnet-4-family",
+          "displayName": "Claude Sonnet 4 Family",
+          "visibility": "hidden",
+          "aliases": ["claude-sonnet-4-20250514"],
+          "matchers": [
+            { "all": ["claude", "sonnet", "4"], "any": [], "none": ["4.5", "4.6", "3"] },
+            { "all": ["claude-sonnet-4-0"], "any": [], "none": [] },
+            { "all": ["claude-sonnet-4-20250514"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 3,
+            "outputPerMToken": 15,
+            "cacheReadPerMToken": 0.3
+          }
+        },
+        {
+          "id": "claude-sonnet-3-7-family",
+          "displayName": "Claude Sonnet 3.7 Family",
           "visibility": "hidden",
           "aliases": [],
           "matchers": [
-            { "all": ["claude"], "any": [], "none": ["opus", "sonnet"] }
+            { "all": ["claude", "sonnet", "3.7"], "any": [], "none": [] },
+            { "all": ["claude-3-7-sonnet"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 3,
+            "outputPerMToken": 15,
+            "cacheReadPerMToken": 0.3
+          }
+        },
+        {
+          "id": "claude-haiku-4-5-family",
+          "displayName": "Claude Haiku 4.5 Family",
+          "visibility": "hidden",
+          "aliases": ["claude-haiku-4-5"],
+          "matchers": [
+            { "all": ["claude", "haiku", "4.5"], "any": [], "none": [] },
+            { "all": ["claude-haiku-4-5"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 1,
+            "outputPerMToken": 5,
+            "cacheReadPerMToken": 0.1
+          }
+        },
+        {
+          "id": "claude-haiku-3-5-family",
+          "displayName": "Claude Haiku 3.5 Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["claude", "haiku", "3.5"], "any": [], "none": ["4"] },
+            { "all": ["claude-3-5-haiku"], "any": [], "none": [] }
           ],
           "pricing": {
             "inputPerMToken": 0.8,
             "outputPerMToken": 4,
             "cacheReadPerMToken": 0.08
+          }
+        },
+        {
+          "id": "claude-haiku-3-family",
+          "displayName": "Claude Haiku 3 Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["claude", "haiku", "3"], "any": [], "none": ["3.5", "4"] },
+            { "all": ["claude-3-haiku"], "any": [], "none": ["3.5", "4"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.25,
+            "outputPerMToken": 1.25,
+            "cacheReadPerMToken": 0.03
+          }
+        },
+        {
+          "id": "claude-default-family",
+          "displayName": "Claude Default Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["claude"], "any": [], "none": ["opus", "sonnet", "haiku"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 3,
+            "outputPerMToken": 15,
+            "cacheReadPerMToken": 0.3
           }
         }
       ]
@@ -60,12 +214,266 @@
       "capabilities": ["accounting"],
       "models": [
         {
+          "id": "gpt-5.4",
+          "displayName": "GPT-5.4",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gpt-5.4"], "any": [], "none": ["mini", "nano", "pro"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 15,
+            "cacheReadPerMToken": 0.25
+          }
+        },
+        {
+          "id": "gpt-5.4-mini",
+          "displayName": "GPT-5.4 Mini",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gpt-5.4", "mini"], "any": [], "none": ["nano"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.75,
+            "outputPerMToken": 4.5,
+            "cacheReadPerMToken": 0.075
+          }
+        },
+        {
+          "id": "gpt-5.4-nano",
+          "displayName": "GPT-5.4 Nano",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gpt-5.4", "nano"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.2,
+            "outputPerMToken": 1.25,
+            "cacheReadPerMToken": 0.02
+          }
+        },
+        {
+          "id": "gpt-5.4-pro",
+          "displayName": "GPT-5.4 Pro",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gpt-5.4", "pro"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 30,
+            "outputPerMToken": 180,
+            "cacheReadPerMToken": 3
+          }
+        },
+        {
+          "id": "gpt-5.3-codex",
+          "displayName": "GPT-5.3 Codex",
+          "visibility": "hidden",
+          "aliases": ["gpt-5.3-chat-latest", "gpt-5.3-chat"],
+          "matchers": [
+            { "all": ["gpt-5.3"], "any": ["codex", "chat"], "none": [] },
+            { "all": ["gpt-5.3"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.75,
+            "outputPerMToken": 14,
+            "cacheReadPerMToken": 0.175
+          }
+        },
+        {
+          "id": "gpt-5.2-codex",
+          "displayName": "GPT-5.2 Codex",
+          "visibility": "hidden",
+          "aliases": ["gpt-5.2", "gpt-5.2-chat"],
+          "matchers": [
+            { "all": ["gpt-5.2"], "any": [], "none": ["pro"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.75,
+            "outputPerMToken": 14,
+            "cacheReadPerMToken": 0.175
+          }
+        },
+        {
+          "id": "gpt-5.2-pro",
+          "displayName": "GPT-5.2 Pro",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gpt-5.2", "pro"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 10.5,
+            "outputPerMToken": 84,
+            "cacheReadPerMToken": 1.05
+          }
+        },
+        {
+          "id": "gpt-5.1-codex",
+          "displayName": "GPT-5.1 Codex",
+          "visibility": "hidden",
+          "aliases": ["gpt-5.1", "gpt-5.1-chat"],
+          "matchers": [
+            { "all": ["gpt-5.1"], "any": ["codex", "chat"], "none": ["mini", "max"] },
+            { "all": ["gpt-5.1"], "any": [], "none": ["mini", "max"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.25,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 0.125
+          }
+        },
+        {
+          "id": "gpt-5.1-codex-mini",
+          "displayName": "GPT-5.1 Codex Mini",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gpt-5.1", "codex", "mini"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.25,
+            "outputPerMToken": 2,
+            "cacheReadPerMToken": 0.025
+          }
+        },
+        {
+          "id": "gpt-5.1-codex-max",
+          "displayName": "GPT-5.1 Codex Max",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gpt-5.1", "codex", "max"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.25,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 0.125
+          }
+        },
+        {
+          "id": "gpt-5-family",
+          "displayName": "GPT-5 Family",
+          "visibility": "hidden",
+          "aliases": ["gpt-5"],
+          "matchers": [
+            { "all": ["gpt-5"], "any": [], "none": ["mini", "nano", "pro", "5.1", "5.2", "5.3", "5.4"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.25,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 0.125
+          }
+        },
+        {
+          "id": "gpt-5-mini",
+          "displayName": "GPT-5 Mini",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gpt-5", "mini"], "any": [], "none": ["nano", "5.1", "5.2", "5.3", "5.4"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.25,
+            "outputPerMToken": 2,
+            "cacheReadPerMToken": 0.025
+          }
+        },
+        {
+          "id": "gpt-5-nano",
+          "displayName": "GPT-5 Nano",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gpt-5", "nano"], "any": [], "none": ["5.1", "5.2", "5.3", "5.4"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.05,
+            "outputPerMToken": 0.4,
+            "cacheReadPerMToken": 0.005
+          }
+        },
+        {
+          "id": "gpt-5-pro",
+          "displayName": "GPT-5 Pro",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gpt-5", "pro"], "any": [], "none": ["5.1", "5.2", "5.3", "5.4"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 15,
+            "outputPerMToken": 120,
+            "cacheReadPerMToken": 1.5
+          }
+        },
+        {
+          "id": "codex-mini-family",
+          "displayName": "Codex Mini",
+          "visibility": "hidden",
+          "aliases": ["codex-mini"],
+          "matchers": [
+            { "all": ["codex", "mini"], "any": [], "none": ["5.1", "5.2", "5.3", "5.4"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.75,
+            "outputPerMToken": 3,
+            "cacheReadPerMToken": 0.025
+          }
+        },
+        {
+          "id": "gpt-4.1",
+          "displayName": "GPT-4.1",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gpt-4.1"], "any": [], "none": ["mini", "nano"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2,
+            "outputPerMToken": 8,
+            "cacheReadPerMToken": 0.5
+          }
+        },
+        {
+          "id": "gpt-4.1-mini",
+          "displayName": "GPT-4.1 Mini",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gpt-4.1", "mini"], "any": [], "none": ["nano"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.4,
+            "outputPerMToken": 1.6,
+            "cacheReadPerMToken": 0.1
+          }
+        },
+        {
+          "id": "gpt-4.1-nano",
+          "displayName": "GPT-4.1 Nano",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gpt-4.1", "nano"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.1,
+            "outputPerMToken": 0.4,
+            "cacheReadPerMToken": 0.025
+          }
+        },
+        {
           "id": "gpt-4o-family",
           "displayName": "GPT-4o Family",
           "visibility": "hidden",
-          "aliases": ["gpt-4o"],
+          "aliases": ["gpt-4o", "chatgpt-4o-latest"],
           "matchers": [
-            { "all": ["gpt-4o"], "any": [], "none": [] }
+            { "all": ["gpt-4o"], "any": [], "none": ["mini"] }
           ],
           "pricing": {
             "inputPerMToken": 2.5,
@@ -74,17 +482,17 @@
           }
         },
         {
-          "id": "gpt-4.5-family",
-          "displayName": "GPT-4.5 Family",
+          "id": "gpt-4o-mini-family",
+          "displayName": "GPT-4o Mini Family",
           "visibility": "hidden",
-          "aliases": ["gpt-4.5"],
+          "aliases": ["gpt-4o-mini"],
           "matchers": [
-            { "all": ["gpt-4.5"], "any": [], "none": [] }
+            { "all": ["gpt-4o", "mini"], "any": [], "none": [] }
           ],
           "pricing": {
-            "inputPerMToken": 2.5,
-            "outputPerMToken": 10,
-            "cacheReadPerMToken": 1.25
+            "inputPerMToken": 0.15,
+            "outputPerMToken": 0.6,
+            "cacheReadPerMToken": 0.075
           }
         },
         {
@@ -107,40 +515,12 @@
           "visibility": "hidden",
           "aliases": ["gpt-4"],
           "matchers": [
-            { "all": ["gpt-4"], "any": [], "none": ["gpt-4o", "gpt-4.5", "gpt-4-turbo"] }
+            { "all": ["gpt-4"], "any": [], "none": ["gpt-4o", "gpt-4.1", "gpt-4-turbo"] }
           ],
           "pricing": {
             "inputPerMToken": 30,
             "outputPerMToken": 60,
             "cacheReadPerMToken": 15
-          }
-        },
-        {
-          "id": "gpt-5-family",
-          "displayName": "GPT-5 Family",
-          "visibility": "hidden",
-          "aliases": ["gpt-5"],
-          "matchers": [
-            { "all": ["gpt-5"], "any": [], "none": [] }
-          ],
-          "pricing": {
-            "inputPerMToken": 2.5,
-            "outputPerMToken": 10,
-            "cacheReadPerMToken": 1.25
-          }
-        },
-        {
-          "id": "codex-family",
-          "displayName": "Codex Family",
-          "visibility": "hidden",
-          "aliases": ["codex"],
-          "matchers": [
-            { "all": ["codex"], "any": [], "none": [] }
-          ],
-          "pricing": {
-            "inputPerMToken": 3,
-            "outputPerMToken": 12,
-            "cacheReadPerMToken": 1.5
           }
         },
         {
@@ -158,46 +538,1004 @@
           }
         },
         {
-          "id": "reasoning-mini-family",
-          "displayName": "Reasoning Mini Family",
+          "id": "o4-mini-family",
+          "displayName": "o4-mini Family",
           "visibility": "hidden",
-          "aliases": ["o1-mini", "o3-mini"],
+          "aliases": ["o4-mini", "o4-mini-high"],
           "matchers": [
-            { "all": ["o1-mini"], "any": [], "none": [] },
-            { "all": ["o3-mini"], "any": [], "none": [] }
+            { "all": ["o4-mini"], "any": [], "none": [] }
           ],
           "pricing": {
-            "inputPerMToken": 3,
-            "outputPerMToken": 12,
-            "cacheReadPerMToken": 1.5
+            "inputPerMToken": 1.1,
+            "outputPerMToken": 4.4,
+            "cacheReadPerMToken": 0.275
+          }
+        },
+        {
+          "id": "o3-pro-family",
+          "displayName": "o3-pro Family",
+          "visibility": "hidden",
+          "aliases": ["o3-pro"],
+          "matchers": [
+            { "all": ["o3", "pro"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 20,
+            "outputPerMToken": 80,
+            "cacheReadPerMToken": 5
           }
         },
         {
           "id": "o3-family",
-          "displayName": "O3 Family",
+          "displayName": "o3 Family",
           "visibility": "hidden",
           "aliases": ["o3"],
           "matchers": [
-            { "all": ["o3"], "any": [], "none": ["o3-mini"] }
+            { "all": ["o3"], "any": [], "none": ["mini", "pro"] }
           ],
           "pricing": {
-            "inputPerMToken": 60,
-            "outputPerMToken": 240,
-            "cacheReadPerMToken": 30
+            "inputPerMToken": 2,
+            "outputPerMToken": 8,
+            "cacheReadPerMToken": 0.5
+          }
+        },
+        {
+          "id": "o3-mini-family",
+          "displayName": "o3-mini Family",
+          "visibility": "hidden",
+          "aliases": ["o3-mini", "o3-mini-high"],
+          "matchers": [
+            { "all": ["o3", "mini"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.1,
+            "outputPerMToken": 4.4,
+            "cacheReadPerMToken": 0.55
+          }
+        },
+        {
+          "id": "o1-pro-family",
+          "displayName": "o1-pro Family",
+          "visibility": "hidden",
+          "aliases": ["o1-pro"],
+          "matchers": [
+            { "all": ["o1", "pro"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 150,
+            "outputPerMToken": 600,
+            "cacheReadPerMToken": 75
           }
         },
         {
           "id": "o1-family",
-          "displayName": "O1 Family",
+          "displayName": "o1 Family",
           "visibility": "hidden",
           "aliases": ["o1"],
           "matchers": [
-            { "all": ["o1"], "any": [], "none": ["o1-mini"] }
+            { "all": ["o1"], "any": [], "none": ["mini", "pro"] }
           ],
           "pricing": {
-            "inputPerMToken": 60,
-            "outputPerMToken": 240,
-            "cacheReadPerMToken": 30
+            "inputPerMToken": 15,
+            "outputPerMToken": 60,
+            "cacheReadPerMToken": 7.5
+          }
+        },
+        {
+          "id": "o1-mini-family",
+          "displayName": "o1-mini Family",
+          "visibility": "hidden",
+          "aliases": ["o1-mini"],
+          "matchers": [
+            { "all": ["o1", "mini"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.55,
+            "outputPerMToken": 2.2,
+            "cacheReadPerMToken": 0.275
+          }
+        }
+      ]
+    },
+    {
+      "id": "google",
+      "displayName": "Google",
+      "baseURL": "https://generativelanguage.googleapis.com/v1beta",
+      "visibility": "hidden",
+      "capabilities": ["accounting"],
+      "models": [
+        {
+          "id": "gemini-3.1-pro-preview",
+          "displayName": "Gemini 3.1 Pro Preview",
+          "visibility": "hidden",
+          "aliases": ["gemini-3.1-pro-preview"],
+          "matchers": [
+            { "all": ["gemini", "3.1", "pro"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2,
+            "outputPerMToken": 12,
+            "cacheReadPerMToken": 0.2
+          }
+        },
+        {
+          "id": "gemini-3-flash-preview",
+          "displayName": "Gemini 3 Flash Preview",
+          "visibility": "hidden",
+          "aliases": ["gemini-3-flash-preview"],
+          "matchers": [
+            { "all": ["gemini", "3", "flash"], "any": [], "none": ["3.1", "lite"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.5,
+            "outputPerMToken": 3,
+            "cacheReadPerMToken": 0.05
+          }
+        },
+        {
+          "id": "gemini-3.1-flash-lite-preview",
+          "displayName": "Gemini 3.1 Flash-Lite Preview",
+          "visibility": "hidden",
+          "aliases": ["gemini-3.1-flash-lite-preview"],
+          "matchers": [
+            { "all": ["gemini", "3.1", "flash", "lite"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.25,
+            "outputPerMToken": 1.5,
+            "cacheReadPerMToken": 0.025
+          }
+        },
+        {
+          "id": "gemini-2.5-pro",
+          "displayName": "Gemini 2.5 Pro",
+          "visibility": "hidden",
+          "aliases": ["gemini-2.5-pro"],
+          "matchers": [
+            { "all": ["gemini", "2.5", "pro"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.25,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 0.125
+          }
+        },
+        {
+          "id": "gemini-2.5-flash",
+          "displayName": "Gemini 2.5 Flash",
+          "visibility": "hidden",
+          "aliases": ["gemini-2.5-flash"],
+          "matchers": [
+            { "all": ["gemini", "2.5", "flash"], "any": [], "none": ["lite"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.3,
+            "outputPerMToken": 2.5,
+            "cacheReadPerMToken": 0.03
+          }
+        },
+        {
+          "id": "gemini-2.5-flash-lite",
+          "displayName": "Gemini 2.5 Flash-Lite",
+          "visibility": "hidden",
+          "aliases": ["gemini-2.5-flash-lite"],
+          "matchers": [
+            { "all": ["gemini", "2.5", "flash", "lite"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.1,
+            "outputPerMToken": 0.4,
+            "cacheReadPerMToken": 0.01
+          }
+        },
+        {
+          "id": "gemini-2.0-flash",
+          "displayName": "Gemini 2.0 Flash",
+          "visibility": "hidden",
+          "aliases": ["gemini-2.0-flash"],
+          "matchers": [
+            { "all": ["gemini", "2.0", "flash"], "any": [], "none": ["lite"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.1,
+            "outputPerMToken": 0.4,
+            "cacheReadPerMToken": 0.025
+          }
+        },
+        {
+          "id": "gemini-2.0-flash-lite",
+          "displayName": "Gemini 2.0 Flash-Lite",
+          "visibility": "hidden",
+          "aliases": ["gemini-2.0-flash-lite"],
+          "matchers": [
+            { "all": ["gemini", "2.0", "flash", "lite"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.075,
+            "outputPerMToken": 0.3,
+            "cacheReadPerMToken": 0.0075
+          }
+        },
+        {
+          "id": "gemini-default-family",
+          "displayName": "Gemini Default Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gemini"], "any": [], "none": ["2.0", "2.5", "3", "3.1"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.3,
+            "outputPerMToken": 2.5,
+            "cacheReadPerMToken": 0.03
+          }
+        }
+      ]
+    },
+    {
+      "id": "xai",
+      "displayName": "xAI",
+      "baseURL": "https://api.x.ai/v1",
+      "visibility": "hidden",
+      "capabilities": ["accounting"],
+      "models": [
+        {
+          "id": "grok-4-family",
+          "displayName": "Grok 4 Family",
+          "visibility": "hidden",
+          "aliases": ["grok-4"],
+          "matchers": [
+            { "all": ["grok", "4"], "any": [], "none": ["fast", "mini"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 3,
+            "outputPerMToken": 15,
+            "cacheReadPerMToken": 0.75
+          }
+        },
+        {
+          "id": "grok-4-fast-family",
+          "displayName": "Grok 4 Fast Family",
+          "visibility": "hidden",
+          "aliases": ["grok-4-fast", "grok-4.1-fast"],
+          "matchers": [
+            { "all": ["grok", "4", "fast"], "any": [], "none": [] },
+            { "all": ["grok-4.1-fast"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.2,
+            "outputPerMToken": 0.5,
+            "cacheReadPerMToken": 0.05
+          }
+        },
+        {
+          "id": "grok-3-family",
+          "displayName": "Grok 3 Family",
+          "visibility": "hidden",
+          "aliases": ["grok-3"],
+          "matchers": [
+            { "all": ["grok", "3"], "any": [], "none": ["mini", "fast"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 3,
+            "outputPerMToken": 15,
+            "cacheReadPerMToken": 0.75
+          }
+        },
+        {
+          "id": "grok-3-mini-family",
+          "displayName": "Grok 3 Mini Family",
+          "visibility": "hidden",
+          "aliases": ["grok-3-mini"],
+          "matchers": [
+            { "all": ["grok", "3", "mini"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.3,
+            "outputPerMToken": 0.5,
+            "cacheReadPerMToken": 0.075
+          }
+        },
+        {
+          "id": "grok-2-family",
+          "displayName": "Grok 2 Family",
+          "visibility": "hidden",
+          "aliases": ["grok-2", "grok-2-vision"],
+          "matchers": [
+            { "all": ["grok", "2"], "any": [], "none": ["mini"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1
+          }
+        },
+        {
+          "id": "grok-code-fast",
+          "displayName": "Grok Code Fast",
+          "visibility": "hidden",
+          "aliases": ["grok-code-fast-1"],
+          "matchers": [
+            { "all": ["grok", "code"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.2,
+            "outputPerMToken": 1.5,
+            "cacheReadPerMToken": 0.02
+          }
+        }
+      ]
+    },
+    {
+      "id": "deepseek",
+      "displayName": "DeepSeek",
+      "baseURL": "https://api.deepseek.com/v1",
+      "visibility": "hidden",
+      "capabilities": ["accounting"],
+      "models": [
+        {
+          "id": "deepseek-chat-family",
+          "displayName": "DeepSeek Chat Family",
+          "visibility": "hidden",
+          "aliases": ["deepseek-chat"],
+          "matchers": [
+            { "all": ["deepseek"], "any": ["chat", "v3", "v4"], "none": ["reasoner", "r1", "coder"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.28,
+            "outputPerMToken": 0.42,
+            "cacheReadPerMToken": 0.028
+          }
+        },
+        {
+          "id": "deepseek-reasoner-family",
+          "displayName": "DeepSeek Reasoner Family",
+          "visibility": "hidden",
+          "aliases": ["deepseek-reasoner"],
+          "matchers": [
+            { "all": ["deepseek"], "any": ["reasoner", "r1"], "none": ["distill"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.55,
+            "outputPerMToken": 2.19,
+            "cacheReadPerMToken": 0.14
+          }
+        },
+        {
+          "id": "deepseek-coder-family",
+          "displayName": "DeepSeek Coder Family",
+          "visibility": "hidden",
+          "aliases": ["deepseek-coder"],
+          "matchers": [
+            { "all": ["deepseek", "coder"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.28,
+            "outputPerMToken": 0.42,
+            "cacheReadPerMToken": 0.028
+          }
+        },
+        {
+          "id": "deepseek-r1-distill-family",
+          "displayName": "DeepSeek R1 Distill Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["deepseek", "distill"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.2,
+            "outputPerMToken": 0.2,
+            "cacheReadPerMToken": 0.1
+          }
+        },
+        {
+          "id": "deepseek-default-family",
+          "displayName": "DeepSeek Default Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["deepseek"], "any": [], "none": ["chat", "v3", "v4", "reasoner", "r1", "coder", "distill"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.28,
+            "outputPerMToken": 0.42,
+            "cacheReadPerMToken": 0.028
+          }
+        }
+      ]
+    },
+    {
+      "id": "mistral",
+      "displayName": "Mistral",
+      "baseURL": "https://api.mistral.ai/v1",
+      "visibility": "hidden",
+      "capabilities": ["accounting"],
+      "models": [
+        {
+          "id": "mistral-large-family",
+          "displayName": "Mistral Large Family",
+          "visibility": "hidden",
+          "aliases": ["mistral-large-latest"],
+          "matchers": [
+            { "all": ["mistral", "large"], "any": [], "none": ["pixtral"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.5,
+            "outputPerMToken": 1.5,
+            "cacheReadPerMToken": 0.05
+          }
+        },
+        {
+          "id": "mistral-medium-family",
+          "displayName": "Mistral Medium Family",
+          "visibility": "hidden",
+          "aliases": ["mistral-medium-latest"],
+          "matchers": [
+            { "all": ["mistral", "medium"], "any": [], "none": ["magistral"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.4,
+            "outputPerMToken": 2,
+            "cacheReadPerMToken": 0.04
+          }
+        },
+        {
+          "id": "mistral-small-family",
+          "displayName": "Mistral Small Family",
+          "visibility": "hidden",
+          "aliases": ["mistral-small-latest"],
+          "matchers": [
+            { "all": ["mistral", "small"], "any": [], "none": ["creative"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.15,
+            "outputPerMToken": 0.6,
+            "cacheReadPerMToken": 0.015
+          }
+        },
+        {
+          "id": "codestral-family",
+          "displayName": "Codestral Family",
+          "visibility": "hidden",
+          "aliases": ["codestral"],
+          "matchers": [
+            { "all": ["codestral"], "any": [], "none": ["mamba"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.3,
+            "outputPerMToken": 0.9,
+            "cacheReadPerMToken": 0.03
+          }
+        },
+        {
+          "id": "devstral-family",
+          "displayName": "Devstral Family",
+          "visibility": "hidden",
+          "aliases": ["devstral"],
+          "matchers": [
+            { "all": ["devstral"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.4,
+            "outputPerMToken": 0.9,
+            "cacheReadPerMToken": 0.2
+          }
+        },
+        {
+          "id": "mistral-nemo-family",
+          "displayName": "Mistral Nemo Family",
+          "visibility": "hidden",
+          "aliases": ["mistral-nemo", "open-mistral-nemo"],
+          "matchers": [
+            { "all": ["mistral", "nemo"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.02,
+            "outputPerMToken": 0.04,
+            "cacheReadPerMToken": 0.015
+          }
+        },
+        {
+          "id": "pixtral-large-family",
+          "displayName": "Pixtral Large Family",
+          "visibility": "hidden",
+          "aliases": ["pixtral-large-latest"],
+          "matchers": [
+            { "all": ["pixtral", "large"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2,
+            "outputPerMToken": 6,
+            "cacheReadPerMToken": 0.2
+          }
+        },
+        {
+          "id": "magistral-medium-family",
+          "displayName": "Magistral Medium Family",
+          "visibility": "hidden",
+          "aliases": ["magistral-medium-latest"],
+          "matchers": [
+            { "all": ["magistral", "medium"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2,
+            "outputPerMToken": 5,
+            "cacheReadPerMToken": 1
+          }
+        },
+        {
+          "id": "ministral-8b-family",
+          "displayName": "Ministral 8B Family",
+          "visibility": "hidden",
+          "aliases": ["ministral-8b-latest"],
+          "matchers": [
+            { "all": ["ministral", "8b"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.1,
+            "outputPerMToken": 0.1,
+            "cacheReadPerMToken": 0.05
+          }
+        },
+        {
+          "id": "mistral-saba-family",
+          "displayName": "Mistral Saba Family",
+          "visibility": "hidden",
+          "aliases": ["mistral-saba-latest"],
+          "matchers": [
+            { "all": ["saba"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.2,
+            "outputPerMToken": 0.6,
+            "cacheReadPerMToken": 0.02
+          }
+        }
+      ]
+    },
+    {
+      "id": "meta",
+      "displayName": "Meta",
+      "baseURL": "https://api.together.xyz/v1",
+      "visibility": "hidden",
+      "capabilities": ["accounting"],
+      "models": [
+        {
+          "id": "llama-4-maverick",
+          "displayName": "Llama 4 Maverick",
+          "visibility": "hidden",
+          "aliases": ["llama-4-maverick"],
+          "matchers": [
+            { "all": ["llama", "4", "maverick"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.27,
+            "outputPerMToken": 0.85,
+            "cacheReadPerMToken": 0.135
+          }
+        },
+        {
+          "id": "llama-4-scout",
+          "displayName": "Llama 4 Scout",
+          "visibility": "hidden",
+          "aliases": ["llama-4-scout"],
+          "matchers": [
+            { "all": ["llama", "4", "scout"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.18,
+            "outputPerMToken": 0.59,
+            "cacheReadPerMToken": 0.09
+          }
+        },
+        {
+          "id": "llama-3.3-70b",
+          "displayName": "Llama 3.3 70B",
+          "visibility": "hidden",
+          "aliases": ["llama-3.3-70b"],
+          "matchers": [
+            { "all": ["llama", "3.3"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.88,
+            "outputPerMToken": 0.88,
+            "cacheReadPerMToken": 0.44
+          }
+        },
+        {
+          "id": "llama-3.1-405b",
+          "displayName": "Llama 3.1 405B",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["llama", "3.1", "405"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 3.5,
+            "outputPerMToken": 3.5,
+            "cacheReadPerMToken": 1.75
+          }
+        },
+        {
+          "id": "llama-3.1-70b",
+          "displayName": "Llama 3.1 70B",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["llama", "3.1", "70"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.88,
+            "outputPerMToken": 0.88,
+            "cacheReadPerMToken": 0.44
+          }
+        },
+        {
+          "id": "llama-3.1-8b",
+          "displayName": "Llama 3.1 8B",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["llama", "3.1", "8b"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.18,
+            "outputPerMToken": 0.18,
+            "cacheReadPerMToken": 0.09
+          }
+        },
+        {
+          "id": "llama-3.2-3b",
+          "displayName": "Llama 3.2 3B",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["llama", "3.2", "3b"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.06,
+            "outputPerMToken": 0.06,
+            "cacheReadPerMToken": 0.03
+          }
+        },
+        {
+          "id": "llama-family",
+          "displayName": "Llama Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["llama"], "any": [], "none": ["3.1", "3.2", "3.3", "4"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.18,
+            "outputPerMToken": 0.18,
+            "cacheReadPerMToken": 0.09
+          }
+        }
+      ]
+    },
+    {
+      "id": "cohere",
+      "displayName": "Cohere",
+      "baseURL": "https://api.cohere.ai/v2",
+      "visibility": "hidden",
+      "capabilities": ["accounting"],
+      "models": [
+        {
+          "id": "command-a",
+          "displayName": "Command A",
+          "visibility": "hidden",
+          "aliases": ["command-a"],
+          "matchers": [
+            { "all": ["command", "a"], "any": [], "none": ["r"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1.25
+          }
+        },
+        {
+          "id": "command-r-plus",
+          "displayName": "Command R+",
+          "visibility": "hidden",
+          "aliases": ["command-r-plus", "command-r+"],
+          "matchers": [
+            { "all": ["command", "r+"], "any": [], "none": [] },
+            { "all": ["command-r-plus"], "any": [], "none": [] },
+            { "all": ["command", "r", "plus"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1.25
+          }
+        },
+        {
+          "id": "command-r",
+          "displayName": "Command R",
+          "visibility": "hidden",
+          "aliases": ["command-r"],
+          "matchers": [
+            { "all": ["command", "r"], "any": [], "none": ["plus", "r+", "r7b", "7b"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.15,
+            "outputPerMToken": 0.6,
+            "cacheReadPerMToken": 0.075
+          }
+        },
+        {
+          "id": "command-r7b",
+          "displayName": "Command R7B",
+          "visibility": "hidden",
+          "aliases": ["command-r7b"],
+          "matchers": [
+            { "all": ["command"], "any": ["r7b", "7b"], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.0375,
+            "outputPerMToken": 0.15,
+            "cacheReadPerMToken": 0.01875
+          }
+        }
+      ]
+    },
+    {
+      "id": "amazon",
+      "displayName": "Amazon",
+      "baseURL": "https://bedrock-runtime.amazonaws.com",
+      "visibility": "hidden",
+      "capabilities": ["accounting"],
+      "models": [
+        {
+          "id": "nova-premier",
+          "displayName": "Amazon Nova Premier",
+          "visibility": "hidden",
+          "aliases": ["nova-premier"],
+          "matchers": [
+            { "all": ["nova", "premier"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 12.5,
+            "cacheReadPerMToken": 0.625
+          }
+        },
+        {
+          "id": "nova-pro",
+          "displayName": "Amazon Nova Pro",
+          "visibility": "hidden",
+          "aliases": ["nova-pro"],
+          "matchers": [
+            { "all": ["nova", "pro"], "any": [], "none": ["premier"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.8,
+            "outputPerMToken": 3.2,
+            "cacheReadPerMToken": 0.08
+          }
+        },
+        {
+          "id": "nova-lite",
+          "displayName": "Amazon Nova Lite",
+          "visibility": "hidden",
+          "aliases": ["nova-lite"],
+          "matchers": [
+            { "all": ["nova", "lite"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.06,
+            "outputPerMToken": 0.24,
+            "cacheReadPerMToken": 0.006
+          }
+        },
+        {
+          "id": "nova-micro",
+          "displayName": "Amazon Nova Micro",
+          "visibility": "hidden",
+          "aliases": ["nova-micro"],
+          "matchers": [
+            { "all": ["nova", "micro"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.035,
+            "outputPerMToken": 0.14,
+            "cacheReadPerMToken": 0.0035
+          }
+        }
+      ]
+    },
+    {
+      "id": "alibaba",
+      "displayName": "Alibaba",
+      "baseURL": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "visibility": "hidden",
+      "capabilities": ["accounting"],
+      "models": [
+        {
+          "id": "qwen3-max",
+          "displayName": "Qwen3 Max",
+          "visibility": "hidden",
+          "aliases": ["qwen3-max"],
+          "matchers": [
+            { "all": ["qwen3", "max"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.78,
+            "outputPerMToken": 3.9,
+            "cacheReadPerMToken": 0.156
+          }
+        },
+        {
+          "id": "qwen3.5-plus",
+          "displayName": "Qwen3.5 Plus",
+          "visibility": "hidden",
+          "aliases": ["qwen3.5-plus"],
+          "matchers": [
+            { "all": ["qwen3.5", "plus"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.26,
+            "outputPerMToken": 1.56,
+            "cacheReadPerMToken": 0.052
+          }
+        },
+        {
+          "id": "qwen3-coder-plus",
+          "displayName": "Qwen3 Coder Plus",
+          "visibility": "hidden",
+          "aliases": ["qwen3-coder-plus"],
+          "matchers": [
+            { "all": ["qwen3", "coder", "plus"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.65,
+            "outputPerMToken": 3.25,
+            "cacheReadPerMToken": 0.13
+          }
+        },
+        {
+          "id": "qwen3-coder",
+          "displayName": "Qwen3 Coder",
+          "visibility": "hidden",
+          "aliases": ["qwen3-coder-480b"],
+          "matchers": [
+            { "all": ["qwen3", "coder"], "any": [], "none": ["plus"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.22,
+            "outputPerMToken": 1,
+            "cacheReadPerMToken": 0.11
+          }
+        },
+        {
+          "id": "qwen-max",
+          "displayName": "Qwen Max",
+          "visibility": "hidden",
+          "aliases": ["qwen-max"],
+          "matchers": [
+            { "all": ["qwen", "max"], "any": [], "none": ["qwen3"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.04,
+            "outputPerMToken": 4.16,
+            "cacheReadPerMToken": 0.208
+          }
+        },
+        {
+          "id": "qwen-plus",
+          "displayName": "Qwen Plus",
+          "visibility": "hidden",
+          "aliases": ["qwen-plus"],
+          "matchers": [
+            { "all": ["qwen", "plus"], "any": [], "none": ["qwen3", "qwq", "coder", "3.5"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.4,
+            "outputPerMToken": 1.2,
+            "cacheReadPerMToken": 0.08
+          }
+        },
+        {
+          "id": "qwen-flash",
+          "displayName": "Qwen Flash",
+          "visibility": "hidden",
+          "aliases": ["qwen-flash"],
+          "matchers": [
+            { "all": ["qwen", "flash"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.1,
+            "outputPerMToken": 0.4,
+            "cacheReadPerMToken": 0.02
+          }
+        },
+        {
+          "id": "qwen-turbo",
+          "displayName": "Qwen Turbo",
+          "visibility": "hidden",
+          "aliases": ["qwen-turbo"],
+          "matchers": [
+            { "all": ["qwen", "turbo"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.05,
+            "outputPerMToken": 0.2,
+            "cacheReadPerMToken": 0.01
+          }
+        },
+        {
+          "id": "qwq-plus",
+          "displayName": "QwQ Plus",
+          "visibility": "hidden",
+          "aliases": ["qwq-plus"],
+          "matchers": [
+            { "all": ["qwq", "plus"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.8,
+            "outputPerMToken": 2.4,
+            "cacheReadPerMToken": 0.16
+          }
+        },
+        {
+          "id": "qwq-32b",
+          "displayName": "QwQ 32B",
+          "visibility": "hidden",
+          "aliases": ["qwq-32b"],
+          "matchers": [
+            { "all": ["qwq"], "any": [], "none": ["plus"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.12,
+            "outputPerMToken": 0.18,
+            "cacheReadPerMToken": 0.06
+          }
+        },
+        {
+          "id": "qwen2.5-coder-32b",
+          "displayName": "Qwen 2.5 Coder 32B",
+          "visibility": "hidden",
+          "aliases": ["qwen2.5-coder-32b-instruct"],
+          "matchers": [
+            { "all": ["qwen", "2.5", "coder", "32b"], "any": [], "none": [] },
+            { "all": ["qwen2.5", "coder", "32b"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.66,
+            "outputPerMToken": 1,
+            "cacheReadPerMToken": 0.33
+          }
+        },
+        {
+          "id": "qwen2.5-72b",
+          "displayName": "Qwen 2.5 72B",
+          "visibility": "hidden",
+          "aliases": ["qwen2.5-72b-instruct"],
+          "matchers": [
+            { "all": ["qwen", "2.5", "72b"], "any": [], "none": [] },
+            { "all": ["qwen2.5", "72b"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.12,
+            "outputPerMToken": 0.39,
+            "cacheReadPerMToken": 0.06
+          }
+        },
+        {
+          "id": "qwen-default-family",
+          "displayName": "Qwen Default Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["qwen"], "any": [], "none": ["max", "plus", "flash", "turbo", "coder", "2.5", "3"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.4,
+            "outputPerMToken": 1.2,
+            "cacheReadPerMToken": 0.08
           }
         }
       ]
@@ -215,12 +1553,28 @@
           "visibility": "public",
           "aliases": ["glm-5-turbo"],
           "matchers": [
-            { "all": ["glm-5-turbo"], "any": [], "none": [] }
+            { "all": ["glm-5-turbo"], "any": [], "none": [] },
+            { "all": ["glm", "5", "turbo"], "any": [], "none": [] }
           ],
           "pricing": {
-            "inputPerMToken": 0.07,
-            "outputPerMToken": 0.07,
-            "cacheReadPerMToken": 0.035
+            "inputPerMToken": 1.2,
+            "outputPerMToken": 4,
+            "cacheReadPerMToken": 0.24
+          }
+        },
+        {
+          "id": "glm-5-code",
+          "displayName": "GLM-5 Code",
+          "visibility": "public",
+          "aliases": ["glm-5-code"],
+          "matchers": [
+            { "all": ["glm-5-code"], "any": [], "none": [] },
+            { "all": ["glm", "5", "code"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.2,
+            "outputPerMToken": 5,
+            "cacheReadPerMToken": 0.3
           }
         },
         {
@@ -229,12 +1583,12 @@
           "visibility": "public",
           "aliases": ["glm-5"],
           "matchers": [
-            { "all": ["glm", "5"], "any": [], "none": ["glm-5-turbo"] }
+            { "all": ["glm", "5"], "any": [], "none": ["turbo", "code"] }
           ],
           "pricing": {
-            "inputPerMToken": 0.07,
-            "outputPerMToken": 0.07,
-            "cacheReadPerMToken": 0.035
+            "inputPerMToken": 1,
+            "outputPerMToken": 3.2,
+            "cacheReadPerMToken": 0.2
           }
         },
         {
@@ -243,12 +1597,14 @@
           "visibility": "hidden",
           "aliases": [],
           "matchers": [
-            { "all": ["glm"], "any": [], "none": ["5"] }
+            { "all": ["glm"], "any": [], "none": ["5"] },
+            { "all": ["z.ai"], "any": [], "none": [] },
+            { "all": ["pony"], "any": [], "none": [] }
           ],
           "pricing": {
-            "inputPerMToken": 0.05,
-            "outputPerMToken": 0.05,
-            "cacheReadPerMToken": 0.025
+            "inputPerMToken": 0.6,
+            "outputPerMToken": 2.2,
+            "cacheReadPerMToken": 0.11
           }
         }
       ]
@@ -266,12 +1622,13 @@
           "visibility": "public",
           "aliases": ["minimax-m2.7-highspeed"],
           "matchers": [
-            { "all": ["minimax-m2.7-highspeed"], "any": [], "none": [] }
+            { "all": ["minimax-m2.7-highspeed"], "any": [], "none": [] },
+            { "all": ["minimax", "highspeed"], "any": [], "none": [] }
           ],
           "pricing": {
-            "inputPerMToken": 0.69,
-            "outputPerMToken": 0.69,
-            "cacheReadPerMToken": 0.34
+            "inputPerMToken": 0.6,
+            "outputPerMToken": 2.4,
+            "cacheReadPerMToken": 0.06
           }
         },
         {
@@ -280,12 +1637,12 @@
           "visibility": "hidden",
           "aliases": [],
           "matchers": [
-            { "all": ["minimax"], "any": ["m2", "m3"], "none": [] }
+            { "all": ["minimax"], "any": ["m2", "m3"], "none": ["highspeed"] }
           ],
           "pricing": {
-            "inputPerMToken": 0.69,
-            "outputPerMToken": 0.69,
-            "cacheReadPerMToken": 0.34
+            "inputPerMToken": 0.3,
+            "outputPerMToken": 1.2,
+            "cacheReadPerMToken": 0.06
           }
         },
         {
@@ -294,12 +1651,12 @@
           "visibility": "hidden",
           "aliases": [],
           "matchers": [
-            { "all": ["minimax"], "any": [], "none": ["m2", "m3"] }
+            { "all": ["minimax"], "any": [], "none": ["m2", "m3", "highspeed"] }
           ],
           "pricing": {
-            "inputPerMToken": 0.5,
-            "outputPerMToken": 0.5,
-            "cacheReadPerMToken": 0.25
+            "inputPerMToken": 0.3,
+            "outputPerMToken": 1.2,
+            "cacheReadPerMToken": 0.03
           }
         }
       ]
@@ -312,18 +1669,128 @@
       "capabilities": ["accounting"],
       "models": [
         {
+          "id": "kimi-k2.5",
+          "displayName": "Kimi K2.5",
+          "visibility": "hidden",
+          "aliases": ["kimi-k2.5"],
+          "matchers": [
+            { "all": ["kimi", "k2.5"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.6,
+            "outputPerMToken": 3,
+            "cacheReadPerMToken": 0.15
+          }
+        },
+        {
+          "id": "kimi-k2-thinking",
+          "displayName": "Kimi K2 Thinking",
+          "visibility": "hidden",
+          "aliases": ["kimi-k2-thinking"],
+          "matchers": [
+            { "all": ["kimi", "k2", "thinking"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.6,
+            "outputPerMToken": 2.5,
+            "cacheReadPerMToken": 0.15
+          }
+        },
+        {
           "id": "kimi-family",
           "displayName": "Kimi Family",
           "visibility": "hidden",
           "aliases": ["kimi"],
           "matchers": [
-            { "all": ["kimi"], "any": [], "none": [] },
+            { "all": ["kimi"], "any": [], "none": ["k2.5", "thinking"] },
             { "all": ["moonshot"], "any": [], "none": [] }
           ],
           "pricing": {
-            "inputPerMToken": 0.1,
-            "outputPerMToken": 0.3,
-            "cacheReadPerMToken": 0.05
+            "inputPerMToken": 0.6,
+            "outputPerMToken": 2.5,
+            "cacheReadPerMToken": 0.15
+          }
+        }
+      ]
+    },
+    {
+      "id": "misc",
+      "displayName": "Other Models",
+      "baseURL": "",
+      "visibility": "hidden",
+      "capabilities": ["accounting"],
+      "models": [
+        {
+          "id": "yi-lightning",
+          "displayName": "Yi Lightning",
+          "visibility": "hidden",
+          "aliases": ["yi-lightning"],
+          "matchers": [
+            { "all": ["yi", "lightning"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.14,
+            "outputPerMToken": 0.14,
+            "cacheReadPerMToken": 0.07
+          }
+        },
+        {
+          "id": "yi-large",
+          "displayName": "Yi Large",
+          "visibility": "hidden",
+          "aliases": ["yi-large"],
+          "matchers": [
+            { "all": ["yi", "large"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2,
+            "outputPerMToken": 2,
+            "cacheReadPerMToken": 1
+          }
+        },
+        {
+          "id": "gemma-3-family",
+          "displayName": "Gemma 3 Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gemma", "3"], "any": [], "none": [] },
+            { "all": ["gemma-3"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.08,
+            "outputPerMToken": 0.16,
+            "cacheReadPerMToken": 0.04
+          }
+        },
+        {
+          "id": "gemma-2-family",
+          "displayName": "Gemma 2 Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["gemma", "2"], "any": [], "none": ["3"] },
+            { "all": ["gemma-2"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.065,
+            "outputPerMToken": 0.065,
+            "cacheReadPerMToken": 0.0325
+          }
+        },
+        {
+          "id": "phi-4-family",
+          "displayName": "Phi-4 Family",
+          "visibility": "hidden",
+          "aliases": [],
+          "matchers": [
+            { "all": ["phi", "4"], "any": [], "none": [] },
+            { "all": ["phi-4"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.13,
+            "outputPerMToken": 0.5,
+            "cacheReadPerMToken": 0.065
           }
         }
       ]

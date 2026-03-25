@@ -55,6 +55,7 @@ public actor BurnBarDaemonServer {
     private let usageRecorder: BurnBarUsageRecorder
     private let clientRegistry: BurnBarClientRegistry
     private let runService: BurnBarRunService
+    private let indexedSearch: BurnBarIndexedSearchService?
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
 
@@ -93,6 +94,17 @@ public actor BurnBarDaemonServer {
         self.usageRecorder = resolvedUsageRecorder
         self.clientRegistry = resolvedClientRegistry
         self.runService = resolvedRunService
+
+        if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+           path.isEmpty == false,
+           FileManager.default.fileExists(atPath: path) {
+            self.indexedSearch = try? BurnBarIndexedSearchService(
+                databasePath: path,
+                logger: BurnBarDaemonLogger(category: "indexed-search")
+            )
+        } else {
+            self.indexedSearch = nil
+        }
     }
 
     public func start() throws {
@@ -406,6 +418,34 @@ public actor BurnBarDaemonServer {
                     result: try await runService.respondToApproval(typedRequest.params)
                 )
                 return encode(response)
+            case .searchQuery:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarSearchQueryRequest>.self,
+                    from: requestData
+                )
+                guard let indexedSearch else {
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.internalError,
+                        message:
+                            "BurnBar indexed search is not available. Ensure BURNBAR_INDEX_DATABASE_PATH points to your BurnBar database and restart the daemon."
+                    )
+                }
+                do {
+                    let result = try indexedSearch.search(query: typedRequest.params)
+                    let response = BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        protocolVersion: BurnBarProtocolVersion.current,
+                        result: result
+                    )
+                    return encode(response)
+                } catch {
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.internalError,
+                        message: error.localizedDescription
+                    )
+                }
             }
         } catch {
             logger.error(

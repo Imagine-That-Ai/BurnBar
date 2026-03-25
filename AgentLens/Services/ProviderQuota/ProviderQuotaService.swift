@@ -485,7 +485,7 @@ final class ProviderQuotaService {
                 claudeBridgeStatus = ClaudeQuotaBridgeStatus(
                     state: .awaitingFirstPayload,
                     wrapperPath: wrapperPath,
-                    detailText: "Bridge installed. Claude must produce at least one response before rate-limit JSON is captured.",
+                    detailText: "Bridge installed and configured. Open Claude Code, send one prompt after bridge install, then refresh BurnBar to capture rate-limit JSON.",
                     lastPayloadAt: nil
                 )
             } else {

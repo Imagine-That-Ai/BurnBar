@@ -1,6 +1,31 @@
 import BurnBarCore
 import Foundation
+import LocalAuthentication
 import Security
+
+#if os(macOS)
+// Legacy macOS keychain items can still present ACL prompts even when a query uses
+// a non-interactive LAContext, so disable keychain UI at the process level too.
+private func withKeychainInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
+    var previousAllowed = DarwinBoolean(true)
+    let readStatus = SecKeychainGetUserInteractionAllowed(&previousAllowed)
+    let disableStatus = SecKeychainSetUserInteractionAllowed(false)
+    defer {
+        if disableStatus == errSecSuccess {
+            if readStatus == errSecSuccess {
+                _ = SecKeychainSetUserInteractionAllowed(previousAllowed.boolValue)
+            } else {
+                _ = SecKeychainSetUserInteractionAllowed(true)
+            }
+        }
+    }
+    return try operation()
+}
+#else
+private func withKeychainInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
+    try operation()
+}
+#endif
 
 public struct BurnBarProviderExecutionResult: Sendable {
     public let outputText: String
@@ -200,17 +225,22 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         }
 
         let account = "provider.\(providerID).apiKey"
+        let context = LAContext()
+        context.interactionNotAllowed = true
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationContext as String: context,
             // Daemon reads must never surface interactive keychain prompts.
             kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
         ]
         var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        let status = withKeychainInteractionDisabled {
+            SecItemCopyMatching(query as CFDictionary, &item)
+        }
         if status == errSecItemNotFound
             || status == errSecInteractionNotAllowed
             || status == errSecUserCanceled

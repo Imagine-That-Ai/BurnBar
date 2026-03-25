@@ -47,7 +47,7 @@
         {
           "id": "burnbar",
           "title": "BurnBar",
-          "icon": "media/burnbar-activity.svg"
+          "icon": "./media/burnbar-activity.svg"
         }
       ]
     },

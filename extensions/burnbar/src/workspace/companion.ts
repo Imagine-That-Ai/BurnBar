@@ -19,6 +19,8 @@ import {
   type BurnBarReadFileResult,
   type BurnBarRunTerminalRequest,
   type BurnBarRunTerminalResult,
+  type BurnBarSearchBurnbarIndexRequest,
+  type BurnBarSearchBurnbarIndexResult,
   type BurnBarSearchWorkspaceMatch,
   type BurnBarSearchWorkspaceRequest,
   type BurnBarSearchWorkspaceResult,
@@ -35,10 +37,17 @@ const DEFAULT_SEARCH_MAX_RESULTS = 50;
 const DEFAULT_SEARCH_MAX_FILE_BYTES = 256_000;
 const decoder = new TextDecoder("utf-8");
 
+export type BurnBarIndexedSearchBridge = (
+  params: BurnBarSearchBurnbarIndexRequest
+) => Promise<BurnBarSearchBurnbarIndexResult>;
+
 export class BurnBarWorkspaceCompanion implements vscode.Disposable {
   private readonly registration: vscode.Disposable;
 
-  constructor(private readonly api: BurnBarWorkspaceApi) {
+  constructor(
+    private readonly api: BurnBarWorkspaceApi,
+    private readonly indexedSearch?: BurnBarIndexedSearchBridge
+  ) {
     this.registration = vscode.commands.registerCommand(BURNBAR_WORKSPACE_RPC_COMMAND, (request: BurnBarWorkspaceRpcRequest) =>
       this.handle(request)
     );
@@ -79,6 +88,8 @@ export class BurnBarWorkspaceCompanion implements vscode.Disposable {
         return this.readFile(request.params);
       case "workspace.search_workspace":
         return this.searchWorkspace(request.params);
+      case "workspace.search_burnbar_index":
+        return this.searchBurnbarIndex(request.params);
       case "workspace.apply_patch":
         return this.applyPatch(request.params);
       case "workspace.run_terminal":
@@ -156,6 +167,16 @@ export class BurnBarWorkspaceCompanion implements vscode.Disposable {
     return {
       matches
     };
+  }
+
+  private async searchBurnbarIndex(request: BurnBarSearchBurnbarIndexRequest): Promise<BurnBarSearchBurnbarIndexResult> {
+    if (!this.indexedSearch) {
+      throw new BurnBarWorkspaceRpcError(
+        "UNSUPPORTED",
+        "BurnBar indexed search is not available (daemon bridge not configured)."
+      );
+    }
+    return this.indexedSearch(request);
   }
 
   private async applyPatch(request: BurnBarApplyPatchRequest): Promise<BurnBarApplyPatchResult> {
@@ -292,9 +313,10 @@ export class BurnBarWorkspaceCompanion implements vscode.Disposable {
 }
 
 export function activateBurnBarWorkspaceCompanion(
-  hostKind: BurnBarWorkspaceHostKind
+  hostKind: BurnBarWorkspaceHostKind,
+  deps?: { indexedSearch?: BurnBarIndexedSearchBridge }
 ): BurnBarWorkspaceCompanion {
-  return new BurnBarWorkspaceCompanion(createBurnBarWorkspaceApi(hostKind));
+  return new BurnBarWorkspaceCompanion(createBurnBarWorkspaceApi(hostKind), deps?.indexedSearch);
 }
 
 function assertTrustedToolAllowed(

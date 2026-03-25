@@ -306,6 +306,30 @@ final class BurnBarDaemonServerTests: XCTestCase {
         await server.stop()
     }
 
+    func testSearchQueryWithoutIndexDatabaseReturnsError() async throws {
+        let socketPath = makeSocketPath(name: "search-no-db")
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, indexDatabasePath: nil)
+        )
+
+        try await server.start()
+
+        let response: BurnBarRPCResponseEnvelope<BurnBarSearchQueryResult> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "search-1",
+                method: .searchQuery,
+                params: BurnBarSearchQueryRequest(query: "test query", resultLimit: 5)
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertNil(response.result)
+        XCTAssertEqual(response.error?.code, -32603)
+        XCTAssertTrue(response.error?.message.contains("indexed search") == true)
+
+        await server.stop()
+    }
+
     private func makeSocketPath(name: String) -> String {
         "/tmp/burnbar-daemon-tests-\(name)-\(UUID().uuidString).sock"
     }

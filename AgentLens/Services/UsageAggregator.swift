@@ -64,6 +64,10 @@ struct SummaryQueueItem: Identifiable {
 @Observable
 @MainActor
 final class UsageAggregator {
+    private enum SummaryEndpointCooldownPolicy {
+        static let localEndpointFailureCooldown: TimeInterval = 5 * 60
+    }
+
     private let dataStore: DataStore
     private let parsers: [AgentProvider: any LogParser]
     private weak var cloudSync: CloudSyncService?
@@ -73,8 +77,9 @@ final class UsageAggregator {
     private(set) var usageAPIService: ProviderUsageAPIService?
     private let quotaService: ProviderQuotaService
     private let artifactDiscoveryService: ArtifactDiscoveryService
-    private let projectionPipelineService: ProjectionPipelineService
+    private let projectionPipelineServiceOverride: ProjectionPipelineService?
     private var hasCompletedInitialSummarySweep = false
+    private var localSummaryEndpointCooldownUntil: Date?
     private static let summaryFailureRetryCooldown: TimeInterval = 60 * 60
 
     private(set) var isRefreshing = false
@@ -112,8 +117,7 @@ final class UsageAggregator {
         self.quotaService = quotaService
         self.artifactDiscoveryService = artifactDiscoveryService
             ?? ArtifactDiscoveryService(dataStore: dataStore, settingsProvider: settingsManager)
-        self.projectionPipelineService = projectionPipelineService
-            ?? ProjectionPipelineService(dataStore: dataStore)
+        self.projectionPipelineServiceOverride = projectionPipelineService
         self.hasCompletedInitialSummarySweep = settingsManager.summaryInitialSweepCompleted
         self.parsers = [
             .factory: FactoryDroidParser(),
@@ -385,6 +389,15 @@ private extension UsageAggregator {
         }
     }
 
+    func makeProjectionPipelineService() -> ProjectionPipelineService {
+        projectionPipelineServiceOverride
+            ?? ProjectionPipelineService.makeConfigured(
+                dataStore: dataStore,
+                settingsManager: settingsManager,
+                providerAPIKeyStore: providerAPIKeyStore
+            )
+    }
+
     func runArtifactDiscoverySweep() async {
         do {
             _ = try artifactDiscoveryService.discoverAndIngest()
@@ -411,7 +424,7 @@ private extension UsageAggregator {
 
     func runProjectionSweep() async {
         do {
-            _ = try projectionPipelineService.runSweep()
+            _ = try await makeProjectionPipelineService().runSweep()
             _ = WorkflowInsightRollupService(dataStore: dataStore).snapshot(refreshIfStale: true)
         } catch {
             let now = Date()
@@ -599,6 +612,9 @@ private extension UsageAggregator {
         for provider in settingsManager.summaryProviderOrder {
             switch provider {
             case .local:
+                if let cooldown = localSummaryEndpointCooldownUntil, cooldown > Date() {
+                    continue
+                }
                 if let payload = await summarizeWithOllama(prompt: prompt) {
                     let clean = sanitizeSummaryPayload(payload, fallbackTitle: conversation.inferredTaskTitle)
                     if let clean {
@@ -766,10 +782,31 @@ private extension UsageAggregator {
         guard let body = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
         request.httpBody = body
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            let nsError = error as NSError
+            if nsError.domain == NSURLErrorDomain {
+                localSummaryEndpointCooldownUntil = Date().addingTimeInterval(
+                    SummaryEndpointCooldownPolicy.localEndpointFailureCooldown
+                )
+            }
+            return nil
+        }
+
+        guard let http = response as? HTTPURLResponse else { return nil }
+        guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 404 || http.statusCode == 408 || http.statusCode == 429 || http.statusCode >= 500 {
+                localSummaryEndpointCooldownUntil = Date().addingTimeInterval(
+                    SummaryEndpointCooldownPolicy.localEndpointFailureCooldown
+                )
+            }
+            return nil
+        }
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let text = json["response"] as? String else {
             return nil
         }

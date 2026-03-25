@@ -48,7 +48,7 @@ struct InsightBriefSnapshot {
         let calendar = Calendar.current
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
         let weekUsages = dataStore.usages.filter { $0.startTime >= weekAgo }
-        let retrieval = intelligenceService ?? SearchService(dataStore: dataStore)
+        let retrieval = intelligenceService ?? SearchService.makeConversationSearchService(dataStore: dataStore)
         let rollups = rollupService ?? WorkflowInsightRollupService(dataStore: dataStore)
         let rollupSnapshot = rollups.snapshot(refreshIfStale: true)
         let conversations = retrieval.recentConversations(limit: 200)

@@ -1,48 +1,216 @@
 import Foundation
+import GRDB
 
 // MARK: - Hermes Parser
 
-/// Scaffold parser for Hermes CLI agent sessions.
-/// Checks ~/.hermes/sessions/ for JSONL files and attempts best-effort parsing.
+/// Parses Hermes sessions from SQLite first, then gateway/CLI fallback files.
 final class HermesParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .hermes
 
+    private static let iso8601Basic: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let sqliteDateFormats: [DateFormatter] = {
+        let formats = [
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss.SSSSSS",
+            "yyyy-MM-dd HH:mm:ss.SSS",
+        ]
+        return formats.map { format in
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            formatter.dateFormat = format
+            return formatter
+        }
+    }()
+
     func parse() async throws -> ParseResult {
         let fm = FileManager.default
-        let sessionsPath = (provider.logDirectory as NSString).expandingTildeInPath
+        let hermesHome = resolvedHermesHome()
+        let sessionsDir = hermesHome.appendingPathComponent("sessions", isDirectory: true)
 
-        guard fm.fileExists(atPath: sessionsPath) else {
-            return ParseResult(usages: [], conversations: [])
-        }
-
-        let sessionsURL = URL(fileURLWithPath: sessionsPath)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var seenSessionIds: Set<String> = []
 
-        let contents = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        let dbURL = hermesHome.appendingPathComponent("state.db")
+        if fm.fileExists(atPath: dbURL.path), fileSize(at: dbURL) > 0 {
+            let sqliteResult = try parseSQLiteDatabase(dbURL: dbURL)
+            usages.append(contentsOf: sqliteResult.usages)
+            conversations.append(contentsOf: sqliteResult.conversations)
+            seenSessionIds.formUnion(sqliteResult.usages.map(\.sessionId))
+            seenSessionIds.formUnion(sqliteResult.conversations.map(\.sessionId))
+        }
 
-        // Parse JSONL files at top level
-        let jsonlFiles = contents.filter { $0.pathExtension == "jsonl" }
-        for file in jsonlFiles {
-            let sessionId = file.deletingPathExtension().lastPathComponent
-            if let pair = parseSession(file: file, sessionId: sessionId, projectName: sessionId),
-               let usage = pair.usage {
-                usages.append(usage)
-                if let conv = pair.conversation { conversations.append(conv) }
+        let indexURL = sessionsDir.appendingPathComponent("sessions.json")
+        if fm.fileExists(atPath: indexURL.path) {
+            let gatewayResult = parseGatewayIndex(indexURL: indexURL, sessionsDir: sessionsDir, excluding: seenSessionIds)
+            usages.append(contentsOf: gatewayResult.usages)
+            conversations.append(contentsOf: gatewayResult.conversations)
+            seenSessionIds.formUnion(gatewayResult.usages.map(\.sessionId))
+            seenSessionIds.formUnion(gatewayResult.conversations.map(\.sessionId))
+        }
+
+        if fm.fileExists(atPath: sessionsDir.path) {
+            let contents = (try? fm.contentsOfDirectory(at: sessionsDir, includingPropertiesForKeys: [.isRegularFileKey])) ?? []
+
+            for file in contents where file.lastPathComponent.hasPrefix("session_") && file.pathExtension == "json" {
+                let result = parseCLISnapshot(file: file, excluding: seenSessionIds)
+                usages.append(contentsOf: result.usages)
+                conversations.append(contentsOf: result.conversations)
+                seenSessionIds.formUnion(result.usages.map(\.sessionId))
+                seenSessionIds.formUnion(result.conversations.map(\.sessionId))
+            }
+
+            for file in contents where file.pathExtension == "jsonl" && file.lastPathComponent != "sessions.json" {
+                let sessionId = file.deletingPathExtension().lastPathComponent
+                guard !seenSessionIds.contains(sessionId) else { continue }
+                guard let summary = parseLegacyTranscript(file: file) else { continue }
+
+                let projectName = sessionId
+                if let usage = usage(
+                    sessionId: sessionId,
+                    projectName: projectName,
+                    model: summary.model ?? "hermes",
+                    inputTokens: summary.inputTokens,
+                    outputTokens: summary.outputTokens,
+                    cacheCreationTokens: summary.cacheCreationTokens,
+                    cacheReadTokens: summary.cacheReadTokens,
+                    costOverride: nil,
+                    startTime: summary.startTime ?? summary.fileModifiedAt ?? Date(),
+                    endTime: summary.endTime ?? summary.fileModifiedAt ?? Date()
+                ) {
+                    usages.append(usage)
+                }
+
+                if let conversation = conversation(
+                    sessionId: sessionId,
+                    projectName: projectName,
+                    title: summary.firstUser ?? sessionId,
+                    summary: summary,
+                    startTime: summary.startTime ?? summary.fileModifiedAt,
+                    endTime: summary.endTime ?? summary.fileModifiedAt
+                ) {
+                    conversations.append(conversation)
+                }
+
+                seenSessionIds.insert(sessionId)
             }
         }
 
-        // Parse subdirectories
-        let dirs = contents.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
-        for dir in dirs {
-            let projectName = dir.lastPathComponent
-            let files = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-            for file in files where file.pathExtension == "jsonl" {
-                let sessionId = file.deletingPathExtension().lastPathComponent
-                if let pair = parseSession(file: file, sessionId: sessionId, projectName: projectName),
-                   let usage = pair.usage {
+        return ParseResult(
+            usages: deduplicate(usages),
+            conversations: deduplicate(conversations)
+        )
+    }
+
+    // MARK: - SQLite
+
+    private func parseSQLiteDatabase(dbURL: URL) throws -> ParseResult {
+        var usages: [TokenUsage] = []
+        var conversations: [ConversationRecord] = []
+
+        var config = Configuration()
+        config.readonly = true
+        let dbQueue = try DatabaseQueue(path: dbURL.path, configuration: config)
+
+        try dbQueue.read { db in
+            let tables = Set(try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type='table'"))
+            guard tables.contains("sessions") else { return }
+
+            let sessionColumns = try availableColumns(in: "sessions", db: db)
+            let sessionFields = [
+                "id",
+                "source",
+                "model",
+                "started_at",
+                "ended_at",
+                "title",
+                "input_tokens",
+                "output_tokens",
+                "cache_read_tokens",
+                "cache_write_tokens",
+                "reasoning_tokens",
+                "estimated_cost_usd",
+                "actual_cost_usd",
+                "cost_status"
+            ].filter { sessionColumns.contains($0) }
+
+            guard !sessionFields.isEmpty else { return }
+
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT \(sessionFields.joined(separator: ", "))
+                    FROM sessions
+                    ORDER BY started_at DESC
+                """
+            )
+
+            let messageColumns = tables.contains("messages") ? try availableColumns(in: "messages", db: db) : []
+
+            for row in rows {
+                guard let sessionId: String = row["id"] else { continue }
+
+                let summary = messageColumns.isEmpty
+                    ? nil
+                    : try parseSQLiteTranscript(db: db, sessionId: sessionId, availableColumns: messageColumns)
+
+                let source = stringValue(row, column: "source") ?? "hermes"
+                let title = stringValue(row, column: "title")
+                let projectName = title ?? source
+
+                let inputTokens = integerValue(row, column: "input_tokens")
+                let outputTokens = integerValue(row, column: "output_tokens") + integerValue(row, column: "reasoning_tokens")
+                let cacheReadTokens = integerValue(row, column: "cache_read_tokens")
+                let cacheWriteTokens = integerValue(row, column: "cache_write_tokens")
+                let model = TokenExtractionUtility.normalizeModelName(
+                    stringValue(row, column: "model") ?? summary?.model ?? "hermes"
+                )
+
+                let startTime = dateValue(row["started_at"]) ?? summary?.startTime ?? modificationDate(of: dbURL) ?? Date()
+                let endTime = dateValue(row["ended_at"]) ?? summary?.endTime ?? startTime
+
+                let explicitCost = doubleValue(row, column: "actual_cost_usd")
+                    ?? doubleValue(row, column: "estimated_cost_usd")
+
+                if let usage = usage(
+                    sessionId: sessionId,
+                    projectName: projectName,
+                    model: model,
+                    inputTokens: inputTokens,
+                    outputTokens: outputTokens,
+                    cacheCreationTokens: cacheWriteTokens,
+                    cacheReadTokens: cacheReadTokens,
+                    costOverride: explicitCost,
+                    startTime: startTime,
+                    endTime: endTime
+                ) {
                     usages.append(usage)
-                    if let conv = pair.conversation { conversations.append(conv) }
+                }
+
+                if let summary {
+                    let conversation = conversation(
+                        sessionId: sessionId,
+                        projectName: projectName,
+                        title: title ?? summary.firstUser ?? source,
+                        summary: summary,
+                        startTime: startTime,
+                        endTime: endTime
+                    )
+                    if let conversation {
+                        conversations.append(conversation)
+                    }
                 }
             }
         }
@@ -50,131 +218,271 @@ final class HermesParser: LogParser, @unchecked Sendable {
         return ParseResult(usages: usages, conversations: conversations)
     }
 
-    private func parseSession(
-        file: URL,
+    private func parseSQLiteTranscript(
+        db: Database,
         sessionId: String,
-        projectName: String
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+        availableColumns: Set<String>
+    ) throws -> TranscriptSummary? {
+        let fields = [
+            "id",
+            "role",
+            "content",
+            "tool_name",
+            "tool_calls",
+            "timestamp"
+        ].filter { availableColumns.contains($0) }
+
+        guard availableColumns.contains("session_id"), !fields.isEmpty else { return nil }
+
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+                SELECT \(fields.joined(separator: ", "))
+                FROM messages
+                WHERE session_id = ?
+                ORDER BY timestamp ASC, id ASC
+            """,
+            arguments: [sessionId]
+        )
+
+        guard !rows.isEmpty else { return nil }
+
+        var summary = TranscriptSummary()
+        for row in rows {
+            let role = (stringValue(row, column: "role") ?? "").lowercased()
+            let content = stringValue(row, column: "content") ?? ""
+            let toolName = stringValue(row, column: "tool_name")
+            let timestamp = dateValue(row["timestamp"])
+
+            if let timestamp {
+                if summary.startTime == nil { summary.startTime = timestamp }
+                summary.endTime = timestamp
+            }
+
+            if let toolName, !toolName.isEmpty {
+                summary.keyTools.insert(toolName)
+            }
+
+            summary.consume(role: role, content: content)
+        }
+
+        return summary
+    }
+
+    // MARK: - Gateway / CLI Fallbacks
+
+    private func parseGatewayIndex(indexURL: URL, sessionsDir: URL, excluding seenSessionIds: Set<String>) -> ParseResult {
+        guard let data = try? Data(contentsOf: indexURL),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return ParseResult(usages: [], conversations: [])
+        }
+
+        var usages: [TokenUsage] = []
+        var conversations: [ConversationRecord] = []
+
+        for value in root.values {
+            guard let entry = value as? [String: Any],
+                  let sessionId = stringValue(entry, key: "session_id"),
+                  !seenSessionIds.contains(sessionId) else {
+                continue
+            }
+
+            let transcriptURL = sessionsDir.appendingPathComponent("\(sessionId).jsonl")
+            let summary = FileManager.default.fileExists(atPath: transcriptURL.path)
+                ? parseLegacyTranscript(file: transcriptURL)
+                : nil
+
+            let inputTokens = integerValue(entry, key: "input_tokens")
+            let outputTokens = integerValue(entry, key: "output_tokens")
+            let cacheReadTokens = integerValue(entry, key: "cache_read_tokens")
+            let cacheWriteTokens = integerValue(entry, key: "cache_write_tokens")
+            let model = TokenExtractionUtility.normalizeModelName(
+                stringValue(entry, key: "model") ?? summary?.model ?? "hermes"
+            )
+            let projectName = stringValue(entry, key: "display_name")
+                ?? stringValue(entry, key: "session_key")
+                ?? stringValue(entry, key: "platform")
+                ?? sessionId
+
+            let startTime = dateValue(entry["created_at"]) ?? summary?.startTime ?? modificationDate(of: transcriptURL) ?? Date()
+            let endTime = dateValue(entry["updated_at"]) ?? summary?.endTime ?? startTime
+            let explicitCost = doubleValue(entry, key: "actual_cost_usd")
+                ?? doubleValue(entry, key: "estimated_cost_usd")
+
+            let usageInput = inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0
+                ? inputTokens
+                : (summary?.inputTokens ?? 0)
+            let usageOutput = inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0
+                ? outputTokens
+                : (summary?.outputTokens ?? 0)
+            let usageCacheWrite = inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0
+                ? cacheWriteTokens
+                : (summary?.cacheCreationTokens ?? 0)
+            let usageCacheRead = inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0
+                ? cacheReadTokens
+                : (summary?.cacheReadTokens ?? 0)
+
+            if let usage = usage(
+                sessionId: sessionId,
+                projectName: projectName,
+                model: model,
+                inputTokens: usageInput,
+                outputTokens: usageOutput,
+                cacheCreationTokens: usageCacheWrite,
+                cacheReadTokens: usageCacheRead,
+                costOverride: explicitCost,
+                startTime: startTime,
+                endTime: endTime
+            ) {
+                usages.append(usage)
+            }
+
+            if let summary,
+               let conversation = conversation(
+                    sessionId: sessionId,
+                    projectName: projectName,
+                    title: stringValue(entry, key: "display_name") ?? summary.firstUser ?? projectName,
+                    summary: summary,
+                    startTime: startTime,
+                    endTime: endTime
+               ) {
+                conversations.append(conversation)
+            }
+        }
+
+        return ParseResult(usages: usages, conversations: conversations)
+    }
+
+    private func parseCLISnapshot(file: URL, excluding seenSessionIds: Set<String>) -> ParseResult {
+        guard let data = try? Data(contentsOf: file),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return ParseResult(usages: [], conversations: [])
+        }
+
+        let sessionId = stringValue(json, key: "session_id")
+            ?? file.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "session_", with: "")
+        guard !seenSessionIds.contains(sessionId) else {
+            return ParseResult(usages: [], conversations: [])
+        }
+
+        let summary = transcriptSummary(from: json["messages"] as? [Any] ?? [])
+        let model = TokenExtractionUtility.normalizeModelName(
+            stringValue(json, key: "model") ?? summary.model ?? "hermes"
+        )
+        let projectName = stringValue(json, key: "platform") ?? sessionId
+        let startTime = dateValue(json["session_start"]) ?? summary.startTime ?? modificationDate(of: file) ?? Date()
+        let endTime = dateValue(json["last_updated"]) ?? summary.endTime ?? startTime
+
+        let estimated = summary.estimatedUsage()
+        let usage = usage(
+            sessionId: sessionId,
+            projectName: projectName,
+            model: model,
+            inputTokens: max(summary.inputTokens, estimated.input),
+            outputTokens: max(summary.outputTokens, estimated.output),
+            cacheCreationTokens: summary.cacheCreationTokens,
+            cacheReadTokens: summary.cacheReadTokens,
+            costOverride: nil,
+            startTime: startTime,
+            endTime: endTime
+        )
+
+        let conversation = conversation(
+            sessionId: sessionId,
+            projectName: projectName,
+            title: stringValue(json, key: "title") ?? summary.firstUser ?? projectName,
+            summary: summary,
+            startTime: startTime,
+            endTime: endTime
+        )
+
+        return ParseResult(usages: usage.map { [$0] } ?? [], conversations: conversation.map { [$0] } ?? [])
+    }
+
+    private func parseLegacyTranscript(file: URL) -> TranscriptSummary? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
         defer { try? handle.close() }
 
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
-
-        var inputTokens = 0
-        var outputTokens = 0
-        var cacheCreationTokens = 0
-        var cacheReadTokens = 0
-        var model = "unknown"
-        var startTime: Date?
-        var endTime: Date?
-        var userChars = 0
-        var assistantChars = 0
-        var messageCount = 0
-        var fullText = ""
-        var firstUser: String?
-        var lastAssistant = ""
-        var userWords = 0
-        var assistantWords = 0
-
+        var events: [Any] = []
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) else {
                 continue
             }
+            events.append(json)
+        }
 
-            // Try Claude-style nested format
-            if let message = json["message"] as? [String: Any] {
-                let role = (message["role"] as? String)?.lowercased() ?? ""
+        guard !events.isEmpty else { return nil }
+        var summary = transcriptSummary(from: events)
+        summary.fileModifiedAt = modificationDate(of: file)
+        return summary
+    }
 
-                if let ts = json["timestamp"] as? String,
-                   let date = ISO8601DateFormatter().date(from: ts) {
-                    if startTime == nil { startTime = date }
-                    endTime = date
-                }
+    private func transcriptSummary(from events: [Any]) -> TranscriptSummary {
+        var summary = TranscriptSummary()
 
-                if let m = message["model"] as? String, !m.isEmpty {
-                    model = TokenExtractionUtility.normalizeModelName(m)
-                }
+        for event in events {
+            guard let json = event as? [String: Any] else { continue }
+            let message = json["message"] as? [String: Any]
+            let role = ((message?["role"] as? String) ?? (json["role"] as? String) ?? "").lowercased()
+            let rawContent = message?["content"] ?? json["content"]
+            let toolName = (json["tool_name"] as? String) ?? (message?["tool_name"] as? String)
 
-                if role == "assistant", let usage = message["usage"] as? [String: Any] {
-                    let extracted = TokenExtractionUtility.extractUsageTokens(usage)
-                    inputTokens += extracted.input
-                    outputTokens += extracted.output
-                    cacheCreationTokens += extracted.cacheCreation
-                    cacheReadTokens += extracted.cacheRead
-                }
-                messageCount += 1
-                continue
+            if let model = (message?["model"] as? String) ?? (json["model"] as? String), !model.isEmpty {
+                summary.model = TokenExtractionUtility.normalizeModelName(model)
             }
 
-            // Try flat format
-            let role = (json["role"] as? String)?.lowercased() ?? ""
-            let content = json["content"] as? String ?? ""
-
-            if let ts = json["timestamp"] as? String,
-               let date = ISO8601DateFormatter().date(from: ts) {
-                if startTime == nil { startTime = date }
-                endTime = date
+            let timestamp = dateValue(json["timestamp"]) ?? dateValue(message?["timestamp"])
+            if let timestamp {
+                if summary.startTime == nil { summary.startTime = timestamp }
+                summary.endTime = timestamp
             }
 
-            if let m = json["model"] as? String, !m.isEmpty {
-                model = TokenExtractionUtility.normalizeModelName(m)
-            }
-
-            if role == "user" && !content.isEmpty {
-                userChars += content.count
-                let w = content.split { $0.isWhitespace || $0.isNewline }.count
-                userWords += w
-                if firstUser == nil {
-                    firstUser = String(content.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
-                }
-                if !fullText.isEmpty { fullText += "\n\n" }
-                fullText += content
-                messageCount += 1
-            } else if role == "assistant" && !content.isEmpty {
-                assistantChars += content.count
-                let w = content.split { $0.isWhitespace || $0.isNewline }.count
-                assistantWords += w
-                lastAssistant = content
-                if !fullText.isEmpty { fullText += "\n\n" }
-                fullText += content
-                messageCount += 1
-            }
-
-            if let usage = json["usage"] as? [String: Any] {
+            if let usage = (message?["usage"] as? [String: Any]) ?? (json["usage"] as? [String: Any]) {
                 let extracted = TokenExtractionUtility.extractUsageTokens(usage)
-                inputTokens += extracted.input
-                outputTokens += extracted.output
-                cacheCreationTokens += extracted.cacheCreation
-                cacheReadTokens += extracted.cacheRead
+                summary.inputTokens += extracted.input
+                summary.outputTokens += extracted.output
+                summary.cacheCreationTokens += extracted.cacheCreation
+                summary.cacheReadTokens += extracted.cacheRead
             }
+
+            if let toolName, !toolName.isEmpty {
+                summary.keyTools.insert(toolName)
+            }
+
+            summary.consume(role: role, content: stringContent(from: rawContent), rawContent: rawContent)
         }
 
-        // Fallback estimation
-        if inputTokens == 0 && outputTokens == 0 {
-            guard userChars + assistantChars > 0 else { return nil }
-            let estimated = TokenExtractionUtility.estimateFallbackTokens(
-                userVisibleChars: userChars,
-                assistantVisibleChars: assistantChars,
-                assistantReasoningChars: 0,
-                userMessageCount: max(messageCount / 2, 1),
-                assistantMessageCount: max(messageCount / 2, 1)
-            )
-            inputTokens = estimated.input
-            outputTokens = estimated.output
-        }
+        return summary
+    }
 
-        guard inputTokens > 0 || outputTokens > 0 else { return nil }
+    // MARK: - Builders
+
+    private func usage(
+        sessionId: String,
+        projectName: String,
+        model: String,
+        inputTokens: Int,
+        outputTokens: Int,
+        cacheCreationTokens: Int,
+        cacheReadTokens: Int,
+        costOverride: Double?,
+        startTime: Date,
+        endTime: Date
+    ) -> TokenUsage? {
+        guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else {
+            return nil
+        }
 
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = costOverride ?? pricing.cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,
             cacheReadTokens: cacheReadTokens
         )
 
-        let usage = TokenUsage(
+        return TokenUsage(
             provider: .hermes,
             sessionId: sessionId,
             projectName: projectName,
@@ -184,31 +492,248 @@ final class HermesParser: LogParser, @unchecked Sendable {
             cacheCreationTokens: cacheCreationTokens,
             cacheReadTokens: cacheReadTokens,
             costUSD: cost,
-            startTime: startTime ?? Date(),
-            endTime: endTime ?? Date()
+            startTime: startTime,
+            endTime: endTime
         )
+    }
 
-        let conversation = ConversationRecord(
+    private func conversation(
+        sessionId: String,
+        projectName: String,
+        title: String,
+        summary: TranscriptSummary,
+        startTime: Date?,
+        endTime: Date?
+    ) -> ConversationRecord? {
+        guard !summary.fullText.isEmpty || summary.messageCount > 0 else { return nil }
+
+        return ConversationRecord(
             id: ConversationRecord.stableId(provider: .hermes, sessionId: sessionId),
             provider: .hermes,
             sessionId: sessionId,
             projectName: projectName,
-            startTime: startTime ?? usage.startTime,
-            endTime: endTime ?? usage.endTime,
-            messageCount: messageCount,
-            userWordCount: userWords,
-            assistantWordCount: assistantWords,
+            startTime: startTime,
+            endTime: endTime,
+            messageCount: summary.messageCount,
+            userWordCount: summary.userWords,
+            assistantWordCount: summary.assistantWords,
             keyFiles: [],
             keyCommands: [],
-            keyTools: [],
-            inferredTaskTitle: firstUser ?? projectName,
-            lastAssistantMessage: lastAssistant,
-            fullText: fullText,
+            keyTools: Array(summary.keyTools).sorted(),
+            inferredTaskTitle: title,
+            lastAssistantMessage: summary.lastAssistant,
+            fullText: summary.fullText,
             indexedAt: Date(),
-            fileModifiedAt: mtime,
+            fileModifiedAt: summary.fileModifiedAt,
             summary: nil
         )
+    }
 
-        return (usage, conversation)
+    private func deduplicate(_ usages: [TokenUsage]) -> [TokenUsage] {
+        var bySessionId: [String: TokenUsage] = [:]
+        for usage in usages {
+            bySessionId[usage.sessionId] = usage
+        }
+        return Array(bySessionId.values)
+    }
+
+    private func deduplicate(_ conversations: [ConversationRecord]) -> [ConversationRecord] {
+        var bySessionId: [String: ConversationRecord] = [:]
+        for conversation in conversations {
+            bySessionId[conversation.sessionId] = conversation
+        }
+        return Array(bySessionId.values)
+    }
+
+    // MARK: - Utilities
+
+    private func resolvedHermesHome() -> URL {
+        let configuredPath = URL(fileURLWithPath: (provider.logDirectory as NSString).expandingTildeInPath)
+        if configuredPath.lastPathComponent == "sessions" {
+            return configuredPath.deletingLastPathComponent()
+        }
+        return configuredPath
+    }
+
+    private func availableColumns(in table: String, db: Database) throws -> Set<String> {
+        let rows = try Row.fetchAll(db, sql: "PRAGMA table_info(\(table))")
+        return Set(rows.compactMap { row in
+            if let column: String = row["name"] {
+                return column
+            }
+            return nil
+        })
+    }
+
+    private func fileSize(at url: URL) -> UInt64 {
+        ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value) ?? 0
+    }
+
+    private func modificationDate(of url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+    }
+
+    private func stringValue(_ row: Row, column: String) -> String? {
+        if let value: String = row[column], !value.isEmpty {
+            return value
+        }
+        return nil
+    }
+
+    private func integerValue(_ row: Row, column: String) -> Int {
+        if let value: Int = row[column] { return value }
+        if let value: Int64 = row[column] { return Int(value) }
+        if let value: Double = row[column] { return Int(value.rounded()) }
+        if let value: String = row[column] { return Int(value) ?? 0 }
+        return 0
+    }
+
+    private func doubleValue(_ row: Row, column: String) -> Double? {
+        if let value: Double = row[column] { return value }
+        if let value: Int = row[column] { return Double(value) }
+        if let value: Int64 = row[column] { return Double(value) }
+        if let value: String = row[column] { return Double(value) }
+        return nil
+    }
+
+    private func stringValue(_ dictionary: [String: Any], key: String) -> String? {
+        guard let value = dictionary[key] as? String, !value.isEmpty else { return nil }
+        return value
+    }
+
+    private func integerValue(_ dictionary: [String: Any], key: String) -> Int {
+        if let value = dictionary[key] as? Int { return value }
+        if let value = dictionary[key] as? Int64 { return Int(value) }
+        if let value = dictionary[key] as? Double { return Int(value.rounded()) }
+        if let value = dictionary[key] as? String { return Int(value) ?? 0 }
+        return 0
+    }
+
+    private func doubleValue(_ dictionary: [String: Any], key: String) -> Double? {
+        if let value = dictionary[key] as? Double { return value }
+        if let value = dictionary[key] as? Int { return Double(value) }
+        if let value = dictionary[key] as? Int64 { return Double(value) }
+        if let value = dictionary[key] as? String { return Double(value) }
+        return nil
+    }
+
+    private func dateValue(_ raw: Any?) -> Date? {
+        switch raw {
+        case let value as Int:
+            return TimestampNormalizationUtility.date(fromEpoch: Double(value))
+        case let value as Int64:
+            return TimestampNormalizationUtility.date(fromEpoch: Double(value))
+        case let value as Double:
+            return TimestampNormalizationUtility.date(fromEpoch: value)
+        case let value as String:
+            if let date = Self.iso8601Fractional.date(from: value) ?? Self.iso8601Basic.date(from: value) {
+                return date
+            }
+            for formatter in Self.sqliteDateFormats {
+                if let date = formatter.date(from: value) {
+                    return date
+                }
+            }
+            if let epoch = Double(value) {
+                return TimestampNormalizationUtility.date(fromEpoch: epoch)
+            }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    private func stringContent(from raw: Any?) -> String {
+        switch raw {
+        case let value as String:
+            return value.trimmingCharacters(in: .whitespacesAndNewlines)
+        case let array as [Any]:
+            return array.map { stringContent(from: $0) }.filter { !$0.isEmpty }.joined(separator: "\n")
+        case let dictionary as [String: Any]:
+            let orderedKeys = ["text", "content", "message", "input", "output"]
+            var pieces: [String] = []
+            for key in orderedKeys {
+                if let nested = dictionary[key] {
+                    let text = stringContent(from: nested)
+                    if !text.isEmpty { pieces.append(text) }
+                }
+            }
+            if pieces.isEmpty {
+                for (key, value) in dictionary where key != "type" && key != "role" && key != "tool_calls" {
+                    let text = stringContent(from: value)
+                    if !text.isEmpty { pieces.append(text) }
+                }
+            }
+            return pieces.joined(separator: "\n")
+        default:
+            return ""
+        }
+    }
+}
+
+// MARK: - Transcript Summary
+
+private struct TranscriptSummary {
+    var model: String?
+    var inputTokens = 0
+    var outputTokens = 0
+    var cacheCreationTokens = 0
+    var cacheReadTokens = 0
+    var startTime: Date?
+    var endTime: Date?
+    var userChars = 0
+    var assistantChars = 0
+    var assistantReasoningChars = 0
+    var messageCount = 0
+    var userWords = 0
+    var assistantWords = 0
+    var firstUser: String?
+    var lastAssistant = ""
+    var fullText = ""
+    var keyTools: Set<String> = []
+    var fileModifiedAt: Date?
+
+    mutating func consume(role: String, content: String, rawContent: Any? = nil) {
+        let metrics = TokenExtractionUtility.contentMetrics(from: rawContent ?? content)
+        let text = content.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch role {
+        case "user":
+            userChars += max(metrics.visibleChars, text.count)
+            if !text.isEmpty {
+                userWords += text.split { $0.isWhitespace || $0.isNewline }.count
+                if firstUser == nil {
+                    firstUser = String(text.prefix(120))
+                }
+                append(text)
+                messageCount += 1
+            }
+        case "assistant":
+            assistantChars += max(metrics.visibleChars, text.count)
+            assistantReasoningChars += metrics.reasoningChars
+            if !text.isEmpty {
+                assistantWords += text.split { $0.isWhitespace || $0.isNewline }.count
+                lastAssistant = text
+                append(text)
+                messageCount += 1
+            }
+        default:
+            break
+        }
+    }
+
+    func estimatedUsage() -> EstimatedTokens {
+        TokenExtractionUtility.estimateFallbackTokens(
+            userVisibleChars: userChars,
+            assistantVisibleChars: assistantChars,
+            assistantReasoningChars: assistantReasoningChars,
+            userMessageCount: max(userWords > 0 ? 1 : 0, messageCount / 2),
+            assistantMessageCount: max(assistantWords > 0 ? 1 : 0, messageCount / 2)
+        )
+    }
+
+    private mutating func append(_ text: String) {
+        if !fullText.isEmpty { fullText += "\n\n" }
+        fullText += text
     }
 }

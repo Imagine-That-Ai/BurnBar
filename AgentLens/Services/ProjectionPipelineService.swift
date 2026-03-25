@@ -107,18 +107,39 @@ final class ProjectionPipelineService {
     private let leaseOwner: String
     private let nowProvider: () -> Date
     private let chunker: ProjectionChunker
-    private let chunkEmbedder: ChunkEmbeddingProviding
+    private let chunkEmbedder: any ChunkEmbeddingProviding
     private let embeddingModelID: String
     private let embeddingVersionID: String
     private var isSweeping = false
     private var didSeedBackfill = false
+
+    static func makeConfigured(
+        dataStore: DataStore,
+        settingsManager: SettingsManager = .shared,
+        providerAPIKeyStore: ProviderAPIKeyStore = .shared,
+        leaseOwner: String = "projection-worker-\(UUID().uuidString)",
+        nowProvider: @escaping () -> Date = Date.init,
+        chunker: ProjectionChunker = ProjectionChunker()
+    ) -> ProjectionPipelineService {
+        let embedder = makeChunkEmbedder(
+            settingsManager: settingsManager,
+            providerAPIKeyStore: providerAPIKeyStore
+        )
+        return ProjectionPipelineService(
+            dataStore: dataStore,
+            leaseOwner: leaseOwner,
+            nowProvider: nowProvider,
+            chunker: chunker,
+            chunkEmbedder: embedder
+        )
+    }
 
     init(
         dataStore: DataStore,
         leaseOwner: String = "projection-worker-\(UUID().uuidString)",
         nowProvider: @escaping () -> Date = Date.init,
         chunker: ProjectionChunker = ProjectionChunker(),
-        chunkEmbedder: ChunkEmbeddingProviding = DeterministicFakeEmbeddingProvider()
+        chunkEmbedder: any ChunkEmbeddingProviding = DeterministicFakeEmbeddingProvider()
     ) {
         self.dataStore = dataStore
         self.leaseOwner = leaseOwner
@@ -127,6 +148,32 @@ final class ProjectionPipelineService {
         self.chunkEmbedder = chunkEmbedder
         self.embeddingModelID = EmbeddingIdentity.modelID(for: chunkEmbedder.descriptor)
         self.embeddingVersionID = EmbeddingIdentity.versionID(for: chunkEmbedder.descriptor)
+    }
+
+    private static func makeChunkEmbedder(
+        settingsManager: SettingsManager,
+        providerAPIKeyStore: ProviderAPIKeyStore
+    ) -> any ChunkEmbeddingProviding {
+        switch settingsManager.indexEmbeddingProvider {
+        case .deterministic:
+            return DeterministicFakeEmbeddingProvider()
+        case .openai:
+            do {
+                return try OpenAIEmbeddingProvider(
+                    apiKey: providerAPIKeyStore.apiKey(for: "openai") ?? "",
+                    modelName: settingsManager.indexOpenAIModel,
+                    versionTag: "openai-index-v1",
+                    chunkerVersion: ProjectionIdentity.chunkerVersion
+                )
+            } catch {
+                return try! OpenAIEmbeddingProvider(
+                    apiKey: providerAPIKeyStore.apiKey(for: "openai") ?? "",
+                    modelName: "text-embedding-3-small",
+                    versionTag: "openai-index-v1",
+                    chunkerVersion: ProjectionIdentity.chunkerVersion
+                )
+            }
+        }
     }
 
     func enqueueRebuildJob(reason: String = "manual", priority: Int = 1) throws {
@@ -227,7 +274,7 @@ final class ProjectionPipelineService {
         )
     }
 
-    func runSweep(maxJobs: Int = 128, leaseDuration: TimeInterval = 45) throws -> ProjectionSweepReport {
+    func runSweep(maxJobs: Int = 128, leaseDuration: TimeInterval = 45) async throws -> ProjectionSweepReport {
         guard maxJobs > 0 else { return ProjectionSweepReport() }
         guard isSweeping == false else { return ProjectionSweepReport() }
         isSweeping = true
@@ -253,7 +300,7 @@ final class ProjectionPipelineService {
             report.leasedJobs += 1
 
             do {
-                try process(leasedJob)
+                try await process(leasedJob)
                 try dataStore.markProjectionJobCompleted(id: leasedJob.id, completedAt: nowProvider())
                 try updateSubsystemHealthAfterCompletion(for: leasedJob)
                 report.completedJobs += 1
@@ -323,10 +370,10 @@ final class ProjectionPipelineService {
         try enqueueRebuildJob(reason: "initial_backfill", priority: 1)
     }
 
-    private func process(_ job: ProjectionJobRecord) throws {
+    private func process(_ job: ProjectionJobRecord) async throws {
         switch job.jobType {
         case .project, .reproject:
-            try processProjection(job)
+            try await processProjection(job)
         case .purge:
             guard let sourceKind = job.sourceKind, let sourceID = job.sourceID else {
                 throw ProjectionPipelineError.invalidJobPayload("Purge job missing source identity.")
@@ -335,11 +382,11 @@ final class ProjectionPipelineService {
         case .rebuild:
             try processRebuild()
         case .reembed:
-            try processReembed(job)
+            try await processReembed(job)
         }
     }
 
-    private func processProjection(_ job: ProjectionJobRecord) throws {
+    private func processProjection(_ job: ProjectionJobRecord) async throws {
         guard let sourceKind = job.sourceKind, let sourceID = job.sourceID else {
             throw ProjectionPipelineError.invalidJobPayload("Projection job missing source identity.")
         }
@@ -354,7 +401,7 @@ final class ProjectionPipelineService {
             guard job.sourceVersionID.isEmpty || job.sourceVersionID == currentSourceVersionID else {
                 return
             }
-            try projectConversation(conversation, sourceVersionID: currentSourceVersionID)
+            try await projectConversation(conversation, sourceVersionID: currentSourceVersionID)
 
         case .skillDoc, .agentDoc, .sharedArtifact:
             guard let artifact = try dataStore.fetchSourceArtifact(id: sourceID, includeDeleted: true) else {
@@ -371,7 +418,7 @@ final class ProjectionPipelineService {
             guard job.sourceVersionID.isEmpty || job.sourceVersionID == currentSourceVersionID else {
                 return
             }
-            try projectArtifact(artifact, sourceVersionID: currentSourceVersionID)
+            try await projectArtifact(artifact, sourceVersionID: currentSourceVersionID)
         }
     }
 
@@ -430,9 +477,9 @@ final class ProjectionPipelineService {
         )
     }
 
-    private func processReembed(_ job: ProjectionJobRecord) throws {
+    private func processReembed(_ job: ProjectionJobRecord) async throws {
         let chunks = try chunksForReembed(job: job)
-        let indexedCount = try indexChunks(
+        let indexedCount = try await indexChunks(
             chunks: chunks,
             strict: true,
             sourceKind: job.sourceKind,
@@ -470,13 +517,13 @@ final class ProjectionPipelineService {
         strict: Bool,
         sourceKind: SearchSourceKind?,
         sourceID: String?
-    ) throws -> Int {
+    ) async throws -> Int {
         guard chunks.isEmpty == false else { return 0 }
         let now = nowProvider()
         try ensureEmbeddingLineage(now: now)
 
         do {
-            let vectors = try chunkEmbedder.embeddings(for: chunks.map(\.text))
+            let vectors = try await chunkEmbedder.embeddings(for: chunks.map(\.text))
             guard vectors.count == chunks.count else {
                 throw ProjectionPipelineError.embeddingFailure("Embedding provider returned a mismatched vector count.")
             }
@@ -597,7 +644,7 @@ final class ProjectionPipelineService {
         }
     }
 
-    private func projectConversation(_ conversation: ConversationRecord, sourceVersionID: String) throws {
+    private func projectConversation(_ conversation: ConversationRecord, sourceVersionID: String) async throws {
         let now = nowProvider()
         let title = projectedConversationTitle(conversation)
         let subtitle = "\(conversation.provider.rawValue) • \(conversation.projectName)"
@@ -641,7 +688,7 @@ final class ProjectionPipelineService {
             createdAt: now
         )
         try dataStore.replaceSearchChunks(documentID: document.id, title: title, chunks: chunks)
-        let indexedCount = try indexChunks(
+        let indexedCount = try await indexChunks(
             chunks: chunks,
             strict: false,
             sourceKind: .conversation,
@@ -660,7 +707,7 @@ final class ProjectionPipelineService {
         }
     }
 
-    private func projectArtifact(_ artifact: SourceArtifactRecord, sourceVersionID: String) throws {
+    private func projectArtifact(_ artifact: SourceArtifactRecord, sourceVersionID: String) async throws {
         let now = nowProvider()
         let projectName = URL(fileURLWithPath: artifact.rootPath).lastPathComponent
         let preview = artifact.body.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -700,7 +747,7 @@ final class ProjectionPipelineService {
             createdAt: now
         )
         try dataStore.replaceSearchChunks(documentID: document.id, title: artifact.title, chunks: chunks)
-        let indexedCount = try indexChunks(
+        let indexedCount = try await indexChunks(
             chunks: chunks,
             strict: false,
             sourceKind: artifact.sourceKind,

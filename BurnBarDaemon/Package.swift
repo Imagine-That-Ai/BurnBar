@@ -12,13 +12,15 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(path: "../BurnBarCore")
+        .package(path: "../BurnBarCore"),
+        .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0")
     ],
     targets: [
         .target(
             name: "BurnBarDaemon",
             dependencies: [
-                .product(name: "BurnBarCore", package: "BurnBarCore")
+                .product(name: "BurnBarCore", package: "BurnBarCore"),
+                .product(name: "GRDB", package: "GRDB.swift")
             ]
         ),
         .executableTarget(

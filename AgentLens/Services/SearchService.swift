@@ -1,5 +1,6 @@
 import Foundation
 import Dispatch
+import BurnBarCore
 
 // Retrieval flow (shared service path):
 // query
@@ -534,14 +535,20 @@ enum EmbeddingIdentity {
     }
 }
 
+@MainActor
 protocol ChunkEmbeddingProviding {
     var descriptor: EmbeddingModelDescriptor { get }
-    func embedding(for text: String) throws -> [Float]
+    func embedding(for text: String) async throws -> [Float]
 }
 
 extension ChunkEmbeddingProviding {
-    func embeddings(for texts: [String]) throws -> [[Float]] {
-        try texts.map { try embedding(for: $0) }
+    func embeddings(for texts: [String]) async throws -> [[Float]] {
+        var results: [[Float]] = []
+        results.reserveCapacity(texts.count)
+        for text in texts {
+            results.append(try await embedding(for: text))
+        }
+        return results
     }
 }
 
@@ -573,7 +580,7 @@ struct DeterministicFakeEmbeddingProvider: ChunkEmbeddingProviding, Sendable {
         self.seed = seed
     }
 
-    func embedding(for text: String) throws -> [Float] {
+    func embedding(for text: String) async throws -> [Float] {
         let normalized = text
             .replacingOccurrences(of: "\r\n", with: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -623,7 +630,145 @@ final class DeterministicQueryEmbeddingProvider: QueryEmbeddingProviding {
     var descriptor: EmbeddingModelDescriptor { embedder.descriptor }
 
     func embedding(for text: String) async throws -> [Float] {
-        try embedder.embedding(for: text)
+        try await embedder.embedding(for: text)
+    }
+}
+
+enum OpenAIEmbeddingProviderError: LocalizedError {
+    case missingAPIKey
+    case unsupportedModel(String)
+    case invalidBaseURL
+    case unexpectedResponse(statusCode: Int, message: String?)
+    case invalidResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .missingAPIKey:
+            return "OpenAI indexing requires an API key."
+        case .unsupportedModel(let model):
+            return "Unsupported OpenAI embedding model: \(model)"
+        case .invalidBaseURL:
+            return "The OpenAI embeddings endpoint URL is invalid."
+        case .unexpectedResponse(let statusCode, let message):
+            if let message, message.isEmpty == false {
+                return "OpenAI embeddings request failed (\(statusCode)): \(message)"
+            }
+            return "OpenAI embeddings request failed with status \(statusCode)."
+        case .invalidResponse:
+            return "OpenAI embeddings returned an invalid response."
+        }
+    }
+}
+
+@MainActor
+final class OpenAIEmbeddingProvider: ChunkEmbeddingProviding, QueryEmbeddingProviding {
+    private struct EmbeddingResponse: Decodable {
+        struct Item: Decodable {
+            let embedding: [Float]
+        }
+
+        struct APIError: Decodable {
+            struct Details: Decodable {
+                let message: String?
+            }
+
+            let error: Details?
+        }
+
+        let data: [Item]
+    }
+
+    static let supportedModels: [String] = [
+        "text-embedding-3-small",
+        "text-embedding-3-large",
+        "text-embedding-ada-002",
+    ]
+
+    let descriptor: EmbeddingModelDescriptor
+    private let apiKey: String
+    private let baseURL: String
+    private let session: URLSession
+
+    init(
+        apiKey: String,
+        modelName: String,
+        versionTag: String = "openai-v1",
+        chunkerVersion: String = ProjectionIdentity.chunkerVersion,
+        normalizationVersion: String = "unit-l2-v1",
+        promptVersion: String = "plain-text-v1",
+        baseURL: String = "https://api.openai.com/v1",
+        session: URLSession = .shared
+    ) throws {
+        let dimensions = try Self.dimensions(for: modelName)
+        self.descriptor = EmbeddingModelDescriptor(
+            provider: "openai",
+            modelName: modelName,
+            dimensions: dimensions,
+            distanceMetric: .cosine,
+            versionTag: versionTag,
+            chunkerVersion: chunkerVersion,
+            normalizationVersion: normalizationVersion,
+            promptVersion: promptVersion
+        )
+        self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.session = session
+    }
+
+    static func dimensions(for modelName: String) throws -> Int {
+        switch modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "text-embedding-3-small":
+            return 1536
+        case "text-embedding-3-large":
+            return 3072
+        case "text-embedding-ada-002":
+            return 1536
+        default:
+            throw OpenAIEmbeddingProviderError.unsupportedModel(modelName)
+        }
+    }
+
+    func embedding(for text: String) async throws -> [Float] {
+        let vectors = try await embeddings(for: [text])
+        return vectors.first ?? []
+    }
+
+    func embeddings(for texts: [String]) async throws -> [[Float]] {
+        let input = texts
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+        guard input.isEmpty == false else { return [] }
+        guard apiKey.isEmpty == false else { throw OpenAIEmbeddingProviderError.missingAPIKey }
+        guard let url = URL(string: baseURL + "/embeddings") else {
+            throw OpenAIEmbeddingProviderError.invalidBaseURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": descriptor.modelName,
+            "input": input,
+            "encoding_format": "float",
+        ])
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw OpenAIEmbeddingProviderError.invalidResponse
+        }
+
+        guard (200..<300).contains(http.statusCode) else {
+            let message = (try? JSONDecoder().decode(EmbeddingResponse.APIError.self, from: data))?.error?.message
+            throw OpenAIEmbeddingProviderError.unexpectedResponse(statusCode: http.statusCode, message: message)
+        }
+
+        let payload = try JSONDecoder().decode(EmbeddingResponse.self, from: data)
+        let vectors = payload.data.map(\.embedding)
+        guard vectors.count == input.count else {
+            throw OpenAIEmbeddingProviderError.invalidResponse
+        }
+        return vectors
     }
 }
 
@@ -931,6 +1076,19 @@ enum RetrievalOwnershipFilter: String, CaseIterable {
     }
 }
 
+/// How lexical (BM25/FTS) and dense vector hits are merged before hydration and final scoring.
+enum HybridFusionStrategy: String, Codable, Sendable, CaseIterable {
+    /// Prior weighted blend of normalized lexical rank and semantic similarity (legacy behavior).
+    case legacyWeighted
+    /// Reciprocal rank fusion across lexical and semantic ranked lists (robust across score scales).
+    case reciprocalRankFusion
+}
+
+private enum HybridRetrievalConstants {
+    /// Standard RRF smoothing constant (see Cormack et al. / Elasticsearch RRF).
+    static let rrfK: Double = 60
+}
+
 struct RetrievalFilters {
     var provider: AgentProvider?
     var projectName: String?
@@ -961,27 +1119,54 @@ struct RetrievalFilters {
 
 struct RetrievalQuery {
     var text: String
+    /// When set, used as the FTS5 `MATCH` string for lexical chunk search instead of deriving from `text`.
+    var lexicalFTSQuery: String?
     var filters: RetrievalFilters
     var lexicalCandidateLimit: Int
     var semanticCandidateLimit: Int
     var rerankCandidateLimit: Int
     var resultLimit: Int
+    var hybridFusionStrategy: HybridFusionStrategy
+    /// When true, enables cross-encoder reranking on hydrated candidates.
+    /// Defaults to false. Bypassed if the SearchService has no reranker configured.
+    var crossEncoderEnabled: Bool
+    /// Maximum number of candidates to send to cross-encoder reranking.
+    /// Helps cap latency and cost. Defaults to 40, capped at 64.
+    var crossEncoderCandidateLimit: Int
 
     init(
         text: String,
+        lexicalFTSQuery: String? = nil,
         filters: RetrievalFilters = RetrievalFilters(),
         lexicalCandidateLimit: Int = 120,
         semanticCandidateLimit: Int = 120,
         rerankCandidateLimit: Int = 200,
-        resultLimit: Int = 50
+        resultLimit: Int = 50,
+        hybridFusionStrategy: HybridFusionStrategy = .reciprocalRankFusion,
+        crossEncoderEnabled: Bool = false,
+        crossEncoderCandidateLimit: Int = 40
     ) {
         self.text = text
+        self.lexicalFTSQuery = lexicalFTSQuery
         self.filters = filters
         self.lexicalCandidateLimit = lexicalCandidateLimit
         self.semanticCandidateLimit = semanticCandidateLimit
         self.rerankCandidateLimit = rerankCandidateLimit
         self.resultLimit = resultLimit
+        self.hybridFusionStrategy = hybridFusionStrategy
+        self.crossEncoderEnabled = crossEncoderEnabled
+        self.crossEncoderCandidateLimit = max(5, min(crossEncoderCandidateLimit, 64))
     }
+}
+
+/// Result of `SearchService.runBurnBarQuery`: hybrid retrieval plus optional aggregate counts over transcripts.
+struct BurnBarQueryRunResult: Sendable {
+    let plan: BurnBarSearchPlan
+    let retrievalResults: [RetrievalResult]
+    /// Total substring occurrences summed across patterns in `conversations.fullText` (non-overlapping per pattern per row).
+    let aggregateOccurrenceCount: Int?
+    /// Human-readable note when a relative time phrase was turned into `dateRange` for the query.
+    let aggregateWindowDescription: String?
 }
 
 struct RetrievalResult: Identifiable {
@@ -1483,6 +1668,7 @@ private struct SemanticRetrievalHealthDetails: Codable {
 final class SearchService {
     private let dataStore: DataStore
     private let semanticProvider: SemanticCandidateProviding?
+    private let reranker: RetrievalRerankProviding?
     private let sharedArtifactAccessContextProvider: () -> SharedArtifactAccessContext?
     private let nowProvider: () -> Date
     private(set) var lastHealthWriteError: String?
@@ -1490,30 +1676,133 @@ final class SearchService {
     init(
         dataStore: DataStore,
         semanticProvider: SemanticCandidateProviding? = nil,
+        reranker: RetrievalRerankProviding? = nil,
         sharedArtifactAccessContextProvider: @escaping () -> SharedArtifactAccessContext? = SearchService.defaultSharedArtifactAccessContext,
         nowProvider: @escaping () -> Date = Date.init
     ) {
         self.dataStore = dataStore
         self.semanticProvider = semanticProvider
+        self.reranker = reranker
         self.sharedArtifactAccessContextProvider = sharedArtifactAccessContextProvider
         self.nowProvider = nowProvider
     }
 
     static func makeConversationSearchService(
         dataStore: DataStore,
+        settingsManager: SettingsManager = .shared,
+        providerAPIKeyStore: ProviderAPIKeyStore = .shared,
         nowProvider: @escaping () -> Date = Date.init
     ) -> SearchService {
-        let queryEmbedder = DeterministicQueryEmbeddingProvider()
+        let selection = resolvedEmbeddingSelection(
+            dataStore: dataStore,
+            preferredEmbeddingVersionID: settingsManager.preferredIndexEmbeddingVersionIDValue
+        )
+        let preferredVersionID = selection?.version.id
+        let queryEmbedder = makeQueryEmbedder(
+            selection: selection,
+            providerAPIKeyStore: providerAPIKeyStore
+        )
         let semanticProvider = VectorSemanticCandidateProvider(
             dataStore: dataStore,
-            queryEmbedder: queryEmbedder
+            queryEmbedder: queryEmbedder,
+            embeddingVersionID: preferredVersionID
         )
+
+        // Construct reranker if cross-encoder is enabled and API key is available
+        let reranker: RetrievalRerankProviding? = Self.makeReranker(
+            settingsManager: settingsManager,
+            providerAPIKeyStore: providerAPIKeyStore
+        )
+
         return SearchService(
             dataStore: dataStore,
             semanticProvider: semanticProvider,
+            reranker: reranker,
             sharedArtifactAccessContextProvider: SearchService.defaultSharedArtifactAccessContext,
             nowProvider: nowProvider
         )
+    }
+
+    private static func makeReranker(
+        settingsManager: SettingsManager,
+        providerAPIKeyStore: ProviderAPIKeyStore
+    ) -> RetrievalRerankProviding? {
+        guard settingsManager.crossEncoderRerankEnabled else {
+            return nil
+        }
+
+        guard let apiKey = providerAPIKeyStore.apiKey(for: "openai"),
+              !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        return OpenAICrossEncoderReranker(
+            apiKey: apiKey,
+            modelName: settingsManager.crossEncoderModel,
+            baseURL: settingsManager.crossEncoderBaseURL.isEmpty ? "https://api.openai.com/v1" : settingsManager.crossEncoderBaseURL,
+            maxCharsPerCandidate: settingsManager.crossEncoderMaxCharsPerCandidate,
+            maxCandidatesPerRequest: settingsManager.crossEncoderMaxCandidates
+        )
+    }
+
+    private static func makeQueryEmbedder(
+        selection: (model: EmbeddingModelRecord, version: EmbeddingVersionRecord)?,
+        providerAPIKeyStore: ProviderAPIKeyStore
+    ) -> any QueryEmbeddingProviding {
+        guard let selection else {
+            return DeterministicQueryEmbeddingProvider()
+        }
+
+        if selection.model.provider.caseInsensitiveCompare("openai") == .orderedSame {
+            if let provider = try? OpenAIEmbeddingProvider(
+                apiKey: providerAPIKeyStore.apiKey(for: "openai") ?? "",
+                modelName: selection.model.modelName,
+                versionTag: selection.version.versionTag,
+                chunkerVersion: selection.version.chunkerVersion,
+                normalizationVersion: selection.version.normalizationVersion,
+                promptVersion: selection.version.promptVersion
+            ) {
+                return provider
+            }
+        }
+
+        return DeterministicQueryEmbeddingProvider(
+            embedder: DeterministicFakeEmbeddingProvider(
+                provider: selection.model.provider,
+                modelName: selection.model.modelName,
+                dimensions: selection.model.dimensions,
+                distanceMetric: selection.model.distanceMetric,
+                versionTag: selection.version.versionTag,
+                chunkerVersion: selection.version.chunkerVersion,
+                normalizationVersion: selection.version.normalizationVersion,
+                promptVersion: selection.version.promptVersion
+            )
+        )
+    }
+
+    private static func resolvedEmbeddingSelection(
+        dataStore: DataStore,
+        preferredEmbeddingVersionID: String?
+    ) -> (model: EmbeddingModelRecord, version: EmbeddingVersionRecord)? {
+        guard
+            let models = try? dataStore.fetchEmbeddingModels(),
+            models.isEmpty == false,
+            let versions = try? dataStore.fetchEmbeddingVersions(),
+            versions.isEmpty == false
+        else {
+            return nil
+        }
+
+        let modelByID = Dictionary(uniqueKeysWithValues: models.map { ($0.id, $0) })
+        let preferred = preferredEmbeddingVersionID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let version = versions.first(where: { $0.id == preferred })
+            ?? versions.first(where: \.isActive)
+            ?? versions.first
+
+        guard let version, let model = modelByID[version.modelID] else {
+            return nil
+        }
+        return (model, version)
     }
 
     private static func defaultSharedArtifactAccessContext() -> SharedArtifactAccessContext? {
@@ -1543,6 +1832,51 @@ final class SearchService {
         })
     }
 
+    func runBurnBarQuery(_ query: RetrievalQuery) async -> BurnBarQueryRunResult {
+        let plan = BurnBarSearchPlan.plan(userText: query.text)
+        let now = nowProvider()
+        var filters = query.filters
+        var aggregateWindowDescription: String?
+        if filters.dateRange == nil,
+           let inferred = BurnBarSearchTimeWindow.inferredDateRange(from: query.text, now: now, calendar: .current) {
+            filters.dateRange = inferred
+            let fmt = DateFormatter()
+            fmt.dateStyle = .medium
+            fmt.timeStyle = .short
+            aggregateWindowDescription =
+                "Counts and retrieval are limited to local time window: \(fmt.string(from: inferred.lowerBound)) – \(fmt.string(from: inferred.upperBound))."
+        }
+
+        var aggregateCount: Int?
+        if plan.mode == .mixed || plan.mode == .aggregate, !plan.aggregatePatterns.isEmpty {
+            aggregateCount = (try? dataStore.countOccurrencesInConversationFullText(
+                patterns: plan.aggregatePatterns,
+                provider: filters.provider,
+                projectName: filters.projectName,
+                dateRange: filters.dateRange,
+                conversationSources: filters.conversationSources
+            )) ?? 0
+        }
+        let lexicalTrimmed = plan.lexicalFTSQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let subQuery = RetrievalQuery(
+            text: plan.semanticText,
+            lexicalFTSQuery: lexicalTrimmed.isEmpty ? nil : lexicalTrimmed,
+            filters: filters,
+            lexicalCandidateLimit: query.lexicalCandidateLimit,
+            semanticCandidateLimit: query.semanticCandidateLimit,
+            rerankCandidateLimit: query.rerankCandidateLimit,
+            resultLimit: query.resultLimit,
+            hybridFusionStrategy: query.hybridFusionStrategy
+        )
+        let results = await retrieve(subQuery)
+        return BurnBarQueryRunResult(
+            plan: plan,
+            retrievalResults: results,
+            aggregateOccurrenceCount: aggregateCount,
+            aggregateWindowDescription: aggregateWindowDescription
+        )
+    }
+
     func retrieve(_ query: RetrievalQuery) async -> [RetrievalResult] {
         let trimmed = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return [] }
@@ -1564,6 +1898,8 @@ final class SearchService {
         var semanticQueryLatencyMs: Double?
         var rerankLatencyMs: Double?
         var hydrationLatencyMs: Double?
+        var crossEncoderLatencyMs: Double?
+        var lexicalSkippedEmptyQuery = false
 
         func persistQueryHealth(
             status: RetrievalHealthStatus,
@@ -1588,44 +1924,63 @@ final class SearchService {
                 lexicalQueryLatencyMs: lexicalQueryLatencyMs,
                 semanticQueryLatencyMs: semanticQueryLatencyMs,
                 rerankLatencyMs: rerankLatencyMs,
-                hydrationLatencyMs: hydrationLatencyMs
+                hydrationLatencyMs: hydrationLatencyMs,
+                crossEncoderLatencyMs: crossEncoderLatencyMs
             )
         }
 
+        let lexicalFTSInput: String = {
+            if let o = query.lexicalFTSQuery?.trimmingCharacters(in: .whitespacesAndNewlines), !o.isEmpty {
+                return o
+            }
+            return BurnBarFTSQueryBuilder.naturalLanguage(from: trimmed)
+        }()
+
         let lexicalMatches: [SearchChunkLexicalMatch]
         let lexicalStartedAt = BurnBarPerformanceTimer.now()
-        do {
-            lexicalMatches = try dataStore.searchLexicalChunks(
-                query: trimmed,
-                provider: query.filters.provider,
-                projectName: query.filters.projectName,
-                sourceKinds: sourceKinds,
-                dateRange: query.filters.dateRange,
-                visibility: query.filters.ownership.visibilityScope,
-                sharedArtifactAccessContext: sharedArtifactAccessContext,
-                sourceIDs: sourceIDs,
-                limit: lexicalLimit
-            )
-            lexicalQueryLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: lexicalStartedAt)
-        } catch {
-            lexicalQueryLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: lexicalStartedAt)
-            persistQueryHealth(
-                status: .failed,
-                lexicalCandidateCount: 0,
-                resultCount: 0,
-                indexStale: true,
-                semanticFallbackUsed: false,
-                errorCode: "LEXICAL_QUERY_FAILED",
-                errorMessage: error.localizedDescription
-            )
-            return []
+        if lexicalFTSInput.isEmpty {
+            lexicalSkippedEmptyQuery = true
+            lexicalMatches = []
+            lexicalQueryLatencyMs = 0
+        } else {
+            do {
+                lexicalMatches = try dataStore.searchLexicalChunks(
+                    ftsQuery: lexicalFTSInput,
+                    provider: query.filters.provider,
+                    projectName: query.filters.projectName,
+                    sourceKinds: sourceKinds,
+                    dateRange: query.filters.dateRange,
+                    visibility: query.filters.ownership.visibilityScope,
+                    sharedArtifactAccessContext: sharedArtifactAccessContext,
+                    sourceIDs: sourceIDs,
+                    limit: lexicalLimit
+                )
+                lexicalQueryLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: lexicalStartedAt)
+            } catch {
+                lexicalQueryLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: lexicalStartedAt)
+                persistQueryHealth(
+                    status: .failed,
+                    lexicalCandidateCount: 0,
+                    resultCount: 0,
+                    indexStale: true,
+                    semanticFallbackUsed: false,
+                    errorCode: "LEXICAL_QUERY_FAILED",
+                    errorMessage: error.localizedDescription
+                )
+                return []
+            }
         }
 
         var candidates: [String: CandidateAccumulator] = [:]
         var lexicalChunkMap: [String: SearchChunkRecord] = [:]
         var lexicalDocumentMap: [String: SearchDocumentRecord] = [:]
-
+        var lexicalRankByChunkID: [String: Int] = [:]
+        var lexicalOrderCounter = 0
         for match in lexicalMatches {
+            if lexicalRankByChunkID[match.chunkID] == nil {
+                lexicalOrderCounter += 1
+                lexicalRankByChunkID[match.chunkID] = lexicalOrderCounter
+            }
             candidates[match.chunkID] = CandidateAccumulator(
                 lexicalRank: match.lexicalRank,
                 semanticScore: nil,
@@ -1665,6 +2020,7 @@ final class SearchService {
             )
         }
 
+        var semanticRankByChunkID: [String: Int] = [:]
         if semanticLimit > 0, let semanticProvider {
             let semanticStartedAt = BurnBarPerformanceTimer.now()
             do {
@@ -1675,7 +2031,12 @@ final class SearchService {
                 )
                 semanticQueryLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: semanticStartedAt)
                 semanticCandidateCount = semanticCandidates.count
+                var semanticOrderCounter = 0
                 for semanticCandidate in semanticCandidates {
+                    if semanticRankByChunkID[semanticCandidate.chunkID] == nil {
+                        semanticOrderCounter += 1
+                        semanticRankByChunkID[semanticCandidate.chunkID] = semanticOrderCounter
+                    }
                     let normalizedScore = max(0, semanticCandidate.score)
                     if var existing = candidates[semanticCandidate.chunkID] {
                         if let semantic = existing.semanticScore {
@@ -1703,11 +2064,18 @@ final class SearchService {
             }
         }
 
-        guard candidates.isEmpty == false else {
+        // Only return early if we have no candidates AND semantic didn't produce any
+        // (semantic-only path is allowed when FTS is empty but semanticLimit > 0)
+        let hasSemanticCandidates = semanticCandidateCount > 0
+        let semanticWasAvailable = semanticLimit > 0 && semanticProvider != nil
+        let shouldReturnEmpty = candidates.isEmpty && (!semanticWasAvailable || !hasSemanticCandidates)
+
+        if shouldReturnEmpty {
             let lexicalStatus = lexicalHealthStatus(indexStale: indexStale, semanticFallbackUsed: semanticFallbackUsed)
             let lexicalError = lexicalHealthError(
                 indexStale: indexStale,
                 semanticFallbackUsed: semanticFallbackUsed,
+                lexicalSkippedEmptyQuery: lexicalSkippedEmptyQuery,
                 indexStaleError: indexStaleError
             )
             persistQueryHealth(
@@ -1723,19 +2091,42 @@ final class SearchService {
         }
 
         let rerankStartedAt = BurnBarPerformanceTimer.now()
-        let boundedChunkIDs = Array(
-            candidates
-                .sorted {
-                    let lhs = preliminaryScore(for: $0.value)
-                    let rhs = preliminaryScore(for: $1.value)
-                    if lhs == rhs {
-                        return $0.key < $1.key
-                    }
-                    return lhs > rhs
+        let kRRF = HybridRetrievalConstants.rrfK
+        let boundedChunkIDs: [String]
+        switch query.hybridFusionStrategy {
+        case .reciprocalRankFusion:
+            boundedChunkIDs = Array(
+                candidates.keys.sorted { a, b in
+                    let ra = Self.reciprocalRankFusion(
+                        lexicalRank: lexicalRankByChunkID[a],
+                        semanticRank: semanticRankByChunkID[a],
+                        k: kRRF
+                    )
+                    let rb = Self.reciprocalRankFusion(
+                        lexicalRank: lexicalRankByChunkID[b],
+                        semanticRank: semanticRankByChunkID[b],
+                        k: kRRF
+                    )
+                    if ra == rb { return a < b }
+                    return ra > rb
                 }
                 .prefix(rerankLimit)
-                .map(\.key)
-        )
+            )
+        case .legacyWeighted:
+            boundedChunkIDs = Array(
+                candidates
+                    .sorted {
+                        let lhs = preliminaryScore(for: $0.value)
+                        let rhs = preliminaryScore(for: $1.value)
+                        if lhs == rhs {
+                            return $0.key < $1.key
+                        }
+                        return lhs > rhs
+                    }
+                    .prefix(rerankLimit)
+                    .map(\.key)
+            )
+        }
         rerankLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: rerankStartedAt)
 
         let hydrationStartedAt = BurnBarPerformanceTimer.now()
@@ -1840,11 +2231,28 @@ final class SearchService {
                 continue
             }
 
-            let lexicalScore = Self.normalizedLexicalScore(candidate.lexicalRank)
-            let semanticScore = max(0, candidate.semanticScore ?? 0)
             let exactScore = Self.exactTokenCoverageScore(tokens: tokens, title: document.title, chunkText: chunk.text)
             let recency = recencyScore(document.sourceUpdatedAt ?? document.indexedAt)
-            let rerank = (lexicalScore * 0.52) + (semanticScore * 0.33) + (exactScore * 0.10) + (recency * 0.05)
+            let rerank: Double
+            switch query.hybridFusionStrategy {
+            case .reciprocalRankFusion:
+                let rawRRF = Self.reciprocalRankFusion(
+                    lexicalRank: lexicalRankByChunkID[chunkID],
+                    semanticRank: semanticRankByChunkID[chunkID],
+                    k: kRRF
+                )
+                let normRRF = Self.normalizedRRFForRerank(
+                    rawRRF,
+                    lexicalRank: lexicalRankByChunkID[chunkID],
+                    semanticRank: semanticRankByChunkID[chunkID],
+                    k: kRRF
+                )
+                rerank = (normRRF * 0.52) + (exactScore * 0.33) + (recency * 0.15)
+            case .legacyWeighted:
+                let lexicalScore = Self.normalizedLexicalScore(candidate.lexicalRank)
+                let semanticScore = max(0, candidate.semanticScore ?? 0)
+                rerank = (lexicalScore * 0.52) + (semanticScore * 0.33) + (exactScore * 0.10) + (recency * 0.05)
+            }
 
             let snippet = Self.makeSnippet(
                 lexicalSnippet: candidate.lexicalSnippet,
@@ -1883,6 +2291,7 @@ final class SearchService {
             let lexicalError = lexicalHealthError(
                 indexStale: indexStale,
                 semanticFallbackUsed: semanticFallbackUsed,
+                lexicalSkippedEmptyQuery: lexicalSkippedEmptyQuery,
                 indexStaleError: indexStaleError
             )
             persistQueryHealth(
@@ -1895,6 +2304,37 @@ final class SearchService {
                 errorMessage: lexicalError.message
             )
             return []
+        }
+
+        // Cross-encoder reranking: take top N candidates, rerank them, merge back
+        if query.crossEncoderEnabled, let reranker, reranker is NoOpRetrievalReranker == false {
+            let crossEncoderStartedAt = BurnBarPerformanceTimer.now()
+            let crossEncoderLimit = max(5, min(query.crossEncoderCandidateLimit, scoredResults.count))
+            let candidatesToRerank = Array(scoredResults.prefix(crossEncoderLimit))
+
+            do {
+                let rerankedCandidates = try await reranker.rerank(
+                    query: trimmed,
+                    candidates: candidatesToRerank,
+                    limit: crossEncoderLimit
+                )
+
+                // Build a set of reranked chunkIDs for quick lookup
+                let rerankedIDs = Set(rerankedCandidates.map(\.chunkID))
+
+                // Keep candidates not in the reranked set in their original relative order
+                var remainingCandidates = scoredResults.filter { !rerankedIDs.contains($0.chunkID) }
+
+                // Replace reranked section with the new order
+                scoredResults = rerankedCandidates + remainingCandidates
+
+                crossEncoderLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: crossEncoderStartedAt)
+            } catch {
+                // Fall back to pre-rerank order on error; mark health as degraded
+                crossEncoderLatencyMs = BurnBarPerformanceTimer.elapsedMilliseconds(since: crossEncoderStartedAt)
+                lastHealthWriteError = "Cross-encoder reranking failed: \(error.localizedDescription)"
+                // scoredResults remains unchanged — this is the graceful fallback
+            }
         }
 
         scoredResults.sort { lhs, rhs in
@@ -1921,6 +2361,7 @@ final class SearchService {
         let lexicalError = lexicalHealthError(
             indexStale: indexStale,
             semanticFallbackUsed: semanticFallbackUsed,
+            lexicalSkippedEmptyQuery: lexicalSkippedEmptyQuery,
             indexStaleError: indexStaleError
         )
         persistQueryHealth(
@@ -1945,7 +2386,7 @@ final class SearchService {
         resultLimit: Int = 50
     ) async -> [SearchResult] {
         let boundedLimit = max(1, min(resultLimit, 200))
-        let retrievalResults = await retrieve(
+        let run = await runBurnBarQuery(
             RetrievalQuery(
                 text: query,
                 filters: RetrievalFilters(
@@ -1963,7 +2404,7 @@ final class SearchService {
             )
         )
 
-        return retrievalResults.compactMap { result in
+        return run.retrievalResults.compactMap { result in
             guard let conversation = result.conversation else { return nil }
             return SearchResult(
                 conversation: conversation,
@@ -1986,6 +2427,7 @@ final class SearchService {
     private func lexicalHealthError(
         indexStale: Bool,
         semanticFallbackUsed: Bool,
+        lexicalSkippedEmptyQuery: Bool = false,
         indexStaleError: String?
     ) -> (code: String?, message: String?) {
         if indexStale {
@@ -1998,6 +2440,12 @@ final class SearchService {
             return (
                 "SEMANTIC_FALLBACK_USED",
                 "Semantic retrieval failed; lexical fallback served this query."
+            )
+        }
+        if lexicalSkippedEmptyQuery {
+            return (
+                "LEXICAL_SKIPPED_EMPTY_QUERY",
+                "Lexical FTS query was empty (stopwords-only input); semantic retrieval served this query."
             )
         }
         return (nil, nil)
@@ -2017,7 +2465,8 @@ final class SearchService {
         lexicalQueryLatencyMs: Double?,
         semanticQueryLatencyMs: Double?,
         rerankLatencyMs: Double?,
-        hydrationLatencyMs: Double?
+        hydrationLatencyMs: Double?,
+        crossEncoderLatencyMs: Double?
     ) {
         let now = nowProvider()
         let details = LexicalRetrievalHealthDetails(
@@ -2031,7 +2480,8 @@ final class SearchService {
             lexicalQueryLatencyMs: lexicalQueryLatencyMs,
             semanticQueryLatencyMs: semanticQueryLatencyMs,
             rerankLatencyMs: rerankLatencyMs,
-            hydrationLatencyMs: hydrationLatencyMs
+            hydrationLatencyMs: hydrationLatencyMs,
+            crossEncoderLatencyMs: crossEncoderLatencyMs
         )
         do {
             let detailsData = try JSONEncoder().encode(details)
@@ -2187,6 +2637,32 @@ final class SearchService {
         (Self.normalizedLexicalScore(candidate.lexicalRank) * 0.7) + (max(0, candidate.semanticScore ?? 0) * 0.3)
     }
 
+    /// Reciprocal rank fusion across sparse (lexical) and dense (semantic) orderings.
+    private static func reciprocalRankFusion(
+        lexicalRank: Int?,
+        semanticRank: Int?,
+        k: Double
+    ) -> Double {
+        var score = 0.0
+        if let r = lexicalRank { score += 1.0 / (k + Double(r)) }
+        if let r = semanticRank { score += 1.0 / (k + Double(r)) }
+        return score
+    }
+
+    /// Maps RRF raw score to \[0, 1\] given how many retrievers matched this chunk (at rank 1 each would contribute `1/(k+1)`).
+    private static func normalizedRRFForRerank(
+        _ raw: Double,
+        lexicalRank: Int?,
+        semanticRank: Int?,
+        k: Double
+    ) -> Double {
+        let lists = (lexicalRank != nil ? 1 : 0) + (semanticRank != nil ? 1 : 0)
+        guard lists > 0 else { return 0 }
+        let maxPossible = Double(lists) / (k + 1.0)
+        guard maxPossible > 0 else { return 0 }
+        return min(1.0, raw / maxPossible)
+    }
+
     private static func normalizedLexicalScore(_ lexicalRank: Double?) -> Double {
         guard let lexicalRank else { return 0 }
         return 1.0 / (1.0 + abs(lexicalRank))
@@ -2246,6 +2722,7 @@ private struct LexicalRetrievalHealthDetails: Codable {
     let semanticQueryLatencyMs: Double?
     let rerankLatencyMs: Double?
     let hydrationLatencyMs: Double?
+    let crossEncoderLatencyMs: Double?
 }
 
 private struct SemanticFallbackHealthDetails: Codable {

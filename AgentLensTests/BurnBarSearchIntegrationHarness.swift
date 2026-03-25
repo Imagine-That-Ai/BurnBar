@@ -360,8 +360,8 @@ final class BurnBarSearchIntegrationHarness {
     func runProjectionSweep(
         maxJobs: Int = 128,
         leaseOwner: String = "harness-projection-sweep"
-    ) throws -> ProjectionSweepReport {
-        try makeProjectionService(leaseOwner: leaseOwner).runSweep(maxJobs: maxJobs)
+    ) async throws -> ProjectionSweepReport {
+        try await makeProjectionService(leaseOwner: leaseOwner).runSweep(maxJobs: maxJobs)
     }
 
     @discardableResult
@@ -370,12 +370,12 @@ final class BurnBarSearchIntegrationHarness {
         maxJobsPerSweep: Int = 128,
         advanceClockBy: TimeInterval = 0,
         leaseOwnerPrefix: String = "harness-drain-worker"
-    ) throws -> ProjectionSweepReport {
+    ) async throws -> ProjectionSweepReport {
         guard maxSweeps > 0 else { return ProjectionSweepReport() }
 
         var aggregate = ProjectionSweepReport()
         for sweep in 0..<maxSweeps {
-            let report = try runProjectionSweep(
+            let report = try await runProjectionSweep(
                 maxJobs: maxJobsPerSweep,
                 leaseOwner: "\(leaseOwnerPrefix)-\(sweep)"
             )
@@ -715,7 +715,7 @@ final class BurnBarFakeEmbedder: ChunkEmbeddingProviding {
         )
     }
 
-    func embedding(for text: String) throws -> [Float] {
+    func embedding(for text: String) async throws -> [Float] {
         let normalizedText = text.lowercased()
         if failAll {
             throw BurnBarFakeEmbedderError.forced(forcedErrorMessage)
@@ -723,7 +723,7 @@ final class BurnBarFakeEmbedder: ChunkEmbeddingProviding {
         if failingSubstrings.contains(where: { normalizedText.contains($0.lowercased()) }) {
             throw BurnBarFakeEmbedderError.forced(forcedErrorMessage)
         }
-        return try deterministicEmbedder.embedding(for: text)
+        return try await deterministicEmbedder.embedding(for: text)
     }
 }
 
@@ -736,7 +736,7 @@ final class BurnBarFakeQueryEmbedder: QueryEmbeddingProviding {
     }
 
     func embedding(for text: String) async throws -> [Float] {
-        try embedder.embedding(for: text)
+        try await embedder.embedding(for: text)
     }
 }
 

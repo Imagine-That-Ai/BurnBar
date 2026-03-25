@@ -36,6 +36,7 @@ private enum BurnBarDaemonCommandLine {
     ) throws -> BurnBarDaemonConfiguration {
         var socketPath = environment["BURNBAR_DAEMON_SOCKET_PATH"] ?? BurnBarDaemonPaths.defaultSocketPath
         var daemonVersion = environment["BURNBAR_DAEMON_VERSION"] ?? BurnBarDaemonVersion.current
+        var indexDatabasePath = environment["BURNBAR_INDEX_DATABASE_PATH"]
 
         var index = 0
         while index < arguments.count {
@@ -47,6 +48,12 @@ private enum BurnBarDaemonCommandLine {
                     throw BurnBarDaemonCommandLineError.missingValue(argument)
                 }
                 socketPath = arguments[index]
+            case "--index-database-path":
+                index += 1
+                guard index < arguments.count else {
+                    throw BurnBarDaemonCommandLineError.missingValue(argument)
+                }
+                indexDatabasePath = arguments[index]
             case "--version":
                 index += 1
                 guard index < arguments.count else {
@@ -56,11 +63,12 @@ private enum BurnBarDaemonCommandLine {
             case "--help":
                 print(
                     """
-                    Usage: BurnBarDaemon [--socket-path PATH] [--version VERSION]
+                    Usage: BurnBarDaemon [--socket-path PATH] [--index-database-path PATH] [--version VERSION]
 
                     Environment overrides:
                       BURNBAR_DAEMON_SOCKET_PATH
                       BURNBAR_DAEMON_VERSION
+                      BURNBAR_INDEX_DATABASE_PATH
                     """
                 )
                 Darwin.exit(EXIT_SUCCESS)
@@ -70,9 +78,11 @@ private enum BurnBarDaemonCommandLine {
             index += 1
         }
 
+        let trimmedIndexPath = indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines)
         return BurnBarDaemonConfiguration(
             socketPath: socketPath,
-            daemonVersion: daemonVersion
+            daemonVersion: daemonVersion,
+            indexDatabasePath: (trimmedIndexPath?.isEmpty == false) ? trimmedIndexPath : nil
         )
     }
 }

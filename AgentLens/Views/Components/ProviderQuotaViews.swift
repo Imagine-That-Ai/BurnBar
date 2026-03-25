@@ -310,12 +310,10 @@ private struct ProviderQuotaSettingsCard: View {
                 } else {
                     QuotaStatusCallout(
                         provider: provider,
-                        title: isRefreshing
-                            ? "Refreshing provider signal"
-                            : (quotaService.errors[provider] != nil ? "Refresh needs attention" : "Readable quota not available yet"),
+                        title: quotaStatusCalloutTitle,
                         message: quotaService.errors[provider] ?? statusLine,
                         isActive: isRefreshing,
-                        isWarning: quotaService.errors[provider] != nil || provider == .claudeCode
+                        isWarning: quotaStatusCalloutWarning
                     )
                 }
 
@@ -443,6 +441,45 @@ private struct ProviderQuotaSettingsCard: View {
             return quotaService.claudeBridgeStatus.detailText
         }
         return snapshot?.statusMessage ?? "No quota snapshot yet."
+    }
+
+    private var quotaStatusCalloutTitle: String {
+        if isRefreshing {
+            return "Refreshing provider signal"
+        }
+        if quotaService.errors[provider] != nil {
+            return "Refresh needs attention"
+        }
+        if provider == .claudeCode {
+            switch quotaService.claudeBridgeStatus.state {
+            case .awaitingFirstPayload:
+                return "Waiting for first Claude response"
+            case .disabledByHooks:
+                return "Claude hooks are disabled"
+            case .invalidConfiguration:
+                return "Claude bridge needs reconfiguration"
+            case .ready:
+                return "Claude bridge connected"
+            case .notInstalled:
+                return "Readable quota not available yet"
+            }
+        }
+        return "Readable quota not available yet"
+    }
+
+    private var quotaStatusCalloutWarning: Bool {
+        if quotaService.errors[provider] != nil {
+            return true
+        }
+        guard provider == .claudeCode else {
+            return false
+        }
+        switch quotaService.claudeBridgeStatus.state {
+        case .disabledByHooks, .invalidConfiguration:
+            return true
+        case .notInstalled, .awaitingFirstPayload, .ready:
+            return false
+        }
     }
 
     private func snapshotMetadata(_ snapshot: ProviderQuotaSnapshot) -> String {

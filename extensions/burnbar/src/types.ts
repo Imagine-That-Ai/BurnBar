@@ -8,6 +8,7 @@ export type BurnBarRPCMethod =
   | "daemon.catalog"
   | "daemon.config.get"
   | "daemon.usage.recent"
+  | "daemon.search.query"
   | "run.create"
   | "run.list"
   | "run.get"
@@ -75,6 +76,40 @@ export interface BurnBarHealthResponse {
   daemonVersion: string;
   protocolVersion: number;
   socketPath?: string | null;
+}
+
+/** Matches `BurnBarSearchQueryRequest` in BurnBarCore. */
+export interface BurnBarSearchQueryParams {
+  query: string;
+  providerRaw?: string | null;
+  projectName?: string | null;
+  dateRangeStartEpoch?: number | null;
+  dateRangeEndEpoch?: number | null;
+  resultLimit?: number;
+}
+
+export interface BurnBarIndexedSearchHit {
+  chunkID: string;
+  sourceKind: string;
+  sourceID: string;
+  title: string;
+  snippet: string;
+  provider?: string | null;
+  projectName?: string | null;
+}
+
+/** Matches `BurnBarSearchQueryResult` in BurnBarCore. */
+export interface BurnBarSearchQueryDaemonResult {
+  plan: {
+    mode: string;
+    lexicalFTSQuery: string;
+    semanticText: string;
+    aggregatePatterns: string[];
+    note?: string | null;
+  };
+  aggregateOccurrenceCount?: number | null;
+  hits: BurnBarIndexedSearchHit[];
+  degradedMessage?: string | null;
 }
 
 export interface BurnBarCatalogModelPricing {

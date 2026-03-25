@@ -407,11 +407,13 @@ final class BurnBarDaemonManager {
     }
 
     private func writeLaunchAgentPlist() throws {
+        let indexDbPath = BurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
         let plist: [String: Any] = [
             "Label": BurnBarDaemonRuntimePaths.launchAgentLabel,
             "ProgramArguments": [
                 paths.installedBinaryURL.path,
-                "--socket-path", paths.socketURL.path
+                "--socket-path", paths.socketURL.path,
+                "--index-database-path", indexDbPath
             ],
             "RunAtLoad": true,
             "KeepAlive": true,

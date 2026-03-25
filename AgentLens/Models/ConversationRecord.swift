@@ -166,3 +166,18 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         pieces.filter { $0.kind == .text }.map(\.value).joined()
     }
 }
+
+/// Summary row for a persisted Burn Bar chat thread.
+struct ChatThreadSummary: Identifiable, Hashable, Sendable {
+    let id: String
+    let title: String
+    let preview: String
+    let messageCount: Int
+    let createdAt: Date
+    let updatedAt: Date
+    let lastMessageAt: Date?
+
+    var lastActivityAt: Date {
+        lastMessageAt ?? updatedAt
+    }
+}

@@ -17,6 +17,8 @@ struct ChatPanel: View {
     @State private var bottomResizeStart: CGFloat?
     @State private var cornerResizeStart: CGSize?
     @State private var headerDragStart: CGSize?
+    @State private var showHistoryPopover = false
+    @State private var showClearChatPrompt = false
 
     private let cornerResizeHandle: CGFloat = 18
 
@@ -128,6 +130,7 @@ struct ChatPanel: View {
         .onAppear {
             brief = controller.buildInsightBriefSnapshot()
             controller.loadPersistedMessages()
+            controller.refreshHistory()
             controller.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
         }
         .onChange(of: dataStore.lastRefresh) { _, _ in
@@ -142,8 +145,19 @@ struct ChatPanel: View {
         .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in
             controller.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
         }
+        .onChange(of: settingsManager.preferredIndexEmbeddingVersionID) { _, _ in
+            controller.reconfigureSearchService()
+        }
         .onChange(of: containerSize) { _, new in
             controller.reclampPanelOffset(container: new, padding: edgePadding)
+        }
+        .confirmationDialog("Clear current chat?", isPresented: $showClearChatPrompt) {
+            Button("Clear Current Chat", role: .destructive) {
+                controller.clearChat()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This starts a new chat. Previous Burn Bar chats stay in History.")
         }
     }
 
@@ -182,7 +196,7 @@ struct ChatPanel: View {
                 .font(.system(size: 11))
                 .foregroundStyle(DesignSystem.Colors.textMuted)
 
-            TextField("Search sessions…", text: $controller.searchQuery)
+            TextField("Search indexed sessions…", text: $controller.searchQuery)
                 .textFieldStyle(.plain)
                 .font(DesignSystem.Typography.caption)
                 .onSubmit { controller.performSearch() }
@@ -204,6 +218,30 @@ struct ChatPanel: View {
             if controller.isSearching {
                 ProgressView().controlSize(.small)
             }
+
+            Button {
+                controller.refreshHistory()
+                showHistoryPopover.toggle()
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .buttonStyle(.plain)
+            .help("Burn Bar chat history")
+            .popover(isPresented: $showHistoryPopover, arrowEdge: .top) {
+                historyPopover
+            }
+
+            Button {
+                showClearChatPrompt = true
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .buttonStyle(.plain)
+            .help("Clear current chat")
 
             Button {
                 onClose()
@@ -426,56 +464,171 @@ struct ChatPanel: View {
         .padding(.vertical, DesignSystem.Spacing.sm)
     }
 
-    private var inputRow: some View {
-        HStack(alignment: .bottom, spacing: DesignSystem.Spacing.sm) {
-            TextField("Message…", text: $controller.inputText, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(DesignSystem.Typography.body)
-                .lineLimit(1...5)
-                .submitLabel(.send)
-                .onSubmit {
-                    Task { await controller.send() }
-                }
-                .padding(DesignSystem.Spacing.sm)
-                .background {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                            .fill(DesignSystem.Colors.surface.opacity(0.3))
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [DesignSystem.Colors.whimsy.opacity(0.3), DesignSystem.Colors.border.opacity(0.3)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.75
-                        )
-                )
-
-            VStack(spacing: 6) {
-                if controller.isStreaming {
-                    Button("Stop") {
-                        controller.cancelGeneration()
-                    }
+    private var historyPopover: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack {
+                Text("Burn Bar Chat History")
                     .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.error)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                Spacer(minLength: 0)
+
+                Button("New Chat") {
+                    controller.clearChat()
+                    showHistoryPopover = false
+                }
+                .font(DesignSystem.Typography.tiny)
+                .buttonStyle(.plain)
+                .foregroundStyle(DesignSystem.Colors.primaryGradient)
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                TextField("Search Burn Bar convos only…", text: $controller.historyQuery)
+                    .textFieldStyle(.plain)
+                    .font(DesignSystem.Typography.caption)
+                    .onSubmit { controller.refreshHistory() }
+                    .onChange(of: controller.historyQuery) { _, _ in
+                        controller.refreshHistory()
+                    }
+            }
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, DesignSystem.Spacing.xs + 2)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.35))
+            )
+
+            if controller.historyThreads.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("No chats found")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("Start a message in Burn Bar chat to build history.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.top, DesignSystem.Spacing.sm)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                        ForEach(controller.historyThreads) { thread in
+                            historyRow(thread)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .frame(width: 340, height: 420, alignment: .topLeading)
+        .padding(DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surfaceElevated.opacity(0.85))
+    }
+
+    private func historyRow(_ thread: ChatThreadSummary) -> some View {
+        let isActive = thread.id == controller.activeThreadID
+
+        return Button {
+            controller.openHistoryThread(thread.id)
+            showHistoryPopover = false
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(thread.title)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+
+                    if isActive {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.whimsy)
+                    }
                 }
 
-                Button {
-                    Task { await controller.send() }
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 26))
-                        .foregroundStyle(DesignSystem.Colors.primaryGradient)
+                Text(thread.preview)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(2)
+
+                Text("\(thread.messageCount) msgs · \(thread.lastActivityAt.formatted(date: .abbreviated, time: .shortened))")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(DesignSystem.Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(isActive ? DesignSystem.Colors.whimsy.opacity(0.10) : DesignSystem.Colors.surface.opacity(0.30))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var inputRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if controller.lastRetrievalHadNoEvidence, !controller.isStreaming {
+                Text("No indexed excerpts matched your last question—try “Search indexed sessions”, enable indexing in Settings, or rephrase.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(alignment: .bottom, spacing: DesignSystem.Spacing.sm) {
+                TextField("Ask your local index…", text: $controller.inputText, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(DesignSystem.Typography.body)
+                    .lineLimit(1...5)
+                    .submitLabel(.send)
+                    .onSubmit {
+                        Task { await controller.send() }
+                    }
+                    .padding(DesignSystem.Spacing.sm)
+                    .background {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                                .fill(DesignSystem.Colors.surface.opacity(0.3))
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [DesignSystem.Colors.whimsy.opacity(0.3), DesignSystem.Colors.border.opacity(0.3)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.75
+                            )
+                    )
+
+                VStack(spacing: 6) {
+                    if controller.isStreaming {
+                        Button("Stop") {
+                            controller.cancelGeneration()
+                        }
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.error)
+                    }
+
+                    Button {
+                        Task { await controller.send() }
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 26))
+                            .foregroundStyle(DesignSystem.Colors.primaryGradient)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(controller.isStreaming || controller.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-                .buttonStyle(.plain)
-                .disabled(controller.isStreaming || controller.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(DesignSystem.Spacing.md)

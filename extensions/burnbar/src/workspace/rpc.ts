@@ -9,6 +9,8 @@ import {
   type BurnBarReadFileResult,
   type BurnBarRunTerminalRequest,
   type BurnBarRunTerminalResult,
+  type BurnBarSearchBurnbarIndexRequest,
+  type BurnBarSearchBurnbarIndexResult,
   type BurnBarSearchWorkspaceRequest,
   type BurnBarSearchWorkspaceResult,
   type BurnBarWorkspaceCapabilities,
@@ -21,6 +23,7 @@ export interface BurnBarWorkspaceRpcClientLike {
   capabilities(): Promise<BurnBarWorkspaceCapabilities>;
   readFile?(params: BurnBarReadFileRequest): Promise<BurnBarReadFileResult>;
   searchWorkspace?(params: BurnBarSearchWorkspaceRequest): Promise<BurnBarSearchWorkspaceResult>;
+  searchBurnbarIndex?(params: BurnBarSearchBurnbarIndexRequest): Promise<BurnBarSearchBurnbarIndexResult>;
   applyPatch?(params: BurnBarApplyPatchRequest): Promise<BurnBarApplyPatchResult>;
   runTerminal?(params: BurnBarRunTerminalRequest): Promise<BurnBarRunTerminalResult>;
 }
@@ -42,6 +45,10 @@ export class BurnBarWorkspaceRpcClient implements BurnBarWorkspaceRpcClientLike 
 
   searchWorkspace(params: BurnBarSearchWorkspaceRequest): Promise<BurnBarSearchWorkspaceResult> {
     return this.invoke<BurnBarSearchWorkspaceResult>({ method: "workspace.search_workspace", params });
+  }
+
+  searchBurnbarIndex(params: BurnBarSearchBurnbarIndexRequest): Promise<BurnBarSearchBurnbarIndexResult> {
+    return this.invoke<BurnBarSearchBurnbarIndexResult>({ method: "workspace.search_burnbar_index", params });
   }
 
   applyPatch(params: BurnBarApplyPatchRequest): Promise<BurnBarApplyPatchResult> {

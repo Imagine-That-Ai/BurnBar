@@ -729,7 +729,7 @@ final class BurnBarRetrievalReplayGoldenTests: XCTestCase {
         try harness.dataStore.upsertConversation(semanticConversation)
         _ = try harness.enqueueConversationProjection(conversationID: lexicalConversation.id, jobType: .project)
         _ = try harness.enqueueConversationProjection(conversationID: semanticConversation.id, jobType: .project)
-        _ = try harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
+        _ = try await harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
 
         let semanticDoc = try XCTUnwrap(
             try harness.dataStore.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == semanticConversation.id })
@@ -778,7 +778,7 @@ final class BurnBarRetrievalReplayGoldenTests: XCTestCase {
 
         _ = try harness.dataStore.upsertSourceArtifact(artifact)
         _ = try harness.enqueueArtifactProjection(artifact, jobType: .project)
-        _ = try harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
+        _ = try await harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
 
         let document = try XCTUnwrap(
             try harness.dataStore.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == artifact.id })
@@ -825,7 +825,7 @@ final class BurnBarRetrievalReplayGoldenTests: XCTestCase {
         )
         try harness.dataStore.upsertConversation(conversation)
         _ = try harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
-        _ = try harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
+        _ = try await harness.drainProjectionQueue(maxSweeps: 6, maxJobsPerSweep: 32, advanceClockBy: 1)
 
         let semanticProvider = ReplayStubSemanticCandidateProvider()
         semanticProvider.shouldThrow = true
@@ -924,7 +924,7 @@ final class BurnBarRetrievalReplayGoldenTests: XCTestCase {
         _ = try harness.grantSharedReadAccess(to: sharedArtifact.id)
         _ = try harness.enqueueArtifactProjection(skillArtifact, jobType: .project)
         _ = try harness.enqueueArtifactProjection(sharedArtifact, jobType: .project)
-        _ = try harness.drainProjectionQueue(maxSweeps: 8, maxJobsPerSweep: 64, advanceClockBy: 1)
+        _ = try await harness.drainProjectionQueue(maxSweeps: 8, maxJobsPerSweep: 64, advanceClockBy: 1)
 
         let retrieval = harness.makeSearchService(semanticEnabled: false)
         let query = "filterneedle"
@@ -1040,7 +1040,7 @@ final class BurnBarRetrievalReplayGoldenTests: XCTestCase {
             _ = try harness.dataStore.upsertSourceArtifact(artifact)
             _ = try harness.enqueueArtifactProjection(artifact, jobType: .project)
         }
-        _ = try harness.drainProjectionQueue(maxSweeps: 12, maxJobsPerSweep: 128, advanceClockBy: 1)
+        _ = try await harness.drainProjectionQueue(maxSweeps: 12, maxJobsPerSweep: 128, advanceClockBy: 1)
 
         let annProvider = VectorSemanticCandidateProvider(
             dataStore: harness.dataStore,
@@ -1640,7 +1640,7 @@ final class ArtifactAuthoringServiceTests: XCTestCase {
         XCTAssertTrue(saveResult.artifact.provenance.hasPrefix("authoring:draft|"))
 
         let projector = ProjectionPipelineService(dataStore: store, leaseOwner: "authoring-roundtrip")
-        _ = try projector.runSweep(maxJobs: 10)
+        _ = try await projector.runSweep(maxJobs: 10)
 
         let retrieval = SearchService(dataStore: store)
         let results = await retrieval.retrieve(
@@ -1930,6 +1930,507 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         XCTAssertEqual(failedJob.attempts, 1)
         XCTAssertEqual(failedJob.lastErrorCode, "EMBEDDING_UNAVAILABLE")
         XCTAssertEqual(failedJob.availableAt.timeIntervalSince1970, retryAt.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func test_databaseWorkspaceSnapshotBuilder_usesTruthfulCounts() throws {
+        let store = try makeInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_200_000)
+        let settings = SettingsManager.shared
+        let originalIndexingEnabled = settings.conversationIndexingEnabled
+        defer { settings.conversationIndexingEnabled = originalIndexingEnabled }
+        settings.conversationIndexingEnabled = true
+
+        let usages = [
+            TokenUsage(
+                provider: .claudeCode,
+                sessionId: "session-a",
+                projectName: "BurnBar",
+                model: "claude-sonnet",
+                inputTokens: 120,
+                outputTokens: 80,
+                costUSD: 1.4,
+                startTime: base,
+                endTime: base.addingTimeInterval(40)
+            ),
+            TokenUsage(
+                provider: .cursor,
+                sessionId: "session-b",
+                projectName: "Compass",
+                model: "gpt-5.4-mini",
+                inputTokens: 220,
+                outputTokens: 150,
+                costUSD: 2.1,
+                startTime: base.addingTimeInterval(120),
+                endTime: base.addingTimeInterval(220)
+            )
+        ]
+        store.replaceUsages(usages)
+
+        let conversations = [
+            ConversationRecord(
+                id: "conv-a",
+                provider: .claudeCode,
+                sessionId: "session-a",
+                projectName: "BurnBar",
+                startTime: base,
+                endTime: base.addingTimeInterval(40),
+                messageCount: 8,
+                userWordCount: 40,
+                assistantWordCount: 120,
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: "Atlas Search",
+                lastAssistantMessage: "Indexed result",
+                fullText: "Searchable full text",
+                indexedAt: base,
+                fileModifiedAt: nil
+            ),
+            ConversationRecord(
+                id: "conv-b",
+                provider: .cursor,
+                sessionId: "session-b",
+                projectName: "Compass",
+                startTime: base.addingTimeInterval(120),
+                endTime: base.addingTimeInterval(220),
+                messageCount: 6,
+                userWordCount: 30,
+                assistantWordCount: 90,
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: "Shared Skill",
+                lastAssistantMessage: "Artifact result",
+                fullText: "Another searchable transcript",
+                indexedAt: base.addingTimeInterval(120),
+                fileModifiedAt: nil
+            )
+        ]
+        for conversation in conversations {
+            try store.upsertConversation(conversation)
+        }
+
+        let conversationDocument = SearchDocumentRecord(
+            id: "doc-conv-a",
+            sourceKind: .conversation,
+            sourceID: "conv-a",
+            sourceVersionID: "v1",
+            provider: AgentProvider.claudeCode.rawValue,
+            projectName: "BurnBar",
+            title: "Atlas Search",
+            subtitle: "Conversation",
+            bodyPreview: "Searchable full text",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "hash-conv",
+            createdAt: base,
+            updatedAt: base
+        )
+        let skillArtifact = SourceArtifactRecord(
+            id: "artifact-skill",
+            sourceKind: .skillDoc,
+            canonicalPath: "/tmp/repo/SKILL.md",
+            rootPath: "/tmp/repo",
+            relativePath: "SKILL.md",
+            provenance: "basename:SKILL.md",
+            title: "Search Skill",
+            body: "# Search Skill\nUse retrieval.",
+            contentHash: "hash-skill",
+            fileSizeBytes: 32,
+            fileModifiedAt: base.addingTimeInterval(10),
+            discoveredAt: base.addingTimeInterval(10),
+            createdAt: base.addingTimeInterval(10),
+            updatedAt: base.addingTimeInterval(10)
+        )
+        _ = try store.upsertSourceArtifact(skillArtifact)
+
+        let sharedArtifact = SourceArtifactRecord(
+            id: "artifact-shared",
+            sourceKind: .sharedArtifact,
+            canonicalPath: "shared://workspace-a/team-a/shared.md",
+            rootPath: "shared://workspace-a/team-a",
+            relativePath: "shared.md",
+            provenance: "shared-sync:workspace-a|team-a|remote-shared|user-1",
+            title: "Shared Playbook",
+            body: "# Shared Playbook\nKeep audit trail.",
+            contentHash: "hash-shared",
+            fileSizeBytes: 48,
+            fileModifiedAt: base.addingTimeInterval(20),
+            discoveredAt: base.addingTimeInterval(20),
+            createdAt: base.addingTimeInterval(20),
+            updatedAt: base.addingTimeInterval(20)
+        )
+        _ = try store.upsertSourceArtifact(sharedArtifact)
+
+        let skillDocument = SearchDocumentRecord(
+            id: "doc-skill",
+            sourceKind: .skillDoc,
+            sourceID: skillArtifact.id,
+            sourceVersionID: "v1",
+            provider: AgentProvider.claudeCode.rawValue,
+            projectName: "BurnBar",
+            title: "Search Skill",
+            subtitle: "Skill",
+            bodyPreview: "Use retrieval.",
+            sourceUpdatedAt: base.addingTimeInterval(10),
+            indexedAt: base.addingTimeInterval(10),
+            contentHash: "hash-skill",
+            createdAt: base.addingTimeInterval(10),
+            updatedAt: base.addingTimeInterval(10)
+        )
+        let sharedDocument = SearchDocumentRecord(
+            id: "doc-shared",
+            sourceKind: .sharedArtifact,
+            sourceID: sharedArtifact.id,
+            sourceVersionID: "v1",
+            provider: AgentProvider.cursor.rawValue,
+            projectName: "Compass",
+            title: "Shared Playbook",
+            subtitle: "Shared",
+            bodyPreview: "Keep audit trail.",
+            sourceUpdatedAt: base.addingTimeInterval(20),
+            indexedAt: base.addingTimeInterval(20),
+            contentHash: "hash-shared-doc",
+            createdAt: base.addingTimeInterval(20),
+            updatedAt: base.addingTimeInterval(20)
+        )
+        try store.upsertSearchDocument(conversationDocument)
+        try store.upsertSearchDocument(skillDocument)
+        try store.upsertSearchDocument(sharedDocument)
+        try store.replaceSearchChunks(
+            documentID: conversationDocument.id,
+            title: conversationDocument.title,
+            chunks: [
+                SearchChunkRecord(
+                    id: "chunk-conv-1",
+                    documentID: conversationDocument.id,
+                    sourceKind: .conversation,
+                    sourceID: conversationDocument.sourceID,
+                    sourceVersionID: "v1",
+                    ordinal: 0,
+                    startOffset: 0,
+                    endOffset: 20,
+                    text: "Conversation chunk",
+                    createdAt: base,
+                    updatedAt: base
+                )
+            ]
+        )
+        try store.replaceSearchChunks(
+            documentID: skillDocument.id,
+            title: skillDocument.title,
+            chunks: [
+                SearchChunkRecord(
+                    id: "chunk-skill-1",
+                    documentID: skillDocument.id,
+                    sourceKind: .skillDoc,
+                    sourceID: skillDocument.sourceID,
+                    sourceVersionID: "v1",
+                    ordinal: 0,
+                    startOffset: 0,
+                    endOffset: 18,
+                    text: "Skill chunk",
+                    createdAt: base.addingTimeInterval(10),
+                    updatedAt: base.addingTimeInterval(10)
+                )
+            ]
+        )
+        try store.replaceSearchChunks(
+            documentID: sharedDocument.id,
+            title: sharedDocument.title,
+            chunks: [
+                SearchChunkRecord(
+                    id: "chunk-shared-1",
+                    documentID: sharedDocument.id,
+                    sourceKind: .sharedArtifact,
+                    sourceID: sharedDocument.sourceID,
+                    sourceVersionID: "v1",
+                    ordinal: 0,
+                    startOffset: 0,
+                    endOffset: 24,
+                    text: "Shared chunk",
+                    createdAt: base.addingTimeInterval(20),
+                    updatedAt: base.addingTimeInterval(20)
+                )
+            ]
+        )
+
+        try store.upsertSharedArtifactSyncState(
+            SharedArtifactSyncStateRecord(
+                sourceArtifactID: sharedArtifact.id,
+                remoteArtifactID: "remote-shared",
+                workspaceID: "workspace-a",
+                teamID: "team-a",
+                ownerUserID: "user-1",
+                revisionID: "rev-1",
+                lastSyncedAt: base.addingTimeInterval(25),
+                syncStatus: .synced,
+                createdAt: base.addingTimeInterval(25),
+                updatedAt: base.addingTimeInterval(25)
+            )
+        )
+        try store.upsertSharedArtifactPermission(
+            SharedArtifactPermissionRecord(
+                sourceArtifactID: sharedArtifact.id,
+                workspaceID: "workspace-a",
+                teamID: "team-a",
+                principalType: .user,
+                principalID: "user-1",
+                role: .editor,
+                visibility: .team,
+                canRead: true,
+                canWrite: true,
+                canShare: true,
+                createdAt: base.addingTimeInterval(25),
+                updatedAt: base.addingTimeInterval(25)
+            )
+        )
+        try store.appendSharedArtifactAuditEvent(
+            SharedArtifactAuditEventRecord(
+                sourceArtifactID: sharedArtifact.id,
+                remoteArtifactID: "remote-shared",
+                workspaceID: "workspace-a",
+                teamID: "team-a",
+                actorUserID: "user-1",
+                actorRole: .editor,
+                action: .share,
+                occurredAt: base.addingTimeInterval(30),
+                createdAt: base.addingTimeInterval(30)
+            )
+        )
+
+        try store.enqueueProjectionJob(
+            ProjectionJobRecord(
+                id: "job-queued",
+                jobType: .project,
+                status: .queued,
+                scheduledAt: base,
+                availableAt: base,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+        try store.enqueueProjectionJob(
+            ProjectionJobRecord(
+                id: "job-running",
+                jobType: .reproject,
+                status: .running,
+                scheduledAt: base.addingTimeInterval(5),
+                availableAt: base.addingTimeInterval(5),
+                startedAt: base.addingTimeInterval(5),
+                createdAt: base.addingTimeInterval(5),
+                updatedAt: base.addingTimeInterval(5)
+            )
+        )
+        try store.enqueueProjectionJob(
+            ProjectionJobRecord(
+                id: "job-failed",
+                jobType: .reembed,
+                status: .failed,
+                attempts: 1,
+                maxAttempts: 5,
+                lastErrorCode: "EMBED_FAIL",
+                lastErrorMessage: "Embedder offline",
+                scheduledAt: base.addingTimeInterval(10),
+                availableAt: base.addingTimeInterval(10),
+                createdAt: base.addingTimeInterval(10),
+                updatedAt: base.addingTimeInterval(10)
+            )
+        )
+
+        try store.upsertEmbeddingModel(
+            EmbeddingModelRecord(
+                id: "embedding-model",
+                provider: "openai",
+                modelName: "text-embedding-3-large",
+                dimensions: 3072,
+                distanceMetric: .cosine,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+        try store.upsertEmbeddingVersion(
+            EmbeddingVersionRecord(
+                id: "embedding-version",
+                modelID: "embedding-model",
+                versionTag: "2026-03",
+                chunkerVersion: "chunker-v1",
+                normalizationVersion: "norm-v1",
+                promptVersion: "prompt-v1",
+                isActive: true,
+                createdAt: base,
+                updatedAt: base
+            )
+        )
+        try store.upsertChunkEmbedding(
+            ChunkEmbeddingRecord(
+                chunkID: "chunk-skill-1",
+                embeddingVersionID: "embedding-version",
+                vectorBlob: Data([0x01, 0x02]),
+                createdAt: base.addingTimeInterval(10),
+                updatedAt: base.addingTimeInterval(10)
+            )
+        )
+
+        let snapshot = DatabaseWorkspaceSnapshotBuilder.build(
+            from: store,
+            settingsManager: settings
+        )
+
+        XCTAssertEqual(snapshot.totalSessions, 2)
+        XCTAssertEqual(snapshot.totalConversations, 2)
+        XCTAssertEqual(snapshot.indexedDocuments, 3)
+        XCTAssertEqual(snapshot.indexedChunks, 3)
+        XCTAssertEqual(snapshot.sourceArtifacts, 2)
+        XCTAssertEqual(snapshot.sharedArtifactCount, 1)
+        XCTAssertEqual(snapshot.syncedArtifactCount, 1)
+        XCTAssertEqual(snapshot.pendingArtifactCount, 0)
+        XCTAssertEqual(snapshot.permissionCount, 1)
+        XCTAssertEqual(snapshot.auditEventCount, 1)
+        XCTAssertEqual(snapshot.projectionJobCounts.total, 3)
+        XCTAssertEqual(snapshot.projectionJobCounts.active, 1)
+        XCTAssertEqual(snapshot.projectionJobCounts.queued, 1)
+        XCTAssertEqual(snapshot.projectionJobCounts.failed, 1)
+        XCTAssertEqual(snapshot.embeddingModels, 1)
+        XCTAssertEqual(snapshot.embeddingVersions, 1)
+        XCTAssertEqual(snapshot.embeddedChunks, 1)
+        XCTAssertTrue(snapshot.unavailableMetrics.isEmpty)
+        XCTAssertTrue(snapshot.loadIssues.isEmpty)
+    }
+
+    func test_fetchSearchDocuments_appliesAtlasFilters() throws {
+        let store = try makeInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_210_000)
+
+        let included = SearchDocumentRecord(
+            id: "doc-included",
+            sourceKind: .conversation,
+            sourceID: "conv-included",
+            sourceVersionID: "v1",
+            provider: AgentProvider.claudeCode.rawValue,
+            projectName: "BurnBar",
+            title: "Included",
+            subtitle: "Atlas result",
+            bodyPreview: "This should match every filter.",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "hash-include",
+            createdAt: base,
+            updatedAt: base
+        )
+        let wrongSource = SearchDocumentRecord(
+            id: "doc-wrong-source",
+            sourceKind: .skillDoc,
+            sourceID: "artifact-skill",
+            sourceVersionID: "v1",
+            provider: AgentProvider.claudeCode.rawValue,
+            projectName: "BurnBar",
+            title: "Wrong Source",
+            subtitle: "Skill",
+            bodyPreview: "Should be excluded by source kind.",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "hash-source",
+            createdAt: base,
+            updatedAt: base
+        )
+        let wrongProvider = SearchDocumentRecord(
+            id: "doc-wrong-provider",
+            sourceKind: .conversation,
+            sourceID: "conv-wrong-provider",
+            sourceVersionID: "v1",
+            provider: AgentProvider.cursor.rawValue,
+            projectName: "BurnBar",
+            title: "Wrong Provider",
+            subtitle: "Provider mismatch",
+            bodyPreview: "Should be excluded by provider.",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "hash-provider",
+            createdAt: base,
+            updatedAt: base
+        )
+        let wrongProject = SearchDocumentRecord(
+            id: "doc-wrong-project",
+            sourceKind: .conversation,
+            sourceID: "conv-wrong-project",
+            sourceVersionID: "v1",
+            provider: AgentProvider.claudeCode.rawValue,
+            projectName: "Other",
+            title: "Wrong Project",
+            subtitle: "Project mismatch",
+            bodyPreview: "Should be excluded by project.",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "hash-project",
+            createdAt: base,
+            updatedAt: base
+        )
+        let wrongDate = SearchDocumentRecord(
+            id: "doc-wrong-date",
+            sourceKind: .conversation,
+            sourceID: "conv-wrong-date",
+            sourceVersionID: "v1",
+            provider: AgentProvider.claudeCode.rawValue,
+            projectName: "BurnBar",
+            title: "Wrong Date",
+            subtitle: "Date mismatch",
+            bodyPreview: "Should be excluded by date.",
+            sourceUpdatedAt: base.addingTimeInterval(-86_400 * 45),
+            indexedAt: base.addingTimeInterval(-86_400 * 45),
+            contentHash: "hash-date",
+            createdAt: base.addingTimeInterval(-86_400 * 45),
+            updatedAt: base.addingTimeInterval(-86_400 * 45)
+        )
+
+        for document in [included, wrongSource, wrongProvider, wrongProject, wrongDate] {
+            try store.upsertSearchDocument(document)
+            try store.replaceSearchChunks(
+                documentID: document.id,
+                title: document.title,
+                chunks: [
+                    SearchChunkRecord(
+                        id: "chunk-\(document.id)",
+                        documentID: document.id,
+                        sourceKind: document.sourceKind,
+                        sourceID: document.sourceID,
+                        sourceVersionID: document.sourceVersionID,
+                        ordinal: 0,
+                        startOffset: 0,
+                        endOffset: 24,
+                        text: document.title,
+                        createdAt: document.createdAt,
+                        updatedAt: document.updatedAt
+                    )
+                ]
+            )
+        }
+
+        let atlasDateRange = base.addingTimeInterval(-3_600)...base.addingTimeInterval(3_600)
+        let filteredDocuments = try store.fetchSearchDocuments(
+            limit: 20,
+            provider: .claudeCode,
+            projectName: "BurnBar",
+            sourceKinds: [.conversation],
+            dateRange: atlasDateRange
+        )
+        XCTAssertEqual(filteredDocuments.map(\.id), ["doc-included"])
+        XCTAssertEqual(
+            try store.countSearchDocuments(
+                provider: .claudeCode,
+                projectName: "BurnBar",
+                sourceKinds: [.conversation],
+                dateRange: atlasDateRange
+            ),
+            1
+        )
+        XCTAssertEqual(
+            try store.countSearchChunks(
+                sourceKinds: [.conversation],
+                dateRange: atlasDateRange
+            ),
+            3
+        )
     }
 
     private func makeInMemoryStore() throws -> DataStore {
@@ -2658,7 +3159,7 @@ private func writeDiscoveryFixture(_ text: String, to url: URL) throws {
 
 @MainActor
 final class ProjectionPipelineServiceTests: XCTestCase {
-    func test_projectionWorker_recoversExpiredRunningJob_afterCrash() throws {
+    func test_projectionWorker_recoversExpiredRunningJob_afterCrash() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let service = ProjectionPipelineService(dataStore: store, leaseOwner: "worker-recovery")
 
@@ -2697,7 +3198,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             )
         )
 
-        let report = try service.runSweep(maxJobs: 5)
+        let report = try await service.runSweep(maxJobs: 5)
         XCTAssertGreaterThanOrEqual(report.completedJobs, 1)
 
         let completed = try store.fetchProjectionJobs(statuses: [.completed], limit: 20)
@@ -2711,7 +3212,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         XCTAssertFalse(chunks.isEmpty)
     }
 
-    func test_projectionJob_enqueueSuppression_preventsDuplicateRequeueAfterCompletion() throws {
+    func test_projectionJob_enqueueSuppression_preventsDuplicateRequeueAfterCompletion() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let service = ProjectionPipelineService(dataStore: store, leaseOwner: "worker-duplicates")
         let now = Date(timeIntervalSince1970: 1_742_300_000)
@@ -2743,7 +3244,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         try store.enqueueProjectionJob(job)
         try store.enqueueProjectionJob(job)
-        _ = try service.runSweep(maxJobs: 10)
+        _ = try await service.runSweep(maxJobs: 10)
 
         let documents = try store.fetchSearchDocuments(limit: 10)
         XCTAssertEqual(documents.count, 1)
@@ -2753,13 +3254,13 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         try store.enqueueProjectionJob(job)
         XCTAssertTrue(try store.fetchProjectionJobs(statuses: [.queued], limit: 10).isEmpty)
 
-        let secondSweep = try service.runSweep(maxJobs: 10)
+        let secondSweep = try await service.runSweep(maxJobs: 10)
         XCTAssertEqual(secondSweep.completedJobs, 0)
         let secondChunkCount = try store.fetchSearchChunks(documentID: documents[0].id).count
         XCTAssertEqual(secondChunkCount, chunkCount)
     }
 
-    func test_projectionPipeline_handlesArtifactDeleteWithPurgeJob() throws {
+    func test_projectionPipeline_handlesArtifactDeleteWithPurgeJob() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let service = ProjectionPipelineService(dataStore: store, leaseOwner: "worker-purge")
         let base = Date(timeIntervalSince1970: 1_742_400_000)
@@ -2791,7 +3292,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             jobType: .project,
             priority: 5
         )
-        _ = try service.runSweep(maxJobs: 10)
+        _ = try await service.runSweep(maxJobs: 10)
         XCTAssertEqual(try store.fetchSearchDocuments(limit: 10).count, 1)
 
         XCTAssertTrue(try store.markSourceArtifactDeleted(id: artifact.id, deletedAt: base.addingTimeInterval(60)))
@@ -2802,12 +3303,12 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             jobType: .purge,
             priority: 2
         )
-        _ = try service.runSweep(maxJobs: 10)
+        _ = try await service.runSweep(maxJobs: 10)
 
         XCTAssertEqual(try store.fetchSearchDocuments(limit: 10).count, 0)
     }
 
-    func test_rebuildJob_enqueuesReprojectAndPurgeCandidates() throws {
+    func test_rebuildJob_enqueuesReprojectAndPurgeCandidates() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let service = ProjectionPipelineService(dataStore: store, leaseOwner: "worker-rebuild")
         let base = Date(timeIntervalSince1970: 1_742_500_000)
@@ -2857,7 +3358,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         XCTAssertTrue(try store.markSourceArtifactDeleted(id: deletedArtifact.id, deletedAt: base.addingTimeInterval(120)))
 
         try service.enqueueRebuildJob(reason: "test-rebuild", priority: 1)
-        let rebuildReport = try service.runSweep(maxJobs: 1)
+        let rebuildReport = try await service.runSweep(maxJobs: 1)
         XCTAssertEqual(rebuildReport.completedJobs, 1)
 
         let queued = try store.fetchProjectionJobs(statuses: [.queued], limit: 20)
@@ -2866,7 +3367,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         XCTAssertTrue(queued.contains(where: { $0.sourceKind == deletedArtifact.sourceKind && $0.sourceID == deletedArtifact.id && $0.jobType == .purge }))
     }
 
-    func test_projectionPipeline_indexesEmbeddings_withActiveVersionLineage() throws {
+    func test_projectionPipeline_indexesEmbeddings_withActiveVersionLineage() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let embedder = DeterministicFakeEmbeddingProvider(versionTag: "projection-test-v1", seed: "projection-seed-v1")
         let service = ProjectionPipelineService(
@@ -2883,7 +3384,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
         try store.upsertConversation(conversation)
         try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
-        _ = try service.runSweep(maxJobs: 20)
+        _ = try await service.runSweep(maxJobs: 20)
 
         let expectedModelID = EmbeddingIdentity.modelID(for: embedder.descriptor)
         let expectedVersionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
@@ -2909,7 +3410,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         }
     }
 
-    func test_reembedJob_createsNewActiveEmbeddingVersion_withoutRemovingPreviousVersion() throws {
+    func test_reembedJob_createsNewActiveEmbeddingVersion_withoutRemovingPreviousVersion() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let embedderV1 = DeterministicFakeEmbeddingProvider(versionTag: "projection-test-v1", seed: "projection-seed-a")
         let serviceV1 = ProjectionPipelineService(
@@ -2925,7 +3426,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
         try store.upsertConversation(conversation)
         try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
-        _ = try serviceV1.runSweep(maxJobs: 20)
+        _ = try await serviceV1.runSweep(maxJobs: 20)
 
         guard
             let document = try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == conversation.id }),
@@ -2953,7 +3454,7 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             sourceID: conversation.id,
             priority: 1
         )
-        _ = try serviceV2.runSweep(maxJobs: 20)
+        _ = try await serviceV2.runSweep(maxJobs: 20)
 
         let versionV2ID = EmbeddingIdentity.versionID(for: embedderV2.descriptor)
         let chunkEmbeddings = try store.fetchChunkEmbeddings(chunkID: chunk.id)
@@ -3107,7 +3608,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
         try store.upsertConversation(semanticConversation)
         try store.enqueueConversationProjectionJob(conversationID: lexicalConversation.id, jobType: .project, now: base)
         try store.enqueueConversationProjectionJob(conversationID: semanticConversation.id, jobType: .project, now: base)
-        _ = try projector.runSweep(maxJobs: 20)
+        _ = try await projector.runSweep(maxJobs: 20)
 
         guard
             let semanticDoc = try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == semanticConversation.id }),
@@ -3159,7 +3660,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
             jobType: .project,
             priority: 5
         )
-        _ = try projector.runSweep(maxJobs: 10)
+        _ = try await projector.runSweep(maxJobs: 10)
 
         guard
             let artifactDoc = try store.fetchSearchDocuments(limit: 20).first(where: { $0.sourceID == artifact.id }),
@@ -3293,7 +3794,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
             priority: 5
         )
 
-        _ = try projector.runSweep(maxJobs: 40)
+        _ = try await projector.runSweep(maxJobs: 40)
 
         let retrieval = SearchService(
             dataStore: store,
@@ -3394,7 +3895,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
             jobType: .project,
             priority: 5
         )
-        _ = try projector.runSweep(maxJobs: 20)
+        _ = try await projector.runSweep(maxJobs: 20)
 
         let noAccess = SharedArtifactAccessContext(
             userID: "user-no-access",
@@ -3497,7 +3998,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
         try store.upsertConversation(assistantConversation)
         try store.enqueueConversationProjectionJob(conversationID: providerConversation.id, jobType: .project, now: base)
         try store.enqueueConversationProjectionJob(conversationID: assistantConversation.id, jobType: .project, now: base)
-        _ = try projector.runSweep(maxJobs: 20)
+        _ = try await projector.runSweep(maxJobs: 20)
 
         let chatSearch = SearchService.makeConversationSearchService(dataStore: store, nowProvider: { base })
         let sessionLogSearch = SearchService.makeConversationSearchService(dataStore: store, nowProvider: { base })
@@ -3598,7 +4099,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
             )
             try store.replaceSearchChunks(documentID: docID, title: title, chunks: [chunk])
 
-            let vector = try embedder.embedding(for: chunkText)
+            let vector = try await embedder.embedding(for: chunkText)
             try store.upsertChunkEmbedding(
                 ChunkEmbeddingRecord(
                     chunkID: chunk.id,
@@ -3657,7 +4158,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
         )
         try store.upsertConversation(conversation)
         try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
-        _ = try projector.runSweep(maxJobs: 20)
+        _ = try await projector.runSweep(maxJobs: 20)
 
         let semanticProvider = StubSemanticCandidateProvider()
         semanticProvider.shouldThrow = true
@@ -3842,5 +4343,120 @@ final class HybridRetrievalServiceTests: XCTestCase {
             createdAt: fileModifiedAt,
             updatedAt: fileModifiedAt
         )
+    }
+}
+
+// MARK: - Dashboard chat evidence pack
+
+final class BurnBarChatEvidenceFormattingTests: XCTestCase {
+
+    func test_emptyResults_showsPlaceholder() {
+        let s = BurnBarChatEvidenceFormatting.formatPack(results: [], maxTotalChars: 2_000)
+        XCTAssertTrue(s.contains("## Retrieved evidence"))
+        XCTAssertTrue(s.contains("No matching indexed excerpts"))
+    }
+
+    func test_dedupesSecondChunkFromSameConversation() {
+        let now = Date()
+        let conv = ConversationRecord(
+            id: "cursor:abc",
+            provider: .cursor,
+            sessionId: "abc",
+            projectName: "P",
+            startTime: now,
+            endTime: now,
+            messageCount: 1,
+            userWordCount: 1,
+            assistantWordCount: 1,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "T",
+            lastAssistantMessage: "",
+            fullText: "body",
+            indexedAt: now,
+            fileModifiedAt: now,
+            sourceType: .providerLog
+        )
+        let r1 = RetrievalResult(
+            chunkID: "ch1",
+            documentID: "d1",
+            sourceKind: .conversation,
+            sourceID: "cursor:abc",
+            provider: .cursor,
+            providerRawValue: nil,
+            projectName: "P",
+            title: "T",
+            subtitle: nil,
+            snippet: "first",
+            sectionPath: nil,
+            startOffset: 0,
+            endOffset: 10,
+            sourceUpdatedAt: nil,
+            indexedAt: now,
+            lexicalRank: 1,
+            semanticScore: nil,
+            rerankScore: 0.9,
+            conversation: conv
+        )
+        let r2 = RetrievalResult(
+            chunkID: "ch2",
+            documentID: "d1",
+            sourceKind: .conversation,
+            sourceID: "cursor:abc",
+            provider: .cursor,
+            providerRawValue: nil,
+            projectName: "P",
+            title: "T",
+            subtitle: nil,
+            snippet: "second",
+            sectionPath: nil,
+            startOffset: 10,
+            endOffset: 20,
+            sourceUpdatedAt: nil,
+            indexedAt: now,
+            lexicalRank: 2,
+            semanticScore: nil,
+            rerankScore: 0.8,
+            conversation: conv
+        )
+        let s = BurnBarChatEvidenceFormatting.formatPack(results: [r1, r2], maxTotalChars: 20_000)
+        XCTAssertEqual(s.components(separatedBy: "chunk_id:").count - 1, 1)
+        XCTAssertTrue(s.contains("`ch1`"))
+        XCTAssertFalse(s.contains("`ch2`"))
+    }
+
+    func test_truncatesToMaxChars() {
+        let now = Date()
+        let longSnippet = String(repeating: "x", count: 500)
+        var results: [RetrievalResult] = []
+        for i in 0..<5 {
+            results.append(
+                RetrievalResult(
+                    chunkID: "c\(i)",
+                    documentID: "d\(i)",
+                    sourceKind: .skillDoc,
+                    sourceID: "s\(i)",
+                    provider: nil,
+                    providerRawValue: nil,
+                    projectName: nil,
+                    title: "Skill \(i)",
+                    subtitle: nil,
+                    snippet: longSnippet,
+                    sectionPath: nil,
+                    startOffset: 0,
+                    endOffset: 1,
+                    sourceUpdatedAt: nil,
+                    indexedAt: now,
+                    lexicalRank: nil,
+                    semanticScore: nil,
+                    rerankScore: Double(5 - i),
+                    conversation: nil
+                )
+            )
+        }
+        let s = BurnBarChatEvidenceFormatting.formatPack(results: results, maxTotalChars: 900)
+        XCTAssertLessThanOrEqual(s.count, 1_200)
+        XCTAssertTrue(s.contains("truncated") || s.contains("…"))
     }
 }

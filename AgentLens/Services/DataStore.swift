@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import SwiftUI
+import BurnBarCore
 
 // MARK: - Rolling Average + Mood
 
@@ -646,6 +647,8 @@ struct LocalSearchSchemaInventory: Equatable, Sendable {
 @Observable
 @MainActor
 final class DataStore {
+    static let legacyChatThreadID = "burnbar-chat-legacy"
+
     private let dbQueue: DatabaseQueue
     private let localSearchStore: LocalSearchStore
     private(set) var usages: [TokenUsage] = []
@@ -1534,6 +1537,136 @@ final class DataStore {
             )
         }
 
+        /// Thread-aware storage for in-app Burn Bar chat history and scoped search.
+        migrator.registerMigration("v20_chat_threads") { db in
+            try db.create(table: "chat_threads") { t in
+                t.column("id", .text).primaryKey()
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull().indexed()
+            }
+
+            try db.alter(table: "chat_messages") { t in
+                t.add(column: "threadId", .text).notNull().defaults(to: Self.legacyChatThreadID)
+            }
+
+            try db.create(
+                index: "chat_messages_thread_time_idx",
+                on: "chat_messages",
+                columns: ["threadId", "timestamp"]
+            )
+
+            try db.execute(
+                sql: """
+                INSERT OR IGNORE INTO chat_threads (id, createdAt, updatedAt)
+                VALUES (
+                    ?,
+                    COALESCE((SELECT MIN(timestamp) FROM chat_messages), CURRENT_TIMESTAMP),
+                    COALESCE((SELECT MAX(timestamp) FROM chat_messages), CURRENT_TIMESTAMP)
+                )
+                """,
+                arguments: [Self.legacyChatThreadID]
+            )
+        }
+
+        /// Multi-field FTS5 for enhanced lexical retrieval:
+        /// - Adds projectName and provider columns to the FTS virtual table for field-weighted search
+        /// - Creates a separate search_documents_fts for document-level title/bodyPreview matching
+        /// - Enables field-boosted queries (title:foo OR projectName:bar OR chunkText:baz)
+        migrator.registerMigration("v21_multifield_fts") { db in
+            // Step 1: Create new FTS5 table with additional columns
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE search_chunks_fts_new USING fts5(
+                    chunkID UNINDEXED,
+                    documentID UNINDEXED,
+                    title,
+                    chunkText,
+                    projectName,
+                    provider,
+                    tokenize='porter unicode61'
+                )
+                """)
+
+            // Step 2: Migrate data from old FTS to new FTS
+            try db.execute(sql: """
+                INSERT INTO search_chunks_fts_new (chunkID, documentID, title, chunkText, projectName, provider)
+                SELECT
+                    scf.chunkID,
+                    scf.documentID,
+                    COALESCE(scf.title, ''),
+                    COALESCE(scf.chunkText, ''),
+                    COALESCE(d.projectName, ''),
+                    COALESCE(d.provider, '')
+                FROM search_chunks_fts scf
+                JOIN search_documents d ON d.id = scf.documentID
+                """)
+
+            // Step 3: Drop old FTS table and rename new one
+            try db.execute(sql: "DROP TABLE search_chunks_fts")
+            try db.execute(sql: "ALTER TABLE search_chunks_fts_new RENAME TO search_chunks_fts")
+
+            // Step 4: Create document-level FTS for title/bodyPreview matching
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE search_documents_fts USING fts5(
+                    documentID UNINDEXED,
+                    title,
+                    subtitle,
+                    bodyPreview,
+                    projectName,
+                    provider,
+                    tokenize='porter unicode61'
+                )
+                """)
+
+            // Step 5: Populate document FTS from search_documents
+            try db.execute(sql: """
+                INSERT INTO search_documents_fts (documentID, title, subtitle, bodyPreview, projectName, provider)
+                SELECT
+                    id,
+                    COALESCE(title, ''),
+                    COALESCE(subtitle, ''),
+                    COALESCE(bodyPreview, ''),
+                    COALESCE(projectName, ''),
+                    COALESCE(provider, '')
+                FROM search_documents
+                """)
+
+            // Step 6: Create triggers to keep document FTS in sync
+            try db.execute(sql: """
+                CREATE TRIGGER search_documents_fts_ai AFTER INSERT ON search_documents BEGIN
+                    INSERT INTO search_documents_fts(documentID, title, subtitle, bodyPreview, projectName, provider)
+                    VALUES (
+                        new.id,
+                        COALESCE(new.title, ''),
+                        COALESCE(new.subtitle, ''),
+                        COALESCE(new.bodyPreview, ''),
+                        COALESCE(new.projectName, ''),
+                        COALESCE(new.provider, '')
+                    );
+                END
+                """)
+
+            try db.execute(sql: """
+                CREATE TRIGGER search_documents_fts_ad AFTER DELETE ON search_documents BEGIN
+                    DELETE FROM search_documents_fts WHERE documentID = old.id;
+                END
+                """)
+
+            try db.execute(sql: """
+                CREATE TRIGGER search_documents_fts_au AFTER UPDATE ON search_documents BEGIN
+                    DELETE FROM search_documents_fts WHERE documentID = old.id;
+                    INSERT INTO search_documents_fts(documentID, title, subtitle, bodyPreview, projectName, provider)
+                    VALUES (
+                        new.id,
+                        COALESCE(new.title, ''),
+                        COALESCE(new.subtitle, ''),
+                        COALESCE(new.bodyPreview, ''),
+                        COALESCE(new.projectName, ''),
+                        COALESCE(new.provider, '')
+                    );
+                END
+                """)
+        }
+
         return migrator
     }
     
@@ -2090,20 +2223,27 @@ final class DataStore {
     // MARK: - Chat messages (persisted)
 
     func saveChatMessage(_ message: ChatMessageRecord) throws {
+        try saveChatMessage(message, threadID: Self.legacyChatThreadID)
+    }
+
+    func saveChatMessage(_ message: ChatMessageRecord, threadID: String) throws {
         let piecesJSON: String?
         if message.transcriptPieces.isEmpty {
             piecesJSON = nil
         } else {
             piecesJSON = try Self.encodeTranscriptPieces(message.transcriptPieces)
         }
+
         try dbQueue.write { db in
+            try upsertChatThread(threadID, at: message.timestamp, db: db)
             try db.execute(
                 sql: """
-                INSERT OR REPLACE INTO chat_messages (id, role, content, timestamp, cliUsed, transcriptPiecesJSON)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO chat_messages (id, threadId, role, content, timestamp, cliUsed, transcriptPiecesJSON)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     message.id,
+                    threadID,
                     message.role.rawValue,
                     message.content,
                     message.timestamp,
@@ -2114,32 +2254,191 @@ final class DataStore {
         }
     }
 
+    func createChatThread(id: String = UUID().uuidString, at date: Date = Date()) throws -> String {
+        try dbQueue.write { db in
+            try upsertChatThread(id, at: date, db: db)
+        }
+        return id
+    }
+
+    func chatThreadExists(id: String) throws -> Bool {
+        try dbQueue.read { db in
+            let count = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(1) FROM chat_threads WHERE id = ?",
+                arguments: [id]
+            ) ?? 0
+            return count > 0
+        }
+    }
+
+    func fetchMostRecentChatThreadID() throws -> String? {
+        try dbQueue.read { db in
+            try String.fetchOne(
+                db,
+                sql: """
+                SELECT t.id
+                FROM chat_threads t
+                LEFT JOIN chat_messages m ON m.threadId = t.id
+                GROUP BY t.id, t.createdAt, t.updatedAt
+                ORDER BY COALESCE(MAX(m.timestamp), t.updatedAt, t.createdAt) DESC
+                LIMIT 1
+                """
+            )
+        }
+    }
+
+    func fetchChatThreadSummaries(searchQuery: String = "", limit: Int = 80) throws -> [ChatThreadSummary] {
+        let normalizedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        return try dbQueue.read { db in
+            var sql = """
+            SELECT
+                t.id AS threadID,
+                t.createdAt AS createdAt,
+                t.updatedAt AS updatedAt,
+                COUNT(m.id) AS messageCount,
+                MAX(m.timestamp) AS lastMessageAt,
+                (
+                    SELECT um.content
+                    FROM chat_messages um
+                    WHERE um.threadId = t.id
+                      AND um.role = 'user'
+                      AND TRIM(um.content) != ''
+                    ORDER BY um.timestamp ASC
+                    LIMIT 1
+                ) AS firstUserMessage,
+                (
+                    SELECT lm.content
+                    FROM chat_messages lm
+                    WHERE lm.threadId = t.id
+                      AND TRIM(lm.content) != ''
+                    ORDER BY lm.timestamp DESC
+                    LIMIT 1
+                ) AS lastMessageContent
+            FROM chat_threads t
+            LEFT JOIN chat_messages m ON m.threadId = t.id
+            """
+            var args: [any DatabaseValueConvertible] = []
+
+            if !normalizedQuery.isEmpty {
+                sql += """
+                 WHERE EXISTS (
+                    SELECT 1
+                    FROM chat_messages sm
+                    WHERE sm.threadId = t.id
+                      AND lower(sm.content) LIKE ?
+                )
+                """
+                args.append("%\(normalizedQuery)%")
+            }
+
+            sql += """
+             GROUP BY t.id, t.createdAt, t.updatedAt
+             HAVING COUNT(m.id) > 0
+             ORDER BY COALESCE(MAX(m.timestamp), t.updatedAt, t.createdAt) DESC
+             LIMIT ?
+            """
+            args.append(limit)
+
+            let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
+            return rows.compactMap { row -> ChatThreadSummary? in
+                guard let id = row["threadID"] as? String,
+                      let createdAt = parseDate(row["createdAt"]),
+                      let updatedAt = parseDate(row["updatedAt"]) else {
+                    return nil
+                }
+
+                let messageCount = row["messageCount"] as? Int
+                    ?? Int((row["messageCount"] as? Int64) ?? 0)
+                let lastMessageAt = parseDate(row["lastMessageAt"])
+                let firstUserMessage = (row["firstUserMessage"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let lastMessageContent = (row["lastMessageContent"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                let titleSource = (firstUserMessage?.isEmpty == false) ? firstUserMessage! : "Burn Bar Chat"
+                let previewSource = (lastMessageContent?.isEmpty == false) ? lastMessageContent! : titleSource
+
+                return ChatThreadSummary(
+                    id: id,
+                    title: Self.compactChatSnippet(titleSource, limit: 84),
+                    preview: Self.compactChatSnippet(previewSource, limit: 180),
+                    messageCount: messageCount,
+                    createdAt: createdAt,
+                    updatedAt: updatedAt,
+                    lastMessageAt: lastMessageAt
+                )
+            }
+        }
+    }
+
     func fetchChatMessages() throws -> [ChatMessageRecord] {
         try dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: "SELECT * FROM chat_messages ORDER BY timestamp ASC")
-            return rows.compactMap { row -> ChatMessageRecord? in
-                guard let id = row["id"] as? String,
-                      let roleRaw = row["role"] as? String,
-                      let role = ChatMessageRole(rawValue: roleRaw),
-                      let content = row["content"] as? String,
-                      let ts = parseDate(row["timestamp"]) else { return nil }
-                let pieces = Self.decodeTranscriptPieces(row["transcriptPiecesJSON"] as? String) ?? []
-                return ChatMessageRecord(
-                    id: id,
-                    role: role,
-                    content: content,
-                    timestamp: ts,
-                    cliUsed: row["cliUsed"] as? String,
-                    transcriptPieces: pieces
-                )
-            }
+            return rows.compactMap { self.chatMessage(from: $0) }
+        }
+    }
+
+    func fetchChatMessages(threadID: String) throws -> [ChatMessageRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM chat_messages WHERE threadId = ? ORDER BY timestamp ASC",
+                arguments: [threadID]
+            )
+            return rows.compactMap { self.chatMessage(from: $0) }
         }
     }
 
     func deleteAllChatMessages() throws {
         try dbQueue.write { db in
             try db.execute(sql: "DELETE FROM chat_messages")
+            try db.execute(sql: "DELETE FROM chat_threads")
+            let now = Date()
+            try db.execute(
+                sql: "INSERT INTO chat_threads (id, createdAt, updatedAt) VALUES (?, ?, ?)",
+                arguments: [Self.legacyChatThreadID, now, now]
+            )
         }
+    }
+
+    private func chatMessage(from row: Row) -> ChatMessageRecord? {
+        guard let id = row["id"] as? String,
+              let roleRaw = row["role"] as? String,
+              let role = ChatMessageRole(rawValue: roleRaw),
+              let content = row["content"] as? String,
+              let ts = parseDate(row["timestamp"]) else {
+            return nil
+        }
+
+        let pieces = Self.decodeTranscriptPieces(row["transcriptPiecesJSON"] as? String) ?? []
+        return ChatMessageRecord(
+            id: id,
+            role: role,
+            content: content,
+            timestamp: ts,
+            cliUsed: row["cliUsed"] as? String,
+            transcriptPieces: pieces
+        )
+    }
+
+    private func upsertChatThread(_ threadID: String, at timestamp: Date, db: Database) throws {
+        try db.execute(
+            sql: """
+            INSERT OR IGNORE INTO chat_threads (id, createdAt, updatedAt)
+            VALUES (?, ?, ?)
+            """,
+            arguments: [threadID, timestamp, timestamp]
+        )
+        try db.execute(
+            sql: """
+            UPDATE chat_threads
+            SET updatedAt = CASE WHEN updatedAt > ? THEN updatedAt ELSE ? END
+            WHERE id = ?
+            """,
+            arguments: [timestamp, timestamp, threadID]
+        )
     }
 
     // MARK: - Full-text search
@@ -2153,7 +2452,7 @@ final class DataStore {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
-        let ftsQuery = Self.fts5SafeQuery(from: trimmed)
+        let ftsQuery = BurnBarFTSQueryBuilder.naturalLanguage(from: trimmed)
         guard !ftsQuery.isEmpty else { return [] }
 
         return try dbQueue.read { db -> [SearchResult] in
@@ -2240,15 +2539,6 @@ final class DataStore {
         }
     }
 
-    private static func fts5SafeQuery(from userInput: String) -> String {
-        let parts = userInput.split { $0.isWhitespace || $0.isNewline }.map(String.init).filter { !$0.isEmpty }
-        guard !parts.isEmpty else { return "" }
-        return parts.map { token in
-            let escaped = token.replacingOccurrences(of: "\"", with: "\"\"")
-            return "\"\(escaped)\""
-        }.joined(separator: " AND ")
-    }
-
     // MARK: - Local search substrate (derived/rebuildable)
 
     func enqueueConversationProjectionJob(
@@ -2291,12 +2581,60 @@ final class DataStore {
         try localSearchStore.fetchDocuments(limit: limit)
     }
 
+    func fetchSearchDocuments(
+        limit: Int = 500,
+        provider: AgentProvider? = nil,
+        projectName: String? = nil,
+        sourceKinds: [SearchSourceKind]? = nil,
+        dateRange: ClosedRange<Date>? = nil
+    ) throws -> [SearchDocumentRecord] {
+        try localSearchStore.fetchDocuments(
+            limit: limit,
+            provider: provider?.rawValue,
+            projectName: projectName,
+            sourceKinds: sourceKinds,
+            dateRange: dateRange
+        )
+    }
+
     func fetchSearchDocuments(ids: [String]) throws -> [SearchDocumentRecord] {
         try localSearchStore.fetchDocuments(ids: ids)
     }
 
+    func fetchSearchDocument(id: String) throws -> SearchDocumentRecord? {
+        try localSearchStore.fetchDocument(id: id)
+    }
+
     func fetchSearchDocuments(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchDocumentRecord] {
         try localSearchStore.fetchDocuments(sourceKind: sourceKind, sourceID: sourceID)
+    }
+
+    func countSearchDocuments(
+        provider: AgentProvider? = nil,
+        projectName: String? = nil,
+        sourceKinds: [SearchSourceKind]? = nil,
+        dateRange: ClosedRange<Date>? = nil
+    ) throws -> Int {
+        try localSearchStore.countDocuments(
+            provider: provider?.rawValue,
+            projectName: projectName,
+            sourceKinds: sourceKinds,
+            dateRange: dateRange
+        )
+    }
+
+    func countSearchChunks(
+        sourceKinds: [SearchSourceKind]? = nil,
+        dateRange: ClosedRange<Date>? = nil
+    ) throws -> Int {
+        try localSearchStore.countChunks(
+            sourceKinds: sourceKinds,
+            dateRange: dateRange
+        )
+    }
+
+    func countSearchChunks(documentID: String) throws -> Int {
+        try localSearchStore.countChunks(documentID: documentID)
     }
 
     func replaceSearchChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) throws {
@@ -2316,7 +2654,7 @@ final class DataStore {
     }
 
     func searchLexicalChunks(
-        query: String,
+        ftsQuery: String,
         provider: AgentProvider? = nil,
         projectName: String? = nil,
         sourceKinds: [SearchSourceKind]? = nil,
@@ -2326,13 +2664,11 @@ final class DataStore {
         sourceIDs: [String]? = nil,
         limit: Int = 120
     ) throws -> [SearchChunkLexicalMatch] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = ftsQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        let ftsQuery = Self.fts5SafeQuery(from: trimmed)
-        guard !ftsQuery.isEmpty else { return [] }
 
         return try localSearchStore.searchLexicalChunks(
-            ftsQuery: ftsQuery,
+            ftsQuery: trimmed,
             provider: provider?.rawValue,
             projectName: projectName,
             sourceKinds: sourceKinds,
@@ -2342,6 +2678,59 @@ final class DataStore {
             sourceIDs: sourceIDs,
             limit: limit
         )
+    }
+
+    /// Sums non-overlapping substring occurrence counts of each pattern in `conversations.fullText` (case-insensitive).
+    func countOccurrencesInConversationFullText(
+        patterns: [String],
+        provider: AgentProvider? = nil,
+        projectName: String? = nil,
+        dateRange: ClosedRange<Date>? = nil,
+        conversationSources: Set<ConversationSourceType>? = nil
+    ) throws -> Int {
+        let cleaned = patterns
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !cleaned.isEmpty else { return 0 }
+
+        var total = 0
+        for raw in cleaned {
+            let pattern = raw.lowercased()
+            guard pattern.isEmpty == false else { continue }
+            let n = try dbQueue.read { db -> Int in
+                var sql = """
+                SELECT COALESCE(SUM(
+                    (LENGTH(COALESCE(c.fullText,'')) - LENGTH(REPLACE(LOWER(COALESCE(c.fullText,'')), ?, ''))) / LENGTH(?)
+                ), 0)
+                FROM conversations AS c
+                WHERE 1 = 1
+                """
+                var args: [any DatabaseValueConvertible] = [pattern, pattern, pattern]
+                if let provider {
+                    sql += " AND c.provider = ?"
+                    args.append(provider.rawValue)
+                }
+                if let projectName {
+                    sql += " AND c.projectName = ?"
+                    args.append(projectName)
+                }
+                if let range = dateRange {
+                    sql += " AND c.startTime >= ? AND c.startTime <= ?"
+                    args.append(range.lowerBound)
+                    args.append(range.upperBound)
+                }
+                if let sources = conversationSources, sources.isEmpty == false {
+                    let rawVals = sources.map(\.rawValue)
+                    let placeholders = Array(repeating: "?", count: rawVals.count).joined(separator: ", ")
+                    sql += " AND c.sourceType IN (\(placeholders))"
+                    args.append(contentsOf: rawVals)
+                }
+                let v = try Int64.fetchOne(db, sql: sql, arguments: StatementArguments(args)) ?? 0
+                return Int(v)
+            }
+            total += n
+        }
+        return total
     }
 
     func upsertSourceArtifact(_ artifact: SourceArtifactRecord) throws -> SourceArtifactWriteDisposition {
@@ -2354,6 +2743,18 @@ final class DataStore {
         sourceKinds: [SearchSourceKind] = [.skillDoc, .agentDoc, .sharedArtifact]
     ) throws -> [SourceArtifactRecord] {
         try localSearchStore.fetchSourceArtifacts(
+            includeDeleted: includeDeleted,
+            rootPaths: rootPaths,
+            sourceKinds: sourceKinds
+        )
+    }
+
+    func countSourceArtifacts(
+        includeDeleted: Bool = false,
+        rootPaths: [String]? = nil,
+        sourceKinds: [SearchSourceKind] = [.skillDoc, .agentDoc, .sharedArtifact]
+    ) throws -> Int {
+        try localSearchStore.countSourceArtifacts(
             includeDeleted: includeDeleted,
             rootPaths: rootPaths,
             sourceKinds: sourceKinds
@@ -2395,6 +2796,18 @@ final class DataStore {
         )
     }
 
+    func countSharedArtifactSyncStates(
+        workspaceID: String? = nil,
+        teamID: String? = nil,
+        statuses: [SharedArtifactSyncStatus]? = nil
+    ) throws -> Int {
+        try localSearchStore.countSharedArtifactSyncStates(
+            workspaceID: workspaceID,
+            teamID: teamID,
+            statuses: statuses
+        )
+    }
+
     func upsertSharedArtifactPermission(_ permission: SharedArtifactPermissionRecord) throws -> SharedArtifactPermissionWriteDisposition {
         try localSearchStore.upsertSharedArtifactPermission(permission)
     }
@@ -2424,6 +2837,22 @@ final class DataStore {
             principalType: principalType,
             principalID: principalID,
             limit: limit
+        )
+    }
+
+    func countSharedArtifactPermissions(
+        sourceArtifactID: String? = nil,
+        workspaceID: String? = nil,
+        teamID: String? = nil,
+        principalType: SharedArtifactPrincipalType? = nil,
+        principalID: String? = nil
+    ) throws -> Int {
+        try localSearchStore.countSharedArtifactPermissions(
+            sourceArtifactID: sourceArtifactID,
+            workspaceID: workspaceID,
+            teamID: teamID,
+            principalType: principalType,
+            principalID: principalID
         )
     }
 
@@ -2459,6 +2888,20 @@ final class DataStore {
         )
     }
 
+    func countSharedArtifactAuditEvents(
+        sourceArtifactID: String? = nil,
+        workspaceID: String? = nil,
+        teamID: String? = nil,
+        actions: [SharedArtifactAuditAction]? = nil
+    ) throws -> Int {
+        try localSearchStore.countSharedArtifactAuditEvents(
+            sourceArtifactID: sourceArtifactID,
+            workspaceID: workspaceID,
+            teamID: teamID,
+            actions: actions
+        )
+    }
+
     func enqueueProjectionJob(_ job: ProjectionJobRecord) throws {
         try localSearchStore.enqueueProjectionJob(job)
     }
@@ -2468,6 +2911,10 @@ final class DataStore {
         limit: Int = 100
     ) throws -> [ProjectionJobRecord] {
         try localSearchStore.fetchProjectionJobs(statuses: statuses, limit: limit)
+    }
+
+    func countProjectionJobs(statuses: [ProjectionJobStatus]? = nil) throws -> Int {
+        try localSearchStore.countProjectionJobs(statuses: statuses)
     }
 
     func leaseNextProjectionJob(
@@ -2542,12 +2989,20 @@ final class DataStore {
         try localSearchStore.fetchEmbeddingModels()
     }
 
+    func countEmbeddingModels() throws -> Int {
+        try localSearchStore.countEmbeddingModels()
+    }
+
     func upsertEmbeddingVersion(_ version: EmbeddingVersionRecord) throws {
         try localSearchStore.upsertEmbeddingVersion(version)
     }
 
     func fetchEmbeddingVersions(modelID: String? = nil) throws -> [EmbeddingVersionRecord] {
         try localSearchStore.fetchEmbeddingVersions(modelID: modelID)
+    }
+
+    func countEmbeddingVersions(modelID: String? = nil) throws -> Int {
+        try localSearchStore.countEmbeddingVersions(modelID: modelID)
     }
 
     func upsertChunkEmbedding(_ embedding: ChunkEmbeddingRecord) throws {
@@ -2562,6 +3017,26 @@ final class DataStore {
         try localSearchStore.fetchChunkEmbeddings(embeddingVersionID: embeddingVersionID)
     }
 
+    func countChunkEmbeddings(
+        chunkID: String? = nil,
+        embeddingVersionID: String? = nil
+    ) throws -> Int {
+        try localSearchStore.countChunkEmbeddings(
+            chunkID: chunkID,
+            embeddingVersionID: embeddingVersionID
+        )
+    }
+
+    func countChunkEmbeddings(
+        documentID: String,
+        embeddingVersionID: String? = nil
+    ) throws -> Int {
+        try localSearchStore.countChunkEmbeddings(
+            documentID: documentID,
+            embeddingVersionID: embeddingVersionID
+        )
+    }
+
     func upsertRetrievalHealth(_ health: RetrievalHealthRecord) throws {
         try localSearchStore.upsertRetrievalHealth(health)
     }
@@ -2572,6 +3047,15 @@ final class DataStore {
 
     func localSearchSchemaInventory() throws -> LocalSearchSchemaInventory {
         try localSearchStore.schemaInventory()
+    }
+
+    func countConversations() throws -> Int {
+        try dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM conversations"
+            ) ?? 0
+        }
     }
 
     // MARK: - Conversation row mapping
@@ -2660,6 +3144,14 @@ final class DataStore {
             return nil
         }
         return arr
+    }
+
+    private static func compactChatSnippet(_ source: String, limit: Int) -> String {
+        let compact = source
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard compact.count > limit else { return compact }
+        return String(compact.prefix(limit)).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
     }
 
     // MARK: - Session Logs
@@ -2857,6 +3349,37 @@ private struct LocalSearchStore {
         }
     }
 
+    func fetchDocuments(
+        limit: Int,
+        provider: String?,
+        projectName: String?,
+        sourceKinds: [SearchSourceKind]?,
+        dateRange: ClosedRange<Date>?
+    ) throws -> [SearchDocumentRecord] {
+        let (whereSQL, args) = Self.filteredDocumentClause(
+            provider: provider,
+            projectName: projectName,
+            sourceKinds: sourceKinds,
+            dateRange: dateRange
+        )
+        var queryArgs = args
+        queryArgs.append(max(1, limit))
+
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM search_documents
+                \(whereSQL)
+                ORDER BY COALESCE(sourceUpdatedAt, indexedAt) DESC, indexedAt DESC, createdAt DESC
+                LIMIT ?
+                """,
+                arguments: StatementArguments(queryArgs)
+            )
+            return rows.compactMap(Self.document(from:))
+        }
+    }
+
     func fetchDocuments(ids: [String]) throws -> [SearchDocumentRecord] {
         let uniqueIDs = Array(Set(ids)).sorted()
         guard uniqueIDs.isEmpty == false else { return [] }
@@ -2875,6 +3398,10 @@ private struct LocalSearchStore {
         }
     }
 
+    func fetchDocument(id: String) throws -> SearchDocumentRecord? {
+        try fetchDocuments(ids: [id]).first
+    }
+
     func fetchDocuments(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchDocumentRecord] {
         try dbQueue.read { db in
             let rows = try Row.fetchAll(
@@ -2890,8 +3417,92 @@ private struct LocalSearchStore {
         }
     }
 
+    func countDocuments(
+        provider: String?,
+        projectName: String?,
+        sourceKinds: [SearchSourceKind]?,
+        dateRange: ClosedRange<Date>?
+    ) throws -> Int {
+        let (whereSQL, args) = Self.filteredDocumentClause(
+            provider: provider,
+            projectName: projectName,
+            sourceKinds: sourceKinds,
+            dateRange: dateRange
+        )
+
+        return try dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM search_documents
+                \(whereSQL)
+                """,
+                arguments: StatementArguments(args)
+            ) ?? 0
+        }
+    }
+
+    func countChunks(
+        sourceKinds: [SearchSourceKind]?,
+        dateRange: ClosedRange<Date>?
+    ) throws -> Int {
+        let normalizedSourceKinds = Array(Set(sourceKinds ?? [])).sorted { $0.rawValue < $1.rawValue }
+        var clauses: [String] = []
+        var args: [any DatabaseValueConvertible] = []
+
+        if normalizedSourceKinds.isEmpty == false {
+            clauses.append("d.sourceKind IN (\(Self.sqlPlaceholders(count: normalizedSourceKinds.count)))")
+            args.append(contentsOf: normalizedSourceKinds.map(\.rawValue))
+        }
+
+        if let dateRange {
+            clauses.append("COALESCE(d.sourceUpdatedAt, d.indexedAt) >= ?")
+            clauses.append("COALESCE(d.sourceUpdatedAt, d.indexedAt) <= ?")
+            args.append(dateRange.lowerBound)
+            args.append(dateRange.upperBound)
+        }
+
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        return try dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM search_chunks AS c
+                JOIN search_documents AS d ON d.id = c.documentID
+                \(whereSQL)
+                """,
+                arguments: StatementArguments(args)
+            ) ?? 0
+        }
+    }
+
+    func countChunks(documentID: String) throws -> Int {
+        try dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM search_chunks
+                WHERE documentID = ?
+                """,
+                arguments: [documentID]
+            ) ?? 0
+        }
+    }
+
     func replaceChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) throws {
         try dbQueue.write { db in
+            // Look up the document to get projectName and provider for FTS
+            let documentRow = try Row.fetchOne(
+                db,
+                sql: "SELECT projectName, provider FROM search_documents WHERE id = ?",
+                arguments: [documentID]
+            )
+            let projectName = documentRow?["projectName"] as? String ?? ""
+            let provider = documentRow?["provider"] as? String ?? ""
+
             try db.execute(
                 sql: "DELETE FROM search_chunks_fts WHERE documentID = ?",
                 arguments: [documentID]
@@ -2928,12 +3539,13 @@ private struct LocalSearchStore {
                     ]
                 )
 
+                // Insert with new multi-field FTS columns (projectName, provider)
                 try db.execute(
                     sql: """
-                    INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText, projectName, provider)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    arguments: [chunk.id, chunk.documentID, title, chunk.text]
+                    arguments: [chunk.id, chunk.documentID, title, chunk.text, projectName, provider]
                 )
             }
         }
@@ -3265,6 +3877,46 @@ private struct LocalSearchStore {
         }
     }
 
+    func countSourceArtifacts(
+        includeDeleted: Bool,
+        rootPaths: [String]?,
+        sourceKinds: [SearchSourceKind]
+    ) throws -> Int {
+        guard sourceKinds.isEmpty == false else { return 0 }
+        let normalizedRoots = (rootPaths ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let kindValues = sourceKinds.map(\.rawValue)
+        var clauses: [String] = []
+        var args: [any DatabaseValueConvertible] = []
+
+        if includeDeleted == false {
+            clauses.append("status != ?")
+            args.append(SourceArtifactStatus.deleted.rawValue)
+        }
+
+        clauses.append("sourceKind IN (\(Self.sqlPlaceholders(count: kindValues.count)))")
+        args.append(contentsOf: kindValues)
+
+        if normalizedRoots.isEmpty == false {
+            clauses.append("rootPath IN (\(Self.sqlPlaceholders(count: normalizedRoots.count)))")
+            args.append(contentsOf: normalizedRoots)
+        }
+
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        return try dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM source_artifacts
+                \(whereSQL)
+                """,
+                arguments: StatementArguments(args)
+            ) ?? 0
+        }
+    }
+
     func fetchSourceArtifact(id: String, includeDeleted: Bool) throws -> SourceArtifactRecord? {
         try dbQueue.read { db in
             guard
@@ -3433,6 +4085,50 @@ private struct LocalSearchStore {
         }
     }
 
+    func countSharedArtifactSyncStates(
+        workspaceID: String?,
+        teamID: String?,
+        statuses: [SharedArtifactSyncStatus]?
+    ) throws -> Int {
+        if let statuses, statuses.isEmpty {
+            return 0
+        }
+
+        let normalizedWorkspaceID = workspaceID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedTeamID = teamID?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var clauses: [String] = []
+        var args: [any DatabaseValueConvertible] = []
+
+        if let normalizedWorkspaceID, normalizedWorkspaceID.isEmpty == false {
+            clauses.append("workspaceID = ?")
+            args.append(normalizedWorkspaceID)
+        }
+
+        if let normalizedTeamID, normalizedTeamID.isEmpty == false {
+            clauses.append("teamID = ?")
+            args.append(normalizedTeamID)
+        }
+
+        if let statuses, statuses.isEmpty == false {
+            clauses.append("syncStatus IN (\(Self.sqlPlaceholders(count: statuses.count)))")
+            args.append(contentsOf: statuses.map(\.rawValue))
+        }
+
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        return try dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM shared_artifact_sync_state
+                \(whereSQL)
+                """,
+                arguments: StatementArguments(args)
+            ) ?? 0
+        }
+    }
+
     func upsertSharedArtifactPermission(_ permission: SharedArtifactPermissionRecord) throws -> SharedArtifactPermissionWriteDisposition {
         try dbQueue.write { db in
             let existingRow = try Row.fetchOne(
@@ -3573,6 +4269,51 @@ private struct LocalSearchStore {
         }
     }
 
+    func countSharedArtifactPermissions(
+        sourceArtifactID: String?,
+        workspaceID: String?,
+        teamID: String?,
+        principalType: SharedArtifactPrincipalType?,
+        principalID: String?
+    ) throws -> Int {
+        var clauses: [String] = []
+        var args: [any DatabaseValueConvertible] = []
+
+        if let sourceArtifactID = sourceArtifactID?.trimmingCharacters(in: .whitespacesAndNewlines), sourceArtifactID.isEmpty == false {
+            clauses.append("sourceArtifactID = ?")
+            args.append(sourceArtifactID)
+        }
+        if let workspaceID = workspaceID?.trimmingCharacters(in: .whitespacesAndNewlines), workspaceID.isEmpty == false {
+            clauses.append("workspaceID = ?")
+            args.append(workspaceID)
+        }
+        if let teamID = teamID?.trimmingCharacters(in: .whitespacesAndNewlines), teamID.isEmpty == false {
+            clauses.append("teamID = ?")
+            args.append(teamID)
+        }
+        if let principalType {
+            clauses.append("principalType = ?")
+            args.append(principalType.rawValue)
+        }
+        if let principalID = principalID?.trimmingCharacters(in: .whitespacesAndNewlines), principalID.isEmpty == false {
+            clauses.append("principalID = ?")
+            args.append(principalID)
+        }
+
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        return try dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM artifact_permissions
+                \(whereSQL)
+                """,
+                arguments: StatementArguments(args)
+            ) ?? 0
+        }
+    }
+
     func fetchReadableSharedArtifactSourceIDs(
         accessContext: SharedArtifactAccessContext,
         limit: Int
@@ -3706,6 +4447,48 @@ private struct LocalSearchStore {
         }
     }
 
+    func countSharedArtifactAuditEvents(
+        sourceArtifactID: String?,
+        workspaceID: String?,
+        teamID: String?,
+        actions: [SharedArtifactAuditAction]?
+    ) throws -> Int {
+        if let actions, actions.isEmpty { return 0 }
+
+        var clauses: [String] = []
+        var args: [any DatabaseValueConvertible] = []
+
+        if let sourceArtifactID = sourceArtifactID?.trimmingCharacters(in: .whitespacesAndNewlines), sourceArtifactID.isEmpty == false {
+            clauses.append("sourceArtifactID = ?")
+            args.append(sourceArtifactID)
+        }
+        if let workspaceID = workspaceID?.trimmingCharacters(in: .whitespacesAndNewlines), workspaceID.isEmpty == false {
+            clauses.append("workspaceID = ?")
+            args.append(workspaceID)
+        }
+        if let teamID = teamID?.trimmingCharacters(in: .whitespacesAndNewlines), teamID.isEmpty == false {
+            clauses.append("teamID = ?")
+            args.append(teamID)
+        }
+        if let actions, actions.isEmpty == false {
+            clauses.append("action IN (\(Self.sqlPlaceholders(count: actions.count)))")
+            args.append(contentsOf: actions.map(\.rawValue))
+        }
+
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        return try dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM audit_events
+                \(whereSQL)
+                """,
+                arguments: StatementArguments(args)
+            ) ?? 0
+        }
+    }
+
     func enqueueProjectionJob(_ job: ProjectionJobRecord) throws {
         try dbQueue.write { db in
             try db.execute(
@@ -3779,6 +4562,25 @@ private struct LocalSearchStore {
                 arguments: StatementArguments(args)
             )
             return rows.compactMap(Self.projectionJob(from:))
+        }
+    }
+
+    func countProjectionJobs(statuses: [ProjectionJobStatus]?) throws -> Int {
+        let normalizedStatuses = statuses ?? ProjectionJobStatus.allCases
+        guard normalizedStatuses.isEmpty == false else { return 0 }
+        let placeholders = normalizedStatuses.map { _ in "?" }.joined(separator: ", ")
+        let args: [any DatabaseValueConvertible] = normalizedStatuses.map(\.rawValue)
+
+        return try dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM projection_jobs
+                WHERE status IN (\(placeholders))
+                """,
+                arguments: StatementArguments(args)
+            ) ?? 0
         }
     }
 
@@ -3974,6 +4776,15 @@ private struct LocalSearchStore {
         }
     }
 
+    func countEmbeddingModels() throws -> Int {
+        try dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM embedding_models"
+            ) ?? 0
+        }
+    }
+
     func upsertEmbeddingVersion(_ version: EmbeddingVersionRecord) throws {
         try dbQueue.write { db in
             if version.isActive {
@@ -4036,6 +4847,23 @@ private struct LocalSearchStore {
                 )
             }
             return rows.compactMap(Self.embeddingVersion(from:))
+        }
+    }
+
+    func countEmbeddingVersions(modelID: String?) throws -> Int {
+        try dbQueue.read { db in
+            if let modelID {
+                return try Int.fetchOne(
+                    db,
+                    sql: "SELECT COUNT(*) FROM embedding_versions WHERE modelID = ?",
+                    arguments: [modelID]
+                ) ?? 0
+            }
+
+            return try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM embedding_versions"
+            ) ?? 0
         }
     }
 
@@ -4102,6 +4930,62 @@ private struct LocalSearchStore {
         }
     }
 
+    func countChunkEmbeddings(
+        chunkID: String?,
+        embeddingVersionID: String?
+    ) throws -> Int {
+        var clauses: [String] = []
+        var args: [any DatabaseValueConvertible] = []
+
+        if let chunkID, chunkID.isEmpty == false {
+            clauses.append("chunkID = ?")
+            args.append(chunkID)
+        }
+        if let embeddingVersionID, embeddingVersionID.isEmpty == false {
+            clauses.append("embeddingVersionID = ?")
+            args.append(embeddingVersionID)
+        }
+
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        return try dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM chunk_embeddings
+                \(whereSQL)
+                """,
+                arguments: StatementArguments(args)
+            ) ?? 0
+        }
+    }
+
+    func countChunkEmbeddings(
+        documentID: String,
+        embeddingVersionID: String?
+    ) throws -> Int {
+        var clauses: [String] = ["c.documentID = ?"]
+        var args: [any DatabaseValueConvertible] = [documentID]
+
+        if let embeddingVersionID, embeddingVersionID.isEmpty == false {
+            clauses.append("e.embeddingVersionID = ?")
+            args.append(embeddingVersionID)
+        }
+
+        return try dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM chunk_embeddings AS e
+                JOIN search_chunks AS c ON c.id = e.chunkID
+                WHERE \(clauses.joined(separator: " AND "))
+                """,
+                arguments: StatementArguments(args)
+            ) ?? 0
+        }
+    }
+
     func upsertRetrievalHealth(_ health: RetrievalHealthRecord) throws {
         try dbQueue.write { db in
             try db.execute(
@@ -4148,6 +5032,7 @@ private struct LocalSearchStore {
             "search_documents",
             "search_chunks",
             "search_chunks_fts",
+            "search_documents_fts",
             "projection_jobs",
             "embedding_models",
             "embedding_versions",
@@ -4229,6 +5114,46 @@ private struct LocalSearchStore {
             createdAt: createdAt,
             updatedAt: updatedAt
         )
+    }
+
+    private static func filteredDocumentClause(
+        provider: String?,
+        projectName: String?,
+        sourceKinds: [SearchSourceKind]?,
+        dateRange: ClosedRange<Date>?
+    ) -> (String, [any DatabaseValueConvertible]) {
+        let trimmedProjectName = projectName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedProjectName = (trimmedProjectName?.isEmpty == false) ? trimmedProjectName : nil
+        let normalizedSourceKinds = Array(Set(sourceKinds ?? []))
+            .sorted { $0.rawValue < $1.rawValue }
+
+        var clauses: [String] = []
+        var args: [any DatabaseValueConvertible] = []
+
+        if let provider, provider.isEmpty == false {
+            clauses.append("provider = ?")
+            args.append(provider)
+        }
+
+        if let normalizedProjectName {
+            clauses.append("projectName = ?")
+            args.append(normalizedProjectName)
+        }
+
+        if normalizedSourceKinds.isEmpty == false {
+            clauses.append("sourceKind IN (\(Self.sqlPlaceholders(count: normalizedSourceKinds.count)))")
+            args.append(contentsOf: normalizedSourceKinds.map(\.rawValue))
+        }
+
+        if let dateRange {
+            clauses.append("COALESCE(sourceUpdatedAt, indexedAt) >= ?")
+            clauses.append("COALESCE(sourceUpdatedAt, indexedAt) <= ?")
+            args.append(dateRange.lowerBound)
+            args.append(dateRange.upperBound)
+        }
+
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        return (whereSQL, args)
     }
 
     private static func chunk(from row: Row) -> SearchChunkRecord? {

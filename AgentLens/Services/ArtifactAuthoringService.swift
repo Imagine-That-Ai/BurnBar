@@ -139,7 +139,7 @@ final class ArtifactAuthoringService {
         nowProvider: @escaping () -> Date = Date.init
     ) {
         self.dataStore = dataStore
-        self.retrievalService = retrievalService ?? SearchService(dataStore: dataStore)
+        self.retrievalService = retrievalService ?? SearchService.makeConversationSearchService(dataStore: dataStore)
         self.settingsProvider = settingsProvider
         self.textGenerator = textGenerator
         self.fileManager = fileManager

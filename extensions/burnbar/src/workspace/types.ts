@@ -6,6 +6,7 @@ export type BurnBarWorkspaceRpcMethod =
   | "workspace.capabilities"
   | "workspace.read_file"
   | "workspace.search_workspace"
+  | "workspace.search_burnbar_index"
   | "workspace.apply_patch"
   | "workspace.run_terminal";
 
@@ -52,6 +53,39 @@ export interface BurnBarSearchWorkspaceResult {
   matches: BurnBarSearchWorkspaceMatch[];
 }
 
+/** BurnBar local index (SQLite FTS + transcript counts) via daemon — not workspace file grep. */
+export interface BurnBarSearchBurnbarIndexRequest {
+  query: string;
+  providerRaw?: string;
+  projectName?: string;
+  dateRangeStartEpoch?: number;
+  dateRangeEndEpoch?: number;
+  resultLimit?: number;
+}
+
+export interface BurnBarIndexedSearchHit {
+  chunkID: string;
+  sourceKind: string;
+  sourceID: string;
+  title: string;
+  snippet: string;
+  provider?: string | null;
+  projectName?: string | null;
+}
+
+export interface BurnBarSearchBurnbarIndexResult {
+  plan: {
+    mode: string;
+    lexicalFTSQuery: string;
+    semanticText: string;
+    aggregatePatterns: string[];
+    note?: string | null;
+  };
+  aggregateOccurrenceCount?: number | null;
+  hits: BurnBarIndexedSearchHit[];
+  degradedMessage?: string | null;
+}
+
 export interface BurnBarPatchPosition {
   line: number;
   character: number;
@@ -93,6 +127,7 @@ export type BurnBarWorkspaceRpcRequest =
   | { method: "workspace.capabilities" }
   | { method: "workspace.read_file"; params: BurnBarReadFileRequest }
   | { method: "workspace.search_workspace"; params: BurnBarSearchWorkspaceRequest }
+  | { method: "workspace.search_burnbar_index"; params: BurnBarSearchBurnbarIndexRequest }
   | { method: "workspace.apply_patch"; params: BurnBarApplyPatchRequest }
   | { method: "workspace.run_terminal"; params: BurnBarRunTerminalRequest };
 
@@ -100,6 +135,7 @@ export type BurnBarWorkspaceRpcResult =
   | BurnBarWorkspaceCapabilities
   | BurnBarReadFileResult
   | BurnBarSearchWorkspaceResult
+  | BurnBarSearchBurnbarIndexResult
   | BurnBarApplyPatchResult
   | BurnBarRunTerminalResult;
 

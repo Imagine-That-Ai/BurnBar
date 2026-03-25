@@ -369,6 +369,9 @@ enum SharedArtifactCloudCodec {
 @Observable
 @MainActor
 final class CloudSyncService {
+    private enum SyncBackoffPolicy {
+        static let permissionDeniedCooldown: TimeInterval = 10 * 60
+    }
 
     // MARK: - State
 
@@ -377,6 +380,7 @@ final class CloudSyncService {
     private(set) var lastSyncError: String?
     private(set) var cloudTotalCost: Double?
     private(set) var lastCollaborationNotice: SharedArtifactCollaborationNotice?
+    private var suppressedSyncUntil: Date?
 
     // MARK: - Dependencies
 
@@ -405,11 +409,34 @@ final class CloudSyncService {
 
     // MARK: - Sync
 
+    private func syncIsSuppressed(now: Date = Date()) -> Bool {
+        guard let suppressedSyncUntil else { return false }
+        if suppressedSyncUntil > now {
+            return true
+        }
+        self.suppressedSyncUntil = nil
+        return false
+    }
+
+    private func recordSyncError(_ error: Error) {
+        lastSyncError = error.localizedDescription
+
+        let nsError = error as NSError
+        guard nsError.domain == FirestoreErrorDomain,
+              let code = FirestoreErrorCode.Code(rawValue: nsError.code),
+              code == .permissionDenied || code == .unauthenticated else {
+            return
+        }
+
+        suppressedSyncUntil = Date().addingTimeInterval(SyncBackoffPolicy.permissionDeniedCooldown)
+    }
+
     /// Upload all unsynced local rows to Firestore. Call after refreshAll().
     func uploadPending() async {
         guard FirebaseApp.app() != nil,
               accountManager.isSignedIn,
               accountManager.isCloudSyncEnabled,
+              !syncIsSuppressed(),
               !isSyncing,
               let uid = Auth.auth().currentUser?.uid else { return }
 
@@ -448,7 +475,7 @@ final class CloudSyncService {
             // Refresh cloud aggregate after sync
             await fetchCloudTotal(uid: uid)
         } catch {
-            lastSyncError = error.localizedDescription
+            recordSyncError(error)
         }
 
         isSyncing = false
@@ -461,6 +488,7 @@ final class CloudSyncService {
               accountManager.isSignedIn,
               accountManager.isCloudSyncEnabled,
               SettingsManager.shared.conversationCloudBackupEnabled,
+              !syncIsSuppressed(),
               !isSyncing,
               let uid = Auth.auth().currentUser?.uid else { return }
 
@@ -496,7 +524,7 @@ final class CloudSyncService {
 
             await fetchCloudTotal(uid: uid)
         } catch {
-            lastSyncError = error.localizedDescription
+            recordSyncError(error)
         }
 
         isSyncing = false
@@ -505,7 +533,7 @@ final class CloudSyncService {
     /// Synchronizes shared/team artifacts between local cache and Firestore.
     /// Local search remains authoritative; cloud is replication and collaboration transport.
     func syncSharedArtifacts(maxRemoteArtifacts: Int = 300) async {
-        guard !isSyncing else { return }
+        guard !isSyncing, !syncIsSuppressed() else { return }
 
         let firebaseAvailable = FirebaseApp.app() != nil
         let signedIn = accountManager.isSignedIn
@@ -573,7 +601,7 @@ final class CloudSyncService {
             lastSyncError = errorMessage
         } catch {
             let syncError = error
-            lastSyncError = syncError.localizedDescription
+            recordSyncError(syncError)
             do {
                 try upsertCollaborationHealth(
                     status: .failed,
@@ -1860,6 +1888,7 @@ final class CloudSyncService {
               accountManager.isSignedIn,
               accountManager.isCloudSyncEnabled,
               SettingsManager.shared.sessionLogCloudBackupEnabled,
+              !syncIsSuppressed(),
               !isSyncing,
               let uid = Auth.auth().currentUser?.uid else { return }
 
@@ -1929,7 +1958,7 @@ final class CloudSyncService {
             lastSyncDate = Date()
             lastSyncError = nil
         } catch {
-            lastSyncError = error.localizedDescription
+            recordSyncError(error)
         }
 
         isSyncing = false

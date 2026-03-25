@@ -17,8 +17,8 @@ final class BurnBarSearchIntegrationHarnessTests: XCTestCase {
 
         XCTAssertEqual(harness.clock.now(), base)
 
-        let chunkVectorA = try harness.embedder.embedding(for: "deterministic harness prompt")
-        let chunkVectorB = try harness.embedder.embedding(for: "deterministic harness prompt")
+        let chunkVectorA = try await harness.embedder.embedding(for: "deterministic harness prompt")
+        let chunkVectorB = try await harness.embedder.embedding(for: "deterministic harness prompt")
         let queryVector = try await harness.queryEmbedder.embedding(for: "deterministic harness prompt")
 
         XCTAssertEqual(chunkVectorA, chunkVectorB)
@@ -93,7 +93,7 @@ final class BurnBarSearchIntegrationHarnessTests: XCTestCase {
         _ = try harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
         _ = try harness.enqueueArtifactProjection(skill, jobType: .project)
         _ = try harness.enqueueArtifactProjection(shared, jobType: .project)
-        let report = try harness.drainProjectionQueue(
+        let report = try await harness.drainProjectionQueue(
             maxSweeps: 6,
             maxJobsPerSweep: 32,
             advanceClockBy: 2
@@ -115,7 +115,7 @@ final class BurnBarSearchIntegrationHarnessTests: XCTestCase {
         XCTAssertTrue(sourceIDs.contains(shared.id))
     }
 
-    func test_rebuildHelper_enqueuesReprojectAndPurgeCandidates() throws {
+    func test_rebuildHelper_enqueuesReprojectAndPurgeCandidates() async throws {
         let harness = try BurnBarSearchIntegrationHarness(name: "rebuild-helper")
         defer { harness.cleanup() }
 
@@ -138,7 +138,7 @@ final class BurnBarSearchIntegrationHarnessTests: XCTestCase {
         XCTAssertTrue(try harness.dataStore.markSourceArtifactDeleted(id: deletedArtifact.id, deletedAt: harness.clock.now()))
 
         try harness.enqueueRebuild(reason: "harness-rebuild", priority: 1)
-        let rebuildSweep = try harness.runProjectionSweep(maxJobs: 1, leaseOwner: "rebuild-harness-worker")
+        let rebuildSweep = try await harness.runProjectionSweep(maxJobs: 1, leaseOwner: "rebuild-harness-worker")
         XCTAssertEqual(rebuildSweep.completedJobs, 1)
 
         let queued = try harness.dataStore.fetchProjectionJobs(statuses: [.queued], limit: 40)
@@ -192,7 +192,7 @@ final class BurnBarSearchIntegrationHarnessTests: XCTestCase {
         )
     }
 
-    func test_projectionPerf_queueLatencyAndThroughput_guardrails() throws {
+    func test_projectionPerf_queueLatencyAndThroughput_guardrails() async throws {
         let harness = try BurnBarSearchIntegrationHarness(name: "projection-perf")
         defer { harness.cleanup() }
 
@@ -210,7 +210,7 @@ final class BurnBarSearchIntegrationHarnessTests: XCTestCase {
         }
 
         let startedAt = monotonicNow()
-        let report = try harness.drainProjectionQueue(maxSweeps: 16, maxJobsPerSweep: 96, advanceClockBy: 1)
+        let report = try await harness.drainProjectionQueue(maxSweeps: 16, maxJobsPerSweep: 96, advanceClockBy: 1)
         let elapsedMs = elapsedMilliseconds(since: startedAt)
         let throughputJobsPerSecond = Double(report.completedJobs) / max(0.001, elapsedMs / 1_000)
 
@@ -261,7 +261,7 @@ final class BurnBarSearchIntegrationHarnessTests: XCTestCase {
             _ = try harness.enqueueArtifactProjection(artifact, jobType: .project)
         }
 
-        _ = try harness.drainProjectionQueue(maxSweeps: 24, maxJobsPerSweep: 96, advanceClockBy: 1)
+        _ = try await harness.drainProjectionQueue(maxSweeps: 24, maxJobsPerSweep: 96, advanceClockBy: 1)
 
         let retrieval = harness.makeSearchService(
             semanticEnabled: true,
@@ -320,7 +320,7 @@ final class BurnBarSearchIntegrationHarnessTests: XCTestCase {
             _ = try harness.dataStore.upsertSourceArtifact(artifact)
             _ = try harness.enqueueArtifactProjection(artifact, jobType: .project)
         }
-        _ = try harness.drainProjectionQueue(maxSweeps: 24, maxJobsPerSweep: 96, advanceClockBy: 1)
+        _ = try await harness.drainProjectionQueue(maxSweeps: 24, maxJobsPerSweep: 96, advanceClockBy: 1)
 
         let annProvider = VectorSemanticCandidateProvider(
             dataStore: harness.dataStore,
@@ -393,7 +393,7 @@ final class BurnBarSearchIntegrationHarnessTests: XCTestCase {
         _ = try harness.dataStore.upsertSourceArtifact(longArtifact)
         _ = try harness.enqueueConversationProjection(conversationID: longConversation.id, jobType: .project)
         _ = try harness.enqueueArtifactProjection(longArtifact, jobType: .project)
-        _ = try harness.drainProjectionQueue(maxSweeps: 20, maxJobsPerSweep: 64, advanceClockBy: 1)
+        _ = try await harness.drainProjectionQueue(maxSweeps: 20, maxJobsPerSweep: 64, advanceClockBy: 1)
 
         let retrieval = harness.makeSearchService(semanticEnabled: true)
         let results = await retrieval.retrieve(
@@ -422,6 +422,30 @@ final class BurnBarSearchIntegrationHarnessTests: XCTestCase {
         XCTAssertLessThanOrEqual(artifactChunks.count, 400)
         XCTAssertTrue(conversationChunks.allSatisfy { $0.endOffset > $0.startOffset })
         XCTAssertTrue(artifactChunks.allSatisfy { $0.endOffset > $0.startOffset })
+    }
+
+    func test_runBurnBarQuery_aggregateCountsQuotedPhrase() async throws {
+        let harness = try BurnBarSearchIntegrationHarness(name: "aggregate-mixed")
+        defer { harness.cleanup() }
+
+        let conversation = harness.makeConversationFixture(
+            id: "conv-agg-hello",
+            fullText: "hello hello world"
+        )
+        try harness.dataStore.upsertConversation(conversation)
+
+        let retrieval = harness.makeSearchService(semanticEnabled: false)
+        let run = await retrieval.runBurnBarQuery(
+            RetrievalQuery(
+                text: #"How many times did I say "hello"?"#,
+                filters: RetrievalFilters(ownership: .any),
+                resultLimit: 10
+            )
+        )
+
+        XCTAssertEqual(run.plan.mode, .mixed)
+        XCTAssertEqual(Set(run.plan.aggregatePatterns), ["hello"])
+        XCTAssertEqual(run.aggregateOccurrenceCount, 2)
     }
 
     private func monotonicNow() -> UInt64 {

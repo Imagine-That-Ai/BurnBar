@@ -9,6 +9,11 @@ enum SummaryProviderID: String, CaseIterable, Codable {
     case zai
 }
 
+enum IndexEmbeddingProviderID: String, CaseIterable, Codable {
+    case deterministic
+    case openai
+}
+
 @Observable
 @MainActor
 final class SettingsManager {
@@ -51,6 +56,21 @@ final class SettingsManager {
 
     /// User opted in to local indexing of conversation text for search and chat context.
     var conversationIndexingEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// Preferred embedding version for semantic indexing/search. Empty string = automatic active version.
+    var preferredIndexEmbeddingVersionID: String {
+        didSet { save() }
+    }
+
+    /// Provider used for new indexing and re-embedding work.
+    var indexEmbeddingProvider: IndexEmbeddingProviderID {
+        didSet { save() }
+    }
+
+    /// OpenAI embedding model used when `indexEmbeddingProvider == .openai`.
+    var indexOpenAIModel: String {
         didSet { save() }
     }
 
@@ -198,6 +218,31 @@ final class SettingsManager {
         didSet { save() }
     }
 
+    /// Enables cross-encoder reranking for improved retrieval precision.
+    var crossEncoderRerankEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// Model used for cross-encoder reranking (e.g., gpt-4o-mini, gpt-4o).
+    var crossEncoderModel: String {
+        didSet { save() }
+    }
+
+    /// Base URL for cross-encoder API. Empty = default OpenAI.
+    var crossEncoderBaseURL: String {
+        didSet { save() }
+    }
+
+    /// Maximum number of candidates sent to cross-encoder reranking.
+    var crossEncoderMaxCandidates: Int {
+        didSet { save() }
+    }
+
+    /// Maximum characters per candidate text sent to cross-encoder.
+    var crossEncoderMaxCharsPerCandidate: Int {
+        didSet { save() }
+    }
+
     var miniMaxQuotaMode: MiniMaxQuotaMode {
         didSet { save() }
     }
@@ -240,6 +285,11 @@ final class SettingsManager {
     var artifactDiscoveryAdditionalKnownPatterns: [String] {
         get { Self.decodeJSONStringArray(artifactDiscoveryAdditionalKnownPatternsJSON) }
         set { artifactDiscoveryAdditionalKnownPatternsJSON = Self.encodeJSONStringArray(newValue) }
+    }
+
+    var preferredIndexEmbeddingVersionIDValue: String? {
+        let trimmed = preferredIndexEmbeddingVersionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// Persists provider priority as CSV (see `summaryProviderOrderCSV`).
@@ -297,6 +347,16 @@ final class SettingsManager {
         } else {
             self.conversationIndexingEnabled = false
         }
+        self.preferredIndexEmbeddingVersionID = defaults.string(forKey: "preferredIndexEmbeddingVersionID") ?? ""
+        if
+            let rawProvider = defaults.string(forKey: "indexEmbeddingProvider"),
+            let provider = IndexEmbeddingProviderID(rawValue: rawProvider)
+        {
+            self.indexEmbeddingProvider = provider
+        } else {
+            self.indexEmbeddingProvider = .deterministic
+        }
+        self.indexOpenAIModel = defaults.string(forKey: "indexOpenAIModel") ?? "text-embedding-3-small"
         if defaults.object(forKey: "artifactDiscoveryEnabled") != nil {
             self.artifactDiscoveryEnabled = defaults.bool(forKey: "artifactDiscoveryEnabled")
         } else {
@@ -387,6 +447,25 @@ final class SettingsManager {
             self.summaryTimeLimitMinutes = 0
         }
 
+        // Cross-encoder reranking settings (default off for privacy/cost)
+        if defaults.object(forKey: "crossEncoderRerankEnabled") != nil {
+            self.crossEncoderRerankEnabled = defaults.bool(forKey: "crossEncoderRerankEnabled")
+        } else {
+            self.crossEncoderRerankEnabled = false
+        }
+        self.crossEncoderModel = defaults.string(forKey: "crossEncoderModel") ?? "gpt-4o-mini"
+        self.crossEncoderBaseURL = defaults.string(forKey: "crossEncoderBaseURL") ?? ""
+        if defaults.object(forKey: "crossEncoderMaxCandidates") != nil {
+            self.crossEncoderMaxCandidates = max(defaults.integer(forKey: "crossEncoderMaxCandidates"), 5)
+        } else {
+            self.crossEncoderMaxCandidates = 40
+        }
+        if defaults.object(forKey: "crossEncoderMaxCharsPerCandidate") != nil {
+            self.crossEncoderMaxCharsPerCandidate = max(defaults.integer(forKey: "crossEncoderMaxCharsPerCandidate"), 128)
+        } else {
+            self.crossEncoderMaxCharsPerCandidate = 512
+        }
+
         if let billingModeRaw = defaults.string(forKey: "miniMaxQuotaMode"),
            let billingMode = MiniMaxQuotaMode(rawValue: billingModeRaw) {
             self.miniMaxQuotaMode = billingMode
@@ -427,6 +506,9 @@ final class SettingsManager {
         defaults.set(dailyDigestEnabled, forKey: "dailyDigestEnabled")
         defaults.set(dailyDigestHour, forKey: "dailyDigestHour")
         defaults.set(conversationIndexingEnabled, forKey: "conversationIndexingEnabled")
+        defaults.set(preferredIndexEmbeddingVersionID, forKey: "preferredIndexEmbeddingVersionID")
+        defaults.set(indexEmbeddingProvider.rawValue, forKey: "indexEmbeddingProvider")
+        defaults.set(indexOpenAIModel, forKey: "indexOpenAIModel")
         defaults.set(artifactDiscoveryEnabled, forKey: "artifactDiscoveryEnabled")
         defaults.set(artifactDiscoveryRegisteredRootsJSON, forKey: "artifactDiscoveryRegisteredRootsJSON")
         defaults.set(artifactDiscoveryAdditionalKnownPatternsJSON, forKey: "artifactDiscoveryAdditionalKnownPatternsJSON")
@@ -464,6 +546,14 @@ final class SettingsManager {
         defaults.set(summaryRequestTimeoutSeconds, forKey: "summaryRequestTimeoutSeconds")
         defaults.set(summaryMaxConcurrency, forKey: "summaryMaxConcurrency")
         defaults.set(summaryTimeLimitMinutes, forKey: "summaryTimeLimitMinutes")
+
+        // Cross-encoder reranking settings
+        defaults.set(crossEncoderRerankEnabled, forKey: "crossEncoderRerankEnabled")
+        defaults.set(crossEncoderModel, forKey: "crossEncoderModel")
+        defaults.set(crossEncoderBaseURL, forKey: "crossEncoderBaseURL")
+        defaults.set(crossEncoderMaxCandidates, forKey: "crossEncoderMaxCandidates")
+        defaults.set(crossEncoderMaxCharsPerCandidate, forKey: "crossEncoderMaxCharsPerCandidate")
+
         defaults.set(miniMaxQuotaMode.rawValue, forKey: "miniMaxQuotaMode")
         defaults.set(factoryQuotaPlanTier.rawValue, forKey: "factoryQuotaPlanTier")
     }
@@ -505,32 +595,77 @@ final class SettingsManager {
 
     func detectAvailableProviders() -> [AgentProvider: Bool] {
         var result: [AgentProvider: Bool] = [:]
-        let fm = FileManager.default
         for provider in AgentProvider.allCases {
-            let path = (provider.logDirectory as NSString).expandingTildeInPath
-            result[provider] = fm.fileExists(atPath: path)
+            result[provider] = candidatePaths(for: provider, configuredPath: provider.logDirectory).contains {
+                FileManager.default.fileExists(atPath: $0)
+            }
         }
         return result
     }
 
     func pathExists(for provider: AgentProvider) -> Bool {
         let path = logPaths[provider] ?? provider.logDirectory
-        let expandedPath = (path as NSString).expandingTildeInPath
-        return FileManager.default.fileExists(atPath: expandedPath)
+        return candidatePaths(for: provider, configuredPath: path).contains {
+            FileManager.default.fileExists(atPath: $0)
+        }
     }
 
     // MARK: - Path Resolution
 
     func resolvedPath(for provider: AgentProvider) -> URL? {
         let path = logPaths[provider] ?? provider.logDirectory
-        let expandedPath = (path as NSString).expandingTildeInPath
-        return URL(fileURLWithPath: expandedPath)
+        let expandedPaths = candidatePaths(for: provider, configuredPath: path)
+        if let existing = expandedPaths.first(where: { FileManager.default.fileExists(atPath: $0) }) {
+            return URL(fileURLWithPath: existing)
+        }
+        return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
     }
     
     func resetPathsToDefaults() {
         logPaths = AgentProvider.allCases.reduce(into: [:]) { result, provider in
             result[provider] = provider.logDirectory
         }
+    }
+
+    private func candidatePaths(for provider: AgentProvider, configuredPath: String) -> [String] {
+        let expandedConfigured = (configuredPath as NSString).expandingTildeInPath
+        var candidates: [String] = []
+
+        switch provider {
+        case .augment:
+            candidates = [
+                expandedConfigured,
+                ("~/Library/Application Support/Code/User/globalStorage/augment.vscode-augment" as NSString).expandingTildeInPath,
+                ("~/Library/Application Support/Cursor/User/globalStorage/augment.vscode-augment" as NSString).expandingTildeInPath,
+                ("~/Library/Application Support/Windsurf/User/globalStorage/augment.vscode-augment" as NSString).expandingTildeInPath,
+            ]
+        case .hermes:
+            candidates = [
+                expandedConfigured,
+                ("~/.hermes" as NSString).expandingTildeInPath,
+                ("~/.hermes/sessions" as NSString).expandingTildeInPath,
+            ]
+        case .goose:
+            if let root = ProcessInfo.processInfo.environment["GOOSE_PATH_ROOT"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !root.isEmpty {
+                candidates.append(((root as NSString).appendingPathComponent("data/sessions") as NSString).expandingTildeInPath)
+            }
+            candidates.append(contentsOf: [
+                ("~/Library/Application Support/Block/goose/sessions" as NSString).expandingTildeInPath,
+                ("~/.local/share/goose/sessions" as NSString).expandingTildeInPath,
+                expandedConfigured,
+            ])
+        case .forgeDev:
+            candidates = [
+                expandedConfigured,
+                ("~/.forge" as NSString).expandingTildeInPath,
+            ]
+        default:
+            candidates = [expandedConfigured]
+        }
+
+        var seen: Set<String> = []
+        return candidates.filter { seen.insert($0).inserted }
     }
 }
 

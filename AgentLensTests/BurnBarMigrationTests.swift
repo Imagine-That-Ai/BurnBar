@@ -219,10 +219,10 @@ final class BurnBarMigrationBackfillRecoveryTests: XCTestCase {
             ).isEmpty
         )
 
-        let seedSweep = try harness.runProjectionSweep(maxJobs: 1, leaseOwner: "projection-backfill-seed")
+        let seedSweep = try await harness.runProjectionSweep(maxJobs: 1, leaseOwner: "projection-backfill-seed")
         XCTAssertEqual(seedSweep.completedJobs, 1)
 
-        let drainReport = try harness.drainProjectionQueue(
+        let drainReport = try await harness.drainProjectionQueue(
             maxSweeps: 8,
             maxJobsPerSweep: 32,
             advanceClockBy: 2,
@@ -246,7 +246,7 @@ final class BurnBarMigrationBackfillRecoveryTests: XCTestCase {
         XCTAssertTrue(sourceIDs.contains(skill.id))
     }
 
-    func test_embeddingBackfill_reembedAddsNewVersionAndBackfillsLegacyChunks() throws {
+    func test_embeddingBackfill_reembedAddsNewVersionAndBackfillsLegacyChunks() async throws {
         let harness = try BurnBarSearchIntegrationHarness(
             name: "embedding-backfill",
             initialTime: Date(timeIntervalSince1970: 1_742_920_000),
@@ -261,7 +261,7 @@ final class BurnBarMigrationBackfillRecoveryTests: XCTestCase {
         )
         try harness.dataStore.upsertConversation(conversation)
         _ = try harness.enqueueConversationProjection(conversationID: conversation.id, jobType: .project)
-        _ = try harness.drainProjectionQueue(
+        _ = try await harness.drainProjectionQueue(
             maxSweeps: 6,
             maxJobsPerSweep: 32,
             advanceClockBy: 2,
@@ -324,7 +324,7 @@ final class BurnBarMigrationBackfillRecoveryTests: XCTestCase {
             chunkEmbedder: embedderV2
         )
         try reembedService.enqueueReembedJob(reason: "embedding-backfill-transition", priority: 1)
-        let report = try reembedService.runSweep(maxJobs: 8)
+        let report = try await reembedService.runSweep(maxJobs: 8)
         XCTAssertEqual(report.completedJobs, 1)
 
         let versionV1ID = EmbeddingIdentity.versionID(for: harness.embedder.descriptor)
@@ -347,7 +347,7 @@ final class BurnBarMigrationBackfillRecoveryTests: XCTestCase {
         XCTAssertTrue(versions.contains(where: { $0.id == versionV1ID }))
     }
 
-    func test_rebuildReembed_recoversAfterPartialFailureAndWorkerRestart() throws {
+    func test_rebuildReembed_recoversAfterPartialFailureAndWorkerRestart() async throws {
         let harness = try BurnBarSearchIntegrationHarness(name: "rebuild-reembed-recovery")
         defer { harness.cleanup() }
 
@@ -364,7 +364,7 @@ final class BurnBarMigrationBackfillRecoveryTests: XCTestCase {
         try harness.dataStore.upsertConversation(healthyConversation)
         _ = try harness.enqueueConversationProjection(conversationID: failingConversation.id, jobType: .project)
         _ = try harness.enqueueConversationProjection(conversationID: healthyConversation.id, jobType: .project)
-        _ = try harness.drainProjectionQueue(
+        _ = try await harness.drainProjectionQueue(
             maxSweeps: 6,
             maxJobsPerSweep: 64,
             advanceClockBy: 2,
@@ -384,10 +384,10 @@ final class BurnBarMigrationBackfillRecoveryTests: XCTestCase {
         )
 
         try failingService.enqueueRebuildJob(reason: "rebuild-recovery-test", priority: 1)
-        let rebuildSweep = try failingService.runSweep(maxJobs: 1)
+        let rebuildSweep = try await failingService.runSweep(maxJobs: 1)
         XCTAssertEqual(rebuildSweep.completedJobs, 1)
 
-        let partialFailureSweep = try failingService.runSweep(maxJobs: 50)
+        let partialFailureSweep = try await failingService.runSweep(maxJobs: 50)
         XCTAssertGreaterThanOrEqual(partialFailureSweep.retriedJobs, 1)
         XCTAssertTrue(
             try harness.dataStore.fetchProjectionJobs(statuses: [.failed], limit: 20)
@@ -405,7 +405,7 @@ final class BurnBarMigrationBackfillRecoveryTests: XCTestCase {
             nowProvider: { [clock = harness.clock] in clock.now() },
             chunkEmbedder: recoveringEmbedder
         )
-        let recoverySweep = try recoveringService.runSweep(maxJobs: 50)
+        let recoverySweep = try await recoveringService.runSweep(maxJobs: 50)
         XCTAssertGreaterThanOrEqual(recoverySweep.completedJobs, 1)
         XCTAssertTrue(
             try harness.dataStore.fetchProjectionJobs(statuses: [.failed, .canceled], limit: 20).isEmpty
@@ -445,7 +445,7 @@ final class BurnBarMigrationBackfillRecoveryTests: XCTestCase {
 
         _ = try harness.dataStore.upsertSourceArtifact(sharedArtifact)
         _ = try harness.enqueueArtifactProjection(sharedArtifact, jobType: .project)
-        _ = try harness.drainProjectionQueue(
+        _ = try await harness.drainProjectionQueue(
             maxSweeps: 6,
             maxJobsPerSweep: 32,
             advanceClockBy: 2,
@@ -502,7 +502,7 @@ final class BurnBarMigrationBackfillRecoveryTests: XCTestCase {
             priority: 1,
             leaseOwner: "shared-cloud-purge-enqueue"
         )
-        _ = try harness.drainProjectionQueue(
+        _ = try await harness.drainProjectionQueue(
             maxSweeps: 4,
             maxJobsPerSweep: 32,
             advanceClockBy: 2,

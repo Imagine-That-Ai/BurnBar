@@ -47,14 +47,18 @@ public struct BurnBarDaemonConfiguration: Sendable {
     public let socketPath: String
     public let daemonVersion: String
     public let catalog: BurnBarCatalog
+    /// Read-only path to the BurnBar app SQLite database (`burnbar.sqlite`) for indexed search RPC.
+    public let indexDatabasePath: String?
 
     public init(
         socketPath: String = BurnBarDaemonPaths.defaultSocketPath,
         daemonVersion: String = BurnBarDaemonVersion.current,
-        catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog
+        catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog,
+        indexDatabasePath: String? = nil
     ) {
         self.socketPath = socketPath
         self.daemonVersion = daemonVersion
         self.catalog = catalog
+        self.indexDatabasePath = indexDatabasePath
     }
 }

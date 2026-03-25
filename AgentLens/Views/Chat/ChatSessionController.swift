@@ -13,8 +13,13 @@ final class ChatSessionController {
     var searchQuery = ""
     var searchResults: [SearchResult] = []
     var isSearching = false
+    var historyQuery = ""
+    var historyThreads: [ChatThreadSummary] = []
+    private(set) var activeThreadID: String = DataStore.legacyChatThreadID
     var selectedContext: ConversationRecord?
     var retrievalHealthSnapshot: RetrievalSystemHealthSnapshot = .empty
+    /// Set after each send from hybrid retrieval; UI may hint when no excerpts matched.
+    var lastRetrievalHadNoEvidence = false
     /// Cumulative offset from the default bottom-trailing anchor (drag to reposition).
     var panelFloatOffset: CGSize = .zero
     var panelWidth: CGFloat = 400
@@ -24,11 +29,12 @@ final class ChatSessionController {
     private static let udPanelH = "chatPanelHeight"
     private static let udOffsetX = "chatPanelFloatOffsetX"
     private static let udOffsetY = "chatPanelFloatOffsetY"
+    private static let udActiveThreadID = "chatPanelActiveThreadID"
     var firstAssistantBadgeShown = false
     private(set) var activeStreamMessageId: String?
 
     private let dataStore: DataStore
-    private let searchService: SearchService
+    private var searchService: SearchService
     private let retrievalHealthService: RetrievalHealthService
     private let settingsManager: SettingsManager
     let cliBridge: CLIBridge
@@ -39,7 +45,10 @@ final class ChatSessionController {
     init(dataStore: DataStore, settingsManager: SettingsManager = .shared) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
-        self.searchService = SearchService.makeConversationSearchService(dataStore: dataStore)
+        self.searchService = SearchService.makeConversationSearchService(
+            dataStore: dataStore,
+            settingsManager: settingsManager
+        )
         self.retrievalHealthService = RetrievalHealthService(dataStore: dataStore)
         self.cliBridge = CLIBridge()
 
@@ -53,6 +62,14 @@ final class ChatSessionController {
             panelFloatOffset = CGSize(width: CGFloat(ox), height: CGFloat(oy))
         }
 
+        refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
+    }
+
+    func reconfigureSearchService() {
+        searchService = SearchService.makeConversationSearchService(
+            dataStore: dataStore,
+            settingsManager: settingsManager
+        )
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
     }
 
@@ -83,18 +100,68 @@ final class ChatSessionController {
     }
 
     func loadPersistedMessages() {
-        if let rows = try? dataStore.fetchChatMessages() {
-            messages = rows
+        let savedThreadID = UserDefaults.standard.string(forKey: Self.udActiveThreadID)
+        let chosenThreadID: String
+
+        if let savedThreadID,
+           (try? dataStore.chatThreadExists(id: savedThreadID)) == true {
+            chosenThreadID = savedThreadID
+        } else if let mostRecent = try? dataStore.fetchMostRecentChatThreadID() {
+            chosenThreadID = mostRecent
+        } else {
+            chosenThreadID = (try? dataStore.createChatThread()) ?? DataStore.legacyChatThreadID
         }
+
+        activeThreadID = chosenThreadID
+        UserDefaults.standard.set(chosenThreadID, forKey: Self.udActiveThreadID)
+        messages = (try? dataStore.fetchChatMessages(threadID: chosenThreadID)) ?? []
+        firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
+        refreshHistory()
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
     }
 
     func clearChat() {
         streamTask?.cancel()
         cliBridge.cancel()
+        streamTask = nil
+        isStreaming = false
+        activeStreamMessageId = nil
         messages = []
-        try? dataStore.deleteAllChatMessages()
+        inputText = ""
+        streamError = nil
+        selectedContext = nil
         firstAssistantBadgeShown = false
+        lastRetrievalHadNoEvidence = false
+        startNewChatThread()
+    }
+
+    func startNewChatThread() {
+        let newID = UUID().uuidString
+        activeThreadID = (try? dataStore.createChatThread(id: newID)) ?? DataStore.legacyChatThreadID
+        UserDefaults.standard.set(activeThreadID, forKey: Self.udActiveThreadID)
+        messages = []
+        refreshHistory()
+    }
+
+    func refreshHistory() {
+        historyThreads = (try? dataStore.fetchChatThreadSummaries(searchQuery: historyQuery)) ?? []
+    }
+
+    func openHistoryThread(_ threadID: String) {
+        guard threadID != activeThreadID else { return }
+
+        streamTask?.cancel()
+        cliBridge.cancel()
+        streamTask = nil
+        isStreaming = false
+        activeStreamMessageId = nil
+        streamError = nil
+        selectedContext = nil
+
+        activeThreadID = threadID
+        UserDefaults.standard.set(threadID, forKey: Self.udActiveThreadID)
+        messages = (try? dataStore.fetchChatMessages(threadID: threadID)) ?? []
+        firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
     }
 
     func performSearch() {
@@ -141,7 +208,8 @@ final class ChatSessionController {
         streamError = nil
         let userMsg = ChatMessageRecord(role: .user, content: trimmed)
         messages.append(userMsg)
-        try? dataStore.saveChatMessage(userMsg)
+        try? dataStore.saveChatMessage(userMsg, threadID: activeThreadID)
+        refreshHistory()
         inputText = ""
 
         guard settingsManager.cliAssistantAllowed else {
@@ -151,7 +219,8 @@ final class ChatSessionController {
                 cliUsed: nil
             )
             messages.append(err)
-            try? dataStore.saveChatMessage(err)
+            try? dataStore.saveChatMessage(err, threadID: activeThreadID)
+            refreshHistory()
             return
         }
 
@@ -163,17 +232,74 @@ final class ChatSessionController {
                 cliUsed: nil
             )
             messages.append(err)
-            try? dataStore.saveChatMessage(err)
+            try? dataStore.saveChatMessage(err, threadID: activeThreadID)
+            refreshHistory()
             return
         }
 
-        let system = ContextBuilder.buildSystemPrompt(from: dataStore, intelligenceService: searchService)
-        let augmentedSystem: String
+        refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
+
+        let retrievalText = Self.retrievalQueryText(for: trimmed, messages: messages)
+
+        let queryRun = await searchService.runBurnBarQuery(
+            RetrievalQuery(
+                text: retrievalText,
+                filters: RetrievalFilters(
+                    artifactTypes: [.conversation, .skillDoc, .agentDoc],
+                    ownership: .personal
+                ),
+                lexicalCandidateLimit: BurnBarChatContextBudget.chatLexicalCandidateLimit,
+                semanticCandidateLimit: BurnBarChatContextBudget.chatSemanticCandidateLimit,
+                rerankCandidateLimit: BurnBarChatContextBudget.chatRerankCandidateLimit,
+                resultLimit: BurnBarChatContextBudget.chatRetrievalResultLimit
+            )
+        )
+        let retrievalResults = queryRun.retrievalResults
+
+        let retrievalPack = BurnBarChatEvidenceFormatting.formatPack(
+            results: retrievalResults,
+            maxTotalChars: BurnBarChatContextBudget.maxEvidenceChars
+        )
+        let aggregateSection = BurnBarChatEvidenceFormatting.formatAggregateSection(
+            patterns: queryRun.plan.aggregatePatterns,
+            totalOccurrences: queryRun.aggregateOccurrenceCount,
+            windowDescription: queryRun.aggregateWindowDescription
+        )
+        let evidencePack = BurnBarChatEvidenceFormatting.composeEvidenceAndAggregate(
+            retrievalPack: retrievalPack,
+            aggregateSection: aggregateSection
+        )
+
+        lastRetrievalHadNoEvidence = retrievalResults.isEmpty && (queryRun.aggregateOccurrenceCount ?? 0) == 0
+
+        let basePrompt = ContextBuilder.buildDatabaseAnalystSystemPrompt(
+            from: dataStore,
+            intelligenceService: searchService,
+            indexingEnabled: settingsManager.conversationIndexingEnabled,
+            health: retrievalHealthSnapshot
+        )
+
+        let focusSection: String
         if let ctx = selectedContext {
-            augmentedSystem = system + "\n\n## Focus session\nProject: \(ctx.projectName)\nTitle: \(ctx.inferredTaskTitle)\n\nTranscript excerpt:\n\(String(ctx.fullText.prefix(12_000)))"
+            let pinnedInEvidence = retrievalResults.contains { $0.conversation?.id == ctx.id }
+            let cap = pinnedInEvidence
+                ? BurnBarChatContextBudget.maxFocusWhenDuplicateChars
+                : BurnBarChatContextBudget.maxFocusStandaloneChars
+            focusSection = """
+
+            ## Focus session (user-selected)
+            Project: \(ctx.projectName)
+            Title: \(ctx.inferredTaskTitle)
+            id: \(ctx.id)
+
+            Transcript excerpt:
+            \(String(ctx.fullText.prefix(cap)))
+            """
         } else {
-            augmentedSystem = system
+            focusSection = ""
         }
+
+        let augmentedSystem = basePrompt + "\n\n" + evidencePack + focusSection
 
         isStreaming = true
         let assistantId = UUID().uuidString
@@ -227,7 +353,8 @@ final class ChatSessionController {
                     self.activeStreamMessageId = nil
                     if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
                         let final = self.messages[idx]
-                        try? self.dataStore.saveChatMessage(final)
+                        try? self.dataStore.saveChatMessage(final, threadID: self.activeThreadID)
+                        self.refreshHistory()
                     }
                     self.selectedContext = nil
                 }.value
@@ -257,6 +384,31 @@ final class ChatSessionController {
         cliBridge.cancel()
         isStreaming = false
         activeStreamMessageId = nil
+    }
+
+    /// Combines the prior user turn with short replies like “yes please” so hybrid search still runs the original question.
+    private static func retrievalQueryText(for current: String, messages: [ChatMessageRecord]) -> String {
+        let trimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isShortAffirmation(trimmed), messages.count >= 2 else { return trimmed }
+        let withoutLatest = messages.dropLast()
+        guard let prior = withoutLatest.last(where: { $0.role == .user })?.content else { return trimmed }
+        let p = prior.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard p.isEmpty == false, p.caseInsensitiveCompare(trimmed) != .orderedSame else { return trimmed }
+        return "\(p) \(trimmed)"
+    }
+
+    private static func isShortAffirmation(_ text: String) -> Bool {
+        let t = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.count > 80 { return false }
+        let known: Set<String> = [
+            "yes", "yes please", "yeah", "yep", "sure", "ok", "okay", "please",
+            "do it", "go ahead", "try again", "search", "go for it", "sounds good",
+            "please do", "that works", "k", "yup", "absolutely", "please search",
+            "do that", "run it"
+        ]
+        if known.contains(t) { return true }
+        if t.hasPrefix("yes ") || t.hasPrefix("sure ") || t.hasPrefix("ok ") { return true }
+        return false
     }
 
     private static func appendStreamingText(_ chunk: String, to pieces: inout [ChatTranscriptPiece]) {
