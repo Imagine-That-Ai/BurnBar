@@ -1,0 +1,95 @@
+name: Contributor Onboarding
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  welcome:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Welcome on new issue
+        if: github.event_name == 'issues'
+        uses: actions/first-interaction@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          issue-message: |
+            Hey! 👋 Welcome to OpenBurnBar. Thanks for taking the time to open an issue.
+
+            A few things that help us move fast:
+            - **Bug reports**: Include your macOS version, how you built the app (Xcode/SPM), and steps to reproduce. Screenshots or log snippets are gold.
+            - **Feature requests**: We love hearing ideas. If you want to build it yourself, check [CONTRIBUTING.md](https://github.com/Ajnunezg/BurnBar/blob/main/CONTRIBUTING.md) — it walks through the architecture and how to add a new provider parser.
+            - **Questions**: The [docs/](https://github.com/Ajnunezg/BurnBar/tree/main/docs) folder has mission, direction, roadmap, and architecture docs. Good starting points: [MISSION.md](https://github.com/Ajnunezg/BurnBar/blob/main/docs/MISSION.md) and [DIRECTION.md](https://github.com/Ajnunezg/BurnBar/blob/main/docs/DIRECTION.md).
+
+            Someone from the team will respond shortly. Thanks again! 🍄
+
+      - name: Label new issue
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Skip if already has meaningful labels
+          LABELS=$(gh issue view ${{ github.event.issue.number }} --json labels --jq '.labels[].name' 2>/dev/null)
+          if echo "$LABELS" | grep -qE 'type:|bug|feature|question|enhancement'; then
+            echo "Issue already labeled, skipping."
+            exit 0
+          fi
+
+          # Simple classification
+          TITLE=$(echo "${{ github.event.issue.title }}" | tr '[:upper:]' '[:lower:]')
+          BODY=$(echo "${{ github.event.issue.body }}" | tr '[:upper:]' '[:lower:]')
+          COMBINED="$TITLE $BODY"
+
+          LABELS_TO_ADD=""
+
+          if echo "$COMBINED" | grep -qE 'bug|crash|error|broken|regression|doesn\'t work|not working|fail'; then
+            LABELS_TO_ADD="type:bug"
+          elif echo "$COMBINED" | grep -qE 'feature|request|enhancement|would like|wishlist|support for|ability to'; then
+            LABELS_TO_ADD="type:feature"
+          elif echo "$COMBINED" | grep -qE 'question|how do|how to|help|guide|documentation'; then
+            LABELS_TO_ADD="question"
+          fi
+
+          if [ -n "$LABELS_TO_ADD" ]; then
+            gh issue edit ${{ github.event.issue.number }} --add-label "$LABELS_TO_ADD"
+            echo "Added label: $LABELS_TO_ADD"
+          fi
+
+      - name: Welcome on first PR
+        if: github.event_name == 'pull_request'
+        uses: actions/first-interaction@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          pr-message: |
+            Hey! 🎉 First contribution to OpenBurnBar — thanks for jumping in.
+
+            Here's what happens next:
+            1. **CI runs automatically** — Swift tests, TypeScript tests, evals. Check the "Checks" tab on this PR.
+            2. **Review happens when CI is green** — We'll look at the diff and leave feedback.
+            3. **Merge when ready** — We squash-merge to main with conventional commit messages (we use semantic-release).
+
+            **Quick reference:**
+            - Architecture overview: [docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md](https://github.com/Ajnunezg/BurnBar/blob/main/docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md)
+            - Contributing guide: [CONTRIBUTING.md](https://github.com/Ajnunezg/BurnBar/blob/main/CONTRIBUTING.md)
+            - Support tiers (core vs experimental): [README.md](https://github.com/Ajnunezg/BurnBar#support-tiers-what-we-treat-as-first-class)
+
+            If this is your first time with the codebase, the key pieces:
+            - `AgentLens/` — macOS menu bar app (SwiftUI)
+            - `OpenBurnBarCore/` — shared types between app and daemon
+            - `OpenBurnBarDaemon/` — local JSON-RPC daemon
+            - `extensions/openburnbar/` — VS Code/Cursor extension
+
+            Don't worry if CI isn't perfect on the first try — that's normal. We'll help you get it there. 🍄
+
+      - name: Auto-assign PR author for visibility
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr edit ${{ github.event.pull_request.number }} --add-assignee "${{ github.actor }}"
