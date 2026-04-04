@@ -302,6 +302,11 @@ Current shipped policy:
   - `apply_patch`
   - `run_terminal`
 
+Current shipped trusted-workspace policy:
+
+- workspace reads/writes stay confined to opened workspace roots
+- `apply_patch` and `run_terminal` require explicit approval before dispatch
+
 OpenBurnBar should provide clear user-facing explanations for why features are disabled until the workspace is trusted. If trust behavior changes later, update the extension copy, tests, and docs together.
 
 ## Shared Catalog

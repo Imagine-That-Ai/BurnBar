@@ -1,3 +1,5 @@
+import * as path from 'node:path';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { BurnBarWorkspaceHostKind } from '../../src/workspace/types';
 import {
@@ -10,9 +12,16 @@ import {
 // Mock vscode
 vi.mock('vscode', () => ({
   Uri: {
-    parse: (value: string) => ({ scheme: 'file', fsPath: value, toString: () => value }),
+    parse: (value: string) => {
+      const scheme = value.split(':')[0] ?? 'file';
+      const fsPath = scheme === 'file' ? value.replace(/^file:\/\//u, '') : value;
+      return { scheme, fsPath, toString: () => value };
+    },
     file: (value: string) => ({ scheme: 'file', fsPath: value, toString: () => `file://${value}` }),
-    joinPath: (base: any, ...segments: string[]) => ({ scheme: 'file', fsPath: segments.join('/'), toString: () => `file://${segments.join('/')}` })
+    joinPath: (base: any, ...segments: string[]) => {
+      const resolved = path.posix.resolve(base.fsPath, ...segments);
+      return { scheme: 'file', fsPath: resolved, toString: () => `file://${resolved}` };
+    }
   },
   env: {
     remoteName: 'cursor'
@@ -22,6 +31,7 @@ vi.mock('vscode', () => ({
     workspaceFolders: [
       {
         uri: {
+          scheme: 'file',
           fsPath: '/Users/test/project',
           toString: () => 'file:///Users/test/project'
         }
@@ -51,6 +61,28 @@ vi.mock('vscode', () => ({
 
 // Import vscode after mocking
 import * as vscode from 'vscode';
+
+const makeScopedWorkspaceApi = (): Pick<BurnBarWorkspaceApi, 'workspaceFolders' | 'parseUri' | 'fileUri' | 'joinPath'> => ({
+  workspaceFolders: [
+    {
+      uri: {
+        scheme: 'file',
+        fsPath: '/Users/test/project',
+        toString: () => 'file:///Users/test/project'
+      }
+    }
+  ],
+  parseUri: (value: string) => {
+    const scheme = value.split(':')[0] ?? 'file';
+    const fsPath = scheme === 'file' ? value.replace(/^file:\/\//u, '') : value;
+    return { scheme, fsPath, toString: () => value };
+  },
+  fileUri: (value: string) => ({ scheme: 'file', fsPath: value, toString: () => `file://${value}` }),
+  joinPath: (base: BurnBarWorkspaceUri, ...segments: string[]) => {
+    const resolved = path.posix.resolve(base.fsPath, ...segments);
+    return { scheme: base.scheme, fsPath: resolved, toString: () => `file://${resolved}` };
+  }
+});
 
 describe('createBurnBarWorkspaceApi', () => {
   beforeEach(() => {
@@ -162,44 +194,50 @@ describe('resolveWorkspaceUri', () => {
     vi.clearAllMocks();
   });
 
-  it('should resolve absolute path to URI', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-    const result = resolveWorkspaceUri(api, '/Users/test/file.txt');
-
-    expect(result).toBeDefined();
-    expect(result.fsPath).toContain('file.txt');
-  });
-
-  it('should resolve URI string as-is', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-    const result = resolveWorkspaceUri(api, 'file:///Users/test/file.txt');
-
-    expect(result).toBeDefined();
-  });
-
-  it('should resolve relative path using workspace root', () => {
-    const api = createBurnBarWorkspaceApi('ui');
+  it('should resolve a workspace-relative path inside the workspace root', () => {
+    const api = makeScopedWorkspaceApi();
     const result = resolveWorkspaceUri(api, 'src/file.txt');
 
-    expect(result).toBeDefined();
+    expect(result.fsPath).toBe('/Users/test/project/src/file.txt');
   });
 
-  it('should handle path with subdirectories', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-    const result = resolveWorkspaceUri(api, 'src/nested/deep/file.txt');
+  it('should allow an absolute path that stays within a workspace root', () => {
+    const api = makeScopedWorkspaceApi();
+    const result = resolveWorkspaceUri(api, '/Users/test/project/file.txt');
 
-    expect(result).toBeDefined();
+    expect(result.fsPath).toBe('/Users/test/project/file.txt');
   });
 
-  it('should handle empty relative path', () => {
-    const api = createBurnBarWorkspaceApi('ui');
+  it('should allow a file URI that stays within a workspace root', () => {
+    const api = makeScopedWorkspaceApi();
+    const result = resolveWorkspaceUri(api, 'file:///Users/test/project/file.txt');
+
+    expect(result.fsPath).toBe('/Users/test/project/file.txt');
+  });
+
+  it('should resolve the workspace root for an empty relative path', () => {
+    const api = makeScopedWorkspaceApi();
     const result = resolveWorkspaceUri(api, '');
 
-    expect(result).toBeDefined();
+    expect(result.fsPath).toBe('/Users/test/project');
   });
 
-  it('should throw error when no workspace folder for relative path', () => {
-    // Create API with no workspace folders
+  it('should reject absolute paths outside the workspace root', () => {
+    const api = makeScopedWorkspaceApi();
+    expect(() => resolveWorkspaceUri(api, '/Users/test/elsewhere/file.txt')).toThrow('outside the opened workspace root');
+  });
+
+  it('should reject URI strings outside the workspace root', () => {
+    const api = makeScopedWorkspaceApi();
+    expect(() => resolveWorkspaceUri(api, 'file:///Users/test/elsewhere/file.txt')).toThrow('outside the opened workspace root');
+  });
+
+  it('should reject relative traversal outside the workspace root', () => {
+    const api = makeScopedWorkspaceApi();
+    expect(() => resolveWorkspaceUri(api, '../outside.txt')).toThrow('outside the opened workspace root');
+  });
+
+  it('should throw when no workspace folder is open', () => {
     const emptyApi = {
       workspaceFolders: undefined,
       parseUri: (value: string) => ({ scheme: '', fsPath: '', toString: () => value } as BurnBarWorkspaceUri),
@@ -209,95 +247,59 @@ describe('resolveWorkspaceUri', () => {
 
     expect(() => resolveWorkspaceUri(emptyApi as any, 'relative/path.txt')).toThrow('Open a workspace folder');
   });
-
-  it('should resolve URI with scheme as-is', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-    const result = resolveWorkspaceUri(api, 'vscode://test/file.txt');
-
-    expect(result).toBeDefined();
-    // URI with vscode:// scheme should be returned as-is
-    expect(result.scheme).toBeDefined();
-  });
-
-  it('should resolve special URI schemes', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-    const schemes = ['http://', 'https://', 'git://', 'sftp://'];
-
-    for (const scheme of schemes) {
-      const result = resolveWorkspaceUri(api, `${scheme}example.com/file.txt`);
-      expect(result).toBeDefined();
-    }
-  });
-
-  it('should handle paths with leading slashes', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-    const result = resolveWorkspaceUri(api, '/absolute/path.txt');
-
-    expect(result).toBeDefined();
-  });
-
-  it('should handle paths without leading slash as relative', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-    const result = resolveWorkspaceUri(api, 'relative/path.txt');
-
-    expect(result).toBeDefined();
-  });
 });
 
 // Integration tests
 describe('Workspace API Integration', () => {
-  it('should create API and resolve URIs in sequence', () => {
-    const api = createBurnBarWorkspaceApi('ui');
+  it('should resolve multiple workspace-contained paths in sequence', () => {
+    const api = {
+      workspaceFolders: [
+        {
+          uri: {
+            scheme: 'file',
+            fsPath: '/Users/test/project',
+            toString: () => 'file:///Users/test/project'
+          }
+        }
+      ],
+      parseUri: (value: string) => ({ scheme: 'file', fsPath: value.replace(/^file:\/\//u, ''), toString: () => value }),
+      fileUri: (value: string) => ({ scheme: 'file', fsPath: value, toString: () => `file://${value}` }),
+      joinPath: (base: BurnBarWorkspaceUri, ...segments: string[]) => {
+        const resolved = path.posix.resolve(base.fsPath, ...segments);
+        return { scheme: base.scheme, fsPath: resolved, toString: () => `file://${resolved}` };
+      }
+    } satisfies Pick<BurnBarWorkspaceApi, 'workspaceFolders' | 'parseUri' | 'fileUri' | 'joinPath'>;
 
-    // Create URI from absolute path
     const uri1 = resolveWorkspaceUri(api, '/Users/test/project/file.txt');
-    expect(uri1).toBeDefined();
-
-    // Create URI from workspace-relative path
     const uri2 = resolveWorkspaceUri(api, 'src/index.ts');
-    expect(uri2).toBeDefined();
-  });
 
-  it('should handle multiple workspace folder scenarios', () => {
-    // Test with different workspace folder configurations
-    const api1 = createBurnBarWorkspaceApi('ui');
-    expect(api1.workspaceFolders).toBeDefined();
-
-    // URI resolution should work
-    const uri = resolveWorkspaceUri(api1, '/test/path.txt');
-    expect(uri).toBeDefined();
+    expect(uri1.fsPath).toBe('/Users/test/project/file.txt');
+    expect(uri2.fsPath).toBe('/Users/test/project/src/index.ts');
   });
 });
 
 // Edge case tests
 describe('Workspace API Edge Cases', () => {
-  it('should handle unicode in paths', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-    const result = resolveWorkspaceUri(api, '/test/Проект/file.txt');
+  it('should allow unicode paths that stay inside the workspace root', () => {
+    const api = makeScopedWorkspaceApi();
+    const result = resolveWorkspaceUri(api, '/Users/test/project/Проект/file.txt');
 
-    expect(result).toBeDefined();
+    expect(result.fsPath).toBe('/Users/test/project/Проект/file.txt');
   });
 
-  it('should handle special characters in paths', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-    const result = resolveWorkspaceUri(api, '/test/path with spaces/file.txt');
+  it('should allow spaces in paths that stay inside the workspace root', () => {
+    const api = makeScopedWorkspaceApi();
+    const result = resolveWorkspaceUri(api, '/Users/test/project/path with spaces/file.txt');
 
-    expect(result).toBeDefined();
+    expect(result.fsPath).toBe('/Users/test/project/path with spaces/file.txt');
   });
 
-  it('should handle very long paths', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-    const longPath = '/test/' + 'a'.repeat(500) + '/file.txt';
+  it('should allow long paths that stay inside the workspace root', () => {
+    const api = makeScopedWorkspaceApi();
+    const longPath = `/Users/test/project/${'a'.repeat(500)}/file.txt`;
     const result = resolveWorkspaceUri(api, longPath);
 
-    expect(result).toBeDefined();
-  });
-
-  it('should handle paths with multiple slashes', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-    const result = resolveWorkspaceUri(api, '///multiple///slashes///');
-
-    expect(result).toBeDefined();
+    expect(result.fsPath).toBe(longPath);
   });
 });
 
@@ -333,8 +335,8 @@ describe('BurnBarWorkspaceApi Interface', () => {
 // Type tests
 describe('BurnBarWorkspaceUri Interface', () => {
   it('should have required properties', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-    const uri = resolveWorkspaceUri(api, '/test/path.txt');
+    const api = makeScopedWorkspaceApi();
+    const uri = resolveWorkspaceUri(api, '/Users/test/project/path.txt');
 
     expect('scheme' in uri).toBe(true);
     expect('fsPath' in uri).toBe(true);
@@ -342,8 +344,8 @@ describe('BurnBarWorkspaceUri Interface', () => {
   });
 
   it('toString should return string representation', () => {
-    const api = createBurnBarWorkspaceApi('ui');
-    const uri = resolveWorkspaceUri(api, '/test/path.txt');
+    const api = makeScopedWorkspaceApi();
+    const uri = resolveWorkspaceUri(api, '/Users/test/project/path.txt');
 
     expect(typeof uri.toString()).toBe('string');
   });

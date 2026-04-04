@@ -14,3 +14,5 @@ Support is best-effort:
 - no guarantee that optional cloud, tunnel, or third-party integrations remain stable
 
 If you are evaluating OpenBurnBar, treat it as a local-first beta utility rather than a supported commercial product.
+
+Governance and maintainer expectations: [docs/GOVERNANCE.md](docs/GOVERNANCE.md).

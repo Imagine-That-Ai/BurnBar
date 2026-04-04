@@ -300,8 +300,9 @@ final class BurnBarDaemonServerTests: XCTestCase {
             ),
             socketPath: socketPath
         )
-        XCTAssertEqual(toolResultResponse.result?.run?.phase, .waitingOnCompanion)
-        XCTAssertEqual(toolResultResponse.result?.pendingToolCall?.tool, .applyPatch)
+        XCTAssertEqual(toolResultResponse.result?.run?.phase, .awaitingApproval)
+        XCTAssertEqual(toolResultResponse.result?.approvalRequest?.tool, .applyPatch)
+        XCTAssertNil(toolResultResponse.result?.pendingToolCall)
 
         await server.stop()
     }

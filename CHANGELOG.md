@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Dependabot: Swift version updates now target `OpenBurnBarCore/` and `OpenBurnBarDaemon/` (SwiftPM manifests) instead of repo root
-- Repository history was squashed to a single commit for open-source hygiene (removes prior internal tooling paths from git history and uses GitHub noreply author metadata)
+- Public-facing remote branches were reduced to the cleaned `main` branch before OSS launch review, removing stale cleanup branches from the remote
 
 ### Added
 - `QUICKSTART.md` for new contributors
@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - project versioning aligned on `0.1.0-beta` for the app, daemon, and extension
-- docs now treat `0.1.0-beta` as declared repo metadata until the first matching public git tag is cut
+- docs now treat `v0.1.0-beta` as the current annotated experimental source-release tag
 - README and quick start copy updated for experimental-source-release positioning
 - public docs scrubbed to remove stale personal repository URLs and inaccurate storage/version claims
 - public docs now clarify the source-release model, current cloud-sync scope, and the current split between Keychain-backed secrets and non-secret local app-preference storage

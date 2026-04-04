@@ -128,6 +128,39 @@ describe("OpenBurnBar workspace RPC", () => {
     companion.dispose();
   });
 
+  it("rejects file and terminal access outside the opened workspace root", async () => {
+    const api = createFakeWorkspaceApi();
+    const companion = new OpenBurnBarWorkspaceCompanion(api);
+    const client = new OpenBurnBarWorkspaceRpcClient({
+      executeCommand: async (_command, request: BurnBarWorkspaceRpcRequest) => companion.handle(request)
+    });
+
+    await expect(client.readFile({ path: "/outside/secrets.txt" })).rejects.toMatchObject<OpenBurnBarWorkspaceRpcError>({
+      code: "PATH_OUTSIDE_WORKSPACE"
+    });
+
+    await expect(
+      client.applyPatch({
+        changes: [
+          {
+            path: "../outside.txt",
+            text: "blocked"
+          }
+        ]
+      })
+    ).rejects.toMatchObject<OpenBurnBarWorkspaceRpcError>({
+      code: "PATH_OUTSIDE_WORKSPACE"
+    });
+
+    await expect(
+      client.runTerminal({ command: "npm test", cwd: "../outside" })
+    ).rejects.toMatchObject<OpenBurnBarWorkspaceRpcError>({
+      code: "PATH_OUTSIDE_WORKSPACE"
+    });
+
+    companion.dispose();
+  });
+
   it("opens patched files before saving so edits persist in Cursor-like workspaces", async () => {
     const api = createFakeWorkspaceApi({
       persistOnlyIfOpenedBeforeApply: true

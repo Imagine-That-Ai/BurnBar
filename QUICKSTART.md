@@ -6,7 +6,7 @@ Current release model: build from source. OpenBurnBar does not currently publish
 
 Tagged GitHub releases are source-only milestones: the workflow drafts a release page after verification, but relies on GitHub's built-in source archives rather than attaching consumer-ready binaries or packaged extension artifacts.
 
-The repo metadata currently declares version `0.1.0-beta`. Create `v0.1.0-beta` as the first public git tag if you want public tag/version support language to match reality.
+The repository already includes the annotated experimental source-release tag `v0.1.0-beta`.
 
 ## Prerequisites
 
@@ -21,8 +21,8 @@ The repo metadata currently declares version `0.1.0-beta`. Create `v0.1.0-beta` 
 
 ```bash
 # Clone the repository
-git clone https://github.com/Ajnunezg/OpenBurnBar.git
-cd OpenBurnBar
+git clone https://github.com/Ajnunezg/BurnBar.git
+cd BurnBar
 
 # Open the checked-in Xcode project
 open OpenBurnBar.xcodeproj
@@ -165,7 +165,7 @@ swift run --package-path OpenBurnBarDaemon OpenBurnBarDaemon
 
 ## Getting Help
 
-- **Bug reports:** https://github.com/Ajnunezg/OpenBurnBar/issues
+- **Bug reports:** https://github.com/Ajnunezg/BurnBar/issues
 - **Security issues:** See [SECURITY.md](SECURITY.md)
 - **Contributing:** See [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Support expectations:** See [SUPPORT.md](SUPPORT.md)

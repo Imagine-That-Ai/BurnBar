@@ -44,6 +44,8 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - [OpenBurnBar Roadmap](docs/ROADMAP.md)
 - [OpenBurnBar + Cursor Agent Onboarding](docs/OPENBURNBAR_CURSOR_AGENT_ONBOARDING.md)
 - [OpenBurnBar Current Release Architecture](docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md)
+- [Threat Model and Permission Model](docs/THREAT_MODEL.md)
+- [Governance and Maintainer Expectations](docs/GOVERNANCE.md)
 
 ---
 
@@ -197,12 +199,15 @@ You get:
 - a OpenBurnBar activity bar home with **Health**, **Runs**, and **Run Detail**
 - **Reconnect**, **Refresh**, and **Repair Daemon** when the universe is misaligned
 - workspace capability detection (local, remote, read-only, virtual, restricted) so the UI doesn't lie to you
+- workspace-root-bounded file and terminal access so the companion cannot wander outside the opened project roots
 - inline recovery prose for the usual failure modes — socket missing, timeout, protocol mismatch, "did you install the daemon?", etc.
 
 **Restricted workspaces** (Cursor/VS Code untrusted mode):
 
 - **Allowed:** `read_file`, `search_workspace`, health, catalog state, projected run state
 - **Gated until trusted:** `apply_patch`, `run_terminal`
+
+Even in trusted workspaces, `apply_patch` and `run_terminal` pause for explicit approval before the companion dispatches them.
 
 **Fast start** (five steps, zero mysticism):
 
@@ -270,15 +275,15 @@ OpenBurnBar is currently a **source-release-first** project.
 - Build the macOS app, daemon, CLI, and extension from this repository.
 - The repo does **not** currently promise notarized macOS binaries, a Homebrew formula, or a public VS Marketplace / Open VSX release.
 - The visible release workflow and [macOS release checklist](docs/RELEASE_MACOS.md) are maintainer scaffolding for future packaged releases, not proof that those artifacts already ship.
-- The repo metadata currently declares version `0.1.0-beta`. Create `v0.1.0-beta` as the first public git tag if you want public tag/version support language to match reality.
+- The repository already includes the experimental source-release tag `v0.1.0-beta`.
 
 ---
 
 ## Build (Mac app)
 
 ```bash
-git clone https://github.com/Ajnunezg/OpenBurnBar.git
-cd OpenBurnBar
+git clone https://github.com/Ajnunezg/BurnBar.git
+cd BurnBar
 open OpenBurnBar.xcodeproj
 ```
 
@@ -432,7 +437,7 @@ OpenBurnBar intentionally runs **without macOS App Sandbox** (`com.apple.securit
 - Routed provider API keys and daemon-managed connector credentials use the macOS Keychain rather than plaintext files
 - Hermes/OpenClaw bearer tokens and the controller Telegram bot token now live in the macOS Keychain instead of app preferences
 - Network access is primarily to configured providers and optional user-enabled integrations; review connector, browser-tooling, and tunnel settings before enabling them
-- The app does not execute untrusted code
+- The app does not silently download and execute third-party payloads, but optional assistant and daemon features can invoke locally installed developer tools and user-approved workspace commands
 
 ### Credential Storage
 

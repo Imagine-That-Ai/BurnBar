@@ -6,7 +6,7 @@ OpenBurnBar is a local-first sidebar companion for Cursor and VS Code. The exten
 
 This extension is part of OpenBurnBar's current **experimental source release**. It is intended for local development and early adopters rather than a polished marketplace install. There is no public VS Marketplace / Open VSX release or signed VSIX shipped from this repository today.
 
-The repo metadata currently declares version `0.1.0-beta`. Create `v0.1.0-beta` as the first public git tag if you want public tag/version support language to match reality.
+The repository already includes the annotated experimental source-release tag `v0.1.0-beta`.
 
 ## Build
 
@@ -35,9 +35,9 @@ Current release model:
 
 ## Repository
 
-- Source: https://github.com/Ajnunezg/OpenBurnBar
-- Issues: https://github.com/Ajnunezg/OpenBurnBar/issues
+- Source: https://github.com/Ajnunezg/BurnBar
+- Issues: https://github.com/Ajnunezg/BurnBar/issues
 
 ## Workspace trust
 
-In restricted workspaces, the extension keeps read-only inspection features available and gates file-editing and terminal actions until the workspace is trusted.
+In restricted workspaces, the extension keeps read-only inspection features available and gates file-editing and terminal actions until the workspace is trusted. When those actions are available, the companion still constrains them to opened workspace roots, and `apply_patch` / `run_terminal` require explicit approval before dispatch.

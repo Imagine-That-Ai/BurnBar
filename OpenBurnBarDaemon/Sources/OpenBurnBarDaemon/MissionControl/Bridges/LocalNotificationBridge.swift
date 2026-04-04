@@ -1,55 +1,22 @@
 import Foundation
-import UserNotifications
+import OpenBurnBarCore
 
+/// Delivers controller nudges by broadcasting to the OpenBurnBar app. The app posts a real
+/// `UserNotifications` banner (same as the previous `osascript display notification` behavior,
+/// without spawning `/usr/bin/osascript` or touching `UNUserNotificationCenter` from the helper).
 actor BurnBarLocalNotificationBridge {
     static let shared = BurnBarLocalNotificationBridge()
 
     func deliver(title: String, body: String) async throws {
-        guard Self.shouldUseUserNotificationCenter else {
-            return
-        }
-
-        let center = UNUserNotificationCenter.current()
-        let granted = try await center.requestAuthorization(options: [.alert, .sound])
-        guard granted else {
-            throw NSError(
-                domain: "BurnBarMissionControlTransport",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Notification authorization denied for OpenBurnBar daemon."]
-            )
-        }
-
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil
+        let userInfo: [String: String] = [
+            OpenBurnBarDistributedNotifications.titleKey: title,
+            OpenBurnBarDistributedNotifications.bodyKey: body
+        ]
+        DistributedNotificationCenter.default().postNotificationName(
+            OpenBurnBarDistributedNotifications.daemonLocalNotificationName,
+            object: nil,
+            userInfo: userInfo,
+            deliverImmediately: true
         )
-
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            center.add(request) { error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume()
-                }
-            }
-        }
-    }
-
-    /// `UNUserNotificationCenter` raises if the process has no usable app bundle (SwiftPM test runner, bare tools).
-    private static var shouldUseUserNotificationCenter: Bool {
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
-            return false
-        }
-        let path = Bundle.main.bundleURL.path
-        if path.contains("/Developer/usr/bin") { return false }
-        if path.contains("/Developer/Toolchains/") { return false }
-        if Bundle.main.bundleIdentifier == nil { return false }
-        return true
     }
 }

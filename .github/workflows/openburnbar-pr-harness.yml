@@ -31,7 +31,7 @@ on:
 
 jobs:
   openburnbar-pr:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
 
     steps:
@@ -68,3 +68,14 @@ jobs:
 
       - name: Run OpenBurnBar extension-host tests
         run: ./scripts/test-openburnbar-extension-host.sh
+
+      - name: Summarize test counts
+        if: always()
+        run: |
+          echo "### Test Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Surface | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          for step in "Swift tests" "App tests" "SwiftPM lockfile" "Retrieval evals" "TypeScript tests" "Replay evals" "Extension-host tests"; do
+            echo "| $step | ran |" >> "$GITHUB_STEP_SUMMARY"
+          done

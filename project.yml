@@ -29,7 +29,7 @@ packages:
     path: OpenBurnBarCore
   GRDB:
     url: https://github.com/groue/GRDB.swift
-    from: "7.0.0"
+    from: "6.29.3"
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
     from: "11.0.0"

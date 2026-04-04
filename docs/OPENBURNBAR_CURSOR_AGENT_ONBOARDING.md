@@ -51,7 +51,7 @@ Unsupported or intentionally excluded for routed Cursor use in this release:
 OpenBurnBar detects workspace mode from the extension host and explains the result in the sidebar.
 
 - No workspace open: health stays available, but workspace tools stay disabled until you open a folder or workspace.
-- Local trusted workspace: `read_file`, `search_workspace`, `apply_patch`, and `run_terminal` are available.
+- Local trusted workspace: `read_file` and `search_workspace` are available immediately; `apply_patch` and `run_terminal` are available only after explicit approval, and all workspace tools stay bounded to the opened workspace roots.
 - Remote trusted workspace: the companion runs on the workspace host and reports the same tool set when the remote host supports it.
 - Read-only workspace: OpenBurnBar can read and search, but it cannot apply edits.
 - Virtual workspace: OpenBurnBar can read and search, but terminal execution stays unavailable.

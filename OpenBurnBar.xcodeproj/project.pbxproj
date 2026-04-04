@@ -2136,7 +2136,7 @@
 			repositoryURL = "https://github.com/groue/GRDB.swift";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 7.0.0;
+				minimumVersion = 6.29.3;
 			};
 		};
 		E0CBA8F156DDCAF7E827B423 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {

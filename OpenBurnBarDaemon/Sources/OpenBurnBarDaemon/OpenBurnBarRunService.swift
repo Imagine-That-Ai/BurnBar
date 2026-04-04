@@ -39,6 +39,7 @@ private struct BurnBarManagedRun: Sendable {
     var approvalRequest: BurnBarApprovalRequest?
     var approvalResolvedForAttempt: Bool
     var activeToolCallID: String?
+    var pendingApprovalToolInvocation: BurnBarToolInvocation?
     var lastToolCall: BurnBarToolCallSnapshot?
     var workflowStep: Int
     var workflowReadContent: String?
@@ -371,6 +372,7 @@ public actor BurnBarRunService {
         run.approvalRequest = nil
         run.approvalResolvedForAttempt = false
         run.activeToolCallID = nil
+        run.pendingApprovalToolInvocation = nil
         run.lastToolCall = nil
         run.workflowStep = 0
         run.workflowReadContent = nil
@@ -420,8 +422,12 @@ public actor BurnBarRunService {
 
         switch request.response.decision {
         case .approve:
+            let pendingInvocation = run.pendingApprovalToolInvocation
             run.approvalRequest = nil
-            run.approvalResolvedForAttempt = true
+            run.pendingApprovalToolInvocation = nil
+            if pendingInvocation == nil {
+                run.approvalResolvedForAttempt = true
+            }
             try await appendJournalEvent(
                 BurnBarRunJournalEvent(
                     runID: run.runID,
@@ -431,11 +437,17 @@ public actor BurnBarRunService {
                     emittedAt: Date()
                 )
             )
-            try transition(&run, to: .planning, activeApprovalID: nil)
-            try await continueExecution(for: &run)
+            if let pendingInvocation {
+                try transition(&run, to: .planning, activeApprovalID: nil)
+                try await enqueueCompanionToolCall(pendingInvocation, for: &run)
+            } else {
+                try transition(&run, to: .planning, activeApprovalID: nil)
+                try await continueExecution(for: &run)
+            }
         case .reject, .cancel:
             run.approvalRequest = nil
             run.activeToolCallID = nil
+            run.pendingApprovalToolInvocation = nil
             _ = await workspaceBridgeBroker.cancelActiveCall(for: runID)
             let decisionText = request.response.decision == .reject ? "rejected" : "cancelled"
             let message = request.response.note ?? "Approval \(decisionText) by controller."
@@ -765,8 +777,19 @@ public actor BurnBarRunService {
             requestedBy: run.snapshot.clientID,
             requestedAt: Date()
         )
+        if try await requestMandatoryToolApprovalIfNeeded(for: &run, invocation: invocation) {
+            return
+        }
+        try await enqueueCompanionToolCall(invocation, for: &run)
+    }
+
+    private func enqueueCompanionToolCall(
+        _ invocation: BurnBarToolInvocation,
+        for run: inout BurnBarManagedRun
+    ) async throws {
         let snapshot = try await workspaceBridgeBroker.enqueueToolCall(invocation)
         run.activeToolCallID = snapshot.callID
+        run.pendingApprovalToolInvocation = nil
         run.lastToolCall = snapshot
         try transition(&run, to: .waitingOnCompanion)
         try await appendJournalEvent(
@@ -778,6 +801,51 @@ public actor BurnBarRunService {
                 emittedAt: Date()
             )
         )
+    }
+
+    private func requestMandatoryToolApprovalIfNeeded(
+        for run: inout BurnBarManagedRun,
+        invocation: BurnBarToolInvocation
+    ) async throws -> Bool {
+        guard run.approvalRequest == nil,
+              invocation.tool == .applyPatch || invocation.tool == .runTerminal,
+              let approval = policyEngine.approvalDescriptor(
+                  explicitApprovalRequired: true,
+                  intent: run.intent,
+                  tool: invocation.tool,
+                  customTitle: nil,
+                  customMessage: nil
+              ) else {
+            return false
+        }
+
+        if run.approvalResolvedForAttempt {
+            // A run-level approval from metadata should only bypass the next risky tool call.
+            run.approvalResolvedForAttempt = false
+            return false
+        }
+
+        let approvalID = BurnBarApprovalID()
+        run.approvalRequest = BurnBarApprovalRequest(
+            approvalID: approvalID,
+            runID: run.runID,
+            tool: approval.tool,
+            title: approval.title,
+            message: approval.message,
+            requestedAt: Date()
+        )
+        run.pendingApprovalToolInvocation = invocation
+        try transition(&run, to: .awaitingApproval, activeApprovalID: approvalID)
+        try await appendJournalEvent(
+            BurnBarRunJournalEvent(
+                runID: run.runID,
+                kind: .approvalRequested,
+                phase: run.snapshot.phase,
+                payload: try BurnBarJSONValue.fromEncodable(run.approvalRequest),
+                emittedAt: Date()
+            )
+        )
+        return true
     }
 
     private func applySuccessfulToolResult(
@@ -967,6 +1035,7 @@ public actor BurnBarRunService {
                 approvalRequest: run.approvalRequest,
                 approvalResolvedForAttempt: run.approvalResolvedForAttempt,
                 activeApprovalID: run.snapshot.activeApprovalID,
+                pendingApprovalToolInvocation: run.pendingApprovalToolInvocation,
                 lastToolCall: run.lastToolCall,
                 lastToolCallID: run.lastToolCall?.callID,
                 workflowStep: run.workflowStep,
@@ -1042,6 +1111,7 @@ public actor BurnBarRunService {
                 approvalRequest: checkpoint.approvalRequest,
                 approvalResolvedForAttempt: checkpoint.approvalResolvedForAttempt,
                 activeToolCallID: checkpoint.lastToolCallID,
+                pendingApprovalToolInvocation: checkpoint.pendingApprovalToolInvocation,
                 lastToolCall: checkpoint.lastToolCall,
                 workflowStep: checkpoint.workflowStep,
                 workflowReadContent: checkpoint.workflowReadContent,
@@ -1148,6 +1218,7 @@ public actor BurnBarRunService {
             approvalRequest: nil,
             approvalResolvedForAttempt: false,
             activeToolCallID: nil,
+            pendingApprovalToolInvocation: nil,
             lastToolCall: nil,
             workflowStep: 0,
             workflowReadContent: nil,

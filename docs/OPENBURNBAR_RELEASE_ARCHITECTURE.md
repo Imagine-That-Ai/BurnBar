@@ -28,10 +28,20 @@ OpenBurnBar currently ships four coordinated control surfaces:
 
 | Tier | What it covers |
 |------|----------------|
-| **Core** | The four surfaces above plus shared `OpenBurnBarCore` contracts; local SQLite + daemon-owned files remain canonical. |
-| **Experimental** | Optional Firestore replication, iCloud file mirroring, Cursor connector + tunnel — opt-in and best-effort. |
+| **Core** | macOS app (dashboard, menu bar, session logs, settings), local daemon (provider routing, run state), Cursor/VS Code extension shell, CLI, shared `OpenBurnBarCore` contracts. Local SQLite + daemon-owned files remain canonical. |
+| **Experimental** | Optional Firestore replication, iCloud file mirroring, Cursor connector + tunnel, connector plane (GitHub/Slack/Linear/PostHog/Sentry/Gmail), mission control / controller runtime, Telegram bot integration, browser tooling plane, Hermes/OpenClaw chat backends. These are opt-in, best-effort, and may be redesigned or removed before `1.0`. |
 | **Adjacent tooling** | Repo helper at `tools/openburnbar-mcp/` (read-only MCP bridge to local SQLite) — optional for developers, not part of the runtime spine. |
 | **Parked tests** | `AgentLensTests/Parked/` — kept in-repo for future re-enablement, but intentionally excluded from `OpenBurnBarTests`; see `AgentLensTests/README.md`. |
+
+**Why connectors, mission control, and Telegram are Experimental, not Core:**
+
+These features expand the daemon's network surface and external dependencies significantly. They are fully functional and tested, but they carry different stability and support expectations than the core usage-tracking spine. Specifically:
+
+- **Connector plane** — requires users to provide their own API keys for six external services. The daemon actions are currently limited to `test_connection` and `sample_request`. Broader connector actions will ship when the interaction model stabilizes.
+- **Mission control / controller runtime** — project registry, scheduled reviews, question/followup workflows, and mission dispatch are real runtime features, but the data model and CLI surface are still evolving.
+- **Telegram bot integration** — the controller can route notifications and commands through a Telegram bot. The bot token is Keychain-backed, but the interaction model is maintainer-specific and not yet generalized for outside contributors.
+
+If you are evaluating OpenBurnBar for the Core tier only, you can ignore these features entirely. They are disabled by default and require explicit opt-in.
 
 ## Boundary Summary
 
@@ -163,6 +173,11 @@ Current shipped restricted-mode behavior in the extension:
 
 - available: `read_file`, `search_workspace`, daemon health, catalog state, projected run state
 - gated: `apply_patch`, `run_terminal`
+
+Current shipped trusted-workspace behavior in the extension:
+
+- workspace tools stay confined to opened workspace roots
+- `apply_patch` and `run_terminal` require explicit approval before dispatch
 
 Other workspace limits:
 

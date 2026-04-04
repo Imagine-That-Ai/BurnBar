@@ -6,13 +6,13 @@
   "publisher": "openburnbar",
   "icon": "media/app-icon-128.png",
   "license": "MIT",
-  "homepage": "https://github.com/Ajnunezg/OpenBurnBar/tree/main/extensions/openburnbar",
+  "homepage": "https://github.com/Ajnunezg/BurnBar/tree/main/extensions/openburnbar",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Ajnunezg/OpenBurnBar.git"
+    "url": "https://github.com/Ajnunezg/BurnBar.git"
   },
   "bugs": {
-    "url": "https://github.com/Ajnunezg/OpenBurnBar/issues"
+    "url": "https://github.com/Ajnunezg/BurnBar/issues"
   },
   "keywords": [
     "openburnbar",
@@ -246,6 +246,7 @@
     "globals": "^17.4.0"
   },
   "overrides": {
-    "serialize-javascript": "^7.0.0"
+    "serialize-javascript": "^7.0.0",
+    "diff": "^8.0.4"
   }
 }

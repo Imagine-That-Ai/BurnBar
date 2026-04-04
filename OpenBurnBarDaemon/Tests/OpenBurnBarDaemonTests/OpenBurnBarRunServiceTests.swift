@@ -362,6 +362,23 @@ final class BurnBarRunServiceTests: XCTestCase {
             )
         )
 
+        let awaitingApproval = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: createResponse.runID, clientID: clientID)
+        )
+        XCTAssertEqual(awaitingApproval.run?.phase, .awaitingApproval)
+        XCTAssertEqual(awaitingApproval.approvalRequest?.tool, .applyPatch)
+
+        _ = try await harness.runService.respondToApproval(
+            BurnBarApprovalRespondRequest(
+                response: BurnBarApprovalResponse(
+                    approvalID: try XCTUnwrap(awaitingApproval.approvalRequest?.approvalID),
+                    clientID: clientID,
+                    decision: .approve,
+                    respondedAt: Date()
+                )
+            )
+        )
+
         let secondPoll = try await harness.runService.pollRuns(
             BurnBarRunPollRequest(clientID: clientID, sessionID: sessionID, runID: createResponse.runID)
         )
@@ -929,7 +946,23 @@ final class BurnBarRunServiceTests: XCTestCase {
                 ]
             )
         )
-        XCTAssertEqual(createResponse.phase, .waitingOnCompanion)
+        XCTAssertEqual(createResponse.phase, .awaitingApproval)
+
+        let initialDetail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: createResponse.runID, clientID: clientID)
+        )
+        XCTAssertEqual(initialDetail.approvalRequest?.tool, .runTerminal)
+
+        _ = try await harness.runService.respondToApproval(
+            BurnBarApprovalRespondRequest(
+                response: BurnBarApprovalResponse(
+                    approvalID: try XCTUnwrap(initialDetail.approvalRequest?.approvalID),
+                    clientID: clientID,
+                    decision: .approve,
+                    respondedAt: Date()
+                )
+            )
+        )
 
         let claimed = try await harness.runService.executeTool(
             BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: createResponse.runID)
@@ -988,7 +1021,7 @@ final class BurnBarRunServiceTests: XCTestCase {
                 ]
             )
         )
-        XCTAssertEqual(createResponse.phase, .waitingOnCompanion)
+        XCTAssertEqual(createResponse.phase, .awaitingApproval)
 
         _ = try await harness.runService.cancelRun(
             BurnBarRunCancelRequest(runID: createResponse.runID, clientID: clientID, reason: "Cancel now")
@@ -1041,10 +1074,26 @@ final class BurnBarRunServiceTests: XCTestCase {
                 ]
             )
         )
-        XCTAssertEqual(createResponse.phase, .waitingOnCompanion)
+        XCTAssertEqual(createResponse.phase, .awaitingApproval)
 
         _ = try await harness.clientRegistry.detach(
             BurnBarClientDetachRequest(clientID: controllerID, sessionID: controllerSession)
+        )
+
+        let initialDetail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: createResponse.runID, clientID: observerID)
+        )
+        XCTAssertEqual(initialDetail.approvalRequest?.tool, .runTerminal)
+
+        _ = try await harness.runService.respondToApproval(
+            BurnBarApprovalRespondRequest(
+                response: BurnBarApprovalResponse(
+                    approvalID: try XCTUnwrap(initialDetail.approvalRequest?.approvalID),
+                    clientID: observerID,
+                    decision: .approve,
+                    respondedAt: Date()
+                )
+            )
         )
 
         let claimed = try await harness.runService.executeTool(

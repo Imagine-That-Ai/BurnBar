@@ -2,7 +2,7 @@ import * as path from 'node:path';
 
 import * as vscode from 'vscode';
 
-import type { BurnBarWorkspaceHostKind } from './types';
+import { OpenBurnBarWorkspaceRpcError, type BurnBarWorkspaceHostKind } from './types';
 
 export interface BurnBarWorkspaceUri {
   scheme: string;
@@ -87,22 +87,76 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
 }
 
 export function resolveWorkspaceUri(api: Pick<BurnBarWorkspaceApi, 'workspaceFolders' | 'parseUri' | 'fileUri' | 'joinPath'>, target: string): BurnBarWorkspaceUri {
+  const roots = api.workspaceFolders ?? [];
+  if (roots.length === 0) {
+    throw new OpenBurnBarWorkspaceRpcError(
+      'NO_WORKSPACE',
+      'Open a workspace folder before using OpenBurnBar workspace tools.'
+    );
+  }
+
+  let resolved: BurnBarWorkspaceUri;
   if (looksLikeUri(target)) {
-    return api.parseUri(target);
+    resolved = api.parseUri(target);
+  } else if (path.isAbsolute(target)) {
+    resolved = api.fileUri(target);
+  } else {
+    const workspaceRoot = roots[0];
+    if (!workspaceRoot) {
+      throw new OpenBurnBarWorkspaceRpcError(
+        'NO_WORKSPACE',
+        'Open a workspace folder before using OpenBurnBar workspace tools.'
+      );
+    }
+    resolved = api.joinPath(workspaceRoot.uri, ...target.split('/').filter(Boolean));
   }
 
-  if (path.isAbsolute(target)) {
-    return api.fileUri(target);
+  if (!isWithinWorkspaceRoots(resolved, roots)) {
+    throw new OpenBurnBarWorkspaceRpcError(
+      'PATH_OUTSIDE_WORKSPACE',
+      `OpenBurnBar cannot access '${target}' because it is outside the opened workspace root.`
+    );
   }
 
-  const root = api.workspaceFolders?.[0]?.uri;
-  if (!root) {
-    throw new Error('Open a workspace folder before using OpenBurnBar workspace tools with relative paths.');
-  }
-
-  return api.joinPath(root, ...target.split('/').filter(Boolean));
+  return resolved;
 }
 
 function looksLikeUri(value: string): boolean {
   return /^[a-z][a-z0-9+.-]*:/i.test(value);
+}
+
+function isWithinWorkspaceRoots(
+  candidate: BurnBarWorkspaceUri,
+  workspaceFolders: readonly BurnBarWorkspaceFolder[]
+): boolean {
+  return workspaceFolders.some((folder) => isWithinWorkspaceRoot(candidate, folder.uri));
+}
+
+function isWithinWorkspaceRoot(candidate: BurnBarWorkspaceUri, root: BurnBarWorkspaceUri): boolean {
+  if (candidate.scheme !== root.scheme) {
+    return false;
+  }
+
+  if (candidate.scheme === 'file') {
+    return isWithinFileRoot(candidate.fsPath, root.fsPath);
+  }
+
+  return isUriDescendant(candidate.toString(), root.toString());
+}
+
+function isWithinFileRoot(candidatePath: string, rootPath: string): boolean {
+  const normalizedCandidate = path.resolve(candidatePath);
+  const normalizedRoot = path.resolve(rootPath);
+
+  if (normalizedCandidate === normalizedRoot) {
+    return true;
+  }
+
+  const relativePath = path.relative(normalizedRoot, normalizedCandidate);
+  return relativePath !== '' && !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+}
+
+function isUriDescendant(candidate: string, root: string): boolean {
+  const normalizedRoot = root.endsWith('/') ? root.slice(0, -1) : root;
+  return candidate === normalizedRoot || candidate.startsWith(`${normalizedRoot}/`);
 }

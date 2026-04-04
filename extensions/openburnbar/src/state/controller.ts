@@ -789,6 +789,9 @@ function mapToolError(error: unknown, tool: BurnBarToolKind): BurnBarToolExecuti
   case 'NO_WORKSPACE':
     code = 'no_workspace';
     break;
+  case 'PATH_OUTSIDE_WORKSPACE':
+    code = tool === 'run_terminal' ? 'terminal_failed' : 'apply_failed';
+    break;
   case 'VIRTUAL_WORKSPACE':
   case 'REMOTE_UNSUPPORTED':
     code = 'remote_unsupported';

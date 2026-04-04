@@ -253,6 +253,7 @@ public struct BurnBarRunJournalCheckpoint: Codable, Hashable, Sendable {
     public let approvalRequest: BurnBarApprovalRequest?
     public let approvalResolvedForAttempt: Bool
     public let activeApprovalID: BurnBarApprovalID?
+    public let pendingApprovalToolInvocation: BurnBarToolInvocation?
     public let lastToolCall: BurnBarToolCallSnapshot?
     public let lastToolCallID: String?
     public let workflowStep: Int
@@ -277,6 +278,7 @@ public struct BurnBarRunJournalCheckpoint: Codable, Hashable, Sendable {
         approvalRequest: BurnBarApprovalRequest? = nil,
         approvalResolvedForAttempt: Bool = false,
         activeApprovalID: BurnBarApprovalID? = nil,
+        pendingApprovalToolInvocation: BurnBarToolInvocation? = nil,
         lastToolCall: BurnBarToolCallSnapshot? = nil,
         lastToolCallID: String? = nil,
         workflowStep: Int = 0,
@@ -300,6 +302,7 @@ public struct BurnBarRunJournalCheckpoint: Codable, Hashable, Sendable {
         self.approvalRequest = approvalRequest
         self.approvalResolvedForAttempt = approvalResolvedForAttempt
         self.activeApprovalID = activeApprovalID
+        self.pendingApprovalToolInvocation = pendingApprovalToolInvocation
         self.lastToolCall = lastToolCall
         self.lastToolCallID = lastToolCallID
         self.workflowStep = workflowStep
