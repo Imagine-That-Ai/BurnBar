@@ -1,4 +1,4 @@
-name: OpenBurnBar Source Release
+name: Release
 
 permissions:
   contents: write
@@ -9,13 +9,58 @@ on:
       - "v*"
 
 jobs:
+  generate-changelog:
+    runs-on: ubuntu-latest
+    outputs:
+      changelog: ${{ steps.changelog.outputs.content }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog from commits
+        id: changelog
+        run: |
+          chmod +x scripts/generate-changelog.sh
+          
+          # Get the previous tag
+          PREV_TAG=$(git tag -l 'v*' --sort=-version:refname | sed -n '2p')
+          echo "Previous tag: ${PREV_TAG:-none (first release)}"
+          
+          # Generate changelog
+          if [ -n "$PREV_TAG" ]; then
+            ./scripts/generate-changelog.sh "$PREV_TAG" "$GITHUB_REF_NAME" > CHANGELOG.md
+          else
+            echo "# Initial Release" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "First tagged release of OpenBurnBar." >> CHANGELOG.md
+          fi
+          
+          echo "Changelog generated:"
+          head -5 CHANGELOG.md
+
+      - name: Upload changelog artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: CHANGELOG.md
+          retention-days: 90
+
   build-and-release:
     runs-on: macos-15
+    needs: generate-changelog
     timeout-minutes: 45
 
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog
+          path: ./
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -56,28 +101,11 @@ jobs:
       - name: Verify daemon release build
         run: swift build --package-path OpenBurnBarDaemon -c release
 
-      - name: Create source-release notes
-        run: |
-          cat > SOURCE_RELEASE_NOTES.md <<'EOF'
-          OpenBurnBar publishes source-first prereleases today.
-
-          Supported release artifact:
-          - GitHub's auto-generated source archive for this tag
-
-          Not published from this workflow:
-          - notarized macOS app bundle
-          - Homebrew formula
-          - packaged daemon tarball
-          - signed VSIX / marketplace extension build
-
-          Build and run from source using README.md and QUICKSTART.md.
-          EOF
-
-      - name: Create GitHub Release
+      - name: Create GitHub Release with auto-generated changelog
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ github.ref_name }}" \
             --title "OpenBurnBar ${GITHUB_REF_NAME#v}" \
-            --notes-file SOURCE_RELEASE_NOTES.md \
+            --notes-file CHANGELOG.md \
             --draft
