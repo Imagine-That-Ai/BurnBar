@@ -4,8 +4,6 @@
 
 Before `1.0`, OpenBurnBar supports the current `main` branch and the version declared in the repo metadata (`0.1.0-beta` in this source release). Older commits may contain known issues and may not receive fixes.
 
-If you want tag-based support language to be literally true, cut the first public git tag as `v0.1.0-beta` when the repository is made public.
-
 ## Reporting a Vulnerability
 
 We take security bugs seriously. If you discover a security vulnerability, please report it responsibly.
@@ -14,7 +12,7 @@ We take security bugs seriously. If you discover a security vulnerability, pleas
 
 Preferred private path:
 
-1. Use GitHub's private vulnerability reporting or a draft security advisory if it is enabled for this repository.
+1. Use GitHub's private vulnerability reporting or a draft security advisory if it is enabled for this repository. GitHub documents private vulnerability reporting as a public-repository feature, so confirm it immediately after visibility flips.
 2. If private reporting is not available, contact the maintainer privately through the repository owner profile: https://github.com/Ajnunezg
 
 ### What to Include
@@ -37,6 +35,7 @@ We do not promise formal SLA response times. Reports are handled on a best-effor
 - **Cloud sync scope**: When cloud sync is enabled, OpenBurnBar currently uploads usage rows and in-app OpenBurnBar chat threads for cross-device resume. The current source release also writes owner-scoped shared-artifact heads/revisions under `workspaces/workspace-{uid}/teams/team-default/artifacts/...`. Conversation metadata and full session-log backup remain separately gated by their own settings.
 - **OAuth flows**: Firebase Auth handles Google and Apple sign-in. Verify redirect URIs match `com.openburnbar.app`.
 - **Extension permissions**: The OpenBurnBar extension requests minimal capabilities. Review workspace trust settings in Cursor/VS Code.
+- **Workspace tool boundaries**: Editor workspace tools are constrained to the opened workspace roots. In trusted workspaces, `apply_patch` and `run_terminal` still require explicit approval before execution.
 - **Daemon socket**: The local daemon uses a UNIX domain socket. Ensure filesystem permissions restrict access to your user account only.
 - **Cursor connector runtime**: The local connector bridge keeps provider API keys in Keychain and writes only Keychain lookup metadata plus a short-lived session token into OpenBurnBar's private support directory while the bridge is active.
 - **Optional integrations**: Connector-plane, browser-tooling, and tunnel features expand the network surface area. Enable only the integrations you actually plan to use.
