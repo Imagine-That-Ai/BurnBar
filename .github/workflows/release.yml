@@ -1,4 +1,4 @@
-name: OpenBurnBar Source Release
+name: BurnBar Release
 
 permissions:
   contents: write
@@ -8,9 +8,17 @@ on:
     tags:
       - "v*"
 
+env:
+  SCHEME: BurnBar
+  PROJECT: BurnBar.xcodeproj
+  CONFIG: Release
+  DESTINATION: "platform=macOS"
+  CACHE_DIR: .spm-cache
+  DERIVED_DATA: .derived-data
+
 jobs:
   build-and-release:
-    runs-on: macos-15
+    runs-on: macos-14
     timeout-minutes: 45
 
     steps:
@@ -22,62 +30,231 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: extensions/openburnbar/package-lock.json
+          cache-dependency-path: extensions/burnbar/package-lock.json
 
       - name: Install extension dependencies
-        run: npm ci --prefix extensions/openburnbar
+        run: npm ci --prefix extensions/burnbar
 
-      - name: Run OpenBurnBar Swift tests
-        run: ./scripts/test-openburnbar-swift.sh
+      - name: Run Swift tests
+        run: ./scripts/test-burnbar-swift.sh
 
-      - name: Run OpenBurnBar app tests
-        run: ./scripts/test-openburnbar-app.sh
+      - name: Run BurnBar app tests
+        run: ./scripts/test-burnbar-app.sh
 
-      - name: Verify OpenBurnBar app SwiftPM lockfile
-        run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
+      - name: Run TypeScript tests
+        run: ./scripts/test-burnbar-ts.sh
 
-      - name: Run OpenBurnBar TypeScript tests
-        run: ./scripts/test-openburnbar-ts.sh
+      - name: Build extension
+        run: npm run --prefix extensions/burnbar build
 
-      - name: Run OpenBurnBar retrieval replay evals
-        run: ./scripts/test-openburnbar-retrieval-evals.sh
+      - name: Build daemon (SPM release binary)
+        run: swift build --package-path BurnBarDaemon -c release
 
-      - name: Run OpenBurnBar replay evals
-        run: ./scripts/test-openburnbar-replay-evals.sh
-
-      - name: Run OpenBurnBar extension-host tests
-        run: ./scripts/test-openburnbar-extension-host.sh
-
-      - name: Verify extension package contents
+      - name: Extract version from tag
+        id: version
         run: |
-          cd extensions/openburnbar
-          npm pack --dry-run --json
+          # Validate tag format: must be v followed by semver-like characters only
+          TAG_NAME="${GITHUB_REF_NAME}"
+          if [[ ! "$TAG_NAME" =~ ^v[0-9a-zA-Z._-]+$ ]]; then
+            echo "::error::Invalid tag format: $TAG_NAME"
+            exit 1
+          fi
+          echo "version=${TAG_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Verify daemon release build
-        run: swift build --package-path OpenBurnBarDaemon -c release
-
-      - name: Create source-release notes
+      # ── Code signing setup (before build — must exist when xcodebuild signs) ──
+      - name: Import signing certificate
+        if: ${{ secrets.APPLE_CERTIFICATE_P12 != '' }}
+        env:
+          CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
-          cat > SOURCE_RELEASE_NOTES.md <<'EOF'
-          OpenBurnBar publishes source-first prereleases today.
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
-          Supported release artifact:
-          - GitHub's auto-generated source archive for this tag
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          Not published from this workflow:
-          - notarized macOS app bundle
-          - Homebrew formula
-          - packaged daemon tarball
-          - signed VSIX / marketplace extension build
+          # Import certificate
+          echo "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" \
+            -P "$CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
 
-          Build and run from source using README.md and QUICKSTART.md.
-          EOF
+      # ── Build the .app ──────────────────────────────────────────────
+      - name: Resolve Xcode packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -clonedSourcePackagesDirPath "$CACHE_DIR" \
+            -derivedDataPath "$DERIVED_DATA"
 
+      - name: Build Release .app
+        env:
+          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$SIGNING_IDENTITY" ]; then
+            SIGN_ARGS=(CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES DEVELOPMENT_TEAM="$TEAM_ID")
+          else
+            SIGN_ARGS=(CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO)
+          fi
+
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIG" \
+            -destination "$DESTINATION" \
+            -clonedSourcePackagesDirPath "$CACHE_DIR" \
+            -derivedDataPath "$DERIVED_DATA" \
+            "${SIGN_ARGS[@]}" \
+            build
+
+      # ── Embed daemon helper into .app bundle ────────────────────────
+      - name: Embed daemon binary in app bundle
+        run: |
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/BurnBar.app"
+          HELPERS_DIR="$APP_PATH/Contents/Helpers"
+          mkdir -p "$HELPERS_DIR"
+
+          # The SPM release binary from the earlier build step
+          DAEMON_BIN="BurnBarDaemon/.build/release/BurnBarDaemon"
+          if [ ! -f "$DAEMON_BIN" ]; then
+            echo "::error::Daemon binary not found at $DAEMON_BIN"
+            exit 1
+          fi
+
+          cp "$DAEMON_BIN" "$HELPERS_DIR/BurnBarDaemon"
+          chmod +x "$HELPERS_DIR/BurnBarDaemon"
+          echo "Embedded daemon: $(ls -la "$HELPERS_DIR/BurnBarDaemon")"
+
+      # ── Post-build code signing (optional) ──────────────────────────
+      - name: Codesign .app bundle
+        if: ${{ secrets.APPLE_SIGNING_IDENTITY != '' }}
+        env:
+          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/BurnBar.app"
+          ENTITLEMENTS="AgentLens/Resources/BurnBar.entitlements"
+
+          # Sign the embedded daemon helper first
+          codesign --force --options runtime \
+            --sign "$SIGNING_IDENTITY" \
+            "$APP_PATH/Contents/Helpers/BurnBarDaemon"
+
+          # Sign the main app bundle with entitlements preserved
+          codesign --force --deep --options runtime \
+            --entitlements "$ENTITLEMENTS" \
+            --sign "$SIGNING_IDENTITY" \
+            "$APP_PATH"
+
+          codesign --verify --verbose "$APP_PATH"
+
+      # ── Package DMG ─────────────────────────────────────────────────
+      - name: Create DMG
+        id: dmg
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/BurnBar.app"
+          DMG_NAME="BurnBar-${VERSION}-macOS.dmg"
+          DMG_PATH="$RUNNER_TEMP/$DMG_NAME"
+
+          # Create a DMG with Applications symlink for drag-to-install
+          STAGING="$RUNNER_TEMP/dmg-staging"
+          mkdir -p "$STAGING"
+          cp -R "$APP_PATH" "$STAGING/"
+          ln -s /Applications "$STAGING/Applications"
+
+          hdiutil create -volname "BurnBar" \
+            -srcfolder "$STAGING" \
+            -ov -format UDZO \
+            "$DMG_PATH"
+
+          echo "dmg_path=$DMG_PATH" >> "$GITHUB_OUTPUT"
+          echo "dmg_name=$DMG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Codesign DMG
+        if: ${{ secrets.APPLE_SIGNING_IDENTITY != '' }}
+        env:
+          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
+        run: |
+          codesign --force --sign "$SIGNING_IDENTITY" "$DMG_PATH"
+
+      # ── Notarize (optional — requires Apple notarization secrets) ───
+      - name: Notarize DMG
+        if: ${{ secrets.APPLE_NOTARIZATION_APPLE_ID != '' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_NOTARIZATION_APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_NOTARIZATION_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
+        run: |
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait --timeout 30m
+
+          # Staple the notarization ticket to the DMG
+          xcrun stapler staple "$DMG_PATH"
+
+      # ── Also create a ZIP of the .app ───────────────────────────────
+      - name: Create ZIP archive
+        id: zip
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/BurnBar.app"
+          ZIP_NAME="BurnBar-${VERSION}-macOS.zip"
+          ZIP_PATH="$RUNNER_TEMP/$ZIP_NAME"
+
+          cd "$(dirname "$APP_PATH")"
+          ditto -c -k --keepParent "$(basename "$APP_PATH")" "$ZIP_PATH"
+
+          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+
+      # ── Create GitHub Release with artifacts ────────────────────────
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
+          DMG_NAME: ${{ steps.dmg.outputs.dmg_name }}
+          ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "OpenBurnBar ${GITHUB_REF_NAME#v}" \
-            --notes-file SOURCE_RELEASE_NOTES.md \
+          gh release create "$TAG_NAME" \
+            "$DMG_PATH" \
+            "$ZIP_PATH" \
+            --title "BurnBar $VERSION" \
+            --notes "$(cat <<'RELEASE_NOTES'
+          ## Installation
+
+          ### Homebrew (once tap is configured)
+          ```bash
+          brew install --cask Ajnunezg/tap/burnbar
+          ```
+
+          ### Direct download
+          1. Download the `.dmg` below
+          2. Open the DMG and drag BurnBar to Applications
+          3. Launch BurnBar — look for it in your menu bar
+
+          ### Build from source
+          ```bash
+          git clone https://github.com/Ajnunezg/BurnBar.git
+          cd BurnBar && make install
+          ```
+          RELEASE_NOTES
+          )" \
             --draft

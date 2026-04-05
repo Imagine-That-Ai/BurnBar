@@ -1,33 +1,75 @@
-# macOS release checklist (drag-to-Applications)
+# macOS Release
 
-This is a manual maintainer checklist for **future** packaged macOS releases. It does not imply that notarized binaries are currently published.
+BurnBar's release pipeline is automated via `.github/workflows/release.yml`. Pushing a `v*` tag triggers a build that produces a DMG and ZIP, attaches them to a draft GitHub Release, and optionally signs + notarizes when Apple Developer secrets are configured.
 
-Current public release model:
+## How to cut a release
 
-- build OpenBurnBar from source
-- treat this checklist as maintainer prep for a later binary release
-- do not assume a notarized app, Homebrew formula, marketplace extension, daemon tarball, or other packaged artifact exists yet
-- the tagged-release GitHub Actions workflow currently drafts a **source-only** release page and does not attach consumer-ready binaries
+```bash
+git tag v0.1.0-beta
+git push origin v0.1.0-beta
+```
 
-OpenBurnBar ships as a Developer ID–signed app with the `OpenBurnBarDaemon` helper embedded under `Contents/Helpers/` (see `OpenBurnBarDaemonBinaryResolver`).
+The workflow will:
+1. Run all tests (Swift, app, TypeScript)
+2. Build a Release .app via `xcodebuild`
+3. Package a DMG (with drag-to-Applications symlink) and ZIP
+4. Sign and notarize if secrets are present (see below)
+5. Create a draft GitHub Release with artifacts attached
 
-## Build
+Review the draft release on GitHub, edit notes if needed, then publish.
 
-1. Archive in Xcode (Product → Archive) using the **Release** configuration.
-2. Export a **Developer ID** build for distribution.
+## CI secrets for signing & notarization
 
-## Signing & notarization
+Without these secrets, the workflow still produces **unsigned** DMG/ZIP artifacts. Users will need to right-click → Open to bypass Gatekeeper.
 
-1. Enable **Hardened Runtime** on the app and helper targets (Release).
-2. Sign all nested code (app + `Contents/Helpers/OpenBurnBarDaemon`).
-3. Submit to Apple **notarization** and **staple** the ticket to the `.app` / `.dmg` / `.zip`.
-4. Verify Gatekeeper: `spctl --assess --verbose /path/to/OpenBurnBar.app`
+To enable full notarized distribution, add these GitHub Actions secrets:
+
+| Secret | Description |
+|--------|-------------|
+| `APPLE_TEAM_ID` | Your 10-character Apple Developer Team ID |
+| `APPLE_SIGNING_IDENTITY` | Code signing identity, e.g. `Developer ID Application: Your Name (TEAMID)` |
+| `APPLE_CERTIFICATE_P12` | Base64-encoded `.p12` export of your Developer ID certificate + private key |
+| `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` |
+| `APPLE_NOTARIZATION_APPLE_ID` | Apple ID email for `notarytool` |
+| `APPLE_NOTARIZATION_PASSWORD` | App-specific password (generate at appleid.apple.com → Sign-In and Security → App-Specific Passwords) |
+
+### Generating the certificate secret
+
+```bash
+# Export from Keychain Access → My Certificates → "Developer ID Application: ..."
+# Choose .p12 format, set a password
+
+# Base64 encode it for GitHub:
+base64 -i Certificates.p12 | pbcopy
+# Paste into APPLE_CERTIFICATE_P12 secret
+```
+
+## Homebrew Cask
+
+A Cask formula is at `homebrew/burnbar.rb`. To publish:
+
+1. Create a repo: `Ajnunezg/homebrew-tap`
+2. Copy `homebrew/burnbar.rb` → `Casks/burnbar.rb`
+3. Update the `version` and `sha256` to match the latest release DMG
+4. Users install with: `brew install --cask Ajnunezg/tap/burnbar`
+
+Consider automating the Cask update as a step in `release.yml` once the tap repo exists.
+
+## Build from source (no signing)
+
+For users who don't need Gatekeeper approval:
+
+```bash
+make install   # builds Release .app → /Applications
+open -a BurnBar
+```
 
 ## Smoke tests after install
 
-1. Launch from **Downloads** (translocated) and from **`/Applications`** after drag-install.
-2. Open **Settings → Chat Backends** and confirm gateway URLs/tokens if using Hermes/OpenClaw.
-3. Install the per-user daemon from in-app controls and confirm the binary resolves from `Contents/Helpers/OpenBurnBarDaemon`.
+1. Launch from `/Applications` after drag-install or `make install`
+2. Confirm BurnBar appears in the menu bar
+3. Open Settings → Chat Backends and verify gateway URLs/tokens if using Hermes/OpenClaw
+4. Check the daemon resolves from `Contents/Helpers/BurnBarDaemon`
 
 ## References
 
