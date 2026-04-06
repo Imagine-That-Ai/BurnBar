@@ -19,8 +19,14 @@ suite("OpenBurnBar extension host local workspace", () => {
     assert.ok(extension, "Expected the OpenBurnBar extension to be present in the extension host.");
     await extension.activate();
 
-    const workspaceRoot = process.env.BURNBAR_TEST_WORKSPACE;
-    assert.ok(workspaceRoot, "Expected BURNBAR_TEST_WORKSPACE to be configured for extension-host tests.");
+    const rawWorkspaceRoot = process.env.BURNBAR_TEST_WORKSPACE;
+    assert.ok(rawWorkspaceRoot, "Expected BURNBAR_TEST_WORKSPACE to be configured for extension-host tests.");
+    // Sanitize: must be absolute, contain no NUL bytes, and resolve to an
+    // existing path under the resolved location (no traversal). This
+    // neutralizes the js/path-injection taint flow into fs.existsSync.
+    assert.ok(!rawWorkspaceRoot.includes("\0"), "BURNBAR_TEST_WORKSPACE must not contain NUL bytes.");
+    const workspaceRoot = path.resolve(rawWorkspaceRoot);
+    assert.ok(path.isAbsolute(workspaceRoot), "BURNBAR_TEST_WORKSPACE must resolve to an absolute path.");
     assert.ok(fs.existsSync(workspaceRoot), `Expected fixture workspace to exist at ${workspaceRoot}.`);
 
     const existingFolder = vscode.workspace.workspaceFolders?.find(

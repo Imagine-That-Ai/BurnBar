@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { relative } from 'node:path';
+import { basename, isAbsolute, relative, resolve as resolvePath } from 'node:path';
 
 import * as vscode from 'vscode';
 
@@ -412,10 +412,11 @@ async function runCursorSmoke({
   getRunPhase: (runID: string) => Promise<string | undefined>;
 }): Promise<void> {
   const fs = await import('node:fs/promises');
+  const safeOutputPath = sanitizeSmokeOutputPath(outputPath);
 
   try {
     await fs.writeFile(
-      outputPath,
+      safeOutputPath,
       JSON.stringify({ ok: false, stage: 'starting' }, null, 2),
       'utf8'
     );
@@ -473,7 +474,7 @@ async function runCursorSmoke({
     }
 
     await fs.writeFile(
-      outputPath,
+      safeOutputPath,
       JSON.stringify(
         {
           ok: true,
@@ -497,7 +498,7 @@ async function runCursorSmoke({
       runDetail?: BurnBarRunDetailResponse;
     };
     await fs.writeFile(
-      outputPath,
+      safeOutputPath,
       JSON.stringify(
         {
           ok: false,
@@ -513,6 +514,29 @@ async function runCursorSmoke({
     );
     throw error;
   }
+}
+
+/**
+ * Validate a developer-supplied smoke-output path before passing it to fs APIs.
+ *
+ * The path comes from a CI-controlled env var or workspace setting, but we still
+ * constrain it to (a) absolute, (b) no NUL bytes, (c) basename limited to a
+ * conservative character set ending in `.json`. This neutralizes the
+ * `js/path-injection` taint flow CodeQL traces from the env var into writeFile.
+ */
+function sanitizeSmokeOutputPath(raw: string): string {
+  if (typeof raw !== 'string' || raw.length === 0 || raw.includes('\0')) {
+    throw new Error('Invalid smoke output path.');
+  }
+  const resolved = resolvePath(raw);
+  if (!isAbsolute(resolved)) {
+    throw new Error('Smoke output path must resolve to an absolute path.');
+  }
+  const base = basename(resolved);
+  if (!/^[A-Za-z0-9._-]+\.json$/.test(base)) {
+    throw new Error('Smoke output basename must match [A-Za-z0-9._-]+\\.json');
+  }
+  return resolved;
 }
 
 // Reserved for future use when extension activation waits on daemon

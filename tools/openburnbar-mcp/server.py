@@ -26,9 +26,30 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("openburnbar-local")
 
 
+def _sanitize_db_path(raw: str) -> Path:
+    """
+    Validate a developer-supplied SQLite path before opening it read-only.
+
+    The MCP only ever opens this file in `mode=ro`, but we still constrain the
+    input to: no NUL bytes, resolves to an absolute path, and the basename
+    matches a conservative SQLite filename pattern. This neutralizes the
+    py/path-injection taint flow CodeQL traces from the env var into sqlite3.
+    """
+    if "\x00" in raw:
+        raise ValueError("BURNBAR_DB_PATH must not contain NUL bytes.")
+    candidate = Path(raw).expanduser().resolve()
+    if not candidate.is_absolute():
+        raise ValueError("BURNBAR_DB_PATH must resolve to an absolute path.")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+\.sqlite[0-9]?", candidate.name):
+        raise ValueError(
+            "BURNBAR_DB_PATH basename must match [A-Za-z0-9._-]+\\.sqlite[0-9]?"
+        )
+    return candidate
+
+
 def _default_db_path() -> Path:
     if env := os.environ.get("BURNBAR_DB_PATH", "").strip():
-        return Path(env).expanduser()
+        return _sanitize_db_path(env)
     home = Path.home()
     support = home / "Library" / "Application Support"
     for app_dir in ("OpenBurnBar", "AgentLens"):

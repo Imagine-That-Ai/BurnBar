@@ -1,0 +1,59 @@
+name: CodeQL
+
+# Daily CodeQL scan + on every push/PR. Replaces GitHub's default CodeQL setup
+# (which only runs weekly). To activate this workflow, switch the repo's
+# code-scanning configuration from "Default setup" to "Advanced setup" in
+# Settings → Code security → Code scanning → CodeQL analysis.
+#
+# Copilot Autofix runs automatically on the resulting alerts when enabled in
+# the same settings page; it proposes fix commits you can land via a single
+# click on each alert. That is the supported "auto-fix daily" path on GitHub.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # 09:17 UTC daily — slightly off the hour to dodge GitHub's cron contention.
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-and-quality
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

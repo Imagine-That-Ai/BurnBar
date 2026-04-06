@@ -105,18 +105,19 @@ function renderRunsList(): void {
   }
 
   runsList.innerHTML = state.runs
-    .map(
-      (run) => `
+    .map((run) => {
+      const phase = escapeHtml(String(run.phase));
+      return `
       <div class="run-item ${run.id === state.selectedRunId ? 'selected' : ''}" data-run-id="${escapeHtml(run.id)}">
         <div class="run-title">${escapeHtml(run.title || 'Untitled Run')}</div>
         <div class="run-meta">
-          <span class="run-phase run-phase--${run.phase}">${run.phase}</span>
+          <span class="run-phase run-phase--${phase}">${phase}</span>
           ${run.providerName ? `<span class="run-provider">${escapeHtml(run.providerName)}</span>` : ''}
         </div>
-        <div class="run-date">${formatDate(run.updatedAt)}</div>
+        <div class="run-date">${escapeHtml(formatDate(run.updatedAt))}</div>
       </div>
-    `
-    )
+    `;
+    })
     .join('');
 
   // Add click handlers
@@ -145,15 +146,16 @@ function renderRunDetail(): void {
     return;
   }
 
+  const phase = escapeHtml(String(run.phase));
   runDetail.innerHTML = `
     <div class="run-detail-header">
       <h2>${escapeHtml(run.title || 'Untitled Run')}</h2>
-      <span class="run-phase run-phase--${run.phase}">${run.phase}</span>
+      <span class="run-phase run-phase--${phase}">${phase}</span>
     </div>
     <div class="run-detail-meta">
       ${run.providerName ? `<div class="meta-row"><span class="meta-label">Provider:</span> ${escapeHtml(run.providerName)}</div>` : ''}
       ${run.modelId ? `<div class="meta-row"><span class="meta-label">Model:</span> ${escapeHtml(run.modelId)}</div>` : ''}
-      <div class="meta-row"><span class="meta-label">Updated:</span> ${formatDate(run.updatedAt)}</div>
+      <div class="meta-row"><span class="meta-label">Updated:</span> ${escapeHtml(formatDate(run.updatedAt))}</div>
     </div>
     ${run.note ? `<div class="run-detail-note">${escapeHtml(run.note)}</div>` : ''}
     <div class="run-detail-actions">
