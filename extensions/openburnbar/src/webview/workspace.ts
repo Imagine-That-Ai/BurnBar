@@ -224,7 +224,24 @@ function formatDate(isoString: string): string {
   }
 }
 
-// Register message handler
+// Register message handler. VS Code webviews deliver messages from the
+// extension host with an opaque origin (e.g. "vscode-webview://<id>"); the
+// trust boundary is enforced by the webview sandbox, not by comparing against
+// a URL allow-list. We still reject anything that is not same-window, has an
+// unexpected origin scheme, or fails basic schema validation before dispatch.
+const ALLOWED_ORIGIN_PREFIXES = ['vscode-webview://', 'vscode-file://'];
+
 window.addEventListener('message', (event: MessageEvent) => {
-  handleMessage(event.data);
+  if (event.source !== null && event.source !== window && event.source !== window.parent) {
+    return;
+  }
+  const origin = typeof event.origin === 'string' ? event.origin : '';
+  if (origin !== '' && !ALLOWED_ORIGIN_PREFIXES.some((prefix) => origin.startsWith(prefix))) {
+    return;
+  }
+  const data = event.data as { type?: unknown; payload?: unknown } | null;
+  if (!data || typeof data.type !== 'string') {
+    return;
+  }
+  handleMessage({ type: data.type, payload: data.payload });
 });

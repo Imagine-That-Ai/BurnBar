@@ -51,7 +51,10 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          queries: security-and-quality
+          # security-extended = strong security coverage without the
+          # quality/lint noise that security-and-quality adds (unused-var,
+          # dead-store, etc.). Those are handled by eslint in the PR harness.
+          queries: security-extended
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3

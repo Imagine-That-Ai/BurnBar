@@ -156,9 +156,9 @@ export class OpenBurnBarExtensionController {
       let clientAttached = false;
       let catalog = this.state.catalog;
       let daemonRuns = this.state.daemonRuns;
-      let pendingToolCalls = this.state.pendingToolCalls;
+      let pendingToolCalls: typeof this.state.pendingToolCalls;
       let arbitration = this.state.arbitration;
-      let recentUsage = this.state.recentUsage;
+      let recentUsage: typeof this.state.recentUsage;
 
       try {
         await this.attachClientSession();
