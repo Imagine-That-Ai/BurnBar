@@ -1,0 +1,9 @@
+commands:
+  install: xcodebuild -resolvePackageDependencies -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-resolve && npm --prefix extensions/openburnbar ci
+  typecheck: xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+  lint: swiftlint && npm --prefix extensions/openburnbar run lint
+  test: scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh
+  test_retrieval: scripts/test-openburnbar-retrieval-evals.sh
+  build: scripts/build.sh --build --configuration Debug --cache-dir .spm-cache --derived-data .derived-data/ci-build
+
+services: {}

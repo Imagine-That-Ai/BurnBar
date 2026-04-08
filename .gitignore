@@ -72,7 +72,6 @@ tools/burnbar-mcp/.venv/
 # Internal AI agent memory (not for public consumption)
 .claude/agent-memory/
 .claude/settings.local.json
-.factory/
 
 # Local Xcode/SwiftPM caches used by scripts/build.sh
 .spm-cache/
