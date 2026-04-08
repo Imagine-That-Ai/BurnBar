@@ -803,6 +803,43 @@ final class OpenBurnBarDatabase {
             )
         }
 
+        migrator.registerMigration("v27_token_usage_reasoning_source") { db in
+            try db.alter(table: "token_usage") { t in
+                t.add(column: "reasoningTokens", .integer).notNull().defaults(to: 0)
+                t.add(column: "usageSource", .text).notNull().defaults(to: "unknown")
+            }
+            try db.execute(sql: """
+                UPDATE token_usage
+                SET totalTokens = inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens + reasoningTokens
+                """)
+        }
+
+        migrator.registerMigration("v28_token_usage_provenance") { db in
+            try db.alter(table: "token_usage") { t in
+                t.add(column: "provenanceMethod", .text).notNull().defaults(to: "unknown")
+                t.add(column: "provenanceConfidence", .text).notNull().defaults(to: "unknown")
+                t.add(column: "estimatorVersion", .text).notNull().defaults(to: "")
+            }
+            // Backfill existing rows based on usageSource + provider confidence
+            try db.execute(sql: """
+                UPDATE token_usage
+                SET provenanceMethod = CASE
+                    WHEN usageSource = 'provider_log' THEN 'provider_log'
+                    WHEN usageSource = 'cursor_bridge' THEN 'connector_bridge'
+                    WHEN usageSource = 'daemon' THEN 'daemon_bridge'
+                    WHEN usageSource = 'in_app_chat' THEN 'in_app_chat'
+                    WHEN usageSource = 'billing_api' THEN 'billing_api'
+                    ELSE 'provider_log'
+                END,
+                provenanceConfidence = CASE
+                    WHEN usageSource IN ('provider_log', 'cursor_bridge', 'daemon', 'in_app_chat', 'billing_api') THEN 'exact'
+                    ELSE 'unknown'
+                END,
+                estimatorVersion = ''
+                WHERE provenanceMethod = 'unknown'
+                """)
+        }
+
         return migrator
     }
 

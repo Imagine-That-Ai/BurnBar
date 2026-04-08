@@ -184,23 +184,28 @@ final class CopilotParser: LogParser, @unchecked Sendable {
         let inputTokens: Int
         let outputTokens: Int
         let cacheReadTokens: Int
+        let isExact: Bool
 
         if foundExactUsage {
             inputTokens = exactInputTokens
             outputTokens = exactOutputTokens
             cacheReadTokens = exactCachedTokens
+            isExact = true
         } else if let meta = metadataSummary {
             inputTokens = meta.input
             outputTokens = meta.output
             cacheReadTokens = meta.cached
+            isExact = true
         } else if let pd = processLogData {
             inputTokens = pd.input
             outputTokens = pd.output
             cacheReadTokens = 0
+            isExact = true
         } else {
             inputTokens = TokenExtractionUtility.estimatedTokenCount(for: userChars, charsPerToken: 3.5)
             outputTokens = TokenExtractionUtility.estimatedTokenCount(for: assistantChars, charsPerToken: 3.5)
             cacheReadTokens = 0
+            isExact = false
         }
 
         guard inputTokens > 0 || outputTokens > 0 else { return nil }
@@ -219,7 +224,10 @@ final class CopilotParser: LogParser, @unchecked Sendable {
             cacheReadTokens: cacheReadTokens,
             costUSD: cost,
             startTime: startTime ?? Date(),
-            endTime: endTime ?? Date()
+            endTime: endTime ?? Date(),
+            provenanceMethod: isExact ? .providerLog : .heuristicEstimate,
+            provenanceConfidence: isExact ? .exact : .lowConfidenceEstimate,
+            estimatorVersion: isExact ? "" : "char-ratio-v1"
         )
 
         let conversation = ConversationRecord(
@@ -441,7 +449,9 @@ final class AiderParser: LogParser, @unchecked Sendable {
                 outputTokens: session.outputTokens,
                 costUSD: cost,
                 startTime: session.startTime ?? Date(),
-                endTime: session.endTime ?? Date()
+                endTime: session.endTime ?? Date(),
+                provenanceMethod: .providerLog,
+                provenanceConfidence: .exact
             )
             usages.append(usage)
 
@@ -559,7 +569,10 @@ final class CursorParser: LogParser, @unchecked Sendable {
                     outputTokens: estimatedOutput,
                     costUSD: cost,
                     startTime: startTime,
-                    endTime: endTime
+                    endTime: endTime,
+                    provenanceMethod: .heuristicEstimate,
+                    provenanceConfidence: .lowConfidenceEstimate,
+                    estimatorVersion: "hash-count-ratio-v1"
                 )
                 usages.append(usage)
             }
@@ -732,7 +745,10 @@ final class CodexParser: LogParser, @unchecked Sendable {
                     cacheReadTokens: cacheReadTokens,
                     costUSD: cost,
                     startTime: startTime,
-                    endTime: endTime
+                    endTime: endTime,
+                    provenanceMethod: foundExact ? .providerLog : .heuristicEstimate,
+                    provenanceConfidence: foundExact ? .exact : .lowConfidenceEstimate,
+                    estimatorVersion: foundExact ? "" : "tokens-used-split-v1"
                 )
                 usages.append(usage)
             }
@@ -774,34 +790,14 @@ final class CodexParser: LogParser, @unchecked Sendable {
                 continue
             }
 
-            let tokenPayload: [String: Any]?
-            if json["type"] as? String == "event_msg",
-               let payload = json["payload"] as? [String: Any],
-               payload["type"] as? String == "token_count" {
-                tokenPayload = payload
-            } else if json["type"] as? String == "token_count" {
-                tokenPayload = json
-            } else {
-                tokenPayload = nil
-            }
-
-            guard let tokenPayload,
-                  let info = tokenPayload["info"] as? [String: Any] else {
+            guard let info = TokenExtractionUtility.codexTokenCountInfo(from: json) else {
                 continue
             }
 
-            if let totalUsage = info["total_token_usage"] as? [String: Any] {
-                let totalInput = totalUsage["input_tokens"] as? Int ?? 0
-                let totalCacheRead = totalUsage["cached_input_tokens"] as? Int
-                    ?? totalUsage["cache_read_input_tokens"] as? Int
-                    ?? 0
-                let totalOutput = totalUsage["output_tokens"] as? Int ?? 0
-                // Skip zeroed-out bogus events where Codex reports total_tokens equal
-                // to the model context window but zero breakdown fields.
-                guard totalInput > 0 || totalOutput > 0 else { continue }
-                inputTokens = max(totalInput - totalCacheRead, 0)
-                outputTokens = totalOutput
-                cacheReadTokens = totalCacheRead
+            if let extracted = TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(info) {
+                inputTokens = extracted.input
+                outputTokens = extracted.output
+                cacheReadTokens = extracted.cacheRead
                 found = true
                 continue
             }
@@ -1022,6 +1018,7 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
         var cacheCreationTokens = 0
         var cacheReadTokens = 0
         var usedSettingsTotals = false
+        var usedFallbackEstimate = false
         var settingsModel: String?
 
         if let data = try? Data(contentsOf: settingsURL),
@@ -1144,6 +1141,7 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
             )
             inputTokens = estimated.input
             outputTokens = estimated.output
+            usedFallbackEstimate = true
         }
 
         let modelFromSettings = settingsModel.flatMap { m in
@@ -1180,7 +1178,10 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
             cacheReadTokens: cacheReadTokens,
             costUSD: cost,
             startTime: resolvedStart,
-            endTime: resolvedEnd
+            endTime: resolvedEnd,
+            provenanceMethod: usedFallbackEstimate ? .heuristicEstimate : .providerLog,
+            provenanceConfidence: usedFallbackEstimate ? .lowConfidenceEstimate : .exact,
+            estimatorVersion: usedFallbackEstimate ? "char-ratio-v1" : ""
         )
 
         let conversation = ConversationRecord(

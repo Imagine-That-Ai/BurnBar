@@ -196,7 +196,9 @@ final class GooseParser: LogParser, @unchecked Sendable {
                         cacheReadTokens: cacheReadTokens,
                         costUSD: cost,
                         startTime: startTime,
-                        endTime: endTime
+                        endTime: endTime,
+                        provenanceMethod: .providerLog,
+                        provenanceConfidence: .exact
                     )
                 )
             }
@@ -305,6 +307,7 @@ final class GooseParser: LogParser, @unchecked Sendable {
         var inputTokens = 0
         var outputTokens = 0
         var model = "goose"
+        var usedFallback = false
         var startTime: Date?
         var endTime: Date?
         var userChars = 0
@@ -377,6 +380,7 @@ final class GooseParser: LogParser, @unchecked Sendable {
             )
             inputTokens = estimated.input
             outputTokens = estimated.output
+            usedFallback = true
         }
 
         guard inputTokens > 0 || outputTokens > 0 else { return nil }
@@ -393,7 +397,10 @@ final class GooseParser: LogParser, @unchecked Sendable {
             outputTokens: outputTokens,
             costUSD: cost,
             startTime: startTime ?? Date(),
-            endTime: endTime ?? Date()
+            endTime: endTime ?? Date(),
+            provenanceMethod: usedFallback ? .heuristicEstimate : .providerLog,
+            provenanceConfidence: usedFallback ? .lowConfidenceEstimate : .exact,
+            estimatorVersion: usedFallback ? "char-ratio-v1" : ""
         )
 
         let conversation = ConversationRecord(

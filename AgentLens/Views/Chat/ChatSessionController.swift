@@ -933,7 +933,11 @@ final class ChatSessionController {
                     case .toolUse(let name, let detail):
                         pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
                     case .usage(let usage):
-                        usageSnapshot = usage
+                        if let prev = usageSnapshot {
+                            usageSnapshot = usage.totalTokens >= prev.totalTokens ? usage : prev
+                        } else {
+                            usageSnapshot = usage
+                        }
                     }
                     let joined = ChatMessageRecord.joinedText(from: pieces)
                     let snapshot = pieces
@@ -961,7 +965,7 @@ final class ChatSessionController {
                             self.saveUsageIfNeeded(
                                 usageSnapshot,
                                 backend: self.chatBackend,
-                                hermesRequestModel: self.chatBackend == .hermes ? requestModel : nil,
+                                requestModel: requestModel,
                                 responseMessageID: assistantId,
                                 startedAt: streamStartedAt,
                                 endedAt: final.timestamp
@@ -1026,43 +1030,63 @@ final class ChatSessionController {
     private func saveUsageIfNeeded(
         _ usageSnapshot: CLIUsageSnapshot?,
         backend: ChatBackendID,
-        hermesRequestModel: String? = nil,
+        requestModel: String,
         responseMessageID: String,
         startedAt: Date,
         endedAt: Date
     ) {
         guard let usageSnapshot else { return }
-        guard backend == .hermes else { return }
 
-        let model = hermesRequestModel?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-            ?? hermesModelName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-            ?? "hermes"
+        let (provider, projectLabel, model): (AgentProvider, String, String) = {
+            switch backend {
+            case .hermes:
+                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                    ?? hermesModelName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                    ?? "hermes"
+                return (.hermes, "OpenBurnBar Hermes Chat", m)
+            case .openclaw:
+                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "gpt-4o-mini"
+                return (.openClaw, "OpenBurnBar OpenClaw Chat", m)
+            case .codex:
+                let m = chatModelCodex.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "codex"
+                return (.codex, "OpenBurnBar Codex Chat", m)
+            case .claude:
+                let m = chatModelClaude.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "claude"
+                return (.claudeCode, "OpenBurnBar Claude Chat", m)
+            }
+        }()
+
         let pricing = ModelPricing.lookup(model: model)
         let cost = pricing.cost(
             inputTokens: usageSnapshot.inputTokens,
             outputTokens: usageSnapshot.outputTokens,
             cacheCreationTokens: usageSnapshot.cacheCreationTokens,
-            cacheReadTokens: usageSnapshot.cacheReadTokens
+            cacheReadTokens: usageSnapshot.cacheReadTokens,
+            reasoningTokens: usageSnapshot.reasoningTokens
         )
         let usage = TokenUsage(
-            provider: .hermes,
+            provider: provider,
             sessionId: "\(activeThreadID)/\(responseMessageID)",
-            projectName: "OpenBurnBar Hermes Chat",
+            projectName: projectLabel,
             model: model,
             inputTokens: usageSnapshot.inputTokens,
             outputTokens: usageSnapshot.outputTokens,
             cacheCreationTokens: usageSnapshot.cacheCreationTokens,
             cacheReadTokens: usageSnapshot.cacheReadTokens,
+            reasoningTokens: usageSnapshot.reasoningTokens,
             costUSD: cost,
             startTime: startedAt,
-            endTime: endedAt
+            endTime: endedAt,
+            usageSource: .inAppChat,
+            provenanceMethod: .inAppChat,
+            provenanceConfidence: .exact
         )
 
         do {
             try dataStore.insert(usage)
             dataStore.refresh()
         } catch {
-            AppLogger.chat.silentFailure("insert Hermes usage", error: error)
+            AppLogger.chat.silentFailure("insert in-app chat usage", error: error)
         }
     }
 

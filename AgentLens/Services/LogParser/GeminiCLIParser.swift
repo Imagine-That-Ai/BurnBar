@@ -264,7 +264,9 @@ final class GeminiCLIParser: LogParser, @unchecked Sendable {
             cacheReadTokens: acc.cacheReadTokens,
             costUSD: cost,
             startTime: startTime,
-            endTime: endTime
+            endTime: endTime,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
         )
 
         let conversation = ConversationRecord(

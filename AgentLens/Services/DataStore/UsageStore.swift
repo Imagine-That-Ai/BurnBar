@@ -21,20 +21,26 @@ final class UsageStore {
                     INSERT INTO token_usage (
                         id, provider, sessionId, projectName, model,
                         inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
-                        totalTokens, cost, startTime, endTime, createdAt,
-                        sourceDeviceId, sourceDeviceName, isRemote
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
+                        usageSource, sourceDeviceId, sourceDeviceName, isRemote,
+                        provenanceMethod, provenanceConfidence, estimatorVersion
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, '')) DO UPDATE SET
                         projectName = excluded.projectName,
                         inputTokens = excluded.inputTokens,
                         outputTokens = excluded.outputTokens,
                         cacheCreationTokens = excluded.cacheCreationTokens,
                         cacheReadTokens = excluded.cacheReadTokens,
+                        reasoningTokens = excluded.reasoningTokens,
                         totalTokens = excluded.totalTokens,
                         cost = excluded.cost,
                         startTime = excluded.startTime,
                         endTime = excluded.endTime,
                         createdAt = excluded.createdAt,
+                        usageSource = excluded.usageSource,
+                        provenanceMethod = excluded.provenanceMethod,
+                        provenanceConfidence = excluded.provenanceConfidence,
+                        estimatorVersion = excluded.estimatorVersion,
                         syncedAt = NULL
                     WHERE
                         token_usage.projectName != excluded.projectName
@@ -42,10 +48,12 @@ final class UsageStore {
                         OR token_usage.outputTokens != excluded.outputTokens
                         OR token_usage.cacheCreationTokens != excluded.cacheCreationTokens
                         OR token_usage.cacheReadTokens != excluded.cacheReadTokens
+                        OR token_usage.reasoningTokens != excluded.reasoningTokens
                         OR token_usage.totalTokens != excluded.totalTokens
                         OR token_usage.cost != excluded.cost
                         OR token_usage.startTime != excluded.startTime
                         OR token_usage.endTime != excluded.endTime
+                        OR token_usage.usageSource != excluded.usageSource
                     """,
                 arguments: [
                     usage.id.uuidString,
@@ -57,14 +65,19 @@ final class UsageStore {
                     usage.outputTokens,
                     usage.cacheCreationTokens,
                     usage.cacheReadTokens,
+                    usage.reasoningTokens,
                     usage.totalTokens,
                     usage.cost,
                     usage.startTime,
                     usage.endTime,
                     usage.createdAt,
+                    usage.usageSource.rawValue,
                     usage.sourceDeviceId,
                     usage.sourceDeviceName,
-                    usage.isRemote ? 1 : 0
+                    usage.isRemote ? 1 : 0,
+                    usage.provenanceMethod.rawValue,
+                    usage.provenanceConfidence.rawValue,
+                    usage.estimatorVersion
                 ]
             )
         }
@@ -83,17 +96,22 @@ final class UsageStore {
                     INSERT OR IGNORE INTO token_usage (
                         id, provider, sessionId, projectName, model,
                         inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
-                        totalTokens, cost, startTime, endTime, createdAt,
-                        sourceDeviceId, sourceDeviceName, isRemote, syncedAt
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                        reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
+                        usageSource, sourceDeviceId, sourceDeviceName, isRemote, syncedAt,
+                        provenanceMethod, provenanceConfidence, estimatorVersion
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
                     """,
                 arguments: [
                     usage.id.uuidString, usage.provider.rawValue, usage.sessionId,
                     usage.projectName, usage.model,
                     usage.inputTokens, usage.outputTokens, usage.cacheCreationTokens,
-                    usage.cacheReadTokens, usage.totalTokens, usage.cost,
+                    usage.cacheReadTokens, usage.reasoningTokens, usage.totalTokens, usage.cost,
                     usage.startTime, usage.endTime, usage.createdAt,
-                    usage.sourceDeviceId, usage.sourceDeviceName, Date()
+                    usage.usageSource.rawValue,
+                    usage.sourceDeviceId, usage.sourceDeviceName, Date(),
+                    usage.provenanceMethod.rawValue,
+                    usage.provenanceConfidence.rawValue,
+                    usage.estimatorVersion
                 ]
             )
         }
@@ -119,6 +137,15 @@ final class UsageStore {
                 let outputTokens = (row["outputTokens"] as? Int) ?? Int(row["outputTokens"] as? Int64 ?? 0)
                 let cacheCreationTokens = (row["cacheCreationTokens"] as? Int) ?? Int(row["cacheCreationTokens"] as? Int64 ?? 0)
                 let cacheReadTokens = (row["cacheReadTokens"] as? Int) ?? Int(row["cacheReadTokens"] as? Int64 ?? 0)
+                let reasoningTokens = (row["reasoningTokens"] as? Int) ?? Int(row["reasoningTokens"] as? Int64 ?? 0)
+                let usageSourceRaw = row["usageSource"] as? String
+                let usageSource = usageSourceRaw.flatMap { UsageSource(rawValue: $0) } ?? .unknown
+
+                let provenanceMethodRaw = row["provenanceMethod"] as? String
+                let provenanceMethod = provenanceMethodRaw.flatMap { UsageProvenanceMethod(rawValue: $0) } ?? .unknown
+                let provenanceConfidenceRaw = row["provenanceConfidence"] as? String
+                let provenanceConfidence = provenanceConfidenceRaw.flatMap { UsageProvenanceConfidence(rawValue: $0) } ?? .unknown
+                let estimatorVersion = row["estimatorVersion"] as? String ?? ""
 
                 let cost = (row["cost"] as? Double)
                     ?? ((row["cost"] as? NSNumber)?.doubleValue)
@@ -126,6 +153,7 @@ final class UsageStore {
 
                 let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"])
                 let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"])
+                let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date()
                 guard let startTime, let endTime else { return nil }
 
                 return TokenUsage(
@@ -138,12 +166,18 @@ final class UsageStore {
                     outputTokens: outputTokens,
                     cacheCreationTokens: cacheCreationTokens,
                     cacheReadTokens: cacheReadTokens,
+                    reasoningTokens: reasoningTokens,
                     costUSD: cost,
                     startTime: startTime,
                     endTime: endTime,
+                    createdAt: createdAt,
+                    usageSource: usageSource,
                     sourceDeviceId: row["sourceDeviceId"] as? String,
                     sourceDeviceName: row["sourceDeviceName"] as? String,
-                    isRemote: ((row["isRemote"] as? Int) ?? Int(row["isRemote"] as? Int64 ?? 0)) != 0
+                    isRemote: ((row["isRemote"] as? Int) ?? Int(row["isRemote"] as? Int64 ?? 0)) != 0,
+                    provenanceMethod: provenanceMethod,
+                    provenanceConfidence: provenanceConfidence,
+                    estimatorVersion: estimatorVersion
                 )
             }
         }
@@ -190,9 +224,18 @@ final class UsageStore {
                 let outputTokens = (row["outputTokens"] as? Int) ?? Int(row["outputTokens"] as? Int64 ?? 0)
                 let cacheCreationTokens = (row["cacheCreationTokens"] as? Int) ?? Int(row["cacheCreationTokens"] as? Int64 ?? 0)
                 let cacheReadTokens = (row["cacheReadTokens"] as? Int) ?? Int(row["cacheReadTokens"] as? Int64 ?? 0)
+                let reasoningTokens = (row["reasoningTokens"] as? Int) ?? Int(row["reasoningTokens"] as? Int64 ?? 0)
+                let usageSourceRaw = row["usageSource"] as? String
+                let usageSource = usageSourceRaw.flatMap { UsageSource(rawValue: $0) } ?? .unknown
+                let provenanceMethodRaw = row["provenanceMethod"] as? String
+                let provenanceMethod = provenanceMethodRaw.flatMap { UsageProvenanceMethod(rawValue: $0) } ?? .unknown
+                let provenanceConfidenceRaw = row["provenanceConfidence"] as? String
+                let provenanceConfidence = provenanceConfidenceRaw.flatMap { UsageProvenanceConfidence(rawValue: $0) } ?? .unknown
+                let estimatorVersion = row["estimatorVersion"] as? String ?? ""
                 let cost = (row["cost"] as? Double) ?? ((row["cost"] as? NSNumber)?.doubleValue) ?? 0
                 let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"])
                 let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"])
+                let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date()
                 guard let startTime, let endTime else { return nil }
 
                 return TokenUsage(
@@ -205,9 +248,15 @@ final class UsageStore {
                     outputTokens: outputTokens,
                     cacheCreationTokens: cacheCreationTokens,
                     cacheReadTokens: cacheReadTokens,
+                    reasoningTokens: reasoningTokens,
                     costUSD: cost,
                     startTime: startTime,
-                    endTime: endTime
+                    endTime: endTime,
+                    createdAt: createdAt,
+                    usageSource: usageSource,
+                    provenanceMethod: provenanceMethod,
+                    provenanceConfidence: provenanceConfidence,
+                    estimatorVersion: estimatorVersion
                 )
             }
         }
@@ -269,26 +318,28 @@ final class UsageStore {
             let totalInputTokens = providerUsages.reduce(0) { $0 + $1.inputTokens }
             let totalOutputTokens = providerUsages.reduce(0) { $0 + $1.outputTokens }
 
-            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, cost: Double)] = [:]
+            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, reasoning: Int, cost: Double)] = [:]
             for usage in providerUsages {
-                let existing = modelData[usage.model] ?? (0, 0, 0, 0, 0)
+                let existing = modelData[usage.model] ?? (0, 0, 0, 0, 0, 0)
                 modelData[usage.model] = (
                     existing.0 + usage.inputTokens,
                     existing.1 + usage.outputTokens,
                     existing.2 + usage.cacheCreationTokens,
                     existing.3 + usage.cacheReadTokens,
-                    existing.4 + usage.cost
+                    existing.4 + usage.reasoningTokens,
+                    existing.5 + usage.cost
                 )
             }
 
             let modelBreakdown = modelData.map { modelName, data in
-                let totalModelTokens = data.input + data.output + data.cacheCreation + data.cacheRead
+                let totalModelTokens = data.input + data.output + data.cacheCreation + data.cacheRead + data.reasoning
                 return ModelUsage(
                     modelName: modelName,
                     inputTokens: data.input,
                     outputTokens: data.output,
                     cacheCreationTokens: data.cacheCreation,
                     cacheReadTokens: data.cacheRead,
+                    reasoningTokens: data.reasoning,
                     totalTokens: totalModelTokens,
                     cost: data.cost,
                     percentage: totalCost > 0 ? (data.cost / totalCost) * 100 : 0

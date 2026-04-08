@@ -1574,6 +1574,9 @@ final class CloudSyncService {
                       let sessionId = data["sessionId"] as? String,
                       let id = UUID(uuidString: data["id"] as? String ?? doc.documentID) else { continue }
                 let startTime = (data["startTime"] as? Timestamp)?.dateValue() ?? Date()
+                let reasoning = data["reasoningTokens"] as? Int ?? 0
+                let srcRaw = data["usageSource"] as? String
+                let usageSource = srcRaw.flatMap { UsageSource(rawValue: $0) } ?? .unknown
                 let usage = TokenUsage(
                     id: id, provider: provider, sessionId: sessionId,
                     projectName: data["projectName"] as? String ?? "",
@@ -1582,12 +1585,16 @@ final class CloudSyncService {
                     outputTokens: data["outputTokens"] as? Int ?? 0,
                     cacheCreationTokens: data["cacheCreationTokens"] as? Int ?? 0,
                     cacheReadTokens: data["cacheReadTokens"] as? Int ?? 0,
+                    reasoningTokens: reasoning,
                     costUSD: data["cost"] as? Double ?? 0,
                     startTime: startTime,
                     endTime: (data["endTime"] as? Timestamp)?.dateValue() ?? startTime,
+                    usageSource: usageSource,
                     sourceDeviceId: remoteDeviceId,
                     sourceDeviceName: nameMap[remoteDeviceId] ?? remoteDeviceId,
-                    isRemote: true
+                    isRemote: true,
+                    provenanceMethod: .cloudSync,
+                    provenanceConfidence: .exact
                 )
                 try dataStore.insertRemoteUsage(usage)
             }
@@ -1758,6 +1765,8 @@ final class CloudSyncService {
             "outputTokens": usage.outputTokens,
             "cacheCreationTokens": usage.cacheCreationTokens,
             "cacheReadTokens": usage.cacheReadTokens,
+            "reasoningTokens": usage.reasoningTokens,
+            "usageSource": usage.usageSource.rawValue,
             "totalTokens": usage.totalTokens,
             "cost": usage.cost,
             "startTime": Timestamp(date: safeStart),

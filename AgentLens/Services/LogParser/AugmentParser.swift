@@ -156,7 +156,9 @@ final class AugmentParser: LogParser, @unchecked Sendable {
                 cacheReadTokens: summary.cacheReadTokens,
                 costUSD: cost,
                 startTime: summary.startTime ?? modifiedAt,
-                endTime: summary.endTime ?? modifiedAt
+                endTime: summary.endTime ?? modifiedAt,
+                provenanceMethod: .providerLog,
+                provenanceConfidence: .exact
             )
         } else {
             usage = nil

@@ -339,7 +339,10 @@ final class UsageAggregator {
                 cacheReadTokens: missingCacheRead,
                 costUSD: missingCost,
                 startTime: windowStart,
-                endTime: windowStart
+                endTime: windowStart,
+                usageSource: .billingAPI,
+                provenanceMethod: .billingAPI,
+                provenanceConfidence: .exact
             )
         }
     }

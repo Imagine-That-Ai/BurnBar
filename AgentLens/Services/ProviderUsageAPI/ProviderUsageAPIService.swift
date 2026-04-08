@@ -47,7 +47,10 @@ struct ProviderUsageRecord: Sendable {
             cacheReadTokens: cacheReadTokens,
             costUSD: costUSD,
             startTime: date,
-            endTime: date
+            endTime: date,
+            usageSource: .billingAPI,
+            provenanceMethod: .billingAPI,
+            provenanceConfidence: .exact
         )
     }
 

@@ -271,7 +271,9 @@ final class ClaudeCodeParser: LogParser, @unchecked Sendable {
             cacheReadTokens: acc.cacheReadTokens,
             costUSD: acc.totalCost,
             startTime: usageStartTime,
-            endTime: usageEndTime
+            endTime: usageEndTime,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
         )
 
         let conversation = ConversationRecord(

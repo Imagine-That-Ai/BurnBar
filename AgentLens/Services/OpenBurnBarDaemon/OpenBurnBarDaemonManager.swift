@@ -1190,7 +1190,10 @@ final class OpenBurnBarDaemonUsageSyncService {
             cacheReadTokens: event.cacheReadTokens,
             costUSD: event.cost,
             startTime: event.recordedAt,
-            endTime: event.recordedAt
+            endTime: event.recordedAt,
+            usageSource: .daemon,
+            provenanceMethod: .daemonBridge,
+            provenanceConfidence: .exact
         )
     }
 
@@ -1212,7 +1215,10 @@ final class OpenBurnBarDaemonUsageSyncService {
             cacheReadTokens: record.event.cacheReadTokens,
             costUSD: record.event.cost,
             startTime: record.event.recordedAt,
-            endTime: record.event.recordedAt
+            endTime: record.event.recordedAt,
+            usageSource: .daemon,
+            provenanceMethod: .daemonBridge,
+            provenanceConfidence: .exact
         )
     }
 

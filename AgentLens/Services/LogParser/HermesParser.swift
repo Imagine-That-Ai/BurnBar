@@ -570,7 +570,9 @@ final class HermesParser: LogParser, @unchecked Sendable {
             cacheReadTokens: cacheReadTokens,
             costUSD: cost,
             startTime: startTime,
-            endTime: endTime
+            endTime: endTime,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
         )
     }
 

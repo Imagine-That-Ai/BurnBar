@@ -557,7 +557,10 @@ final class CursorConnectorManager {
                     cacheReadTokens: cacheReadTokens,
                     costUSD: cost,
                     startTime: timestamp,
-                    endTime: timestamp
+                    endTime: timestamp,
+                    usageSource: .cursorBridge,
+                    provenanceMethod: .connectorBridge,
+                    provenanceConfidence: .exact
                 )
                 try? dataStore.insert(usage)
                 insertedAny = true

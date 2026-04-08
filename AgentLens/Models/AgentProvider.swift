@@ -23,6 +23,74 @@ enum DataConfidence {
     case unavailable
 }
 
+// MARK: - Usage Provenance Method
+
+/// Describes how token usage values were obtained for a given row.
+/// Used alongside `UsageProvenanceConfidence` to audit exact vs estimated origin.
+enum UsageProvenanceMethod: String, Codable, Hashable, CaseIterable, Sendable {
+    /// Token counts parsed directly from provider logs or API responses.
+    case providerLog = "provider_log"
+    /// Token counts from a connector bridge (e.g. Cursor connector).
+    case connectorBridge = "connector_bridge"
+    /// Token counts from the daemon (e.g. OpenBurnBar daemon events).
+    case daemonBridge = "daemon_bridge"
+    /// Token counts from in-app chat session tracking.
+    case inAppChat = "in_app_chat"
+    /// Token counts from a billing/provider usage API.
+    case billingAPI = "billing_api"
+    /// Token counts derived from character/content heuristics when exact data is unavailable.
+    case heuristicEstimate = "heuristic_estimate"
+    /// Token counts from cloud sync (remote device), preserving original provenance.
+    case cloudSync = "cloud_sync"
+    /// Provenance is unknown (legacy rows or data with unclear origin).
+    case unknown = "unknown"
+}
+
+// MARK: - Usage Provenance Confidence
+
+/// Confidence level for the provenance of a token usage row.
+/// Ordered from most to least authoritative. Used to prevent downgrades.
+enum UsageProvenanceConfidence: String, Codable, Hashable, CaseIterable, Comparable, Sendable {
+    /// Token counts are exact and authoritative (from provider logs, APIs, or bridges).
+    case exact = "exact"
+    /// Token counts are derived from exact totals via normalization (e.g. splitting total_tokens into input/output).
+    case derivedExact = "derived_exact"
+    /// Token counts are high-confidence estimates (e.g. language-aware heuristic).
+    case highConfidenceEstimate = "high_confidence_estimate"
+    /// Token counts are lower-confidence estimates (e.g. coarse heuristic without language context).
+    case lowConfidenceEstimate = "low_confidence_estimate"
+    /// Confidence is unknown (legacy rows).
+    case unknown = "unknown"
+
+    /// Numeric precedence for comparison. Higher value = more authoritative.
+    var precedence: Int {
+        switch self {
+        case .exact: return 4
+        case .derivedExact: return 3
+        case .highConfidenceEstimate: return 2
+        case .lowConfidenceEstimate: return 1
+        case .unknown: return 0
+        }
+    }
+
+    static func < (lhs: UsageProvenanceConfidence, rhs: UsageProvenanceConfidence) -> Bool {
+        lhs.precedence < rhs.precedence
+    }
+}
+
+// MARK: - Usage Source
+
+/// Where a `TokenUsage` row was produced (analytics / deduplication).
+enum UsageSource: String, Codable, Hashable, CaseIterable {
+    case providerLog = "provider_log"
+    case inAppChat = "in_app_chat"
+    case cursorBridge = "cursor_bridge"
+    case billingAPI = "billing_api"
+    case daemon = "daemon"
+    /// Legacy rows or cloud documents without this field.
+    case unknown = "unknown"
+}
+
 // MARK: - Agent Provider Enum
 
 enum AgentProvider: String, Codable, CaseIterable, Identifiable {
@@ -43,7 +111,8 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
     case hermes = "Hermes"
     case geminiCLI = "Gemini CLI"
     case goose = "Goose"
-    
+    case openClaw = "OpenClaw"
+
     var id: String { rawValue }
     
     /// Colorful logo URLs from lobehub (https://lobehub.com/icons)
@@ -69,7 +138,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
             return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kimi-color.png")
         case .cline:
             return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/cline-color.png")
-        case .kiloCode, .rooCode, .forgeDev, .hermes, .goose:
+        case .kiloCode, .rooCode, .forgeDev, .hermes, .goose, .openClaw:
             return nil
         case .geminiCLI:
             return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/gemini-color.png")
@@ -97,6 +166,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .hermes: return "wind"
         case .geminiCLI: return "diamond.fill"
         case .goose: return "bird.fill"
+        case .openClaw: return "point.3.connected.trianglepath.dotted"
         }
     }
     
@@ -121,6 +191,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .hermes: return "~/.hermes/sessions"
         case .geminiCLI: return "~/.gemini/tmp"
         case .goose: return "~/.local/share/goose/sessions"
+        case .openClaw: return "~/.openclaw/sessions"
         }
     }
 
@@ -140,6 +211,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .augment: return "*.jsonl"
         case .geminiCLI: return "*.json"
         case .goose: return "sessions.db"
+        case .openClaw: return "*.jsonl"
         }
     }
 
@@ -147,7 +219,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .factory, .claudeCode, .codex, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose:
             return .supported
-        case .copilot, .kimi, .zai, .minimax, .cursor:
+        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor:
             return .partial
         case .augment:
             return .unsupported
@@ -156,7 +228,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
 
     var dataConfidence: DataConfidence {
         switch self {
-        case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose:
+        case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose, .openClaw:
             return .exact
         case .zai, .minimax, .copilot, .cursor:
             return .estimated
@@ -178,17 +250,28 @@ struct TokenUsage: Codable, Identifiable, Hashable {
     let outputTokens: Int
     let cacheCreationTokens: Int
     let cacheReadTokens: Int
+    /// Output-class tokens reported separately (e.g. OpenAI `reasoning_tokens`); billed at output rates.
+    let reasoningTokens: Int
     let totalTokens: Int
     let cost: Double
     let startTime: Date
     let endTime: Date
     let createdAt: Date
+    /// Origin of this row (log parser, in-app chat, connector, API, daemon).
+    let usageSource: UsageSource
     /// Non-nil for rows downloaded from another device via cloud sync.
     let sourceDeviceId: String?
     /// Human-readable name of the source device (e.g. "MacBook Pro (Work)").
     let sourceDeviceName: String?
     /// True for rows downloaded from Firestore; excluded from upload sync.
     let isRemote: Bool
+    /// How the token counts were obtained (log parser, API, heuristic, etc.).
+    let provenanceMethod: UsageProvenanceMethod
+    /// Confidence level for the token counts (exact, derived, estimated, unknown).
+    let provenanceConfidence: UsageProvenanceConfidence
+    /// Version identifier of the estimator/normalizer that produced these counts.
+    /// Empty string when counts are from exact provider data.
+    let estimatorVersion: String
 
     // Alias for backwards compatibility
     var costUSD: Double { cost }
@@ -203,12 +286,18 @@ struct TokenUsage: Codable, Identifiable, Hashable {
         outputTokens: Int,
         cacheCreationTokens: Int = 0,
         cacheReadTokens: Int = 0,
+        reasoningTokens: Int = 0,
         costUSD: Double = 0,
         startTime: Date,
         endTime: Date,
+        createdAt: Date = Date(),
+        usageSource: UsageSource = .providerLog,
         sourceDeviceId: String? = nil,
         sourceDeviceName: String? = nil,
-        isRemote: Bool = false
+        isRemote: Bool = false,
+        provenanceMethod: UsageProvenanceMethod = .unknown,
+        provenanceConfidence: UsageProvenanceConfidence = .unknown,
+        estimatorVersion: String = ""
     ) {
         self.id = id
         self.provider = provider
@@ -219,14 +308,103 @@ struct TokenUsage: Codable, Identifiable, Hashable {
         self.outputTokens = outputTokens
         self.cacheCreationTokens = cacheCreationTokens
         self.cacheReadTokens = cacheReadTokens
-        self.totalTokens = inputTokens + outputTokens + cacheCreationTokens
+        self.reasoningTokens = reasoningTokens
+        self.totalTokens = Self.billedTotalTokens(
+            input: inputTokens,
+            output: outputTokens,
+            cacheCreation: cacheCreationTokens,
+            cacheRead: cacheReadTokens,
+            reasoning: reasoningTokens
+        )
         self.cost = costUSD
         self.startTime = startTime
         self.endTime = endTime
-        self.createdAt = Date()
+        self.createdAt = createdAt
+        self.usageSource = usageSource
         self.sourceDeviceId = sourceDeviceId
         self.sourceDeviceName = sourceDeviceName
         self.isRemote = isRemote
+        self.provenanceMethod = provenanceMethod
+        self.provenanceConfidence = provenanceConfidence
+        self.estimatorVersion = estimatorVersion
+    }
+
+    /// Sum of billable token buckets (matches provider invoices when all fields are populated).
+    static func billedTotalTokens(
+        input: Int,
+        output: Int,
+        cacheCreation: Int,
+        cacheRead: Int,
+        reasoning: Int
+    ) -> Int {
+        max(0, input) + max(0, output) + max(0, cacheCreation) + max(0, cacheRead) + max(0, reasoning)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, provider, sessionId, projectName, model
+        case inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, reasoningTokens
+        case totalTokens, cost, startTime, endTime, createdAt, usageSource
+        case sourceDeviceId, sourceDeviceName, isRemote
+        case provenanceMethod, provenanceConfidence, estimatorVersion
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        provider = try c.decode(AgentProvider.self, forKey: .provider)
+        sessionId = try c.decode(String.self, forKey: .sessionId)
+        projectName = try c.decode(String.self, forKey: .projectName)
+        model = try c.decode(String.self, forKey: .model)
+        inputTokens = try c.decode(Int.self, forKey: .inputTokens)
+        outputTokens = try c.decode(Int.self, forKey: .outputTokens)
+        cacheCreationTokens = try c.decodeIfPresent(Int.self, forKey: .cacheCreationTokens) ?? 0
+        cacheReadTokens = try c.decodeIfPresent(Int.self, forKey: .cacheReadTokens) ?? 0
+        reasoningTokens = try c.decodeIfPresent(Int.self, forKey: .reasoningTokens) ?? 0
+        totalTokens = try c.decodeIfPresent(Int.self, forKey: .totalTokens)
+            ?? Self.billedTotalTokens(
+                input: inputTokens,
+                output: outputTokens,
+                cacheCreation: cacheCreationTokens,
+                cacheRead: cacheReadTokens,
+                reasoning: reasoningTokens
+            )
+        cost = try c.decode(Double.self, forKey: .cost)
+        startTime = try c.decode(Date.self, forKey: .startTime)
+        endTime = try c.decode(Date.self, forKey: .endTime)
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        usageSource = try c.decodeIfPresent(UsageSource.self, forKey: .usageSource) ?? .unknown
+        sourceDeviceId = try c.decodeIfPresent(String.self, forKey: .sourceDeviceId)
+        sourceDeviceName = try c.decodeIfPresent(String.self, forKey: .sourceDeviceName)
+        isRemote = try c.decodeIfPresent(Bool.self, forKey: .isRemote) ?? false
+        provenanceMethod = try c.decodeIfPresent(UsageProvenanceMethod.self, forKey: .provenanceMethod) ?? .unknown
+        provenanceConfidence = try c.decodeIfPresent(UsageProvenanceConfidence.self, forKey: .provenanceConfidence) ?? .unknown
+        estimatorVersion = try c.decodeIfPresent(String.self, forKey: .estimatorVersion) ?? ""
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(provider, forKey: .provider)
+        try c.encode(sessionId, forKey: .sessionId)
+        try c.encode(projectName, forKey: .projectName)
+        try c.encode(model, forKey: .model)
+        try c.encode(inputTokens, forKey: .inputTokens)
+        try c.encode(outputTokens, forKey: .outputTokens)
+        try c.encode(cacheCreationTokens, forKey: .cacheCreationTokens)
+        try c.encode(cacheReadTokens, forKey: .cacheReadTokens)
+        try c.encode(reasoningTokens, forKey: .reasoningTokens)
+        try c.encode(totalTokens, forKey: .totalTokens)
+        try c.encode(cost, forKey: .cost)
+        try c.encode(startTime, forKey: .startTime)
+        try c.encode(endTime, forKey: .endTime)
+        try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(usageSource, forKey: .usageSource)
+        try c.encodeIfPresent(sourceDeviceId, forKey: .sourceDeviceId)
+        try c.encodeIfPresent(sourceDeviceName, forKey: .sourceDeviceName)
+        try c.encode(isRemote, forKey: .isRemote)
+        try c.encode(provenanceMethod, forKey: .provenanceMethod)
+        try c.encode(provenanceConfidence, forKey: .provenanceConfidence)
+        try c.encode(estimatorVersion, forKey: .estimatorVersion)
     }
     
     // Computed properties
@@ -308,6 +486,7 @@ struct ModelUsage: Identifiable, Hashable {
     let outputTokens: Int
     let cacheCreationTokens: Int
     let cacheReadTokens: Int
+    let reasoningTokens: Int
     let totalTokens: Int
     let cost: Double
     let percentage: Double

@@ -287,7 +287,9 @@ final class FactoryDroidParser: LogParser, @unchecked Sendable {
             cacheReadTokens: tokenData.cacheRead,
             costUSD: cost,
             startTime: startTime,
-            endTime: endTime
+            endTime: endTime,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
         )
 
         let conversation = ConversationRecord(
