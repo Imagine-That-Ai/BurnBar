@@ -37,7 +37,28 @@ final class UsageStore {
                         startTime = excluded.startTime,
                         endTime = excluded.endTime,
                         createdAt = excluded.createdAt,
-                        usageSource = excluded.usageSource,
+                        -- VAL-TOKEN-009: Preserve source identity on equal-confidence upserts.
+                        -- Only update usageSource when incoming confidence is strictly higher.
+                        usageSource = CASE
+                            WHEN
+                                CASE excluded.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                                >
+                                CASE token_usage.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                            THEN excluded.usageSource
+                            ELSE token_usage.usageSource
+                        END,
                         provenanceMethod = excluded.provenanceMethod,
                         provenanceConfidence = CASE
                             WHEN
@@ -160,7 +181,28 @@ final class UsageStore {
                         startTime = excluded.startTime,
                         endTime = excluded.endTime,
                         createdAt = excluded.createdAt,
-                        usageSource = excluded.usageSource,
+                        -- VAL-TOKEN-009: Preserve source identity on equal-confidence upserts.
+                        -- Only update usageSource when incoming confidence is strictly higher.
+                        usageSource = CASE
+                            WHEN
+                                CASE excluded.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                                >
+                                CASE token_usage.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                            THEN excluded.usageSource
+                            ELSE token_usage.usageSource
+                        END,
                         provenanceMethod = excluded.provenanceMethod,
                         provenanceConfidence = CASE
                             WHEN

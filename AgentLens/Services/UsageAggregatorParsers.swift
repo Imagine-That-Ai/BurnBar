@@ -227,7 +227,7 @@ final class CopilotParser: LogParser, @unchecked Sendable {
             endTime: endTime ?? Date(),
             provenanceMethod: isExact ? .providerLog : .heuristicEstimate,
             provenanceConfidence: isExact ? .exact : .lowConfidenceEstimate,
-            estimatorVersion: isExact ? "" : "char-ratio-v1"
+            estimatorVersion: isExact ? "" : TokenExtractionUtility.currentEstimatorVersion
         )
 
         let conversation = ConversationRecord(
@@ -1205,7 +1205,7 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
             endTime: resolvedEnd,
             provenanceMethod: usedFallbackEstimate ? .heuristicEstimate : .providerLog,
             provenanceConfidence: usedFallbackEstimate ? .lowConfidenceEstimate : .exact,
-            estimatorVersion: usedFallbackEstimate ? "char-ratio-v1" : ""
+            estimatorVersion: usedFallbackEstimate ? TokenExtractionUtility.currentEstimatorVersion : ""
         )
 
         let conversation = ConversationRecord(

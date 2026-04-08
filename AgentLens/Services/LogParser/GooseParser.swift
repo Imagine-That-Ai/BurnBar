@@ -400,7 +400,7 @@ final class GooseParser: LogParser, @unchecked Sendable {
             endTime: endTime ?? Date(),
             provenanceMethod: usedFallback ? .heuristicEstimate : .providerLog,
             provenanceConfidence: usedFallback ? .lowConfidenceEstimate : .exact,
-            estimatorVersion: usedFallback ? "char-ratio-v1" : ""
+            estimatorVersion: usedFallback ? TokenExtractionUtility.currentEstimatorVersion : ""
         )
 
         let conversation = ConversationRecord(

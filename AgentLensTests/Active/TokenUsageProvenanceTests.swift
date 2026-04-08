@@ -370,4 +370,238 @@ final class TokenUsageProvenanceTests: XCTestCase {
         // (the backfill WHERE clause targets rows that were already unknown after migration)
         XCTAssertEqual(row["provenanceMethod"] as? String, "unknown")
     }
+
+    // MARK: - VAL-TOKEN-008: Tokenizer fallback is feature-flagged and non-default
+
+    func test_tokenizerFallback_flagOff_usesCharacterRatioEstimator() {
+        // When flag is off (default), fallback estimator should be characterRatio
+        let initial = TokenExtractionUtility.fallbackEstimator
+        TokenExtractionUtility.fallbackEstimator = .characterRatio
+        defer { TokenExtractionUtility.fallbackEstimator = initial }
+
+        XCTAssertEqual(TokenExtractionUtility.fallbackEstimator, .characterRatio)
+        XCTAssertEqual(TokenExtractionUtility.currentEstimatorVersion, "char-ratio-v1")
+    }
+
+    func test_tokenizerFallback_flagOn_usesTokenizerEstimator() {
+        // When flag is on, fallback estimator should be tokenizerAssisted
+        TokenExtractionUtility.fallbackEstimator = .tokenizerAssisted
+        defer { TokenExtractionUtility.fallbackEstimator = .characterRatio }
+
+        XCTAssertEqual(TokenExtractionUtility.fallbackEstimator, .tokenizerAssisted)
+        XCTAssertEqual(TokenExtractionUtility.currentEstimatorVersion, "tokenizer-v1")
+    }
+
+    func test_tokenizerFallback_characterRatio_producesEstimatedTokens() {
+        // Verify character-ratio fallback produces expected output structure
+        let initial = TokenExtractionUtility.fallbackEstimator
+        TokenExtractionUtility.fallbackEstimator = .characterRatio
+        defer { TokenExtractionUtility.fallbackEstimator = initial }
+
+        let result = TokenExtractionUtility.estimateFallbackTokens(
+            userVisibleChars: 1000,
+            assistantVisibleChars: 500,
+            assistantReasoningChars: 200,
+            userMessageCount: 2,
+            assistantMessageCount: 1
+        )
+
+        XCTAssertGreaterThan(result.input, 0, "Character-ratio should estimate positive input tokens")
+        XCTAssertGreaterThan(result.output, 0, "Character-ratio should estimate positive output tokens")
+    }
+
+    func test_tokenizerFallback_tokenizerAssisted_producesEstimatedTokens() {
+        // Verify tokenizer-assisted fallback produces expected output structure
+        let initial = TokenExtractionUtility.fallbackEstimator
+        TokenExtractionUtility.fallbackEstimator = .tokenizerAssisted
+        defer { TokenExtractionUtility.fallbackEstimator = initial }
+
+        let result = TokenExtractionUtility.estimateFallbackTokens(
+            userVisibleChars: 1000,
+            assistantVisibleChars: 500,
+            assistantReasoningChars: 200,
+            userMessageCount: 2,
+            assistantMessageCount: 1
+        )
+
+        XCTAssertGreaterThan(result.input, 0, "Tokenizer-assisted should estimate positive input tokens")
+        XCTAssertGreaterThan(result.output, 0, "Tokenizer-assisted should estimate positive output tokens")
+    }
+
+    // MARK: - VAL-TOKEN-009: Cross-source usage source identity is preserved
+
+    func test_sourceIdentity_preservedOnEqualConfidenceUpsert() throws {
+        // Given: a row from provider_log with exact confidence
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = UsageStore(dbQueue: queue)
+
+        let sessionId = "source-identity-test-1"
+        let providerLogUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: sessionId,
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.05,
+            startTime: Date(),
+            endTime: Date(),
+            usageSource: .providerLog,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try store.insert(providerLogUsage)
+
+        // When: a row from billing_api with same confidence tries to upsert (different values)
+        let billingAPIUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: sessionId,
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 2000, // different values
+            outputTokens: 800,
+            costUSD: 0.10,
+            startTime: Date(),
+            endTime: Date(),
+            usageSource: .billingAPI,
+            provenanceMethod: .billingAPI,
+            provenanceConfidence: .exact, // same confidence
+            estimatorVersion: ""
+        )
+        try store.insert(billingAPIUsage)
+
+        // Then: source identity should be preserved (original provider_log kept)
+        let row = try queue.read { db -> Row in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT usageSource, inputTokens FROM token_usage
+                WHERE sessionId = ?
+                """, arguments: [sessionId])
+            return try XCTUnwrap(rows.first)
+        }
+
+        XCTAssertEqual(row["usageSource"] as? String, "provider_log",
+            "Source identity must be preserved on equal-confidence upsert")
+        // Values should be updated since confidence is equal
+        let inputTokens = (row["inputTokens"] as? Int) ?? Int(row["inputTokens"] as? Int64 ?? 0)
+        XCTAssertEqual(inputTokens, 2000, "Token values should update on equal-confidence upsert")
+    }
+
+    func test_sourceIdentity_updatedOnHigherConfidenceUpsert() throws {
+        // Given: a row from provider_log with low confidence
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = UsageStore(dbQueue: queue)
+
+        let sessionId = "source-identity-test-2"
+        let lowConfUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: sessionId,
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.05,
+            startTime: Date(),
+            endTime: Date(),
+            usageSource: .providerLog,
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .lowConfidenceEstimate,
+            estimatorVersion: "char-ratio-v1"
+        )
+        try store.insert(lowConfUsage)
+
+        // When: a row from billing_api with higher confidence tries to upsert
+        let highConfUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: sessionId,
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 2000,
+            outputTokens: 800,
+            costUSD: 0.10,
+            startTime: Date(),
+            endTime: Date(),
+            usageSource: .billingAPI,
+            provenanceMethod: .billingAPI,
+            provenanceConfidence: .exact, // higher confidence
+            estimatorVersion: ""
+        )
+        try store.insert(highConfUsage)
+
+        // Then: higher confidence should win including source update
+        let row = try queue.read { db -> Row in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT usageSource, provenanceConfidence FROM token_usage
+                WHERE sessionId = ?
+                """, arguments: [sessionId])
+            return try XCTUnwrap(rows.first)
+        }
+
+        XCTAssertEqual(row["usageSource"] as? String, "billing_api",
+            "Source should update when higher confidence row arrives")
+        XCTAssertEqual(row["provenanceConfidence"] as? String, "exact",
+            "Confidence should be updated to exact")
+    }
+
+    func test_sourceIdentity_preservedAcrossAllSources() throws {
+        // Test that source identity is preserved for all source types
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = UsageStore(dbQueue: queue)
+
+        let sources: [UsageSource] = [.providerLog, .inAppChat, .cursorBridge, .billingAPI, .daemon]
+
+        for source in sources {
+            let sessionId = "source-preservation-\(source.rawValue)"
+
+            // Insert first row with exact confidence
+            let firstUsage = TokenUsage(
+                provider: .claudeCode,
+                sessionId: sessionId,
+                projectName: "Project",
+                model: "claude-4-sonnet",
+                inputTokens: 1000,
+                outputTokens: 500,
+                costUSD: 0.05,
+                startTime: Date(),
+                endTime: Date(),
+                usageSource: source,
+                provenanceMethod: .providerLog,
+                provenanceConfidence: .exact,
+                estimatorVersion: ""
+            )
+            try store.insert(firstUsage)
+
+            // Upsert with same confidence but different values
+            let secondUsage = TokenUsage(
+                provider: .claudeCode,
+                sessionId: sessionId,
+                projectName: "Project",
+                model: "claude-4-sonnet",
+                inputTokens: 2000,
+                outputTokens: 800,
+                costUSD: 0.10,
+                startTime: Date(),
+                endTime: Date(),
+                usageSource: .billingAPI, // different source
+                provenanceMethod: .billingAPI,
+                provenanceConfidence: .exact, // same confidence
+                estimatorVersion: ""
+            )
+            try store.insert(secondUsage)
+
+            // Verify source is preserved
+            let row = try queue.read { db -> Row in
+                let rows = try Row.fetchAll(db, sql: """
+                    SELECT usageSource FROM token_usage WHERE sessionId = ?
+                    """, arguments: [sessionId])
+                return try XCTUnwrap(rows.first)
+            }
+
+            XCTAssertEqual(row["usageSource"] as? String, source.rawValue,
+                "Source \(source.rawValue) should be preserved on equal-confidence upsert")
+        }
+    }
 }

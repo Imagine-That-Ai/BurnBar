@@ -179,7 +179,7 @@ final class KimiParser: LogParser, @unchecked Sendable {
             endTime: lastTimestamp ?? Date(),
             provenanceMethod: wireTokens != nil ? .providerLog : .heuristicEstimate,
             provenanceConfidence: wireTokens != nil ? .exact : .lowConfidenceEstimate,
-            estimatorVersion: wireTokens != nil ? "" : "char-ratio-v1"
+            estimatorVersion: wireTokens != nil ? "" : TokenExtractionUtility.currentEstimatorVersion
         )
 
         let conversation = ConversationRecord(

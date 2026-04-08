@@ -420,6 +420,12 @@ final class SettingsManager {
         didSet { save() }
     }
 
+    /// When enabled and exact token counts are unavailable, attempt tokenizer-assisted
+    /// estimation before falling back to character-ratio heuristics. Disabled by default.
+    var tokenizerAssistedFallbackEnabled: Bool {
+        didSet { save() }
+    }
+
     private let defaults: UserDefaults
     private let controllerSecretPersistence: SettingsSecretPersistence
     private let chatGatewaySecretPersistence: SettingsSecretPersistence
@@ -745,6 +751,13 @@ final class SettingsManager {
         } else {
             self.factoryQuotaPlanTier = .unknown
         }
+
+        // Tokenizer-assisted fallback: default off
+        if defaults.object(forKey: "tokenizerAssistedFallbackEnabled") != nil {
+            self.tokenizerAssistedFallbackEnabled = defaults.bool(forKey: "tokenizerAssistedFallbackEnabled")
+        } else {
+            self.tokenizerAssistedFallbackEnabled = false
+        }
     }
     
     // MARK: - Persistence
@@ -854,6 +867,7 @@ final class SettingsManager {
 
         defaults.set(miniMaxQuotaMode.rawValue, forKey: "miniMaxQuotaMode")
         defaults.set(factoryQuotaPlanTier.rawValue, forKey: "factoryQuotaPlanTier")
+        defaults.set(tokenizerAssistedFallbackEnabled, forKey: "tokenizerAssistedFallbackEnabled")
     }
 
     private static func decodeJSONStringArray(_ json: String) -> [String] {

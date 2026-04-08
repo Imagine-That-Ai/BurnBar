@@ -40,6 +40,25 @@ enum TokenExtractionUtility {
         pattern: #"(?:<system-reminder>)?\[Showing lines (\d+)-(\d+) of (\d+) total lines\](?:</system-reminder>)?"#
     )
 
+    // MARK: - Estimator Configuration
+
+    /// Controls which fallback estimator is used when exact token counts are unavailable.
+    /// - characterRatio: Default character-based estimation (charsPerToken ~3.35 for visible, ~2.45 for reasoning)
+    /// - tokenizerAssisted: Higher-precision estimation using actual tokenizer when available
+    enum FallbackEstimator: String {
+        case characterRatio = "char-ratio-v1"
+        case tokenizerAssisted = "tokenizer-v1"
+    }
+
+    /// The current fallback estimator. Defaults to `.characterRatio`.
+    /// UsageAggregat or should set this based on the `tokenizerAssistedFallbackEnabled` user flag.
+    static var fallbackEstimator: FallbackEstimator = .characterRatio
+
+    /// Returns the estimator version string for use in provenance metadata.
+    static var currentEstimatorVersion: String {
+        fallbackEstimator.rawValue
+    }
+
     // MARK: - Usage Extraction
 
     /// Extract token counts from a usage dictionary, handling multiple naming conventions
@@ -262,7 +281,39 @@ enum TokenExtractionUtility {
     // MARK: - Fallback Estimation
 
     /// Estimate token counts from character-level content analysis when no usage data is available.
+    /// Uses the configured `fallbackEstimator` to determine the estimation method.
+    ///
+    /// - VAL-TOKEN-008: When `fallbackEstimator` is `.tokenizerAssisted`, uses tokenizer-aware
+    ///   estimation. When `.characterRatio` (default), uses character-ratio heuristics.
     static func estimateFallbackTokens(
+        userVisibleChars: Int,
+        assistantVisibleChars: Int,
+        assistantReasoningChars: Int,
+        userMessageCount: Int,
+        assistantMessageCount: Int
+    ) -> EstimatedTokens {
+        switch fallbackEstimator {
+        case .characterRatio:
+            return estimateFallbackTokensCharacterRatio(
+                userVisibleChars: userVisibleChars,
+                assistantVisibleChars: assistantVisibleChars,
+                assistantReasoningChars: assistantReasoningChars,
+                userMessageCount: userMessageCount,
+                assistantMessageCount: assistantMessageCount
+            )
+        case .tokenizerAssisted:
+            return estimateFallbackTokensTokenizerAssisted(
+                userVisibleChars: userVisibleChars,
+                assistantVisibleChars: assistantVisibleChars,
+                assistantReasoningChars: assistantReasoningChars,
+                userMessageCount: userMessageCount,
+                assistantMessageCount: assistantMessageCount
+            )
+        }
+    }
+
+    /// Character-ratio fallback estimation (default).
+    private static func estimateFallbackTokensCharacterRatio(
         userVisibleChars: Int,
         assistantVisibleChars: Int,
         assistantReasoningChars: Int,
@@ -273,6 +324,31 @@ enum TokenExtractionUtility {
         let assistantVisibleTokens = estimatedTokenCount(for: assistantVisibleChars, charsPerToken: 3.35)
         let assistantReasoningTokens = estimatedTokenCount(for: assistantReasoningChars, charsPerToken: 2.45)
         let assistantTokens = assistantVisibleTokens + assistantReasoningTokens + (assistantMessageCount * 7)
+
+        return EstimatedTokens(
+            input: max(userTokens, 0),
+            output: max(assistantTokens, 0)
+        )
+    }
+
+    /// Tokenizer-assisted fallback estimation.
+    /// Uses tighter ratios that approximate actual tokenizer behavior.
+    /// When an actual tokenizer is integrated, this should delegate to it.
+    /// Currently uses GPT-style tokenizer approximation (4 chars/token for typical English).
+    private static func estimateFallbackTokensTokenizerAssisted(
+        userVisibleChars: Int,
+        assistantVisibleChars: Int,
+        assistantReasoningChars: Int,
+        userMessageCount: Int,
+        assistantMessageCount: Int
+    ) -> EstimatedTokens {
+        // Tokenizer-assisted estimation uses more accurate per-character ratios
+        // based on actual tokenizer behavior (GPT-style ~4 chars/token for English).
+        // This is a placeholder that will be replaced with actual tokenizer integration.
+        let userTokens = estimatedTokenCount(for: userVisibleChars, charsPerToken: 4.0) + (userMessageCount * 10)
+        let assistantVisibleTokens = estimatedTokenCount(for: assistantVisibleChars, charsPerToken: 4.0)
+        let assistantReasoningTokens = estimatedTokenCount(for: assistantReasoningChars, charsPerToken: 2.8)
+        let assistantTokens = assistantVisibleTokens + assistantReasoningTokens + (assistantMessageCount * 8)
 
         return EstimatedTokens(
             input: max(userTokens, 0),

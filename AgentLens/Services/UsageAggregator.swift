@@ -181,6 +181,12 @@ final class UsageAggregator {
         parserImportError = nil
         parserHealth = [:]
 
+        // VAL-TOKEN-008: Set fallback estimator based on user flag before parsing.
+        // Tokenizer-assisted fallback runs only when the flag is enabled AND exact buckets are unavailable.
+        TokenExtractionUtility.fallbackEstimator = settingsManager.tokenizerAssistedFallbackEnabled
+            ? .tokenizerAssisted
+            : .characterRatio
+
         let refreshStartedAt = Date()
         var allUsages: [TokenUsage] = []
         var indexedConversationChanges = 0
@@ -407,6 +413,12 @@ final class UsageAggregator {
 
     func refresh(provider: AgentProvider) async {
         guard let parser = parsers[provider] else { return }
+
+        // VAL-TOKEN-008: Set fallback estimator based on user flag before parsing.
+        TokenExtractionUtility.fallbackEstimator = settingsManager.tokenizerAssistedFallbackEnabled
+            ? .tokenizerAssisted
+            : .characterRatio
+
         let refreshStartedAt = Date()
         var indexedConversationChanges = 0
 
