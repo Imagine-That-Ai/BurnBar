@@ -19,6 +19,7 @@
 		059045965DA8F34AD8848181 /* ChatMessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD51C996E2207EEC7902141 /* ChatMessageView.swift */; };
 		0615807FF8D3AF97A86597B4 /* InsightBriefCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A8084FA1175E73254F8E125 /* InsightBriefCard.swift */; };
 		09D06F1C25E76826454ABF15 /* UsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77925C86C0EE4AE306B5C81E /* UsageStore.swift */; };
+		A1B2C3D4E5F60718091A2B3D /* ParserCheckpointStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718091A2B3C /* ParserCheckpointStore.swift */; };
 		0A10A0581B2C6845808A8170 /* ProviderQuotaModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FD52465BEB1838C0D742DB9 /* ProviderQuotaModels.swift */; };
 		0B33BE9575B9D43F27E23CC1 /* ZAIQuotaAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9848EB8A189DD55F67AA267 /* ZAIQuotaAdapter.swift */; };
 		0B69DA68B4243A03EC1ADA1B /* DashboardSummarizingComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 838BF13BC43DE5602751F054 /* DashboardSummarizingComponents.swift */; };
@@ -275,6 +276,7 @@
 		FD1D24412329A7B1DC78EF3E /* OpenBurnBarContextSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CCAE190BA1981E9BE94C78F /* OpenBurnBarContextSelector.swift */; };
 		ZZPROV1A2B3C4D5E6F7A8B90C /* TokenUsageProvenanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ZZPROV1F2E3D4C5B6A7D8E9F01 /* TokenUsageProvenanceTests.swift */; };
 		TOKENP2A3B4C5D6E7F8A9B002 /* TokenAccountingPrecedenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TOKENP1F2E3D4C5B6A7D8E9F02 /* TokenAccountingPrecedenceTests.swift */; };
+		CHKPT2A3B4C5D6E7F8A9B04 /* CheckpointAndVisibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHKPT1F2E3D4C5B6A7D8E9F03 /* CheckpointAndVisibilityTests.swift */; };
 		FD985EEE3BCEB9690B85D2D8 /* DailyDigestManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A54F594D8698C41B0BA694 /* DailyDigestManager.swift */; };
 /* End PBXBuildFile section */
 
@@ -441,6 +443,7 @@
 		765FAAE2F72F5852A7A457C0 /* OpenBurnBarDaemonSocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarDaemonSocketClient.swift; sourceTree = "<group>"; };
 		775D8A74F3BCD76F7D180827 /* OpenBurnBarDaemonLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarDaemonLogger.swift; sourceTree = "<group>"; };
 		77925C86C0EE4AE306B5C81E /* UsageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStore.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718091A2B3C /* ParserCheckpointStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserCheckpointStore.swift; sourceTree = "<group>"; };
 		789CC1D61CA1F8B0442F6BEB /* AccountManagerProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountManagerProtocol.swift; sourceTree = "<group>"; };
 		79987AAE7522D880244BCFB2 /* CLIBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIBridge.swift; sourceTree = "<group>"; };
 		7AAF24793FE2DAB32B9E90F7 /* ForgeDevParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgeDevParser.swift; sourceTree = "<group>"; };
@@ -480,6 +483,7 @@
 		9561B798437FB856D7AD76B6 /* InsightBriefStartupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightBriefStartupTests.swift; sourceTree = "<group>"; };
 		ZZPROV1F2E3D4C5B6A7D8E9F01 /* TokenUsageProvenanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenUsageProvenanceTests.swift; sourceTree = "<group>"; };
 		TOKENP1F2E3D4C5B6A7D8E9F02 /* TokenAccountingPrecedenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenAccountingPrecedenceTests.swift; sourceTree = "<group>"; };
+		CHKPT1F2E3D4C5B6A7D8E9F03 /* CheckpointAndVisibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckpointAndVisibilityTests.swift; sourceTree = "<group>"; };
 		95E07CECD3131B8FBF94BC42 /* OpenBurnBarProviderRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarProviderRouter.swift; sourceTree = "<group>"; };
 		96AB2AA3BC3E638DC69E0696 /* CloudSyncServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncServiceTests.swift; sourceTree = "<group>"; };
 		96F13278C69A7E22FE00B3F6 /* FactoryQuotaAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactoryQuotaAdapter.swift; sourceTree = "<group>"; };
@@ -693,6 +697,7 @@
 				7EA49F3A2C78F6AAF2F281C3 /* ProjectionStore.swift */,
 				63C9B8BD8A78996154DBA4AE /* SearchIndexStore.swift */,
 				77925C86C0EE4AE306B5C81E /* UsageStore.swift */,
+				A1B2C3D4E5F60718091A2B3C /* ParserCheckpointStore.swift */,
 			);
 			path = DataStore;
 			sourceTree = "<group>";
@@ -1011,6 +1016,7 @@
 				73B02DCE145FBBDB6E03950C /* WorkflowInsightRollupServiceTests.swift */,
 				ZZPROV1F2E3D4C5B6A7D8E9F01 /* TokenUsageProvenanceTests.swift */,
 				TOKENP1F2E3D4C5B6A7D8E9F02 /* TokenAccountingPrecedenceTests.swift */,
+				CHKPT1F2E3D4C5B6A7D8E9F03 /* CheckpointAndVisibilityTests.swift */,
 			);
 			name = Active;
 			path = AgentLensTests/Active;
@@ -1522,6 +1528,7 @@
 				F8D4C1B60D03AA9112548BE8 /* WorkflowInsightRollupServiceTests.swift in Sources */,
 				ZZPROV1A2B3C4D5E6F7A8B90C /* TokenUsageProvenanceTests.swift in Sources */,
 				TOKENP2A3B4C5D6E7F8A9B002 /* TokenAccountingPrecedenceTests.swift in Sources */,
+				CHKPT2A3B4C5D6E7F8A9B04 /* CheckpointAndVisibilityTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1705,6 +1712,7 @@
 				716B9E06F0FF4E48CE68555B /* UsageAggregator.swift in Sources */,
 				68C7ABCAF8618BD25F64EB39 /* UsageAggregatorParsers.swift in Sources */,
 				09D06F1C25E76826454ABF15 /* UsageStore.swift in Sources */,
+				A1B2C3D4E5F60718091A2B3D /* ParserCheckpointStore.swift in Sources */,
 				CFD08B65E8E3EF5AE40E781C /* VectorCandidateBackend.swift in Sources */,
 				ACA159F49D9C0EE49FFE0C83 /* VectorIndexTypes.swift in Sources */,
 				3BB9598ABC1CD63D01E9F88B /* VectorSemanticProvider.swift in Sources */,

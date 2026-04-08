@@ -99,6 +99,7 @@ final class DataStore {
     let projectionStore: ProjectionStore
     let controlPlaneStore: ControlPlaneStore
     let deviceStore: DeviceStore
+    let checkpointStore: ParserCheckpointStore
 
     private(set) var usages: [TokenUsage] = []
     private(set) var isLoading = false
@@ -242,29 +243,31 @@ final class DataStore {
             let totalInputTokens = providerUsages.reduce(0) { $0 + $1.inputTokens }
             let totalOutputTokens = providerUsages.reduce(0) { $0 + $1.outputTokens }
 
-            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, cost: Double)] = [:]
+            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, reasoning: Int, cost: Double)] = [:]
             for usage in providerUsages {
-                let existing = modelData[usage.model] ?? (0, 0, 0, 0, 0)
+                let existing = modelData[usage.model] ?? (0, 0, 0, 0, 0, 0)
                 modelData[usage.model] = (
-                    existing.input + usage.inputTokens,
-                    existing.output + usage.outputTokens,
-                    existing.cacheCreation + usage.cacheCreationTokens,
-                    existing.cacheRead + usage.cacheReadTokens,
-                    existing.cost + usage.cost
+                    existing.0 + usage.inputTokens,
+                    existing.1 + usage.outputTokens,
+                    existing.2 + usage.cacheCreationTokens,
+                    existing.3 + usage.cacheReadTokens,
+                    existing.4 + usage.reasoningTokens,
+                    existing.5 + usage.cost
                 )
             }
 
             let modelBreakdown = modelData.map { modelName, data in
-                let totalModelTokens = data.input + data.output + data.cacheCreation + data.cacheRead
+                let totalModelTokens = data.0 + data.1 + data.2 + data.3 + data.4
                 return ModelUsage(
                     modelName: modelName,
-                    inputTokens: data.input,
-                    outputTokens: data.output,
-                    cacheCreationTokens: data.cacheCreation,
-                    cacheReadTokens: data.cacheRead,
+                    inputTokens: data.0,
+                    outputTokens: data.1,
+                    cacheCreationTokens: data.2,
+                    cacheReadTokens: data.3,
+                    reasoningTokens: data.4,
                     totalTokens: totalModelTokens,
-                    cost: data.cost,
-                    percentage: totalCost > 0 ? (data.cost / totalCost) * 100 : 0
+                    cost: data.5,
+                    percentage: totalCost > 0 ? (data.5 / totalCost) * 100 : 0
                 )
             }
             .sorted { $0.cost > $1.cost }
@@ -418,6 +421,7 @@ final class DataStore {
         projectionStore = ProjectionStore(dbQueue: databaseQueue)
         controlPlaneStore = ControlPlaneStore(dbQueue: databaseQueue)
         deviceStore = DeviceStore(dbQueue: databaseQueue)
+        checkpointStore = ParserCheckpointStore(dbQueue: databaseQueue)
 
         if runMigrations {
             try database.runMigrations()

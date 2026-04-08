@@ -840,6 +840,25 @@ final class OpenBurnBarDatabase {
                 """)
         }
 
+        migrator.registerMigration("v29_parser_checkpoints") { db in
+            // Tracks parser checkpoint/high-watermark state for safe resume after interruption.
+            // Checkpoint advances only after successful ingestion transaction commit (VAL-PERSIST-004).
+            // Resume from checkpoint must be gap-free and duplicate-free (VAL-PERSIST-005).
+            try db.create(table: "parser_checkpoints") { t in
+                t.column("provider", .text).primaryKey()
+                t.column("checkpointToken", .text).notNull()
+                t.column("lastProcessedFilePath", .text)
+                t.column("lastProcessedAt", .datetime).notNull()
+                t.column("version", .integer).notNull().defaults(to: 1)
+            }
+            // Index for querying checkpoints by provider
+            try db.create(
+                index: "parser_checkpoints_provider_idx",
+                on: "parser_checkpoints",
+                columns: ["provider"]
+            )
+        }
+
         return migrator
     }
 
