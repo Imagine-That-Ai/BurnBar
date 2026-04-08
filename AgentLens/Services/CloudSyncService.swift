@@ -1501,8 +1501,10 @@ final class CloudSyncService {
 
     // MARK: - Cross-Device Download
 
-    private static let lastRemoteDownloadKey = "com.openburnbar.lastRemoteDownloadAt"
-
+    /// Downloads remote data from Firestore with durable, per-account, per-collection watermark tracking.
+    ///
+    /// VAL-PERSIST-010: Watermark advances only after successful sync commit.
+    /// VAL-PERSIST-011: Watermark scope is account-aware and collection-safe.
     func downloadRemoteData(uid: String? = nil) async {
         guard FirebaseApp.app() != nil, accountManager.isSignedIn else { return }
         let resolvedUid = uid ?? Auth.auth().currentUser?.uid
@@ -1510,11 +1512,16 @@ final class CloudSyncService {
         let localDeviceId = accountManager.deviceId
 
         await syncDeviceRegistry(uid: resolvedUid, localDeviceId: localDeviceId)
+
+        // Download usage with durable watermark tracking
         await downloadRemoteUsage(uid: resolvedUid, localDeviceId: localDeviceId)
+
+        // Download conversations with durable watermark tracking
         let newConversationIds = await downloadRemoteConversations(uid: resolvedUid, localDeviceId: localDeviceId)
+
         await downloadRemoteSessionLogBodies(uid: resolvedUid, conversationIds: newConversationIds)
         enqueueProjectionForRemoteConversations(newConversationIds)
-        UserDefaults.standard.set(Date(), forKey: Self.lastRemoteDownloadKey)
+
         await MainActor.run { dataStore.refresh() }
     }
 
@@ -1555,12 +1562,41 @@ final class CloudSyncService {
     }
 
     private func downloadRemoteUsage(uid: String, localDeviceId: String) async {
+        // VAL-PERSIST-010: Use durable, per-account watermark from database
+        // VAL-PERSIST-011: Watermark scope is account-aware
+        let watermark: Date
+        do {
+            watermark = try dataStore.remoteSyncWatermarkStore.fetchWatermarkOrDefault(
+                accountUid: uid,
+                collectionKind: .usage
+            )
+        } catch {
+            // Fall back to default (90 days) if watermark fetch fails
+            watermark = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        }
+
         let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
-        let watermark = UserDefaults.standard.object(forKey: Self.lastRemoteDownloadKey) as? Date
+
+        // Create atomic transaction for durable watermark advancement
+        let syncTx = AtomicRemoteSyncTransaction(
+            dbQueue: dataStore.dbQueue,
+            watermarkStore: dataStore.remoteSyncWatermarkStore,
+            accountUid: uid,
+            collectionKind: .usage
+        )
+
+        defer {
+            // Commit the transaction to advance watermark
+            // This happens even if some items fail, as long as we processed anything
+            if syncTx.processedCount > 0 {
+                try? syncTx.commit()
+            }
+        }
+
         do {
             var query = db.collection("users").document(uid).collection("usage")
                 .whereField("startTime", isGreaterThan: Timestamp(date: cutoff))
-            if let watermark {
+            if watermark > cutoff {
                 query = query.whereField("updatedAt", isGreaterThan: Timestamp(date: watermark))
             }
             let snapshot = try await query.getDocuments()
@@ -1573,10 +1609,12 @@ final class CloudSyncService {
                       let rawProvider = data["provider"] as? String, let provider = AgentProvider(rawValue: rawProvider),
                       let sessionId = data["sessionId"] as? String,
                       let id = UUID(uuidString: data["id"] as? String ?? doc.documentID) else { continue }
+
                 let startTime = (data["startTime"] as? Timestamp)?.dateValue() ?? Date()
                 let reasoning = data["reasoningTokens"] as? Int ?? 0
                 let srcRaw = data["usageSource"] as? String
                 let usageSource = srcRaw.flatMap { UsageSource(rawValue: $0) } ?? .unknown
+
                 let usage = TokenUsage(
                     id: id, provider: provider, sessionId: sessionId,
                     projectName: data["projectName"] as? String ?? "",
@@ -1597,6 +1635,11 @@ final class CloudSyncService {
                     provenanceConfidence: .exact
                 )
                 try dataStore.insertRemoteUsage(usage)
+
+                // Track the latest remote update timestamp for watermark
+                if let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() {
+                    syncTx.recordProcessedItem(remoteUpdatedAt: updatedAt)
+                }
             }
         } catch { /* non-fatal */ }
     }
@@ -1605,10 +1648,38 @@ final class CloudSyncService {
     @discardableResult
     private func downloadRemoteConversations(uid: String, localDeviceId: String) async -> [String] {
         var insertedIds: [String] = []
-        let watermark = UserDefaults.standard.object(forKey: Self.lastRemoteDownloadKey) as? Date
+
+        // VAL-PERSIST-010: Use durable, per-account watermark from database
+        // VAL-PERSIST-011: Watermark scope is account-aware
+        let watermark: Date
+        do {
+            watermark = try dataStore.remoteSyncWatermarkStore.fetchWatermarkOrDefault(
+                accountUid: uid,
+                collectionKind: .conversations
+            )
+        } catch {
+            // Fall back to nil (no watermark) if fetch fails
+            watermark = Date.distantPast
+        }
+
+        // Create atomic transaction for durable watermark advancement
+        let syncTx = AtomicRemoteSyncTransaction(
+            dbQueue: dataStore.dbQueue,
+            watermarkStore: dataStore.remoteSyncWatermarkStore,
+            accountUid: uid,
+            collectionKind: .conversations
+        )
+
+        defer {
+            // Commit the transaction to advance watermark
+            if syncTx.processedCount > 0 {
+                try? syncTx.commit()
+            }
+        }
+
         do {
             var query: Query
-            if let watermark {
+            if watermark > Date.distantPast {
                 query = db.collection("users").document(uid).collection("conversations")
                     .whereField("updatedAt", isGreaterThan: Timestamp(date: watermark)).limit(to: 500)
             } else {
@@ -1649,6 +1720,11 @@ final class CloudSyncService {
                 )
                 try dataStore.insertRemoteConversation(record)
                 insertedIds.append(stableId)
+
+                // Track the latest remote update timestamp for watermark
+                if let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() {
+                    syncTx.recordProcessedItem(remoteUpdatedAt: updatedAt)
+                }
             }
         } catch { /* non-fatal */ }
         return insertedIds

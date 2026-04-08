@@ -859,6 +859,25 @@ final class OpenBurnBarDatabase {
             )
         }
 
+        migrator.registerMigration("v30_remote_sync_watermarks") { db in
+            // Tracks durable remote sync watermarks per account and collection scope.
+            // Watermark advances ONLY after successful sync commit (VAL-PERSIST-010).
+            // Scope is account-aware and collection-safe (VAL-PERSIST-011).
+            try db.create(table: "remote_sync_watermarks") { t in
+                t.column("accountUid", .text).notNull()
+                t.column("collectionKind", .text).notNull()
+                t.column("lastSyncedAt", .datetime).notNull()
+                t.column("lastProcessedRemoteUpdateAt", .datetime)
+                t.column("version", .integer).notNull().defaults(to: 1)
+                t.primaryKey(["accountUid", "collectionKind"])
+            }
+            try db.create(
+                index: "remote_sync_watermarks_account_idx",
+                on: "remote_sync_watermarks",
+                columns: ["accountUid"]
+            )
+        }
+
         return migrator
     }
 

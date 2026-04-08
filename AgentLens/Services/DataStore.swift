@@ -100,6 +100,7 @@ final class DataStore {
     let controlPlaneStore: ControlPlaneStore
     let deviceStore: DeviceStore
     let checkpointStore: ParserCheckpointStore
+    let remoteSyncWatermarkStore: RemoteSyncWatermarkStore
 
     private(set) var usages: [TokenUsage] = []
     private(set) var isLoading = false
@@ -422,6 +423,7 @@ final class DataStore {
         controlPlaneStore = ControlPlaneStore(dbQueue: databaseQueue)
         deviceStore = DeviceStore(dbQueue: databaseQueue)
         checkpointStore = ParserCheckpointStore(dbQueue: databaseQueue)
+        remoteSyncWatermarkStore = RemoteSyncWatermarkStore(dbQueue: databaseQueue)
 
         if runMigrations {
             try database.runMigrations()

@@ -125,17 +125,81 @@ final class UsageStore {
         }
     }
 
+    /// Inserts remote usage with update-to-correction semantics.
+    ///
+    /// VAL-TOKEN-012: Remote re-ingest follows explicit "update-to-correction" semantics.
+    /// If remote data provides a correction for the same logical key, the canonical row
+    /// converges to the corrected values.
+    ///
+    /// VAL-PERSIST-009: Remote correction convergence is enforced.
+    /// When upstream remote data corrects a previously ingested remote row for the same
+    /// logical key, local persistence converges to corrected canonical values.
+    ///
+    /// Precedence is still respected: higher-confidence data wins over lower-confidence.
+    /// Cloud sync data with equal or higher confidence than existing row will update it.
     func insertRemoteUsage(_ usage: TokenUsage) throws {
         try dbQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT OR IGNORE INTO token_usage (
+                    INSERT INTO token_usage (
                         id, provider, sessionId, projectName, model,
                         inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
                         reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
                         usageSource, sourceDeviceId, sourceDeviceName, isRemote, syncedAt,
                         provenanceMethod, provenanceConfidence, estimatorVersion
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                    ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, '')) DO UPDATE SET
+                        projectName = excluded.projectName,
+                        inputTokens = excluded.inputTokens,
+                        outputTokens = excluded.outputTokens,
+                        cacheCreationTokens = excluded.cacheCreationTokens,
+                        cacheReadTokens = excluded.cacheReadTokens,
+                        reasoningTokens = excluded.reasoningTokens,
+                        totalTokens = excluded.totalTokens,
+                        cost = excluded.cost,
+                        startTime = excluded.startTime,
+                        endTime = excluded.endTime,
+                        createdAt = excluded.createdAt,
+                        usageSource = excluded.usageSource,
+                        provenanceMethod = excluded.provenanceMethod,
+                        provenanceConfidence = CASE
+                            WHEN
+                                CASE excluded.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                                >=
+                                CASE token_usage.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                            THEN excluded.provenanceConfidence
+                            ELSE token_usage.provenanceConfidence
+                        END,
+                        estimatorVersion = excluded.estimatorVersion,
+                        syncedAt = NULL
+                    WHERE
+                        CASE excluded.provenanceConfidence
+                            WHEN 'exact' THEN 4
+                            WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1
+                            ELSE 0
+                        END
+                        >=
+                        CASE token_usage.provenanceConfidence
+                            WHEN 'exact' THEN 4
+                            WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1
+                            ELSE 0
+                        END
                     """,
                 arguments: [
                     usage.id.uuidString, usage.provider.rawValue, usage.sessionId,
