@@ -161,6 +161,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         let sessionId = "prov-upsert-1"
         let model = "claude-4-sonnet"
 
+        // First insert: exact confidence
         let usage1 = TokenUsage(
             provider: .claudeCode, sessionId: sessionId, projectName: "Project",
             model: model, inputTokens: 1000, outputTokens: 500, costUSD: 0.05,
@@ -169,6 +170,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         )
         try usageStore.insert(usage1)
 
+        // Second insert: lower confidence estimate
         let usage2 = TokenUsage(
             provider: .claudeCode, sessionId: sessionId, projectName: "Project",
             model: model, inputTokens: 2000, outputTokens: 1000, costUSD: 0.10,
@@ -189,11 +191,54 @@ final class TokenUsageProvenanceTests: XCTestCase {
             return try XCTUnwrap(rows.first)
         }
 
+        // Exact row must NOT be downgraded by lower confidence estimate
         let inputTokens = (row["inputTokens"] as? Int) ?? Int(row["inputTokens"] as? Int64 ?? 0)
-        XCTAssertEqual(inputTokens, 2000, "Upsert must update token counts")
-        XCTAssertEqual(row["provenanceMethod"] as? String, "heuristic_estimate")
-        XCTAssertEqual(row["provenanceConfidence"] as? String, "low_confidence_estimate")
-        XCTAssertEqual(row["estimatorVersion"] as? String, "char-ratio-v1")
+        XCTAssertEqual(inputTokens, 1000, "Exact row must not be downgraded by lower confidence estimate")
+        XCTAssertEqual(row["provenanceMethod"] as? String, "provider_log")
+        XCTAssertEqual(row["provenanceConfidence"] as? String, "exact")
+        XCTAssertEqual(row["estimatorVersion"] as? String, "")
+    }
+
+    func test_upsertEqualConfidence_allowsUpdate() throws {
+        // Test that when confidence levels are equal, updates ARE allowed
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+
+        let sessionId = "prov-upsert-equal-conf"
+        let model = "claude-4-sonnet"
+
+        // First insert: high confidence estimate
+        let usage1 = TokenUsage(
+            provider: .cursor, sessionId: sessionId, projectName: "Project",
+            model: model, inputTokens: 1000, outputTokens: 500, costUSD: 0.05,
+            startTime: Date(), endTime: Date(),
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .highConfidenceEstimate,
+            estimatorVersion: "cjk-aware-v2"
+        )
+        try usageStore.insert(usage1)
+
+        // Second insert: same confidence, different values
+        let usage2 = TokenUsage(
+            provider: .cursor, sessionId: sessionId, projectName: "Project",
+            model: model, inputTokens: 2000, outputTokens: 1000, costUSD: 0.10,
+            startTime: Date(), endTime: Date(),
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .highConfidenceEstimate,
+            estimatorVersion: "cjk-aware-v2"
+        )
+        try usageStore.insert(usage2)
+
+        let row = try queue.read { db -> Row in
+            let rows = try Row.fetchAll(db, sql: "SELECT * FROM token_usage LIMIT 1")
+            return try XCTUnwrap(rows.first)
+        }
+
+        // With equal confidence, update should happen
+        let inputTokens = (row["inputTokens"] as? Int) ?? Int(row["inputTokens"] as? Int64 ?? 0)
+        XCTAssertEqual(inputTokens, 2000, "Equal confidence should allow update")
+        XCTAssertEqual(row["provenanceConfidence"] as? String, "high_confidence_estimate")
     }
 
     // MARK: - Remote Insert Preserves Provenance

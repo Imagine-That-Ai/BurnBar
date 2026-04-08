@@ -39,21 +39,57 @@ final class UsageStore {
                         createdAt = excluded.createdAt,
                         usageSource = excluded.usageSource,
                         provenanceMethod = excluded.provenanceMethod,
-                        provenanceConfidence = excluded.provenanceConfidence,
+                        provenanceConfidence = CASE
+                            WHEN
+                                CASE excluded.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                                >=
+                                CASE token_usage.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                            THEN excluded.provenanceConfidence
+                            ELSE token_usage.provenanceConfidence
+                        END,
                         estimatorVersion = excluded.estimatorVersion,
                         syncedAt = NULL
                     WHERE
-                        token_usage.projectName != excluded.projectName
-                        OR token_usage.inputTokens != excluded.inputTokens
-                        OR token_usage.outputTokens != excluded.outputTokens
-                        OR token_usage.cacheCreationTokens != excluded.cacheCreationTokens
-                        OR token_usage.cacheReadTokens != excluded.cacheReadTokens
-                        OR token_usage.reasoningTokens != excluded.reasoningTokens
-                        OR token_usage.totalTokens != excluded.totalTokens
-                        OR token_usage.cost != excluded.cost
-                        OR token_usage.startTime != excluded.startTime
-                        OR token_usage.endTime != excluded.endTime
-                        OR token_usage.usageSource != excluded.usageSource
+                        CASE excluded.provenanceConfidence
+                            WHEN 'exact' THEN 4
+                            WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1
+                            ELSE 0
+                        END
+                        >=
+                        CASE token_usage.provenanceConfidence
+                            WHEN 'exact' THEN 4
+                            WHEN 'derived_exact' THEN 3
+                            WHEN 'high_confidence_estimate' THEN 2
+                            WHEN 'low_confidence_estimate' THEN 1
+                            ELSE 0
+                        END
+                        AND (
+                            token_usage.projectName != excluded.projectName
+                            OR token_usage.inputTokens != excluded.inputTokens
+                            OR token_usage.outputTokens != excluded.outputTokens
+                            OR token_usage.cacheCreationTokens != excluded.cacheCreationTokens
+                            OR token_usage.cacheReadTokens != excluded.cacheReadTokens
+                            OR token_usage.reasoningTokens != excluded.reasoningTokens
+                            OR token_usage.totalTokens != excluded.totalTokens
+                            OR token_usage.cost != excluded.cost
+                            OR token_usage.startTime != excluded.startTime
+                            OR token_usage.endTime != excluded.endTime
+                            OR token_usage.usageSource != excluded.usageSource
+                        )
                     """,
                 arguments: [
                     usage.id.uuidString,
