@@ -1,0 +1,129 @@
+{
+  "groupId": "group-remote-watermark",
+  "testedAt": "2026-04-08T23:14:12Z",
+  "isolation": {
+    "surface": "Swift/Xcode Contract Tests",
+    "repoRoot": "/Users/dewclaw/Documents/Projects/BurnBar",
+    "derivedDataPath": "/Users/dewclaw/Documents/Projects/BurnBar/.derived-data/user-testing-group-remote-watermark",
+    "missionDir": "/Users/dewclaw/.factory/missions/76dfbf36-62ab-43ad-899f-b8b8f9e47932",
+    "heavyTestPolicy": "serialized"
+  },
+  "toolsUsed": [
+    "xcodebuild",
+    "sqlite3"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-TOKEN-012",
+      "title": "Remote re-ingest behavior is explicit and tested",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run scoped xcodebuild tests for OpenBurnBarTests/RemoteSyncWatermarkTests",
+          "expected": "Remote re-ingest of same logical key is deterministic, duplicate-free, and correction updates converge",
+          "observed": "test_remoteInsert_allowsReinsertOfSameKey and test_remoteInsert_updatesWhenCorrected both passed (xcodebuild log lines 13349-13352)"
+        },
+        {
+          "action": "Run sqlite remote canonical-key duplicate audit",
+          "expected": "No duplicate remote canonical rows for same (provider, sessionId, model, sourceDeviceId)",
+          "observed": "Duplicate audit query returned zero rows (sqlite evidence section 'Remote canonical-key duplicate audit')"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m1-provenance-foundation/group-remote-watermark/xcodebuild-remote-sync-watermark.log (lines 13349-13352)",
+        "sqlite": "m1-provenance-foundation/group-remote-watermark/sqlite-remote-watermark-evidence.txt (remote canonical-key duplicate audit section)",
+        "terminalSnapshots": [
+          "m1-provenance-foundation/group-remote-watermark/xcodebuild-remote-sync-watermark.log",
+          "m1-provenance-foundation/group-remote-watermark/sqlite-remote-watermark-evidence.txt"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERSIST-009",
+      "title": "Remote correction convergence is enforced",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run RemoteSyncWatermarkTests correction convergence cases",
+          "expected": "Higher-confidence remote corrections replace lower-confidence rows and do not downgrade exact rows",
+          "observed": "test_remoteCorrection_updatesExistingLowerConfidenceRow, test_remoteCorrection_doesNotDowngradeExactToEstimate, and test_remoteCorrection_convergesFromDifferentRemoteDevice passed (xcodebuild log lines 13343-13348)"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m1-provenance-foundation/group-remote-watermark/xcodebuild-remote-sync-watermark.log (lines 13343-13348)",
+        "terminalSnapshots": [
+          "m1-provenance-foundation/group-remote-watermark/xcodebuild-remote-sync-watermark.log"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERSIST-010",
+      "title": "Remote download watermark advances only after durable success",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run watermark commit-boundary tests in RemoteSyncWatermarkTests",
+          "expected": "Watermark remains unchanged without commit and advances only after successful commit",
+          "observed": "test_watermark_doesNotAdvance_whenTransactionNotCommitted and test_watermark_advances_onlyAfterCommit passed (xcodebuild log lines 13353-13358)"
+        },
+        {
+          "action": "Inspect remote_sync_watermarks schema/indexes via sqlite3",
+          "expected": "Durable watermark table and primary-key/index support exist",
+          "observed": "remote_sync_watermarks schema and indexes present, including primary-key autoindex (sqlite evidence lines 4-17)"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m1-provenance-foundation/group-remote-watermark/xcodebuild-remote-sync-watermark.log (lines 13353-13358)",
+        "sqlite": "m1-provenance-foundation/group-remote-watermark/sqlite-remote-watermark-evidence.txt (lines 4-17)",
+        "terminalSnapshots": [
+          "m1-provenance-foundation/group-remote-watermark/xcodebuild-remote-sync-watermark.log",
+          "m1-provenance-foundation/group-remote-watermark/sqlite-remote-watermark-evidence.txt"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERSIST-011",
+      "title": "Watermark scope is account-aware and collection-safe",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run account/collection watermark isolation tests in RemoteSyncWatermarkTests",
+          "expected": "Watermarks are isolated per account and per collection scope",
+          "observed": "test_watermark_perAccountIsolation, test_watermark_perCollectionIsolation, and test_watermark_fetchAllForAccount passed (xcodebuild log lines 13365-13368 and 13359-13360)"
+        },
+        {
+          "action": "Inspect sqlite watermark key/index shape",
+          "expected": "Scope key includes accountUid+collectionKind and account index exists",
+          "observed": "PRAGMA/index outputs show accountUid+collectionKind primary key and account index remote_sync_watermarks_account_idx (sqlite evidence lines 12-17)"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m1-provenance-foundation/group-remote-watermark/xcodebuild-remote-sync-watermark.log (lines 13359-13360, 13365-13368)",
+        "sqlite": "m1-provenance-foundation/group-remote-watermark/sqlite-remote-watermark-evidence.txt (lines 12-17)",
+        "terminalSnapshots": [
+          "m1-provenance-foundation/group-remote-watermark/xcodebuild-remote-sync-watermark.log",
+          "m1-provenance-foundation/group-remote-watermark/sqlite-remote-watermark-evidence.txt"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Scoped xcodebuild produced pre-existing compiler warnings in RemoteSyncWatermarkTests for redundant 'try try' expressions.",
+      "resolved": true,
+      "resolution": "Warnings were non-fatal; all assigned tests still passed in the same run.",
+      "affectedAssertions": [
+        "VAL-TOKEN-012",
+        "VAL-PERSIST-009",
+        "VAL-PERSIST-010",
+        "VAL-PERSIST-011"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 4 assigned assertions with scoped RemoteSyncWatermarkTests plus sqlite schema/audit checks; all 4 assertions passed."
+}

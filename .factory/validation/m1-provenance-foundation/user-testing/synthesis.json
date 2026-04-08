@@ -1,0 +1,73 @@
+{
+  "milestone": "m1-provenance-foundation",
+  "round": 1,
+  "generatedAt": "2026-04-08T23:16:14Z",
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 12,
+    "passed": 12,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-CROSS-008",
+    "VAL-PERSIST-001",
+    "VAL-PERSIST-002",
+    "VAL-PERSIST-003",
+    "VAL-PERSIST-004",
+    "VAL-PERSIST-005",
+    "VAL-PERSIST-009",
+    "VAL-PERSIST-010",
+    "VAL-PERSIST-011",
+    "VAL-PERSIST-014",
+    "VAL-TOKEN-007",
+    "VAL-TOKEN-012"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance for Swift/Xcode contract tests and documented code-signing-off flags required in this environment.",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null,
+  "flowReports": [
+    ".factory/validation/m1-provenance-foundation/user-testing/flows/group-core-persistence.json",
+    ".factory/validation/m1-provenance-foundation/user-testing/flows/group-remote-watermark.json"
+  ],
+  "toolsUsed": [
+    "sqlite3",
+    "xcodebuild"
+  ],
+  "frictions": [
+    {
+      "description": "Initial xcodebuild invocation failed due to signing requirement on OpenBurnBar entitlements.",
+      "resolved": true,
+      "resolution": "Reran scoped tests with CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' and tests succeeded.",
+      "affectedAssertions": [
+        "VAL-PERSIST-001",
+        "VAL-PERSIST-002",
+        "VAL-PERSIST-003",
+        "VAL-PERSIST-004",
+        "VAL-PERSIST-005",
+        "VAL-PERSIST-014",
+        "VAL-TOKEN-007",
+        "VAL-CROSS-008"
+      ]
+    },
+    {
+      "description": "Scoped xcodebuild produced pre-existing compiler warnings in RemoteSyncWatermarkTests for redundant 'try try' expressions.",
+      "resolved": true,
+      "resolution": "Warnings were non-fatal; all assigned tests still passed in the same run.",
+      "affectedAssertions": [
+        "VAL-TOKEN-012",
+        "VAL-PERSIST-009",
+        "VAL-PERSIST-010",
+        "VAL-PERSIST-011"
+      ]
+    }
+  ],
+  "blockers": []
+}

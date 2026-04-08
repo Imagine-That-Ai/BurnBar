@@ -1,0 +1,209 @@
+{
+  "groupId": "group-core-persistence",
+  "testedAt": "2026-04-08T23:08:11Z",
+  "isolation": {
+    "surface": "Swift/Xcode Contract Tests",
+    "repoRoot": "/Users/dewclaw/Documents/Projects/BurnBar",
+    "derivedDataPath": "/Users/dewclaw/Documents/Projects/BurnBar/.derived-data/user-testing-group-core-persistence",
+    "missionDir": "/Users/dewclaw/.factory/missions/76dfbf36-62ab-43ad-899f-b8b8f9e47932",
+    "heavyTestPolicy": "serialized"
+  },
+  "toolsUsed": [
+    "xcodebuild",
+    "sqlite3"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-PERSIST-001",
+      "title": "Row-level provenance and confidence are persisted",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run scoped tests including OpenBurnBarTests/TokenUsageProvenanceTests",
+          "expected": "Provenance persistence and migration tests pass",
+          "observed": "TokenUsageProvenanceTests passed (15 tests, 0 failures)"
+        },
+        {
+          "action": "Run sqlite schema/population checks on token_usage",
+          "expected": "provenanceMethod/provenanceConfidence/estimatorVersion columns exist and are populated",
+          "observed": "Columns present in PRAGMA table_info(token_usage); population counts: 10804/10804 rows with provenance fields"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log (TokenUsageProvenanceTests lines 13297-13328)",
+        "sqlite": "m1-provenance-foundation/group-core-persistence/sqlite-evidence.txt (token_usage schema + provenance counts sections)",
+        "terminalSnapshots": [
+          "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log",
+          "m1-provenance-foundation/group-core-persistence/sqlite-evidence.txt"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERSIST-002",
+      "title": "Exact rows cannot be downgraded by lower-confidence writes",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run scoped tests including OpenBurnBarTests/TokenAccountingPrecedenceTests",
+          "expected": "Downgrade attempts are rejected",
+          "observed": "test_exactRow_isNotDowngradedByLowerConfidenceEstimate and related precedence tests passed"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log (TokenAccountingPrecedenceTests lines 13269-13272)",
+        "terminalSnapshots": [
+          "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERSIST-003",
+      "title": "Late exact arrivals upgrade prior estimates deterministically",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TokenAccountingPrecedenceTests late-upgrade scenarios",
+          "expected": "Late exact data upgrades existing estimated/derived rows",
+          "observed": "test_lateExactPromotesEstimatedCanonicalRow and test_lateExactPromotesDerivedExactRow passed"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log (lines 13273-13276)",
+        "terminalSnapshots": [
+          "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERSIST-004",
+      "title": "Checkpoints advance only after successful commit",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run CheckpointTests commit-boundary cases",
+          "expected": "Checkpoint unchanged on rollback/failure and advanced only on commit",
+          "observed": "test_checkpoint_doesNotAdvance_whenCommitFails, test_checkpoint_doesNotAdvance_whenTransaction_throwsBeforeCommit, and test_checkpoint_advances_onlyAfterSuccessfulCommit all passed"
+        },
+        {
+          "action": "Inspect parser_checkpoints schema",
+          "expected": "Checkpoint table/fields available for persisted checkpoint state",
+          "observed": "PRAGMA table_info(parser_checkpoints) returned provider/checkpointToken/lastProcessedFilePath/lastProcessedAt/version columns"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log (lines 13240-13247)",
+        "sqlite": "m1-provenance-foundation/group-core-persistence/sqlite-evidence.txt (parser_checkpoints schema section)",
+        "terminalSnapshots": [
+          "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log",
+          "m1-provenance-foundation/group-core-persistence/sqlite-evidence.txt"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERSIST-005",
+      "title": "Resume from checkpoint is gap-free and duplicate-free",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run CheckpointTests resume scenarios",
+          "expected": "Resume reads checkpoint, preserves rows, and avoids duplicates",
+          "observed": "test_resume_gapFreeAfterInterruption and test_resume_duplicateFreeOnReingest passed"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log (lines 13254-13261)",
+        "terminalSnapshots": [
+          "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERSIST-014",
+      "title": "Parser cache corruption/reset recovery is safe",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run CheckpointTests corruption/reset recovery scenarios",
+          "expected": "Clearing checkpoint enables safe reprocess with no missing canonical rows/duplicates",
+          "observed": "test_clearCheckpoint_forcesFullReprocess, test_clearAllCheckpoints_fullReset, and test_recoveryAfterCorruption_noMissingRows passed"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log (lines 13248-13253)",
+        "terminalSnapshots": [
+          "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-007",
+      "title": "Idempotent local usage upsert by dedupe key",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TokenAccountingPrecedenceTests local re-ingest cases",
+          "expected": "Same logical key re-ingest remains single canonical row",
+          "observed": "test_localReingest_sameLogicalKey_remainsDuplicateFree and test_upsert_withNullSourceDeviceId_conflictsWithEmptySourceDeviceId passed"
+        },
+        {
+          "action": "Run sqlite duplicate-group audit query",
+          "expected": "No duplicate canonical-key groups",
+          "observed": "duplicate_groups = 0"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log (lines 13279-13294)",
+        "sqlite": "m1-provenance-foundation/group-core-persistence/sqlite-evidence.txt (Duplicate canonical-key groups section)",
+        "terminalSnapshots": [
+          "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log",
+          "m1-provenance-foundation/group-core-persistence/sqlite-evidence.txt"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-008",
+      "title": "Atomic visibility boundary across ingestion, indexing, and reporting",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run CheckpointTests atomic visibility cases",
+          "expected": "No partial visibility before commit; full visibility only after commit/checkpoint advancement",
+          "observed": "test_atomicVisibility_noPartialState_onFailure and test_atomicVisibility_fullState_afterCommit passed"
+        }
+      ],
+      "evidence": {
+        "testOutput": "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log (lines 13232-13239)",
+        "terminalSnapshots": [
+          "m1-provenance-foundation/group-core-persistence/xcodebuild-scoped-tests.log"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Initial xcodebuild invocation failed due to signing requirement on OpenBurnBar entitlements.",
+      "resolved": true,
+      "resolution": "Reran scoped tests with CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' and tests succeeded.",
+      "affectedAssertions": [
+        "VAL-PERSIST-001",
+        "VAL-PERSIST-002",
+        "VAL-PERSIST-003",
+        "VAL-PERSIST-004",
+        "VAL-PERSIST-005",
+        "VAL-PERSIST-014",
+        "VAL-TOKEN-007",
+        "VAL-CROSS-008"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 8 assigned assertions via scoped OpenBurnBarTests classes; all 8 passed with supporting sqlite evidence captured."
+}
