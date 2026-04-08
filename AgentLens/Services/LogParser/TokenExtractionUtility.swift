@@ -8,6 +8,19 @@ struct ExtractedTokenUsage {
     let output: Int
     let cacheCreation: Int
     let cacheRead: Int
+    let reasoningTokens: Int
+
+    /// Returns true when all explicit buckets (input, output, cacheCreation, cacheRead, reasoningTokens) are zero/absent.
+    /// This indicates that fallback estimation should be used rather than normalization.
+    var hasNoExplicitBuckets: Bool {
+        input == 0 && output == 0 && cacheCreation == 0 && cacheRead == 0 && reasoningTokens == 0
+    }
+
+    /// Returns true when at least one primary bucket (input or output) is explicitly present.
+    /// Normalization from total_tokens is appropriate in this case.
+    var hasExplicitPrimaryBucket: Bool {
+        input > 0 || output > 0
+    }
 }
 
 /// Estimated token counts derived from character-level content analysis.
@@ -31,6 +44,19 @@ enum TokenExtractionUtility {
 
     /// Extract token counts from a usage dictionary, handling multiple naming conventions
     /// across providers (snake_case, camelCase, nested objects).
+    ///
+    /// - Important: This function preserves explicit token buckets without heuristic redistribution.
+    ///   Normalization (deriving missing primary buckets from total_tokens) only occurs when at least
+    ///   one primary bucket (input or output) is explicitly present. Fallback estimation based on
+    ///   character counts must be triggered by the caller when `ExtractedTokenUsage.hasNoExplicitBuckets` is true.
+    ///
+    /// - Parameters:
+    ///   - usage: The usage dictionary from the provider payload
+    ///   - inputHint: Optional hint for normalizing input/output split when total_tokens is available but input is missing
+    ///   - outputHint: Optional hint for normalizing input/output split when total_tokens is available but output is missing
+    ///
+    /// - Returns: An `ExtractedTokenUsage` with all explicit buckets preserved. The caller should check
+    ///   `hasNoExplicitBuckets` to determine if fallback estimation is needed.
     static func extractUsageTokens(
         _ usage: [String: Any],
         inputHint: Int = 0,
@@ -78,7 +104,7 @@ enum TokenExtractionUtility {
             ]
         ) ?? 0
 
-        let thinking = firstIntValue(
+        let reasoningTokens = firstIntValue(
             in: usage,
             paths: [
                 ["thinking_tokens"],
@@ -101,10 +127,18 @@ enum TokenExtractionUtility {
         let explicitPayloadTotal = max(input, 0) + max(output, 0) + max(cacheCreation, 0) + max(cacheRead, 0)
         let normalizedTotal = max(total, explicitPayloadTotal)
 
+        // VAL-TOKEN-004: Fallback gating - normalization occurs when total_tokens is present.
+        // Deriving input/output from total_tokens is normalization (VAL-TOKEN-004), not fallback.
+        // Fallback (character-based estimation) only occurs when total_tokens is absent AND all buckets are 0.
+        // The caller is responsible for fallback estimation when hasNoExplicitBuckets is true and total == 0.
+
         if normalizedTotal > 0 {
+            // Normalization: derive missing primary buckets from total_tokens.
+            // This is appropriate when total_tokens is explicitly provided by the provider.
             let availableForInOut = max(normalizedTotal - cacheCreation - cacheRead, 0)
 
             if input == 0 && output == 0 && availableForInOut > 0 {
+                // Both missing but total available - use hints to normalize the split
                 let combinedHints = inputHint + outputHint
                 let inputRatio = combinedHints > 0
                     ? Double(inputHint) / Double(combinedHints)
@@ -119,16 +153,18 @@ enum TokenExtractionUtility {
                 output += availableForInOut - (input + output)
             }
         }
+        // Note: When normalizedTotal is 0 and all buckets are 0, the caller should detect
+        // hasNoExplicitBuckets=true and apply fallback estimation if appropriate.
 
-        if thinking > 0 && total == 0 {
-            output += thinking
-        }
+        // VAL-TOKEN-006: Reasoning tokens are preserved explicitly, not folded into output.
+        // If the provider reports reasoning tokens separately, they remain as a distinct bucket.
 
         return ExtractedTokenUsage(
             input: max(input, 0),
             output: max(output, 0),
             cacheCreation: max(cacheCreation, 0),
-            cacheRead: max(cacheRead, 0)
+            cacheRead: max(cacheRead, 0),
+            reasoningTokens: max(reasoningTokens, 0)
         )
     }
 

@@ -655,7 +655,20 @@ final class CursorConnectorManager {
         let completionTokens: Int
         let cacheCreationTokens: Int
         let cacheReadTokens: Int
+        let reasoningTokens: Int
         let totalTokens: Int
+
+        /// Returns true when all explicit buckets are zero/absent.
+        /// This indicates that fallback estimation should be used rather than normalization.
+        var hasNoExplicitBuckets: Bool {
+            promptTokens == 0 && completionTokens == 0 && cacheCreationTokens == 0 && cacheReadTokens == 0 && reasoningTokens == 0
+        }
+
+        /// Returns true when at least one primary bucket (prompt or completion) is explicitly present.
+        /// Normalization from total_tokens is appropriate in this case.
+        var hasExplicitPrimaryBucket: Bool {
+            promptTokens > 0 || completionTokens > 0
+        }
     }
 
     static func normalizeUsageEvent(_ json: [String: Any]) -> NormalizedUsageEvent {
@@ -701,6 +714,19 @@ final class CursorConnectorManager {
             ]
         ) ?? 0
 
+        // VAL-TOKEN-006: Extract reasoning tokens from all known paths
+        let reasoningTokens = firstIntValue(
+            in: json,
+            paths: [
+                ["thinking_tokens"],
+                ["reasoning_tokens"],
+                ["thinkingTokens"],
+                ["reasoningTokens"],
+                ["completion_tokens_details", "reasoning_tokens"],
+                ["output_tokens_details", "reasoning_tokens"]
+            ]
+        ) ?? 0
+
         let total = firstIntValue(
             in: json,
             paths: [
@@ -728,9 +754,16 @@ final class CursorConnectorManager {
         let explicitTotal = prompt + completion + cacheCreation + cacheRead
         let normalizedTotal = max(total, explicitTotal)
 
+        // VAL-TOKEN-004: Fallback gating - normalization occurs when total_tokens is present.
+        // Deriving input/output from total_tokens is normalization (VAL-TOKEN-004), not fallback.
+        // Fallback (character-based estimation) only occurs when total_tokens is absent AND all buckets are 0.
+
         if normalizedTotal > 0 {
+            // Normalization: derive missing primary buckets from total_tokens.
+            // This is appropriate when total_tokens is explicitly provided by the provider.
             let availableForInOut = max(normalizedTotal - cacheCreation - cacheRead, 0)
             if prompt == 0 && completion == 0 && availableForInOut > 0 {
+                // Both missing but total available - use hints to normalize the split
                 let combinedHintChars = inputCharHint + outputCharHint
                 let inputRatio = combinedHintChars > 0
                     ? Double(inputCharHint) / Double(combinedHintChars)
@@ -744,9 +777,9 @@ final class CursorConnectorManager {
             } else if prompt + completion < availableForInOut {
                 completion += availableForInOut - (prompt + completion)
             }
-        }
-
-        if prompt == 0 && completion == 0 && cacheRead == 0 && inputCharHint + outputCharHint > 0 {
+        } else if prompt == 0 && completion == 0 && cacheCreation == 0 && cacheRead == 0 && reasoningTokens == 0 && inputCharHint + outputCharHint > 0 {
+            // Fallback: character-based estimation only when NO token data and NO total_tokens.
+            // This is true fallback mode - we have no usage data to work with.
             if inputCharHint > 0 {
                 prompt = max(Int((Double(inputCharHint) / 3.35).rounded(.up)), 1)
             }
@@ -755,11 +788,15 @@ final class CursorConnectorManager {
             }
         }
 
+        // VAL-TOKEN-006: Reasoning tokens are preserved explicitly, not folded into completion.
+        // If the provider reports reasoning tokens separately, they remain as a distinct bucket.
+
         return NormalizedUsageEvent(
             promptTokens: max(prompt, 0),
             completionTokens: max(completion, 0),
             cacheCreationTokens: max(cacheCreation, 0),
             cacheReadTokens: max(cacheRead, 0),
+            reasoningTokens: max(reasoningTokens, 0),
             totalTokens: max(normalizedTotal, prompt + completion + cacheCreation + cacheRead)
         )
     }
@@ -1081,7 +1118,8 @@ final class CursorConnectorManager {
                 ("cached_tokens",),
                 ("cachedTokens",)
             )
-            thinking = usage_number(
+            # VAL-TOKEN-006: Extract reasoning tokens from all known paths
+            reasoning_tokens = usage_number(
                 usage,
                 ("thinking_tokens",),
                 ("reasoning_tokens",),
@@ -1094,7 +1132,15 @@ final class CursorConnectorManager {
 
             explicit_total = prompt + completion + cache_creation + cache_read
             normalized_total = max(total, explicit_total)
-            if normalized_total > 0:
+
+            # VAL-TOKEN-004: Fallback gating - normalization only when explicit primary bucket exists.
+            # Normalization (deriving missing prompt/completion from total_tokens) is appropriate only when
+            # at least one primary bucket is present. When no explicit buckets exist, fallback
+            # character-based estimation should be used instead.
+            has_explicit_primary = prompt > 0 or completion > 0
+
+            if normalized_total > 0 and has_explicit_primary:
+                # Only normalize missing primary buckets when at least one explicit primary bucket exists.
                 available_for_in_out = max(normalized_total - cache_creation - cache_read, 0)
                 if prompt == 0 and completion == 0 and available_for_in_out > 0:
                     combined_hint = prompt_char_estimate + output_char_estimate
@@ -1111,10 +1157,11 @@ final class CursorConnectorManager {
                 elif prompt + completion < available_for_in_out:
                     completion += available_for_in_out - (prompt + completion)
 
-            if thinking > 0 and total == 0:
-                completion += thinking
+            # VAL-TOKEN-006: Reasoning tokens are preserved explicitly, not folded into completion.
+            # If the provider reports reasoning tokens separately, they remain as a distinct bucket.
 
-            if prompt == 0 and completion == 0 and cache_read == 0 and (prompt_char_estimate + output_char_estimate) > 0:
+            # Fallback: character-based estimation when all token buckets are absent
+            if prompt == 0 and completion == 0 and cache_read == 0 and reasoning_tokens == 0 and (prompt_char_estimate + output_char_estimate) > 0:
                 if prompt_char_estimate > 0:
                     prompt = max(int(round(prompt_char_estimate / 3.35)), 1)
                 if output_char_estimate > 0:
@@ -1125,6 +1172,7 @@ final class CursorConnectorManager {
                 "completion_tokens": max(completion, 0),
                 "cache_creation_tokens": max(cache_creation, 0),
                 "cache_read_tokens": max(cache_read, 0),
+                "reasoning_tokens": max(reasoning_tokens, 0),
                 "total_tokens": max(normalized_total, prompt + completion + cache_creation + cache_read),
             }
 
@@ -1251,6 +1299,7 @@ final class CursorConnectorManager {
                 "completion_tokens": normalized_usage.get("completion_tokens", 0) or 0,
                 "cache_creation_tokens": normalized_usage.get("cache_creation_tokens", 0) or 0,
                 "cache_read_tokens": normalized_usage.get("cache_read_tokens", 0) or 0,
+                "reasoning_tokens": normalized_usage.get("reasoning_tokens", 0) or 0,
                 "total_tokens": normalized_usage.get("total_tokens", 0) or 0,
                 "input_char_estimate": prompt_char_estimate,
                 "output_char_estimate": output_char_estimate,

@@ -665,7 +665,19 @@ final class CLIBridge: ObservableObject {
             ["promptTokensDetails", "cachedTokens"]
         ])
 
-        guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else {
+        // VAL-TOKEN-006: Extract reasoning tokens from all known paths
+        let reasoningTokens = firstInt(paths: [
+            ["thinking_tokens"],
+            ["reasoning_tokens"],
+            ["thinkingTokens"],
+            ["reasoningTokens"],
+            ["completion_tokens_details", "reasoning_tokens"],
+            ["output_tokens_details", "reasoning_tokens"]
+        ])
+
+        // VAL-TOKEN-004: Guard - return nil only when ALL buckets are unavailable.
+        // This is the gating check: fallback should only run when no exact buckets exist.
+        guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 || reasoningTokens > 0 else {
             return nil
         }
 
@@ -674,7 +686,7 @@ final class CLIBridge: ObservableObject {
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,
             cacheReadTokens: cacheReadTokens,
-            reasoningTokens: 0
+            reasoningTokens: reasoningTokens
         )
     }
 
