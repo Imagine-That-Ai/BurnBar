@@ -276,6 +276,7 @@
 		FD1D24412329A7B1DC78EF3E /* OpenBurnBarContextSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CCAE190BA1981E9BE94C78F /* OpenBurnBarContextSelector.swift */; };
 		ZZPROV1A2B3C4D5E6F7A8B90C /* TokenUsageProvenanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ZZPROV1F2E3D4C5B6A7D8E9F01 /* TokenUsageProvenanceTests.swift */; };
 		TOKENP2A3B4C5D6E7F8A9B002 /* TokenAccountingPrecedenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TOKENP1F2E3D4C5B6A7D8E9F02 /* TokenAccountingPrecedenceTests.swift */; };
+		CHKPT2A3B4C5D6E7F8A9B004 /* CheckpointTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHKPT1F2E3D4C5B6A7D8E9F00 /* CheckpointTests.swift */; };
 		FD985EEE3BCEB9690B85D2D8 /* DailyDigestManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A54F594D8698C41B0BA694 /* DailyDigestManager.swift */; };
 /* End PBXBuildFile section */
 
@@ -482,6 +483,7 @@
 		9561B798437FB856D7AD76B6 /* InsightBriefStartupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightBriefStartupTests.swift; sourceTree = "<group>"; };
 		ZZPROV1F2E3D4C5B6A7D8E9F01 /* TokenUsageProvenanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenUsageProvenanceTests.swift; sourceTree = "<group>"; };
 		TOKENP1F2E3D4C5B6A7D8E9F02 /* TokenAccountingPrecedenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenAccountingPrecedenceTests.swift; sourceTree = "<group>"; };
+		CHKPT1F2E3D4C5B6A7D8E9F00 /* CheckpointTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckpointTests.swift; sourceTree = "<group>"; };
 		95E07CECD3131B8FBF94BC42 /* OpenBurnBarProviderRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarProviderRouter.swift; sourceTree = "<group>"; };
 		96AB2AA3BC3E638DC69E0696 /* CloudSyncServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncServiceTests.swift; sourceTree = "<group>"; };
 		96F13278C69A7E22FE00B3F6 /* FactoryQuotaAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactoryQuotaAdapter.swift; sourceTree = "<group>"; };
@@ -1014,6 +1016,7 @@
 				73B02DCE145FBBDB6E03950C /* WorkflowInsightRollupServiceTests.swift */,
 				ZZPROV1F2E3D4C5B6A7D8E9F01 /* TokenUsageProvenanceTests.swift */,
 				TOKENP1F2E3D4C5B6A7D8E9F02 /* TokenAccountingPrecedenceTests.swift */,
+				CHKPT1F2E3D4C5B6A7D8E9F00 /* CheckpointTests.swift */,
 			);
 			name = Active;
 			path = AgentLensTests/Active;
@@ -1525,6 +1528,7 @@
 				F8D4C1B60D03AA9112548BE8 /* WorkflowInsightRollupServiceTests.swift in Sources */,
 				ZZPROV1A2B3C4D5E6F7A8B90C /* TokenUsageProvenanceTests.swift in Sources */,
 				TOKENP2A3B4C5D6E7F8A9B002 /* TokenAccountingPrecedenceTests.swift in Sources */,
+				CHKPT2A3B4C5D6E7F8A9B004 /* CheckpointTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
