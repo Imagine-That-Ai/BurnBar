@@ -131,12 +131,14 @@ final class KimiParser: LogParser, @unchecked Sendable {
         }
 
         // Determine token counts — prefer wire.jsonl exact data
+        // VAL-TOKEN-005: Kimi uses wire.jsonl whenever any exact bucket is present,
+        // including cache-only cases (cacheRead or cacheCreation without inputOther/output)
         let inputTokens: Int
         let outputTokens: Int
         let cacheCreationTokens: Int
         let cacheReadTokens: Int
 
-        if let wt = wireTokens, (wt.inputOther > 0 || wt.output > 0) {
+        if let wt = wireTokens, (wt.inputOther > 0 || wt.output > 0 || wt.inputCacheRead > 0 || wt.inputCacheCreation > 0) {
             inputTokens = wt.inputOther + wt.inputCacheRead + wt.inputCacheCreation
             outputTokens = wt.output
             cacheCreationTokens = wt.inputCacheCreation

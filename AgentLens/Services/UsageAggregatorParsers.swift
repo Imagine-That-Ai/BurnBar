@@ -772,6 +772,11 @@ final class CodexParser: LogParser, @unchecked Sendable {
     /// Parse a Codex session JSONL file to extract exact token breakdowns.
     /// Codex rollout logs usually wrap `token_count` in an `event_msg` envelope and
     /// report cumulative totals where cached input is a subset of input.
+    ///
+    /// VAL-TOKEN-002: Uses exact token breakdown from JSONL when present, skips delta
+    /// accumulation to avoid double-counting.
+    /// VAL-TOKEN-010: When both cumulative totals and delta events are present, cumulative
+    /// totals take precedence and delta events are ignored to prevent additive double-counting.
     private func parseCodexSessionJSONL(path: String) -> (input: Int, output: Int, cacheRead: Int)? {
         guard fileManager.fileExists(atPath: path),
               let handle = FileHandle(forReadingAtPath: path) else {
@@ -782,7 +787,8 @@ final class CodexParser: LogParser, @unchecked Sendable {
         var inputTokens = 0
         var outputTokens = 0
         var cacheReadTokens = 0
-        var found = false
+        var foundCumulative = false
+        var foundDelta = false
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
@@ -794,15 +800,29 @@ final class CodexParser: LogParser, @unchecked Sendable {
                 continue
             }
 
+            // VAL-TOKEN-010: Cumulative totals take precedence over delta events.
+            // If we've already found cumulative totals, skip processing delta events.
             if let extracted = TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(info) {
-                inputTokens = extracted.input
-                outputTokens = extracted.output
-                cacheReadTokens = extracted.cacheRead
-                found = true
+                // If we had previously accumulated delta values, replace with cumulative.
+                // This ensures cumulative > delta precedence for mixed logs.
+                if foundDelta {
+                    inputTokens = extracted.input
+                    outputTokens = extracted.output
+                    cacheReadTokens = extracted.cacheRead
+                    foundDelta = false
+                } else {
+                    inputTokens = extracted.input
+                    outputTokens = extracted.output
+                    cacheReadTokens = extracted.cacheRead
+                }
+                foundCumulative = true
                 continue
             }
 
-            if let lastUsage = info["last_token_usage"] as? [String: Any] {
+            // VAL-TOKEN-002: Only process delta events if no cumulative totals found yet.
+            // This prevents double-counting when both cumulative and delta events exist.
+            if !foundCumulative,
+               let lastUsage = info["last_token_usage"] as? [String: Any] {
                 let deltaInput = lastUsage["input_tokens"] as? Int ?? 0
                 let deltaCacheRead = lastUsage["cached_input_tokens"] as? Int
                     ?? lastUsage["cache_read_input_tokens"] as? Int
@@ -810,11 +830,15 @@ final class CodexParser: LogParser, @unchecked Sendable {
                 inputTokens += max(deltaInput - deltaCacheRead, 0)
                 outputTokens += lastUsage["output_tokens"] as? Int ?? 0
                 cacheReadTokens += deltaCacheRead
-                found = true
+                foundDelta = true
             }
         }
 
-        return found ? (input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens) : nil
+        // Return cumulative if found, otherwise return delta-accumulated if found
+        if foundCumulative {
+            return (input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens)
+        }
+        return foundDelta ? (input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens) : nil
     }
 
     private func loadSessionCache() -> CodexSessionParserCache {

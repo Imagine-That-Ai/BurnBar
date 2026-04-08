@@ -142,6 +142,8 @@ final class FactoryDroidParser: LogParser, @unchecked Sendable {
         var inlineModel: String?
 
         // Check settings.json for model and token usage totals
+        // VAL-TOKEN-003: Settings/metadata exact totals suppress per-message fallback accumulation
+        // VAL-TOKEN-011: Cache-only exact totals also suppress fallback (any non-zero bucket counts)
         if let settingsFileURL = settingsFile {
             if let data = try? Data(contentsOf: settingsFileURL),
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -151,7 +153,8 @@ final class FactoryDroidParser: LogParser, @unchecked Sendable {
 
                 if let tokenUsage = json["tokenUsage"] as? [String: Any] {
                     let extracted = TokenExtractionUtility.extractUsageTokens(tokenUsage)
-                    if extracted.input > 0 || extracted.output > 0 || extracted.cacheCreation > 0 || extracted.cacheRead > 0 {
+                    // VAL-TOKEN-011: Any non-zero bucket (including cache-only) means exact total
+                    if extracted.hasNoExplicitBuckets == false {
                         tokenData.input = extracted.input
                         tokenData.output = extracted.output
                         tokenData.cacheCreation = extracted.cacheCreation
@@ -163,6 +166,7 @@ final class FactoryDroidParser: LogParser, @unchecked Sendable {
         }
 
         // Also check metadata.json (newer Factory versions write this alongside settings.json)
+        // VAL-TOKEN-011: Cache-only exact totals also suppress fallback (any non-zero bucket counts)
         if !usedSettingsTotals {
             let metadataURL = jsonlFile.deletingLastPathComponent()
                 .appendingPathComponent("\(sessionId).metadata.json")
@@ -173,7 +177,8 @@ final class FactoryDroidParser: LogParser, @unchecked Sendable {
                 }
                 if let tokenUsage = json["tokenUsage"] as? [String: Any] ?? json["usage"] as? [String: Any] {
                     let extracted = TokenExtractionUtility.extractUsageTokens(tokenUsage)
-                    if extracted.input > 0 || extracted.output > 0 {
+                    // VAL-TOKEN-011: Any non-zero bucket (including cache-only) means exact total
+                    if extracted.hasNoExplicitBuckets == false {
                         tokenData.input = extracted.input
                         tokenData.output = extracted.output
                         tokenData.cacheCreation = extracted.cacheCreation
