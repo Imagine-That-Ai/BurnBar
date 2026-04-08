@@ -14,9 +14,10 @@ struct CLIUsageSnapshot: Hashable {
     let outputTokens: Int
     let cacheCreationTokens: Int
     let cacheReadTokens: Int
+    let reasoningTokens: Int
 
     var totalTokens: Int {
-        inputTokens + outputTokens + cacheCreationTokens
+        inputTokens + outputTokens + cacheCreationTokens + reasoningTokens
     }
 }
 
@@ -672,7 +673,8 @@ final class CLIBridge: ObservableObject {
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,
-            cacheReadTokens: cacheReadTokens
+            cacheReadTokens: cacheReadTokens,
+            reasoningTokens: 0
         )
     }
 

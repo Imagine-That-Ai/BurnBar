@@ -21,7 +21,8 @@ struct ModelPricing {
         inputTokens: Int,
         outputTokens: Int,
         cacheCreationTokens: Int = 0,
-        cacheReadTokens: Int = 0
+        cacheReadTokens: Int = 0,
+        reasoningTokens: Int = 0
     ) -> Double {
         Double(inputTokens) / 1_000_000 * inputPerMToken
             + Double(outputTokens) / 1_000_000 * outputPerMToken

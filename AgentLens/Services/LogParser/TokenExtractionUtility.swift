@@ -385,6 +385,44 @@ enum TokenExtractionUtility {
         }
         return nil
     }
+
+    // MARK: - Codex Session Parsing
+
+    /// Extracts token count info from a Codex session JSON event.
+    /// Codex rollout logs wrap token data in an `event_msg` envelope.
+    static func codexTokenCountInfo(from json: [String: Any]) -> [String: Any]? {
+        // Handle nested event_msg structure
+        if let eventMsg = json["event_msg"] as? [String: Any] {
+            return eventMsg
+        }
+        // Handle direct token_count payload
+        if let tokenCount = json["token_count"] as? [String: Any] {
+            return json
+        }
+        // Return the json as-is if it contains token usage fields
+        if json["input_tokens"] != nil || json["output_tokens"] != nil || json["last_token_usage"] != nil {
+            return json
+        }
+        return nil
+    }
+
+    /// Extracts cumulative token totals from Codex token count info.
+    static func codexCumulativeTotalsFromTokenCountInfo(_ info: [String: Any]) -> (input: Int, output: Int, cacheRead: Int)? {
+        // Look for cumulative totals in token_count
+        if let tokenCount = info["token_count"] as? [String: Any] {
+            let input = tokenCount["input_tokens"] as? Int ?? 0
+            let output = tokenCount["output_tokens"] as? Int ?? 0
+            let cacheRead = tokenCount["cached_input_tokens"] as? Int ?? 0
+            return (input, output, cacheRead)
+        }
+        // Look for cumulative totals at root level
+        if let input = info["input_tokens"] as? Int,
+           let output = info["output_tokens"] as? Int {
+            let cacheRead = info["cached_input_tokens"] as? Int ?? 0
+            return (input, output, cacheRead)
+        }
+        return nil
+    }
 }
 
 // MARK: - Timestamp Normalization

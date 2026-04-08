@@ -103,6 +103,7 @@ enum DesignSystem {
             case .hermes: return Color(hex: "A855F7")
             case .geminiCLI: return Color(hex: "4285F4")
             case .goose: return Color(hex: "0D9488")
+            case .openClaw: return Color(hex: "FF6B6B")
             }
         }
 
@@ -125,6 +126,7 @@ enum DesignSystem {
             case .hermes: return Color(hex: "C084FC")
             case .geminiCLI: return Color(hex: "8AB4F8")
             case .goose: return Color(hex: "2DD4BF")
+            case .openClaw: return Color(hex: "F472B6")
             }
         }
 
@@ -147,6 +149,7 @@ enum DesignSystem {
             case .hermes: return [Color(hex: "A855F7"), Color(hex: "C084FC"), Color(hex: "9333EA"), Color(hex: "D8B4FE")]
             case .geminiCLI: return [Color(hex: "4285F4"), Color(hex: "8AB4F8"), Color(hex: "1A73E8"), Color(hex: "669DF6")]
             case .goose: return [Color(hex: "0D9488"), Color(hex: "2DD4BF"), Color(hex: "0F766E"), Color(hex: "5EEAD4")]
+            case .openClaw: return [Color(hex: "FF6B6B"), Color(hex: "F472B6"), Color(hex: "F9A8D4"), Color(hex: "FBBF24")]
             }
         }
 
