@@ -893,6 +893,50 @@ final class OpenBurnBarDatabase {
             )
         }
 
+        migrator.registerMigration("v32_switcher_profiles") { db in
+            // Switcher profile registry for account-based profile launching.
+            // Stores ONLY non-sensitive launch metadata — no OAuth tokens, passwords, or cookies.
+            //
+            // Profile types:
+            //   - browser: Chrome and Safari profile identifiers for browser-based launching
+            //   - cli: Codex, Claude Code, and OpenCode profile configurations
+            //
+            // Security boundaries:
+            //   - VAL-SWITCH-001: No cookie/session import or raw credential persistence
+            //   - Profile metadata is launch-only reference data; secrets remain in Keychain/system stores
+
+            try db.create(table: "switcher_profiles") { t in
+                t.column("id", .text).primaryKey()
+                t.column("targetKind", .text).notNull().indexed()
+                t.column("browserType", .text)
+                t.column("browserMetadataJSON", .text)
+                t.column("cliType", .text)
+                t.column("cliMetadataJSON", .text)
+                t.column("sortKey", .integer).notNull().defaults(to: 0).indexed()
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+
+            // Deterministic ordering index: sortKey ASC, createdAt ASC
+            try db.create(
+                index: "switcher_profiles_deterministic_order_idx",
+                on: "switcher_profiles",
+                columns: ["sortKey", "createdAt"]
+            )
+
+            // Active profile state: single-row table for atomic active profile transitions
+            try db.create(table: "switcher_active_profile") { t in
+                t.column("activeProfileID", .text)
+                t.column("updatedAt", .datetime).notNull()
+            }
+
+            // Initial row ensures ON CONFLICT DO NOTHING semantics work
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (NULL, ?)",
+                arguments: [Date()]
+            )
+        }
+
         return migrator
     }
 
