@@ -466,31 +466,67 @@ final class UsageStore {
             let totalInputTokens = providerUsages.reduce(0) { $0 + $1.inputTokens }
             let totalOutputTokens = providerUsages.reduce(0) { $0 + $1.outputTokens }
 
-            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, reasoning: Int, cost: Double)] = [:]
+            // Track model data including provenance
+            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, reasoning: Int, cost: Double, bestConfidence: UsageProvenanceConfidence, bestMethod: UsageProvenanceMethod)] = [:]
             for usage in providerUsages {
-                let existing = modelData[usage.model] ?? (0, 0, 0, 0, 0, 0)
+                let existing = modelData[usage.model]
+                let newConfidence = usage.provenanceConfidence
+                let newMethod = usage.provenanceMethod
+                let bestConfidence: UsageProvenanceConfidence
+                let bestMethod: UsageProvenanceMethod
+                if let existingRec = existing {
+                    bestConfidence = newConfidence > existingRec.bestConfidence ? newConfidence : existingRec.bestConfidence
+                    if newConfidence == existingRec.bestConfidence {
+                        bestMethod = newMethod.precedence > existingRec.bestMethod.precedence ? newMethod : existingRec.bestMethod
+                    } else {
+                        bestMethod = newConfidence > existingRec.bestConfidence ? newMethod : existingRec.bestMethod
+                    }
+                } else {
+                    bestConfidence = newConfidence
+                    bestMethod = newMethod
+                }
                 modelData[usage.model] = (
-                    existing.0 + usage.inputTokens,
-                    existing.1 + usage.outputTokens,
-                    existing.2 + usage.cacheCreationTokens,
-                    existing.3 + usage.cacheReadTokens,
-                    existing.4 + usage.reasoningTokens,
-                    existing.5 + usage.cost
+                    (existing?.0 ?? 0) + usage.inputTokens,
+                    (existing?.1 ?? 0) + usage.outputTokens,
+                    (existing?.2 ?? 0) + usage.cacheCreationTokens,
+                    (existing?.3 ?? 0) + usage.cacheReadTokens,
+                    (existing?.4 ?? 0) + usage.reasoningTokens,
+                    (existing?.5 ?? 0) + usage.cost,
+                    bestConfidence,
+                    bestMethod
                 )
             }
 
+            // Compute dominant provenance for the provider overall
+            var dominantConfidence: UsageProvenanceConfidence = .unknown
+            var dominantMethod: UsageProvenanceMethod = .unknown
+            var bestCostSoFar: Double = 0
+            for usage in providerUsages {
+                let weight = usage.cost > 0 ? usage.cost : 0.001
+                if usage.provenanceConfidence > dominantConfidence {
+                    dominantConfidence = usage.provenanceConfidence
+                    dominantMethod = usage.provenanceMethod
+                    bestCostSoFar = weight
+                } else if usage.provenanceConfidence == dominantConfidence && weight > bestCostSoFar {
+                    dominantMethod = usage.provenanceMethod
+                    bestCostSoFar = weight
+                }
+            }
+
             let modelBreakdown = modelData.map { modelName, data in
-                let totalModelTokens = data.input + data.output + data.cacheCreation + data.cacheRead + data.reasoning
+                let totalModelTokens = data.0 + data.1 + data.2 + data.3 + data.4
                 return ModelUsage(
                     modelName: modelName,
-                    inputTokens: data.input,
-                    outputTokens: data.output,
-                    cacheCreationTokens: data.cacheCreation,
-                    cacheReadTokens: data.cacheRead,
-                    reasoningTokens: data.reasoning,
+                    inputTokens: data.0,
+                    outputTokens: data.1,
+                    cacheCreationTokens: data.2,
+                    cacheReadTokens: data.3,
+                    reasoningTokens: data.4,
                     totalTokens: totalModelTokens,
-                    cost: data.cost,
-                    percentage: totalCost > 0 ? (data.cost / totalCost) * 100 : 0
+                    cost: data.5,
+                    percentage: totalCost > 0 ? (data.5 / totalCost) * 100 : 0,
+                    provenanceConfidence: data.bestConfidence,
+                    provenanceMethod: data.bestMethod
                 )
             }.sorted { $0.cost > $1.cost }
 
@@ -501,7 +537,9 @@ final class UsageStore {
                 totalInputTokens: totalInputTokens,
                 totalOutputTokens: totalOutputTokens,
                 sessionCount: providerUsages.count,
-                modelBreakdown: modelBreakdown
+                modelBreakdown: modelBreakdown,
+                provenanceConfidence: dominantConfidence,
+                provenanceMethod: dominantMethod
             )
         }.sorted { $0.totalCost > $1.totalCost }
     }

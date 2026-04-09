@@ -50,6 +50,13 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
         }
     }
 
+    /// Helper: fetch all canonical token_usage rows
+    private func fetchAllCanonicalRows(queue: DatabaseQueue) throws -> [Row] {
+        try queue.read { db in
+            try Row.fetchAll(db, sql: "SELECT * FROM token_usage ORDER BY startTime DESC")
+        }
+    }
+
     private func countCanonicalRows(queue: DatabaseQueue) throws -> Int {
         try queue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM token_usage") ?? 0
@@ -713,5 +720,454 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             XCTAssertEqual(pA.totalCost, pB.totalCost, accuracy: 0.0001,
                 "Provider \(pA.provider.rawValue) costs must converge")
         }
+    }
+
+    // MARK: - VAL-CROSS-005: Provenance-aware reporting surface
+
+    /// Verifies that provider summaries expose provenance/confidence metadata,
+    /// distinguishing exact from fallback-derived values.
+    func test_providerSummaries_exposeProvenanceAndConfidence() throws {
+        let store = try makeInMemoryStore()
+        let baseDate = Date(timeIntervalSince1970: 1_744_000_000)
+
+        // Insert exact provider log usage
+        let exactUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "provenance-exact-1",
+            projectName: "ExactProject",
+            model: "claude-4-sonnet",
+            inputTokens: 2000,
+            outputTokens: 1000,
+            costUSD: 0.10,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            usageSource: .providerLog,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try insertAndRefresh(usage: exactUsage, store: store)
+
+        // Insert heuristic estimate usage
+        let estimateUsage = TokenUsage(
+            provider: .cursor,
+            sessionId: "provenance-estimate-1",
+            projectName: "EstimateProject",
+            model: "gpt-4",
+            inputTokens: 3000,
+            outputTokens: 1500,
+            costUSD: 0.12,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            usageSource: .cursorBridge,
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .lowConfidenceEstimate,
+            estimatorVersion: "char-ratio-v1"
+        )
+        try insertAndRefresh(usage: estimateUsage, store: store)
+
+        // Verify provider summaries expose provenance
+        let summaries = store.providerSummaries
+        XCTAssertFalse(summaries.isEmpty, "Should have provider summaries")
+
+        let claudeSummary = summaries.first(where: { $0.provider == .claudeCode })
+        XCTAssertNotNil(claudeSummary, "Claude Code summary should exist")
+        XCTAssertEqual(claudeSummary?.provenanceConfidence, .exact,
+            "Claude Code should have exact provenance confidence")
+        XCTAssertEqual(claudeSummary?.provenanceMethod, .providerLog,
+            "Claude Code should have providerLog provenance method")
+        XCTAssertFalse(claudeSummary?.hasEstimatedData ?? true,
+            "Claude Code exact data should not be marked as estimated")
+
+        let cursorSummary = summaries.first(where: { $0.provider == .cursor })
+        XCTAssertNotNil(cursorSummary, "Cursor summary should exist")
+        XCTAssertEqual(cursorSummary?.provenanceConfidence, .lowConfidenceEstimate,
+            "Cursor estimate should have lowConfidenceEstimate provenance confidence")
+        XCTAssertEqual(cursorSummary?.provenanceMethod, .heuristicEstimate,
+            "Cursor estimate should have heuristicEstimate provenance method")
+        XCTAssertTrue(cursorSummary?.hasEstimatedData ?? false,
+            "Cursor estimate data should be marked as estimated")
+    }
+
+    /// Verifies that model breakdowns within provider summaries expose provenance.
+    func test_modelBreakdown_exposesProvenancePerModel() throws {
+        let store = try makeInMemoryStore()
+        let baseDate = Date(timeIntervalSince1970: 1_744_100_000)
+
+        // Insert exact and estimate usage for different models
+        let exactUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "model-prov-exact-1",
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 2000,
+            outputTokens: 1000,
+            costUSD: 0.10,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try insertAndRefresh(usage: exactUsage, store: store)
+
+        let estimateUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "model-prov-estimate-1",
+            projectName: "Project",
+            model: "claude-4-opus",
+            inputTokens: 5000,
+            outputTokens: 2500,
+            costUSD: 0.30,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .lowConfidenceEstimate,
+            estimatorVersion: "char-ratio-v1"
+        )
+        try insertAndRefresh(usage: estimateUsage, store: store)
+
+        // Verify model breakdown exposes provenance
+        let summaries = store.providerSummaries
+        let claudeSummary = summaries.first(where: { $0.provider == .claudeCode })
+        XCTAssertNotNil(claudeSummary)
+        XCTAssertEqual(claudeSummary?.modelBreakdown.count, 2,
+            "Should have breakdown for 2 models")
+
+        let sonnetModel = claudeSummary?.modelBreakdown.first(where: { $0.modelName == "claude-4-sonnet" })
+        XCTAssertNotNil(sonnetModel)
+        XCTAssertEqual(sonnetModel?.provenanceConfidence, .exact,
+            "Sonnet model should have exact confidence")
+        XCTAssertEqual(sonnetModel?.provenanceMethod, .providerLog,
+            "Sonnet model should have providerLog method")
+
+        let opusModel = claudeSummary?.modelBreakdown.first(where: { $0.modelName == "claude-4-opus" })
+        XCTAssertNotNil(opusModel)
+        XCTAssertEqual(opusModel?.provenanceConfidence, .lowConfidenceEstimate,
+            "Opus estimate should have lowConfidenceEstimate")
+        XCTAssertEqual(opusModel?.provenanceMethod, .heuristicEstimate,
+            "Opus estimate should have heuristicEstimate method")
+    }
+
+    // MARK: - VAL-CROSS-006: Confidence and precedence are auditable in datastore
+
+    /// Verifies that for a fixed fixture set, datastore evidence demonstrates
+    /// deterministic confidence ordering and canonical selection.
+    func test_confidenceOrdering_deterministicSelection() throws {
+        let store = try makeInMemoryStore()
+        let baseDate = Date(timeIntervalSince1970: 1_744_200_000)
+
+        // Insert multiple rows with different confidence levels for same session
+        let lowEstimate = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "confidence-ordering-test",
+            projectName: "LowEstimate",
+            model: "claude-4-sonnet",
+            inputTokens: 500,
+            outputTokens: 250,
+            costUSD: 0.025,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .lowConfidenceEstimate,
+            estimatorVersion: "char-ratio-v1"
+        )
+        try insertAndRefresh(usage: lowEstimate, store: store)
+
+        let highEstimate = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "confidence-ordering-test",
+            projectName: "HighEstimate",
+            model: "claude-4-sonnet",
+            inputTokens: 800,
+            outputTokens: 400,
+            costUSD: 0.04,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .highConfidenceEstimate,
+            estimatorVersion: "cjk-aware-v1"
+        )
+        try insertAndRefresh(usage: highEstimate, store: store)
+
+        let exact = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "confidence-ordering-test",
+            projectName: "Exact",
+            model: "claude-4-sonnet",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.05,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try insertAndRefresh(usage: exact, store: store)
+
+        // Verify canonical row is exact (highest confidence wins)
+        guard let canonicalRow = try fetchCanonicalRow(queue: store.dbQueue, sessionId: "confidence-ordering-test") else {
+            XCTFail("Should have canonical row")
+            return
+        }
+
+        XCTAssertEqual(canonicalRow["provenanceConfidence"] as? String, "exact",
+            "Canonical row must have exact confidence (highest)")
+        XCTAssertEqual(canonicalRow["provenanceMethod"] as? String, "provider_log",
+            "Canonical row must have provider_log method")
+        let inputTokens = extractInt(canonicalRow, column: "inputTokens")
+        XCTAssertEqual(inputTokens, 1000,
+            "Canonical row must have exact values")
+
+        // Verify only one row exists
+        let allRows = try fetchAllCanonicalRows(queue: store.dbQueue)
+        let sameKeyRows = allRows.filter { $0["sessionId"] as? String == "confidence-ordering-test" }
+        XCTAssertEqual(sameKeyRows.count, 1,
+            "Exactly one canonical row must exist for the session")
+    }
+
+    /// Verifies that for non-upgraded rows, confidence ordering is preserved correctly.
+    func test_confidenceOrdering_preservedForNonUpgradedRows() throws {
+        let store = try makeInMemoryStore()
+        let baseDate = Date(timeIntervalSince1970: 1_744_300_000)
+
+        // Insert high confidence estimate (no exact arrives later)
+        let highEstimate = TokenUsage(
+            provider: .cursor,
+            sessionId: "non-upgraded-session",
+            projectName: "Project",
+            model: "gpt-4",
+            inputTokens: 2000,
+            outputTokens: 800,
+            costUSD: 0.08,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .highConfidenceEstimate,
+            estimatorVersion: "cjk-aware-v2"
+        )
+        try insertAndRefresh(usage: highEstimate, store: store)
+
+        // Insert another high confidence estimate (equal confidence, higher values)
+        let anotherHighEstimate = TokenUsage(
+            provider: .cursor,
+            sessionId: "non-upgraded-session",
+            projectName: "Project",
+            model: "gpt-4",
+            inputTokens: 2500,
+            outputTokens: 1000,
+            costUSD: 0.10,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .highConfidenceEstimate,
+            estimatorVersion: "cjk-aware-v2"
+        )
+        try insertAndRefresh(usage: anotherHighEstimate, store: store)
+
+        // Verify canonical row has the updated values (equal confidence allows update)
+        guard let canonicalRow = try fetchCanonicalRow(queue: store.dbQueue, sessionId: "non-upgraded-session") else {
+            XCTFail("Should have canonical row")
+            return
+        }
+
+        XCTAssertEqual(canonicalRow["provenanceConfidence"] as? String, "high_confidence_estimate",
+            "Confidence should remain highConfidenceEstimate (no exact arrived)")
+        let inputTokens = extractInt(canonicalRow, column: "inputTokens")
+        XCTAssertEqual(inputTokens, 2500,
+            "Token values should be updated (equal confidence)")
+    }
+
+    // MARK: - VAL-CROSS-010: Filter/window parity after exact upgrades
+
+    /// Verifies that provider-filtered summaries update correctly after exact upgrades.
+    func test_filteredProviderSummary_parityAfterExactUpgrade() throws {
+        let store = try makeInMemoryStore()
+        let baseDate = Date(timeIntervalSince1970: 1_744_400_000)
+        let calendar = Calendar.current
+        let weekAhead = calendar.date(byAdding: .day, value: 7, to: baseDate) ?? baseDate
+        let dateRange = baseDate...weekAhead
+
+        // Insert estimate for claudeCode
+        let estimateUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "filter-parity-estimate",
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.05,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .lowConfidenceEstimate,
+            estimatorVersion: "char-ratio-v1"
+        )
+        try insertAndRefresh(usage: estimateUsage, store: store)
+
+        // Get filtered summary before upgrade
+        let summariesBefore = store.providerSummaries(in: dateRange)
+        let claudeBefore = summariesBefore.first(where: { $0.provider == .claudeCode })
+        XCTAssertEqual(claudeBefore?.totalCost ?? 0, 0.05, accuracy: 0.001)
+        XCTAssertEqual(claudeBefore?.totalTokens ?? 0, 1500)
+
+        // Upgrade to exact
+        let exactUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "filter-parity-estimate",
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 2000,
+            outputTokens: 1000,
+            costUSD: 0.10,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try insertAndRefresh(usage: exactUsage, store: store)
+
+        // Get filtered summary after upgrade
+        let summariesAfter = store.providerSummaries(in: dateRange)
+        let claudeAfter = summariesAfter.first(where: { $0.provider == .claudeCode })
+
+        XCTAssertEqual(claudeAfter?.totalCost ?? 0, 0.10, accuracy: 0.001,
+            "Filtered summary must reflect upgraded exact cost")
+        XCTAssertEqual(claudeAfter?.totalTokens ?? 0, 3000,
+            "Filtered summary must reflect upgraded exact tokens")
+        XCTAssertEqual(claudeAfter?.provenanceConfidence ?? .unknown, .exact,
+            "Filtered summary must show exact provenance after upgrade")
+    }
+
+    /// Verifies that time-window filtered summaries are parity-correct after exact upgrades.
+    func test_timeWindowFilteredSummary_parityAfterExactUpgrade() throws {
+        let store = try makeInMemoryStore()
+        let baseDate = Date(timeIntervalSince1970: 1_744_500_000)
+        let calendar = Calendar.current
+        let windowStart = calendar.startOfDay(for: baseDate)
+        let windowEnd = calendar.date(byAdding: .day, value: 1, to: windowStart) ?? windowStart
+        let dateRange = windowStart...windowEnd
+
+        // Insert estimate
+        let estimateUsage = TokenUsage(
+            provider: .factory,
+            sessionId: "window-parity-estimate",
+            projectName: "Project",
+            model: "glm-5",
+            inputTokens: 1500,
+            outputTokens: 750,
+            costUSD: 0.06,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .lowConfidenceEstimate,
+            estimatorVersion: "char-ratio-v1"
+        )
+        try insertAndRefresh(usage: estimateUsage, store: store)
+
+        // Verify initial filtered summary
+        let filteredBefore = store.providerSummaries(in: dateRange)
+        let factoryBefore = filteredBefore.first(where: { $0.provider == .factory })
+        XCTAssertEqual(factoryBefore?.totalCost ?? 0, 0.06, accuracy: 0.001)
+        XCTAssertEqual(factoryBefore?.totalTokens ?? 0, 2250)
+
+        // Upgrade to exact
+        let exactUsage = TokenUsage(
+            provider: .factory,
+            sessionId: "window-parity-estimate",
+            projectName: "Project",
+            model: "glm-5",
+            inputTokens: 3000,
+            outputTokens: 1500,
+            costUSD: 0.12,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try insertAndRefresh(usage: exactUsage, store: store)
+
+        // Verify filtered summary after upgrade
+        let filteredAfter = store.providerSummaries(in: dateRange)
+        let factoryAfter = filteredAfter.first(where: { $0.provider == .factory })
+
+        XCTAssertEqual(factoryAfter?.totalCost ?? 0, 0.12, accuracy: 0.001,
+            "Time-window filtered summary must reflect exact upgrade")
+        XCTAssertEqual(factoryAfter?.totalTokens ?? 0, 4500,
+            "Time-window filtered summary must reflect exact token counts")
+        XCTAssertEqual(factoryAfter?.provenanceConfidence ?? .unknown, .exact,
+            "Provenance must update to exact in filtered view")
+
+        // Verify all-time summary also updated
+        let allTimeSummaries = store.providerSummaries
+        let factoryAllTime = allTimeSummaries.first(where: { $0.provider == .factory })
+        XCTAssertEqual(factoryAllTime?.totalCost ?? 0, 0.12, accuracy: 0.001,
+            "All-time summary must also reflect exact upgrade")
+    }
+
+    /// Verifies that after an exact upgrade, provider/project/time-window filtered outputs
+    /// and retrieval summaries are consistent (VAL-CROSS-010).
+    func test_filteredAndRetrievalSummaries_consistentAfterUpgrade() throws {
+        let store = try makeInMemoryStore()
+        let baseDate = Date(timeIntervalSince1970: 1_744_600_000)
+        let calendar = Calendar.current
+        let windowStart = calendar.startOfDay(for: baseDate)
+        let windowEnd = calendar.date(byAdding: .day, value: 1, to: windowStart) ?? windowStart
+        let dateRange = windowStart...windowEnd
+
+        // Mix of estimate and exact across providers
+        let sessions: [(sessionId: String, provider: AgentProvider, exact: Bool, input: Int, output: Int, cost: Double)] = [
+            ("multi-provider-1", AgentProvider.claudeCode, false, 500, 250, 0.025),
+            ("multi-provider-2", AgentProvider.claudeCode, true, 2000, 1000, 0.10),
+            ("multi-provider-3", AgentProvider.factory, false, 1000, 500, 0.04),
+            ("multi-provider-4", AgentProvider.factory, true, 2000, 1000, 0.08),
+        ]
+
+        for s in sessions {
+            let usage = TokenUsage(
+                provider: s.provider,
+                sessionId: s.sessionId,
+                projectName: "Project",
+                model: s.provider == .claudeCode ? "claude-4-sonnet" : "glm-5",
+                inputTokens: s.input,
+                outputTokens: s.output,
+                costUSD: s.cost,
+                startTime: baseDate,
+                endTime: baseDate.addingTimeInterval(60),
+                provenanceMethod: s.exact ? .providerLog : .heuristicEstimate,
+                provenanceConfidence: s.exact ? .exact : .lowConfidenceEstimate,
+                estimatorVersion: s.exact ? "" : "char-ratio-v1"
+            )
+            try insertAndRefresh(usage: usage, store: store)
+        }
+
+        // Get filtered summaries
+        let filteredSummaries = store.providerSummaries(in: dateRange)
+        let allTimeSummaries = store.providerSummaries
+
+        // Both filtered and all-time should show same totals (all in same window)
+        for provider in [AgentProvider.claudeCode, AgentProvider.factory] {
+            let filtered = filteredSummaries.first(where: { $0.provider == provider })
+            let allTime = allTimeSummaries.first(where: { $0.provider == provider })
+
+            XCTAssertEqual(filtered?.totalCost ?? 0, allTime?.totalCost ?? 0, accuracy: 0.0001,
+                "\(provider.rawValue): Filtered and all-time costs must match")
+            XCTAssertEqual(filtered?.totalTokens ?? 0, allTime?.totalTokens ?? 0,
+                "\(provider.rawValue): Filtered and all-time tokens must match")
+            XCTAssertEqual(filtered?.provenanceConfidence ?? .unknown, allTime?.provenanceConfidence ?? .unknown,
+                "\(provider.rawValue): Provenance confidence must match between filtered/all-time")
+        }
+
+        // Verify exact vs estimate markers are correct
+        let claudeFiltered = filteredSummaries.first(where: { $0.provider == .claudeCode })
+        XCTAssertEqual(claudeFiltered?.provenanceConfidence ?? .unknown, .exact,
+            "Claude should show exact (session 2 was exact)")
+
+        let factoryFiltered = filteredSummaries.first(where: { $0.provider == .factory })
+        XCTAssertEqual(factoryFiltered?.provenanceConfidence ?? .unknown, .exact,
+            "Factory should show exact (session 4 was exact)")
     }
 }

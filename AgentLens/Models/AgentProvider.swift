@@ -27,7 +27,7 @@ enum DataConfidence {
 
 /// Describes how token usage values were obtained for a given row.
 /// Used alongside `UsageProvenanceConfidence` to audit exact vs estimated origin.
-enum UsageProvenanceMethod: String, Codable, Hashable, CaseIterable, Sendable {
+enum UsageProvenanceMethod: String, Codable, Hashable, CaseIterable, Sendable, Comparable {
     /// Token counts parsed directly from provider logs or API responses.
     case providerLog = "provider_log"
     /// Token counts from a connector bridge (e.g. Cursor connector).
@@ -44,6 +44,25 @@ enum UsageProvenanceMethod: String, Codable, Hashable, CaseIterable, Sendable {
     case cloudSync = "cloud_sync"
     /// Provenance is unknown (legacy rows or data with unclear origin).
     case unknown = "unknown"
+
+    /// Numeric precedence for comparison. Higher value = more authoritative.
+    /// Used to determine which method "wins" when merging rows with equal confidence.
+    var precedence: Int {
+        switch self {
+        case .providerLog: return 6
+        case .billingAPI: return 5
+        case .connectorBridge: return 4
+        case .daemonBridge: return 4
+        case .inAppChat: return 3
+        case .cloudSync: return 2
+        case .heuristicEstimate: return 1
+        case .unknown: return 0
+        }
+    }
+
+    static func < (lhs: UsageProvenanceMethod, rhs: UsageProvenanceMethod) -> Bool {
+        lhs.precedence < rhs.precedence
+    }
 }
 
 // MARK: - Usage Provenance Confidence
@@ -462,6 +481,11 @@ struct DailyUsageSummary: Identifiable, Hashable {
 
 // MARK: - Provider Summary
 
+/// Aggregated usage for a provider, optionally annotated with provenance metadata.
+///
+/// VAL-CROSS-005: Provenance-aware reporting contracts.
+/// Reporting surfaces expose provenance/confidence semantics at the contract-defined
+/// granularity (row-level where available; aggregate fallback metadata otherwise).
 struct ProviderSummary: Identifiable, Hashable {
     let id = UUID()
     let provider: AgentProvider
@@ -471,14 +495,29 @@ struct ProviderSummary: Identifiable, Hashable {
     let totalOutputTokens: Int
     let sessionCount: Int
     let modelBreakdown: [ModelUsage]
-    
+    /// The dominant (highest-precedence) provenance confidence across all rows in this summary.
+    /// Exposed so reporting consumers can distinguish exact from fallback-derived values.
+    let provenanceConfidence: UsageProvenanceConfidence
+    /// The dominant provenance method across all rows in this summary.
+    let provenanceMethod: UsageProvenanceMethod
+
     var formattedCost: String {
         totalCost.formatAsCost()
+    }
+
+    /// Whether this summary contains any estimated (non-exact) data.
+    var hasEstimatedData: Bool {
+        provenanceConfidence != .exact && provenanceConfidence != .derivedExact
     }
 }
 
 // MARK: - Model Usage
 
+/// Aggregated usage for a specific model within a provider summary.
+///
+/// VAL-CROSS-005: Provenance-aware reporting contracts.
+/// Model-level breakdown includes provenance metadata so consumers can audit
+/// whether values came from exact provider data or fallback estimation.
 struct ModelUsage: Identifiable, Hashable {
     let id = UUID()
     let modelName: String
@@ -490,6 +529,15 @@ struct ModelUsage: Identifiable, Hashable {
     let totalTokens: Int
     let cost: Double
     let percentage: Double
+    /// The dominant provenance confidence for this model's rows.
+    let provenanceConfidence: UsageProvenanceConfidence
+    /// The dominant provenance method for this model's rows.
+    let provenanceMethod: UsageProvenanceMethod
+
+    /// Whether this model usage contains any estimated (non-exact) data.
+    var hasEstimatedData: Bool {
+        provenanceConfidence != .exact && provenanceConfidence != .derivedExact
+    }
 }
 
 // MARK: - Dashboard View Mode
