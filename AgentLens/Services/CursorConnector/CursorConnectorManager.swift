@@ -1133,39 +1133,38 @@ final class CursorConnectorManager {
             explicit_total = prompt + completion + cache_creation + cache_read
             normalized_total = max(total, explicit_total)
 
-            # VAL-TOKEN-004: Fallback gating - normalization only when explicit primary bucket exists.
-            # Normalization (deriving missing prompt/completion from total_tokens) is appropriate only when
-            # at least one primary bucket is present. When no explicit buckets exist, fallback
-            # character-based estimation should be used instead.
-            has_explicit_primary = prompt > 0 or completion > 0
-
-            if normalized_total > 0 and has_explicit_primary:
-                # Only normalize missing primary buckets when at least one explicit primary bucket exists.
+            # VAL-TOKEN-004: Normalization occurs when total_tokens is present.
+            # Deriving input/output from total_tokens is normalization (VAL-TOKEN-004), not fallback.
+            # Fallback (character-based estimation) only occurs when total_tokens is absent AND all buckets are 0.
+            if normalized_total > 0:
+                # Normalization: derive missing primary buckets from total_tokens.
                 available_for_in_out = max(normalized_total - cache_creation - cache_read, 0)
-                if prompt == 0 and completion == 0 and available_for_in_out > 0:
-                    combined_hint = prompt_char_estimate + output_char_estimate
-                    if combined_hint > 0:
-                        ratio = prompt_char_estimate / combined_hint
-                    else:
-                        ratio = 0.62
-                    prompt = int(round(available_for_in_out * ratio))
-                    completion = max(available_for_in_out - prompt, 0)
-                elif prompt == 0 and completion > 0 and available_for_in_out > completion:
-                    prompt = available_for_in_out - completion
-                elif completion == 0 and prompt > 0 and available_for_in_out > prompt:
-                    completion = available_for_in_out - prompt
-                elif prompt + completion < available_for_in_out:
-                    completion += available_for_in_out - (prompt + completion)
-
-            # VAL-TOKEN-006: Reasoning tokens are preserved explicitly, not folded into completion.
-            # If the provider reports reasoning tokens separately, they remain as a distinct bucket.
-
-            # Fallback: character-based estimation when all token buckets are absent
-            if prompt == 0 and completion == 0 and cache_read == 0 and reasoning_tokens == 0 and (prompt_char_estimate + output_char_estimate) > 0:
+                if available_for_in_out > 0:
+                    if prompt == 0 and completion == 0:
+                        # Both missing but total available - use hints to split or default ratio
+                        combined_hint = prompt_char_estimate + output_char_estimate
+                        if combined_hint > 0:
+                            ratio = prompt_char_estimate / combined_hint
+                        else:
+                            ratio = 0.62
+                        prompt = int(round(available_for_in_out * ratio))
+                        completion = max(available_for_in_out - prompt, 0)
+                    elif prompt == 0 and completion > 0 and available_for_in_out > completion:
+                        prompt = available_for_in_out - completion
+                    elif completion == 0 and prompt > 0 and available_for_in_out > prompt:
+                        completion = available_for_in_out - prompt
+                    elif prompt + completion < available_for_in_out:
+                        completion += available_for_in_out - (prompt + completion)
+            elif prompt_char_estimate + output_char_estimate > 0:
+                # Fallback: character-based estimation only when NO total_tokens and NO token buckets.
+                # This is true fallback mode - we have no usage data to work with.
                 if prompt_char_estimate > 0:
                     prompt = max(int(round(prompt_char_estimate / 3.35)), 1)
                 if output_char_estimate > 0:
                     completion = max(int(round(output_char_estimate / 3.35)), 1)
+
+            # VAL-TOKEN-006: Reasoning tokens are preserved explicitly, not folded into completion.
+            # If the provider reports reasoning tokens separately, they remain as a distinct bucket.
 
             return {
                 "prompt_tokens": max(prompt, 0),
