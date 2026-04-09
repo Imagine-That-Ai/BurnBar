@@ -1,47 +1,45 @@
 {
   "milestone": "m2-exact-ingestion-precision",
-  "round": 2,
-  "status": "fail",
+  "round": 3,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
-      "command": "/Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-swift.sh && /Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-app.sh",
+      "command": "scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh",
       "exitCode": 0
     },
     "typecheck": {
       "passed": true,
-      "command": "xcodebuild build-for-testing -project /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath /Users/dewclaw/Documents/Projects/BurnBar/.spm-cache -derivedDataPath /Users/dewclaw/Documents/Projects/BurnBar/.derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
       "exitCode": 0
     },
     "lint": {
       "passed": true,
-      "command": "npm --prefix /Users/dewclaw/Documents/Projects/BurnBar/extensions/openburnbar run lint",
+      "command": "npm --prefix extensions/openburnbar run lint",
       "exitCode": 0
     }
   },
   "reviewsSummary": {
     "total": 3,
-    "passed": 1,
-    "failed": 2,
-    "failedFeatures": [
-      "m2-fix-cursorconnector-exact-normalization-gates",
-      "m2-fix-source-identity-and-hermes-fallback-gates"
-    ]
+    "passed": 3,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
+  "blockingIssues": [],
+  "appliedUpdates": [
     {
-      "featureId": "m2-fix-cursorconnector-exact-normalization-gates",
-      "severity": "blocking",
-      "description": "AgentLens/Services/CursorConnector/CursorConnectorManager.swift:1158 allows Python fallback when exact reasoning_tokens is present because fallback gating does not require all explicit buckets (including reasoning) to be absent."
-    },
-    {
-      "featureId": "m2-fix-source-identity-and-hermes-fallback-gates",
-      "severity": "blocking",
-      "description": "AgentLens/Services/DataStore/ParserCheckpointStore.swift:305 still uses `usageSource = excluded.usageSource` in the atomic upsert conflict path, so canonical source identity can still be overwritten."
+      "target": "library",
+      "description": "Added Known Issues section to architecture.md documenting firstIntValue() nested dict extraction bug and confidence-to-integer CASE mapping duplication across SQL fragments.",
+      "sourceFeature": "m2-fix-cursorconnector-reasoning-explicit-gate, m2-fix-parsercheckpoint-usagesource-precedence"
     }
   ],
-  "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add note that CursorConnector has a dual Swift/Python-proxy implementation in normalizeUsageEvent — changes to fallback gating or normalization logic must be applied to both the Swift method and the embedded Python proxyScript() to prevent behavioral divergence.",
+      "evidence": "Three fix features (m2-fix-cursorconnector-exact-normalization-gates, m2-fix-cursorconnector-reasoning-explicit-gate, m2-fix-cursorconnector-reasoning-token-extraction) all required keeping Python proxy in sync with Swift implementation.",
+      "isSystemic": true
+    },
     {
       "target": "token-accounting-worker skill",
       "suggestion": "Require explicit handoff evidence for required procedure steps (required reads, red/green test evidence, and truthful `followedProcedure` values) and treat missing evidence as deviation.",
@@ -63,15 +61,10 @@
     {
       "target": "AGENTS.md",
       "suggestion": "When changing token canonical precedence/source identity behavior, require auditing both UsageStore and ParserCheckpointStore conflict-upsert code paths in the same feature scope.",
-      "evidence": "m2-fix-source-identity-and-hermes-fallback-gates fixed Hermes parser gating but missed ParserCheckpointStore source-identity overwrite at line 305.",
+      "evidence": "m2-fix-source-identity-and-hermes-fallback-gates fixed Hermes parser gating but missed ParserCheckpointStore source-identity overwrite at line 305. The fix required a separate feature (m2-fix-parsercheckpoint-usagesource-precedence).",
       "isSystemic": false
     }
   ],
-  "rejectedObservations": [
-    {
-      "observation": "Token-accounting skill procedure-adherence gap (second occurrence)",
-      "reason": "duplicate"
-    }
-  ],
-  "previousRound": ".factory/validation/m2-exact-ingestion-precision/scrutiny/synthesis.round1.json"
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/m2-exact-ingestion-precision/scrutiny/synthesis.round2.json"
 }

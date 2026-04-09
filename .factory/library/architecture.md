@@ -60,6 +60,19 @@ This mission hardens token accounting and indexing so token totals are exact-fir
 - Required ordering for ingestion writes: persist canonical row(s) -> commit transaction -> advance checkpoint/watermark -> enqueue downstream work.
 - On failure before commit, checkpoint/watermark must not advance and downstream/reporting surfaces must not expose partial state.
 
+## Known Issues (Pre-Existing)
+
+### CursorConnector: firstIntValue() may not extract reasoning_tokens from nested dictionaries
+- `normalizeUsageEvent()` uses `firstIntValue()` to extract token counts from `[String: Any]` dictionary payloads.
+- For nested paths like `completion_tokens_details.reasoning_tokens`, `firstIntValue()` may return 0 instead of the expected value.
+- This does not affect the Python proxy path (which handles nested dicts correctly) or the primary extraction path (which reads flat keys first).
+- The reasoning token extraction fix (`m2-fix-cursorconnector-reasoning-token-extraction`) works around this by extracting reasoning tokens from the flat top-level keys and known alias paths before falling back to nested dict traversal.
+
+### Confidence-to-integer CASE mapping duplication
+- The confidence-to-integer mapping (`exact=4, derived_exact=3, high_confidence_estimate=2, low_confidence_estimate=1, else=0`) is copy-pasted across `UsageStore.insert()` and `ParserCheckpointStore.AtomicIngestionTransaction.commit()` in 6+ SQL fragments.
+- Adding a new confidence level requires updating all fragments simultaneously.
+- A shared helper function or SQL view would reduce drift risk.
+
 ## Architectural Invariants
 - Exact-first: exact token data always wins over lower-confidence estimates.
 - Idempotent ingestion: replaying the same source does not create duplicates.

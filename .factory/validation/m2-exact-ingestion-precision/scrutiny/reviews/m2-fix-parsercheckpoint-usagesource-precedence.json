@@ -1,0 +1,33 @@
+{
+  "featureId": "m2-fix-parsercheckpoint-usagesource-precedence",
+  "reviewedAt": "2026-04-09T01:55:00Z",
+  "commitId": "305e4a5d7ff20a195c62023d2c66bb90531bb70c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix correctly addresses the original failure: AtomicIngestionTransaction.commit() in ParserCheckpointStore.swift now uses a CASE expression with strictly-greater-than (>) confidence comparison for usageSource updates, matching the canonical pattern in UsageStore.insert(). The original unconditional `usageSource = excluded.usageSource` has been replaced with the guarded CASE logic. Three new test cases cover the AtomicIngestionTransaction path for equal-confidence preservation, higher-confidence promotion, and lower-confidence rejection.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/DataStore/ParserCheckpointStore.swift",
+        "line": 304,
+        "severity": "non_blocking",
+        "description": "The confidence-to-integer CASE mapping (exact=4, derived_exact=3, high_confidence_estimate=2, low_confidence_estimate=1, else=0) is duplicated across UsageStore.insert(), ParserCheckpointStore AtomicIngestionTransaction.commit(), and appears multiple times even within the same SQL statement (for usageSource, provenanceConfidence, and the WHERE clause). This duplication is a maintenance hazard — adding a new confidence level requires updating 6+ SQL fragments across 2 files. A shared helper function or SQL view would reduce drift risk. However, this is a pre-existing pattern not introduced by this fix."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The confidence-to-integer CASE mapping for provenanceConfidence is copy-pasted across UsageStore.insert() and ParserCheckpointStore.AtomicIngestionTransaction.commit() (2 files, 6+ SQL fragments total). No shared SQL helper or enum-to-int mapping exists to prevent drift. The prior review for m2-fix-source-identity-and-hermes-fallback-gates already flagged this as an invariant drift risk.",
+      "evidence": "ParserCheckpointStore.swift:304-324, UsageStore.swift:51-71 — both contain identical `CASE excluded.provenanceConfidence WHEN 'exact' THEN 4 ...` blocks for usageSource, provenanceConfidence SET, and WHERE clause."
+    },
+    {
+      "area": "skills",
+      "observation": "The worker followed the token-accounting-worker skill procedure correctly this time — reading mission files, implementing the fix with TDD approach (tests alongside code), running scoped then broader validators, and reporting truthful skillFeedback with followedProcedure=true. This contrasts with the prior session (871d4cd8) which had deviations.",
+      "evidence": "Transcript skeleton shows proper read steps, code change, test addition, and verification sequence. Handoff shows followedProcedure=true with no deviations."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/m2-exact-ingestion-precision/scrutiny/reviews/m2-fix-source-identity-and-hermes-fallback-gates.json",
+  "summary": "Pass: The fix directly and correctly resolves the blocking issue from the prior review. The unconditional `usageSource = excluded.usageSource` in AtomicIngestionTransaction.commit() has been replaced with a CASE expression that only updates usageSource when incoming confidence is strictly higher (>), matching the established canonical pattern in UsageStore.insert(). Three well-structured tests cover equal-confidence preservation, higher-confidence promotion, and lower-confidence rejection through the AtomicIngestionTransaction code path. All 40 precedence/provenance tests and the broader 104-test suite pass."
+}
