@@ -604,4 +604,225 @@ final class TokenUsageProvenanceTests: XCTestCase {
                 "Source \(source.rawValue) should be preserved on equal-confidence upsert")
         }
     }
+
+    // MARK: - VAL-TOKEN-009 / VAL-PERSIST-002: AtomicIngestionTransaction source identity
+
+    func test_atomicIngestionTransaction_sourceIdentity_preservedOnEqualConfidenceUpsert() throws {
+        // Given: a row from provider_log with exact confidence via AtomicIngestionTransaction
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let checkpointStore = ParserCheckpointStore(dbQueue: queue)
+        let store = UsageStore(dbQueue: queue)
+
+        let sessionId = "atomic-source-identity-test-1"
+        let providerLogUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: sessionId,
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.05,
+            startTime: Date(),
+            endTime: Date(),
+            usageSource: .providerLog,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+
+        // First insert via UsageStore (to establish the row)
+        try store.insert(providerLogUsage)
+
+        // Now simulate AtomicIngestionTransaction path with same confidence but different source
+        let transaction = AtomicIngestionTransaction(
+            dbQueue: queue,
+            checkpointStore: checkpointStore,
+            provider: .claudeCode
+        )
+
+        let billingAPIUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: sessionId,
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 2000, // different values
+            outputTokens: 800,
+            costUSD: 0.10,
+            startTime: Date(),
+            endTime: Date(),
+            usageSource: .billingAPI,
+            provenanceMethod: .billingAPI,
+            provenanceConfidence: .exact, // same confidence
+            estimatorVersion: ""
+        )
+        transaction.append(
+            usages: [billingAPIUsage],
+            conversations: [],
+            checkpointToken: "checkpoint-1",
+            lastProcessedFilePath: nil
+        )
+        try transaction.commit()
+
+        // Then: source identity should be preserved (original provider_log kept)
+        let row = try queue.read { db -> Row in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT usageSource, inputTokens FROM token_usage
+                WHERE sessionId = ?
+                """, arguments: [sessionId])
+            return try XCTUnwrap(rows.first)
+        }
+
+        XCTAssertEqual(row["usageSource"] as? String, "provider_log",
+            "Source identity must be preserved on equal-confidence upsert via AtomicIngestionTransaction")
+        // Values should be updated since confidence is equal
+        let inputTokens = (row["inputTokens"] as? Int) ?? Int(row["inputTokens"] as? Int64 ?? 0)
+        XCTAssertEqual(inputTokens, 2000, "Token values should update on equal-confidence upsert")
+    }
+
+    func test_atomicIngestionTransaction_sourceIdentity_updatedOnHigherConfidenceUpsert() throws {
+        // Given: a row from provider_log with low confidence via AtomicIngestionTransaction
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let checkpointStore = ParserCheckpointStore(dbQueue: queue)
+        let store = UsageStore(dbQueue: queue)
+
+        let sessionId = "atomic-source-identity-test-2"
+        let lowConfUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: sessionId,
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.05,
+            startTime: Date(),
+            endTime: Date(),
+            usageSource: .providerLog,
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .lowConfidenceEstimate,
+            estimatorVersion: "char-ratio-v1"
+        )
+
+        // First insert via UsageStore (to establish the row)
+        try store.insert(lowConfUsage)
+
+        // Now simulate AtomicIngestionTransaction path with higher confidence
+        let transaction = AtomicIngestionTransaction(
+            dbQueue: queue,
+            checkpointStore: checkpointStore,
+            provider: .claudeCode
+        )
+
+        let highConfUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: sessionId,
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 2000,
+            outputTokens: 800,
+            costUSD: 0.10,
+            startTime: Date(),
+            endTime: Date(),
+            usageSource: .billingAPI, // different source
+            provenanceMethod: .billingAPI,
+            provenanceConfidence: .exact, // higher confidence
+            estimatorVersion: ""
+        )
+        transaction.append(
+            usages: [highConfUsage],
+            conversations: [],
+            checkpointToken: "checkpoint-2",
+            lastProcessedFilePath: nil
+        )
+        try transaction.commit()
+
+        // Then: higher confidence should win including source update
+        let row = try queue.read { db -> Row in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT usageSource, provenanceConfidence FROM token_usage
+                WHERE sessionId = ?
+                """, arguments: [sessionId])
+            return try XCTUnwrap(rows.first)
+        }
+
+        XCTAssertEqual(row["usageSource"] as? String, "billing_api",
+            "Source should update when higher confidence row arrives via AtomicIngestionTransaction")
+        XCTAssertEqual(row["provenanceConfidence"] as? String, "exact",
+            "Confidence should be updated to exact")
+    }
+
+    func test_atomicIngestionTransaction_sourceIdentity_notOverwrittenOnLowerConfidence() throws {
+        // Given: a row from billing_api with exact confidence
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let checkpointStore = ParserCheckpointStore(dbQueue: queue)
+        let store = UsageStore(dbQueue: queue)
+
+        let sessionId = "atomic-source-identity-test-3"
+        let exactUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: sessionId,
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 3000,
+            outputTokens: 1000,
+            costUSD: 0.12,
+            startTime: Date(),
+            endTime: Date(),
+            usageSource: .billingAPI,
+            provenanceMethod: .billingAPI,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+
+        // First insert via UsageStore (to establish the row)
+        try store.insert(exactUsage)
+
+        // Now simulate AtomicIngestionTransaction path with lower confidence
+        let transaction = AtomicIngestionTransaction(
+            dbQueue: queue,
+            checkpointStore: checkpointStore,
+            provider: .claudeCode
+        )
+
+        let lowConfUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: sessionId,
+            projectName: "DifferentProject",
+            model: "claude-4-sonnet",
+            inputTokens: 5000, // different values
+            outputTokens: 2000,
+            costUSD: 0.20,
+            startTime: Date(),
+            endTime: Date(),
+            usageSource: .providerLog, // different source
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .lowConfidenceEstimate, // lower confidence
+            estimatorVersion: "char-ratio-v1"
+        )
+        transaction.append(
+            usages: [lowConfUsage],
+            conversations: [],
+            checkpointToken: "checkpoint-3",
+            lastProcessedFilePath: nil
+        )
+        try transaction.commit()
+
+        // Then: lower confidence should NOT overwrite - source remains billing_api
+        let row = try queue.read { db -> Row in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT usageSource, inputTokens, provenanceConfidence FROM token_usage
+                WHERE sessionId = ?
+                """, arguments: [sessionId])
+            return try XCTUnwrap(rows.first)
+        }
+
+        XCTAssertEqual(row["usageSource"] as? String, "billing_api",
+            "Source identity must NOT be overwritten by lower confidence upsert")
+        let inputTokens = (row["inputTokens"] as? Int) ?? Int(row["inputTokens"] as? Int64 ?? 0)
+        XCTAssertEqual(inputTokens, 3000, "Exact row must not be downgraded by lower confidence")
+        XCTAssertEqual(row["provenanceConfidence"] as? String, "exact",
+            "Confidence must remain exact")
+    }
 }
