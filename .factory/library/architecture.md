@@ -1,96 +1,70 @@
 # Architecture
 
 ## Mission Scope
-This mission hardens token accounting and indexing so token totals are exact-first, fallback estimates are explicit and auditable, and indexing work scales with deltas instead of full rescans.
+Build a native BurnBar multi-account switcher for fast profile-based switching across:
+- Browser targets: Chrome, Safari
+- CLI targets: Codex, Claude, OpenCode
+
+Security model is strict: **no credential scraping/import**, metadata-only profile switching.
 
 ## Core Components
 
-### Ingestion Layer
-- Provider parsers and bridges produce token usage events from local logs, sqlite snapshots, in-app chat, daemon, cursor bridge, and provider APIs.
-- Ingestion output is normalized into a canonical usage key: `(provider, sessionId, model, sourceDeviceId)`.
+### 1) Profile Registry + Persistence
+- Canonical local store for switcher profiles.
+- Profile types:
+  - Browser profile (`chrome` or `safari`)
+  - CLI profile (`codex`, `claude`, `opencode`)
+- Persists non-secret launch metadata only (labels, target type, profile reference, options).
+- Tracks active profile state and last-used metadata deterministically.
 
-### Canonical Usage Persistence
-- `token_usage` is the canonical store for usage rows.
-- Canonical rows carry provenance metadata (method/confidence/estimator version) and support deterministic precedence (exact over estimate).
-- Upsert semantics enforce idempotency and controlled promotion (estimate -> exact).
-- `usageSource` remains explicit (`provider_log`, `in_app_chat`, `cursor_bridge`, `daemon`, `billing_api`) even when rows converge on one canonical key.
+### 2) Switch Orchestrator
+- Single boundary for all switch actions.
+- Enforces invariants:
+  - Exactly one active profile per domain.
+  - Deterministic state transitions (`idle -> switching -> success|failure`).
+  - No split-brain state under rapid inputs (serialized/coalesced actions).
 
-### Checkpoint and Sync State
-- Parser checkpoint/high-watermark state tracks incremental progress and restart safety.
-- Remote download watermark state controls cloud-sync ingestion windows and must only advance on durable success.
+### 3) Launch Adapters
+- **Browser launcher adapter**
+  - Launches explicit app target (Chrome/Safari) using selected profile reference.
+  - Uses allowlisted arguments only.
+  - Never touches cookie/session/auth files.
+- **CLI launcher adapter**
+  - Resolves trusted executable for Codex/Claude/OpenCode.
+  - Builds explicit argv and allowlisted env.
+  - No shell interpolation.
 
-### Reconciliation Layer
-- Supplemental usage reconciliation aligns local canonical usage with API-derived totals.
-- Backfill operates in throttled windows (7 days/run) to keep compute bounded.
-- Reconciliation is deterministic and idempotent after convergence.
-- Cleanup is source-safe (reconciliation-owned rows only) and must not delete non-reconciliation usage.
-- Cost-only drift handling is explicit (persist correction or explicit deferred marker by policy).
+### 4) UI Surfaces
+- **Settings**: full profile management (create/edit/delete/activate, validation, boundary copy).
+- **Dashboard**: quick switch and launch actions with clear status/recovery.
+- **Menu bar popover**: fastest compact switch flow, keyboard/mouse parity, deterministic feedback.
 
-### Projection and Search Indexing
-- Conversation projection pipeline materializes search/index artifacts.
-- Event-driven updates enqueue affected scopes.
-- Scheduled reconciliation/repair addresses missed events.
-- Indexing and embedding paths skip unchanged work where hashes/versions prove no delta.
-- Stale-source-version jobs are explicit no-ops.
-- Lease recovery and retries are idempotent (no duplicate write side effects).
-- Rebuild/re-embed paths must paginate to full corpus completion.
-- If semantic embedding fails, lexical retrieval continuity is preserved and degradation is surfaced.
+### 5) Cross-Surface State Synchronization
+- Shared observable active-profile state consumed by Settings, Dashboard, and Popover.
+- Navigation handoffs preserve active context.
+- App relaunch restores active profile consistently on all three surfaces.
 
-### Reporting Layer
-- Dashboard/API aggregates read canonical usage.
-- Reporting must remain consistent with canonical precedence outcomes and expose provenance-aware confidence semantics.
+## Data Flow
+1. User creates/edits profile in Settings.
+2. Profile store validates and persists metadata-only record.
+3. Active profile changes are published through switch orchestrator.
+4. Dashboard/Popover render updated active state.
+5. Launch action uses currently active profile and dispatches to browser/CLI adapter.
+6. Adapter returns success/failure with typed diagnostics; UI shows actionable feedback.
 
-## Data Flow (High-Level)
-1. Source events arrive from parsers/bridges/APIs.
-2. Extract/normalize usage into canonical shape.
-3. Apply precedence and persist canonical token rows.
-4. Advance checkpoints/watermarks only after durable success.
-5. Trigger incremental projection/indexing for changed scopes.
-6. Run scheduled reconciliation/backfill to repair drift.
-7. Surface corrected totals and provenance-aware metadata in reporting.
+## Security and Safety Invariants
+- No cookie/session import path exists in UI or API.
+- No raw OAuth credentials/tokens/passwords in plaintext profile storage.
+- Browser and CLI launch logs are redacted and secret-safe.
+- Browser profile/session/auth files are never mutated by switcher flows.
+- CLI launches enforce trusted executable resolution, argv hardening, and env allowlisting.
 
-## Precedence and Conflict Rules
-- Primary ordering: `exact` > `derived-exact` (normalized from exact totals) > `high-confidence estimate` > `lower-confidence estimate`.
-- For same confidence class, newer authoritative evidence wins deterministically by configured tie-break policy.
-- Late exact arrivals promote prior estimates to exact canonical rows.
-- Remote correction behavior is explicit and deterministic for duplicate logical keys.
-- Fallback estimation is allowed only when exact buckets are unavailable; normalization from exact totals is not fallback.
+## UX Invariants
+- Switch operations are quick and understandable with explicit in-progress/success/error states.
+- Empty, loading, and error states always include a recovery path.
+- Keyboard and accessibility semantics are first-class for all primary actions.
 
-## Commit/Visibility Boundary
-- Required ordering for ingestion writes: persist canonical row(s) -> commit transaction -> advance checkpoint/watermark -> enqueue downstream work.
-- On failure before commit, checkpoint/watermark must not advance and downstream/reporting surfaces must not expose partial state.
-
-## Known Issues (Pre-Existing)
-
-### Projection sweep semantics can surprise deterministic tests
-- `ProjectionPipelineService.runSweep()` may enqueue and process repair/rebuild work in the same sweep.
-- On first run without a seeded backfill cursor, sweep can also trigger initial backfill/rebuild side-effects.
-- Deterministic tests should explicitly seed/disable backfill state when asserting gap-repair-only behavior.
-
-### Chunk identity is source-version-coupled
-- `ProjectionIdentity.chunkID(...)` includes `sourceVersionID` in the chunk ID payload (`ProjectionPipelineService.swift`).
-- Any source-version change rekeys chunk IDs, even when some chunk content is unchanged.
-- Validation expectations for “untouched chunk ID preservation” must align with this identity model or explicitly require an ID scheme change.
-
-### Offset pagination needs deterministic tie-break ordering
-- Rebuild/re-embed pagination queries must use a total deterministic order (for example timestamp + stable ID) to avoid skip/duplicate risk when multiple rows share the same timestamp key.
-
-### CursorConnector: firstIntValue() may not extract reasoning_tokens from nested dictionaries
-- `normalizeUsageEvent()` uses `firstIntValue()` to extract token counts from `[String: Any]` dictionary payloads.
-- For nested paths like `completion_tokens_details.reasoning_tokens`, `firstIntValue()` may return 0 instead of the expected value.
-- This does not affect the Python proxy path (which handles nested dicts correctly) or the primary extraction path (which reads flat keys first).
-- The reasoning token extraction fix (`m2-fix-cursorconnector-reasoning-token-extraction`) works around this by extracting reasoning tokens from the flat top-level keys and known alias paths before falling back to nested dict traversal.
-
-### Confidence-to-integer CASE mapping duplication
-- The confidence-to-integer mapping (`exact=4, derived_exact=3, high_confidence_estimate=2, low_confidence_estimate=1, else=0`) is copy-pasted across `UsageStore.insert()` and `ParserCheckpointStore.AtomicIngestionTransaction.commit()` in 6+ SQL fragments.
-- Adding a new confidence level requires updating all fragments simultaneously.
-- A shared helper function or SQL view would reduce drift risk.
-
-## Architectural Invariants
-- Exact-first: exact token data always wins over lower-confidence estimates.
-- Idempotent ingestion: replaying the same source does not create duplicates.
-- Deterministic canonical selection: same inputs produce same canonical rows.
-- Bounded work: unchanged data should not trigger full rescans/reindex by default.
-- Safe recovery: failures do not advance progress markers and do not lose data.
-- Observable confidence: exact vs fallback origin is auditable.
-- Tokenizer fallback path is feature-flagged, default-off, and non-blocking.
+## Failure Handling Invariants
+- Missing profile/app/executable produces typed, actionable errors.
+- Failed launch does not corrupt active profile state.
+- Rapid repeated actions resolve deterministically.

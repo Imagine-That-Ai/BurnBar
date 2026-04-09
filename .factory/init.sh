@@ -5,6 +5,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
 mkdir -p "$repo_root/.spm-cache" "$repo_root/.derived-data"
+mkdir -p "$repo_root/.factory/validation"
 
 if [ ! -d "$repo_root/extensions/openburnbar/node_modules" ]; then
   npm --prefix "$repo_root/extensions/openburnbar" ci

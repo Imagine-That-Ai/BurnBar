@@ -7,6 +7,13 @@ Environment variables, external dependencies, and setup notes for this mission.
 
 ---
 
+## Account Switcher Mission Notes
+
+- This mission does not require new external credentials.
+- OAuth sessions remain managed by browser/provider sign-in (Google/Apple flows).
+- BurnBar stores profile references and launch metadata only.
+- Reserved helper port range for this mission (if needed): `8310-8339`.
+
 ## Required Local Tooling
 - Xcode + `xcodebuild`
 - Swift toolchain (`swift`, `swift test`)

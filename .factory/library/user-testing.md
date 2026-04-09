@@ -1,42 +1,52 @@
 # User Testing
 
-Testing surface guidance for token-accounting accuracy and indexing-efficiency validation.
+Testing surface guidance for BurnBar built-in account switcher validation.
 
 ---
 
 ## Validation Surface
 
-### Surface A: Swift/Xcode Contract Tests (Primary)
-- Scope: token extraction precedence, provenance persistence, checkpoint/watermark safety, reconciliation determinism, indexing behavior.
-- Tools: `xcodebuild test`, `swift test`, `sqlite3`.
-- Notes: This mission is mostly non-UI correctness and compute-behavior oriented; assertions are validated primarily through deterministic tests and datastore evidence.
+### Surface A: Native macOS UI flows (primary)
+- Scope: Settings, Dashboard, and Popover switcher behavior (management, switching, status/error/empty states, accessibility).
+- Tools: `xcodebuild test` (UI/integration tests), scoped test targets.
+- Notes: This is the highest-value user-facing surface.
 
-### Surface B: Retrieval/Projection Replay (Secondary)
-- Scope: projection/index consistency and retrieval parity under incremental updates and reconciliation.
-- Tools: scoped `xcodebuild test` replay suites.
+### Surface B: Launch orchestration contracts (primary)
+- Scope: Browser launch (Chrome/Safari), CLI launch (Codex/Claude/OpenCode), typed errors, race handling, safety constraints.
+- Tools: `swift test`, scoped `xcodebuild test`, command-level smoke checks.
 
-### Surface C: Reporting Contracts
-- Scope: provenance/confidence output visibility and filtered aggregate parity after upgrades/reconciliation.
-- Tools: `xcodebuild test` reporting contract tests + datastore checks.
+### Surface C: Cross-surface flows (primary)
+- Scope: create in Settings -> use in Dashboard/Popover, global active-state consistency, relaunch persistence, cross-surface switch+launch chains.
+- Tools: `xcodebuild test` integration/UI + event/log inspection.
+
+### Surface D: Security and persistence checks (primary)
+- Scope: metadata-only persistence, no cookie/session import, no plaintext secret leakage, log redaction.
+- Tools: `swift test`, file/storage inspection commands, log scans.
 
 ## Validation Concurrency
 
-User-approved conservative profile:
-- Heavy validators (any Xcode test run): **max 1 concurrent**
-- Lightweight validators (`swift test`, `swiftlint`, small DB checks): **max 2 concurrent**
-- Avoid mixed heavy parallel runs to reduce CPU/memory pressure and keep results deterministic.
+User-approved profile: **max concurrent validators = 4**
 
-## Flow Validator Guidance: Swift/Xcode Contract Tests
+Recommended scheduling:
+- Heavy validators (`xcodebuild test`): **max 1 concurrent**
+- Medium validators (`swift test` package suites): **max 1 concurrent**
+- Lightweight smoke/log/storage checks: **up to 2 concurrent**
 
-- Isolation boundary: run from repo root (`/Users/dewclaw/Documents/Projects/BurnBar`) and keep all temporary outputs under `.factory/validation/<milestone>/user-testing/` and mission `evidence/` folders.
-- Treat `xcodebuild test` as heavy: run only one flow validator that executes Xcode tests at a time.
-- In validator environments, include signing-off flags for Xcode tests (`CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`) to avoid entitlement signing failures.
-- Prefer scoped test commands tied to assigned assertion IDs; do not run unrelated full-suite commands unless required to unblock a scoped failure.
-- If a flow validator needs derived data, use a group-specific path (for example `.derived-data/user-testing-<group-id>`) to avoid cross-run collisions.
-- Do not modify or stop local services on protected ports (`5000`, `7000`, `8642`, `11434`).
-- Record concrete evidence (command output snippets, failing/passing test names, SQL query output) in the group report and evidence directory.
+This keeps total concurrency at 4 while avoiding heavy-run contention.
+
+## Flow Validator Guidance
+
+- Run from repo root (`/Users/dewclaw/Documents/Projects/BurnBar`).
+- Keep validator artifacts in `.factory/validation/<milestone>/user-testing/`.
+- Include signing-off flags for Xcode runs when needed:
+  - `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+- Prefer scoped commands tied to assertion IDs before broader suites.
+- Respect protected local ports: `5000`, `7000`, `8642`, `11434`.
+- For browser launch verification, use non-destructive app checks/smokes (`open -Ra`, targeted open commands) and pair with launcher invocation assertions.
 
 ## Evidence Expectations
-- Persist command outputs from scoped tests.
-- Include concrete datastore evidence (`sqlite3` query results) for precedence/idempotency assertions.
-- For efficiency assertions, include counters/logs showing incremental path usage and no accidental full rebuilds.
+
+- Command outputs with exit codes for each assertion group.
+- UI evidence (snapshots/interaction traces) for Settings/Dashboard/Popover assertions.
+- Launch invocation traces (target app/executable, profile ID, argv/env-allowlist evidence).
+- Persistence/log evidence proving metadata-only storage and secret-safe logging.
