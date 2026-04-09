@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import OpenBurnBarCore
 
 // MARK: - Dashboard Quick Switch View
@@ -27,6 +28,7 @@ struct DashboardQuickSwitchView: View {
     @State private var isLoading = true
     @State private var error: String?
     @State private var showingProfilePicker = false
+    @State private var accessibilityAnnouncement: String?
 
     // Launch services
     @State private var browserLaunchService: SwitcherBrowserLaunchService?
@@ -72,6 +74,7 @@ struct DashboardQuickSwitchView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Account Switcher")
         .accessibilityHint("Use to quickly switch between browser and CLI profiles")
+        .accessibilityValue(accessibilityAnnouncement ?? "")
     }
 
     // MARK: - Header
@@ -581,6 +584,7 @@ struct DashboardQuickSwitchView: View {
     private func loadData() {
         isLoading = true
         error = nil
+        announceForAccessibility("Loading profiles")
 
         do {
             profiles = try dataStore.switcherStore.fetchAllProfiles()
@@ -592,8 +596,17 @@ struct DashboardQuickSwitchView: View {
             let adapter = DashboardSwitcherProfileAdapter(store: dataStore.switcherStore)
             browserLaunchService = SwitcherBrowserLaunchService(profileStore: adapter)
             cliLaunchService = SwitcherCLILAunchService(profileStore: adapter)
+
+            // Announce loaded state
+            if profiles.isEmpty {
+                announceForAccessibility("No profiles loaded. Open Settings to create profiles.")
+            } else {
+                let count = profiles.count
+                announceForAccessibility("\(count) profile\(count == 1 ? "" : "s") loaded.")
+            }
         } catch {
             self.error = "Failed to load profiles: \(error.localizedDescription)"
+            announceForAccessibility("Error loading profiles: \(error.localizedDescription)")
         }
 
         isLoading = false
@@ -707,11 +720,22 @@ struct DashboardQuickSwitchView: View {
 
     // MARK: - Accessibility
 
+    /// Posts an accessibility announcement to the screen reader.
+    /// Announcements are posted for switch/launch success and failure state transitions (VAL-DASH-008).
     private func announceForAccessibility(_ message: String) {
         #if os(macOS)
-        // Accessibility announcements would be posted here using NSAccessibility
-        // For now, we rely on SwiftUI's built-in accessibility support
-        _ = message
+        accessibilityAnnouncement = message
+        // Post announcement via NSAccessibility to the key window
+        // This ensures VoiceOver and other assistive technologies announce the message
+        // Note: This is called from main-thread contexts (view updates, button actions)
+        // so no additional dispatch is needed
+        if let window = NSApp.keyWindow {
+            NSAccessibility.post(
+                element: window,
+                notification: .announcementRequested,
+                userInfo: [NSAccessibility.NotificationUserInfoKey.announcement: message]
+            )
+        }
         #endif
     }
 }
