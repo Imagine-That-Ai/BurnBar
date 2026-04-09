@@ -283,6 +283,7 @@
 		F8D4C1B60D03AA9112548BE8 /* WorkflowInsightRollupServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B02DCE145FBBDB6E03950C /* WorkflowInsightRollupServiceTests.swift */; };
 		F1E0D2C3B4A5968778695A4B /* SwitcherProfileStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F2 /* SwitcherProfileStoreTests.swift */; };
 		F2E1D3C4B5A6079878796B5C /* SwitcherBrowserLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F7A8B9C0D1E2F3 /* SwitcherBrowserLaunchTests.swift */; };
+		F3E2D4C5B6A7189898807C6D /* SwitcherCLILaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3C4D5E6F7A9B0C1D2E3F4A5 /* SwitcherCLILaunchTests.swift */; };
 		FD1D24412329A7B1DC78EF3E /* OpenBurnBarContextSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CCAE190BA1981E9BE94C78F /* OpenBurnBarContextSelector.swift */; };
 		FD985EEE3BCEB9690B85D2D8 /* DailyDigestManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A54F594D8698C41B0BA694 /* DailyDigestManager.swift */; };
 /* End PBXBuildFile section */
@@ -602,6 +603,7 @@
 		FF0BC832DD4F6C22F0FC801C /* SearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchService.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D0E1F2 /* SwitcherProfileStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherProfileStoreTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F7A8B9C0D1E2F3 /* SwitcherBrowserLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherBrowserLaunchTests.swift; sourceTree = "<group>"; };
+		B3C4D5E6F7A9B0C1D2E3F4A5 /* SwitcherCLILaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherCLILaunchTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1038,6 +1040,7 @@
 				73B02DCE145FBBDB6E03950C /* WorkflowInsightRollupServiceTests.swift */,
 				A1B2C3D4E5F6A7B8C9D0E1F2 /* SwitcherProfileStoreTests.swift */,
 				A2B3C4D5E6F7A8B9C0D1E2F3 /* SwitcherBrowserLaunchTests.swift */,
+				B3C4D5E6F7A9B0C1D2E3F4A5 /* SwitcherCLILaunchTests.swift */,
 			);
 			name = Active;
 			path = AgentLensTests/Active;
@@ -1555,6 +1558,7 @@
 				F8D4C1B60D03AA9112548BE8 /* WorkflowInsightRollupServiceTests.swift in Sources */,
 				F1E0D2C3B4A5968778695A4B /* SwitcherProfileStoreTests.swift in Sources */,
 				F2E1D3C4B5A6079878796B5C /* SwitcherBrowserLaunchTests.swift in Sources */,
+				F3E2D4C5B6A7189898807C6D /* SwitcherCLILaunchTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
