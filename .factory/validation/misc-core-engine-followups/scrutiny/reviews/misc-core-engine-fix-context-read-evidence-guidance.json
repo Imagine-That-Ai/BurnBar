@@ -1,0 +1,21 @@
+{
+  "featureId": "misc-core-engine-fix-context-read-evidence-guidance",
+  "reviewedAt": "2026-04-09T11:58:31Z",
+  "commitId": "178c389b797b177edc4e29ca70a123513ccd2843",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix directly addresses the prior blocking failure by replacing file-existence checks with content-inspection commands in all five worker SKILL.md handoff-discipline sections, and by adding explicit language that `test -f` is insufficient evidence of context reads.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The transcript skeleton shows the worker performed reads/edits before invoking required skills, then invoked skills retroactively while still reporting `followedProcedure: true`; this suggests procedure-order enforcement may be unclear for documentation-only fixes.",
+      "evidence": "worker-transcripts.jsonl entry for session 881d116e-99c2-469b-a408-05f2e8214061 shows Edit/Execute commit steps before `Skill: mission-worker-base` and `Skill: switcher-integration-worker`, while handoff.skillFeedback.followedProcedure=true."
+    }
+  ],
+  "addressesFailureFrom": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/misc-core-engine-followups/scrutiny/reviews/misc-core-engine-worker-handoff-discipline-guidance.json",
+  "summary": "Reviewed the fix transcript skeleton plus both relevant diffs (failed feature commit d698da9bccf3b2140957d5b4935b9dd7977216a7 and fix commit 178c389b797b177edc4e29ca70a123513ccd2843). The original failure was that guidance used `test -f` file-presence checks as read evidence; the fix updates all affected SKILL.md files to content-read examples (`head`/`grep`) and explicitly documents why existence checks are non-compliant, so the failure is adequately addressed."
+}

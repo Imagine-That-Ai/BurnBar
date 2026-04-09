@@ -1,7 +1,7 @@
 {
   "milestone": "misc-core-engine-followups",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -21,28 +21,20 @@
   },
   "reviewsSummary": {
     "total": 1,
-    "passed": 0,
-    "failed": 1,
-    "failedFeatures": [
-      "misc-core-engine-worker-handoff-discipline-guidance"
-    ]
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "misc-core-engine-worker-handoff-discipline-guidance",
-      "severity": "blocking",
-      "description": "Skill guidance requires \"context read evidence\" but examples only use `test -f ...`, which proves file existence rather than read/inspection evidence and does not satisfy the intended auditable invariant."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills",
-      "suggestion": "Replace file-presence evidence examples (`test -f ...`) with read/inspection evidence commands (for example, `Read`/`Grep`/`Execute` patterns that capture actual file content access) in the worker SKILL.md templates.",
-      "evidence": "Review report for misc-core-engine-worker-handoff-discipline-guidance found the weaker pattern in .factory/skills/switcher-integration-worker/SKILL.md:109 and equivalent sections in switcher-core-worker, switcher-ui-worker, token-accounting-worker, and indexing-efficiency-worker.",
-      "isSystemic": true
+      "suggestion": "Clarify skill procedure language to explicitly require required skill invocation before substantive reads/edits/command execution, including for documentation-only fix workflows.",
+      "evidence": "Review report for misc-core-engine-fix-context-read-evidence-guidance noted transcript ordering where reads/edits occurred before required skill invocation while handoff still marked followedProcedure=true.",
+      "isSystemic": false
     }
   ],
   "rejectedObservations": [],
-  "previousRound": null
+  "previousRound": ".factory/validation/misc-core-engine-followups/scrutiny/synthesis.round1.json"
 }
