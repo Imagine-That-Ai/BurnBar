@@ -56,8 +56,32 @@ final class BackfillCursorStore {
     /// The maximum duration of a single backfill window in seconds (7 days).
     static let backfillWindowSeconds: TimeInterval = 7 * 24 * 60 * 60
 
+    /// Storage precision for datetime values: milliseconds.
+    /// SQLite/GRDB stores datetime as TEXT in ISO8601-like format with millisecond precision
+    /// (yyyy-MM-dd HH:mm:ss.SSS). When a Date is stored and retrieved, it may be
+    /// truncated/rounded to this precision. This constant defines the normalization
+    /// granularity used to ensure equal timestamps survive persistence round-trips.
+    static let storagePrecisionSeconds: TimeInterval = 0.001
+
     init(dbQueue: DatabaseQueue) {
         self.dbQueue = dbQueue
+    }
+
+    // MARK: - Storage Precision Normalization
+
+    /// Normalizes a Date to storage precision (milliseconds) for comparison purposes.
+    ///
+    /// When a Date is stored in SQLite/GRDB and retrieved, it may be rounded/truncated
+    /// to millisecond precision. Normalizing both dates before comparison ensures that
+    /// equal logical timestamps survive persistence round-trips without epsilon tolerance.
+    ///
+    /// - Parameter date: The date to normalize.
+    /// - Returns: A Date normalized to millisecond precision.
+    static func normalizeToStoragePrecision(_ date: Date) -> Date {
+        let timeInterval = date.timeIntervalSince1970
+        let normalized = (timeInterval / Self.storagePrecisionSeconds).rounded()
+            * Self.storagePrecisionSeconds
+        return Date(timeIntervalSince1970: normalized)
     }
 
     // MARK: - Read
@@ -107,20 +131,21 @@ final class BackfillCursorStore {
                 SELECT * FROM backfill_cursors WHERE provider = ?
                 """, arguments: [provider.rawValue])
 
-            // VAL-PERSIST-007: Enforce strict monotonic progression.
+            // VAL-PERSIST-007: Enforce strict monotonic progression at normalized precision.
             // Equal timestamp advances are accepted as idempotent (upsert version bump handles retries).
-            // Any backward movement is strictly rejected regardless of magnitude.
+            // Any backward movement is strictly rejected at normalized precision.
             //
-            // A 1 millisecond epsilon tolerance is used because GRDB/SQLite datetime storage
-            // introduces precision artifacts when the same timestamp is stored and retrieved multiple
-            // times. This epsilon is NOT used to accept true backward movement - it only bridges
-            // the precision gap for exact same-timestamp idempotent updates.
+            // Storage-precision normalization: SQLite/GRDB stores datetime with millisecond precision.
+            // When the same timestamp is stored and retrieved, floating-point arithmetic and precision
+            // conversions can produce tiny differences. Normalizing both dates to storage precision
+            // before comparison bridges this gap without needing epsilon tolerance.
+            // Forward movement (diff > 0) and equal timestamps (diff == 0) pass.
+            // Any true backward movement (diff < 0) is rejected.
             if let current = current, let currentBound = current.lastProcessedWindowUpperBound {
-                let diff = newUpperBound.timeIntervalSince(currentBound)
-                // diff >= -0.001 allows: forward (diff > 0), equal (diff == 0),
-                // tiny precision artifacts (0 > diff >= -0.001), rejects true backward (diff < -0.001)
-                let monotonicEpsilon: TimeInterval = 0.001
-                guard diff >= -monotonicEpsilon else {
+                let normalizedCurrent = Self.normalizeToStoragePrecision(currentBound)
+                let normalizedNew = Self.normalizeToStoragePrecision(newUpperBound)
+                let diff = normalizedNew.timeIntervalSince(normalizedCurrent)
+                guard diff >= 0 else {
                     throw BackfillCursorError.nonMonotonicAdvance(
                         provider: provider,
                         currentBound: currentBound,
