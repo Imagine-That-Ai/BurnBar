@@ -1,0 +1,21 @@
+{
+  "featureId": "m4-fix-backfill-monotonic-no-backward-epsilon",
+  "reviewedAt": "2026-04-09T18:47:21Z",
+  "commitId": "1692c73cb57cfdbd0047ad23e3281d7315229757",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix commit directly addresses the prior blocking monotonicity regression by removing negative epsilon allowance from the cursor guard. Equal timestamps remain allowed, while any backward movement is now rejected by the feature diff.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker reported `skillFeedback.followedProcedure=true`, but transcript skeleton evidence does not show all required context reads from the token-accounting-worker procedure step 1.",
+      "evidence": "worker-transcripts.jsonl entry for session 8b69429d-b8ba-4eeb-8b9e-69290f49c78c shows reads of mission.md, validation-contract.md, features.json, validation-state.json, and .factory/services.yaml, but no reads of mission AGENTS.md, .factory/library/architecture.md, or .factory/library/user-testing.md required by .factory/skills/token-accounting-worker/SKILL.md."
+    }
+  ],
+  "addressesFailureFrom": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/reviews/m4-fix-backfillscheduler-determinism-boundaries.json",
+  "summary": "Reviewed prior failed feature diff (commit 991904f5c08dae62b3cebcfc0486bbb0a4e6b9d4), fix feature handoff and transcript skeleton, and fix diff (commit 1692c73cb57cfdbd0047ad23e3281d7315229757). The fix adequately resolves the original blocking issue by eliminating backward epsilon tolerance in monotonic cursor enforcement, so this review passes."
+}

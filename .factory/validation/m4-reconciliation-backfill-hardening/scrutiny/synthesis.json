@@ -1,6 +1,6 @@
 {
   "milestone": "m4-reconciliation-backfill-hardening",
-  "round": 1,
+  "round": 2,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,67 +20,45 @@
     }
   },
   "reviewsSummary": {
-    "total": 5,
-    "passed": 1,
-    "failed": 4,
+    "total": 4,
+    "passed": 3,
+    "failed": 1,
     "failedFeatures": [
-      "m4-backfill-window-and-live-ingestion-coexistence",
-      "m4-reconciliation-determinism-cleanup-and-cost-deltas",
-      "m4-reporting-provenance-audit-and-filter-parity",
-      "m4-fix-backfillscheduler-determinism-boundaries"
+      "m4-fix-backfill-runtime-wiring-and-traceability"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "m4-backfill-window-and-live-ingestion-coexistence",
+      "featureId": "m4-fix-backfill-runtime-wiring-and-traceability",
       "severity": "blocking",
-      "description": "Backfill cursor logic is not wired into production execution paths; usages of nextBackfillWindow/advanceCursor appear limited to tests, so runtime 7-day progression/live coexistence behavior is not implemented."
+      "description": "UsageAggregator.refreshAll() unconditionally calls runScheduledBackfillIfNeeded() even when persistence fails, allowing backfill cursor advancement without successful committed usage persistence."
     },
     {
-      "featureId": "m4-backfill-window-and-live-ingestion-coexistence",
+      "featureId": "m4-fix-backfill-runtime-wiring-and-traceability",
       "severity": "blocking",
-      "description": "Provided handoff commitId is unrelated to feature scope (switcher dashboard test target change), breaking traceability/auditability for claimed implementation."
-    },
-    {
-      "featureId": "m4-reconciliation-determinism-cleanup-and-cost-deltas",
-      "severity": "blocking",
-      "description": "Cost-only reconciliation guard uses missingCost > 0 without epsilon, allowing floating-point residue to produce phantom micro-corrections and threaten idempotent convergence."
-    },
-    {
-      "featureId": "m4-reporting-provenance-audit-and-filter-parity",
-      "severity": "blocking",
-      "description": "Provider summary provenance uses dominant-row confidence while totals aggregate mixed rows, which can label mixed exact+estimated aggregates as fully exact and violate provenance semantics."
-    },
-    {
-      "featureId": "m4-fix-backfillscheduler-determinism-boundaries",
-      "severity": "blocking",
-      "description": "BackfillCursorStore monotonicity allows up to 1ms backward movement (>= -epsilon), which violates strict monotonic progression despite equal-timestamp idempotency requirements."
+      "description": "Fix diff did not add runtime integration coverage for production backfill wiring (refreshAll/runScheduledBackfillIfNeeded); existing tests remain helper-level and do not validate the production path coexistence expectation."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills/token-accounting-worker",
-      "suggestion": "Require explicit verification evidence for mandatory startup context reads before allowing followedProcedure=true in skill feedback, and add a checklist item that reviewers can validate directly from handoff.commandsRun.",
-      "evidence": "All five m4 review reports flagged missing evidence for required context reads while handoffs still claimed followedProcedure=true; this is a repeated cross-feature pattern.",
+      "suggestion": "Require explicit command-level evidence for all mandated startup context reads before allowing skillFeedback.followedProcedure=true, and add this as a scrutiny checklist item.",
+      "evidence": "Three of four rerun reviews again reported missing read evidence for AGENTS.md and .factory/library docs despite handoffs claiming followedProcedure=true.",
       "isSystemic": true
     },
     {
       "target": "AGENTS.md",
-      "suggestion": "Add milestone-specific startup guidance to treat mission-scoped docs as authoritative when shared library docs are stale/misaligned, and require workers to note such drift in handoffs.",
-      "evidence": "Multiple m4 reviews observed that .factory/library/architecture.md and user-testing/environment notes describe switcher-era context and can mislead token-accounting workers.",
+      "suggestion": "Add mission-start guidance that workers should treat mission-scoped files as authoritative when shared library docs are stale/misaligned and explicitly note detected drift in handoffs.",
+      "evidence": "Multiple rerun reviews flagged .factory/library architecture/user-testing guidance as switcher-focused and misaligned with this token-accounting milestone.",
       "isSystemic": true
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "Duplicate reports that .factory/library/architecture.md is switcher-focused.",
+      "observation": "Repeated library-misalignment notes across multiple review reports.",
       "reason": "duplicate"
-    },
-    {
-      "observation": "Single-review note about TDD ordering in one worker transcript.",
-      "reason": "ambiguous"
     }
   ],
-  "previousRound": null
+  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round1.json"
 }
