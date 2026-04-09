@@ -1,0 +1,44 @@
+{
+  "featureId": "switcher-browser-launch-adapter",
+  "reviewedAt": "2026-04-09T10:38:36.707603+00:00",
+  "commitId": "e34542871d972baba6ee79bdc6c89a4a619c2812",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds the requested adapter/coordinator/service structure and broad test coverage, but one launch-coordination bug violates the deterministic concurrency requirement; a secondary error-typing inconsistency was also found.",
+    "issues": [
+      {
+        "file": "OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherBrowserLaunchService.swift",
+        "line": 110,
+        "severity": "blocking",
+        "description": "Launch cleanup runs in an un-awaited deferred Task (`defer { Task { await coordinator.endLaunch(...) } }`). On failure paths, `launchBrowser(for:)` can return before pending state is cleared, so immediate retries for the same profile can nondeterministically fail with 'Launch already in progress'. This breaks the requirement for deterministic concurrency handling."
+      },
+      {
+        "file": "OpenBurnBarCore/Sources/OpenBurnBarCore/BrowserLaunchAdapter.swift",
+        "line": 243,
+        "severity": "non_blocking",
+        "description": "`buildSafariLaunch` collapses kind mismatch and type mismatch into `.profileTypeMismatch(expected: .safari, actual: profile.browserType)`. For non-browser profiles this hides the more actionable `.profileKindMismatch` typed error used elsewhere."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker did not fully follow the switcher-core-worker step to read mission AGENTS.md and .factory/library/user-testing.md before implementation.",
+      "evidence": "Transcript skeleton for workerSessionId 327eb8bb-a4a2-4d46-a26a-6891fb6b3825 contains reads of mission.md/validation files and .factory/library/architecture.md, but no read of mission AGENTS.md or .factory/library/user-testing.md."
+    },
+    {
+      "area": "conventions",
+      "observation": "Handoff commit metadata was not reproducible as written (full SHA did not resolve), which weakens review traceability.",
+      "evidence": "Handoff file records commitId `e345428f05e09f4e37fb89cf4c1e36c38f7b6b7a`; `git show` on that object fails. The actual commit in repo is `e34542871d972baba6ee79bdc6c89a4a619c2812` (resolves from short hash)."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Test target-membership gotcha for newly added switcher tests appears to be a recurring workflow issue but is not captured in shared mission guidance.",
+      "evidence": "Feature handoff 'whatWasLeftUndone' notes `SwitcherBrowserLaunchTests.swift` was not included in the Xcode project target, preventing scoped xcodebuild-only-testing verification at that point."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed transcript skeleton and commit diff for switcher-browser-launch-adapter. Implementation mostly matches scope, but a blocking async cleanup race in launch coordination violates deterministic concurrency expectations; report marked fail with one additional non-blocking error-typing issue and shared-state observations."
+}

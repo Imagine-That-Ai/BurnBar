@@ -1,0 +1,34 @@
+{
+  "featureId": "switcher-cli-launch-adapter",
+  "reviewedAt": "2026-04-09T10:37:17Z",
+  "commitId": "81ac876",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature introduces a substantial CLI launch adapter and test suite, but it does not fully satisfy core security and correctness requirements. I found blocking issues in environment propagation, trusted executable resolution for configured paths, and working-directory boundary validation.",
+    "issues": [
+      {
+        "file": "OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherCLILAunchService.swift",
+        "line": 523,
+        "severity": "blocking",
+        "description": "CLILaunchInvoker starts from ProcessInfo.processInfo.environment and then overlays allowlisted keys, which still propagates all ambient environment variables (including secrets). This violates the feature requirement/invariant for allowlisted-only environment propagation."
+      },
+      {
+        "file": "OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherCLILAunchService.swift",
+        "line": 167,
+        "severity": "blocking",
+        "description": "validateWorkingDirectory uses a raw string prefix check (trimmed.hasPrefix(homeDir)) to enforce home-directory containment. This can be bypassed by paths like '/Users/<home>/../outside' or sibling-prefix paths, so boundary enforcement is not robust/canonicalized."
+      },
+      {
+        "file": "OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherProfile.swift",
+        "line": 67,
+        "severity": "blocking",
+        "description": "trustedExecutablePaths uses '$HOME/...', but CLILaunchAdapter.expandPath only expands '~/' (SwitcherCLILAunchService.swift:118). As a result, user-home trusted CLI install paths are never resolved, causing false executableNotFound failures for valid installations."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed handoff, transcript skeleton, skill guidance, and commit 81ac876 diff. The implementation is close, but three blocking defects prevent acceptance: environment allowlist bypass via full env inheritance, non-canonical working-directory boundary checks, and '$HOME' trusted path expansion mismatch."
+}

@@ -1,0 +1,39 @@
+{
+  "featureId": "settings-account-switcher-management-ui",
+  "reviewedAt": "2026-04-09T10:38:27Z",
+  "commitId": "45d186134278c9a630ed245b65c3ba168cc83a3d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds the Settings tab and a substantial management UI, but edit flows are functionally broken because edit form bindings read from immutable profile snapshots instead of mutable form state, preventing actual edits from sticking.",
+    "issues": [
+      {
+        "file": "AgentLens/Views/Settings/AccountSwitcherSettingsView.swift",
+        "line": 311,
+        "severity": "blocking",
+        "description": "Edit form bindings use getters like `get: { profile.displayName }` (and equivalent for identifier/CLI fields), while setters write to `@State` vars. Because getters never read those state vars, typed edits are immediately overwritten by the original profile values, so profile editing is not actually operable."
+      },
+      {
+        "file": "AgentLens/Views/Settings/AccountSwitcherSettingsView.swift",
+        "line": 20,
+        "severity": "non_blocking",
+        "description": "Error state is captured (`@State private var error`) and assigned in load/set-active/delete failures, but never rendered in the view. This weakens the \"recoverable\" UX expectation for failure paths."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked `skillFeedback.followedProcedure` true, but required switcher-ui-worker validation steps were not fully evidenced.",
+      "evidence": "Skill requires `scripts/test-openburnbar-app.sh` and manual UI sanity checks (.factory/skills/switcher-ui-worker/SKILL.md lines 30-33). Handoff verification only lists xcodebuild commands (handoff JSON `verification.commandsRun` at lines 14-27) and includes no manual-check evidence."
+    },
+    {
+      "area": "conventions",
+      "observation": "Handoff commit ID integrity appears inconsistent with git history, creating review friction.",
+      "evidence": "Handoff reports commitId `45d1861b3a5e9c0e89d7f8a7b4e6d2c3a1f5e9b7`, but `git show` on that ID fails with `fatal: bad object`; actual commit is `45d186134278c9a630ed245b65c3ba168cc83a3d`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed feature settings-account-switcher-management-ui by inspecting mission metadata, handoff, transcript skeleton, skill contract, and commit diff. Result is FAIL due to a blocking edit-form binding defect that prevents profile updates from persisting in the Settings UI."
+}
