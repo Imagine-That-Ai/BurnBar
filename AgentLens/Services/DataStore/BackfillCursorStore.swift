@@ -92,9 +92,8 @@ final class BackfillCursorStore {
     ///   - earliestSourceDate: The earliest source date if discovered during backfill.
     ///
     /// - Note: newUpperBound must be greater than or equal to the current cursor value.
-    ///   The comparison uses epsilon tolerance (1ms) for floating-point Date precision.
-    ///   Equal timestamp advances are idempotent and allowed (no-op with version bump).
-    ///   This ensures monotonic progression, prevents regression, and supports retries.
+    ///   Equal timestamp advances are accepted as idempotent (handled by upsert semantics).
+    ///   Any backward movement is strictly rejected regardless of magnitude.
     func advanceCursor(
         for provider: AgentProvider,
         newUpperBound: Date,
@@ -108,13 +107,11 @@ final class BackfillCursorStore {
                 SELECT * FROM backfill_cursors WHERE provider = ?
                 """, arguments: [provider.rawValue])
 
-            // VAL-PERSIST-007: Enforce monotonic progression - new upper bound must be greater or equal.
-            // Equal timestamp advances are idempotent and allowed (no-op with version bump).
-            // Strictly greater is NOT required for idempotent semantics at equal timestamps.
-            // Use epsilon tolerance for floating-point Date comparison precision.
-            let epsilon: TimeInterval = 0.001 // 1 millisecond tolerance
+            // VAL-PERSIST-007: Enforce strict monotonic progression.
+            // Equal timestamp advances are accepted as idempotent (upsert version bump handles retries).
+            // Any backward movement is strictly rejected regardless of magnitude — no epsilon allowance.
             if let current = current, let currentBound = current.lastProcessedWindowUpperBound {
-                guard newUpperBound.timeIntervalSince(currentBound) >= -epsilon else {
+                guard newUpperBound.timeIntervalSince(currentBound) >= 0 else {
                     throw BackfillCursorError.nonMonotonicAdvance(
                         provider: provider,
                         currentBound: currentBound,
