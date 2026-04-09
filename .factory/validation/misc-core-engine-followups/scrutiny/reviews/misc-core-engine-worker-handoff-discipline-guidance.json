@@ -1,0 +1,28 @@
+{
+  "featureId": "misc-core-engine-worker-handoff-discipline-guidance",
+  "reviewedAt": "2026-04-09T11:42:38Z",
+  "commitId": "d698da9bccf3b2140957d5b4935b9dd7977216a7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit adds explicit full-SHA requirements and a new context-evidence section to all relevant worker skills, but the prescribed evidence command only checks file existence and does not provide concrete proof of context reads, so the feature intent is not fully satisfied.",
+    "issues": [
+      {
+        "file": ".factory/skills/switcher-integration-worker/SKILL.md",
+        "line": 109,
+        "severity": "blocking",
+        "description": "The required evidence example uses `test -f mission.md && test -f AGENTS.md`, which only proves files exist, not that required context was read. This undermines the stated requirement for concrete context-read evidence before `followedProcedure=true` (same pattern appears in switcher-core-worker, switcher-ui-worker, token-accounting-worker, and indexing-efficiency-worker)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The new handoff-discipline guidance requires read evidence but codifies a file-presence check as the required format, which is weaker than the intended invariant.",
+      "evidence": ".factory/skills/switcher-integration-worker/SKILL.md:109 (and parallel lines in four other worker SKILL.md files) uses `test -f ...` instead of read/inspect commands for context evidence."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed transcript skeleton and commit diff for misc-core-engine-worker-handoff-discipline-guidance. Full-SHA guidance is correctly added, but context-read evidence guidance is not truly auditable because it only requires file-existence checks; marked fail with one blocking issue."
+}
