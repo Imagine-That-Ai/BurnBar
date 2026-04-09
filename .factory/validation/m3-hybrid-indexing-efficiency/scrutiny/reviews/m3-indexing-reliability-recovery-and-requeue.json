@@ -1,0 +1,34 @@
+{
+  "featureId": "m3-indexing-reliability-recovery-and-requeue",
+  "reviewedAt": "2026-04-09T04:59:24Z",
+  "commitId": "66924a8",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature mostly aligns with VAL-INDEX-009..013 and adds meaningful reliability tests plus rebuild/re-embed pagination plumbing. However, the new offset pagination queries do not use a total deterministic ordering key, which can skip or duplicate rows across pages under tie conditions and undermines the full-corpus guarantee.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/DataStore/ConversationStore.swift",
+        "line": 158,
+        "severity": "blocking",
+        "description": "Offset pagination orders only by COALESCE(endTime,startTime,indexedAt), which is not a unique total order. Rows with equal timestamps can shift ordering between page reads, causing missed or duplicated conversations during rebuild pagination. Add a deterministic tie-breaker (e.g., id) to guarantee full-corpus coverage. Same pattern appears in other paginated queries used by this feature (SearchIndexStore.swift:81 and ArtifactStore.swift:227)."
+      },
+      {
+        "file": "AgentLensTests/Active/ProjectionPipelineServiceTests.swift",
+        "line": 1390,
+        "severity": "non_blocking",
+        "description": "The new pagination tests do not cross the configured page boundary (rebuild/re-embed page size is 1000, but tests use 25 and 15 conversations), so they validate enqueue/re-embed behavior but not multi-page traversal correctness. Add fixtures that exceed a page to prevent false confidence for VAL-INDEX-011."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Skill procedure requires reading .factory/library/user-testing.md, but this worker transcript skeleton does not show that step even though handoff.skillFeedback reports followedProcedure=true.",
+      "evidence": "Skill file: .factory/skills/indexing-efficiency-worker/SKILL.md step 1 lists user-testing.md; transcript skeleton for worker aa59acb8-a717-48bd-a959-620ff88463e7 includes reads for mission/AGENTS/architecture/services but no user-testing.md reference."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed feature m3-indexing-reliability-recovery-and-requeue via handoff, transcript skeleton, skill contract, and commit 66924a8 diff. Found one blocking pagination-ordering correctness issue and one non-blocking test-coverage gap; marked feature review as fail pending deterministic pagination ordering fix."
+}

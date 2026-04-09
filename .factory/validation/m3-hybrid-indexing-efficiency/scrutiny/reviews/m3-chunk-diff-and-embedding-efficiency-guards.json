@@ -1,0 +1,45 @@
+{
+  "featureId": "m3-chunk-diff-and-embedding-efficiency-guards",
+  "reviewedAt": "2026-04-09T04:58:46Z",
+  "commitId": "d2c61d6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature improves embedding efficiency via content-hash reuse, but it does not implement chunk-level incremental persistence/reindexing. The projection path still performs full chunk replacement per document, which contradicts the feature expected behavior for VAL-INDEX-004/005.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/ProjectionPipelineService.swift",
+        "line": 850,
+        "severity": "blocking",
+        "description": "Both conversation and artifact projection paths call `replaceSearchChunks(...)`, which rewrites all chunks regardless of content hash reuse (also at line 944). This does not satisfy the requirement that unchanged chunks are skipped and partial edits rewrite only impacted chunks."
+      },
+      {
+        "file": "AgentLens/Services/DataStore/SearchIndexStore.swift",
+        "line": 279,
+        "severity": "blocking",
+        "description": "`replaceChunks` deletes all existing chunks for a document (`DELETE FROM search_chunks WHERE documentID = ?`) before reinserting, forcing full chunk/FTS rewrite for any reprojection and preventing VAL-INDEX-004/005 behavior."
+      },
+      {
+        "file": "AgentLensTests/Active/ProjectionPipelineServiceTests.swift",
+        "line": 676,
+        "severity": "non_blocking",
+        "description": "VAL-INDEX-004 test explicitly asserts chunk IDs should change (`XCTAssertNotEqual(initialChunkIDs, finalChunkIDs)`), and VAL-INDEX-005 relies on content-hash overlap rather than verifying untouched chunk IDs/persistence are preserved (see line 708 comment). This weakens contract coverage for true chunk-level skip semantics."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Mission/validation expectations for preserving untouched chunk IDs conflict with current chunk identity design.",
+      "evidence": "ProjectionIdentity.chunkID includes `sourceVersionID` in the payload (AgentLens/Services/ProjectionPipelineService.swift:81-89), so any source-version change necessarily changes all chunk IDs unless the ID scheme is redesigned."
+    },
+    {
+      "area": "skills",
+      "observation": "The indexing-efficiency skill asks for concrete write-amplification/skip counters, but this evidence was not surfaced in the reviewed handoff.",
+      "evidence": "Skill requirement: `.factory/skills/indexing-efficiency-worker/SKILL.md:37` ('Return evidence with concrete counters/logs for write amplification and skipped work.'); reviewed handoff verification reports command pass/fail only."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed: commit d2c61d6 implements embedding reuse but still performs full per-document chunk replacement, so unchanged chunks are not actually skipped at persistence/index level and partial edits do not only rewrite impacted chunk IDs."
+}

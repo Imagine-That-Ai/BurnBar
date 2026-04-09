@@ -1,0 +1,39 @@
+{
+  "featureId": "m3-event-driven-indexing-and-gap-repair-core",
+  "reviewedAt": "2026-04-09T05:00:24Z",
+  "commitId": "6b14104",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds hash-based gap-repair enqueueing, but the implementation misses key missed-event cases and does not provide full incremental coverage across larger corpora. As written, it can leave stale index artifacts unrepaired, so expected VAL-INDEX-003 behavior is not fully satisfied.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/ProjectionPipelineService.swift",
+        "line": 423,
+        "severity": "blocking",
+        "description": "Gap repair only inspects the first 1000 conversation documents per sweep (`fetchSearchDocuments(limit: 1000, sourceKinds: [.conversation])`) with no pagination cursor, so stale records outside that fixed head may never be reconciled. This breaks incremental full-coverage repair when corpus size exceeds 1000."
+      },
+      {
+        "file": "AgentLens/Services/ProjectionPipelineService.swift",
+        "line": 442,
+        "severity": "blocking",
+        "description": "When a search document's source conversation no longer exists, gap repair `continue`s instead of purging/requeueing purge. Missed delete events therefore leave stale search_documents/search_chunks indefinitely, unlike normal projection job processing which purges missing conversations (`processSourceJob` at lines 487-489)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The indexing-efficiency skill mandates per-invariant red/green tests and retrieval eval runs for projection changes, but this feature handoff reports no added tests and no retrieval-eval command, indicating the procedure lacks explicit fallback guidance for flaky deterministic coverage scenarios.",
+      "evidence": ".factory/skills/indexing-efficiency-worker/SKILL.md:22-35 requires TDD-first + retrieval eval on projection changes; handoff 2026-04-09T03-40-01-164Z...json:12 notes a flaky deferred gap-repair test, and :33-35 shows \"added\": [] with only xcodebuild scoped tests + swift test in commandsRun."
+    },
+    {
+      "area": "conventions",
+      "observation": "This feature handoff omits the `skillFeedback` object used in other mission handoffs, which makes procedural-compliance auditing inconsistent for reviewers.",
+      "evidence": "handoffs/2026-04-09T03-40-01-164Z__m3-event-driven-indexing-and-gap-repair-core__2c165ecd-e37e-4e92-8b1e-b446221c4cdd.json has no `skillFeedback`; compare handoffs/2026-04-09T04-03-25-635Z__m3-gap-repair-deterministic-test-hardening__4e6ca49d-c52e-4b57-914e-804b513c81dc.json:50 includes `skillFeedback`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed feature metadata, worker transcript skeleton, handoff, skill guidance, and commit 6b14104 diff. Found two blocking implementation issues in gap-repair coverage (fixed-size non-paginated scan and missing purge path for deleted sources), so the feature review is marked fail."
+}

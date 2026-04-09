@@ -62,6 +62,19 @@ This mission hardens token accounting and indexing so token totals are exact-fir
 
 ## Known Issues (Pre-Existing)
 
+### Projection sweep semantics can surprise deterministic tests
+- `ProjectionPipelineService.runSweep()` may enqueue and process repair/rebuild work in the same sweep.
+- On first run without a seeded backfill cursor, sweep can also trigger initial backfill/rebuild side-effects.
+- Deterministic tests should explicitly seed/disable backfill state when asserting gap-repair-only behavior.
+
+### Chunk identity is source-version-coupled
+- `ProjectionIdentity.chunkID(...)` includes `sourceVersionID` in the chunk ID payload (`ProjectionPipelineService.swift`).
+- Any source-version change rekeys chunk IDs, even when some chunk content is unchanged.
+- Validation expectations for “untouched chunk ID preservation” must align with this identity model or explicitly require an ID scheme change.
+
+### Offset pagination needs deterministic tie-break ordering
+- Rebuild/re-embed pagination queries must use a total deterministic order (for example timestamp + stable ID) to avoid skip/duplicate risk when multiple rows share the same timestamp key.
+
 ### CursorConnector: firstIntValue() may not extract reasoning_tokens from nested dictionaries
 - `normalizeUsageEvent()` uses `firstIntValue()` to extract token counts from `[String: Any]` dictionary payloads.
 - For nested paths like `completion_tokens_details.reasoning_tokens`, `firstIntValue()` may return 0 instead of the expected value.
