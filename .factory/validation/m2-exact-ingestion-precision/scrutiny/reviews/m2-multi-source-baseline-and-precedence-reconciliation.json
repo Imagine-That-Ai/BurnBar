@@ -1,0 +1,33 @@
+{
+  "featureId": "m2-multi-source-baseline-and-precedence-reconciliation",
+  "reviewedAt": "2026-04-09T00:18:22Z",
+  "commitId": "671c02a7e1a5d2c8b91cf9b9a84ed58d6e8bfc1a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation updates UsageAggregator to compute API supplemental deltas against canonical persisted usage (instead of only current parser output), which aligns with the feature intent and prevents source-blind reconciliation. The core behavior change is small and coherent; one non-blocking test coverage gap remains.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/MultiSourceReconciliationTests.swift",
+        "line": 417,
+        "severity": "non_blocking",
+        "description": "The new test suite does not directly exercise the changed reconciliation path in UsageAggregator (`supplementalUsages` call using canonical baseline at `AgentLens/Services/UsageAggregator.swift:278`). `test_apiLessThanLocal_missingIsZero` only asserts stored local token non-negativity and explicitly notes it cannot directly test supplemental logic, so the feature-critical baseline substitution is only indirectly covered."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The token-accounting-worker skill procedure requires running `swift test --package-path OpenBurnBarCore` and `swiftlint`, but this worker handoff evidence only records Xcode test commands. The skill guidance may need clarification on when scrutiny-validator-owned gates can substitute for per-feature runs.",
+      "evidence": ".factory/skills/token-accounting-worker/SKILL.md step 6 vs handoff verification commands in mission progress log entry for workerSessionId b77d91f2-892e-4903-9d37-52b6c774bf5f (only `xcodebuild test` commands listed)."
+    },
+    {
+      "area": "conventions",
+      "observation": "The recorded handoff commitId is not resolvable in git as written, which forced manual resolution via short hash before review. Handoff metadata should enforce resolvable full commit SHAs.",
+      "evidence": "Handoff/progress metadata uses `671c02a7e1a5d2c8b91cf9b9a84ed58d6e8bfc1a`; `git show` on that SHA returns `fatal: bad object`, while `git rev-parse 671c02a` resolves to `671c02a06e01519b209bcb54dc0849a34a6ea8ce`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed feature m2-multi-source-baseline-and-precedence-reconciliation by examining feature metadata, handoff, transcript skeleton, worker skill guidance, and commit diff. Implementation is directionally correct for canonical-baseline reconciliation and does not show blocking correctness defects. Reported one non-blocking coverage gap plus two shared-state observations (skill validation expectation mismatch and non-resolvable handoff commit SHA metadata)."
+}

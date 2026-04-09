@@ -1,0 +1,34 @@
+{
+  "featureId": "m2-core-token-extraction-invariants",
+  "reviewedAt": "2026-04-09T00:17:33Z",
+  "commitId": "b88f171f62f48a0a10514eee9fd70dc212da30ab",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature introduces reasoning-token extraction and fallback-gating updates, but the embedded Python proxy normalization path still violates exact-first/fallback invariants for total-only and cache-creation-only payloads.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/CursorConnector/CursorConnectorManager.swift",
+        "line": 1142,
+        "severity": "blocking",
+        "description": "In the embedded Python normalize_usage() implementation, normalization is gated by `has_explicit_primary` (`if normalized_total > 0 and has_explicit_primary`). This prevents normalization when `total_tokens` is present but prompt/completion are absent, which contradicts VAL-TOKEN-004's normalization-vs-fallback separation."
+      },
+      {
+        "file": "AgentLens/Services/CursorConnector/CursorConnectorManager.swift",
+        "line": 1164,
+        "severity": "blocking",
+        "description": "The Python fallback condition does not require `total_tokens == 0` and omits `cache_creation == 0`. As written, character-based fallback can run despite explicit token data (`total_tokens` or `cache_creation_tokens`) being present, causing heuristic overwrite of exact payload context and violating the exact-first fallback gate."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker transcript does not reflect the token-accounting skill's required red/green step of adding/updating failing scoped tests before implementation, but handoff.skillFeedback still reports followedProcedure=true.",
+      "evidence": "Commit b88f171 modifies only 3 implementation files (no test file diffs), and the transcript/handoff show validation runs after edits with `tests.added: []`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed: Python proxy normalization/fallback logic in CursorConnectorManager still allows fallback in scenarios with explicit usage data, violating core VAL-TOKEN-004/VAL-TOKEN-001 invariants despite the Swift-side improvements."
+}

@@ -1,0 +1,33 @@
+{
+  "featureId": "m2-provider-specific-exact-first-parsers",
+  "reviewedAt": "2026-04-09T00:18:18Z",
+  "commitId": "8795892d711213726f115e27d5eef1b991d9e78f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Factory and Kimi changes align with the feature intent, but the Codex mixed cumulative/delta change introduces a blocking edge-case regression where placeholder/partial token_count payloads can zero out totals and suppress valid delta parsing.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/UsageAggregatorParsers.swift",
+        "line": 805,
+        "severity": "blocking",
+        "description": "parseCodexSessionJSONL now treats any non-nil result from codexCumulativeTotalsFromTokenCountInfo as authoritative cumulative data and sets foundCumulative=true, then skips deltas at line 824. Because codexCumulativeTotalsFromTokenCountInfo returns (0,0,0) for any token_count map (TokenExtractionUtility.swift:524-528) even when input/output fields are absent, partial or placeholder token_count events can suppress last_token_usage accumulation and produce zero/empty usage rows."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The token-accounting-worker procedure requires TDD red/green and reading .factory/library/user-testing.md, but this run edited parser code directly and added no tests while handoff.skillFeedback still marked followedProcedure=true.",
+      "evidence": "Handoff commit 8795892 changes only 3 parser files (no tests). Transcript skeleton for workerSessionId 5f8b570b-7aec-4bf8-b686-466e14c864be shows no user-testing.md read and no failing-test-first cycle before edits."
+    },
+    {
+      "area": "services",
+      "observation": "Swift app linting command is not represented in services.yaml even though workers run swiftlint for parser/app changes.",
+      "evidence": "Transcript skeleton shows command `swiftlint lint --strict ...`; .factory/services.yaml defines lint only as `npm --prefix extensions/openburnbar run lint`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed feature m2-provider-specific-exact-first-parsers on commit 8795892d711213726f115e27d5eef1b991d9e78f, including handoff, transcript skeleton, and diff. Found one blocking Codex parser regression in mixed/partial token_count handling, so the feature review fails pending fix."
+}
