@@ -100,6 +100,26 @@ enum ParserTestFixtures {
         """
     }
 
+    /// Creates a Codex session with a partial/placeholder token_count map followed by delta events.
+    /// VAL-TOKEN-010: The partial token_count (missing input_tokens/output_tokens) must NOT
+    /// suppress valid delta accumulation from last_token_usage events.
+    static func codexRolloutSessionWithPartialTokenCountAndDeltas(
+        model: String = "openai/gpt-5.2-codex"
+    ) -> String {
+        let baseTime = Date(timeIntervalSince1970: 1766577600)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        // This partial token_count has cached_input_tokens but NO input_tokens/output_tokens.
+        // It should be treated as NOT cumulative (return nil), allowing delta processing.
+        return """
+        {"type":"turn_context","timestamp":"\(formatter.string(from: baseTime))","payload":{"model":"\(model)"}}
+        {"type":"event_msg","timestamp":"\(formatter.string(from: baseTime.addingTimeInterval(1)))","payload":{"type":"token_count","info":{"token_count":{"cached_input_tokens":100},"model":"\(model)"}}}
+        {"type":"event_msg","timestamp":"\(formatter.string(from: baseTime.addingTimeInterval(2)))","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":10},"model":"\(model)"}}}
+        {"type":"event_msg","timestamp":"\(formatter.string(from: baseTime.addingTimeInterval(3)))","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":60,"cached_input_tokens":20,"output_tokens":6},"model":"\(model)"}}}
+        """
+    }
+
     /// Creates a Factory Droid session with settings.json structure
     static func factoryDroidSessionWithSettings(
         sessionId: String,
@@ -856,6 +876,48 @@ final class ParserIntegrationTests: XCTestCase {
         XCTAssertEqual(usage.totalTokens, 136)
     }
 
+    // MARK: - Codex Partial Token Count Tests (VAL-TOKEN-010)
+
+    /// VAL-TOKEN-010: Partial token_count maps (missing input_tokens/output_tokens) must NOT
+    /// suppress valid delta accumulation from last_token_usage events.
+    /// This was a regression where codexCumulativeTotalsFromTokenCountInfo returned (0,0,0)
+    /// for any token_count map, treating partial data as authoritative cumulative.
+    func test_codexParser_partialTokenCountDoesNotSuppressDeltaAccumulation() async throws {
+        let rolloutDirectory = harness.rootURL.appendingPathComponent(".codex/sessions/2025/12/26", isDirectory: true)
+        try harness.fileManager.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+        let rolloutURL = rolloutDirectory.appendingPathComponent("rollout-2025-12-26T12-00-00.jsonl")
+        let session = ParserTestFixtures.codexRolloutSessionWithPartialTokenCountAndDeltas()
+        try session.write(to: rolloutURL, atomically: true, encoding: .utf8)
+
+        _ = try harness.createCodexThreadDatabase(threads: [(
+            id: "codex-thread-003",
+            model: "openai/gpt-5.2-codex",
+            tokensUsed: 176,
+            rolloutPath: rolloutURL.path,
+            createdAt: 1_766_750_000,
+            updatedAt: 1_766_750_060,
+            cwd: "/tmp/OpenBurnBar"
+        )])
+
+        let parser = TestableCodexParser(
+            fileManager: harness.fileManager,
+            codexRoot: harness.rootURL.appendingPathComponent(".codex", isDirectory: true),
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true))
+        )
+
+        let result = try await parser.parse()
+
+        XCTAssertEqual(result.usages.count, 1)
+        let usage = try XCTUnwrap(result.usages.first)
+        // Deltas: (100-20) + (60-20) = 80 + 40 = 120 input tokens
+        // Deltas: 20 + 20 = 40 cache read tokens
+        // Deltas: 10 + 6 = 16 output tokens
+        XCTAssertEqual(usage.inputTokens, 120)
+        XCTAssertEqual(usage.cacheReadTokens, 40)
+        XCTAssertEqual(usage.outputTokens, 16)
+        XCTAssertEqual(usage.totalTokens, 136)
+    }
+
     func test_tokenExtractionUtility_extractsCacheCreationTokens() {
         let extracted = TokenExtractionUtility.extractUsageTokens([
             "input_tokens": 120,
@@ -868,6 +930,57 @@ final class ParserIntegrationTests: XCTestCase {
         XCTAssertEqual(extracted.output, 80)
         XCTAssertEqual(extracted.cacheCreation, 40)
         XCTAssertEqual(extracted.cacheRead, 20)
+    }
+
+    // MARK: - Codex Cumulative Totals Extraction (VAL-TOKEN-010)
+
+    /// VAL-TOKEN-010: codexCumulativeTotalsFromTokenCountInfo must return nil for partial
+    /// token_count maps (missing input_tokens/output_tokens), so delta parsing proceeds.
+    func test_codexCumulativeTotalsFromTokenCountInfo_returnsNilForPartialTokenCountMap() {
+        // Partial map with only cached_input_tokens, no input_tokens or output_tokens
+        let partialInfo: [String: Any] = [
+            "token_count": ["cached_input_tokens": 100] as [String: Any]
+        ]
+        let result = TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(partialInfo)
+        XCTAssertNil(result, "Partial token_count map should return nil, not (0,0,0)")
+    }
+
+    /// VAL-TOKEN-010: Full cumulative token_count map should return valid tuple.
+    func test_codexCumulativeTotalsFromTokenCountInfo_returnsTupleForFullTokenCountMap() {
+        let fullInfo: [String: Any] = [
+            "token_count": [
+                "input_tokens": 160,
+                "output_tokens": 16,
+                "cached_input_tokens": 40
+            ]
+        ]
+        let result = TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(fullInfo)
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result?.input, 160)
+        XCTAssertEqual(result?.output, 16)
+        XCTAssertEqual(result?.cacheRead, 40)
+    }
+
+    /// VAL-TOKEN-010: Empty token_count map should return nil.
+    func test_codexCumulativeTotalsFromTokenCountInfo_returnsNilForEmptyTokenCountMap() {
+        let emptyInfo: [String: Any] = [
+            "token_count": [:]
+        ]
+        let result = TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(emptyInfo)
+        XCTAssertNil(result, "Empty token_count map should return nil")
+    }
+
+    /// VAL-TOKEN-010: Root-level input/output without token_count wrapper should work.
+    func test_codexCumulativeTotalsFromTokenCountInfo_returnsTupleForRootLevelFields() {
+        let rootLevelInfo: [String: Any] = [
+            "input_tokens": 200,
+            "output_tokens": 50
+        ]
+        let result = TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(rootLevelInfo)
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result?.input, 200)
+        XCTAssertEqual(result?.output, 50)
+        XCTAssertEqual(result?.cacheRead, 0)
     }
 
     func test_tokenExtractionUtility_previewMarkersIncreaseVisibleCharacterCount() {

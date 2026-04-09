@@ -519,11 +519,18 @@ enum TokenExtractionUtility {
     }
 
     /// Extracts cumulative token totals from Codex token count info.
+    /// Returns nil if input_tokens/output_tokens are not explicitly present, so that
+    /// partial/placeholder token_count maps do not suppress delta parsing (VAL-TOKEN-010).
     static func codexCumulativeTotalsFromTokenCountInfo(_ info: [String: Any]) -> (input: Int, output: Int, cacheRead: Int)? {
         // Look for cumulative totals in token_count
         if let tokenCount = info["token_count"] as? [String: Any] {
-            let input = tokenCount["input_tokens"] as? Int ?? 0
-            let output = tokenCount["output_tokens"] as? Int ?? 0
+            // VAL-TOKEN-010: Require explicit input_tokens AND output_tokens to treat as cumulative.
+            // Partial/placeholder token_count maps (missing these required fields) must not
+            // suppress delta parsing, as returning (0,0,0) would zero out valid accumulated deltas.
+            guard let input = tokenCount["input_tokens"] as? Int,
+                  let output = tokenCount["output_tokens"] as? Int else {
+                return nil
+            }
             let cacheRead = tokenCount["cached_input_tokens"] as? Int ?? 0
             return (input, output, cacheRead)
         }
