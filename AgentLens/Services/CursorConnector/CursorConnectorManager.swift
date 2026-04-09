@@ -521,6 +521,7 @@ final class CursorConnectorManager {
                 let completionTokens = normalizedUsage.completionTokens
                 let cacheCreationTokens = normalizedUsage.cacheCreationTokens
                 let cacheReadTokens = normalizedUsage.cacheReadTokens
+                let reasoningTokens = normalizedUsage.reasoningTokens
                 let totalTokens = normalizedUsage.totalTokens
                 let timestamp = (json["timestamp"] as? String).flatMap(Self.isoDateFormatter.date(from:)) ?? Date()
                 let cost = ModelPricing.lookup(model: model).cost(
@@ -555,6 +556,7 @@ final class CursorConnectorManager {
                     outputTokens: completionTokens,
                     cacheCreationTokens: cacheCreationTokens,
                     cacheReadTokens: cacheReadTokens,
+                    reasoningTokens: reasoningTokens,
                     costUSD: cost,
                     startTime: timestamp,
                     endTime: timestamp,
@@ -761,7 +763,9 @@ final class CursorConnectorManager {
         if normalizedTotal > 0 {
             // Normalization: derive missing primary buckets from total_tokens.
             // This is appropriate when total_tokens is explicitly provided by the provider.
-            let availableForInOut = max(normalizedTotal - cacheCreation - cacheRead, 0)
+            // VAL-TOKEN-006: Reasoning tokens are a separate bucket and must be subtracted
+            // from availableForInOut to prevent them from being incorrectly added to completion.
+            let availableForInOut = max(normalizedTotal - cacheCreation - cacheRead - reasoningTokens, 0)
             if prompt == 0 && completion == 0 && availableForInOut > 0 {
                 // Both missing but total available - use hints to normalize the split
                 let combinedHintChars = inputCharHint + outputCharHint
@@ -1138,7 +1142,9 @@ final class CursorConnectorManager {
             # Fallback (character-based estimation) only occurs when total_tokens is absent AND all buckets are 0.
             if normalized_total > 0:
                 # Normalization: derive missing primary buckets from total_tokens.
-                available_for_in_out = max(normalized_total - cache_creation - cache_read, 0)
+                # VAL-TOKEN-006: Reasoning tokens are a separate bucket and must be subtracted
+                # from available_for_in_out to prevent them from being incorrectly added to completion.
+                available_for_in_out = max(normalized_total - cache_creation - cache_read - reasoning_tokens, 0)
                 if available_for_in_out > 0:
                     if prompt == 0 and completion == 0:
                         # Both missing but total available - use hints to split or default ratio

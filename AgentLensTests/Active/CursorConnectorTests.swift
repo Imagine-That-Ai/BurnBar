@@ -103,6 +103,90 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertEqual(normalized.totalTokens, 275)
     }
 
+    // MARK: - Reasoning Token Extraction Tests (VAL-TOKEN-006)
+
+    func test_normalizeUsageEvent_extractsReasoningTokens_fromFlatPayload() {
+        // Test extraction from flat reasoning_tokens key
+        let normalized = CursorConnectorManager.normalizeUsageEvent([
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "reasoning_tokens": 25,
+            "total_tokens": 175
+        ])
+
+        XCTAssertEqual(normalized.promptTokens, 100)
+        XCTAssertEqual(normalized.completionTokens, 50)
+        XCTAssertEqual(normalized.reasoningTokens, 25)
+        XCTAssertEqual(normalized.totalTokens, 175)
+    }
+
+    func test_normalizeUsageEvent_extractsReasoningTokens_fromNestedPayload() {
+        // Test extraction from nested completion_tokens_details path
+        let normalized = CursorConnectorManager.normalizeUsageEvent([
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "completion_tokens_details": ["reasoning_tokens": 30],
+            "total_tokens": 180
+        ])
+
+        XCTAssertEqual(normalized.promptTokens, 100)
+        XCTAssertEqual(normalized.completionTokens, 50)
+        XCTAssertEqual(normalized.reasoningTokens, 30)
+        XCTAssertEqual(normalized.totalTokens, 180)
+    }
+
+    func test_normalizeUsageEvent_extractsReasoningTokens_fromThinkingTokens() {
+        // Test extraction from thinking_tokens alias
+        let normalized = CursorConnectorManager.normalizeUsageEvent([
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "thinking_tokens": 20,
+            "total_tokens": 170
+        ])
+
+        XCTAssertEqual(normalized.promptTokens, 100)
+        XCTAssertEqual(normalized.completionTokens, 50)
+        XCTAssertEqual(normalized.reasoningTokens, 20)
+        XCTAssertEqual(normalized.totalTokens, 170)
+    }
+
+    func test_normalizeUsageEvent_extractsReasoningTokens_fromOutputTokensDetails() {
+        // Test extraction from nested output_tokens_details path
+        let normalized = CursorConnectorManager.normalizeUsageEvent([
+            "prompt_tokens": 100,
+            "output_tokens": 50,
+            "output_tokens_details": ["reasoning_tokens": 35],
+            "total_tokens": 185
+        ])
+
+        XCTAssertEqual(normalized.promptTokens, 100)
+        XCTAssertEqual(normalized.completionTokens, 50)
+        XCTAssertEqual(normalized.reasoningTokens, 35)
+        XCTAssertEqual(normalized.totalTokens, 185)
+    }
+
+    func test_normalizeUsageEvent_hasNoExplicitBuckets_includesReasoningTokens() {
+        // VAL-TOKEN-006: When reasoning tokens are present, hasNoExplicitBuckets should be false
+        let normalized = CursorConnectorManager.normalizeUsageEvent([
+            "reasoning_tokens": 25,
+            "total_tokens": 25
+        ])
+
+        XCTAssertEqual(normalized.reasoningTokens, 25)
+        XCTAssertFalse(normalized.hasNoExplicitBuckets)
+    }
+
+    func test_normalizeUsageEvent_hasNoExplicitBuckets_falseWhenOnlyReasoningPresent() {
+        // Reasoning tokens alone mean explicit buckets exist - not a fallback case
+        let normalized = CursorConnectorManager.normalizeUsageEvent([
+            "reasoning_tokens": 50
+        ])
+
+        // hasNoExplicitBuckets checks prompt, completion, cacheCreation, cacheRead, AND reasoning
+        XCTAssertEqual(normalized.reasoningTokens, 50)
+        XCTAssertFalse(normalized.hasNoExplicitBuckets)
+    }
+
     func test_proxyScript_resolvesProviderKeysFromKeychainMetadata() {
         let script = CursorConnectorManager.proxyScript()
 
