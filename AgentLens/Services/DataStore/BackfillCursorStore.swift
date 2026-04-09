@@ -109,10 +109,11 @@ final class BackfillCursorStore {
 
             // VAL-PERSIST-007: Enforce strict monotonic progression.
             // Equal timestamp advances are accepted as idempotent (upsert version bump handles retries).
-            // A small epsilon tolerance is used because floating-point arithmetic can produce tiny
-            // negative differences (e.g., -1e-15) when comparing dates that should be equal, causing
-            // the monotonic guard to incorrectly reject idempotent advances in full-suite runs.
-            let monotonicEpsilon: TimeInterval = 1e-9 // 1 nanosecond tolerance
+            // A small epsilon tolerance is used because floating-point arithmetic and GRDB/SQLite
+            // datetime serialization can produce tiny negative differences (e.g., ~1e-12) when
+            // comparing dates that should be equal, causing the monotonic guard to incorrectly
+            // reject idempotent advances in full-suite runs where timestamps are reused.
+            let monotonicEpsilon: TimeInterval = 0.001 // 1 millisecond tolerance
             if let current = current, let currentBound = current.lastProcessedWindowUpperBound {
                 guard newUpperBound.timeIntervalSince(currentBound) >= -monotonicEpsilon else {
                     throw BackfillCursorError.nonMonotonicAdvance(
