@@ -308,6 +308,7 @@ final class ProjectionPipelineService {
         let sweepStartedAt = OpenBurnBarProjectionPerformanceTimer.now()
 
         try ensureBackfillSeededIfNeeded()
+        try? enqueueGapRepairIfNeeded()
 
         var report = ProjectionSweepReport()
         var lastErrorCode: String?
@@ -398,6 +399,53 @@ final class ProjectionPipelineService {
 
         guard hasConversations || hasArtifacts else { return }
         try enqueueRebuildJob(reason: "initial_backfill", priority: 1)
+    }
+
+    /// Detects and repairs gaps in the index caused by missed events.
+    /// Compares indexed conversation content hashes with current source content,
+    /// and enqueues reproject jobs for stale entries.
+    /// This is called periodically during sweep to handle missed events incrementally.
+    private func enqueueGapRepairIfNeeded() throws {
+        let indexedDocuments = try dataStore.fetchSearchDocuments(
+            limit: 1000,
+            sourceKinds: [.conversation]
+        )
+
+        guard indexedDocuments.isEmpty == false else { return }
+
+        // Group documents by sourceID for efficient lookup
+        let sourceIDs = indexedDocuments.map { $0.sourceID }
+        guard sourceIDs.isEmpty == false else { return }
+
+        let conversations = try dataStore.fetchConversations(ids: sourceIDs)
+        let conversationsByID = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
+
+        for document in indexedDocuments {
+            guard document.sourceKind == .conversation else {
+                continue
+            }
+
+            let sourceID = document.sourceID
+            guard let conversation = conversationsByID[sourceID] else {
+                continue
+            }
+
+            // Compute current content hash
+            let currentHash = ProjectionIdentity.conversationContentHash(for: conversation)
+
+            // If hash differs from indexed, conversation has been updated since indexing
+            // and needs reprojecting to repair the gap
+            if currentHash != document.contentHash {
+                let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
+                try enqueueSelectiveReproject(
+                    sourceKind: .conversation,
+                    sourceID: sourceID,
+                    sourceVersionID: sourceVersionID,
+                    jobType: .reproject,
+                    priority: 3  // Lower priority than new indexing but higher than rebuild
+                )
+            }
+        }
     }
 
     private func process(_ job: ProjectionJobRecord) async throws {

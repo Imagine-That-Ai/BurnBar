@@ -147,6 +147,22 @@ final class ConversationStore {
         }
     }
 
+    func fetchConversations(ids: [String]) throws -> [ConversationRecord] {
+        guard ids.isEmpty == false else { return [] }
+        let uniqueIDs = Array(Set(ids)).sorted()
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM conversations
+                WHERE id IN (\(OpenBurnBarDatabase.sqlPlaceholders(count: uniqueIDs.count)))
+                """,
+                arguments: StatementArguments(uniqueIDs)
+            )
+            return rows.compactMap { Self.conversation(from: $0) }
+        }
+    }
+
     func fetchAllSessionLogs(limit: Int = 1000) throws -> [ConversationRecord] {
         try dbQueue.read { db in
             let rows = try Row.fetchAll(

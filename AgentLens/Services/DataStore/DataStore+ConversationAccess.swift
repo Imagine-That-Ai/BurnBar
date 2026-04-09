@@ -26,6 +26,12 @@ extension DataStore {
         try conversationStore.fetchConversations(limit: limit)
     }
 
+    /// Fetches multiple conversations by their IDs.
+    /// Used by gap repair to check if indexed content is stale.
+    func fetchConversations(ids: [String]) throws -> [ConversationRecord] {
+        try conversationStore.fetchConversations(ids: ids)
+    }
+
     func updateConversationSummary(
         id: String,
         title: String?,
