@@ -84,6 +84,11 @@ extension DataStore {
         try conversationStore.deleteAllIndexedConversations()
     }
 
+    /// Deletes a single conversation by ID. Used for testing delete-event miss recovery.
+    func deleteConversation(id: String) throws {
+        try conversationStore.deleteConversation(id: id)
+    }
+
     func approximateConversationStorageBytes() throws -> Int64 {
         try conversationStore.approximateConversationStorageBytes()
     }

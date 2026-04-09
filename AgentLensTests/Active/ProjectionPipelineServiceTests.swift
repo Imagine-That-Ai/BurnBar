@@ -1664,6 +1664,389 @@ final class ProjectionPipelineServiceTests: XCTestCase {
     }
 }
 
+// MARK: - Gap Repair Pagination and Delete-Miss Recovery
+
+extension ProjectionPipelineServiceTests {
+
+    // MARK: - Gap repair paginates full corpus (no truncation)
+
+    func test_gapRepair_paginatesFullCorpus_beyondInitialSlice() async throws {
+        // Gap repair must cover the full indexed conversation corpus, not just the first 1000 documents.
+        // We create 25 conversations (within a single page) and verify all stale ones are detected.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(dataStore: store, leaseOwner: "worker-gap-pagination")
+        let base = Date(timeIntervalSince1970: 1_742_900_000)
+
+        // Create and project 25 conversations
+        let conversationCount = 25
+        for i in 0..<conversationCount {
+            let conv = makeConversation(
+                id: "conv-gap-pg-\(i)",
+                fullText: "Original content for conversation \(i).",
+                indexedAt: base
+            )
+            try store.upsertConversation(conv)
+            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+        }
+
+        // Drain initial projection
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let indexedDocs = try store.fetchSearchDocuments(limit: 100, sourceKinds: [.conversation])
+        XCTAssertEqual(indexedDocs.count, conversationCount, "All conversations should be indexed after initial projection.")
+
+        // Stale half of them (every other one)
+        let staleIDs: [String] = (0..<conversationCount).filter { $0 % 2 == 0 }.map { "conv-gap-pg-\($0)" }
+        for staleID in staleIDs {
+            let updatedConv = ConversationRecord(
+                id: staleID,
+                provider: .claudeCode,
+                sessionId: "session-\(staleID)",
+                projectName: "OpenBurnBar",
+                startTime: base.addingTimeInterval(-60),
+                endTime: base.addingTimeInterval(60),
+                messageCount: 20,
+                userWordCount: 100,
+                assistantWordCount: 200,
+                keyFiles: ["File.swift"],
+                keyCommands: ["swift test"],
+                keyTools: ["Read", "Edit"],
+                inferredTaskTitle: "Updated Task \(staleID)",
+                lastAssistantMessage: "Updated message.",
+                fullText: "Updated content for \(staleID) that differs from original.",
+                indexedAt: base,
+                fileModifiedAt: base.addingTimeInterval(60),
+                summary: nil,
+                summaryTitle: nil,
+                summaryUpdatedAt: nil,
+                summaryProvider: nil,
+                summaryModel: nil,
+                sourceType: .providerLog
+            )
+            try store.upsertConversation(updatedConv)
+        }
+
+        // Drain queue before gap repair
+        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+
+        // Run gap repair sweep — should detect and reproject ALL stale conversations
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 100)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let newCompleted = completedAfter - completedBefore
+        XCTAssertEqual(
+            newCompleted, staleIDs.count,
+            "All \(staleIDs.count) stale conversations should have been detected and reprojected via gap repair pagination. Found: \(newCompleted) new completions."
+        )
+
+        // Verify each stale conversation's document hash was updated
+        for staleID in staleIDs {
+            let doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleID).first
+            let conv = try store.fetchConversation(id: staleID)
+            XCTAssertNotNil(doc, "Document should exist for stale conversation \(staleID).")
+            XCTAssertNotNil(conv, "Conversation should exist for stale conversation \(staleID).")
+            XCTAssertEqual(
+                doc?.contentHash,
+                ProjectionIdentity.conversationContentHash(for: conv!),
+                "Document hash should match updated conversation \(staleID)."
+            )
+        }
+
+        // Verify non-stale conversations were NOT reprojected
+        let nonStaleIDs = Set((0..<conversationCount).filter { $0 % 2 != 0 }.map { "conv-gap-pg-\($0)" })
+        let repairReprojects = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).filter {
+            $0.jobType == .reproject && $0.priority == 3
+        }
+        let reprojectedNonStaleSourceIDs = repairReprojects.filter { nonStaleIDs.contains($0.sourceID ?? "") }.compactMap { $0.sourceID }
+        XCTAssertTrue(
+            reprojectedNonStaleSourceIDs.isEmpty,
+            "Non-stale conversations should not have been reprojected. Found: \(reprojectedNonStaleSourceIDs)"
+        )
+    }
+
+    // MARK: - Pagination order is deterministic and stable
+
+    func test_gapRepair_paginationOrder_isDeterministicAcrossPages() async throws {
+        // Verify that gap repair produces the same set of enqueued jobs
+        // regardless of where stale conversations fall across page boundaries.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(dataStore: store, leaseOwner: "worker-gap-det")
+        let base = Date(timeIntervalSince1970: 1_742_910_000)
+
+        // Create and project conversations
+        let conversationCount = 15
+        for i in 0..<conversationCount {
+            let conv = makeConversation(
+                id: "conv-det-\(String(format: "%03d", i))",
+                fullText: "Deterministic content \(i).",
+                indexedAt: base
+            )
+            try store.upsertConversation(conv)
+            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+        }
+
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let indexedDocs = try store.fetchSearchDocuments(limit: 100, sourceKinds: [.conversation])
+        XCTAssertEqual(indexedDocs.count, conversationCount)
+
+        // Make first and last conversations stale
+        let staleIDs = ["conv-det-000", "conv-det-014"]
+        for staleID in staleIDs {
+            let updatedConv = ConversationRecord(
+                id: staleID,
+                provider: .claudeCode,
+                sessionId: "session-\(staleID)",
+                projectName: "OpenBurnBar",
+                startTime: base.addingTimeInterval(-60),
+                endTime: base.addingTimeInterval(60),
+                messageCount: 99,
+                userWordCount: 100,
+                assistantWordCount: 200,
+                keyFiles: ["File.swift"],
+                keyCommands: ["swift test"],
+                keyTools: ["Read"],
+                inferredTaskTitle: "Det Task \(staleID)",
+                lastAssistantMessage: "Det message.",
+                fullText: "Updated deterministic content for \(staleID).",
+                indexedAt: base,
+                fileModifiedAt: base.addingTimeInterval(60),
+                summary: nil,
+                summaryTitle: nil,
+                summaryUpdatedAt: nil,
+                summaryProvider: nil,
+                summaryModel: nil,
+                sourceType: .providerLog
+            )
+            try store.upsertConversation(updatedConv)
+        }
+
+        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+
+        // Run gap repair multiple times — each should produce the same result
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 100)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let newCompleted = completedAfter - completedBefore
+        XCTAssertEqual(
+            newCompleted, staleIDs.count,
+            "Both stale conversations (first and last) should be detected deterministically."
+        )
+
+        // Run gap repair again — should be a complete no-op since all are now current
+        let completedBeforeSecondPass = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 100)
+            if report.leasedJobs == 0 { break }
+        }
+        let completedAfterSecondPass = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        XCTAssertEqual(
+            completedAfterSecondPass, completedBeforeSecondPass,
+            "Second gap repair pass should be a complete no-op (deterministic, no new staleness)."
+        )
+    }
+
+    // MARK: - Delete-miss recovery: stale search artifacts purged when source conversation is missing
+
+    func test_gapRepair_purgesStaleArtifacts_whenConversationSourceIsMissing() async throws {
+        // When a conversation source is deleted (missed delete event), gap repair should
+        // detect the orphaned search document and enqueue a purge job.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(dataStore: store, leaseOwner: "worker-delete-miss")
+        let base = Date(timeIntervalSince1970: 1_742_920_000)
+
+        // Create and project conversations
+        let conv1 = makeConversation(id: "conv-delete-survivor", fullText: "This conversation survives.", indexedAt: base)
+        let conv2 = makeConversation(id: "conv-delete-missing", fullText: "This conversation will be deleted from source.", indexedAt: base)
+        let conv3 = makeConversation(id: "conv-delete-another", fullText: "This one also gets deleted.", indexedAt: base)
+        try store.upsertConversation(conv1)
+        try store.upsertConversation(conv2)
+        try store.upsertConversation(conv3)
+
+        try store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
+        try store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
+        try store.enqueueConversationProjectionJob(conversationID: conv3.id, jobType: .project, now: base)
+
+        // Drain initial projection
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let indexedDocs = try store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
+        XCTAssertEqual(indexedDocs.count, 3, "All three conversations should be indexed.")
+
+        // Simulate missed delete events: remove conv2 and conv3 from source
+        try store.deleteConversation(id: conv2.id)
+        try store.deleteConversation(id: conv3.id)
+
+        // Verify conversations are gone from source
+        XCTAssertNil(try store.fetchConversation(id: conv2.id), "conv2 should be deleted from source.")
+        XCTAssertNil(try store.fetchConversation(id: conv3.id), "conv3 should be deleted from source.")
+        XCTAssertNotNil(try store.fetchConversation(id: conv1.id), "conv1 should still exist.")
+
+        // But search documents still exist (orphaned)
+        let orphanedDocs = try store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
+        XCTAssertEqual(orphanedDocs.count, 3, "All three documents still exist before gap repair.")
+
+        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+
+        // Run gap repair — should detect missing sources and enqueue purge jobs
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 100)
+            if report.leasedJobs == 0 { break }
+        }
+
+        // Verify purge jobs were enqueued and completed for the missing conversations
+        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let newCompleted = completedAfter - completedBefore
+
+        // Should have 2 purge completions (conv2 and conv3)
+        let purgeCompleted = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).filter {
+            $0.jobType == .purge && $0.sourceKind == .conversation
+        }
+        XCTAssertEqual(
+            purgeCompleted.count, 2,
+            "Two purge jobs should have completed for the missing conversations. Found: \(purgeCompleted.count)"
+        )
+        XCTAssertTrue(
+            purgeCompleted.contains(where: { $0.sourceID == conv2.id }),
+            "Purge job should have completed for conv2."
+        )
+        XCTAssertTrue(
+            purgeCompleted.contains(where: { $0.sourceID == conv3.id }),
+            "Purge job should have completed for conv3."
+        )
+
+        // Verify orphaned documents were purged
+        let remainingDocs = try store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
+        XCTAssertEqual(remainingDocs.count, 1, "Only conv1 document should remain after purge.")
+        XCTAssertEqual(remainingDocs.first?.sourceID, conv1.id, "Remaining document should be conv1.")
+
+        // Verify conv1 was NOT affected
+        let conv1Doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conv1.id).first
+        XCTAssertNotNil(conv1Doc, "conv1 document should still exist.")
+        let conv1Record = try store.fetchConversation(id: conv1.id)
+        XCTAssertNotNil(conv1Record)
+        XCTAssertEqual(
+            conv1Doc?.contentHash,
+            ProjectionIdentity.conversationContentHash(for: conv1Record!),
+            "conv1 document hash should still match source."
+        )
+    }
+
+    func test_gapRepair_purgeAndStaleRepair_inSameSweep() async throws {
+        // When some conversations are stale and some are missing, gap repair should
+        // handle both in the same sweep: reproject stale ones and purge missing ones.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(dataStore: store, leaseOwner: "worker-mixed-repair")
+        let base = Date(timeIntervalSince1970: 1_742_930_000)
+
+        // Create and project conversations
+        let convKeep = makeConversation(id: "conv-mixed-keep", fullText: "This one stays unchanged.", indexedAt: base)
+        let convStale = makeConversation(id: "conv-mixed-stale", fullText: "Original stale content.", indexedAt: base)
+        let convMissing = makeConversation(id: "conv-mixed-missing", fullText: "This one gets deleted.", indexedAt: base)
+        try store.upsertConversation(convKeep)
+        try store.upsertConversation(convStale)
+        try store.upsertConversation(convMissing)
+
+        try store.enqueueConversationProjectionJob(conversationID: convKeep.id, jobType: .project, now: base)
+        try store.enqueueConversationProjectionJob(conversationID: convStale.id, jobType: .project, now: base)
+        try store.enqueueConversationProjectionJob(conversationID: convMissing.id, jobType: .project, now: base)
+
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let indexedDocs = try store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
+        XCTAssertEqual(indexedDocs.count, 3)
+
+        // Make convStale stale and convMissing deleted
+        let updatedStale = ConversationRecord(
+            id: convStale.id,
+            provider: convStale.provider,
+            sessionId: convStale.sessionId,
+            projectName: convStale.projectName,
+            startTime: convStale.startTime,
+            endTime: base.addingTimeInterval(60),
+            messageCount: 99,
+            userWordCount: convStale.userWordCount,
+            assistantWordCount: convStale.assistantWordCount,
+            keyFiles: convStale.keyFiles,
+            keyCommands: convStale.keyCommands,
+            keyTools: convStale.keyTools,
+            inferredTaskTitle: "Updated stale",
+            lastAssistantMessage: "Updated.",
+            fullText: "Updated stale content with new data.",
+            indexedAt: convStale.indexedAt,
+            fileModifiedAt: base.addingTimeInterval(60),
+            summary: nil,
+            summaryTitle: nil,
+            summaryUpdatedAt: nil,
+            summaryProvider: nil,
+            summaryModel: nil,
+            sourceType: convStale.sourceType
+        )
+        try store.upsertConversation(updatedStale)
+        try store.deleteConversation(id: convMissing.id)
+
+        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+
+        // Run gap repair
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 100)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let newCompleted = completedAfter - completedBefore
+        XCTAssertEqual(newCompleted, 2, "One reproject (stale) + one purge (missing) = 2 new completions.")
+
+        // Verify stale was reprojected
+        let staleDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: convStale.id).first
+        let staleRecord = try store.fetchConversation(id: convStale.id)
+        XCTAssertNotNil(staleDoc)
+        XCTAssertNotNil(staleRecord)
+        XCTAssertEqual(
+            staleDoc?.contentHash,
+            ProjectionIdentity.conversationContentHash(for: staleRecord!),
+            "Stale document should be updated."
+        )
+
+        // Verify missing was purged
+        let missingDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: convMissing.id).first
+        XCTAssertNil(missingDoc, "Missing conversation's document should be purged.")
+
+        // Verify keep was not touched
+        let keepDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: convKeep.id).first
+        let keepRecord = try store.fetchConversation(id: convKeep.id)
+        XCTAssertNotNil(keepDoc)
+        XCTAssertNotNil(keepRecord)
+        XCTAssertEqual(
+            keepDoc?.contentHash,
+            ProjectionIdentity.conversationContentHash(for: keepRecord!),
+            "Kept document should remain unchanged."
+        )
+    }
+}
+
 // MARK: - Failing Test Embedding Provider
 
 /// An embedding provider that always fails, used for testing embedding failure degradation.

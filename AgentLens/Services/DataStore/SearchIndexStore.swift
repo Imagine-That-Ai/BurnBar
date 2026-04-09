@@ -118,6 +118,41 @@ final class SearchIndexStore {
         }
     }
 
+    /// Paginated document fetch with filtering using offset-based cursor.
+    /// Order is deterministic: COALESCE(sourceUpdatedAt, indexedAt) DESC, indexedAt DESC, createdAt DESC.
+    func fetchDocuments(
+        limit: Int,
+        offset: Int,
+        provider: String?,
+        projectName: String?,
+        sourceKinds: [SearchSourceKind]?,
+        dateRange: ClosedRange<Date>?
+    ) throws -> [SearchDocumentRecord] {
+        let (whereSQL, args) = Self.filteredDocumentClause(
+            provider: provider,
+            projectName: projectName,
+            sourceKinds: sourceKinds,
+            dateRange: dateRange
+        )
+        var queryArgs = args
+        queryArgs.append(max(1, limit))
+        queryArgs.append(max(0, offset))
+
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM search_documents
+                \(whereSQL)
+                ORDER BY COALESCE(sourceUpdatedAt, indexedAt) DESC, indexedAt DESC, createdAt DESC
+                LIMIT ? OFFSET ?
+                """,
+                arguments: StatementArguments(queryArgs)
+            )
+            return rows.compactMap(Self.document(from:))
+        }
+    }
+
     func fetchDocuments(ids: [String]) throws -> [SearchDocumentRecord] {
         let uniqueIDs = Array(Set(ids)).sorted()
         guard uniqueIDs.isEmpty == false else { return [] }

@@ -32,6 +32,22 @@ extension DataStore {
         )
     }
 
+    /// Paginated document fetch with filtering using offset-based cursor.
+    func fetchSearchDocuments(
+        limit: Int,
+        offset: Int,
+        sourceKinds: [SearchSourceKind]?
+    ) throws -> [SearchDocumentRecord] {
+        try searchIndexStore.fetchDocuments(
+            limit: limit,
+            offset: offset,
+            provider: nil,
+            projectName: nil,
+            sourceKinds: sourceKinds,
+            dateRange: nil
+        )
+    }
+
     func fetchSearchDocuments(ids: [String]) throws -> [SearchDocumentRecord] {
         try searchIndexStore.fetchDocuments(ids: ids)
     }

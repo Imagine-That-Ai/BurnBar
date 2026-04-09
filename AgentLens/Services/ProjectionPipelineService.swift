@@ -417,47 +417,78 @@ final class ProjectionPipelineService {
     /// Detects and repairs gaps in the index caused by missed events.
     /// Compares indexed conversation content hashes with current source content,
     /// and enqueues reproject jobs for stale entries.
-    /// This is called periodically during sweep to handle missed events incrementally.
+    /// Paginates through the full conversation corpus to avoid truncation.
+    /// When a conversation source is missing (deleted without purge), enqueues
+    /// purge jobs to clean up stale search artifacts (delete-event miss recovery).
     private func enqueueGapRepairIfNeeded() throws {
-        let indexedDocuments = try dataStore.fetchSearchDocuments(
-            limit: 1000,
-            sourceKinds: [.conversation]
-        )
+        // Paginate through ALL indexed conversation documents to cover the full corpus.
+        // Uses deterministic ordering with stable tie-breaks across pages.
+        let repairPageSize = 1000
+        var documentOffset = 0
+        var hasProcessedAnyPage = false
 
-        guard indexedDocuments.isEmpty == false else { return }
+        while true {
+            let indexedDocuments = try dataStore.fetchSearchDocuments(
+                limit: repairPageSize,
+                offset: documentOffset,
+                sourceKinds: [.conversation]
+            )
 
-        // Group documents by sourceID for efficient lookup
-        let sourceIDs = indexedDocuments.map { $0.sourceID }
-        guard sourceIDs.isEmpty == false else { return }
+            guard indexedDocuments.isEmpty == false else {
+                // If we never processed any page, there are no indexed conversations at all.
+                if hasProcessedAnyPage == false { return }
+                break
+            }
+            hasProcessedAnyPage = true
 
-        let conversations = try dataStore.fetchConversations(ids: sourceIDs)
-        let conversationsByID = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
-
-        for document in indexedDocuments {
-            guard document.sourceKind == .conversation else {
+            // Group documents by sourceID for efficient batch lookup
+            let sourceIDs = indexedDocuments.map { $0.sourceID }
+            guard sourceIDs.isEmpty == false else {
+                documentOffset += indexedDocuments.count
+                if indexedDocuments.count < repairPageSize { break }
                 continue
             }
 
-            let sourceID = document.sourceID
-            guard let conversation = conversationsByID[sourceID] else {
-                continue
+            let conversations = try dataStore.fetchConversations(ids: sourceIDs)
+            let conversationsByID = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
+
+            for document in indexedDocuments {
+                guard document.sourceKind == .conversation else {
+                    continue
+                }
+
+                let sourceID = document.sourceID
+
+                if let conversation = conversationsByID[sourceID] {
+                    // Conversation exists — check for content hash drift
+                    let currentHash = ProjectionIdentity.conversationContentHash(for: conversation)
+
+                    if currentHash != document.contentHash {
+                        let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
+                        try enqueueSelectiveReproject(
+                            sourceKind: .conversation,
+                            sourceID: sourceID,
+                            sourceVersionID: sourceVersionID,
+                            jobType: .reproject,
+                            priority: 3  // Lower priority than new indexing but higher than rebuild
+                        )
+                    }
+                } else {
+                    // Conversation source is missing (deleted without purge event).
+                    // Enqueue purge to clean up stale search artifacts.
+                    try enqueueSelectiveReproject(
+                        sourceKind: .conversation,
+                        sourceID: sourceID,
+                        sourceVersionID: ProjectionIdentity.deletedSourceVersionID,
+                        jobType: .purge,
+                        priority: 2  // Higher priority than gap repair to free resources
+                    )
+                }
             }
 
-            // Compute current content hash
-            let currentHash = ProjectionIdentity.conversationContentHash(for: conversation)
-
-            // If hash differs from indexed, conversation has been updated since indexing
-            // and needs reprojecting to repair the gap
-            if currentHash != document.contentHash {
-                let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
-                try enqueueSelectiveReproject(
-                    sourceKind: .conversation,
-                    sourceID: sourceID,
-                    sourceVersionID: sourceVersionID,
-                    jobType: .reproject,
-                    priority: 3  // Lower priority than new indexing but higher than rebuild
-                )
-            }
+            documentOffset += indexedDocuments.count
+            // If we got fewer than requested, we've exhausted the corpus
+            if indexedDocuments.count < repairPageSize { break }
         }
     }
 

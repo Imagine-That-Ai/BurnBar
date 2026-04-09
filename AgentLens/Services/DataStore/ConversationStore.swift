@@ -337,6 +337,13 @@ final class ConversationStore {
         }
     }
 
+    /// Deletes a single conversation by ID. Used for testing delete-event miss recovery.
+    func deleteConversation(id: String) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM conversations WHERE id = ?", arguments: [id])
+        }
+    }
+
     func approximateConversationStorageBytes() throws -> Int64 {
         try dbQueue.read { db in
             let text: Int64 = try Int64.fetchOne(
