@@ -1,76 +1,81 @@
 {
   "milestone": "fast-surfaces",
-  "round": 1,
+  "round": 3,
   "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
-      "command": "/Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-swift.sh && /Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-app.sh",
+      "command": "scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh",
       "exitCode": 0
     },
     "typecheck": {
       "passed": true,
-      "command": "xcodebuild build-for-testing -project /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath /Users/dewclaw/Documents/Projects/BurnBar/.spm-cache -derivedDataPath /Users/dewclaw/Documents/Projects/BurnBar/.derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
       "exitCode": 0
     },
     "lint": {
       "passed": true,
-      "command": "npm --prefix /Users/dewclaw/Documents/Projects/BurnBar/extensions/openburnbar run lint",
+      "command": "npm --prefix extensions/openburnbar run lint",
       "exitCode": 0
     }
   },
   "reviewsSummary": {
-    "total": 5,
-    "passed": 3,
-    "failed": 2,
+    "total": 4,
+    "passed": 1,
+    "failed": 3,
     "failedFeatures": [
-      "dashboard-quick-switch-ui",
-      "popover-quick-switch-ui"
+      "fast-surfaces-add-dashboard-error-ui-render-tests",
+      "fast-surfaces-fix-dashboard-switch-failure-a11y-announcement",
+      "fast-surfaces-stabilize-backfillscheduler-idempotent-test"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "dashboard-quick-switch-ui",
+      "featureId": "fast-surfaces-add-dashboard-error-ui-render-tests",
       "severity": "blocking",
-      "description": "DashboardQuickSwitchView does not render actionable load-error state: loadData() sets error on failure but UI branches only by isLoading/profiles.isEmpty, causing error cases to fall into empty state instead of retry/recovery UX."
+      "description": "Added tests still validate store behavior rather than DashboardQuickSwitchView error rendering and actionable Retry/Open Settings controls, leaving VAL-DASH-004 contract coverage unresolved."
     },
     {
-      "featureId": "dashboard-quick-switch-ui",
+      "featureId": "fast-surfaces-fix-dashboard-switch-failure-a11y-announcement",
       "severity": "blocking",
-      "description": "DashboardQuickSwitchView accessibility announcements are not implemented; announceForAccessibility is a no-op so switch/launch state changes are not announced."
+      "description": "New tests do not assert UI/accessibility announcement outputs for failure/success/recovery transitions; they rely on comments and data-layer checks, so VAL-DASH-008 verification remains incomplete."
     },
     {
-      "featureId": "popover-quick-switch-ui",
+      "featureId": "fast-surfaces-stabilize-backfillscheduler-idempotent-test",
       "severity": "blocking",
-      "description": "PopoverQuickSwitchView is not integrated into MenuBarPopoverView, so the requested one-step popover quick-switch flow is not available in the actual popover surface."
+      "description": "The 1ns monotonic epsilon in this fix proved insufficient for persisted timestamp precision and was superseded by a later fix; the feature itself does not independently satisfy the stabilization goal."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
-      "target": "skills",
-      "suggestion": "Refine switcher-ui-worker procedure enforcement so followedProcedure=true requires concrete manual UI sanity-check evidence in handoff.interactiveChecks.",
-      "evidence": "Both dashboard-quick-switch-ui and popover-quick-switch-ui handoffs reported followedProcedure=true while interactiveChecks were empty.",
+      "target": "switcher-ui-worker skill",
+      "suggestion": "Require evidence-backed accessibility assertions for dashboard announcement fixes (assert posted notifications or accessibility value transitions), not comment-only tests.",
+      "evidence": "Both fast-surfaces-add-dashboard-error-ui-render-tests and fast-surfaces-fix-dashboard-switch-failure-a11y-announcement added store-centric tests that did not validate DashboardQuickSwitchView UI announcement outputs.",
       "isSystemic": true
     },
     {
-      "target": "skills",
-      "suggestion": "Clarify and enforce context-read evidence requirements for followedProcedure=true across worker skills, including explicit examples of acceptable content-inspection evidence.",
-      "evidence": "fast-surfaces-fix-backfillscheduler-regressions and fast-surfaces-fix-reconciliation-float-assertions reviews both flagged missing required context-read evidence despite followedProcedure=true.",
+      "target": "switcher-ui-worker skill",
+      "suggestion": "Enforce manual UI sanity check evidence before allowing followedProcedure=true in handoffs.",
+      "evidence": "Multiple fast-surfaces switcher-ui handoffs report followedProcedure=true with interactiveChecks empty despite skill step requiring manual checks.",
       "isSystemic": true
     },
     {
-      "target": "AGENTS.md",
-      "suggestion": "Add assignment guidance to prefer skill-to-task fit and avoid assigning narrowly scoped project wiring fixes to specialized domain skills that require unrelated procedural steps.",
-      "evidence": "core-engine-fix-backfillcursorstore-build-break review noted indexing-efficiency-worker procedure was mismatched for a pbxproj membership-only fix.",
+      "target": "indexing-efficiency-worker skill",
+      "suggestion": "Add explicit timestamp-precision guidance for Date monotonic checks (SQLite/GRDB round-trip tolerance expectations).",
+      "evidence": "fast-surfaces-stabilize-backfillscheduler-idempotent-test used 1ns epsilon and required immediate follow-up with 1ms tolerance in fast-surfaces-fix-backfillscheduler-idempotent-backward-check.",
       "isSystemic": false
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "Repeated per-feature reports of missing context-read evidence for followedProcedure=true",
-      "reason": "duplicate"
+      "observation": "Require full 40-char SHA in handoff commitId.",
+      "reason": "already-documented"
+    },
+    {
+      "observation": "Require context-read command evidence before setting followedProcedure=true.",
+      "reason": "already-documented"
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/fast-surfaces/scrutiny/synthesis.round2.json"
 }

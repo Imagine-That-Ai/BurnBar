@@ -1,0 +1,39 @@
+{
+  "featureId": "fast-surfaces-add-dashboard-error-ui-render-tests",
+  "reviewedAt": "2026-04-09T21:42:46Z",
+  "commitId": "8096a517eca0bbe4bf76580a1ec3658746a99470",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "This fix does not close the prior blocking gap: the added tests still verify store/data behavior only and do not assert DashboardQuickSwitchView error-branch rendering or actionable controls in the actual view surface.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/SwitcherDashboardUITests.swift",
+        "line": 526,
+        "severity": "blocking",
+        "description": "New tests (`test_errorStateRecovery_actionsAvailable`, `test_errorState_vs_emptyState_areDistinct`, `test_retryAction_reloadsData`, `test_openSettingsAction_isAvailable`) exercise DataStore CRUD/fetch semantics without instantiating `DashboardQuickSwitchView` or asserting visible error UI/actions (`Retry`, `Open Settings`). They would still pass if the view's error rendering branch/regression reappeared."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherDashboardUITests.swift",
+        "line": 585,
+        "severity": "blocking",
+        "description": "`test_storeFetchFailure_triggersErrorState` does not induce a throwing `fetchAllProfiles` path or assert any error-state rendering/action contract; it only checks benign nil/non-throw behavior on unrelated store calls, so the required load-error UI contract remains untested."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked `followedProcedure: true`, but required broad validation and manual UI sanity checks from `switcher-ui-worker` were not evidenced.",
+      "evidence": "Skill requires step 6 scoped + `scripts/test-openburnbar-app.sh` and step 7 manual checks; handoff `2026-04-09T19-07-49-769Z__fast-surfaces-add-dashboard-error-ui-render-tests__6f9c4f33-1bff-4ef7-960b-ee21e64a01e0.json` lists only scoped `xcodebuild test` and `interactiveChecks: []`."
+    },
+    {
+      "area": "skills",
+      "observation": "Skill handoff-discipline requires full 40-char SHA in `commitId`, but this handoff uses a short hash while claiming procedure adherence.",
+      "evidence": "switcher-ui-worker SKILL.md 'Handoff Discipline Requirements' mandates full SHA; handoff `commitId` is `8096a51`."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/fast-surfaces/scrutiny/reviews/fast-surfaces-fix-dashboard-load-error-rendering.json",
+  "summary": "Reviewed prior failed scrutiny context, worker transcript skeleton, handoff, skill, and commit `8096a517...`. The added tests do not verify actual DashboardQuickSwitchView load-error rendering/actions, so the original blocking test-contract failure remains unresolved."
+}

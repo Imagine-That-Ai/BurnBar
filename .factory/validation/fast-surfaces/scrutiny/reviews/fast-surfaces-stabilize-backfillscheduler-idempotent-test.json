@@ -1,0 +1,33 @@
+{
+  "featureId": "fast-surfaces-stabilize-backfillscheduler-idempotent-test",
+  "reviewedAt": "2026-04-09T21:42:45Z",
+  "commitId": "33f9ac23ddb36df2d2bc9eff18c73a67f2e5d5c4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The change reintroduced epsilon-based tolerance for idempotent cursor advancement, but the selected tolerance (1e-9 seconds) was not robust enough for GRDB/SQLite timestamp round-trips, so the fix did not reliably satisfy the stated full-suite stabilization goal.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/DataStore/BackfillCursorStore.swift",
+        "line": 113,
+        "severity": "blocking",
+        "description": "Using `monotonicEpsilon = 1e-9` in the monotonic guard is too strict for persisted Date precision/serialization behavior; this still allows idempotent equality checks to fail in practice. Evidence: subsequent commit `ae68a630f8999a62eec523b99a49bec6203a1613` in the same area explicitly raises epsilon to 1ms because nanosecond tolerance was insufficient."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked `skillFeedback.followedProcedure=true`, but transcript evidence does not show reading all files required by `indexing-efficiency-worker` step 1 (notably `.factory/library/user-testing.md`).",
+      "evidence": "Skill file requires reading `mission.md`, `AGENTS.md`, `.factory/library/architecture.md`, and `.factory/library/user-testing.md`; transcript skeleton shows reads for mission/validation/backfill files and architecture, but no read of `.factory/library/user-testing.md`."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Timestamp precision expectations for cursor monotonicity checks are not captured in shared guidance, which likely contributed to a too-small epsilon choice and immediate follow-up correction.",
+      "evidence": "Commit `33f9ac23ddb36df2d2bc9eff18c73a67f2e5d5c4` introduced 1ns epsilon; later commit `ae68a630f8999a62eec523b99a49bec6203a1613` revised it to 1ms due to GRDB/SQLite datetime round-trip precision."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/fast-surfaces/scrutiny/synthesis.json",
+  "summary": "Reviewed fix commit `33f9ac23ddb36df2d2bc9eff18c73a67f2e5d5c4` against the prior fast-surfaces scrutiny failure. The patch direction was correct, but tolerance selection was insufficient, so this feature is marked fail for not reliably meeting the stabilization requirement."
+}

@@ -1,0 +1,33 @@
+{
+  "featureId": "fast-surfaces-fix-dashboard-switch-failure-a11y-announcement",
+  "reviewedAt": "2026-04-09T21:42:52Z",
+  "commitId": "8239349e896d27db118ed41d4f222d9f3fb7f6c6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "This fix correctly adds the missing switch-failure accessibility announcement in `performSwitch()`, but the newly added tests do not actually verify dashboard accessibility announcement behavior for failure/success/recovery transitions as required. Most new tests only assert store state and include comments about what the view would announce, leaving the original test-coverage gap unresolved.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/SwitcherDashboardUITests.swift",
+        "line": 738,
+        "severity": "blocking",
+        "description": "The new announcement tests do not exercise `DashboardQuickSwitchView` announcement emission. `test_switchFailure_announcesError`, `test_switchSuccess_announcesSuccess`, `test_profileLoad_announcesCorrectCount`, and `test_emptyLoad_announcesNoProfiles` only call store APIs and then rely on comments (e.g., lines 738-742, 772-773, 856-858, 868-870) instead of asserting `NSAccessibility.post(...)` effects or accessibility-value transitions. This does not satisfy the feature requirement that UI tests verify announcement behavior for failure and recovery states."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`switcher-ui-worker` still records `followedProcedure: true` without required manual UI sanity checks evidence.",
+      "evidence": "Skill requires manual checks at step 7 (`.factory/skills/switcher-ui-worker/SKILL.md`), but handoff `.../handoffs/2026-04-09T19-14-21-432Z__fast-surfaces-fix-dashboard-switch-failure-a11y-announcement__eebe3e7f-f5e1-4dd2-a2d8-7b5f767de55c.json` has `verification.interactiveChecks: []` with `skillFeedback.followedProcedure: true`."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker-side procedure guidance appears insufficient for accessibility test quality: tests were added that mostly restate intended behavior in comments without asserting announcement outputs.",
+      "evidence": "In `AgentLensTests/Active/SwitcherDashboardUITests.swift`, new VAL-DASH-008 tests include explanatory comments instead of concrete assertion targets (lines 738-742, 772-773, 829-831, 856-858, 868-870), indicating a gap in skill guidance for how to verify macOS accessibility announcements."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/fast-surfaces/scrutiny/reviews/fast-surfaces-fix-dashboard-accessibility-announcements.json",
+  "summary": "Reviewed transcript skeleton, handoff, prior scrutiny context, and commit `8239349e896d27db118ed41d4f222d9f3fb7f6c6`. The code fix for switch-failure announcements is present, but the added tests do not validate announcement behavior at the UI/accessibility layer, so the feature does not fully meet its expected behavior and remains failing."
+}
