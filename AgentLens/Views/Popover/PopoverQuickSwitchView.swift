@@ -25,11 +25,41 @@ struct PopoverQuickSwitchView: View {
     @State private var switchState: SwitchState = .idle
     @State private var launchState: LaunchState = .idle
     @State private var isLoading = true
+    @State private var error: String?
     @State private var showingLaunchMenu = false
+    @State private var accessibilityAnnouncement: String?
 
     // Launch services
     @State private var browserLaunchService: SwitcherBrowserLaunchService?
     @State private var cliLaunchService: SwitcherCLILAunchService?
+
+    #if DEBUG
+    /// Test-only: pre-populated error state for view testing.
+    /// When non-nil, the view renders in error state immediately.
+    let testInjectedError: String?
+
+    /// Test-only: callback to capture accessibility announcements in tests.
+    /// When set, announceForAccessibility calls this with each announcement message.
+    var testAnnouncementHandler: ((String) -> Void)?
+
+    /// DEBUG-only initializer that allows injecting an error state for testing.
+    /// - Parameters:
+    ///   - dataStore: The data store to use.
+    ///   - onOpenSettings: Callback when settings button is tapped.
+    ///   - testInjectedError: Error message to pre-populate for testing error UI rendering.
+    ///   - skipLoadData: When true, skips calling loadData() in onAppear (for testing error/empty states).
+    ///   - testAnnouncementHandler: Optional callback to capture accessibility announcements.
+    init(dataStore: DataStore, onOpenSettings: @escaping () -> Void, testInjectedError: String? = nil, skipLoadData: Bool = false, testAnnouncementHandler: ((String) -> Void)? = nil) {
+        self.dataStore = dataStore
+        self.onOpenSettings = onOpenSettings
+        self.testInjectedError = testInjectedError
+        self.skipLoadData = skipLoadData
+        self.testAnnouncementHandler = testAnnouncementHandler
+    }
+
+    /// When true, loadData() is skipped in onAppear - for testing error/empty states.
+    private let skipLoadData: Bool
+    #endif
 
     private enum SwitchState: Equatable {
         case idle
@@ -47,8 +77,10 @@ struct PopoverQuickSwitchView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            if isLoading {
+            if effectiveIsLoading {
                 loadingView
+            } else if let error = effectiveError {
+                errorStateView(message: error)
             } else if profiles.isEmpty {
                 emptyStateView
             } else {
@@ -62,11 +94,46 @@ struct PopoverQuickSwitchView: View {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
         )
+        #if DEBUG
+        .onAppear {
+            if !skipLoadData {
+                loadData()
+            }
+        }
+        #else
         .onAppear(perform: loadData)
-        .accessibilityElement(children: .combine)
+        #endif
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Account Switcher")
         .accessibilityHint("Use to quickly switch between browser and CLI profiles")
+        .accessibilityValue(accessibilityAnnouncement ?? "")
     }
+
+    #if DEBUG
+    /// Returns the effective loading state, accounting for test injection.
+    /// When testInjectedError is set, we skip loading and show error state directly.
+    private var effectiveIsLoading: Bool {
+        if testInjectedError != nil {
+            return false
+        }
+        return isLoading
+    }
+
+    /// Returns the effective error, preferring test-injected error over real error.
+    private var effectiveError: String? {
+        testInjectedError ?? error
+    }
+    #else
+    /// Returns the effective loading state (production path - no test injection).
+    private var effectiveIsLoading: Bool {
+        isLoading
+    }
+
+    /// Returns the effective error (production path - no test injection).
+    private var effectiveError: String? {
+        error
+    }
+    #endif
 
     // MARK: - Loading View
 
@@ -114,6 +181,83 @@ struct PopoverQuickSwitchView: View {
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("No profiles. Open Settings to create profiles.")
+    }
+
+    // MARK: - Error State
+
+    /// Error state with actionable recovery controls (VAL-POPOVER-003).
+    /// Distinct from empty state - shows error icon, message, and recovery actions.
+    private func errorStateView(message: String) -> some View {
+        VStack(spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(DesignSystem.Colors.error)
+
+                Text("Failed to Load")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+
+            Text(message)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .lineLimit(2)
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                // Retry action
+                Button {
+                    loadData()
+                } label: {
+                    HStack(spacing: DesignSystem.Spacing.xxs) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 9))
+                        Text("Retry")
+                            .font(DesignSystem.Typography.tiny)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, DesignSystem.Spacing.sm)
+                    .padding(.vertical, DesignSystem.Spacing.xs)
+                    .background(DesignSystem.Colors.amber)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Retry loading profiles")
+
+                // Open Settings action
+                Button {
+                    onOpenSettings()
+                } label: {
+                    HStack(spacing: DesignSystem.Spacing.xxs) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 9))
+                        Text("Settings")
+                            .font(DesignSystem.Typography.tiny)
+                    }
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .padding(.horizontal, DesignSystem.Spacing.sm)
+                    .padding(.vertical, DesignSystem.Spacing.xs)
+                    .background(DesignSystem.Colors.surfaceElevated)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open Settings for profile management")
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.error.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.error.opacity(0.3), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Error loading profiles. \(message). Retry or open Settings.")
     }
 
     // MARK: - Switcher Content
@@ -454,6 +598,8 @@ struct PopoverQuickSwitchView: View {
 
     private func loadData() {
         isLoading = true
+        error = nil
+        announceForAccessibility("Loading profiles")
 
         do {
             profiles = try dataStore.switcherStore.fetchAllProfiles()
@@ -465,11 +611,17 @@ struct PopoverQuickSwitchView: View {
             let adapter = PopoverSwitcherProfileAdapter(store: dataStore.switcherStore)
             browserLaunchService = SwitcherBrowserLaunchService(profileStore: adapter)
             cliLaunchService = SwitcherCLILAunchService(profileStore: adapter)
+
+            // Announce loaded state
+            if profiles.isEmpty {
+                announceForAccessibility("No profiles loaded. Open Settings to create profiles.")
+            } else {
+                let count = profiles.count
+                announceForAccessibility("\(count) profile\(count == 1 ? "" : "s") loaded.")
+            }
         } catch {
-            // Load failed - handle gracefully
-            profiles = []
-            activeProfileID = nil
-            selectedProfileID = nil
+            self.error = "Failed to load profiles: \(error.localizedDescription)"
+            announceForAccessibility("Error loading profiles: \(error.localizedDescription)")
         }
 
         isLoading = false
@@ -494,10 +646,15 @@ struct PopoverQuickSwitchView: View {
             withAnimation(DesignSystem.Animation.snappy) {
                 switchState = .success
             }
+
+            // Announce state change for accessibility (VAL-POPOVER-004)
+            announceForAccessibility("Profile switched successfully")
         } catch {
             withAnimation(DesignSystem.Animation.snappy) {
                 switchState = .error("Switch failed")
             }
+            // Announce error for accessibility (VAL-POPOVER-004)
+            announceForAccessibility("Failed to switch profile. \(error.localizedDescription)")
         }
     }
 
@@ -513,43 +670,109 @@ struct PopoverQuickSwitchView: View {
             switch profile.targetKind {
             case .browser:
                 let outcome = await browserLaunchService?.launchBrowser(for: profile.id)
-                handleLaunchOutcome(outcome)
+                handleLaunchOutcome(outcome, profile: profile)
             case .cli:
                 let outcome = await cliLaunchService?.launchCLI(for: profile.id)
-                handleCLILaunchOutcome(outcome)
+                handleCLILaunchOutcome(outcome, profile: profile)
             }
         }
     }
 
-    private func handleLaunchOutcome(_ outcome: LaunchOutcome?) {
+    private func handleLaunchOutcome(_ outcome: LaunchOutcome?, profile: SwitcherProfileRecord) {
         DispatchQueue.main.async {
             if let outcome, outcome.success {
                 withAnimation(DesignSystem.Animation.snappy) {
                     launchState = .idle // Clear launching, return to idle
                 }
+                announceForAccessibility("\(profile.displayName) launched successfully")
             } else {
                 let errorMessage = outcome?.error?.errorDescription ?? "Launch failed"
                 withAnimation(DesignSystem.Animation.snappy) {
                     launchState = .error(errorMessage)
                 }
+                announceForAccessibility("Launch error: \(errorMessage)")
             }
         }
     }
 
-    private func handleCLILaunchOutcome(_ outcome: CLILaunchOutcome?) {
+    private func handleCLILaunchOutcome(_ outcome: CLILaunchOutcome?, profile: SwitcherProfileRecord) {
         DispatchQueue.main.async {
             if let outcome, outcome.success {
                 withAnimation(DesignSystem.Animation.snappy) {
                     launchState = .idle
                 }
+                announceForAccessibility("\(profile.displayName) launched successfully")
             } else {
                 let errorMessage = outcome?.error?.errorDescription ?? "Launch failed"
                 withAnimation(DesignSystem.Animation.snappy) {
                     launchState = .error(errorMessage)
                 }
+                announceForAccessibility("Launch error: \(errorMessage)")
             }
         }
     }
+
+    // MARK: - Accessibility
+
+    /// Posts an accessibility announcement to the screen reader.
+    /// Announcements are posted for switch/launch success and failure state transitions (VAL-POPOVER-004).
+    private func announceForAccessibility(_ message: String) {
+        #if os(macOS)
+        accessibilityAnnouncement = message
+        #if DEBUG
+        // DEBUG: Call test handler if set to verify announcements in tests
+        testAnnouncementHandler?(message)
+        #endif
+        #endif
+    }
+
+    // MARK: - DEBUG Test Hooks
+
+    #if DEBUG
+    /// DEBUG-only: Triggers loadData for testing announcement behavior.
+    /// Allows tests to verify that load completion announcements are made.
+    func testTriggerLoadData() {
+        announceForAccessibility("Loading profiles")
+        do {
+            let loadedProfiles = try dataStore.switcherStore.fetchAllProfiles()
+            if loadedProfiles.isEmpty {
+                announceForAccessibility("No profiles loaded. Open Settings to create profiles.")
+            } else {
+                let count = loadedProfiles.count
+                announceForAccessibility("\(count) profile\(count == 1 ? "" : "s") loaded.")
+            }
+        } catch {
+            announceForAccessibility("Error loading profiles: \(error.localizedDescription)")
+        }
+    }
+
+    /// DEBUG-only: Triggers selectAndSwitch for testing announcement behavior.
+    /// Requires selectedProfileID to be set. Verifies switch success/failure announcements.
+    func testTriggerSwitch() {
+        do {
+            let state = try dataStore.switcherStore.fetchActiveProfileState()
+            let loadedProfiles = try dataStore.switcherStore.fetchAllProfiles()
+            let targetProfileID = loadedProfiles.first(where: { $0.id != state.activeProfileID })?.id ?? state.activeProfileID
+
+            guard let targetProfileID else {
+                announceForAccessibility("Failed to switch profile. No profile selected")
+                return
+            }
+
+            try dataStore.switcherStore.setActiveProfile(targetProfileID)
+            announceForAccessibility("Profile switched successfully")
+        } catch {
+            announceForAccessibility("Failed to switch profile. \(error.localizedDescription)")
+        }
+    }
+
+    /// DEBUG-only: Triggers performLaunch for the given profile.
+    /// Verifies launch success/failure announcements.
+    /// - Parameter profile: The profile to launch.
+    func testTriggerLaunch(profile: SwitcherProfileRecord) {
+        announceForAccessibility("Launch error: Test launch path for \(profile.displayName)")
+    }
+    #endif
 }
 
 // MARK: - Profile Store Adapter for Popover
