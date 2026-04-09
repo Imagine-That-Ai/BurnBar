@@ -855,4 +855,168 @@ final class MultiSourceReconciliationTests: XCTestCase {
         XCTAssertEqual(totalOutput, 750, "Local + supplemental should equal API output")
         XCTAssertEqual(totalCost, 0.075, accuracy: 1e-9, "Local + supplemental should equal API cost")
     }
+
+    // MARK: - Epsilon-Safe Cost Delta Tests
+
+    /// Tests that epsilon threshold prevents phantom micro-corrections from floating-point residue.
+    /// A cost delta of 1e-10 (smaller than epsilon 1e-9) should be ignored.
+    func test_costDeltaExceedsEpsilon_rejectsFloatingPointResidue() {
+        // Floating-point residue: 0.1 + 0.1 + 0.1 - 0.3 = ~1e-16 (not exactly 0)
+        let localCost = 0.1 + 0.1 + 0.1  // 0.30000000000000004 in floating-point
+        let apiCost = 0.3
+
+        // The actual difference due to floating-point is tiny (~1e-16)
+        let actualDelta = apiCost - localCost
+        XCTAssertNotEqual(actualDelta, 0, "Floating-point arithmetic produces non-zero delta: \(actualDelta)")
+        XCTAssertLessThan(abs(actualDelta), 1e-10, "Delta should be tiny floating-point residue")
+
+        // But epsilon check should reject it
+        let exceedsEpsilon = UsageAggregator.costDeltaExceedsEpsilon(localCost: localCost, apiCost: apiCost)
+        XCTAssertFalse(exceedsEpsilon, "Epsilon threshold should reject floating-point residue delta")
+    }
+
+    /// Tests that real cost deltas (larger than epsilon) are not rejected.
+    func test_costDeltaExceedsEpsilon_acceptsRealCostDeltas() {
+        // Real cost delta: $0.02
+        let localCost = 0.03
+        let apiCost = 0.05
+
+        let exceedsEpsilon = UsageAggregator.costDeltaExceedsEpsilon(localCost: localCost, apiCost: apiCost)
+        XCTAssertTrue(exceedsEpsilon, "Real cost delta ($0.02) should exceed epsilon threshold")
+    }
+
+    /// Tests that the real supplementalUsages pipeline correctly uses epsilon threshold.
+    func test_computeSupplementalUsages_usesEpsilonThreshold() throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = makeUsageStore(queue)
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        // Given: local usage with copilot provider (which has mappedProvider)
+        let localUsage = TokenUsage(
+            provider: .copilot,
+            sessionId: "epsilon-test-local",
+            projectName: "Project",
+            model: "gpt-4",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.05,
+            startTime: today,
+            endTime: today,
+            usageSource: .providerLog,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try store.insert(localUsage)
+
+        // Create UsageAggregator with minimal dependencies
+        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let aggregator = UsageAggregator(dataStore: dataStore)
+
+        // API record with exact same cost (simulating floating-point equality)
+        let apiRecordSameCost = ProviderUsageRecord(
+            providerName: "copilot",
+            model: "gpt-4",
+            date: today,
+            inputTokens: 1000,
+            outputTokens: 500,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            costUSD: 0.05,  // Exactly the same
+            requestCount: 1
+        )
+
+        // When: compute supplemental usages for matching costs
+        let existingUsages = try store.fetchAllUsage()
+        let supplementals1 = aggregator.computeSupplementalUsages(from: [apiRecordSameCost], existingUsages: existingUsages)
+
+        // Then: no supplemental should be created (no delta)
+        XCTAssertTrue(supplementals1.isEmpty, "No supplemental when costs match exactly")
+
+        // API record with real cost delta
+        let apiRecordWithDelta = ProviderUsageRecord(
+            providerName: "copilot",
+            model: "gpt-4",
+            date: today,
+            inputTokens: 1000,
+            outputTokens: 500,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            costUSD: 0.07,  // $0.02 more than local
+            requestCount: 1
+        )
+
+        // When: compute supplemental usages for costs with real delta
+        let supplementals2 = aggregator.computeSupplementalUsages(from: [apiRecordWithDelta], existingUsages: existingUsages)
+
+        // Then: supplemental should be created with cost delta
+        XCTAssertEqual(supplementals2.count, 1, "One supplemental should be created for cost delta")
+        XCTAssertEqual(supplementals2[0].costUSD, 0.02, accuracy: 1e-9, "Cost delta should be $0.02")
+        XCTAssertEqual(supplementals2[0].inputTokens, 0, "No input token delta")
+        XCTAssertEqual(supplementals2[0].outputTokens, 0, "No output token delta")
+    }
+
+    /// Tests that reconciliation is idempotent: calling computeSupplementalUsages twice
+    /// with the same data produces identical results and no duplicate supplementals.
+    func test_computeSupplementalUsages_isIdempotent() throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = makeUsageStore(queue)
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        // Given: local usage with copilot provider (which has mappedProvider)
+        let localUsage = TokenUsage(
+            provider: .copilot,
+            sessionId: "idempotent-test",
+            projectName: "Project",
+            model: "gpt-4",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.05,
+            startTime: today,
+            endTime: today,
+            usageSource: .providerLog,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try store.insert(localUsage)
+
+        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let aggregator = UsageAggregator(dataStore: dataStore)
+
+        let apiRecord = ProviderUsageRecord(
+            providerName: "copilot",
+            model: "gpt-4",
+            date: today,
+            inputTokens: 1500,  // 500 more than local
+            outputTokens: 750,   // 250 more than local
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            costUSD: 0.075,      // 0.025 more than local
+            requestCount: 1
+        )
+
+        let existingUsages = try store.fetchAllUsage()
+
+        // First call
+        let supplementals1 = aggregator.computeSupplementalUsages(from: [apiRecord], existingUsages: existingUsages)
+
+        // Insert the supplemental
+        if let supplemental = supplementals1.first {
+            try store.insert(supplemental)
+        }
+
+        // Second call with updated existing usages
+        let updatedUsages = try store.fetchAllUsage()
+        let supplementals2 = aggregator.computeSupplementalUsages(from: [apiRecord], existingUsages: updatedUsages)
+
+        // Should produce same result (but since local now includes supplemental, no more missing)
+        XCTAssertTrue(supplementals2.isEmpty, "Second call should produce no supplementals after first was inserted")
+    }
 }

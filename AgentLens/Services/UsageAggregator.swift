@@ -306,7 +306,7 @@ final class UsageAggregator {
         await sessionMirror?.syncIfNeeded()
     }
 
-    private func supplementalUsages(
+    fileprivate func supplementalUsages(
         from records: [ProviderUsageRecord],
         existingUsages: [TokenUsage]
     ) -> [TokenUsage] {
@@ -336,8 +336,12 @@ final class UsageAggregator {
             // VAL-PERSIST-012: Cost-only reconciliation deltas are preserved.
             // When reconciliation detects cost drift without positive token deltas,
             // correction behavior must still be deterministic and persist expected cost adjustments.
-            // We include missingCost > 0 so cost-only corrections are not silently dropped.
-            guard missingInput > 0 || missingOutput > 0 || missingCacheRead > 0 || missingCacheWrite > 0 || missingCost > 0 else {
+            // We include missingCost > costEpsilon so cost-only corrections are not silently dropped,
+            // while avoiding phantom micro-corrections from floating-point residue.
+            // costEpsilon = 1e-9 is smaller than any meaningful cost delta ($0.000000001)
+            // but larger than typical floating-point residue (~1e-15 to 1e-16).
+            let costEpsilon = 1e-9
+            guard missingInput > 0 || missingOutput > 0 || missingCacheRead > 0 || missingCacheWrite > 0 || missingCost > costEpsilon else {
                 return nil
             }
 
@@ -375,6 +379,33 @@ final class UsageAggregator {
                 provenanceConfidence: .exact
             )
         }
+    }
+
+    // MARK: - Test Helpers
+
+    /// Test helper: computes supplemental usages for given API records and existing local usages.
+    /// This exposes the private reconciliation pipeline for direct unit testing.
+    /// - Parameters:
+    ///   - records: API usage records to reconcile against
+    ///   - existingUsages: existing local token usages to compare against
+    /// - Returns: array of supplemental TokenUsage rows to insert, or empty if no reconciliation needed
+    internal func computeSupplementalUsages(
+        from records: [ProviderUsageRecord],
+        existingUsages: [TokenUsage]
+    ) -> [TokenUsage] {
+        supplementalUsages(from: records, existingUsages: existingUsages)
+    }
+
+    /// Test helper: checks if a cost delta exceeds the epsilon threshold used to avoid
+    /// phantom micro-corrections from floating-point residue.
+    /// - Parameters:
+    ///   - localCost: the local accumulated cost
+    ///   - apiCost: the API-reported cost
+    /// - Returns: true if the cost delta exceeds epsilon threshold (1e-9)
+    internal static func costDeltaExceedsEpsilon(localCost: Double, apiCost: Double) -> Bool {
+        let missingCost = max(apiCost - localCost, 0)
+        let costEpsilon = 1e-9
+        return missingCost > costEpsilon
     }
 
     private func usageMatches(record: ProviderUsageRecord, usage: TokenUsage) -> Bool {
