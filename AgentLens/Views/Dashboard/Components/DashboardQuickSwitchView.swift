@@ -34,6 +34,28 @@ struct DashboardQuickSwitchView: View {
     @State private var browserLaunchService: SwitcherBrowserLaunchService?
     @State private var cliLaunchService: SwitcherCLILAunchService?
 
+    #if DEBUG
+    /// Test-only: pre-populated error state for view testing.
+    /// When non-nil, the view renders in error state immediately.
+    let testInjectedError: String?
+
+    /// DEBUG-only initializer that allows injecting an error state for testing.
+    /// - Parameters:
+    ///   - dataStore: The data store to use.
+    ///   - onOpenSettings: Callback when settings button is tapped.
+    ///   - testInjectedError: Error message to pre-populate for testing error UI rendering.
+    ///   - skipLoadData: When true, skips calling loadData() in onAppear (for testing error/empty states).
+    init(dataStore: DataStore, onOpenSettings: @escaping () -> Void, testInjectedError: String? = nil, skipLoadData: Bool = false) {
+        self.dataStore = dataStore
+        self.onOpenSettings = onOpenSettings
+        self.testInjectedError = testInjectedError
+        self.skipLoadData = skipLoadData
+    }
+
+    /// When true, loadData() is skipped in onAppear - for testing error/empty states.
+    private let skipLoadData: Bool
+    #endif
+
     private enum SwitchState: Equatable {
         case idle
         case switching
@@ -53,9 +75,9 @@ struct DashboardQuickSwitchView: View {
             // Header
             headerView
 
-            if isLoading {
+            if effectiveIsLoading {
                 loadingView
-            } else if let error = error {
+            } else if let error = effectiveError {
                 errorStateView(message: error)
             } else if profiles.isEmpty {
                 emptyStateView
@@ -70,12 +92,46 @@ struct DashboardQuickSwitchView: View {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
                 .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
         )
+        #if DEBUG
+        .onAppear {
+            if !skipLoadData {
+                loadData()
+            }
+        }
+        #else
         .onAppear(perform: loadData)
+        #endif
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Account Switcher")
         .accessibilityHint("Use to quickly switch between browser and CLI profiles")
         .accessibilityValue(accessibilityAnnouncement ?? "")
     }
+
+    #if DEBUG
+    /// Returns the effective loading state, accounting for test injection.
+    /// When testInjectedError is set, we skip loading and show error state directly.
+    private var effectiveIsLoading: Bool {
+        if testInjectedError != nil {
+            return false
+        }
+        return isLoading
+    }
+
+    /// Returns the effective error, preferring test-injected error over real error.
+    private var effectiveError: String? {
+        testInjectedError ?? error
+    }
+    #else
+    /// Returns the effective loading state (production path - no test injection).
+    private var effectiveIsLoading: Bool {
+        isLoading
+    }
+
+    /// Returns the effective error (production path - no test injection).
+    private var effectiveError: String? {
+        error
+    }
+    #endif
 
     // MARK: - Header
 
