@@ -171,11 +171,17 @@ struct SearchChunkRecord: Identifiable, Equatable, Sendable {
 /// Result of an incremental chunk diff application.
 /// Tracks how many chunks were unchanged, rekeyed (same contentHash, new ID),
 /// added (new contentHash), or deleted (removed contentHash).
+///
+/// With stable chunk identity (m3-fix-unchanged-chunk-identity-stability):
+/// - Rekeyed chunks (same contentHash, different chunkID) are treated as effectively unchanged
+///   and do NOT cause delete+insert writes. The old chunks remain in place.
+/// - Only truly added or deleted contentHashes cause writes.
 struct ChunkDiffResult: Equatable, Sendable {
     /// Chunks with identical contentHash AND chunkID — no writes performed.
     let unchanged: Int
     /// Chunks with same contentHash but different chunkID (sourceVersionID rekey).
-    /// Old rows deleted, new rows inserted; embedding reuse by contentHash.
+    /// With stable chunk identity, these are treated as unchanged and do NOT cause writes.
+    /// Kept for reporting/classification purposes.
     let rekeyed: Int
     /// Chunks with new contentHash not present in existing set — inserted.
     let added: Int
@@ -187,13 +193,14 @@ struct ChunkDiffResult: Equatable, Sendable {
     let newTotal: Int
 
     /// Total number of write operations (inserts + deletes).
+    /// Rekeyed chunks no longer cause writes with stable chunk identity.
     var writeCount: Int {
-        return (rekeyed * 2) + added + (deleted * 2)
+        return added + (deleted * 2)
     }
 
     /// Total number of chunks that were skipped (no writes at all).
     var skippedCount: Int {
-        return unchanged
+        return unchanged + rekeyed
     }
 
     /// Whether this diff was a complete no-op (no writes needed).

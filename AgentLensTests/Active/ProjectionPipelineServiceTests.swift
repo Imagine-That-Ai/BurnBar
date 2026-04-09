@@ -662,7 +662,8 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             if report.leasedJobs == 0 { break }
         }
 
-        // After re-projection, chunk IDs changed but content hashes should be identical
+        // With stable chunk identity, chunk IDs remain stable when content is unchanged.
+        // No delete+insert churn occurs for rekeyed chunks.
         let finalChunks = try store.fetchSearchChunks(documentID: document.id)
         let finalContentHashes = Set(finalChunks.compactMap(\.contentHash))
         XCTAssertEqual(
@@ -670,24 +671,25 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             "Content hashes should be identical when text doesn't change."
         )
 
-        // Chunk IDs should differ (sourceVersionID changed)
+        // Chunk IDs should remain stable (not change) with stable chunk identity
         let initialChunkIDs = Set(initialChunks.map(\.id))
         let finalChunkIDs = Set(finalChunks.map(\.id))
-        XCTAssertNotEqual(initialChunkIDs, finalChunkIDs, "Chunk IDs should change.")
+        XCTAssertEqual(initialChunkIDs, finalChunkIDs, "Chunk IDs should remain stable when content is unchanged.")
 
-        // All new chunks should have embeddings (reused from old chunks via contentHash)
+        // All chunks should have embeddings (reused from old chunks via contentHash)
         let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
         let embeddedChunkIDs = Set(finalEmbeddings.map(\.chunkID))
         XCTAssertEqual(
             embeddedChunkIDs, finalChunkIDs,
-            "All new chunk IDs should have embeddings after re-projection (via reuse)."
+            "All chunk IDs should have embeddings after re-projection (via reuse)."
         )
 
         // The embedding vectors for unchanged content should be identical
         let initialEmbeddingsByID = Dictionary(uniqueKeysWithValues: initialEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
         let finalEmbeddingsByID = Dictionary(uniqueKeysWithValues: finalEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
 
-        // Match by content hash since chunk IDs differ
+        // Verify embeddings are reused correctly by content hash.
+        // With stable chunk IDs, this is straightforward since IDs don't change.
         let initialByHash = Dictionary(grouping: initialChunks, by: \.contentHash)
         for finalChunk in finalChunks {
             guard let hash = finalChunk.contentHash else { continue }
@@ -2233,20 +2235,23 @@ extension ProjectionPipelineServiceTests {
         ]
         let result = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: v2Chunks)
 
+        // With stable chunk identity (m3-fix-unchanged-chunk-identity-stability):
+        // Rekeyed chunks (same contentHash, different chunkID) are treated as effectively unchanged
+        // and no delete+insert writes occur.
         XCTAssertEqual(result.rekeyed, 2, "Both chunks should be classified as rekeyed (same hash, new IDs).")
-        XCTAssertEqual(result.unchanged, 0, "No chunks have identical IDs, so none are unchanged.")
+        XCTAssertEqual(result.unchanged, 2, "Rekeyed chunks are treated as unchanged with stable identity.")
         XCTAssertEqual(result.added, 0, "No new content hashes were added.")
         XCTAssertEqual(result.deleted, 0, "No content hashes were removed.")
-        XCTAssertEqual(result.writeCount, 4, "Rekeyed chunks require 2 deletes + 2 inserts = 4 writes.")
+        XCTAssertEqual(result.writeCount, 0, "Rekeyed chunks should not cause delete+insert writes.")
 
-        // Verify only v2 chunks exist
+        // Verify v1 chunks remain (old chunks are kept, not replaced with v2)
         let storedChunks = try store.fetchSearchChunks(documentID: documentID)
         XCTAssertEqual(storedChunks.count, 2)
         let storedIDs = Set(storedChunks.map(\.id))
-        XCTAssertTrue(storedIDs.contains("chunk-v2-a"))
-        XCTAssertTrue(storedIDs.contains("chunk-v2-b"))
-        XCTAssertFalse(storedIDs.contains("chunk-v1-a"))
-        XCTAssertFalse(storedIDs.contains("chunk-v1-b"))
+        XCTAssertTrue(storedIDs.contains("chunk-v1-a"), "Old v1 chunks should remain.")
+        XCTAssertTrue(storedIDs.contains("chunk-v1-b"), "Old v1 chunks should remain.")
+        XCTAssertFalse(storedIDs.contains("chunk-v2-a"), "V2 chunks should not be inserted (no churn).")
+        XCTAssertFalse(storedIDs.contains("chunk-v2-b"), "V2 chunks should not be inserted (no churn).")
     }
 
     func test_applyChunkDiff_partialEdit_onlyWritesImpactedChunks() throws {
@@ -2383,10 +2388,11 @@ extension ProjectionPipelineServiceTests {
             if report.leasedJobs == 0 { break }
         }
 
-        // Verify final chunks exist with new IDs (rekeyed) but same content hashes
+        // With stable chunk identity, chunk IDs remain stable when content is unchanged.
+        // No delete+insert churn occurs for rekeyed chunks.
         let finalChunks = try store.fetchSearchChunks(documentID: document.id)
         let finalChunkIDs = Set(finalChunks.map(\.id))
-        XCTAssertNotEqual(initialChunkIDs, finalChunkIDs, "Chunk IDs should change due to sourceVersionID change.")
+        XCTAssertEqual(initialChunkIDs, finalChunkIDs, "Chunk IDs should remain stable when content is unchanged (no churn).")
 
         let initialHashes = Set(initialChunks.compactMap(\.contentHash))
         let finalHashes = Set(finalChunks.compactMap(\.contentHash))
