@@ -1,0 +1,34 @@
+{
+  "featureId": "popover-quick-switch-ui",
+  "reviewedAt": "2026-04-09T15:26:06Z",
+  "commitId": "460c2c7babdaa1421ae025445dd307509f60053f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds a new popover switcher view and tests, but the new view is not integrated into the menu bar popover surface, so the user-facing quick-switch flow is not delivered.",
+    "issues": [
+      {
+        "file": "AgentLens/Views/Popover/MenuBarPopoverView.swift",
+        "line": 99,
+        "severity": "blocking",
+        "description": "PopoverQuickSwitchView is never rendered in the popover. The main ScrollView content goes from provider list/Hermes strip directly to action bar without any switcher section, so VAL-POPOVER one-step quick switching is not available to users."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherPopoverUITests.swift",
+        "line": 77,
+        "severity": "non_blocking",
+        "description": "The new test suite primarily validates SwitcherProfileStore and launch services rather than the popover UI component behavior. This leaves gaps in verifying actual view wiring and interaction parity on the menu bar surface."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked skill procedure as followed, but required manual UI sanity checks are not evidenced in the handoff.",
+      "evidence": ".factory/skills/switcher-ui-worker/SKILL.md step 7 requires manual UI sanity checks; handoff file /Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/handoffs/2026-04-09T13-35-02-403Z__popover-quick-switch-ui__e76680fb-d64d-4a53-90ca-0f46e7e4c71f.json has verification.interactiveChecks = [] with skillFeedback.followedProcedure = true."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed: although a popover switcher view was added, it is not connected into MenuBarPopoverView, so the requested popover quick-switch UX is not actually shipped in this feature commit."
+}

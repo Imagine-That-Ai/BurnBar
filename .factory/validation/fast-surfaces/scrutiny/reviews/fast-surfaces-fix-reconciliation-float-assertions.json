@@ -1,0 +1,21 @@
+{
+  "featureId": "fast-surfaces-fix-reconciliation-float-assertions",
+  "reviewedAt": "2026-04-09T15:25:04Z",
+  "commitId": "61153f31059068b8077f5de8f09c303aa004697f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The change is tightly scoped to three floating-point assertions in MultiSourceReconciliationTests and correctly adds XCTest accuracy tolerances without weakening the reconciliation intent being asserted.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The token-accounting-worker skill requires reading AGENTS.md, architecture.md, and user-testing.md before edits, but this worker transcript skeleton does not show explicit reads of those files while still marking followedProcedure=true.",
+      "evidence": "Session 3e039d10-b5b0-4fde-99b3-0fd9319ef63a skeleton lists reads for mission.md, validation-contract.md, MultiSourceReconciliationTests.swift, and validation-state.json; no explicit Read calls for /Users/dewclaw/Documents/Projects/BurnBar/.factory/library/user-testing.md or /Users/dewclaw/Documents/Projects/BurnBar/.factory/library/architecture.md."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review passed. The fix addresses the original floating-point precision failures by using accuracy-based assertions on cost deltas/totals, preserving the intended reconciliation contracts. No actionable code defects were found in the feature diff."
+}

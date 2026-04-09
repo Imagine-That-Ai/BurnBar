@@ -1,0 +1,45 @@
+{
+  "featureId": "dashboard-quick-switch-ui",
+  "reviewedAt": "2026-04-09T15:26:21Z",
+  "commitId": "47ddaf6ec2a7bc3a155eae816b27089519e69aed",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The reviewed commit correctly wires SwitcherDashboardUITests into the Xcode target, but the dashboard quick-switch implementation still misses key acceptance behavior for error recovery and accessibility announcements.",
+    "issues": [
+      {
+        "file": "AgentLens/Views/Dashboard/Components/DashboardQuickSwitchView.swift",
+        "line": 56,
+        "severity": "blocking",
+        "description": "Load failures are not surfaced in the UI: `loadData()` sets `error` on failure (line 518), but the render path only branches on `isLoading` and `profiles.isEmpty` (lines 54-58), so users fall into empty state instead of an actionable error/retry state required by robust empty/loading/error recovery." 
+      },
+      {
+        "file": "AgentLens/Views/Dashboard/Components/DashboardQuickSwitchView.swift",
+        "line": 632,
+        "severity": "blocking",
+        "description": "Accessibility state announcements are not implemented. `announceForAccessibility` is a no-op placeholder on macOS, so switch/launch success and failure announcements are never actually posted despite VAL-DASH-008 requirements." 
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherDashboardUITests.swift",
+        "line": 83,
+        "severity": "non_blocking",
+        "description": "Most tests labeled as dashboard UI coverage validate store/service behavior only (for example `test_dashboardQuickSwitchControl_isVisible` and `test_accessibility_labels_present`) and do not exercise `DashboardQuickSwitchView`, reducing confidence that UI semantics and accessibility behavior are truly verified." 
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked `skillFeedback.followedProcedure` true, but required manual UI sanity checks from the switcher-ui-worker procedure were not performed/documented.",
+      "evidence": ".factory/skills/switcher-ui-worker/SKILL.md step 7 requires manual UI sanity checks; handoff verification in /Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/handoffs/2026-04-09T13-19-07-438Z__dashboard-quick-switch-ui__654ea300-0925-4c99-a5de-164a7cbdb278.json shows `interactiveChecks: []`."
+    },
+    {
+      "area": "skills",
+      "observation": "Handoff discipline in the skill requires context-read evidence in `verification.commandsRun` before setting `followedProcedure: true`, but this handoff includes only test/git commands.",
+      "evidence": "SKILL.md section 'Context Read Evidence for followedProcedure=true' requires content-read command evidence; the same handoff's `verification.commandsRun` lists only xcodebuild/tests/git rev-parse and no mission/AGENTS/context read command outputs."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed transcript skeleton and commit 47ddaf6e diff. Commit adds test target membership, but feature acceptance still fails due to missing actionable error-state rendering and no-op accessibility announcements in DashboardQuickSwitchView."
+}
