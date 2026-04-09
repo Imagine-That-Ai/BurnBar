@@ -102,6 +102,7 @@ final class DataStore {
     let checkpointStore: ParserCheckpointStore
     let remoteSyncWatermarkStore: RemoteSyncWatermarkStore
     let switcherStore: SwitcherProfileStore
+    let backfillCursorStore: BackfillCursorStore
 
     private(set) var usages: [TokenUsage] = []
     private(set) var isLoading = false
@@ -426,6 +427,7 @@ final class DataStore {
         checkpointStore = ParserCheckpointStore(dbQueue: databaseQueue)
         remoteSyncWatermarkStore = RemoteSyncWatermarkStore(dbQueue: databaseQueue)
         switcherStore = SwitcherProfileStore(dbQueue: databaseQueue)
+        backfillCursorStore = BackfillCursorStore(dbQueue: databaseQueue)
 
         if runMigrations {
             try database.runMigrations()

@@ -937,6 +937,28 @@ final class OpenBurnBarDatabase {
             )
         }
 
+        migrator.registerMigration("v33_backfill_cursors") { db in
+            // Tracks historical backfill cursor state per provider for monotonic window progression.
+            //
+            // VAL-PERSIST-006: Backfill run is bounded to 7-day window.
+            // VAL-PERSIST-007: Backfill cursor progresses monotonically across runs.
+            //
+            // The lastProcessedWindowUpperBound is the exclusive upper bound of the last
+            // successfully processed 7-day window. New backfill starts from this point.
+            try db.create(table: "backfill_cursors") { t in
+                t.column("provider", .text).primaryKey()
+                t.column("lastProcessedWindowUpperBound", .datetime)
+                t.column("earliestSourceDate", .datetime)
+                t.column("updatedAt", .datetime).notNull()
+                t.column("version", .integer).notNull().defaults(to: 1)
+            }
+            try db.create(
+                index: "backfill_cursors_provider_idx",
+                on: "backfill_cursors",
+                columns: ["provider"]
+            )
+        }
+
         return migrator
     }
 
