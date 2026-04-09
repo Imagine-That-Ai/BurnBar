@@ -315,6 +315,218 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         XCTAssertEqual(try store.fetchEmbeddingVersions(modelID: modelID).first?.isActive, true)
     }
 
+    // MARK: - Gap Repair Deterministic Tests (VAL-INDEX-003)
+
+    func test_gapRepair_enqueuesOnlyStaleConversations_skipsNonStale() async throws {
+        // VAL-INDEX-003: Scheduled reconciliation must detect and index only stale gaps,
+        // not trigger blanket full rebuild.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(dataStore: store, leaseOwner: "worker-gap-repair")
+        let base = Date(timeIntervalSince1970: 1_742_600_000)
+
+        // Create three conversations and project them to create indexed search documents
+        let staleConv = makeConversation(
+            id: "conv-stale",
+            fullText: "Original content for stale conversation.",
+            indexedAt: base
+        )
+        let nonStaleConv1 = makeConversation(
+            id: "conv-nonstale-1",
+            fullText: "Content that will NOT change after indexing.",
+            indexedAt: base
+        )
+        let nonStaleConv2 = makeConversation(
+            id: "conv-nonstale-2",
+            fullText: "More content that remains stable.",
+            indexedAt: base
+        )
+        try store.upsertConversation(staleConv)
+        try store.upsertConversation(nonStaleConv1)
+        try store.upsertConversation(nonStaleConv2)
+
+        // Project all three conversations — this creates search_documents with content hashes.
+        // Use a high maxJobs to ensure the initial backfill rebuild + projections + reembed
+        // are all fully drained in one or two sweeps.
+        try store.enqueueConversationProjectionJob(conversationID: staleConv.id, jobType: .project, now: base)
+        try store.enqueueConversationProjectionJob(conversationID: nonStaleConv1.id, jobType: .project, now: base)
+        try store.enqueueConversationProjectionJob(conversationID: nonStaleConv2.id, jobType: .project, now: base)
+
+        // Drain the queue completely (backfill rebuild may generate extra jobs)
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        // Verify all three are indexed
+        let indexedDocs = try store.fetchSearchDocuments(
+            limit: 10,
+            sourceKinds: [.conversation]
+        )
+        XCTAssertEqual(indexedDocs.count, 3, "All three conversations should be indexed after initial projection.")
+
+        // Simulate missed events: staleConv gets updated (fullText changed) but index not refreshed
+        let updatedStaleConv = ConversationRecord(
+            id: staleConv.id,
+            provider: staleConv.provider,
+            sessionId: staleConv.sessionId,
+            projectName: staleConv.projectName,
+            startTime: staleConv.startTime,
+            endTime: base.addingTimeInterval(120),
+            messageCount: 8,
+            userWordCount: 40,
+            assistantWordCount: 80,
+            keyFiles: ["DataStore.swift", "SearchService.swift"],
+            keyCommands: ["swift test", "swift build"],
+            keyTools: ["Read", "Edit"],
+            inferredTaskTitle: "Updated Task Title",
+            lastAssistantMessage: "Updated assistant message.",
+            fullText: "Updated content for stale conversation with new data appended.",
+            indexedAt: staleConv.indexedAt,
+            fileModifiedAt: base.addingTimeInterval(120),
+            summary: nil,
+            summaryTitle: nil,
+            summaryUpdatedAt: nil,
+            summaryProvider: nil,
+            summaryModel: nil,
+            sourceType: staleConv.sourceType
+        )
+        try store.upsertConversation(updatedStaleConv)
+
+        // nonStaleConv1 and nonStaleConv2 remain unchanged — they should NOT be re-enqueued
+
+        // Record the stale hash before gap repair to confirm it was different
+        let staleDocBeforeRepair = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleConv.id).first
+        XCTAssertNotNil(staleDocBeforeRepair, "Stale conversation should still have an indexed document.")
+        let staleHashBeforeRepair = staleDocBeforeRepair?.contentHash ?? ""
+        let expectedNewHash = ProjectionIdentity.conversationContentHash(for: updatedStaleConv)
+        XCTAssertNotEqual(
+            staleHashBeforeRepair, expectedNewHash,
+            "Content hash must differ to simulate a real missed-event gap."
+        )
+
+        // Clear any remaining queued jobs from initial projection to isolate gap repair results
+        let pendingBefore = try store.fetchProjectionJobs(statuses: [.queued, .failed], limit: 50)
+        XCTAssertTrue(pendingBefore.isEmpty, "Queue should be empty before gap repair sweep.")
+
+        // Record completed job count before gap repair sweep
+        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
+
+        // Trigger sweep — gap repair runs at the start of runSweep before processing queued jobs.
+        // The sweep will both detect the stale gap (enqueue reproject) and process it within
+        // the same sweep, so we verify via completed job delta and hash update.
+        let repairReport = try await service.runSweep(maxJobs: 20)
+
+        // Verify that exactly one new job was completed (the gap repair reproject)
+        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
+        let newCompletedCount = completedAfter - completedBefore
+        XCTAssertEqual(newCompletedCount, 1, "Gap repair should have completed exactly one new reproject job for the stale conversation.")
+
+        // Verify the completed job was a reproject for the stale conversation
+        let recentlyCompleted = try store.fetchProjectionJobs(statuses: [.completed], limit: 200)
+        let staleReprojectCompleted = recentlyCompleted.filter {
+            $0.sourceID == staleConv.id && $0.jobType == .reproject
+            && $0.sourceVersionID == ProjectionIdentity.conversationSourceVersionID(for: updatedStaleConv)
+        }
+        XCTAssertEqual(staleReprojectCompleted.count, 1, "Stale conversation should have exactly one completed reproject job with the updated source version.")
+
+        // No queued jobs should remain
+        let queuedAfterRepair = try store.fetchProjectionJobs(statuses: [.queued], limit: 50)
+        XCTAssertTrue(queuedAfterRepair.isEmpty, "No queued jobs should remain after gap repair sweep.")
+
+        // Verify the stale document was updated with the new hash
+        let staleDocAfterRepair = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleConv.id).first
+        XCTAssertNotNil(staleDocAfterRepair, "Stale conversation document should exist after reproject.")
+        XCTAssertEqual(
+            staleDocAfterRepair?.contentHash,
+            expectedNewHash,
+            "Stale document content hash should be updated to match current conversation."
+        )
+        XCTAssertNotEqual(
+            staleHashBeforeRepair,
+            staleDocAfterRepair?.contentHash,
+            "Content hash must have changed after gap repair reproject."
+        )
+
+        // Confirm non-stale documents were NOT rewritten
+        let nonStale1Doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: nonStaleConv1.id).first
+        let nonStale1Record = try store.fetchConversation(id: nonStaleConv1.id)
+        XCTAssertNotNil(nonStale1Record)
+        XCTAssertEqual(
+            nonStale1Doc?.contentHash,
+            ProjectionIdentity.conversationContentHash(for: nonStale1Record!),
+            "Non-stale document 1 hash should still match source (was never rewritten)."
+        )
+
+        let nonStale2Doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: nonStaleConv2.id).first
+        let nonStale2Record = try store.fetchConversation(id: nonStaleConv2.id)
+        XCTAssertNotNil(nonStale2Record)
+        XCTAssertEqual(
+            nonStale2Doc?.contentHash,
+            ProjectionIdentity.conversationContentHash(for: nonStale2Record!),
+            "Non-stale document 2 hash should still match source (was never rewritten)."
+        )
+
+        // Confirm no additional gap-repair reproject jobs exist for non-stale conversations
+        let nonStale1ReprojectCompleted = recentlyCompleted.filter {
+            $0.sourceID == nonStaleConv1.id && $0.jobType == .reproject && $0.priority == 3
+        }
+        let nonStale2ReprojectCompleted = recentlyCompleted.filter {
+            $0.sourceID == nonStaleConv2.id && $0.jobType == .reproject && $0.priority == 3
+        }
+        XCTAssertTrue(nonStale1ReprojectCompleted.isEmpty, "Non-stale conversation 1 should never have a gap-repair reproject job.")
+        XCTAssertTrue(nonStale2ReprojectCompleted.isEmpty, "Non-stale conversation 2 should never have a gap-repair reproject job.")
+    }
+
+    func test_gapRepair_doesNotReprojectWhenAllConversationsAreCurrent() async throws {
+        // VAL-INDEX-003: When no gaps exist, gap repair should be a no-op (zero enqueues).
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(dataStore: store, leaseOwner: "worker-no-gap")
+        let base = Date(timeIntervalSince1970: 1_742_610_000)
+
+        let conv1 = makeConversation(id: "conv-current-1", fullText: "Content A", indexedAt: base)
+        let conv2 = makeConversation(id: "conv-current-2", fullText: "Content B", indexedAt: base)
+        try store.upsertConversation(conv1)
+        try store.upsertConversation(conv2)
+
+        // Project both
+        try store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
+        try store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
+
+        // Drain the queue completely (backfill rebuild generates extra jobs beyond the 2 project jobs)
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        // Verify both are indexed
+        let indexedDocs = try store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
+        XCTAssertEqual(indexedDocs.count, 2, "Both conversations should be indexed.")
+
+        // No source data changes — conversations remain identical to indexed state
+        // Record completed count before running the no-gap sweep
+        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
+
+        // Run another sweep; gap repair should produce zero new jobs
+        let noGapReport = try await service.runSweep(maxJobs: 20)
+
+        // No queued gap-repair jobs should exist (priority 3 reproject = gap repair)
+        let queuedJobs = try store.fetchProjectionJobs(statuses: [.queued], limit: 50)
+        let repairJobs = queuedJobs.filter { $0.jobType == .reproject && $0.priority == 3 }
+        XCTAssertTrue(
+            repairJobs.isEmpty,
+            "Gap repair should not enqueue any reproject jobs when all conversations are current."
+        )
+
+        // No new completed jobs should have been added (sweep was a no-op)
+        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
+        XCTAssertEqual(
+            completedAfter, completedBefore,
+            "No new jobs should be completed when all conversations are current and queue is drained."
+        )
+    }
+
     func test_timestampNormalization_convertsMillisecondEpochToSeconds() {
         let milliseconds = 1_774_329_122_146.0
         let normalized = TimestampNormalizationUtility.normalizedEpochSeconds(milliseconds)
