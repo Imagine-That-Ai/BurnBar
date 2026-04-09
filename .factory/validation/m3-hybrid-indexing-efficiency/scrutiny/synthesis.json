@@ -1,6 +1,6 @@
 {
   "milestone": "m3-hybrid-indexing-efficiency",
-  "round": 2,
+  "round": 3,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,46 +20,57 @@
     }
   },
   "reviewsSummary": {
-    "total": 3,
-    "passed": 2,
-    "failed": 1,
+    "total": 2,
+    "passed": 0,
+    "failed": 2,
     "failedFeatures": [
-      "m3-fix-true-incremental-chunk-persistence"
+      "m3-fix-unchanged-chunk-identity-stability",
+      "m3-fix-partial-edit-minimal-write-test-determinism"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "m3-fix-true-incremental-chunk-persistence",
+      "featureId": "m3-fix-unchanged-chunk-identity-stability",
       "severity": "blocking",
-      "description": "Chunk identity remains coupled to sourceVersionID in ProjectionPipelineService, so source-version updates rekey unchanged chunks and prevent true unchanged-skip persistence for small edits."
+      "description": "Fix-session commit traceability points to switcher-only commit 81ac876; no chunk/indexing production diff was provided to address prior m3-fix-true-incremental-chunk-persistence blocking findings."
     },
     {
-      "featureId": "m3-fix-true-incremental-chunk-persistence",
+      "featureId": "m3-fix-unchanged-chunk-identity-stability",
       "severity": "blocking",
-      "description": "SearchIndexStore.applyChunkDiff still performs delete+insert churn for unchanged-content chunks when IDs are rekeyed, so full chunk-set rewrite behavior remains under source-version changes."
+      "description": "Prior failing SearchIndexStore.applyChunkDiff/Projection persistence paths remain unresolved in the reviewed fix evidence; the assigned fix commit does not modify those code paths."
+    },
+    {
+      "featureId": "m3-fix-partial-edit-minimal-write-test-determinism",
+      "severity": "blocking",
+      "description": "Commit 415399b is test-only and does not remediate production-path blockers from the prior failed review for m3-fix-true-incremental-chunk-persistence."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "indexing-efficiency-worker skill",
-      "suggestion": "Require explicit retrieval-eval evidence (or documented deviation) whenever projection/retrieval outputs change; handoff verification should list scripts/test-openburnbar-retrieval-evals.sh when required.",
-      "evidence": "Fix review m3-fix-gap-repair-pagination-and-delete-purge found projection-path changes but handoff commands omitted retrieval eval despite the skill requirement.",
+      "suggestion": "Require verifiable startup-read evidence (mission.md, AGENTS.md, architecture.md, user-testing.md) before allowing followedProcedure=true in handoff skill feedback.",
+      "evidence": "Both fix reviews reported missing required startup reads in transcript skeletons while procedure adherence was reported as followed.",
       "isSystemic": true
     },
     {
-      "target": "indexing-efficiency-worker skill",
-      "suggestion": "Enforce mandatory startup-read evidence for required files (including .factory/library/user-testing.md) before allowing followedProcedure=true in skill feedback.",
-      "evidence": "Fix review m3-fix-true-incremental-chunk-persistence found no user-testing.md read in transcript skeleton while handoff marked followedProcedure=true.",
-      "isSystemic": true
+      "target": "AGENTS.md",
+      "suggestion": "Add a handoff traceability rule requiring feature commit IDs to match feature scope and reviewed diff surface.",
+      "evidence": "Review of m3-fix-unchanged-chunk-identity-stability found handoff commitId 81ac876 mapping to switcher files instead of indexing/chunk persistence files.",
+      "isSystemic": false
     },
     {
-      "target": "validation-contract",
-      "suggestion": "Resolve the mismatch between unchanged-chunk persistence expectations and source-version-coupled chunk IDs by either revising VAL-INDEX-004/005 contract language or requiring a chunk identity redesign.",
-      "evidence": "Fix review m3-fix-true-incremental-chunk-persistence still fails because architecture couples chunk IDs to sourceVersionID, which conflicts with untouched-ID persistence expectations.",
+      "target": ".factory/library/architecture.md",
+      "suggestion": "Refresh shared architecture notes so milestone-relevant indexing/projection context is represented alongside switcher architecture notes.",
+      "evidence": "Reviewer observation noted architecture library content skewed toward switcher topics during m3 indexing scrutiny.",
       "isSystemic": false
     }
   ],
-  "rejectedObservations": [],
-  "previousRound": ".factory/validation/m3-hybrid-indexing-efficiency/scrutiny/synthesis.round1.json"
+  "rejectedObservations": [
+    {
+      "observation": "Duplicate skill-adherence observation from second fix review.",
+      "reason": "duplicate"
+    }
+  ],
+  "previousRound": ".factory/validation/m3-hybrid-indexing-efficiency/scrutiny/synthesis.round2.json"
 }

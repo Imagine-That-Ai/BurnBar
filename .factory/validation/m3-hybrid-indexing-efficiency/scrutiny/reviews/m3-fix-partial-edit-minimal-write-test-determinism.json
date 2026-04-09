@@ -1,0 +1,28 @@
+{
+  "featureId": "m3-fix-partial-edit-minimal-write-test-determinism",
+  "reviewedAt": "2026-04-09T10:30:41Z",
+  "commitId": "415399b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix commit stabilizes one flaky test fixture by switching to a proven text pattern, but it does not remediate the blocking issues called out in the prior failed review for m3-fix-true-incremental-chunk-persistence. The original failure was about production incremental-persistence semantics; this commit changes only test data/comments in ProjectionPipelineServiceTests.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/ProjectionPipelineServiceTests.swift",
+        "line": 2418,
+        "severity": "blocking",
+        "description": "Commit 415399b only updates the test fixture (repeating phrase/suffix and assertion messaging) for test_incrementalChunkPersistence_partialTextChange_minimalWrites. It does not modify the production files implicated in the prior failure (ProjectionPipelineService.swift and SearchIndexStore.swift in review m3-fix-true-incremental-chunk-persistence), so this fix alone is insufficient to claim the original failure is resolved."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Skill adherence reporting appears inaccurate for this worker run.",
+      "evidence": "indexing-efficiency-worker requires reading mission.md, AGENTS.md, architecture.md, and user-testing.md in step 1, but transcript grep for session 1535ccca-d9a1-4c81-8e43-bc44562d51e9 shows mission.md and services.yaml reads only (no AGENTS.md, architecture.md, or user-testing.md), while handoff.skillFeedback.followedProcedure is true."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/m3-hybrid-indexing-efficiency/scrutiny/reviews/m3-fix-true-incremental-chunk-persistence.json",
+  "summary": "Fail. The reviewed fix improves determinism of one minimal-write test, but based on the two reviewed diffs it does not address the original prior-review blocking findings, which were in production incremental-persistence paths rather than this test fixture."
+}

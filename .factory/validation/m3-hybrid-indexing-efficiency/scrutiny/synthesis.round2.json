@@ -1,0 +1,65 @@
+{
+  "milestone": "m3-hybrid-indexing-efficiency",
+  "round": 2,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 2,
+    "failed": 1,
+    "failedFeatures": [
+      "m3-fix-true-incremental-chunk-persistence"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "m3-fix-true-incremental-chunk-persistence",
+      "severity": "blocking",
+      "description": "Chunk identity remains coupled to sourceVersionID in ProjectionPipelineService, so source-version updates rekey unchanged chunks and prevent true unchanged-skip persistence for small edits."
+    },
+    {
+      "featureId": "m3-fix-true-incremental-chunk-persistence",
+      "severity": "blocking",
+      "description": "SearchIndexStore.applyChunkDiff still performs delete+insert churn for unchanged-content chunks when IDs are rekeyed, so full chunk-set rewrite behavior remains under source-version changes."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "indexing-efficiency-worker skill",
+      "suggestion": "Require explicit retrieval-eval evidence (or documented deviation) whenever projection/retrieval outputs change; handoff verification should list scripts/test-openburnbar-retrieval-evals.sh when required.",
+      "evidence": "Fix review m3-fix-gap-repair-pagination-and-delete-purge found projection-path changes but handoff commands omitted retrieval eval despite the skill requirement.",
+      "isSystemic": true
+    },
+    {
+      "target": "indexing-efficiency-worker skill",
+      "suggestion": "Enforce mandatory startup-read evidence for required files (including .factory/library/user-testing.md) before allowing followedProcedure=true in skill feedback.",
+      "evidence": "Fix review m3-fix-true-incremental-chunk-persistence found no user-testing.md read in transcript skeleton while handoff marked followedProcedure=true.",
+      "isSystemic": true
+    },
+    {
+      "target": "validation-contract",
+      "suggestion": "Resolve the mismatch between unchanged-chunk persistence expectations and source-version-coupled chunk IDs by either revising VAL-INDEX-004/005 contract language or requiring a chunk identity redesign.",
+      "evidence": "Fix review m3-fix-true-incremental-chunk-persistence still fails because architecture couples chunk IDs to sourceVersionID, which conflicts with untouched-ID persistence expectations.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/m3-hybrid-indexing-efficiency/scrutiny/synthesis.round1.json"
+}
