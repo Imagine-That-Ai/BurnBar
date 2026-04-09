@@ -1,0 +1,22 @@
+{
+  "featureId": "m3-fix-offset-pagination-deterministic-tiebreakers",
+  "reviewedAt": "2026-04-09T05:55:34Z",
+  "commitId": "969e8c5",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "This fix commit directly addresses the prior blocking failure from m3-indexing-reliability-recovery-and-requeue by adding deterministic id-based tie-breakers to all offset-paginated query paths involved in rebuild/re-embed/gap-repair traversal. Compared with the original failing commit (66924a8), the previously non-deterministic ORDER BY clauses now include id ASC in ConversationStore, SearchIndexStore (both offset overloads), and ArtifactStore, which removes row-order ambiguity under timestamp ties.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/ProjectionPipelineServiceTests.swift",
+        "line": 2612,
+        "severity": "non_blocking",
+        "description": "The new rebuild/re-embed/gap-repair tie-collision tests use fixture sizes below the production page size (1000), so those specific flow tests do not traverse multiple pages. Multi-page behavior is exercised by test_offsetPagination_traversalYieldsCompleteSet_noSkipsNoDuplicates, but only for conversation pagination. Consider adding >1000 fixtures (or injectable page-size seams) for search document/artifact pagination to harden boundary coverage."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": ".factory/validation/m3-hybrid-indexing-efficiency/scrutiny/reviews/m3-indexing-reliability-recovery-and-requeue.json",
+  "summary": "Reviewed transcript skeleton, handoff, prior failed review, and both diffs (66924a8 and 969e8c5). Deterministic pagination tie-breakers are now implemented on all offset query paths cited in the original blocking finding, so the fix adequately addresses the failure; remaining note is a non-blocking boundary-coverage gap in specific new tests."
+}

@@ -1,6 +1,6 @@
 {
   "milestone": "m3-hybrid-indexing-efficiency",
-  "round": 1,
+  "round": 2,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,76 +20,46 @@
     }
   },
   "reviewsSummary": {
-    "total": 5,
+    "total": 3,
     "passed": 2,
-    "failed": 3,
+    "failed": 1,
     "failedFeatures": [
-      "m3-event-driven-indexing-and-gap-repair-core",
-      "m3-chunk-diff-and-embedding-efficiency-guards",
-      "m3-indexing-reliability-recovery-and-requeue"
+      "m3-fix-true-incremental-chunk-persistence"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "m3-event-driven-indexing-and-gap-repair-core",
+      "featureId": "m3-fix-true-incremental-chunk-persistence",
       "severity": "blocking",
-      "description": "Gap repair inspects only the first 1000 conversation documents per sweep (no pagination), so stale records outside that slice may never be reconciled."
+      "description": "Chunk identity remains coupled to sourceVersionID in ProjectionPipelineService, so source-version updates rekey unchanged chunks and prevent true unchanged-skip persistence for small edits."
     },
     {
-      "featureId": "m3-event-driven-indexing-and-gap-repair-core",
+      "featureId": "m3-fix-true-incremental-chunk-persistence",
       "severity": "blocking",
-      "description": "Gap repair skips missing-source conversations instead of purging stale search artifacts, so missed delete events can leave stale indexed data."
-    },
-    {
-      "featureId": "m3-chunk-diff-and-embedding-efficiency-guards",
-      "severity": "blocking",
-      "description": "Projection still calls replace-all chunk persistence paths (`replaceSearchChunks` / `replaceChunks`) that rewrite full document chunk sets, so unchanged chunks are not actually skipped at persistence/index level."
-    },
-    {
-      "featureId": "m3-indexing-reliability-recovery-and-requeue",
-      "severity": "blocking",
-      "description": "New offset pagination queries order only by non-unique timestamp expressions; without deterministic tie-breakers, page traversal can skip or duplicate rows."
+      "description": "SearchIndexStore.applyChunkDiff still performs delete+insert churn for unchanged-content chunks when IDs are rekeyed, so full chunk-set rewrite behavior remains under source-version changes."
     }
   ],
-  "appliedUpdates": [
-    {
-      "target": "library",
-      "description": "Updated .factory/library/architecture.md with projection sweep test semantics, chunk identity source-version coupling, and deterministic tie-break requirements for offset pagination.",
-      "sourceFeature": "m3-gap-repair-deterministic-test-hardening, m3-chunk-diff-and-embedding-efficiency-guards, m3-indexing-reliability-recovery-and-requeue"
-    }
-  ],
+  "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "indexing-efficiency-worker skill",
-      "suggestion": "Enforce required startup reads and truthful procedure reporting: if `.factory/library/user-testing.md` is required, transcript evidence should be mandatory before `followedProcedure=true` is accepted.",
-      "evidence": "Two reviews (m3-indexing-reliability-recovery-and-requeue and m3-cross-surface-upgrade-and-refresh-efficiency) found no `user-testing.md` read in transcript skeletons while handoffs reported procedure followed.",
+      "suggestion": "Require explicit retrieval-eval evidence (or documented deviation) whenever projection/retrieval outputs change; handoff verification should list scripts/test-openburnbar-retrieval-evals.sh when required.",
+      "evidence": "Fix review m3-fix-gap-repair-pagination-and-delete-purge found projection-path changes but handoff commands omitted retrieval eval despite the skill requirement.",
       "isSystemic": true
     },
     {
       "target": "indexing-efficiency-worker skill",
-      "suggestion": "Clarify allowed deviation handling when strict TDD-first and retrieval-eval steps are not practical (for example flaky deterministic tests): require explicit deviation notes and alternative evidence rather than silent omission.",
-      "evidence": "m3-event-driven-indexing-and-gap-repair-core review observed missing red/green and retrieval-eval evidence despite skill requiring both for projection changes.",
+      "suggestion": "Enforce mandatory startup-read evidence for required files (including .factory/library/user-testing.md) before allowing followedProcedure=true in skill feedback.",
+      "evidence": "Fix review m3-fix-true-incremental-chunk-persistence found no user-testing.md read in transcript skeleton while handoff marked followedProcedure=true.",
       "isSystemic": true
-    },
-    {
-      "target": "indexing-efficiency-worker skill",
-      "suggestion": "Require concrete write-amplification/skip counters in verification output when feature scope claims incremental indexing efficiency gains.",
-      "evidence": "m3-chunk-diff-and-embedding-efficiency-guards review noted skill-level counter evidence was absent from handoff despite explicit requirement.",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Standardize worker handoff schema expectations for `skillFeedback` presence so scrutiny reviewers can audit procedure compliance consistently.",
-      "evidence": "m3-event-driven-indexing-and-gap-repair-core handoff omitted `skillFeedback`, while other milestone handoffs included it.",
-      "isSystemic": false
     },
     {
       "target": "validation-contract",
-      "suggestion": "Align VAL-INDEX-004/005 wording with current chunk identity design (chunk IDs include sourceVersionID) or explicitly require a chunk ID model redesign for untouched-ID preservation semantics.",
-      "evidence": "m3-chunk-diff-and-embedding-efficiency-guards review found contract/test expectations around untouched chunk persistence conflict with source-version-coupled chunk identity behavior.",
+      "suggestion": "Resolve the mismatch between unchanged-chunk persistence expectations and source-version-coupled chunk IDs by either revising VAL-INDEX-004/005 contract language or requiring a chunk identity redesign.",
+      "evidence": "Fix review m3-fix-true-incremental-chunk-persistence still fails because architecture couples chunk IDs to sourceVersionID, which conflicts with untouched-ID persistence expectations.",
       "isSystemic": false
     }
   ],
   "rejectedObservations": [],
-  "previousRound": null
+  "previousRound": ".factory/validation/m3-hybrid-indexing-efficiency/scrutiny/synthesis.round1.json"
 }
