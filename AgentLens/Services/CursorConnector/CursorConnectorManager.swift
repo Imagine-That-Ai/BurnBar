@@ -1155,9 +1155,10 @@ final class CursorConnectorManager {
                         completion = available_for_in_out - prompt
                     elif prompt + completion < available_for_in_out:
                         completion += available_for_in_out - (prompt + completion)
-            elif prompt_char_estimate + output_char_estimate > 0:
+            elif prompt == 0 and completion == 0 and cache_creation == 0 and cache_read == 0 and reasoning_tokens == 0 and prompt_char_estimate + output_char_estimate > 0:
                 # Fallback: character-based estimation only when NO total_tokens and NO token buckets.
-                # This is true fallback mode - we have no usage data to work with.
+                # VAL-TOKEN-004 / VAL-TOKEN-006: Explicit reasoning_tokens are exact usage data;
+                # fallback must NOT run when any exact bucket (including reasoning) is present.
                 if prompt_char_estimate > 0:
                     prompt = max(int(round(prompt_char_estimate / 3.35)), 1)
                 if output_char_estimate > 0:
