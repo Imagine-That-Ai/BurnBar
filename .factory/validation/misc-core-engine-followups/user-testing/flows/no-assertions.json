@@ -1,0 +1,14 @@
+{
+  "milestone": "misc-core-engine-followups",
+  "groupId": "no-assertions",
+  "testedAt": "2026-04-09T12:06:46.362294+00:00",
+  "assertionsTested": [],
+  "status": "pass",
+  "passedAssertions": [],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "toolsUsed": [],
+  "frictions": [],
+  "blockers": [],
+  "summary": "No testable assertions were assigned for this flow group, so no UI or API flow execution was required."
+}
