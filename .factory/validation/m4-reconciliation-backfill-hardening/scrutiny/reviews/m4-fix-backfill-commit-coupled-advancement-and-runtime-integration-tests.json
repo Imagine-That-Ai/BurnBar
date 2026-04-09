@@ -1,45 +1,34 @@
 {
   "featureId": "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests",
-  "reviewedAt": "2026-04-09T22:50:02Z",
-  "commitId": "847ecd852d89328dc1ff7bb6e17fc7c4a8949f23",
+  "reviewedAt": "2026-04-09T23:25:38Z",
+  "commitId": "c5f49cd3df2943ba8a51f6eb152422c05af7790c",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "fail",
   "codeReview": {
-    "summary": "Reviewed feature commit `847ecd852d89328dc1ff7bb6e17fc7c4a8949f23` and original failed feature commit `ae68a630f8999a62eec523b99a49bec6203a1613` from prior review. The commit-coupled gating in `UsageAggregator.refreshAll` is present, but the runtime execution coverage blocker is not fully addressed because the added test is source-text scanning rather than runtime execution of the refresh/backfill coexistence path.",
+    "summary": "The rerun removed source-text scanning and added runtime-invoked refreshAll tests, but the new assertions do not prove the required commit-coupled advancement semantics end-to-end. The success-path test is non-discriminating, and the failure-path test can pass without demonstrating that refreshAll skipped runScheduledBackfillIfNeeded due to persistence failure.",
     "issues": [
       {
         "file": "AgentLensTests/Active/BackfillSchedulerTests.swift",
-        "line": 565,
+        "line": 594,
         "severity": "blocking",
-        "description": "`test_refreshAll_guardCondition_isPresent` verifies behavior by reading `UsageAggregator.swift` and string-matching guard text instead of executing `UsageAggregator.refreshAll()` with persistence success/failure outcomes. This does not satisfy the required runtime integration coverage for refreshAll/runScheduledBackfillIfNeeded coexistence behavior."
-      },
-      {
-        "file": "AgentLens/Services/DataStore/BackfillCursorStore.swift",
-        "line": 118,
-        "severity": "blocking",
-        "description": "The original failed feature commit (`ae68a630f8999a62eec523b99a49bec6203a1613`) retains negative-epsilon tolerance (`>= -monotonicEpsilon`, epsilon `0.001`) rather than strict no-backward semantics required by the original failed feature spec. Combined with missing runtime coverage in this fix feature, the runtime execution coverage blocker is not fully resolved across the two reviewed feature diffs."
+        "description": "`test_refreshAll_withSuccessfulPersistence_allowsCursorAdvance` only asserts cursor existence (`XCTAssertNotNil(finalCursor)`), but the cursor is already created before `refreshAll()`. This does not validate that `runScheduledBackfillIfNeeded()` actually advanced the cursor on successful persistence, so the required success-path behavior is unproven."
       },
       {
         "file": "AgentLensTests/Active/BackfillSchedulerTests.swift",
-        "line": 571,
-        "severity": "non_blocking",
-        "description": "The test uses an absolute developer-specific path (`/Users/dewclaw/Documents/Projects/BurnBar/...`), which is brittle across different machines/workspaces."
+        "line": 626,
+        "severity": "blocking",
+        "description": "`test_refreshAll_withPersistenceFailure_preventsCursorAdvance` makes the DB read-only and then infers guard behavior from unchanged cursor state, but it does not assert that the persistence write in `refreshAll()` failed in the guarded section. Because `refreshAll()` inserts `allUsages` (`UsageAggregator.swift:222`) and parsers may yield no rows, the insert path can be a no-op while cursor non-advancement is instead caused by read-only write failure during cursor update, not by `if persistenceError == nil` gating (`UsageAggregator.swift:242`)."
       }
     ]
   },
   "sharedStateObservations": [
     {
       "area": "skills",
-      "observation": "Handoff for the reviewed feature marks `followedProcedure=true` but does not show required startup context-read evidence mandated by the token-accounting-worker skill.",
-      "evidence": "Handoff `.../handoffs/2026-04-09T19-39-24-284Z__m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests__8625d292-6f05-4d15-9423-ad5914ea180a.json` lists only test/build commands in `verification.commandsRun`; no read commands for `mission.md`, `AGENTS.md`, `.factory/library/architecture.md`, or `.factory/library/user-testing.md`."
-    },
-    {
-      "area": "skills",
-      "observation": "Skill requires handoff `commitId` to be a full 40-character SHA, but this reviewed feature handoff uses a short hash.",
-      "evidence": "Same handoff records `commitId`: `847ecd8` instead of full SHA; SKILL.md section 'Handoff Discipline Requirements' requires full SHA-1 commit IDs."
+      "observation": "Procedure-evidence enforcement is still weak for token-accounting-worker handoffs marked `followedProcedure=true`.",
+      "evidence": "This handoff includes evidence for reading `mission.md` and `AGENTS.md` only (`head -n 3 mission.md && grep -n 'fulfills' AGENTS.md | head -n 5`), while `token-accounting-worker` step 1 also requires reading `.factory/library/architecture.md` and `.factory/library/user-testing.md`."
     }
   ],
-  "addressesFailureFrom": ".factory/validation/m4-reconciliation-backfill-hardening/scrutiny/reviews/m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency.json",
-  "summary": "Fail: while commit-coupled backfill gating was added, the feature still relied on source-file string matching rather than runtime integration execution, and the paired original failed feature diff still carried epsilon-based non-strict monotonic semantics. The runtime execution coverage blocker is therefore not fully addressed."
+  "addressesFailureFrom": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/reviews/m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests.json",
+  "summary": "Fail: source-text scanning was removed, but the replacement tests still do not conclusively verify commit-coupled cursor advancement behavior across refreshAll success and persistence-failure paths."
 }

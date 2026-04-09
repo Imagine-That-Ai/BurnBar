@@ -1,51 +1,50 @@
 {
   "milestone": "m4-reconciliation-backfill-hardening",
-  "round": 5,
+  "round": 6,
   "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
-      "command": "scripts/test-openburnbar-swift.sh; scripts/test-openburnbar-app.sh",
+      "command": "/Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-swift.sh && /Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-app.sh",
       "exitCode": 0
     },
     "typecheck": {
       "passed": true,
-      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "command": "xcodebuild build-for-testing -project /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath /Users/dewclaw/Documents/Projects/BurnBar/.spm-cache -derivedDataPath /Users/dewclaw/Documents/Projects/BurnBar/.derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
       "exitCode": 0
     },
     "lint": {
       "passed": true,
-      "command": "npm --prefix extensions/openburnbar run lint",
+      "command": "npm --prefix /Users/dewclaw/Documents/Projects/BurnBar/extensions/openburnbar run lint",
       "exitCode": 0
     }
   },
   "reviewsSummary": {
     "total": 2,
-    "passed": 0,
-    "failed": 2,
+    "passed": 1,
+    "failed": 1,
     "failedFeatures": [
-      "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests",
-      "m4-fix-backfill-idempotent-equal-timestamp-semantics"
+      "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests"
     ]
   },
   "blockingIssues": [
     {
       "featureId": "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests",
       "severity": "blocking",
-      "description": "Runtime wiring validation still relies on source-text scanning (`BackfillSchedulerTests.test_refreshAll_guardCondition_isPresent`) instead of executing `UsageAggregator.refreshAll/runScheduledBackfillIfNeeded` success/failure coexistence paths."
+      "description": "Success-path test `test_refreshAll_withSuccessfulPersistence_allowsCursorAdvance` only asserts cursor existence after refresh, but the cursor is created before refresh and the assertion does not prove `runScheduledBackfillIfNeeded` advanced the cursor on successful persistence."
     },
     {
-      "featureId": "m4-fix-backfill-idempotent-equal-timestamp-semantics",
+      "featureId": "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests",
       "severity": "blocking",
-      "description": "Backfill monotonic guard remains epsilon-based (`diff >= -epsilon`), which still permits bounded backward cursor movement and does not satisfy strict no-backward progression semantics."
+      "description": "Failure-path test `test_refreshAll_withPersistenceFailure_preventsCursorAdvance` infers guard behavior from unchanged cursor state without proving the guarded persistence error path in `refreshAll`; it can pass due to other read-only write failures and does not conclusively verify commit-coupled advancement gating."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills/token-accounting-worker",
-      "suggestion": "Enforce full 40-character commit SHA values in worker handoffs (not short hashes), and validate this during scrutiny.",
-      "evidence": "Review for `m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests` observed handoff `commitId` value `847ecd8` while the skill requires full SHA.",
+      "suggestion": "Strengthen handoff traceability guidance so feature handoffs reference the implementation commit(s) that introduced behavioral changes, not only follow-up validation-artifact commits.",
+      "evidence": "Review for `m4-fix-backfill-idempotent-equal-timestamp-semantics` found handoff commit `38b3ada...` changed only `.factory/validation/**`, while the monotonic behavior fix lived in earlier commit `65706b3...`.",
       "isSystemic": false
     }
   ],
@@ -53,11 +52,7 @@
     {
       "observation": "Require startup context-read evidence in handoff before setting followedProcedure=true.",
       "reason": "already-documented"
-    },
-    {
-      "observation": "Shared architecture library remains switcher-centric and light on token-accounting/backfill context.",
-      "reason": "already-documented"
     }
   ],
-  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round4.json"
+  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round5.json"
 }
