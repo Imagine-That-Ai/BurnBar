@@ -81,6 +81,41 @@ None.
 }
 ```
 
+## Handoff Discipline Requirements
+
+Every EndFeatureRun handoff MUST satisfy both of the following requirements to be considered valid:
+
+### 1. Full SHA Commit ID
+
+The `commitId` field in handoffs MUST be a **full machine-resolvable SHA-1 commit ID** (40 hexadecimal characters). Short hashes or symbolic references (e.g., `HEAD`, `main`) are NOT acceptable.
+
+**Verification:** Run `git rev-parse <commitId>` — it must resolve to the actual commit. If this command fails or returns a different hash, the handoff is non-compliant.
+
+**Why this matters:** Short hashes and symbolic refs are ambiguous across clones and can become dangling references after rebases or force-pushes. Full SHAs are immutable and universally auditable.
+
+### 2. Context Read Evidence for `followedProcedure=true`
+
+Before setting `followedProcedure: true` in `skillFeedback`, you MUST demonstrate concrete evidence that you read the required context files listed in Phase 1.1 of `worker-base`. This is not self-certification — it requires showing what you actually read.
+
+**Required evidence format:** In your `verification.commandsRun` array, include entries like:
+
+```json
+{
+  "command": "test -f mission.md && test -f AGENTS.md && echo 'context files present'",
+  "exitCode": 0,
+  "observation": "Required context files were present and read during Phase 1.1 startup."
+}
+```
+
+**If you deviated from the procedure:** You MUST set `followedProcedure: false` and document every deviation in `skillFeedback.deviations` with:
+- `step`: Which phase/step was skipped or altered
+- `whatIDidInstead`: What you actually did
+- `why`: Blocking condition, better approach discovered, or unclear instruction
+
+**Auditability:** These two requirements make every handoff independently verifiable:
+- Full SHAs can be checked with `git rev-parse` and compared against `git log`
+- Context read evidence can be validated against Phase 1.1 requirements in `worker-base`
+
 ## When to Return to Orchestrator
 
 - Required profile model decisions conflict with mission constraints.
