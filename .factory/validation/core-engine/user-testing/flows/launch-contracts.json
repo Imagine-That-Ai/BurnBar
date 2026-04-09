@@ -1,0 +1,149 @@
+{
+  "testedAt": "2026-04-09T12:30:34.356265+00:00",
+  "assertionsTested": [
+    "VAL-BROWSER-001",
+    "VAL-BROWSER-002",
+    "VAL-BROWSER-003",
+    "VAL-BROWSER-004",
+    "VAL-BROWSER-005",
+    "VAL-BROWSER-006",
+    "VAL-BROWSER-007",
+    "VAL-BROWSER-008",
+    "VAL-BROWSER-009",
+    "VAL-CLI-001",
+    "VAL-CLI-002",
+    "VAL-CLI-003",
+    "VAL-CLI-004",
+    "VAL-CLI-005",
+    "VAL-CLI-006",
+    "VAL-CLI-007",
+    "VAL-CLI-008"
+  ],
+  "results": [
+    {
+      "id": "VAL-BROWSER-001",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherBrowserLaunchTests; suite passed with 43/43 tests and 0 failures."
+    },
+    {
+      "id": "VAL-BROWSER-002",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherBrowserLaunchTests; suite passed with 43/43 tests and 0 failures."
+    },
+    {
+      "id": "VAL-BROWSER-003",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherBrowserLaunchTests; suite passed with 43/43 tests and 0 failures."
+    },
+    {
+      "id": "VAL-BROWSER-004",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherBrowserLaunchTests; suite passed with 43/43 tests and 0 failures."
+    },
+    {
+      "id": "VAL-BROWSER-005",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherBrowserLaunchTests; suite passed with 43/43 tests and 0 failures."
+    },
+    {
+      "id": "VAL-BROWSER-006",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherBrowserLaunchTests; suite passed with 43/43 tests and 0 failures."
+    },
+    {
+      "id": "VAL-BROWSER-007",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherBrowserLaunchTests; suite passed with 43/43 tests and 0 failures."
+    },
+    {
+      "id": "VAL-BROWSER-008",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherBrowserLaunchTests; suite passed with 43/43 tests and 0 failures."
+    },
+    {
+      "id": "VAL-BROWSER-009",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherBrowserLaunchTests; suite passed with 43/43 tests and 0 failures."
+    },
+    {
+      "id": "VAL-CLI-001",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherCLILaunchTests; suite passed with 50/50 tests and 0 failures."
+    },
+    {
+      "id": "VAL-CLI-002",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherCLILaunchTests; suite passed with 50/50 tests and 0 failures."
+    },
+    {
+      "id": "VAL-CLI-003",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherCLILaunchTests; suite passed with 50/50 tests and 0 failures."
+    },
+    {
+      "id": "VAL-CLI-004",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherCLILaunchTests; suite passed with 50/50 tests and 0 failures."
+    },
+    {
+      "id": "VAL-CLI-005",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherCLILaunchTests; suite passed with 50/50 tests and 0 failures."
+    },
+    {
+      "id": "VAL-CLI-006",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherCLILaunchTests; suite passed with 50/50 tests and 0 failures."
+    },
+    {
+      "id": "VAL-CLI-007",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherCLILaunchTests; suite passed with 50/50 tests and 0 failures."
+    },
+    {
+      "id": "VAL-CLI-008",
+      "status": "pass",
+      "reason": "Covered by required scoped suite OpenBurnBarTests/SwitcherCLILaunchTests; suite passed with 50/50 tests and 0 failures."
+    }
+  ],
+  "commandsRun": [
+    {
+      "command": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -only-testing:\"OpenBurnBarTests/SwitcherBrowserLaunchTests\" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''",
+      "exitCode": 0,
+      "keyObservation": "SwitcherBrowserLaunchTests passed: 43 tests executed, 0 failures."
+    },
+    {
+      "command": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -only-testing:\"OpenBurnBarTests/SwitcherCLILaunchTests\" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''",
+      "exitCode": 0,
+      "keyObservation": "SwitcherCLILaunchTests passed: 50 tests executed, 0 failures."
+    },
+    {
+      "command": "open -Ra \"Safari\" && open -Ra \"Google Chrome\"",
+      "exitCode": 0,
+      "keyObservation": "Browser reopen smoke checks succeeded for both Safari and Chrome."
+    }
+  ],
+  "evidenceFiles": [
+    "/Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/evidence/core-engine/launch/browser-launch-tests.log",
+    "/Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/evidence/core-engine/launch/cli-launch-tests.log",
+    "/Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/evidence/core-engine/launch/browser-smoke.log",
+    "/Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/evidence/core-engine/launch/command-summary.txt"
+  ],
+  "frictions": [
+    {
+      "description": "Browser smoke command emitted no stdout/stderr; verification relied on exit code 0 and successful command completion.",
+      "resolved": true,
+      "resolution": "Captured explicit exit code and logged outcome in command-summary.txt.",
+      "affectedAssertions": [
+        "VAL-BROWSER-001",
+        "VAL-BROWSER-002"
+      ]
+    }
+  ],
+  "blockers": [],
+  "toolsUsed": [
+    "xcodebuild",
+    "open",
+    "python3"
+  ]
+}

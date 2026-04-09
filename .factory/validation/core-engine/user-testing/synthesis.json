@@ -1,0 +1,56 @@
+{
+  "milestone": "core-engine",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 33,
+    "passed": 33,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-SETTINGS-001",
+    "VAL-SETTINGS-002",
+    "VAL-SETTINGS-003",
+    "VAL-SETTINGS-004",
+    "VAL-SETTINGS-005",
+    "VAL-SETTINGS-006",
+    "VAL-SETTINGS-007",
+    "VAL-SETTINGS-008",
+    "VAL-SETTINGS-009",
+    "VAL-SETTINGS-010",
+    "VAL-SETTINGS-011",
+    "VAL-SETTINGS-012",
+    "VAL-SETTINGS-013",
+    "VAL-SETTINGS-014",
+    "VAL-SETTINGS-015",
+    "VAL-SETTINGS-016",
+    "VAL-BROWSER-001",
+    "VAL-BROWSER-002",
+    "VAL-BROWSER-003",
+    "VAL-BROWSER-004",
+    "VAL-BROWSER-005",
+    "VAL-BROWSER-006",
+    "VAL-BROWSER-007",
+    "VAL-BROWSER-008",
+    "VAL-BROWSER-009",
+    "VAL-CLI-001",
+    "VAL-CLI-002",
+    "VAL-CLI-003",
+    "VAL-CLI-004",
+    "VAL-CLI-005",
+    "VAL-CLI-006",
+    "VAL-CLI-007",
+    "VAL-CLI-008"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added per-surface flow validator guidance sections for xcodebuild-ui and launch-contracts isolation/commands.",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}
