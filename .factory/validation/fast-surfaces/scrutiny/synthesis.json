@@ -1,6 +1,6 @@
 {
   "milestone": "fast-surfaces",
-  "round": 5,
+  "round": 6,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,92 +20,85 @@
     }
   },
   "reviewsSummary": {
-    "total": 12,
-    "passed": 4,
-    "failed": 8,
+    "total": 3,
+    "passed": 0,
+    "failed": 3,
     "failedFeatures": [
-      "fast-surfaces-add-dashboard-error-ui-render-tests",
-      "fast-surfaces-fix-backfillscheduler-idempotent-backward-check",
-      "fast-surfaces-fix-backfillscheduler-regressions",
-      "fast-surfaces-fix-dashboard-accessibility-announcements",
-      "fast-surfaces-fix-dashboard-load-error-rendering",
-      "fast-surfaces-fix-dashboard-switch-failure-a11y-announcement",
-      "fast-surfaces-stabilize-backfillscheduler-idempotent-test",
-      "popover-quick-switch-ui"
+      "fast-surfaces-dashboard-view-level-error-and-a11y-contract-tests",
+      "fast-surfaces-popover-view-level-interaction-a11y-tests",
+      "fast-surfaces-restore-strict-backfill-monotonicity-with-idempotent-equality"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "fast-surfaces-add-dashboard-error-ui-render-tests",
+      "featureId": "fast-surfaces-restore-strict-backfill-monotonicity-with-idempotent-equality",
       "severity": "blocking",
-      "description": "Retry control presence and wiring assertions remain non-specific; tests can pass by interacting with unrelated buttons rather than the error-state Retry path."
+      "description": "Submitted fix handoff points to commit 38b3ada, but that commit only updates validation artifacts and does not include BackfillCursorStore/BackfillScheduler remediation required to close prior monotonicity blockers."
     },
     {
-      "featureId": "fast-surfaces-fix-backfillscheduler-idempotent-backward-check",
+      "featureId": "fast-surfaces-dashboard-view-level-error-and-a11y-contract-tests",
       "severity": "blocking",
-      "description": "Monotonic guard allows small negative time deltas (`>= -0.001`), permitting real backward cursor movement that should remain rejected."
+      "description": "Dashboard tests still rely on non-specific button selection and permissive announcement assertions; they do not strictly prove error-branch Retry wiring or explicit failure/success accessibility announcements at the view surface."
     },
     {
-      "featureId": "fast-surfaces-fix-backfillscheduler-regressions",
+      "featureId": "fast-surfaces-dashboard-view-level-error-and-a11y-contract-tests",
       "severity": "blocking",
-      "description": "Backfill cursor monotonicity still allows backward movement up to epsilon, violating strict non-decreasing cursor semantics."
+      "description": "DEBUG launch hook path remains synthetic (`testTriggerLaunch` emits canned error announcement), so launch announcement checks can pass without validating real launch-path behavior."
     },
     {
-      "featureId": "fast-surfaces-fix-dashboard-accessibility-announcements",
+      "featureId": "fast-surfaces-popover-view-level-interaction-a11y-tests",
       "severity": "blocking",
-      "description": "Switch-failure branch sets error state without emitting an accessibility announcement, leaving required error transition announcements incomplete."
+      "description": "Several newly added popover tests are inspectability-only (`XCTAssertNoThrow`) and do not assert required control semantics or accessibility state transitions."
     },
     {
-      "featureId": "fast-surfaces-fix-dashboard-load-error-rendering",
+      "featureId": "fast-surfaces-popover-view-level-interaction-a11y-tests",
       "severity": "blocking",
-      "description": "Regression tests remain store-centric and do not directly assert DashboardQuickSwitchView error rendering/actions (Retry/Open Settings) at the view surface."
+      "description": "Popover interaction checks still call DEBUG helper methods (`testTriggerSwitch`/`testTriggerLaunch`) and accept synthetic announcement paths, leaving contract-required real control-path validation incomplete."
     },
     {
-      "featureId": "fast-surfaces-fix-dashboard-switch-failure-a11y-announcement",
+      "featureId": "fast-surfaces-popover-view-level-interaction-a11y-tests",
       "severity": "blocking",
-      "description": "No view-level test forces switch failure and asserts failure announcement; current tests mainly validate success/same-profile or stubbed launch paths."
-    },
-    {
-      "featureId": "fast-surfaces-stabilize-backfillscheduler-idempotent-test",
-      "severity": "blocking",
-      "description": "Monotonic check accepts small negative deltas, reintroducing backward-movement allowance contrary to strict backward-rejection contract."
-    },
-    {
-      "featureId": "popover-quick-switch-ui",
-      "severity": "blocking",
-      "description": "Popover assertions are primarily store/service tests and do not validate contract-required popover UI interaction/accessibility paths."
+      "description": "VAL-POPOVER-010 timing gap remains unresolved because latency assertion is still store-level (`setActiveProfile`) rather than measured from popover interaction to committed state."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "switcher-ui-worker skill",
-      "suggestion": "Require assertion-backed surface-level UI verification for dashboard/popover fixes (explicitly instantiate and assert target SwiftUI views and action wiring), not store-proxy checks.",
-      "evidence": "Multiple failing fast-surfaces UI reviews reported store-centric tests that did not prove required view-level rendering and announcement behavior.",
+      "suggestion": "Require assertion-depth for surface tests: no inspectability-only (`XCTAssertNoThrow`) checks may satisfy contract closures, and control/action assertions must target the specific required UI controls.",
+      "evidence": "Round 6 dashboard/popover fix reviews both report view-level tests that still pass on generic or no-op assertions.",
       "isSystemic": true
     },
     {
       "target": "switcher-ui-worker skill",
-      "suggestion": "Enforce manual UI sanity-check evidence and context-read command evidence before allowing `followedProcedure=true` in handoffs.",
-      "evidence": "Several reviewed switcher-ui handoffs reported `followedProcedure=true` with `interactiveChecks: []` and no context-read evidence in verification commands.",
+      "suggestion": "Disallow DEBUG-only trigger hooks as sole evidence for interaction/a11y contract closure when validating user-facing control flows; require at least one assertion path through actual control interaction semantics.",
+      "evidence": "Round 6 dashboard and popover reviews found `testTriggerLaunch`/`testTriggerSwitch` synthetic paths masking missing real control-path validation.",
       "isSystemic": true
     },
     {
-      "target": "indexing-efficiency-worker and token-accounting-worker skills",
-      "suggestion": "Tighten procedure compliance checks so required AGENTS/library reads and mandatory validation steps must be evidenced in handoff verification when `followedProcedure=true`.",
-      "evidence": "Review reports repeatedly observed missing required context-read evidence despite `followedProcedure=true` in backfill/reconciliation feature handoffs.",
+      "target": "indexing-efficiency-worker and switcher-ui-worker skills",
+      "suggestion": "Enforce that `followedProcedure=true` requires explicit evidence of required context reads and mandatory validation/manual checks in handoff verification.",
+      "evidence": "Round 6 review reports again observed `followedProcedure=true` with missing context-read evidence and missing required manual-check evidence.",
+      "isSystemic": true
+    },
+    {
+      "target": "mission AGENTS.md guidance",
+      "suggestion": "Add brief milestone-context orientation guidance for non-switcher fix work to reduce context drift when a mission includes mixed domains (switcher + indexing/backfill).",
+      "evidence": "Backfill fix review reported repeated re-orientation friction from switcher-centric shared context during indexing-focused remediation.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md/worker handoff conventions",
+      "suggestion": "Require fix-feature handoff commit references to point to implementation-bearing commit(s), not validation-artifact-only commits, so fix review remains traceable to actual code changes.",
+      "evidence": "Round 6 backfill and dashboard fix reviews both flagged a declared fix commit that only changed validation JSON artifacts.",
       "isSystemic": true
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "Treat every skill mismatch as requiring immediate skill reassignment rather than review note.",
-      "reason": "ambiguous"
-    },
-    {
-      "observation": "Update architecture docs immediately from reviewer observations.",
-      "reason": "requires-orchestrator-decision"
+      "observation": "Duplicate followedProcedure evidence-mismatch observations from multiple reviews.",
+      "reason": "duplicate"
     }
   ],
-  "previousRound": ".factory/validation/fast-surfaces/scrutiny/synthesis.round4.json"
+  "previousRound": ".factory/validation/fast-surfaces/scrutiny/synthesis.round5.json"
 }

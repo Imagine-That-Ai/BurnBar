@@ -1,0 +1,33 @@
+{
+  "featureId": "fast-surfaces-restore-strict-backfill-monotonicity-with-idempotent-equality",
+  "reviewedAt": "2026-04-09T23:40:48Z",
+  "commitId": "38b3ada9e8ddae55b6ac71457682bf8dc187a1af",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Prior failed diffs (33f9ac2, 991904f, ae68a63) introduced epsilon-based backward tolerance. The reviewed fix feature commit does not contain the required production/test remediation diff; it only updates validation artifacts, so this feature commit itself does not resolve the prior blocking defects.",
+    "issues": [
+      {
+        "file": "/Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/handoffs/2026-04-09T23-12-56-519Z__fast-surfaces-restore-strict-backfill-monotonicity-with-idempotent-equality__7f98389f-8f66-4cd0-8f6c-07fca5717b80.json",
+        "line": 6,
+        "severity": "blocking",
+        "description": "The feature handoff commitId points to commit 38b3ada, whose diff only changes scrutiny JSON/synthesis files and does not modify BackfillCursorStore or BackfillScheduler tests; therefore the submitted fix commit does not directly address the blocking monotonicity/runtime-coverage findings from the original failed features."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked followedProcedure=true, but required procedure evidence for indexing-efficiency-worker is incomplete.",
+      "evidence": "Skill requires reading mission.md, AGENTS.md, .factory/library/architecture.md, and .factory/library/user-testing.md plus running `swift test --package-path OpenBurnBarCore`; handoff verification lists only BackfillScheduler xcodebuild and scripts/test-openburnbar-app.sh commands."
+    },
+    {
+      "area": "conventions",
+      "observation": "Mission shared guidance is switcher-centric while this review target is backfill/reconciliation, which repeatedly causes worker context drift.",
+      "evidence": "Mission AGENTS.md and .factory/library/architecture.md describe switcher surfaces/invariants; transcript skeleton shows confusion and re-orientation before backfill-specific inspection."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/fast-surfaces/scrutiny/reviews/fast-surfaces-fix-backfillscheduler-idempotent-backward-check.json",
+  "summary": "Fail. Comparing original failed diffs (33f9ac2/991904f/ae68a63) against the submitted fix feature commit (38b3ada) shows the reviewed commit is validation-only and does not carry the required code/test remediation diff, so this feature submission does not, by itself, close the prior blocking backfill failures."
+}
