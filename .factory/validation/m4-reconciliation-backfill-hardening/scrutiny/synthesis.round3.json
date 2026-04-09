@@ -1,0 +1,70 @@
+{
+  "milestone": "m4-reconciliation-backfill-hardening",
+  "round": 3,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 0,
+    "failed": 2,
+    "failedFeatures": [
+      "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests",
+      "m4-fix-backfill-idempotent-equal-timestamp-semantics"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests",
+      "severity": "blocking",
+      "description": "Added backfill runtime test is source-string scanning in BackfillSchedulerTests and does not execute UsageAggregator.refreshAll/runScheduledBackfillIfNeeded coexistence behavior; required runtime integration coverage remains unmet."
+    },
+    {
+      "featureId": "m4-fix-backfill-idempotent-equal-timestamp-semantics",
+      "severity": "blocking",
+      "description": "BackfillCursorStore monotonic guard now allows tiny backward movement via >= -monotonicEpsilon, reopening negative epsilon allowance contrary to strict no-backward requirement."
+    },
+    {
+      "featureId": "m4-fix-backfill-idempotent-equal-timestamp-semantics",
+      "severity": "blocking",
+      "description": "Fix commit does not modify UsageAggregator runtime wiring or runtime integration tests tied to the original failed feature scope, so prior runtime-path validation gap is not directly remediated by this feature."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills/token-accounting-worker",
+      "suggestion": "Require explicit command-level evidence of mandated startup context reads before allowing skillFeedback.followedProcedure=true, and add scrutiny checklist enforcement.",
+      "evidence": "Both rerun fix reviews reported handoffs claiming followedProcedure=true while commandsRun omitted mission.md/AGENTS.md/.factory/library read evidence.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add mission-start guidance that mission-scoped docs are authoritative when shared library docs are stale/misaligned, and require workers to call out detected drift in handoffs.",
+      "evidence": "Both fix reviews flagged .factory/library architecture/user-testing references as switcher-centric and misaligned with token-accounting/backfill mission context.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Duplicate shared-state reports that .factory/library architecture/user-testing content remains switcher-centric.",
+      "reason": "duplicate"
+    }
+  ],
+  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round2.json"
+}

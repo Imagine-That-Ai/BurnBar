@@ -1,6 +1,6 @@
 {
   "milestone": "m4-reconciliation-backfill-hardening",
-  "round": 2,
+  "round": 4,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,45 +20,39 @@
     }
   },
   "reviewsSummary": {
-    "total": 4,
-    "passed": 3,
+    "total": 1,
+    "passed": 0,
     "failed": 1,
     "failedFeatures": [
-      "m4-fix-backfill-runtime-wiring-and-traceability"
+      "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "m4-fix-backfill-runtime-wiring-and-traceability",
+      "featureId": "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency",
       "severity": "blocking",
-      "description": "UsageAggregator.refreshAll() unconditionally calls runScheduledBackfillIfNeeded() even when persistence fails, allowing backfill cursor advancement without successful committed usage persistence."
+      "description": "BackfillSchedulerTests still validates runtime wiring via source-text scanning (`test_refreshAll_guardCondition_isPresent`) rather than executing UsageAggregator.refreshAll/runScheduledBackfillIfNeeded success/failure persistence paths, so required runtime integration coverage remains unmet."
     },
     {
-      "featureId": "m4-fix-backfill-runtime-wiring-and-traceability",
+      "featureId": "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency",
       "severity": "blocking",
-      "description": "Fix diff did not add runtime integration coverage for production backfill wiring (refreshAll/runScheduledBackfillIfNeeded); existing tests remain helper-level and do not validate the production path coexistence expectation."
+      "description": "BackfillCursorStore monotonic guard still permits backward movement through negative epsilon (`>= -monotonicEpsilon`) and widens tolerance to 1ms, violating strict no-backward progression semantics."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills/token-accounting-worker",
-      "suggestion": "Require explicit command-level evidence for all mandated startup context reads before allowing skillFeedback.followedProcedure=true, and add this as a scrutiny checklist item.",
-      "evidence": "Three of four rerun reviews again reported missing read evidence for AGENTS.md and .factory/library docs despite handoffs claiming followedProcedure=true.",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Add mission-start guidance that workers should treat mission-scoped files as authoritative when shared library docs are stale/misaligned and explicitly note detected drift in handoffs.",
-      "evidence": "Multiple rerun reviews flagged .factory/library architecture/user-testing guidance as switcher-focused and misaligned with this token-accounting milestone.",
+      "suggestion": "Require explicit command-level evidence of required startup-context reads before allowing `skillFeedback.followedProcedure=true`, and enforce this during scrutiny checks.",
+      "evidence": "Fix feature handoff for session `1c91c316-bba4-423b-9def-9124a1ff399b` marks followedProcedure true but verification commands omit mission/AGENTS/library read evidence.",
       "isSystemic": true
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "Repeated library-misalignment notes across multiple review reports.",
-      "reason": "duplicate"
+      "observation": "Shared architecture library content remains switcher-centric and not token-accounting focused.",
+      "reason": "already-documented"
     }
   ],
-  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round1.json"
+  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round3.json"
 }
