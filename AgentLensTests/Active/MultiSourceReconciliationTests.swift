@@ -679,7 +679,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
 
         // Verify the supplemental would have cost correction
         let supplementalCost = missingCost
-        XCTAssertEqual(supplementalCost, 0.02, "Cost-only drift should produce $0.02 supplemental")
+        XCTAssertEqual(supplementalCost, 0.02, accuracy: 1e-9, "Cost-only drift should produce $0.02 supplemental")
     }
 
     // MARK: - VAL-PERSIST-013: Reconciliation cleanup is source-scoped
@@ -843,7 +843,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
 
         XCTAssertEqual(missingInputMore, 500, "Missing input should be exactly 500")
         XCTAssertEqual(missingOutputMore, 250, "Missing output should be exactly 250")
-        XCTAssertEqual(missingCostMore, 0.025, "Missing cost should be exactly $0.025")
+        XCTAssertEqual(missingCostMore, 0.025, accuracy: 1e-9, "Missing cost should be exactly $0.025")
 
         // Verify no double counting: supplemental + local = API (or close to it)
         // 1000 (local) + 500 (supplemental) = 1500 (API)
@@ -853,6 +853,6 @@ final class MultiSourceReconciliationTests: XCTestCase {
 
         XCTAssertEqual(totalInput, 1500, "Local + supplemental should equal API input")
         XCTAssertEqual(totalOutput, 750, "Local + supplemental should equal API output")
-        XCTAssertEqual(totalCost, 0.075, "Local + supplemental should equal API cost")
+        XCTAssertEqual(totalCost, 0.075, accuracy: 1e-9, "Local + supplemental should equal API cost")
     }
 }
