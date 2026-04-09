@@ -107,14 +107,9 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
             )
         }
 
-        defer {
-            Task {
-                await coordinator.endLaunch(profileID: profileID, success: false)
-            }
-        }
-
         // Fetch profile
         guard let profile = profileStore.fetchProfile(id: profileID) else {
+            await coordinator.endLaunch(profileID: profileID, success: false)
             return LaunchOutcome(
                 success: false,
                 error: .profileNotFound(profileID)
@@ -123,6 +118,7 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
 
         // Validate profile is for browser
         guard profile.targetKind == .browser else {
+            await coordinator.endLaunch(profileID: profileID, success: false)
             return LaunchOutcome(
                 success: false,
                 error: .profileKindMismatch(expected: .browser, actual: profile.targetKind)
@@ -136,6 +132,7 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
         case .safari:
             return await launchSafari(profile: profile)
         case .none:
+            await coordinator.endLaunch(profileID: profileID, success: false)
             return LaunchOutcome(
                 success: false,
                 error: .missingProfileMetadata(profileID)
