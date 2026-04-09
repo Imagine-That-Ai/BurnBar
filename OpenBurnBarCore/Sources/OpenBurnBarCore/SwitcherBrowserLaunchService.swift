@@ -147,6 +147,7 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
 
         switch urlResult {
         case .failure(let error):
+            await coordinator.endLaunch(profileID: profile.id, success: false)
             return LaunchOutcome(success: false, error: error)
 
         case .success(let appURL):
@@ -158,6 +159,7 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
 
             switch buildResult {
             case .failure(let error):
+                await coordinator.endLaunch(profileID: profile.id, success: false)
                 return LaunchOutcome(success: false, error: error)
 
             case .success(let (_, launchArgs)):
@@ -177,6 +179,7 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
                     await coordinator.endLaunch(profileID: profile.id, success: true)
                     return LaunchOutcome(success: true, error: nil)
                 case .failure(let error):
+                    await coordinator.endLaunch(profileID: profile.id, success: false)
                     return LaunchOutcome(success: false, error: error)
                 }
             }
@@ -190,6 +193,7 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
 
         switch urlResult {
         case .failure(let error):
+            await coordinator.endLaunch(profileID: profile.id, success: false)
             return LaunchOutcome(success: false, error: error)
 
         case .success(let appURL):
@@ -201,6 +205,7 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
 
             switch buildResult {
             case .failure(let error):
+                await coordinator.endLaunch(profileID: profile.id, success: false)
                 return LaunchOutcome(success: false, error: error)
 
             case .success(let (_, launchArgs)):
@@ -214,6 +219,7 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
                     await coordinator.endLaunch(profileID: profile.id, success: true)
                     return LaunchOutcome(success: true, error: nil)
                 case .failure(let error):
+                    await coordinator.endLaunch(profileID: profile.id, success: false)
                     return LaunchOutcome(success: false, error: error)
                 }
             }
