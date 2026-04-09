@@ -1,0 +1,21 @@
+{
+  "featureId": "core-engine-harden-projection-minimal-write-regression-signal",
+  "reviewedAt": "2026-04-09T12:18:20Z",
+  "commitId": "78a8bbd",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix adequately addresses the prior failure. It replaces the weak content-hash-overlap-only signal with a direct write-amplification assertion based on `ChunkDiffResult.writeCount`, which deterministically fails under full rewrite behavior and still passes for bounded incremental updates.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked `followedProcedure: true`, but the transcript skeleton does not show reads of `.factory/library/architecture.md` or `.factory/library/user-testing.md`, which are required by the `indexing-efficiency-worker` procedure.",
+      "evidence": "Skill requires these reads in `.factory/skills/indexing-efficiency-worker/SKILL.md` step 1; transcript skeleton for session `5cead3b4-a987-4058-a4e6-3c106e099c85` shows mission/AGENTS reads and no references to those library files."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/core-engine/scrutiny/reviews/core-engine-restore-projection-minimal-write-signal.json",
+  "summary": "Reviewed the fix feature handoff, transcript skeleton, worker skill contract, prior failed review, and both relevant diffs (`fda3888` and `78a8bbd`). The new writeCount-based invariant resolves the original weakness where content-hash overlap could pass during full rewrites."
+}
