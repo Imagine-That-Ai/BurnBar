@@ -639,6 +639,8 @@ struct DashboardQuickSwitchView: View {
             withAnimation(DesignSystem.Animation.snappy) {
                 switchState = .error("Failed to switch: \(error.localizedDescription)")
             }
+            // Announce error for accessibility (VAL-DASH-008)
+            announceForAccessibility("Failed to switch profile. \(error.localizedDescription)")
         }
     }
 
