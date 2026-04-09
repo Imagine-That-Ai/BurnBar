@@ -348,21 +348,18 @@ final class SearchIndexStore {
         }
 
         // Count truly unchanged chunks.
-        // With stable chunk identity, rekeyed chunks (same contentHash, different chunkID)
-        // are effectively unchanged since we skip delete+insert for them.
-        // The old chunks remain in place and serve the same purpose.
+        // A chunk is truly unchanged only when contentHash AND chunkID match.
+        // A chunk is rekeyed when contentHash matches but chunkID differs.
         var unchangedCount = 0
         for hash in unchangedHashes {
             let oldIDs = Set(existingByHash[hash]!.map(\.id))
             let newIDs = Set(newByHash[hash]!.map(\.id))
             if oldIDs == newIDs {
-                // Identical chunkIDs: truly unchanged
-                unchangedCount += oldIDs.count
-            } else {
-                // Different chunkIDs (rekeyed): effectively unchanged with our fix
-                // because we skip delete+insert for these chunks.
+                // Identical chunkIDs: truly unchanged — no writes needed
                 unchangedCount += oldIDs.count
             }
+            // Note: When oldIDs != newIDs (rekeyed), we don't add to unchangedCount.
+            // These chunks will be reconciled via delete+insert in the diff block.
         }
 
         // With our fix, rekeyed chunks don't cause writes. So the only writes
@@ -370,12 +367,14 @@ final class SearchIndexStore {
         let effectiveWriteCount = deletedHashes.reduce(0) { $0 + (existingByHash[$1]?.count ?? 0) }
             + addedHashes.reduce(0) { $0 + (newByHash[$1]?.count ?? 0) }
 
-        // If no new content hashes added, no content hashes removed, and no effective writes,
-        // this is a true no-op — skip all writes entirely.
-        if deletedHashes.isEmpty && addedHashes.isEmpty && effectiveWriteCount == 0 {
+        // If no new content hashes added, no content hashes removed, no effective writes,
+        // AND no rekeyed chunks (IDs differ), this is a true no-op — skip all writes entirely.
+        // Note: Hash-set equality alone does not trigger no-op when per-hash chunk
+        // multiplicity or chunk IDs require reconciliation (rekeyedCount > 0).
+        if deletedHashes.isEmpty && addedHashes.isEmpty && effectiveWriteCount == 0 && rekeyedCount == 0 {
             return ChunkDiffResult(
                 unchanged: unchangedCount,
-                rekeyed: rekeyedCount,
+                rekeyed: 0,
                 added: 0,
                 deleted: 0,
                 existingTotal: existingChunks.count,
@@ -384,6 +383,8 @@ final class SearchIndexStore {
         }
 
         // Apply the diff
+        var actualAdded = 0
+        var actualDeleted = 0
         try dbQueue.write { db in
             let documentRow = try Row.fetchOne(
                 db,
@@ -396,44 +397,60 @@ final class SearchIndexStore {
             // Delete old chunks whose contentHash is no longer present
             var oldIDsToDelete: [String] = deletedHashes.flatMap { existingByHash[$0]!.map(\.id) }
 
-            // NOTE: We intentionally skip deleting rekeyed chunks (same contentHash, different chunkID).
-            // When sourceVersionID changes but content is unchanged, chunkIDs change but the
-            // content is identical. Keeping the old chunks avoids delete+insert churn.
-            // The old chunks remain valid for retrieval, and embeddings are reused via contentHash.
-            //
-            // For rekeyed chunks:
-            // - OLD behavior: delete old chunk, insert new chunk (write amplification)
-            // - NEW behavior: skip both delete and insert (old chunk remains)
-            //
-            // This is correct because:
-            // 1. If contentHash matches, the content is identical
-            // 2. Embedding reuse still works via contentHash lookup
-            // 3. The old chunk with old ID serves the same purpose as new chunk with new ID
+            // Delete old chunks for rekeyed hashes where IDs differ.
+            // These chunks have the same contentHash but different chunk IDs (boundary shift).
+            // We delete the old chunks and insert the new chunks so the persisted
+            // chunk set matches the projected chunk set exactly.
+            for hash in unchangedHashes {
+                let oldIDs = Set(existingByHash[hash]!.map(\.id))
+                let newIDs = Set(newByHash[hash]!.map(\.id))
+                if oldIDs != newIDs {
+                    // New chunk IDs not in old set: these new chunks will be inserted below
+                    // Old chunk IDs not in new set: these old chunks need to be deleted
+                    let idsOnlyInOld = oldIDs.subtracting(newIDs)
+                    oldIDsToDelete.append(contentsOf: idsOnlyInOld)
+                }
+            }
 
-            // Perform deletes (only for truly deleted contentHashes)
+            // Perform deletes (only for truly deleted contentHashes and old rekeyed IDs)
             for chunkID in oldIDsToDelete {
                 try db.execute(sql: "DELETE FROM search_chunks_fts WHERE chunkID = ?", arguments: [chunkID])
                 try db.execute(sql: "DELETE FROM search_chunks WHERE id = ?", arguments: [chunkID])
             }
+            actualDeleted = oldIDsToDelete.count
 
             // Insert added chunks (new content hashes)
             for hash in addedHashes {
                 for chunk in newByHash[hash]! {
                     try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
+                    actualAdded += 1
                 }
             }
 
-            // NOTE: We intentionally skip inserting rekeyed chunks.
-            // The old chunks remain with their original chunkIDs.
-            // Since contentHash is identical, the stored chunks are functionally
-            // equivalent to new chunks with new IDs.
+            // Insert new chunks for rekeyed hashes (same contentHash, different chunk IDs).
+            // This ensures the persisted chunk set matches the projected chunk set when
+            // boundary shifts cause chunk IDs to differ for the same content.
+            for hash in unchangedHashes {
+                let oldIDs = Set(existingByHash[hash]!.map(\.id))
+                let newIDs = Set(newByHash[hash]!.map(\.id))
+                if oldIDs != newIDs {
+                    // New IDs not in old set: insert these new chunks
+                    let idsOnlyInNew = newIDs.subtracting(oldIDs)
+                    for chunk in newByHash[hash]! {
+                        if idsOnlyInNew.contains(chunk.id) {
+                            try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
+                            actualAdded += 1
+                        }
+                    }
+                }
+            }
         }
 
         return ChunkDiffResult(
             unchanged: unchangedCount,
             rekeyed: rekeyedCount,
-            added: addedHashes.reduce(0) { $0 + (newByHash[$1]?.count ?? 0) },
-            deleted: deletedHashes.reduce(0) { $0 + (existingByHash[$1]?.count ?? 0) },
+            added: actualAdded,
+            deleted: actualDeleted,
             existingTotal: existingChunks.count,
             newTotal: newChunks.count
         )
