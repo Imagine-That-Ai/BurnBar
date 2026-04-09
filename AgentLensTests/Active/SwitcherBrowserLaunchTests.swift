@@ -601,6 +601,16 @@ final class SwitcherBrowserLaunchServiceTests: XCTestCase {
     }
 
     func test_launchBrowser_reportsBrowserNotInstalled_whenChromeMissing() async {
+        // Use a test double that simulates Chrome being unavailable
+        let unavailableChromeProvider = UnavailableBrowserProvider(
+            unavailableBrowsers: [.chrome],
+            availableBrowsers: [.safari]
+        )
+        let serviceWithFakeBrowser = SwitcherBrowserLaunchService(
+            profileStore: store,
+            browserProvider: unavailableChromeProvider
+        )
+
         let profile = SwitcherProfileRecord(
             id: "chrome-profile",
             targetKind: .browser,
@@ -610,12 +620,14 @@ final class SwitcherBrowserLaunchServiceTests: XCTestCase {
         )
         store.addProfile(profile)
 
-        let outcome = await service.launchBrowser(for: "chrome-profile")
+        let outcome = await serviceWithFakeBrowser.launchBrowser(for: "chrome-profile")
 
         XCTAssertFalse(outcome.success)
-        // The exact error depends on whether Chrome is installed
-        // If Chrome is installed, it will attempt to launch
-        // If not, it will return browserNotInstalled
+        if case .browserNotInstalled(let browserType) = outcome.error {
+            XCTAssertEqual(browserType, .chrome)
+        } else {
+            XCTFail("Expected .browserNotInstalled(.chrome) error, got \(String(describing: outcome.error))")
+        }
     }
 
     func test_launchBrowser_reportsProfileNotFound_whenProfileMissing() async {
@@ -661,6 +673,57 @@ final class SwitcherBrowserLaunchServiceTests: XCTestCase {
         let available = service.isBrowserAvailable(.safari)
         // Safari should always be available on macOS
         XCTAssertTrue(available)
+    }
+}
+
+// MARK: - Test Double: Unavailable Browser Provider
+
+/// A test double for BrowserAvailabilityProviding that simulates specific browsers being unavailable.
+private struct UnavailableBrowserProvider: BrowserAvailabilityProviding {
+    private let unavailableBrowsers: Set<SwitcherBrowserProfileType>
+    private let availableBrowsers: Set<SwitcherBrowserProfileType>
+
+    init(unavailableBrowsers: Set<SwitcherBrowserProfileType> = [], availableBrowsers: Set<SwitcherBrowserProfileType> = [.safari]) {
+        self.unavailableBrowsers = unavailableBrowsers
+        self.availableBrowsers = availableBrowsers
+    }
+
+    func isBrowserAvailable(_ browserType: SwitcherBrowserProfileType) -> Bool {
+        return availableBrowsers.contains(browserType) && !unavailableBrowsers.contains(browserType)
+    }
+
+    func browserURL(for browserType: SwitcherBrowserProfileType) -> URL? {
+        if unavailableBrowsers.contains(browserType) {
+            return nil
+        }
+        if availableBrowsers.contains(browserType) {
+            // Return a fake URL for available browsers
+            switch browserType {
+            case .chrome:
+                return URL(fileURLWithPath: "/Applications/Google Chrome.app")
+            case .safari:
+                return URL(fileURLWithPath: "/Applications/Safari.app")
+            }
+        }
+        return nil
+    }
+
+    func bundleIdentifier(for browserType: SwitcherBrowserProfileType) -> String? {
+        return browserType.bundleIdentifier
+    }
+
+    func resolveBrowserURL(_ browserType: SwitcherBrowserProfileType) -> Result<URL, BrowserLaunchError> {
+        if let url = browserURL(for: browserType) {
+            return .success(url)
+        }
+        return .failure(.browserNotInstalled(browserType))
+    }
+
+    func isProfileBrowserAvailable(_ profile: SwitcherProfileRecord) -> Bool {
+        guard profile.targetKind == .browser, let browserType = profile.browserType else {
+            return false
+        }
+        return isBrowserAvailable(browserType)
     }
 }
 

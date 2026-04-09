@@ -1,4 +1,71 @@
 import Foundation
+#if canImport(AppKit)
+import AppKit
+#endif
+
+// MARK: - Browser Availability Provider
+
+/// Protocol for checking browser availability and constructing launch configurations.
+/// This abstracts browser-specific logic so it can be replaced in tests.
+public protocol BrowserAvailabilityProviding: Sendable {
+    /// Checks if a browser is installed and available for launching.
+    func isBrowserAvailable(_ browserType: SwitcherBrowserProfileType) -> Bool
+
+    /// Returns the URL for a browser application, if available.
+    func browserURL(for browserType: SwitcherBrowserProfileType) -> URL?
+
+    /// Returns the bundle identifier for a browser type.
+    func bundleIdentifier(for browserType: SwitcherBrowserProfileType) -> String?
+
+    /// Checks if a browser is available and returns the app URL if so.
+    func resolveBrowserURL(_ browserType: SwitcherBrowserProfileType) -> Result<URL, BrowserLaunchError>
+
+    /// Checks if the browser for the given profile is available.
+    func isProfileBrowserAvailable(_ profile: SwitcherProfileRecord) -> Bool
+}
+
+// MARK: - Production Browser Availability Provider
+
+/// Production implementation that uses NSWorkspace to resolve browser availability.
+public struct ProductionBrowserAvailabilityProvider: BrowserAvailabilityProviding {
+    public init() {}
+
+    public func isBrowserAvailable(_ browserType: SwitcherBrowserProfileType) -> Bool {
+        guard let bundleID = browserType.bundleIdentifier else { return false }
+        #if canImport(AppKit)
+        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil
+        #else
+        return false
+        #endif
+    }
+
+    public func browserURL(for browserType: SwitcherBrowserProfileType) -> URL? {
+        guard let bundleID = browserType.bundleIdentifier else { return nil }
+        #if canImport(AppKit)
+        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+        #else
+        return nil
+        #endif
+    }
+
+    public func bundleIdentifier(for browserType: SwitcherBrowserProfileType) -> String? {
+        return browserType.bundleIdentifier
+    }
+
+    public func resolveBrowserURL(_ browserType: SwitcherBrowserProfileType) -> Result<URL, BrowserLaunchError> {
+        guard let url = browserURL(for: browserType) else {
+            return .failure(.browserNotInstalled(browserType))
+        }
+        return .success(url)
+    }
+
+    public func isProfileBrowserAvailable(_ profile: SwitcherProfileRecord) -> Bool {
+        guard profile.targetKind == .browser, let browserType = profile.browserType else {
+            return false
+        }
+        return isBrowserAvailable(browserType)
+    }
+}
 
 // MARK: - Switcher Browser Launch Service
 
@@ -13,10 +80,15 @@ import Foundation
 public final class SwitcherBrowserLaunchService: @unchecked Sendable {
     private let profileStore: SwitcherProfileStoreAdapter
     private let coordinator: BrowserLaunchCoordinator
+    private let browserProvider: BrowserAvailabilityProviding
 
     /// Creates a new browser launch service.
-    public init(profileStore: SwitcherProfileStoreAdapter) {
+    /// - Parameters:
+    ///   - profileStore: The profile store to use for profile lookups.
+    ///   - browserProvider: The browser availability provider. Defaults to production NSWorkspace-based resolution.
+    public init(profileStore: SwitcherProfileStoreAdapter, browserProvider: BrowserAvailabilityProviding = ProductionBrowserAvailabilityProvider()) {
         self.profileStore = profileStore
+        self.browserProvider = browserProvider
         self.coordinator = BrowserLaunchCoordinator()
     }
 
@@ -73,54 +145,80 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
 
     /// Launches Chrome for the given profile.
     private func launchChrome(profile: SwitcherProfileRecord) async -> LaunchOutcome {
-        let buildResult = BrowserLaunchAdapter.buildChromeLaunch(profile: profile)
+        // First check browser availability using our injectable provider
+        let urlResult = browserProvider.resolveBrowserURL(.chrome)
 
-        switch buildResult {
+        switch urlResult {
         case .failure(let error):
             return LaunchOutcome(success: false, error: error)
 
-        case .success(let (appURL, args)):
-            // Extract profile directory from args
-            let profileDir = args.first { $0.hasPrefix("--profile-directory=") }
-                .flatMap { String($0.dropFirst("--profile-directory=".count)) }
-                ?? "Default"
-
-            let launchResult = await BrowserLaunchInvoker.launchChrome(
-                appURL: appURL,
-                profileDirectory: profileDir,
-                args: args.filter { !$0.hasPrefix("--profile-directory=") }
+        case .success(let appURL):
+            // Build Chrome-specific arguments using the adapter
+            let buildResult = BrowserLaunchAdapter.buildChromeLaunch(
+                profile: profile,
+                browserURL: appURL
             )
 
-            switch launchResult {
-            case .success:
-                await coordinator.endLaunch(profileID: profile.id, success: true)
-                return LaunchOutcome(success: true, error: nil)
+            switch buildResult {
             case .failure(let error):
                 return LaunchOutcome(success: false, error: error)
+
+            case .success(let (_, launchArgs)):
+                // Extract profile directory from args
+                let profileDir = launchArgs.first { $0.hasPrefix("--profile-directory=") }
+                    .flatMap { String($0.dropFirst("--profile-directory=".count)) }
+                    ?? "Default"
+
+                let launchResult = await BrowserLaunchInvoker.launchChrome(
+                    appURL: appURL,
+                    profileDirectory: profileDir,
+                    args: launchArgs.filter { !$0.hasPrefix("--profile-directory=") }
+                )
+
+                switch launchResult {
+                case .success:
+                    await coordinator.endLaunch(profileID: profile.id, success: true)
+                    return LaunchOutcome(success: true, error: nil)
+                case .failure(let error):
+                    return LaunchOutcome(success: false, error: error)
+                }
             }
         }
     }
 
     /// Launches Safari for the given profile.
     private func launchSafari(profile: SwitcherProfileRecord) async -> LaunchOutcome {
-        let buildResult = BrowserLaunchAdapter.buildSafariLaunch(profile: profile)
+        // First check browser availability using our injectable provider
+        let urlResult = browserProvider.resolveBrowserURL(.safari)
 
-        switch buildResult {
+        switch urlResult {
         case .failure(let error):
             return LaunchOutcome(success: false, error: error)
 
-        case .success(let (appURL, args)):
-            let launchResult = await BrowserLaunchInvoker.launchSafari(
-                appURL: appURL,
-                args: args
+        case .success(let appURL):
+            // Build Safari-specific arguments using the adapter
+            let buildResult = BrowserLaunchAdapter.buildSafariLaunch(
+                profile: profile,
+                browserURL: appURL
             )
 
-            switch launchResult {
-            case .success:
-                await coordinator.endLaunch(profileID: profile.id, success: true)
-                return LaunchOutcome(success: true, error: nil)
+            switch buildResult {
             case .failure(let error):
                 return LaunchOutcome(success: false, error: error)
+
+            case .success(let (_, launchArgs)):
+                let launchResult = await BrowserLaunchInvoker.launchSafari(
+                    appURL: appURL,
+                    args: launchArgs
+                )
+
+                switch launchResult {
+                case .success:
+                    await coordinator.endLaunch(profileID: profile.id, success: true)
+                    return LaunchOutcome(success: true, error: nil)
+                case .failure(let error):
+                    return LaunchOutcome(success: false, error: error)
+                }
             }
         }
     }
@@ -129,12 +227,12 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
 
     /// Checks if a browser is installed and available.
     public func isBrowserAvailable(_ browserType: SwitcherBrowserProfileType) -> Bool {
-        return BrowserLaunchAdapter.isBrowserAvailable(browserType)
+        return browserProvider.isBrowserAvailable(browserType)
     }
 
     /// Returns the URL for a browser if available.
     public func browserURL(for browserType: SwitcherBrowserProfileType) -> URL? {
-        return BrowserLaunchAdapter.browserURL(for: browserType)
+        return browserProvider.browserURL(for: browserType)
     }
 }
 

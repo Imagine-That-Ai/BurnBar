@@ -177,8 +177,14 @@ public enum BrowserLaunchAdapter {
 
     /// Constructs the launch configuration for a Chrome browser profile.
     /// Returns the URL and arguments to use for launching.
+    ///
+    /// - Parameters:
+    ///   - profile: The Chrome profile record to launch.
+    ///   - browserURL: The URL of the Chrome application. If nil, uses NSWorkspace to resolve.
+    ///   - additionalArgs: Additional allowlisted arguments to pass to Chrome.
     public static func buildChromeLaunch(
         profile: SwitcherProfileRecord,
+        browserURL: URL? = nil,
         additionalArgs: [String] = []
     ) -> Result<(URL, [String]), BrowserLaunchError> {
         // Validate it's a browser profile (check targetKind first for correct error)
@@ -210,19 +216,27 @@ public enum BrowserLaunchAdapter {
                 args.append(validated)
             }
 
-            guard let appURL = browserURL(for: .chrome) else {
+            // Use provided URL or resolve via NSWorkspace
+            let appURL = browserURL ?? Self.browserURL(for: .chrome)
+            guard let resolvedURL = appURL else {
                 return .failure(.browserNotInstalled(.chrome))
             }
 
-            return .success((appURL, args))
+            return .success((resolvedURL, args))
         }
     }
 
     /// Constructs the launch configuration for Safari.
     /// Note: Safari doesn't support direct profile switching via CLI arguments.
     /// It will launch with its last active profile.
+    ///
+    /// - Parameters:
+    ///   - profile: The Safari profile record to launch.
+    ///   - browserURL: The URL of the Safari application. If nil, uses NSWorkspace to resolve.
+    ///   - privateBrowsing: Whether to launch Safari in private browsing mode.
     public static func buildSafariLaunch(
         profile: SwitcherProfileRecord,
+        browserURL: URL? = nil,
         privateBrowsing: Bool = false
     ) -> Result<(URL, [String]), BrowserLaunchError> {
         // Validate it's a Safari profile
@@ -231,7 +245,9 @@ public enum BrowserLaunchAdapter {
             return .failure(.profileTypeMismatch(expected: .safari, actual: profile.browserType))
         }
 
-        guard let appURL = browserURL(for: .safari) else {
+        // Use provided URL or resolve via NSWorkspace
+        let appURL = browserURL ?? Self.browserURL(for: .safari)
+        guard let resolvedURL = appURL else {
             return .failure(.browserNotInstalled(.safari))
         }
 
@@ -240,7 +256,7 @@ public enum BrowserLaunchAdapter {
             args.append("--private")
         }
 
-        return .success((appURL, args))
+        return .success((resolvedURL, args))
     }
 
     // MARK: - Profile Mismatch Detection
