@@ -2435,9 +2435,8 @@ extension ProjectionPipelineServiceTests {
 
         // Use text that produces multiple chunks with the default chunker
         // (maxChunkCharacters=1200, minChunkCharacters=600, overlap=140).
-        // A shorter repetition count than before avoids boundary-shift flakiness
-        // while still creating enough chunks to demonstrate minimal-write behavior.
-        let longText = String(repeating: "Line of conversation text that will be chunked. ", count: 40)
+        // 80 repetitions produces enough chunks that head chunks are stable under append.
+        let longText = String(repeating: "Line of conversation text that will be chunked. ", count: 80)
         let conversation = makeConversation(id: "conv-incr-partial", fullText: longText, indexedAt: base)
         try store.upsertConversation(conversation)
         try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
@@ -2504,6 +2503,22 @@ extension ProjectionPipelineServiceTests {
             finalChunkCount, initialChunkCount * 2,
             "Partial edit should not double chunk count. Initial: \(initialChunkCount), Final: \(finalChunkCount). " +
             "Excessive growth indicates full rewrite instead of incremental update."
+        )
+
+        // STRONG minimal-write invariant: head chunk content hashes must be preserved.
+        // For an incremental partial edit (append), the initial content hashes should
+        // appear in the final chunk set - only the tail is new. A full rewrite would
+        // generate new chunk IDs for all content, so initial hashes would NOT be
+        // preserved. This check is deterministic and fails on full rewrite regression.
+        let initialHeadHashes = Set(initialChunks.prefix(initialChunks.count / 2 + 1).compactMap(\.contentHash))
+        let finalHashes = Set(finalChunks.compactMap(\.contentHash))
+        let preservedHeadHashes = initialHeadHashes.intersection(finalHashes)
+        XCTAssertGreaterThan(
+            preservedHeadHashes.count, 0,
+            "Minimal-write invariant: at least some head chunk content hashes must be preserved after partial edit. " +
+            "Initial head hashes: \(initialHeadHashes.count), Final total hashes: \(finalHashes.count), " +
+            "Preserved: \(preservedHeadHashes.count). " +
+            "Zero preserved hashes indicates full rewrite instead of incremental update."
         )
 
         // All final chunks should have embeddings
