@@ -101,6 +101,7 @@ final class DataStore {
     let deviceStore: DeviceStore
     let checkpointStore: ParserCheckpointStore
     let remoteSyncWatermarkStore: RemoteSyncWatermarkStore
+    let switcherStore: SwitcherProfileStore
 
     private(set) var usages: [TokenUsage] = []
     private(set) var isLoading = false
@@ -424,6 +425,7 @@ final class DataStore {
         deviceStore = DeviceStore(dbQueue: databaseQueue)
         checkpointStore = ParserCheckpointStore(dbQueue: databaseQueue)
         remoteSyncWatermarkStore = RemoteSyncWatermarkStore(dbQueue: databaseQueue)
+        switcherStore = SwitcherProfileStore(dbQueue: databaseQueue)
 
         if runMigrations {
             try database.runMigrations()
