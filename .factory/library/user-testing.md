@@ -50,3 +50,21 @@ This keeps total concurrency at 4 while avoiding heavy-run contention.
 - UI evidence (snapshots/interaction traces) for Settings/Dashboard/Popover assertions.
 - Launch invocation traces (target app/executable, profile ID, argv/env-allowlist evidence).
 - Persistence/log evidence proving metadata-only storage and secret-safe logging.
+
+## Flow Validator Guidance: xcodebuild-ui
+
+- Scope: Settings switcher user-surface assertions (`VAL-SETTINGS-*`).
+- Isolation boundary: read/write only `.factory/validation/core-engine/user-testing/flows/` and mission evidence folder assigned in prompt.
+- Run only scoped UI/integration tests:
+  - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/SwitcherSettingsUITests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+- Do not start/stop unrelated services; no port/process mutations.
+
+## Flow Validator Guidance: launch-contracts
+
+- Scope: browser + CLI launch and security assertions (`VAL-BROWSER-*`, `VAL-CLI-*`).
+- Isolation boundary: same repository only; no writes outside assigned flow report/evidence outputs.
+- Preferred commands:
+  - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/SwitcherBrowserLaunchTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+  - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/SwitcherCLILaunchTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+  - `open -Ra "Safari" && open -Ra "Google Chrome"`
+- Keep logs/evidence secret-safe (no credential/token dumps).
