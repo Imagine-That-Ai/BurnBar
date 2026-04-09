@@ -129,6 +129,7 @@ struct SearchChunkRecord: Identifiable, Equatable, Sendable {
     let messageEndOffset: Int?
     let sectionPath: String?
     let text: String
+    let contentHash: String?
     let createdAt: Date
     let updatedAt: Date
 
@@ -145,6 +146,7 @@ struct SearchChunkRecord: Identifiable, Equatable, Sendable {
         messageEndOffset: Int? = nil,
         sectionPath: String? = nil,
         text: String,
+        contentHash: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -160,6 +162,7 @@ struct SearchChunkRecord: Identifiable, Equatable, Sendable {
         self.messageEndOffset = messageEndOffset
         self.sectionPath = sectionPath
         self.text = text
+        self.contentHash = contentHash
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

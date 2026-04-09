@@ -68,6 +68,13 @@ extension DataStore {
         try searchIndexStore.replaceChunks(documentID: documentID, title: title, chunks: chunks)
     }
 
+    /// Fetches existing embeddings keyed by contentHash for a document.
+    /// Returns a mapping of contentHash -> (chunkID, vectorBlob) for chunks
+    /// that have embeddings for the given version.
+    func fetchEmbeddingByContentHash(documentID: String, embeddingVersionID: String) throws -> [String: (chunkID: String, vectorBlob: Data)] {
+        try searchIndexStore.fetchEmbeddingByContentHash(documentID: documentID, embeddingVersionID: embeddingVersionID)
+    }
+
     func fetchSearchChunks(documentID: String) throws -> [SearchChunkRecord] {
         try searchIndexStore.fetchChunks(documentID: documentID)
     }

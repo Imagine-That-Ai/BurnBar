@@ -107,6 +107,19 @@ enum ProjectionIdentity {
         let digest = SHA256.hash(data: Data(text.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }
+
+    /// Computes a content-based hash for a chunk that is stable across re-projections.
+    /// Unlike the chunk ID (which includes sourceVersionID, ordinal, and offsets),
+    /// this hash depends only on the chunk's text content and structural context (sectionPath).
+    /// Used for incremental diffing: chunks with the same contentHash can skip re-embedding.
+    static func chunkContentHash(
+        text: String,
+        sectionPath: String?,
+        sourceKind: SearchSourceKind
+    ) -> String {
+        let payload = "\(sourceKind.rawValue)|\(sectionPath ?? "")|\(text)"
+        return "cch-\(sha256Hex(payload))"
+    }
 }
 
 struct ProjectionSweepReport: Equatable, Sendable, Codable {
@@ -793,9 +806,44 @@ final class ProjectionPipelineService {
             documentID: document.id,
             createdAt: now
         )
+
+        // Before replacing chunks, fetch existing embeddings keyed by contentHash.
+        // After replace, chunks with matching contentHash get their embeddings
+        // copied to the new chunk ID instead of being regenerated (VAL-INDEX-004/006).
+        let embeddingByHash = (try? dataStore.fetchEmbeddingByContentHash(
+            documentID: document.id,
+            embeddingVersionID: embeddingVersionID
+        )) ?? [:]
+
+        // Replace all chunks (old chunk IDs become stale when sourceVersionID changes).
         try dataStore.replaceSearchChunks(documentID: document.id, title: title, chunks: chunks)
+
+        // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.
+        // This avoids expensive embedding provider calls for content that hasn't changed.
+        var reusedEmbeddingCount = 0
+        for chunk in chunks {
+            guard let hash = chunk.contentHash, let existing = embeddingByHash[hash] else {
+                continue
+            }
+            try? dataStore.upsertChunkEmbedding(
+                ChunkEmbeddingRecord(
+                    chunkID: chunk.id,
+                    embeddingVersionID: embeddingVersionID,
+                    vectorBlob: existing.vectorBlob,
+                    createdAt: now,
+                    updatedAt: now
+                )
+            )
+            reusedEmbeddingCount += 1
+        }
+
+        // Embed only chunks whose content has no existing embedding.
+        let chunksNeedingEmbedding = chunks.filter { chunk in
+            guard let hash = chunk.contentHash else { return true }
+            return embeddingByHash[hash] == nil
+        }
         let indexedCount = try await indexChunks(
-            chunks: chunks,
+            chunks: chunksNeedingEmbedding,
             strict: false,
             sourceKind: .conversation,
             sourceID: conversation.id
@@ -852,9 +900,44 @@ final class ProjectionPipelineService {
             documentID: document.id,
             createdAt: now
         )
+
+        // Before replacing chunks, fetch existing embeddings keyed by contentHash.
+        // After replace, chunks with matching contentHash get their embeddings
+        // copied to the new chunk ID instead of being regenerated (VAL-INDEX-004/006).
+        let embeddingByHash = (try? dataStore.fetchEmbeddingByContentHash(
+            documentID: document.id,
+            embeddingVersionID: embeddingVersionID
+        )) ?? [:]
+
+        // Replace all chunks (old chunk IDs become stale when sourceVersionID changes).
         try dataStore.replaceSearchChunks(documentID: document.id, title: artifact.title, chunks: chunks)
+
+        // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.
+        var reusedEmbeddingCount = 0
+        for chunk in chunks {
+            guard let hash = chunk.contentHash, let existing = embeddingByHash[hash] else {
+                continue
+            }
+            try? dataStore.upsertChunkEmbedding(
+                ChunkEmbeddingRecord(
+                    chunkID: chunk.id,
+                    embeddingVersionID: embeddingVersionID,
+                    vectorBlob: existing.vectorBlob,
+                    createdAt: now,
+                    updatedAt: now
+                )
+            )
+            reusedEmbeddingCount += 1
+        }
+
+        // Embed only chunks whose content has no existing embedding.
+        let chunksNeedingEmbedding = chunks.filter { chunk in
+            guard let hash = chunk.contentHash else { return true }
+            return embeddingByHash[hash] == nil
+        }
+
         let indexedCount = try await indexChunks(
-            chunks: chunks,
+            chunks: chunksNeedingEmbedding,
             strict: false,
             sourceKind: artifact.sourceKind,
             sourceID: artifact.id
@@ -1233,6 +1316,12 @@ struct ProjectionChunker {
                 sectionPath: sectionPath
             )
 
+            let chunkContentHash = ProjectionIdentity.chunkContentHash(
+                text: raw,
+                sectionPath: sectionPath,
+                sourceKind: sourceKind
+            )
+
             chunks.append(
                 SearchChunkRecord(
                     id: chunkID,
@@ -1247,6 +1336,7 @@ struct ProjectionChunker {
                     messageEndOffset: sourceKind == .conversation ? end : nil,
                     sectionPath: sectionPath,
                     text: raw,
+                    contentHash: chunkContentHash,
                     createdAt: createdAt,
                     updatedAt: createdAt
                 )

@@ -573,4 +573,586 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             sourceType: .providerLog
         )
     }
+
+    // MARK: - VAL-INDEX-004: Unchanged chunks are skipped
+
+    func test_unchangedChunks_areSkipped_duringReprojection() async throws {
+        // VAL-INDEX-004: Projection must skip embedding/index updates for unchanged chunk hashes.
+        // When the same content is re-projected (metadata changes but text stays the same),
+        // embedding generation should be skipped for chunks with matching contentHash.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "skip-test-v1", seed: "skip-test-seed")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-chunk-skip",
+            chunkEmbedder: embedder
+        )
+        let base = Date(timeIntervalSince1970: 1_742_700_000)
+
+        // Create a conversation and project it (first projection — full write + embed)
+        let conversation = makeConversation(
+            id: "conv-skip-test",
+            fullText: String(repeating: "This is a test sentence for chunking. ", count: 80),
+            indexedAt: base
+        )
+        try store.upsertConversation(conversation)
+        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+
+        // Drain initial projection
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        guard
+            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        else {
+            XCTFail("Expected projected document after initial projection.")
+            return
+        }
+        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        XCTAssertFalse(initialChunks.isEmpty, "Should have chunks after initial projection.")
+        let initialContentHashes = Set(initialChunks.compactMap(\.contentHash))
+        XCTAssertFalse(initialContentHashes.isEmpty, "Chunks should have content hashes.")
+
+        // Record total embedding count after initial projection
+        let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
+        let initialEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let initialEmbeddingCount = initialEmbeddings.count
+        XCTAssertEqual(initialEmbeddingCount, initialChunks.count, "All chunks should have embeddings initially.")
+
+        // Update the conversation with metadata that changes the content hash
+        // (e.g., different messageCount), but keep fullText identical.
+        let updatedConv = ConversationRecord(
+            id: conversation.id,
+            provider: conversation.provider,
+            sessionId: conversation.sessionId,
+            projectName: conversation.projectName,
+            startTime: conversation.startTime,
+            endTime: base.addingTimeInterval(10),
+            messageCount: 99,  // Different — forces re-projection
+            userWordCount: conversation.userWordCount,
+            assistantWordCount: conversation.assistantWordCount,
+            keyFiles: conversation.keyFiles,
+            keyCommands: conversation.keyCommands,
+            keyTools: conversation.keyTools,
+            inferredTaskTitle: conversation.inferredTaskTitle,
+            lastAssistantMessage: conversation.lastAssistantMessage,
+            fullText: conversation.fullText,  // SAME text!
+            indexedAt: conversation.indexedAt,
+            fileModifiedAt: base.addingTimeInterval(10),
+            summary: nil,
+            summaryTitle: nil,
+            summaryUpdatedAt: nil,
+            summaryProvider: nil,
+            summaryModel: nil,
+            sourceType: conversation.sourceType
+        )
+        try store.upsertConversation(updatedConv)
+
+        // Verify content hash changed (messageCount affects it)
+        let newContentHash = ProjectionIdentity.conversationContentHash(for: updatedConv)
+        let oldContentHash = ProjectionIdentity.conversationContentHash(for: conversation)
+        XCTAssertNotEqual(oldContentHash, newContentHash, "Content hash should change due to messageCount.")
+
+        // Run gap repair sweep
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        // After re-projection, chunk IDs changed but content hashes should be identical
+        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalContentHashes = Set(finalChunks.compactMap(\.contentHash))
+        XCTAssertEqual(
+            initialContentHashes, finalContentHashes,
+            "Content hashes should be identical when text doesn't change."
+        )
+
+        // Chunk IDs should differ (sourceVersionID changed)
+        let initialChunkIDs = Set(initialChunks.map(\.id))
+        let finalChunkIDs = Set(finalChunks.map(\.id))
+        XCTAssertNotEqual(initialChunkIDs, finalChunkIDs, "Chunk IDs should change.")
+
+        // All new chunks should have embeddings (reused from old chunks via contentHash)
+        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let embeddedChunkIDs = Set(finalEmbeddings.map(\.chunkID))
+        XCTAssertEqual(
+            embeddedChunkIDs, finalChunkIDs,
+            "All new chunk IDs should have embeddings after re-projection (via reuse)."
+        )
+
+        // The embedding vectors for unchanged content should be identical
+        let initialEmbeddingsByID = Dictionary(uniqueKeysWithValues: initialEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
+        let finalEmbeddingsByID = Dictionary(uniqueKeysWithValues: finalEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
+
+        // Match by content hash since chunk IDs differ
+        let initialByHash = Dictionary(grouping: initialChunks, by: \.contentHash)
+        for finalChunk in finalChunks {
+            guard let hash = finalChunk.contentHash else { continue }
+            let oldChunksWithSameHash = initialByHash[hash] ?? []
+            guard let oldChunk = oldChunksWithSameHash.first else { continue }
+            let oldBlob = initialEmbeddingsByID[oldChunk.id]
+            let newBlob = finalEmbeddingsByID[finalChunk.id]
+            XCTAssertEqual(
+                oldBlob, newBlob,
+                "Embedding vector should be reused for unchanged content (contentHash: \(hash.prefix(16))...)."
+            )
+        }
+    }
+
+    // MARK: - VAL-INDEX-005: Partial edit updates only touched chunks
+
+    func test_partialEdit_updatesOnlyTouchedChunks() async throws {
+        // VAL-INDEX-005: For partial document edits, only touched chunk IDs may be rewritten/re-indexed.
+        // The key invariant: content hashes that didn't change should have their embeddings reused,
+        // while only new/changed content hashes need fresh embedding generation.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "partial-v1", seed: "partial-test-seed")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-partial-edit",
+            chunkEmbedder: embedder
+        )
+        let base = Date(timeIntervalSince1970: 1_742_710_000)
+
+        // Create a conversation with enough text to produce multiple chunks
+        let longText = String(repeating: "Line of conversation text that will be chunked. ", count: 100)
+        let conversation = makeConversation(id: "conv-partial", fullText: longText, indexedAt: base)
+        try store.upsertConversation(conversation)
+        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        guard
+            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        else {
+            XCTFail("Expected projected document.")
+            return
+        }
+        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        let initialContentHashes = Set(initialChunks.compactMap(\.contentHash))
+        XCTAssertGreaterThan(initialChunks.count, 1, "Should have multiple chunks.")
+
+        let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
+        let initialEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        XCTAssertEqual(initialEmbeddings.count, initialChunks.count)
+
+        // Modify only the END of the text (partial edit) — this should only affect the last few chunks
+        let partialEdit = ConversationRecord(
+            id: conversation.id,
+            provider: conversation.provider,
+            sessionId: conversation.sessionId,
+            projectName: conversation.projectName,
+            startTime: conversation.startTime,
+            endTime: base.addingTimeInterval(30),
+            messageCount: conversation.messageCount + 1,
+            userWordCount: conversation.userWordCount + 5,
+            assistantWordCount: conversation.assistantWordCount + 10,
+            keyFiles: conversation.keyFiles,
+            keyCommands: conversation.keyCommands,
+            keyTools: conversation.keyTools,
+            inferredTaskTitle: "Partial Edit Task",
+            lastAssistantMessage: "Done with partial edit.",
+            fullText: longText + " Additional new content at the end that changes only the last chunk.",
+            indexedAt: conversation.indexedAt,
+            fileModifiedAt: base.addingTimeInterval(30),
+            summary: nil,
+            summaryTitle: nil,
+            summaryUpdatedAt: nil,
+            summaryProvider: nil,
+            summaryModel: nil,
+            sourceType: conversation.sourceType
+        )
+        try store.upsertConversation(partialEdit)
+
+        // Run gap repair sweep
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalContentHashes = Set(finalChunks.compactMap(\.contentHash))
+
+        // Most chunks should have the SAME content hash since only the tail changed
+        let unchangedContentHashes = initialContentHashes.intersection(finalContentHashes)
+        let newContentHashes = finalContentHashes.subtracting(initialContentHashes)
+
+        // Some chunks should definitely be unchanged (head chunks)
+        XCTAssertGreaterThan(
+            unchangedContentHashes.count, 0,
+            "Some chunks should be unchanged after a partial edit. " +
+            "Initial: \(initialContentHashes.count), Final: \(finalContentHashes.count), " +
+            "Overlap: \(unchangedContentHashes.count), New: \(newContentHashes.count)"
+        )
+
+        // All final chunks should have embeddings
+        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let finalChunkIDs = Set(finalChunks.map(\.id))
+        XCTAssertEqual(
+            Set(finalEmbeddings.map(\.chunkID)), finalChunkIDs,
+            "All final chunks should have embeddings."
+        )
+    }
+
+    // MARK: - VAL-INDEX-006: Embedding reuse on unchanged hash+version
+
+    func test_embeddingReuse_onUnchangedHashAndVersion() async throws {
+        // VAL-INDEX-006: Embedding generation must skip chunks whose
+        // (content_hash, embedding_model_version) pair is unchanged.
+        // This verifies that embedding vectors are physically reused (copied)
+        // rather than regenerated when contentHash matches.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "reuse-test-v1", seed: "reuse-seed")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-embed-reuse",
+            chunkEmbedder: embedder
+        )
+        let base = Date(timeIntervalSince1970: 1_742_720_000)
+
+        let conversation = makeConversation(
+            id: "conv-embed-reuse",
+            fullText: String(repeating: "Embedding reuse test content. ", count: 60),
+            indexedAt: base
+        )
+        try store.upsertConversation(conversation)
+        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        guard
+            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        else {
+            XCTFail("Expected projected document.")
+            return
+        }
+
+        let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
+
+        // Record initial embeddings
+        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        let initialEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let initialEmbedMap = Dictionary(uniqueKeysWithValues: initialEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
+        XCTAssertEqual(initialEmbeddings.count, initialChunks.count)
+
+        // Re-project with different metadata but same text
+        let updatedConv = ConversationRecord(
+            id: conversation.id,
+            provider: conversation.provider,
+            sessionId: conversation.sessionId,
+            projectName: conversation.projectName,
+            startTime: conversation.startTime,
+            endTime: base.addingTimeInterval(5),
+            messageCount: 99,
+            userWordCount: conversation.userWordCount,
+            assistantWordCount: conversation.assistantWordCount,
+            keyFiles: conversation.keyFiles,
+            keyCommands: conversation.keyCommands,
+            keyTools: conversation.keyTools,
+            inferredTaskTitle: conversation.inferredTaskTitle,
+            lastAssistantMessage: conversation.lastAssistantMessage,
+            fullText: conversation.fullText,
+            indexedAt: conversation.indexedAt,
+            fileModifiedAt: base.addingTimeInterval(5),
+            summary: nil,
+            summaryTitle: nil,
+            summaryUpdatedAt: nil,
+            summaryProvider: nil,
+            summaryModel: nil,
+            sourceType: conversation.sourceType
+        )
+        try store.upsertConversation(updatedConv)
+
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        // New chunks should have same content hashes
+        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let finalEmbedMap = Dictionary(uniqueKeysWithValues: finalEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
+
+        // Map old chunks by contentHash for cross-referencing
+        let oldChunkByHash: [String: SearchChunkRecord] = {
+            var map: [String: SearchChunkRecord] = [:]
+            for chunk in initialChunks {
+                if let hash = chunk.contentHash { map[hash] = chunk }
+            }
+            return map
+        }()
+
+        // Verify vectors were reused (identical blob) via contentHash matching
+        var reuseCount = 0
+        var totalCount = 0
+        for newChunk in finalChunks {
+            guard let hash = newChunk.contentHash else { continue }
+            totalCount += 1
+            if let oldChunk = oldChunkByHash[hash],
+               let oldBlob = initialEmbedMap[oldChunk.id],
+               let newBlob = finalEmbedMap[newChunk.id],
+               oldBlob == newBlob {
+                reuseCount += 1
+            }
+        }
+
+        // All chunks should have their embeddings reused since text is identical
+        XCTAssertEqual(
+            reuseCount, totalCount,
+            "All chunk embeddings should be reused when text is unchanged. " +
+            "Reused: \(reuseCount)/\(totalCount)"
+        )
+    }
+
+    // MARK: - VAL-INDEX-007: Embeddings regenerate only for impacted chunks
+
+    func test_embeddingsRegenerate_onlyForImpactedChunks() async throws {
+        // VAL-INDEX-007: When content hash or embedding model version changes,
+        // embedding jobs must run only for impacted chunks.
+        // Unchanged chunks should have their old embedding vectors preserved.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "impact-v1", seed: "impact-seed-v1")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-embed-impact",
+            chunkEmbedder: embedder
+        )
+        let base = Date(timeIntervalSince1970: 1_742_730_000)
+
+        // Create and project conversation
+        let conversation = makeConversation(
+            id: "conv-embed-impact",
+            fullText: String(repeating: "Test content for embedding impact verification. ", count: 80),
+            indexedAt: base
+        )
+        try store.upsertConversation(conversation)
+        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        guard
+            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        else {
+            XCTFail("Expected projected document.")
+            return
+        }
+
+        let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
+        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        let initialContentHashes = Set(initialChunks.compactMap(\.contentHash))
+        let initialEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let initialEmbedMap = Dictionary(uniqueKeysWithValues: initialEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
+        XCTAssertGreaterThan(initialChunks.count, 1)
+
+        // Modify the conversation text (partial edit at the end)
+        let editedConv = ConversationRecord(
+            id: conversation.id,
+            provider: conversation.provider,
+            sessionId: conversation.sessionId,
+            projectName: conversation.projectName,
+            startTime: conversation.startTime,
+            endTime: base.addingTimeInterval(60),
+            messageCount: conversation.messageCount + 2,
+            userWordCount: conversation.userWordCount + 10,
+            assistantWordCount: conversation.assistantWordCount + 20,
+            keyFiles: conversation.keyFiles,
+            keyCommands: conversation.keyCommands,
+            keyTools: conversation.keyTools,
+            inferredTaskTitle: "Edited Task",
+            lastAssistantMessage: "Edited response.",
+            fullText: conversation.fullText + " This is new content that changes the tail chunks only.",
+            indexedAt: conversation.indexedAt,
+            fileModifiedAt: base.addingTimeInterval(60),
+            summary: nil,
+            summaryTitle: nil,
+            summaryUpdatedAt: nil,
+            summaryProvider: nil,
+            summaryModel: nil,
+            sourceType: conversation.sourceType
+        )
+        try store.upsertConversation(editedConv)
+
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalContentHashes = Set(finalChunks.compactMap(\.contentHash))
+        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        let finalEmbedMap = Dictionary(uniqueKeysWithValues: finalEmbeddings.map { ($0.chunkID, $0.vectorBlob) })
+
+        // Map old chunks by contentHash
+        let oldChunkByHash: [String: SearchChunkRecord] = {
+            var map: [String: SearchChunkRecord] = [:]
+            for chunk in initialChunks {
+                if let hash = chunk.contentHash { map[hash] = chunk }
+            }
+            return map
+        }()
+
+        // Verify: unchanged content hashes have reused embeddings, changed ones have new embeddings
+        var reusedCount = 0
+        var regeneratedCount = 0
+        for newChunk in finalChunks {
+            guard let hash = newChunk.contentHash else { continue }
+            if let oldChunk = oldChunkByHash[hash],
+               let oldBlob = initialEmbedMap[oldChunk.id],
+               let newBlob = finalEmbedMap[newChunk.id],
+               oldBlob == newBlob {
+                reusedCount += 1
+            } else {
+                regeneratedCount += 1
+            }
+        }
+
+        let unchangedHashes = initialContentHashes.intersection(finalContentHashes)
+        XCTAssertGreaterThan(unchangedHashes.count, 0, "Some content hashes should be unchanged.")
+        XCTAssertGreaterThan(reusedCount, 0, "Some embeddings should be reused.")
+        XCTAssertGreaterThan(regeneratedCount, 0, "Some embeddings should be freshly generated.")
+
+        // All final chunks should have embeddings
+        let finalChunkIDs = Set(finalChunks.map(\.id))
+        XCTAssertEqual(
+            Set(finalEmbeddings.map(\.chunkID)), finalChunkIDs,
+            "All new chunks should have embeddings."
+        )
+    }
+
+    // MARK: - VAL-INDEX-008: Small deltas do not trigger full reindex
+
+    func test_smallDelta_doesNotTriggerFullReindex() async throws {
+        // VAL-INDEX-008: Low-cardinality corpus changes must remain on incremental path
+        // and must not invoke full reindex.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "delta-v1", seed: "delta-seed")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-delta",
+            chunkEmbedder: embedder
+        )
+        let base = Date(timeIntervalSince1970: 1_742_740_000)
+
+        // Create multiple conversations and project them
+        let conv1 = makeConversation(id: "conv-delta-1", fullText: "First conversation content.", indexedAt: base)
+        let conv2 = makeConversation(id: "conv-delta-2", fullText: "Second conversation content.", indexedAt: base)
+        let conv3 = makeConversation(id: "conv-delta-3", fullText: "Third conversation content.", indexedAt: base)
+        try store.upsertConversation(conv1)
+        try store.upsertConversation(conv2)
+        try store.upsertConversation(conv3)
+
+        // Project all three
+        try store.enqueueConversationProjectionJob(conversationID: conv1.id, jobType: .project, now: base)
+        try store.enqueueConversationProjectionJob(conversationID: conv2.id, jobType: .project, now: base)
+        try store.enqueueConversationProjectionJob(conversationID: conv3.id, jobType: .project, now: base)
+
+        // Drain all initial jobs including backfill rebuild
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let indexedDocs = try store.fetchSearchDocuments(limit: 10, sourceKinds: [.conversation])
+        XCTAssertEqual(indexedDocs.count, 3, "All three should be indexed.")
+
+        // Record completed job count — ensure queue is fully drained
+        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let queuedBefore = try store.fetchProjectionJobs(statuses: [.queued, .leased, .running], limit: 100)
+
+        // Verify queue is fully drained
+        XCTAssertTrue(queuedBefore.isEmpty, "Queue should be fully drained before delta test. Remaining: \(queuedBefore.count)")
+
+        // Now change only ONE conversation (small delta)
+        let updatedConv2 = ConversationRecord(
+            id: conv2.id,
+            provider: conv2.provider,
+            sessionId: conv2.sessionId,
+            projectName: conv2.projectName,
+            startTime: conv2.startTime,
+            endTime: base.addingTimeInterval(10),
+            messageCount: conv2.messageCount + 1,
+            userWordCount: conv2.userWordCount,
+            assistantWordCount: conv2.assistantWordCount,
+            keyFiles: conv2.keyFiles,
+            keyCommands: conv2.keyCommands,
+            keyTools: conv2.keyTools,
+            inferredTaskTitle: "Updated Conv 2",
+            lastAssistantMessage: conv2.lastAssistantMessage,
+            fullText: conv2.fullText + " New delta content.",
+            indexedAt: conv2.indexedAt,
+            fileModifiedAt: base.addingTimeInterval(10),
+            summary: nil,
+            summaryTitle: nil,
+            summaryUpdatedAt: nil,
+            summaryProvider: nil,
+            summaryModel: nil,
+            sourceType: conv2.sourceType
+        )
+        try store.upsertConversation(updatedConv2)
+
+        // Run sweep — gap repair should only enqueue reproject for conv2
+        let deltaReport = try await service.runSweep(maxJobs: 20)
+
+        // Count rebuild jobs across ALL statuses — should be only the initial backfill (1)
+        let allJobs = try store.fetchProjectionJobs(statuses: [.completed, .queued, .running, .failed], limit: 500)
+        let rebuildJobs = allJobs.filter { $0.jobType == .rebuild }
+        XCTAssertEqual(rebuildJobs.count, 1, "Only the initial backfill rebuild should exist. Found: \(rebuildJobs.count)")
+
+        // Exactly one new reproject job should have completed (for conv2 via gap repair)
+        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let newCompleted = completedAfter - completedBefore
+        XCTAssertEqual(newCompleted, 1, "Exactly one new job should complete (reproject for conv2). Was: \(newCompleted)")
+
+        // Verify the completed job was for conv2 specifically
+        let recentCompleted = try store.fetchProjectionJobs(statuses: [.completed], limit: 500)
+        let conv2Reproject = recentCompleted.filter {
+            $0.sourceID == conv2.id && $0.jobType == .reproject && $0.priority == 3
+        }
+        XCTAssertEqual(conv2Reproject.count, 1, "Only conv2 should have a gap-repair reproject.")
+
+        // No gap-repair jobs for conv1 or conv3
+        let conv1Jobs = recentCompleted.filter {
+            $0.sourceID == conv1.id && $0.priority == 3 && $0.jobType == .reproject
+        }
+        let conv3Jobs = recentCompleted.filter {
+            $0.sourceID == conv3.id && $0.priority == 3 && $0.jobType == .reproject
+        }
+        XCTAssertTrue(conv1Jobs.isEmpty, "Conv1 should not have a gap-repair job.")
+        XCTAssertTrue(conv3Jobs.isEmpty, "Conv3 should not have a gap-repair job.")
+
+        // Documents for conv1 and conv3 should remain unchanged
+        let conv1Doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conv1.id).first
+        let conv1Record = try store.fetchConversation(id: conv1.id)
+        XCTAssertNotNil(conv1Doc)
+        XCTAssertEqual(
+            conv1Doc?.contentHash,
+            ProjectionIdentity.conversationContentHash(for: conv1Record!),
+            "Conv1 document should remain unchanged."
+        )
+
+        let conv3Doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conv3.id).first
+        let conv3Record = try store.fetchConversation(id: conv3.id)
+        XCTAssertNotNil(conv3Doc)
+        XCTAssertEqual(
+            conv3Doc?.contentHash,
+            ProjectionIdentity.conversationContentHash(for: conv3Record!),
+            "Conv3 document should remain unchanged."
+        )
+    }
 }

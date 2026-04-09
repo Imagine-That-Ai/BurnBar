@@ -265,41 +265,175 @@ final class SearchIndexStore {
             )
 
             for chunk in chunks.sorted(by: { $0.ordinal < $1.ordinal }) {
-                try db.execute(
-                    sql: """
-                    INSERT INTO search_chunks (
-                        id, documentID, sourceKind, sourceID, sourceVersionID, ordinal,
-                        startOffset, endOffset, messageStartOffset, messageEndOffset,
-                        sectionPath, text, createdAt, updatedAt
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    arguments: [
-                        chunk.id,
-                        chunk.documentID,
-                        chunk.sourceKind.rawValue,
-                        chunk.sourceID,
-                        chunk.sourceVersionID,
-                        chunk.ordinal,
-                        chunk.startOffset,
-                        chunk.endOffset,
-                        chunk.messageStartOffset,
-                        chunk.messageEndOffset,
-                        chunk.sectionPath,
-                        chunk.text,
-                        chunk.createdAt,
-                        chunk.updatedAt
-                    ]
-                )
-
-                try db.execute(
-                    sql: """
-                    INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText, projectName, provider)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    arguments: [chunk.id, chunk.documentID, title, chunk.text, projectName, provider]
-                )
+                try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
             }
         }
+    }
+
+    /// Incremental chunk replacement: only writes chunks whose contentHash differs from
+    /// existing chunks. Unchanged chunks are preserved in place, avoiding unnecessary
+    /// FTS index churn and enabling embedding reuse for unchanged content.
+    /// Returns the set of chunk IDs that were actually written (new or changed).
+    @discardableResult
+    func replaceChunksIncremental(documentID: String, title: String, chunks: [SearchChunkRecord]) throws -> Set<String> {
+        try dbQueue.write { db in
+            let documentRow = try Row.fetchOne(
+                db,
+                sql: "SELECT projectName, provider FROM search_documents WHERE id = ?",
+                arguments: [documentID]
+            )
+            let projectName = documentRow?["projectName"] as? String ?? ""
+            let provider = documentRow?["provider"] as? String ?? ""
+
+            // Fetch existing chunks indexed by contentHash for O(1) lookup
+            let existingRows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, contentHash FROM search_chunks
+                WHERE documentID = ?
+                """,
+                arguments: [documentID]
+            )
+
+            // Index existing chunks by their contentHash — multiple chunks can share a hash
+            var existingByHash: [String: [String]] = [:]
+            var allExistingIDs: Set<String> = []
+            for row in existingRows {
+                let chunkID = row["id"] as? String ?? ""
+                let contentHash = row["contentHash"] as? String ?? ""
+                allExistingIDs.insert(chunkID)
+                if contentHash.isEmpty == false {
+                    existingByHash[contentHash, default: []].append(chunkID)
+                }
+            }
+
+            // Determine which new chunks are unchanged (same contentHash already exists)
+            var consumedExistingHashes: [String: Int] = [:]  // Track how many existing chunks we've matched per hash
+            let sortedChunks = chunks.sorted(by: { $0.ordinal < $1.ordinal })
+            var changedChunkIDs = Set<String>()
+            var newChunks: [SearchChunkRecord] = []
+
+            for chunk in sortedChunks {
+                guard let hash = chunk.contentHash, hash.isEmpty == false else {
+                    // No content hash — must write
+                    newChunks.append(chunk)
+                    changedChunkIDs.insert(chunk.id)
+                    continue
+                }
+
+                let existingCount = consumedExistingHashes[hash] ?? 0
+                let availableExisting = existingByHash[hash]?.count ?? 0
+
+                if existingCount < availableExisting {
+                    // This chunk's content already exists — skip writing it
+                    consumedExistingHashes[hash] = existingCount + 1
+                } else {
+                    // New or changed content
+                    newChunks.append(chunk)
+                    changedChunkIDs.insert(chunk.id)
+                }
+            }
+
+            // Delete old chunks whose contentHash no longer appears in new chunks
+            // All old chunks need to go since chunk IDs change with sourceVersionID
+            let newChunkIDs = Set(chunks.map(\.id))
+            let chunksToDelete = allExistingIDs.subtracting(newChunkIDs)
+            if chunksToDelete.isEmpty == false {
+                let deletePlaceholders = OpenBurnBarDatabase.sqlPlaceholders(count: chunksToDelete.count)
+                let sortedDeleteIDs = chunksToDelete.sorted()
+                try db.execute(
+                    sql: "DELETE FROM search_chunks_fts WHERE chunkID IN (\(deletePlaceholders))",
+                    arguments: StatementArguments(sortedDeleteIDs)
+                )
+                try db.execute(
+                    sql: "DELETE FROM chunk_embeddings WHERE chunkID IN (\(deletePlaceholders))",
+                    arguments: StatementArguments(sortedDeleteIDs)
+                )
+                try db.execute(
+                    sql: "DELETE FROM search_chunks WHERE id IN (\(deletePlaceholders))",
+                    arguments: StatementArguments(sortedDeleteIDs)
+                )
+            }
+
+            // Insert only changed/new chunks
+            for chunk in newChunks {
+                try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
+            }
+
+            return changedChunkIDs
+        }
+    }
+
+    /// Fetches existing embeddings keyed by contentHash for a document.
+    /// Returns a mapping of contentHash -> (chunkID, vectorBlob) for chunks
+    /// that have embeddings for the given version. Used for embedding reuse:
+    /// when a new chunk has the same contentHash, the existing embedding
+    /// can be copied to the new chunk ID instead of regenerating it.
+    func fetchEmbeddingByContentHash(documentID: String, embeddingVersionID: String) throws -> [String: (chunkID: String, vectorBlob: Data)] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT c.contentHash, e.chunkID, e.vectorBlob
+                FROM search_chunks AS c
+                JOIN chunk_embeddings AS e ON e.chunkID = c.id AND e.embeddingVersionID = ?
+                WHERE c.documentID = ? AND c.contentHash IS NOT NULL AND c.contentHash != ''
+                """,
+                arguments: [embeddingVersionID, documentID]
+            )
+            var result: [String: (chunkID: String, vectorBlob: Data)] = [:]
+            for row in rows {
+                guard let hash = row["contentHash"] as? String,
+                      let chunkID = row["chunkID"] as? String,
+                      let blob = row["vectorBlob"] as? Data else { continue }
+                result[hash] = (chunkID: chunkID, vectorBlob: blob)
+            }
+            return result
+        }
+    }
+
+    private static func insertChunk(
+        _ chunk: SearchChunkRecord,
+        documentID: String,
+        title: String,
+        projectName: String,
+        provider: String,
+        db: Database
+    ) throws {
+        try db.execute(
+            sql: """
+            INSERT INTO search_chunks (
+                id, documentID, sourceKind, sourceID, sourceVersionID, ordinal,
+                startOffset, endOffset, messageStartOffset, messageEndOffset,
+                sectionPath, text, contentHash, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            arguments: [
+                chunk.id,
+                chunk.documentID,
+                chunk.sourceKind.rawValue,
+                chunk.sourceID,
+                chunk.sourceVersionID,
+                chunk.ordinal,
+                chunk.startOffset,
+                chunk.endOffset,
+                chunk.messageStartOffset,
+                chunk.messageEndOffset,
+                chunk.sectionPath,
+                chunk.text,
+                chunk.contentHash,
+                chunk.createdAt,
+                chunk.updatedAt
+            ]
+        )
+
+        try db.execute(
+            sql: """
+            INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText, projectName, provider)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            arguments: [chunk.id, chunk.documentID, title, chunk.text, projectName, provider]
+        )
     }
 
     func fetchChunks(documentID: String) throws -> [SearchChunkRecord] {
@@ -549,6 +683,7 @@ final class SearchIndexStore {
         let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date.distantPast
         let updatedAt = OpenBurnBarDatabase.parseDateValue(row["updatedAt"]) ?? createdAt
         let text = (row["text"] as? String) ?? ""
+        let contentHash = row["contentHash"] as? String
         return SearchChunkRecord(
             id: id,
             documentID: documentID,
@@ -562,6 +697,7 @@ final class SearchIndexStore {
             messageEndOffset: messageEndOffset >= 0 ? messageEndOffset : nil,
             sectionPath: row["sectionPath"] as? String,
             text: text,
+            contentHash: contentHash,
             createdAt: createdAt,
             updatedAt: updatedAt
         )

@@ -878,10 +878,23 @@ final class OpenBurnBarDatabase {
             )
         }
 
+        migrator.registerMigration("v31_chunk_content_hash") { db in
+            // Add content-based hash column to search_chunks for incremental diffing.
+            // Unlike chunk ID (which includes sourceVersionID), contentHash is stable
+            // across re-projections, enabling unchanged-chunk skip and embedding reuse.
+            try db.alter(table: "search_chunks") { t in
+                t.add(column: "contentHash", .text)
+            }
+            // Index for efficient lookup of existing embeddings by contentHash.
+            try db.create(
+                index: "search_chunks_content_hash_idx",
+                on: "search_chunks",
+                columns: ["documentID", "contentHash"]
+            )
+        }
+
         return migrator
     }
-
-    // MARK: - Shared SQL Helpers
 
     static func sqlPlaceholders(count: Int) -> String {
         Array(repeating: "?", count: max(0, count)).joined(separator: ", ")
