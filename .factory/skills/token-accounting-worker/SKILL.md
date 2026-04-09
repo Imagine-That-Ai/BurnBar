@@ -32,9 +32,14 @@ None.
    - `swift test --package-path OpenBurnBarCore`
    - `xcodebuild test` scoped `-only-testing` targets for changed contracts
    - `scripts/test-openburnbar-app.sh` when app-layer behavior changed
-   - `swiftlint`
-7. Ensure no long-running or watch processes remain.
-8. Produce a complete handoff with concrete evidence, not generic statements.
+   - `npm --prefix extensions/openburnbar run lint`
+7. In `skillFeedback`, report procedure adherence truthfully:
+   - Set `followedProcedure=false` if required red/green or required reads/verification were skipped.
+   - Do not mark `followedProcedure=true` when deviations occurred.
+8. Keep commit/handoff traceability strict:
+   - Use a resolvable commit SHA in handoff `commitId` (verify with `git rev-parse`).
+9. Ensure no long-running or watch processes remain.
+10. Produce a complete handoff with concrete evidence, not generic statements.
 
 ## Example Handoff
 
