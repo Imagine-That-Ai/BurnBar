@@ -77,11 +77,6 @@ public enum BrowserLaunchAdapter {
             return .failure(.invalidProfileIdentifier("Profile identifier too long (max 256 chars)"))
         }
 
-        // Reject path traversal and absolute paths
-        guard !trimmed.contains("/") && !trimmed.contains("\\") && !trimmed.contains(":") else {
-            return .failure(.invalidProfileIdentifier("Profile identifier cannot contain path separators"))
-        }
-
         // Reject null bytes and control characters
         let clean = trimmed.filter { char in
             let scalar = char.unicodeScalars.first!
@@ -93,11 +88,31 @@ public enum BrowserLaunchAdapter {
         }
 
         // Reject suspicious patterns that could be injection attempts
+        // Check these BEFORE path separators so that "--profile-directory=Default" gets
+        // caught as suspicious (contains "--") rather than as path separator
         let suspiciousPatterns = ["--", "-=", ";", "&", "|", "`", "$", "(", ")", "{", "}", "[", "]", "<", ">"]
         for pattern in suspiciousPatterns {
             if trimmed.contains(pattern) {
                 return .failure(.invalidProfileIdentifier("Profile identifier contains suspicious characters"))
             }
+        }
+
+        // Reject flag-like patterns that look like shell flags (-x '...')
+        // This catches inputs like "-e 'ls'" which could be shell command attempts
+        if trimmed.hasPrefix("-") && trimmed.count >= 2 {
+            let secondChar = trimmed[trimmed.index(trimmed.startIndex, offsetBy: 1)]
+            if secondChar.isLetter {
+                // Check if it looks like a flag (followed by space or another dash)
+                let rest = String(trimmed.dropFirst(2))
+                if rest.hasPrefix(" ") || rest.hasPrefix("-") || rest.isEmpty {
+                    return .failure(.invalidProfileIdentifier("Profile identifier contains suspicious characters"))
+                }
+            }
+        }
+
+        // Reject path traversal and absolute paths - check LAST to prioritize suspicious pattern detection
+        guard !trimmed.contains("/") && !trimmed.contains("\\") && !trimmed.contains(":") else {
+            return .failure(.invalidProfileIdentifier("Profile identifier cannot contain path separators"))
         }
 
         return .success(trimmed)
@@ -166,9 +181,12 @@ public enum BrowserLaunchAdapter {
         profile: SwitcherProfileRecord,
         additionalArgs: [String] = []
     ) -> Result<(URL, [String]), BrowserLaunchError> {
-        // Validate it's a Chrome profile
-        guard profile.targetKind == .browser,
-              profile.browserType == .chrome else {
+        // Validate it's a browser profile (check targetKind first for correct error)
+        guard profile.targetKind == .browser else {
+            return .failure(.profileKindMismatch(expected: .browser, actual: profile.targetKind))
+        }
+
+        guard profile.browserType == .chrome else {
             return .failure(.profileTypeMismatch(expected: .chrome, actual: profile.browserType))
         }
 
@@ -457,43 +475,55 @@ public struct BrowserFilesystemGuard {
     public static func redactSensitiveData(_ input: String) -> String {
         var result = input
 
-        // Redact cookie patterns
-        result = result.replacingOccurrences(
-            of: #"cookie[s]?[=:][^\s,;]+"#,
+        // Redact cookie patterns - handle individually to avoid greedy matching issues
+        // Cookie pattern: word characters followed by = or : and the value
+        let cookieResult = result.replacingOccurrences(
+            of: #"(?i)(cookie|cookies)[=:][^,]+"#,
             with: "[COOKIE_REDACTED]",
             options: .regularExpression
         )
+        if cookieResult != result {
+            result = cookieResult
+            // Also redact session patterns after cookie redaction
+            result = result.replacingOccurrences(
+                of: #"(?i)session[=:][^,]+"#,
+                with: "[SESSION_REDACTED]",
+                options: .regularExpression
+            )
+        } else {
+            // No cookies found, try session alone
+            result = result.replacingOccurrences(
+                of: #"(?i)session[=:][^,]+"#,
+                with: "[COOKIE_REDACTED]",
+                options: .regularExpression
+            )
+        }
 
-        // Redact token patterns (Bearer tokens, API keys)
+        // Redact Bearer tokens (Authorization headers with Bearer)
         result = result.replacingOccurrences(
-            of: #"bearer[_\s]+[a-zA-Z0-9_\-]+"#,
+            of: #"(?i)Bearer[_\s]+[A-Za-z0-9_\-\.]+"#,
             with: "[TOKEN_REDACTED]",
             options: .regularExpression
         )
+
+        // Redact generic token patterns (token=, api_key=, service_token=, etc.)
         result = result.replacingOccurrences(
-            of: #"api[_\s]?key[_\s]?[=:][^\s,;]+"#,
-            with: "[APIKEY_REDACTED]",
+            of: #"(?i)(token|api_key|service_token|access_token)[=:][^,\s]+"#,
+            with: "[TOKEN_REDACTED]",
             options: .regularExpression
         )
 
-        // Redact session ID patterns
+        // Redact Authorization headers (general pattern for auth headers)
         result = result.replacingOccurrences(
-            of: #"session[_\s]?id[_\s]?[=:][^\s,;]+"#,
-            with: "[SESSION_REDACTED]",
-            options: .regularExpression
-        )
-
-        // Redact auth header patterns
-        result = result.replacingOccurrences(
-            of: #"authorization[_\s]?[=:][^\s,;]+"#,
+            of: #"(?i)authorization[=:\s][^\r\n]+"#,
             with: "[AUTH_REDACTED]",
             options: .regularExpression
         )
 
-        // Redact password patterns in URLs
+        // Redact password patterns in URLs (user:password@host)
         result = result.replacingOccurrences(
-            of: #":[^\s:@]+@[^\s:@]+:"#,
-            with: ":[PASSWORD_REDACTED]@",
+            of: #"://[^:\s]+:[^@\s]+@"#,
+            with: "://[PASSWORD_REDACTED]@",
             options: .regularExpression
         )
 

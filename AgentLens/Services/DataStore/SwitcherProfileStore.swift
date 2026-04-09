@@ -60,16 +60,26 @@ public final class SwitcherProfileStore {
     // MARK: - Profile CRUD
 
     /// Creates a new profile. Returns the created profile with generated ID and timestamps.
+    /// If sortKey > 0 is passed, it is preserved; otherwise auto-increments from max existing.
+    /// If createdAt is passed (non-zero date), it is preserved; otherwise uses current time.
     public func create(_ record: SwitcherProfileRecord) throws -> SwitcherProfileRecord {
         try dbQueue.write { db in
-            // Determine sort key: max existing + 1
-            let maxSortKey = try Int.fetchOne(
-                db,
-                sql: "SELECT MAX(sortKey) FROM switcher_profiles"
-            ) ?? 0
-            let sortKey = maxSortKey + 1
+            // Determine sort key: use passed value if > 0, otherwise auto-increment
+            let sortKey: Int
+            if record.sortKey > 0 {
+                sortKey = record.sortKey
+            } else {
+                let maxSortKey = try Int.fetchOne(
+                    db,
+                    sql: "SELECT MAX(sortKey) FROM switcher_profiles"
+                ) ?? 0
+                sortKey = maxSortKey + 1
+            }
 
+            // Use passed createdAt if provided, otherwise current time
+            let createdAt = record.createdAt.timeIntervalSince1970 > 0 ? record.createdAt : Date()
             let now = Date()
+
             try db.execute(
                 sql: """
                 INSERT INTO switcher_profiles (
@@ -85,7 +95,7 @@ public final class SwitcherProfileStore {
                     record.cliType?.rawValue,
                     record.cliMetadata.map { try Self.encodeJSON($0) },
                     sortKey,
-                    now,
+                    createdAt,
                     now
                 ]
             )
@@ -98,7 +108,7 @@ public final class SwitcherProfileStore {
                 cliType: record.cliType,
                 cliMetadata: record.cliMetadata,
                 sortKey: sortKey,
-                createdAt: now,
+                createdAt: createdAt,
                 updatedAt: now
             )
         }
@@ -189,8 +199,12 @@ public final class SwitcherProfileStore {
     }
 
     /// Deletes a profile by ID.
-    /// If the deleted profile was active, active state is cleared.
+    /// If the deleted profile was active, selects a deterministic fallback (lowest sortKey).
     public func deleteProfile(id: String) throws {
+        // First check if this profile is the active one
+        let state = try fetchActiveProfileState()
+        let wasActive = state.activeProfileID == id
+
         try dbQueue.write { db in
             try db.execute(sql: "DELETE FROM switcher_profiles WHERE id = ?", arguments: [id])
             // Clear active state if this was the active profile
@@ -202,6 +216,11 @@ public final class SwitcherProfileStore {
                 """,
                 arguments: [Date(), id]
             )
+        }
+
+        // If this was the active profile, select a fallback
+        if wasActive {
+            try selectFallbackActiveProfile()
         }
     }
 
