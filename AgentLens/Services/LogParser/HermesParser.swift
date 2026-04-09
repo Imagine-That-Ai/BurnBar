@@ -216,12 +216,25 @@ final class HermesParser: LogParser, @unchecked Sendable {
                     summary = summaryValue
                 }
 
-                // Fall back to transcript estimation when the session row has zero tokens
-                if inputTokens == 0 && outputTokens == 0 && cacheReadTokens == 0 && cacheWriteTokens == 0,
-                   let summary {
-                    let estimated = summary.estimatedUsage()
-                    inputTokens = estimated.input
-                    outputTokens = estimated.output
+                // VAL-TOKEN-004: Fallback/estimation runs only when explicit usage buckets are unavailable.
+                // When all session row buckets are zero, try summary, then estimation as last resort.
+                if inputTokens == 0 && outputTokens == 0 && cacheReadTokens == 0 && cacheWriteTokens == 0 {
+                    if let summary {
+                        // Summary available - use its parsed message data
+                        inputTokens = summary.inputTokens
+                        outputTokens = summary.outputTokens
+                    } else {
+                        // No summary either - fall back to estimation
+                        let estimated = TokenExtractionUtility.estimateFallbackTokens(
+                            userVisibleChars: 0,
+                            assistantVisibleChars: 0,
+                            assistantReasoningChars: 0,
+                            userMessageCount: 0,
+                            assistantMessageCount: 0
+                        )
+                        inputTokens = estimated.input
+                        outputTokens = estimated.output
+                    }
                 }
 
                 let startTime = dateValue(row["started_at"]) ?? summary?.startTime ?? modificationDate(of: dbURL) ?? Date()
@@ -371,18 +384,54 @@ final class HermesParser: LogParser, @unchecked Sendable {
                 return nil
             }()
 
-            let usageInput = inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0
-                ? inputTokens
-                : (summary?.inputTokens ?? 0)
-            let usageOutput = inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0
-                ? outputTokens
-                : (summary?.outputTokens ?? 0)
-            let usageCacheWrite = inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0
-                ? cacheWriteTokens
-                : (summary?.cacheCreationTokens ?? 0)
-            let usageCacheRead = inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0
-                ? cacheReadTokens
-                : (summary?.cacheReadTokens ?? 0)
+            // Determine if any explicit bucket is present in the gateway index
+            let hasExplicit = inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0
+            // Determine if summary has any usage data from message parsing
+            let summaryHasUsage = (summary?.inputTokens ?? 0) > 0 || (summary?.outputTokens ?? 0) > 0
+                || (summary?.cacheCreationTokens ?? 0) > 0 || (summary?.cacheReadTokens ?? 0) > 0
+
+            // VAL-TOKEN-004: Fallback/estimation runs only when BOTH explicit and summary are unavailable
+            // When explicit buckets exist, use them directly (no max with summary)
+            // When explicit is absent but summary has data, use summary
+            // Only estimate when both explicit AND summary are absent
+            let usageInput: Int
+            let usageOutput: Int
+            let usageCacheWrite: Int
+            let usageCacheRead: Int
+
+            if hasExplicit {
+                // Explicit buckets present - use them directly (VAL-TOKEN-001: preserve exact counts)
+                usageInput = inputTokens
+                usageOutput = outputTokens
+                usageCacheWrite = cacheWriteTokens
+                usageCacheRead = cacheReadTokens
+            } else if summaryHasUsage {
+                // No explicit buckets, but summary has usage data from message parsing
+                usageInput = summary?.inputTokens ?? 0
+                usageOutput = summary?.outputTokens ?? 0
+                usageCacheWrite = summary?.cacheCreationTokens ?? 0
+                usageCacheRead = summary?.cacheReadTokens ?? 0
+            } else {
+                // Neither explicit nor summary has data - fall back to estimation
+                // Note: EstimatedTokens only provides input/output; cache tokens are estimated as 0
+                // when no explicit cache data is available (VAL-TOKEN-006)
+                let estimated: EstimatedTokens
+                if let summary {
+                    estimated = summary.estimatedUsage()
+                } else {
+                    estimated = TokenExtractionUtility.estimateFallbackTokens(
+                        userVisibleChars: 0,
+                        assistantVisibleChars: 0,
+                        assistantReasoningChars: 0,
+                        userMessageCount: 0,
+                        assistantMessageCount: 0
+                    )
+                }
+                usageInput = estimated.input
+                usageOutput = estimated.output
+                usageCacheWrite = 0
+                usageCacheRead = 0
+            }
 
             if let usage = usage(
                 sessionId: sessionId,
@@ -450,15 +499,38 @@ final class HermesParser: LogParser, @unchecked Sendable {
         let startTime = dateValue(json["session_start"]) ?? summary.startTime ?? modificationDate(of: file) ?? Date()
         let endTime = dateValue(json["last_updated"]) ?? summary.endTime ?? startTime
 
-        let estimated = summary.estimatedUsage()
+        // VAL-TOKEN-004: Fallback/estimation runs only when explicit usage buckets are unavailable.
+        // For CLI snapshots, "explicit" means summary-derived from message events.
+        // Estimation runs only when summary has no usage data at all.
+        let summaryHasUsage = summary.inputTokens > 0 || summary.outputTokens > 0
+            || summary.cacheCreationTokens > 0 || summary.cacheReadTokens > 0
+
+        let (usageInput, usageOutput, usageCacheWrite, usageCacheRead): (Int, Int, Int, Int)
+        if summaryHasUsage {
+            // Summary has valid usage data from message events - use it directly
+            usageInput = summary.inputTokens
+            usageOutput = summary.outputTokens
+            usageCacheWrite = summary.cacheCreationTokens
+            usageCacheRead = summary.cacheReadTokens
+        } else {
+            // No summary data - fall back to estimation
+            // Note: EstimatedTokens only provides input/output; cache tokens are 0 when
+            // no explicit cache data is available (VAL-TOKEN-006)
+            let estimated = summary.estimatedUsage()
+            usageInput = estimated.input
+            usageOutput = estimated.output
+            usageCacheWrite = 0
+            usageCacheRead = 0
+        }
+
         let usage = usage(
             sessionId: sessionId,
             projectName: projectName,
             model: model,
-            inputTokens: max(summary.inputTokens, estimated.input),
-            outputTokens: max(summary.outputTokens, estimated.output),
-            cacheCreationTokens: summary.cacheCreationTokens,
-            cacheReadTokens: summary.cacheReadTokens,
+            inputTokens: usageInput,
+            outputTokens: usageOutput,
+            cacheCreationTokens: usageCacheWrite,
+            cacheReadTokens: usageCacheRead,
             costOverride: nil,
             startTime: startTime,
             endTime: endTime
