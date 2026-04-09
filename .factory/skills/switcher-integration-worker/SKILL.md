@@ -106,11 +106,13 @@ Before setting `followedProcedure: true` in `skillFeedback`, you MUST demonstrat
 
 ```json
 {
-  "command": "test -f mission.md && test -f AGENTS.md && echo 'context files present'",
+  "command": "head -n 3 mission.md && grep -n 'fulfills' AGENTS.md | head -n 5",
   "exitCode": 0,
-  "observation": "Required context files were present and read during Phase 1.1 startup."
+  "observation": "Read mission.md goal section and AGENTS.md fulfills list during Phase 1.1 startup."
 }
 ```
+
+The evidence must demonstrate actual content was read (e.g., `head`, `grep`, `cat`, `rg` output showing file content), not merely that files exist (which `test -f` proves). For example, `rg -n 'phase' AGENTS.md` shows actual matching lines, while `test -f AGENTS.md` only proves the file exists.
 
 **If you deviated from the procedure:** You MUST set `followedProcedure: false` and document every deviation in `skillFeedback.deviations` with:
 - `step`: Which phase/step was skipped or altered
