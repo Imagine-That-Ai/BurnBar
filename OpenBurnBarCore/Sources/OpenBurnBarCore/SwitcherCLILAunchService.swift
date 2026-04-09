@@ -258,6 +258,31 @@ public enum CLILaunchAdapter {
         return result
     }
 
+    /// Builds a clean baseline environment containing ONLY allowlisted keys from the given base env.
+    /// This is the foundational environment for CLI launches - no ambient/unknown variables are included.
+    ///
+    /// Security: This method ensures that only explicitly allowlisted environment variables
+    /// are passed to CLI processes, preventing sensitive ambient variables from leaking.
+    ///
+    /// - Parameter baseEnv: The source environment to draw values from. Defaults to current process env.
+    /// - Returns: A dictionary containing only allowlisted keys and their sanitized values.
+    public static func buildAllowlistedBaselineEnvironment(
+        baseEnv: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        var result: [String: String] = [:]
+
+        for key in allowlistedEnvKeys {
+            if let value = baseEnv[key] {
+                let sanitized = sanitizeEnvValue(value)
+                if !sanitized.isEmpty {
+                    result[key] = sanitized
+                }
+            }
+        }
+
+        return result
+    }
+
     /// Sanitizes an environment variable value.
     /// Removes newlines and control characters that could be used for injection.
     private static func sanitizeEnvValue(_ value: String) -> String {
@@ -519,12 +544,14 @@ public struct CLILaunchInvoker {
             process.executableURL = executable
             process.arguments = args
 
-            // Set environment - start with current env and merge allowlisted values
-            var mergedEnv = ProcessInfo.processInfo.environment
+            // Set environment - build from allowlisted baseline only, then merge profile-specific keys.
+            // Security: We do NOT start with ProcessInfo.processInfo.environment (full ambient env).
+            // This prevents sensitive ambient variables (API keys, tokens, etc.) from leaking to CLI.
+            var finalEnv = CLILaunchAdapter.buildAllowlistedBaselineEnvironment()
             for (key, value) in env {
-                mergedEnv[key] = value
+                finalEnv[key] = value
             }
-            process.environment = mergedEnv
+            process.environment = finalEnv
 
             // Set working directory if specified
             if let wd = workingDirectory {

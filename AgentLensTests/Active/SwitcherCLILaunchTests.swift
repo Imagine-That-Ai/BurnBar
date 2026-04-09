@@ -211,6 +211,141 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertNil(result["USER"])
     }
 
+    // MARK: - Allowlisted Baseline Environment (Security Critical)
+
+    func test_buildAllowlistedBaselineEnvironment_includesOnlyAllowlistedKeys() {
+        // Simulate an ambient environment with both allowlisted and sensitive keys
+        let ambientEnv = [
+            "HOME": "/Users/test",
+            "PATH": "/usr/bin",
+            "USER": "testuser",
+            "ANTHROPIC_API_KEY": "sk-ant-12345secret",
+            "OPENAI_API_KEY": "sk-12345secret",
+            "SECRET_TOKEN": "super-secret-value",
+            "GITHUB_TOKEN": "ghp_secret",
+        ]
+
+        let result = CLILaunchAdapter.buildAllowlistedBaselineEnvironment(baseEnv: ambientEnv)
+
+        // Should include only allowlisted keys
+        XCTAssertTrue(result.keys.contains("HOME"))
+        XCTAssertTrue(result.keys.contains("PATH"))
+        XCTAssertTrue(result.keys.contains("USER"))
+
+        // Should NOT include sensitive ambient keys
+        XCTAssertFalse(result.keys.contains("ANTHROPIC_API_KEY"), "Sensitive API key should not be in baseline environment")
+        XCTAssertFalse(result.keys.contains("OPENAI_API_KEY"), "Sensitive API key should not be in baseline environment")
+        XCTAssertFalse(result.keys.contains("SECRET_TOKEN"), "Sensitive token should not be in baseline environment")
+        XCTAssertFalse(result.keys.contains("GITHUB_TOKEN"), "Sensitive token should not be in baseline environment")
+    }
+
+    func test_buildAllowlistedBaselineEnvironment_includesAllKnownAllowlistedKeys() {
+        let ambientEnv: [String: String] = [
+            "HOME": "/Users/test",
+            "PATH": "/usr/bin",
+            "USER": "testuser",
+            "SHELL": "/bin/zsh",
+            "PWD": "/Users/test",
+            "TMPDIR": "/tmp",
+            "TERM": "xterm-256color",
+            "TERM_PROGRAM": "Apple_Terminal",
+            "LANG": "en_US.UTF-8",
+            "LC_ALL": "en_US.UTF-8",
+            "EDITOR": "vim",
+            "VISUAL": "vim",
+            "PAGER": "less",
+            "BROWSER": "open",
+            "SSH_AUTH_SOCK": "/tmp/ssh-agent",
+            "GIT_EDITOR": "vim",
+            "HG_EDITOR": "vim",
+            "CLAUDE_CONFIG_PATH": "/Users/test/.claude",
+            "CODEX_CONFIG_PATH": "/Users/test/.codex",
+            "OPENCODE_CONFIG_PATH": "/Users/test/.opencode",
+        ]
+
+        let result = CLILaunchAdapter.buildAllowlistedBaselineEnvironment(baseEnv: ambientEnv)
+
+        // All allowlisted keys should be present when they exist in base env
+        XCTAssertEqual(result["HOME"], "/Users/test")
+        XCTAssertEqual(result["PATH"], "/usr/bin")
+        XCTAssertEqual(result["USER"], "testuser")
+        XCTAssertEqual(result["SHELL"], "/bin/zsh")
+        XCTAssertEqual(result["PWD"], "/Users/test")
+        XCTAssertEqual(result["TMPDIR"], "/tmp")
+        XCTAssertEqual(result["TERM"], "xterm-256color")
+        XCTAssertEqual(result["TERM_PROGRAM"], "Apple_Terminal")
+        XCTAssertEqual(result["LANG"], "en_US.UTF-8")
+        XCTAssertEqual(result["LC_ALL"], "en_US.UTF-8")
+        XCTAssertEqual(result["CLAUDE_CONFIG_PATH"], "/Users/test/.claude")
+        XCTAssertEqual(result["CODEX_CONFIG_PATH"], "/Users/test/.codex")
+        XCTAssertEqual(result["OPENCODE_CONFIG_PATH"], "/Users/test/.opencode")
+    }
+
+    func test_buildAllowlistedBaselineEnvironment_excludesKeysNotInBaseEnv() {
+        // Base env is mostly empty - only HOME and PATH exist
+        let minimalEnv: [String: String] = [
+            "HOME": "/Users/test",
+            "PATH": "/usr/bin",
+        ]
+
+        let result = CLILaunchAdapter.buildAllowlistedBaselineEnvironment(baseEnv: minimalEnv)
+
+        // Should only have the keys that exist in base env
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result["HOME"], "/Users/test")
+        XCTAssertEqual(result["PATH"], "/usr/bin")
+
+        // Should not have keys not in base env
+        XCTAssertNil(result["USER"])
+        XCTAssertNil(result["SHELL"])
+    }
+
+    func test_buildCLILaunch_usesAllowlistedBaselineNotFullAmbient() {
+        // This test verifies that when building a CLI launch config,
+        // the environment is built from the allowlisted baseline only,
+        // NOT from the full ambient environment.
+        let metadata = SwitcherCLIProfileMetadata(
+            envKeysToPass: [],
+            displayLabel: nil
+        )
+        let profile = SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: metadata,
+            sortKey: 1
+        )
+
+        let result = CLILaunchAdapter.buildCLILaunch(profile: profile)
+
+        // If Claude is installed, check the env
+        if case .success(let config) = result {
+            // The env should only contain keys from allowlistedEnvKeys
+            // It should NOT contain any sensitive ambient keys
+            let sensitiveKeys = [
+                "ANTHROPIC_API_KEY",
+                "OPENAI_API_KEY",
+                "SECRET_TOKEN",
+                "GITHUB_TOKEN",
+                "AWS_SECRET_ACCESS_KEY",
+            ]
+
+            for sensitiveKey in sensitiveKeys {
+                XCTAssertFalse(
+                    config.env.keys.contains(sensitiveKey),
+                    "Sensitive key '\(sensitiveKey)' should not be in launch environment"
+                )
+            }
+
+            // The env should only contain allowlisted keys
+            for key in config.env.keys {
+                XCTAssertTrue(
+                    CLILaunchAdapter.allowlistedEnvKeys.contains(key),
+                    "Environment key '\(key)' is not in the allowlist"
+                )
+            }
+        }
+    }
+
     // MARK: - Profile Type Validation
 
     func test_validateCLIProfile_acceptsValidCLIProfile() {
