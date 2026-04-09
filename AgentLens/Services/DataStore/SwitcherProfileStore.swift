@@ -21,8 +21,22 @@ public final class SwitcherProfileStore {
     // MARK: - Active Profile State
 
     /// Fetches the current active profile state.
+    /// Performs cleanup of legacy duplicate rows if present during hydration.
+    /// Uses ORDER BY updatedAt DESC to deterministically select the most recent row.
     public func fetchActiveProfileState() throws -> SwitcherActiveProfileState {
-        try dbQueue.read { db in
+        try dbQueue.write { db in
+            // Clean up legacy duplicate rows if any exist.
+            // Keep only the row with the most recent updatedAt.
+            // This ensures deterministic hydration even when legacy code left multiple rows.
+            try db.execute(sql: """
+                DELETE FROM switcher_active_profile
+                WHERE rowid NOT IN (
+                    SELECT rowid FROM switcher_active_profile
+                    ORDER BY updatedAt DESC
+                    LIMIT 1
+                )
+            """)
+
             let row = try Row.fetchOne(db, sql: "SELECT activeProfileID, updatedAt FROM switcher_active_profile LIMIT 1")
             guard let row else {
                 return SwitcherActiveProfileState(activeProfileID: nil)

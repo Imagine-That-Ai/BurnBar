@@ -566,4 +566,178 @@ final class SwitcherProfileStoreTests: XCTestCase {
             XCTAssertTrue(error is SwitcherProfileStoreError)
         }
     }
+
+    // MARK: - Legacy Multi-Row Hydration Tests
+
+    /// Regression test: verifies deterministic resolution when legacy code left
+    /// multiple rows in switcher_active_profile due to unordered LIMIT 1 reads.
+    func test_fetchActiveProfileState_resolvesDeterministically_withLegacyMultiRow() throws {
+        // Create a profile first
+        let profile = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "LegacyTest"),
+            sortKey: 1
+        ))
+
+        // Simulate legacy state: insert multiple rows directly (like old buggy code did)
+        try dbQueue.write { db in
+            // Oldest row
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                arguments: ["old-profile-1", Date().addingTimeInterval(-200)]
+            )
+            // Most recent row (should be canonical after cleanup)
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                arguments: [profile.id, Date()]
+            )
+            // Middle row
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                arguments: ["old-profile-2", Date().addingTimeInterval(-100)]
+            )
+        }
+
+        // First fetch should clean up duplicates and return the most recent
+        let state = try store.fetchActiveProfileState()
+
+        // Should return the profile.id (most recent row) not the stale ones
+        XCTAssertEqual(state.activeProfileID, profile.id)
+
+        // Verify only one row remains after cleanup
+        let rowCount = try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
+        }
+        XCTAssertEqual(rowCount, 1)
+    }
+
+    /// Verifies that repeated relaunch reads are deterministic even when
+    /// legacy multi-row state was present initially.
+    func test_fetchActiveProfileState_deterministicRepeatedRelaunchReads() throws {
+        let profile1 = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "Profile1"),
+            sortKey: 1
+        ))
+        let profile2 = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .safari,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "Profile2"),
+            sortKey: 2
+        ))
+
+        // Simulate legacy state with multiple rows
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM switcher_active_profile")
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                arguments: [profile1.id, Date().addingTimeInterval(-100)]
+            )
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                arguments: [profile2.id, Date()]
+            )
+        }
+
+        // Simulate multiple relaunch reads - should be deterministic
+        for _ in 0..<5 {
+            let state = try store.fetchActiveProfileState()
+            XCTAssertEqual(state.activeProfileID, profile2.id, "Repeated reads should be deterministic")
+        }
+
+        // Verify only one row remains
+        let rowCount = try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
+        }
+        XCTAssertEqual(rowCount, 1)
+    }
+
+    /// Verifies cleanup selects correct canonical row when active profile was
+    /// the older row and a newer row with different profile exists.
+    func test_fetchActiveProfileState_cleansUpStaleActiveWithNewerRowPresent() throws {
+        let staleProfile = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "StaleProfile"),
+            sortKey: 1
+        ))
+        let currentProfile = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .safari,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "CurrentProfile"),
+            sortKey: 2
+        ))
+
+        // Legacy state: stale profile is active but there's a newer row with different profile
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM switcher_active_profile")
+            // Stale (older) row - profile1 active
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                arguments: [staleProfile.id, Date().addingTimeInterval(-100)]
+            )
+            // Newer row - profile2 active
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                arguments: [currentProfile.id, Date()]
+            )
+        }
+
+        // Fetch should return the newer row (currentProfile)
+        let state = try store.fetchActiveProfileState()
+        XCTAssertEqual(state.activeProfileID, currentProfile.id)
+
+        // Verify only one row remains
+        let rowCount = try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
+        }
+        XCTAssertEqual(rowCount, 1)
+    }
+
+    /// Verifies that after hydration cleanup, subsequent writes work correctly.
+    func test_fetchActiveProfileState_cleanupPreservesWriteIntegrity() throws {
+        let profile = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "TestProfile"),
+            sortKey: 1
+        ))
+
+        // Create legacy multi-row state
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                arguments: [nil, Date().addingTimeInterval(-100)]
+            )
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                arguments: [profile.id, Date()]
+            )
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                arguments: [nil, Date().addingTimeInterval(-50)]
+            )
+        }
+
+        // Hydrate
+        let state = try store.fetchActiveProfileState()
+        XCTAssertEqual(state.activeProfileID, profile.id)
+
+        // Now set to nil and back - should work correctly
+        try store.setActiveProfile(nil)
+        let nilState = try store.fetchActiveProfileState()
+        XCTAssertNil(nilState.activeProfileID)
+
+        try store.setActiveProfile(profile.id)
+        let resetState = try store.fetchActiveProfileState()
+        XCTAssertEqual(resetState.activeProfileID, profile.id)
+
+        // Verify still exactly one row
+        let rowCount = try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
+        }
+        XCTAssertEqual(rowCount, 1)
+    }
 }
