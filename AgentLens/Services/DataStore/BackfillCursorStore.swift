@@ -91,8 +91,10 @@ final class BackfillCursorStore {
     ///   - newUpperBound: The new upper bound (exclusive) after processing a 7-day window.
     ///   - earliestSourceDate: The earliest source date if discovered during backfill.
     ///
-    /// - Note: newUpperBound must be greater than the current cursor value.
-    ///   This ensures monotonic progression and prevents regression.
+    /// - Note: newUpperBound must be greater than or equal to the current cursor value.
+    ///   The comparison uses epsilon tolerance (1ms) for floating-point Date precision.
+    ///   Equal timestamp advances are idempotent and allowed (no-op with version bump).
+    ///   This ensures monotonic progression, prevents regression, and supports retries.
     func advanceCursor(
         for provider: AgentProvider,
         newUpperBound: Date,
