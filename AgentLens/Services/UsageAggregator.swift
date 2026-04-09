@@ -261,7 +261,21 @@ final class UsageAggregator {
         if let apiService = usageAPIService, !apiService.configuredProviders.isEmpty {
             let thirtyDaysAgo = Date().addingTimeInterval(-30 * 86400)
             apiUsages = await apiService.fetchAll(since: thirtyDaysAgo)
-            apiSupplementalUsages = supplementalUsages(from: apiUsages, existingUsages: allUsages)
+            // VAL-CROSS-011: Use canonical multi-source baseline from database, not just parser output.
+            // This ensures ALL local sources (provider_log, in_app_chat, cursor_bridge, daemon)
+            // are included in the baseline for computing supplemental reconciliation deltas.
+            let canonicalBaseline: [TokenUsage]
+            do {
+                canonicalBaseline = try dataStore.usageStore.fetchAllUsage()
+            } catch {
+                // Fall back to parser output if canonical fetch fails
+                canonicalBaseline = allUsages
+                let message = "Failed to fetch canonical usage baseline: \(error.localizedDescription)"
+                if parserImportError == nil {
+                    parserImportError = message
+                }
+            }
+            apiSupplementalUsages = supplementalUsages(from: apiUsages, existingUsages: canonicalBaseline)
             if !apiSupplementalUsages.isEmpty {
                 do {
                     try dataStore.insert(apiSupplementalUsages)
