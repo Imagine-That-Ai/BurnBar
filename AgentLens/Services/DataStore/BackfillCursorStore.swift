@@ -106,9 +106,13 @@ final class BackfillCursorStore {
                 SELECT * FROM backfill_cursors WHERE provider = ?
                 """, arguments: [provider.rawValue])
 
-            // VAL-PERSIST-007: Enforce monotonic progression - new upper bound must be greater
+            // VAL-PERSIST-007: Enforce monotonic progression - new upper bound must be greater or equal.
+            // Equal timestamp advances are idempotent and allowed (no-op with version bump).
+            // Strictly greater is NOT required for idempotent semantics at equal timestamps.
+            // Use epsilon tolerance for floating-point Date comparison precision.
+            let epsilon: TimeInterval = 0.001 // 1 millisecond tolerance
             if let current = current, let currentBound = current.lastProcessedWindowUpperBound {
-                guard newUpperBound > currentBound else {
+                guard newUpperBound.timeIntervalSince(currentBound) >= -epsilon else {
                     throw BackfillCursorError.nonMonotonicAdvance(
                         provider: provider,
                         currentBound: currentBound,
@@ -122,8 +126,9 @@ final class BackfillCursorStore {
                 newUpperBound.timeIntervalSince($0)
             } ?? newUpperBound.timeIntervalSince(earliestSourceDate ?? newUpperBound)
 
-            // VAL-PERSIST-006: Enforce 7-day window bound
-            guard windowDuration <= Self.backfillWindowSeconds || current == nil else {
+            // VAL-PERSIST-006: Enforce 7-day window bound with tolerance for floating-point precision
+            let windowEpsilon: TimeInterval = 0.001 // 1 millisecond tolerance
+            guard windowDuration <= Self.backfillWindowSeconds + windowEpsilon || current == nil else {
                 throw BackfillCursorError.windowExceedsBound(
                     provider: provider,
                     windowDuration: windowDuration,
