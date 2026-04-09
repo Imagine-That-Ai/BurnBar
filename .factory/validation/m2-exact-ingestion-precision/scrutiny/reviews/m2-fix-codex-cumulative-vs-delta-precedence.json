@@ -1,0 +1,64 @@
+{
+  "featureId": "m2-fix-codex-cumulative-vs-delta-precedence",
+  "reviewedAt": "2026-04-09T01:20:00Z",
+  "commitId": "99264146111e7a5e6427ebe0890ac744fd40ebc5",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix directly addresses the prior blocking Codex regression by requiring explicit cumulative input/output fields before enabling cumulative precedence, which preserves delta parsing for partial token_count payloads and prevents zeroed usage rows.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Parked/ParserIntegrationTests.swift",
+        "line": 879,
+        "severity": "non_blocking",
+        "description": "Regression tests for this fix were added under Parked tests, which are intentionally excluded from the active OpenBurnBarTests target; this reduces ongoing automated protection unless equivalent coverage is moved to Active."
+      }
+    ]
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "file": "AgentLensTests/Parked/ParserIntegrationTests.swift",
+      "line": 879,
+      "description": "Fix validation tests exist in Parked rather than Active tests, so they do not run in the normal OpenBurnBarTests bundle."
+    }
+  ],
+  "evidence": {
+    "priorReviewPath": ".factory/validation/m2-exact-ingestion-precision/scrutiny/reviews/m2-provider-specific-exact-first-parsers.json",
+    "priorBlockingIssueResolution": [
+      {
+        "issue": "Partial/placeholder token_count maps were treated as cumulative (0,0,0), setting foundCumulative and suppressing valid delta accumulation.",
+        "status": "resolved",
+        "support": [
+          "AgentLens/Services/LogParser/TokenExtractionUtility.swift:530-533 now guard for explicit token_count.input_tokens and token_count.output_tokens; missing fields return nil.",
+          "AgentLens/Services/UsageAggregatorParsers.swift:805 and 824 mean cumulative precedence now only triggers when codexCumulativeTotalsFromTokenCountInfo returns a valid tuple, otherwise delta parsing remains active."
+        ]
+      }
+    ],
+    "artifactsReviewed": [
+      "/Users/dewclaw/.factory/missions/76dfbf36-62ab-43ad-899f-b8b8f9e47932/features.json",
+      "/Users/dewclaw/.factory/missions/76dfbf36-62ab-43ad-899f-b8b8f9e47932/handoffs/2026-04-08T23-36-22-036Z__m2-provider-specific-exact-first-parsers__5f8b570b-7aec-4bf8-b686-466e14c864be.json",
+      "/Users/dewclaw/.factory/missions/76dfbf36-62ab-43ad-899f-b8b8f9e47932/handoffs/2026-04-09T00-35-59-101Z__m2-fix-codex-cumulative-vs-delta-precedence__9352c410-17da-4432-9d2b-9be25846c5d9.json",
+      "/Users/dewclaw/.factory/missions/76dfbf36-62ab-43ad-899f-b8b8f9e47932/worker-transcripts.jsonl",
+      "/Users/dewclaw/Documents/Projects/BurnBar/.factory/skills/token-accounting-worker/SKILL.md",
+      "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m2-exact-ingestion-precision/scrutiny/reviews/m2-provider-specific-exact-first-parsers.json",
+      "git show 8795892d711213726f115e27d5eef1b991d9e78f",
+      "git show 99264146111e7a5e6427ebe0890ac744fd40ebc5"
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The token-accounting-worker skill requires additional verification commands and strict procedure reporting, but this handoff reports followedProcedure=true while only xcodebuild tests are listed.",
+      "evidence": ".factory/skills/token-accounting-worker/SKILL.md:31-38 requires swift test and npm lint plus truthful followedProcedure reporting; handoff 2026-04-09T00-35-59-101Z lists only xcodebuild commands (lines 14-22) and still sets followedProcedure=true (line 60)."
+    },
+    {
+      "area": "conventions",
+      "observation": "Mission-critical regression tests were added under Parked, which is intentionally excluded from active test execution, suggesting a convention gap on where to place enforceable parser regression tests.",
+      "evidence": "project.yml:126-128 includes only AgentLensTests/Active and AgentLensTests/Support in OpenBurnBarTests; AgentLensTests/README.md:9,12,29 states Parked tests are not compiled and do not affect CI; fix tests were added at AgentLensTests/Parked/ParserIntegrationTests.swift:879-984."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/m2-exact-ingestion-precision/scrutiny/reviews/m2-provider-specific-exact-first-parsers.json",
+  "summary": "Reviewed original failing feature commit 8795892 and fix commit 9926414 with corresponding handoffs/transcript skeletons. The prior blocking Codex cumulative-vs-delta precedence regression is resolved by explicit cumulative field gating in TokenExtractionUtility, and no new blocking runtime defects were identified in the fix."
+}

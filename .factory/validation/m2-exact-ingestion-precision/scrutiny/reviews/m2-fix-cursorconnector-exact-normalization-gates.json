@@ -1,0 +1,53 @@
+{
+  "featureId": "m2-fix-cursorconnector-exact-normalization-gates",
+  "reviewedAt": "2026-04-09T01:19:16Z",
+  "commitId": "fdadb8f567e027a62605a2d530feb815b92402e0",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "priorBlockingIssueAssessment": [
+    {
+      "fromFeature": "m2-core-token-extraction-invariants",
+      "issue": "Python normalization wrongly required explicit prompt/completion before normalizing from total_tokens.",
+      "resolved": true,
+      "evidence": "CursorConnectorManager.swift Python normalize_usage now normalizes on `if normalized_total > 0:` with no `has_explicit_primary` gate (line 1139 in current file; commit fdadb8f diff)."
+    },
+    {
+      "fromFeature": "m2-core-token-extraction-invariants",
+      "issue": "Python fallback could run despite explicit total/cache buckets.",
+      "resolved": true,
+      "evidence": "Fallback is now in the `elif` branch after `if normalized_total > 0` (line 1158), and `normalized_total` is computed from `max(total, prompt+completion+cache_creation+cache_read)` (lines 1133-1134), so explicit total/cache buckets prevent fallback."
+    }
+  ],
+  "blockingIssues": [
+    {
+      "file": "AgentLens/Services/CursorConnector/CursorConnectorManager.swift",
+      "line": 1158,
+      "severity": "blocking",
+      "description": "The Python proxy fallback gate no longer requires all explicit exact buckets to be absent. Because `explicit_total` excludes `reasoning_tokens` (line 1133), a reasoning-only exact payload can leave `normalized_total == 0` and still enter fallback via `elif prompt_char_estimate + output_char_estimate > 0`, causing heuristic prompt/completion estimation despite explicit exact usage.",
+      "evidence": "Validation contract VAL-TOKEN-004 requires fallback only when input/output/cacheRead/cacheCreation/reasoning are all unavailable (validation-contract.md line 19). Swift path still enforces this (`else if ... cacheCreation == 0 && cacheRead == 0 && reasoningTokens == 0` at line 780), but Python path does not."
+    }
+  ],
+  "nonBlockingIssues": [],
+  "codeReview": {
+    "summary": "The fix resolves both previously reported blockers (total-only normalization and total/cache fallback gating), but introduces a new blocking regression in the Python proxy: fallback can execute when exact reasoning tokens are present.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/CursorConnector/CursorConnectorManager.swift",
+        "line": 1158,
+        "severity": "blocking",
+        "description": "Python fallback branch does not guard on `reasoning_tokens == 0`, violating the exact-buckets fallback gate for VAL-TOKEN-004 and diverging from the Swift normalizeUsageEvent behavior.",
+        "evidence": "Python lines 1133-1134 + 1158 vs Swift line 780 in the same file."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The token-accounting-worker skill requires TDD red/green with failing scoped tests first, but both the original failed feature and this fix report `tests.added: []` while `skillFeedback.followedProcedure` remains true.",
+      "evidence": "Handoff files for d987f786 and 87eb822c both list no added tests; commits b88f171 and fdadb8f modify implementation only; SKILL.md step 3 requires adding/updating failing scoped tests first and step 7 requires truthful deviation reporting."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/m2-exact-ingestion-precision/scrutiny/reviews/m2-core-token-extraction-invariants.json",
+  "summary": "Re-run review failed: prior blocking issues were fixed, but the Python normalize_usage fallback gate still violates VAL-TOKEN-004 for reasoning-token-only exact payloads, so the fix is not fully complete."
+}
