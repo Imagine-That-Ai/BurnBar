@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		00E878A353B252471030EA22 /* ForgeDevParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AAF24793FE2DAB32B9E90F7 /* ForgeDevParser.swift */; };
+		BBBB00000000000000000003 /* BackfillSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBB00000000000000000004 /* BackfillSchedulerTests.swift */; };
 		022C7662767DAA13D3AB3080 /* AppLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 044623368681D05B7857497D /* AppLogoView.swift */; };
 		024FEC952987CD59122CBE39 /* DataStore+ConversationAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92670B16F30BEBADD82D180D /* DataStore+ConversationAccess.swift */; };
 		026F25D31CFC576799322290 /* OnboardingCompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CAA8C48E3FC49F536418B68 /* OnboardingCompleteView.swift */; };
@@ -160,6 +161,7 @@
 		81F1ED1DB57828657570A694 /* OpenBurnBarDaemonMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA03AED964BB322BDF2686B /* OpenBurnBarDaemonMain.swift */; };
 		8214B6EDC9D1CB4176926C6C /* OpenBurnBarCore in Frameworks */ = {isa = PBXBuildFile; productRef = C14A1A5EEEDD09A7E086732B /* OpenBurnBarCore */; };
 		83A80107DB409DE3BE56BADD /* SwitcherSettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F9A0E85DC1975806463C5BA /* SwitcherSettingsUITests.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6 /* SwitcherDashboardUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6 /* SwitcherDashboardUITests.swift */; };
 		8488AD2C9CB26F96504052EF /* OpenBurnBarDaemonServerTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6623DDB231233436128FA75 /* OpenBurnBarDaemonServerTypes.swift */; };
 		848EA231EEA32C3C08E94632 /* TokenUsageProvenanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 047CEF0267BCD11F9F8E9420 /* TokenUsageProvenanceTests.swift */; };
 		85579002D62BFDE58AF4A9A2 /* SearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF0BC832DD4F6C22F0FC801C /* SearchService.swift */; };
@@ -343,6 +345,7 @@
 		06FCCD5FBC549E7F597F0200 /* ConversationParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationParsingTests.swift; sourceTree = "<group>"; };
 		073C28D960BA61E9F41F39D1 /* DataStore+UsageAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DataStore+UsageAccess.swift"; sourceTree = "<group>"; };
 		BBBB00000000000000000001 /* BackfillCursorStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackfillCursorStore.swift; sourceTree = "<group>"; };
+		BBBB00000000000000000004 /* BackfillSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackfillSchedulerTests.swift; sourceTree = "<group>"; };
 		087B142B81E108B93B097682 /* ControlPlaneStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPlaneStore.swift; sourceTree = "<group>"; };
 		08B71B0EC5CB5C01C0A67E28 /* OpenBurnBarRunJournal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarRunJournal.swift; sourceTree = "<group>"; };
 		08CA0EBBD87EAFAD4FAE258F /* RetrievalHealthTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetrievalHealthTypes.swift; sourceTree = "<group>"; };
@@ -355,6 +358,7 @@
 		0DF4DEB38D109A639B28840E /* OpenBurnBarAgentLoopService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarAgentLoopService.swift; sourceTree = "<group>"; };
 		0E6B9A52E744A7897FD4ECF6 /* CrossSurfaceUpgradeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossSurfaceUpgradeTests.swift; sourceTree = "<group>"; };
 		0F9A0E85DC1975806463C5BA /* SwitcherSettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherSettingsUITests.swift; sourceTree = "<group>"; };
+		D1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6 /* SwitcherDashboardUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherDashboardUITests.swift; sourceTree = "<group>"; };
 		0FC8315913C35BC77E9F49F1 /* OnboardingConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingConnectView.swift; sourceTree = "<group>"; };
 		12068541DA3F5C3D57B1F7DE /* CodexRolloutScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRolloutScanner.swift; sourceTree = "<group>"; };
 		13F043566936750728A8A885 /* DeterministicEmbeddingProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeterministicEmbeddingProviders.swift; sourceTree = "<group>"; };
@@ -1049,7 +1053,9 @@
 				AC54E4B932644341A2AFDE2D /* SwitcherCLILaunchTests.swift */,
 				52DD165A9B954A65EB419B82 /* SwitcherProfileStoreTests.swift */,
 				0F9A0E85DC1975806463C5BA /* SwitcherSettingsUITests.swift */,
+				D1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6 /* SwitcherDashboardUITests.swift */,
 				EBB0C9D18B36867A7CB11124 /* TokenAccountingPrecedenceTests.swift */,
+				BBBB00000000000000000004 /* BackfillSchedulerTests.swift */,
 				047CEF0267BCD11F9F8E9420 /* TokenUsageProvenanceTests.swift */,
 				9BB20EB48DFA90D2334CD879 /* UsageAggregationAndMoodBandTests.swift */,
 				73B02DCE145FBBDB6E03950C /* WorkflowInsightRollupServiceTests.swift */,
@@ -1538,6 +1544,7 @@
 				8695C92890FFDA205EC6592D /* ArtifactAuthoringServiceTests.swift in Sources */,
 				B47FE97231E1A50A11EDEACC /* ArtifactDiscoveryServiceTests.swift in Sources */,
 				E13C21C292D1001969E52D34 /* ArtifactDiscoveryTestSupport.swift in Sources */,
+				BBBB00000000000000000003 /* BackfillSchedulerTests.swift in Sources */,
 				3D479D3BEF7AE013C6FF7EA4 /* CLIBridgeTests.swift in Sources */,
 				DED6F0E7C05F1B7F6845553D /* ChatSessionControllerSearchStateTests.swift in Sources */,
 				77D1172CA1A8A3048E3B8C02 /* CheckpointTests.swift in Sources */,
@@ -1567,6 +1574,7 @@
 				816B8AE51A5B95BC24BB2245 /* SwitcherCLILaunchTests.swift in Sources */,
 				A7C10B40B1F60BFD28F9EF37 /* SwitcherProfileStoreTests.swift in Sources */,
 				83A80107DB409DE3BE56BADD /* SwitcherSettingsUITests.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6 /* SwitcherDashboardUITests.swift in Sources */,
 				DD9DAE5BF3CCDE8FFB72237E /* TestableClaudeCodeParser.swift in Sources */,
 				EBC6ADD0C9829CD762B697BE /* TokenAccountingPrecedenceTests.swift in Sources */,
 				848EA231EEA32C3C08E94632 /* TokenUsageProvenanceTests.swift in Sources */,
