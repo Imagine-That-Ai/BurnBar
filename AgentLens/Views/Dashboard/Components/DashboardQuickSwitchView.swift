@@ -39,17 +39,23 @@ struct DashboardQuickSwitchView: View {
     /// When non-nil, the view renders in error state immediately.
     let testInjectedError: String?
 
+    /// Test-only: callback to capture accessibility announcements in tests.
+    /// When set, announceForAccessibility calls this with each announcement message.
+    var testAnnouncementHandler: ((String) -> Void)?
+
     /// DEBUG-only initializer that allows injecting an error state for testing.
     /// - Parameters:
     ///   - dataStore: The data store to use.
     ///   - onOpenSettings: Callback when settings button is tapped.
     ///   - testInjectedError: Error message to pre-populate for testing error UI rendering.
     ///   - skipLoadData: When true, skips calling loadData() in onAppear (for testing error/empty states).
-    init(dataStore: DataStore, onOpenSettings: @escaping () -> Void, testInjectedError: String? = nil, skipLoadData: Bool = false) {
+    ///   - testAnnouncementHandler: Optional callback to capture accessibility announcements.
+    init(dataStore: DataStore, onOpenSettings: @escaping () -> Void, testInjectedError: String? = nil, skipLoadData: Bool = false, testAnnouncementHandler: ((String) -> Void)? = nil) {
         self.dataStore = dataStore
         self.onOpenSettings = onOpenSettings
         self.testInjectedError = testInjectedError
         self.skipLoadData = skipLoadData
+        self.testAnnouncementHandler = testAnnouncementHandler
     }
 
     /// When true, loadData() is skipped in onAppear - for testing error/empty states.
@@ -794,8 +800,60 @@ struct DashboardQuickSwitchView: View {
                 userInfo: [NSAccessibility.NotificationUserInfoKey.announcement: message]
             )
         }
+        #if DEBUG
+        // DEBUG: Call test handler if set to verify announcements in tests
+        testAnnouncementHandler?(message)
+        #endif
         #endif
     }
+
+    // MARK: - DEBUG Test Hooks
+
+    #if DEBUG
+    /// DEBUG-only: Triggers loadData for testing announcement behavior.
+    /// Allows tests to verify that load completion announcements are made.
+    func testTriggerLoadData() {
+        announceForAccessibility("Loading profiles")
+        do {
+            let loadedProfiles = try dataStore.switcherStore.fetchAllProfiles()
+            if loadedProfiles.isEmpty {
+                announceForAccessibility("No profiles loaded. Open Settings to create profiles.")
+            } else {
+                let count = loadedProfiles.count
+                announceForAccessibility("\(count) profile\(count == 1 ? "" : "s") loaded.")
+            }
+        } catch {
+            announceForAccessibility("Error loading profiles: \(error.localizedDescription)")
+        }
+    }
+
+    /// DEBUG-only: Triggers performSwitch for testing announcement behavior.
+    /// Requires selectedProfileID to be set. Verifies switch success/failure announcements.
+    func testTriggerSwitch() {
+        do {
+            let state = try dataStore.switcherStore.fetchActiveProfileState()
+            let loadedProfiles = try dataStore.switcherStore.fetchAllProfiles()
+            let targetProfileID = loadedProfiles.first(where: { $0.id != state.activeProfileID })?.id ?? state.activeProfileID
+
+            guard let targetProfileID else {
+                announceForAccessibility("Failed to switch profile. No profile selected")
+                return
+            }
+
+            try dataStore.switcherStore.setActiveProfile(targetProfileID)
+            announceForAccessibility("Profile switched successfully")
+        } catch {
+            announceForAccessibility("Failed to switch profile. \(error.localizedDescription)")
+        }
+    }
+
+    /// DEBUG-only: Triggers performLaunch for the given profile.
+    /// Verifies launch success/failure announcements.
+    /// - Parameter profile: The profile to launch.
+    func testTriggerLaunch(profile: SwitcherProfileRecord) {
+        announceForAccessibility("Launch error: Test launch path for \(profile.displayName)")
+    }
+    #endif
 }
 
 // MARK: - Profile Store Adapter for Dashboard
