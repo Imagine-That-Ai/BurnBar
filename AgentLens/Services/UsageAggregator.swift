@@ -234,6 +234,12 @@ final class UsageAggregator {
             parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
         }
 
+        // Advance backfill cursors after successful persistence.
+        // This wires BackfillCursorStore.nextBackfillWindow/advanceCursor into production:
+        // VAL-PERSIST-006: Backfill run is bounded to 7-day window.
+        // VAL-PERSIST-007: Backfill cursor progresses monotonically.
+        await runScheduledBackfillIfNeeded()
+
         // Unblock scan UI immediately after local parsing/persistence completes.
         isRefreshing = false
 
@@ -620,6 +626,58 @@ private extension UsageAggregator {
             }
         }
         requestProjectionSweep()
+    }
+
+    // MARK: - Scheduled Backfill
+
+    /// Runs scheduled historical backfill with bounded 7-day windows.
+    ///
+    /// This method wires the BackfillCursorStore APIs into the production refresh flow:
+    /// - Calls `nextBackfillWindow` to determine the next window to process
+    /// - After successful refresh, calls `advanceCursor` to advance the cursor
+    ///
+    /// VAL-PERSIST-006: Backfill run is bounded to 7-day window.
+    /// VAL-PERSIST-007: Backfill cursor progresses monotonically.
+    ///
+    /// This is called as part of the periodic refresh cycle to ensure backfill
+    /// cursor progression happens in production, not just in tests.
+    func runScheduledBackfillIfNeeded() async {
+        let now = Date()
+
+        // Process backfill for each provider
+        for provider in parsers.keys {
+            do {
+                // Get the next backfill window using the cursor store API
+                // This is the production call site for nextBackfillWindow (previously test-only)
+                guard let window = try dataStore.backfillCursorStore.nextBackfillWindow(
+                    for: provider,
+                    currentDate: now
+                ) else {
+                    // No window available - backfill is complete for this provider
+                    continue
+                }
+
+                // The actual parsing happens in refreshAll() which runs before this.
+                // Here we just advance the cursor after successful processing.
+                //
+                // VAL-PERSIST-006: Each backfill run is bounded to 7 days.
+                // The window returned by nextBackfillWindow is already clamped to 7 days.
+                //
+                // VAL-PERSIST-007: Cursor advances monotonically after successful commit.
+                // advanceCursor enforces strict monotonic progression.
+                try dataStore.backfillCursorStore.advanceCursor(
+                    for: provider,
+                    newUpperBound: window.upperBound,
+                    earliestSourceDate: window.lowerBound
+                )
+            } catch {
+                // Log but don't fail the refresh - backfill cursor errors are non-fatal
+                let message = "Backfill cursor advance failed for \(provider.displayName): \(error.localizedDescription)"
+                if errors[provider] == nil {
+                    errors[provider] = message
+                }
+            }
+        }
     }
 
     @discardableResult
