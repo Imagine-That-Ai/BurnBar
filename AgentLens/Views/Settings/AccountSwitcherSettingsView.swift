@@ -308,32 +308,14 @@ struct AccountSwitcherSettingsView: View {
         NavigationView {
             ProfileFormView(
                 title: "Edit Profile",
-                name: Binding(
-                    get: { profile.displayName },
-                    set: { editFormName = $0 }
-                ),
-                targetKind: Binding(
-                    get: { profile.targetKind },
-                    set: { editFormTargetKind = $0 }
-                ),
+                name: $editFormName,
+                targetKind: $editFormTargetKind,
                 browserType: $editFormBrowserType,
                 cliType: $editFormCLIType,
-                profileIdentifier: Binding(
-                    get: { profile.browserMetadata?.profileIdentifier ?? "" },
-                    set: { editFormProfileIdentifier = $0 }
-                ),
-                workingDirectory: Binding(
-                    get: { profile.cliMetadata?.workingDirectory ?? "" },
-                    set: { editFormWorkingDirectory = $0 }
-                ),
-                additionalArgs: Binding(
-                    get: { profile.cliMetadata?.additionalArgs.joined(separator: " ") ?? "" },
-                    set: { editFormAdditionalArgs = $0 }
-                ),
-                envKeys: Binding(
-                    get: { profile.cliMetadata?.envKeysToPass.joined(separator: ", ") ?? "" },
-                    set: { editFormEnvKeys = $0 }
-                ),
+                profileIdentifier: $editFormProfileIdentifier,
+                workingDirectory: $editFormWorkingDirectory,
+                additionalArgs: $editFormAdditionalArgs,
+                envKeys: $editFormEnvKeys,
                 validationError: $editFormValidationError,
                 duplicateError: $editFormDuplicateError,
                 isSaving: isSaving,
@@ -447,6 +429,18 @@ struct AccountSwitcherSettingsView: View {
     }
 
     private func editProfile(_ profile: SwitcherProfileRecord) {
+        // Initialize form state from the profile being edited so bindings
+        // read from/write to mutable @State vars instead of immutable snapshots
+        editFormName = profile.displayName
+        editFormTargetKind = profile.targetKind
+        editFormBrowserType = profile.browserType ?? .chrome
+        editFormCLIType = profile.cliType ?? .claude
+        editFormProfileIdentifier = profile.browserMetadata?.profileIdentifier ?? ""
+        editFormWorkingDirectory = profile.cliMetadata?.workingDirectory ?? ""
+        editFormAdditionalArgs = profile.cliMetadata?.additionalArgs.joined(separator: " ") ?? ""
+        editFormEnvKeys = profile.cliMetadata?.envKeysToPass.joined(separator: ", ") ?? ""
+        editFormValidationError = nil
+        editFormDuplicateError = nil
         profileToEdit = profile
         showingEditSheet = true
     }
