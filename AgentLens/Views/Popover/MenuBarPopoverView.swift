@@ -139,6 +139,16 @@ struct MenuBarPopoverView: View {
                                 .padding(.horizontal, DesignSystem.Spacing.sm)
                                 .padding(.vertical, DesignSystem.Spacing.xs)
                             }
+                            Divider().background(DesignSystem.Colors.border)
+                            PopoverQuickSwitchView(
+                                dataStore: dataStore,
+                                onOpenSettings: {
+                                    dismiss()
+                                    onOpenSettings()
+                                }
+                            )
+                            .padding(.horizontal, DesignSystem.Spacing.sm)
+                            .padding(.vertical, DesignSystem.Spacing.xs)
                         }
                     }
                     .frame(maxHeight: popoverScrollMaxHeight)
