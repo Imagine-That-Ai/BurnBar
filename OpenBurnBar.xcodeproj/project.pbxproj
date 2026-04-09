@@ -113,6 +113,7 @@
 		56DFC307AFBAC9DE248434ED /* ProviderUsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB32DCAD61B1B0510FF11A2 /* ProviderUsageAPIService.swift */; };
 		579E2EDB5EB07A577BF39E02 /* InsightCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40CA8A85C922A5AE09E8BC9F /* InsightCardView.swift */; };
 		58EB44C0AB495E5DB5651749 /* SearchIndexStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63C9B8BD8A78996154DBA4AE /* SearchIndexStore.swift */; };
+		58EB44C0AB495E5DB5651750 /* SwitcherProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63C9B8BD8A78996154DBA4AF /* SwitcherProfileStore.swift */; };
 		594B3F454FB649CED9D89D5E /* FactoryDroidParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3E930653D4C121AAF5D7FF5 /* FactoryDroidParser.swift */; };
 		5B2D95C2AD6F66C9AF52CC86 /* SettingsManagerProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5680975338ECABA13DCFF397 /* SettingsManagerProtocol.swift */; };
 		5CF7E985046DD02B2F1E0DF8 /* ClaudeCodeParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ECA3C6D8E44A1281315D20F /* ClaudeCodeParserTests.swift */; };
@@ -424,6 +425,7 @@
 		60B222CE98136FE79F66BDFB /* ProviderTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderTheme.swift; sourceTree = "<group>"; };
 		621714C8C1B72C08B9DBADC5 /* HermesThinkingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesThinkingView.swift; sourceTree = "<group>"; };
 		63C9B8BD8A78996154DBA4AE /* SearchIndexStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndexStore.swift; sourceTree = "<group>"; };
+		63C9B8BD8A78996154DBA4AF /* SwitcherProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherProfileStore.swift; sourceTree = "<group>"; };
 		6414EE49FC62988ADCED0063 /* AnthropicUsageAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicUsageAPI.swift; sourceTree = "<group>"; };
 		6456285BFCA6A6CD0029380F /* ProjectionPipelineService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionPipelineService.swift; sourceTree = "<group>"; };
 		6482B2A0AD06363EDB38A182 /* ModelDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDashboardView.swift; sourceTree = "<group>"; };
@@ -710,6 +712,7 @@
 				7EA49F3A2C78F6AAF2F281C3 /* ProjectionStore.swift */,
 				EC31F1B44D169BD9C9511F41 /* RemoteSyncWatermarkStore.swift */,
 				63C9B8BD8A78996154DBA4AE /* SearchIndexStore.swift */,
+				63C9B8BD8A78996154DBA4AF /* SwitcherProfileStore.swift */,
 				77925C86C0EE4AE306B5C81E /* UsageStore.swift */,
 			);
 			path = DataStore;
@@ -1718,6 +1721,7 @@
 				F897CC526BD2FB184A5F5BAE /* RetrievalHealthTypes.swift in Sources */,
 				1BF8DFEEEEF59C0EDFC41726 /* RetrievalQueryTypes.swift in Sources */,
 				58EB44C0AB495E5DB5651749 /* SearchIndexStore.swift in Sources */,
+				58EB44C0AB495E5DB5651750 /* SwitcherProfileStore.swift in Sources */,
 				85579002D62BFDE58AF4A9A2 /* SearchService.swift in Sources */,
 				D25E2B8866F5216D32B9DE26 /* SearchTypes.swift in Sources */,
 				0E871E01C5E13D4DDFCE497E /* SessionDetailView.swift in Sources */,

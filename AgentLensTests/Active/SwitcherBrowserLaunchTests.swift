@@ -529,17 +529,21 @@ final class SwitcherBrowserLaunchTests: XCTestCase {
     func test_coordinator_tracksPendingState() async {
         let coordinator = BrowserLaunchCoordinator()
 
-        XCTAssertFalse(await coordinator.isLaunchInProgress(profileID: "profile-1"))
+        var isInProgress = await coordinator.isLaunchInProgress(profileID: "profile-1")
+        XCTAssertFalse(isInProgress)
 
         let seq1 = await coordinator.beginLaunch(profileID: "profile-1")
         XCTAssertNotNil(seq1)
 
-        XCTAssertTrue(await coordinator.isLaunchInProgress(profileID: "profile-1"))
-        XCTAssertFalse(await coordinator.isLaunchInProgress(profileID: "profile-2"))
+        isInProgress = await coordinator.isLaunchInProgress(profileID: "profile-1")
+        XCTAssertTrue(isInProgress)
+        isInProgress = await coordinator.isLaunchInProgress(profileID: "profile-2")
+        XCTAssertFalse(isInProgress)
 
         await coordinator.endLaunch(profileID: "profile-1", success: true)
 
-        XCTAssertFalse(await coordinator.isLaunchInProgress(profileID: "profile-1"))
+        isInProgress = await coordinator.isLaunchInProgress(profileID: "profile-1")
+        XCTAssertFalse(isInProgress)
     }
 
     func test_coordinator_clearPendingLaunches() async {
@@ -547,11 +551,13 @@ final class SwitcherBrowserLaunchTests: XCTestCase {
 
         let seq1 = await coordinator.beginLaunch(profileID: "profile-1")
         XCTAssertNotNil(seq1)
-        XCTAssertTrue(await coordinator.isLaunchInProgress(profileID: "profile-1"))
+        var isInProgress = await coordinator.isLaunchInProgress(profileID: "profile-1")
+        XCTAssertTrue(isInProgress)
 
         await coordinator.clearPendingLaunches()
 
-        XCTAssertFalse(await coordinator.isLaunchInProgress(profileID: "profile-1"))
+        isInProgress = await coordinator.isLaunchInProgress(profileID: "profile-1")
+        XCTAssertFalse(isInProgress)
 
         // Should be able to launch again
         let seq2 = await coordinator.beginLaunch(profileID: "profile-1")
@@ -567,14 +573,16 @@ final class SwitcherBrowserLaunchTests: XCTestCase {
         // Failed launch doesn't update lastLaunchedProfileID
         await coordinator.endLaunch(profileID: "profile-1", success: false)
 
-        XCTAssertNil(await coordinator.getLastLaunchedProfileID())
+        var lastID = await coordinator.getLastLaunchedProfileID()
+        XCTAssertNil(lastID)
 
         // Successful launch updates it
         let seq2 = await coordinator.beginLaunch(profileID: "profile-2")
         XCTAssertNotNil(seq2)
         await coordinator.endLaunch(profileID: "profile-2", success: true)
 
-        XCTAssertEqual(await coordinator.getLastLaunchedProfileID(), "profile-2")
+        lastID = await coordinator.getLastLaunchedProfileID()
+        XCTAssertEqual(lastID, "profile-2")
     }
 }
 
@@ -670,28 +678,21 @@ private extension Result {
     }
 }
 
-private func XCTAssertSuccess(_ result: Result<Any, Error>, file: StaticString = #file, line: UInt = #line) {
+private func XCTAssertSuccess<Success, Failure: Error>(_ result: Result<Success, Failure>, _ message: String = "", file: StaticString = #file, line: UInt = #line) {
     switch result {
     case .success:
-        break
+        if !message.isEmpty {
+            XCTAssert(true, message, file: file, line: line)
+        }
     case .failure(let error):
-        XCTFail("Expected success, got \(error)", file: file, line: line)
+        XCTFail("Expected success, got \(error). \(message)", file: file, line: line)
     }
 }
 
-private func XCTAssertFailure(_ result: Result<Any, Error>, _ expectedError: Error, file: StaticString = #file, line: UInt = #line) {
+private func XCTAssertFailure<Success, Failure: Error>(_ result: Result<Success, Failure>, _ expectedError: Failure, _ message: String = "", file: StaticString = #file, line: UInt = #line) {
     switch result {
     case .success(let value):
-        XCTFail("Expected failure \(expectedError), got success with \(value)", file: file, line: line)
-    case .failure(let error):
-        XCTAssertEqual("\(error)", "\(expectedError)", file: file, line: line)
-    }
-}
-
-private func XCTAssertFailure<T>(_ result: Result<T, Error>, _ expectedError: Error, file: StaticString = #file, line: UInt = #line) {
-    switch result {
-    case .success(let value):
-        XCTFail("Expected failure \(expectedError), got success with \(value)", file: file, line: line)
+        XCTFail("Expected failure \(expectedError), got success with \(value). \(message)", file: file, line: line)
     case .failure(let error):
         XCTAssertEqual("\(type(of: error))", "\(type(of: expectedError))", file: file, line: line)
         XCTAssertEqual("\(error)", "\(expectedError)", file: file, line: line)

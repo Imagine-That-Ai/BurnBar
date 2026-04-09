@@ -7,11 +7,14 @@ final class SwitcherProfileStoreTests: XCTestCase {
     private var store: SwitcherProfileStore!
     private var dbQueue: DatabaseQueue!
 
-    override func setUp() throws {
-        try super.setUp()
-        dbQueue = try DatabaseQueue()
-        try self.addMigrationv32(to: dbQueue)
-        store = SwitcherProfileStore(dbQueue: dbQueue)
+    override func setUp() {
+        do {
+            dbQueue = try DatabaseQueue()
+            try self.addMigrationv32(to: dbQueue)
+            store = SwitcherProfileStore(dbQueue: dbQueue)
+        } catch {
+            XCTFail("Failed to set up test store: \(error)")
+        }
     }
 
     override func tearDown() {

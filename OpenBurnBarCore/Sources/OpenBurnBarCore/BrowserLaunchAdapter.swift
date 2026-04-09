@@ -330,6 +330,8 @@ public actor BrowserLaunchCoordinator {
     private var lastLaunchedProfileID: String?
     private var launchSequence: Int = 0
 
+    public init() {}
+
     /// Records that a launch is about to occur for a profile.
     /// Returns the sequence number if the launch should proceed, nil if a launch
     /// for this profile is already in progress.

@@ -11,17 +11,17 @@ import OpenBurnBarCore
 /// - Never stores raw OAuth tokens, passwords, cookies, or API keys
 /// - Active profile state is persisted separately for atomic transitions
 /// - Profile listing uses deterministic ordering via sortKey + createdAt
-final class SwitcherProfileStore {
+public final class SwitcherProfileStore {
     private let dbQueue: DatabaseQueue
 
-    init(dbQueue: DatabaseQueue) {
+    public init(dbQueue: DatabaseQueue) {
         self.dbQueue = dbQueue
     }
 
     // MARK: - Active Profile State
 
     /// Fetches the current active profile state.
-    func fetchActiveProfileState() throws -> SwitcherActiveProfileState {
+    public func fetchActiveProfileState() throws -> SwitcherActiveProfileState {
         try dbQueue.read { db in
             let row = try Row.fetchOne(db, sql: "SELECT activeProfileID, updatedAt FROM switcher_active_profile LIMIT 1")
             guard let row else {
@@ -34,7 +34,7 @@ final class SwitcherProfileStore {
     }
 
     /// Sets the active profile. Pass nil to clear active selection.
-    func setActiveProfile(_ profileID: String?) throws {
+    public func setActiveProfile(_ profileID: String?) throws {
         try dbQueue.write { db in
             let now = Date()
             // Upsert the active profile state
@@ -60,7 +60,7 @@ final class SwitcherProfileStore {
     // MARK: - Profile CRUD
 
     /// Creates a new profile. Returns the created profile with generated ID and timestamps.
-    func create(_ record: SwitcherProfileRecord) throws -> SwitcherProfileRecord {
+    public func create(_ record: SwitcherProfileRecord) throws -> SwitcherProfileRecord {
         try dbQueue.write { db in
             // Determine sort key: max existing + 1
             let maxSortKey = try Int.fetchOne(
@@ -105,7 +105,7 @@ final class SwitcherProfileStore {
     }
 
     /// Fetches a profile by ID, if it exists.
-    func fetchProfile(id: String) throws -> SwitcherProfileRecord? {
+    public func fetchProfile(id: String) throws -> SwitcherProfileRecord? {
         try dbQueue.read { db in
             let row = try Row.fetchOne(db, sql: "SELECT * FROM switcher_profiles WHERE id = ?", arguments: [id])
             return row.flatMap(Self.profileRecord(from:))
@@ -113,7 +113,7 @@ final class SwitcherProfileStore {
     }
 
     /// Fetches all profiles ordered by sortKey ASC, createdAt ASC (deterministic).
-    func fetchAllProfiles() throws -> [SwitcherProfileRecord] {
+    public func fetchAllProfiles() throws -> [SwitcherProfileRecord] {
         try dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
@@ -124,7 +124,7 @@ final class SwitcherProfileStore {
     }
 
     /// Fetches all profiles of a given target kind.
-    func fetchProfiles(targetKind: SwitcherProfileTargetKind) throws -> [SwitcherProfileRecord] {
+    public func fetchProfiles(targetKind: SwitcherProfileTargetKind) throws -> [SwitcherProfileRecord] {
         try dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
@@ -141,15 +141,15 @@ final class SwitcherProfileStore {
 
     /// Updates an existing profile. Returns the updated record.
     /// NOTE: sortKey and id cannot be changed; createdAt is preserved.
-    func update(_ record: SwitcherProfileRecord) throws -> SwitcherProfileRecord {
+    public func update(_ record: SwitcherProfileRecord) throws -> SwitcherProfileRecord {
         try dbQueue.write { db in
             // Verify profile exists
             let existing = try Row.fetchOne(db, sql: "SELECT sortKey, createdAt FROM switcher_profiles WHERE id = ?", arguments: [record.id])
-            guard existing else {
+            guard existing != nil else {
                 throw SwitcherProfileStoreError.profileNotFound(record.id)
             }
-            let sortKey: Int = existing["sortKey"]
-            let createdAt: Date = Self.parseDateValue(existing["createdAt"]) ?? Date()
+            let sortKey: Int = existing!["sortKey"]
+            let createdAt: Date = Self.parseDateValue(existing!["createdAt"]) ?? Date()
 
             let now = Date()
             try db.execute(
@@ -190,7 +190,7 @@ final class SwitcherProfileStore {
 
     /// Deletes a profile by ID.
     /// If the deleted profile was active, active state is cleared.
-    func deleteProfile(id: String) throws {
+    public func deleteProfile(id: String) throws {
         try dbQueue.write { db in
             try db.execute(sql: "DELETE FROM switcher_profiles WHERE id = ?", arguments: [id])
             // Clear active state if this was the active profile
@@ -209,7 +209,7 @@ final class SwitcherProfileStore {
 
     /// Checks if a profile with the given display name already exists
     /// (normalized, case-insensitive). Excludes a specific profile ID if provided.
-    func existsProfileWithNormalizedName(_ name: String, excludingID: String? = nil) throws -> Bool {
+    public func existsProfileWithNormalizedName(_ name: String, excludingID: String? = nil) throws -> Bool {
         let normalized = SwitcherProfileRecord.normalizeName(name)
         return try dbQueue.read { db in
             var sql = """
@@ -236,7 +236,7 @@ final class SwitcherProfileStore {
     /// After deleting the active profile, selects a deterministic fallback:
     /// the profile with the lowest sortKey (and createdAt as tiebreaker).
     /// If no profiles remain, clears active state.
-    func selectFallbackActiveProfile() throws {
+    public func selectFallbackActiveProfile() throws {
         try dbQueue.write { db in
             let fallback = try Row.fetchOne(
                 db,
@@ -270,7 +270,7 @@ final class SwitcherProfileStore {
     /// Validates that the persisted active profile ID still exists.
     /// If the active profile was deleted externally, clears the stale marker
     /// and selects a fallback. Returns the current active profile state.
-    func validateAndRecoverActiveProfile() throws -> SwitcherActiveProfileState {
+    public func validateAndRecoverActiveProfile() throws -> SwitcherActiveProfileState {
         let state = try fetchActiveProfileState()
         guard let activeID = state.activeProfileID else {
             return state
