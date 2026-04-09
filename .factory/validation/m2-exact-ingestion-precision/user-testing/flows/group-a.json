@@ -1,0 +1,136 @@
+{
+  "groupId": "group-a",
+  "testedAt": "2026-04-08T21:42:40-05:00",
+  "isolation": {
+    "workingDirectory": "/Users/dewclaw/Documents/Projects/BurnBar",
+    "derivedDataPath": ".derived-data/user-testing-group-a",
+    "evidenceDir": "/Users/dewclaw/.factory/missions/76dfbf36-62ab-43ad-899f-b8b8f9e47932/evidence/m2-exact-ingestion-precision/group-a/"
+  },
+  "toolsUsed": ["xcodebuild-test"],
+  "assertions": [
+    {
+      "id": "VAL-TOKEN-001",
+      "title": "Exact usage payload precedence",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run xcodebuild test with -only-testing:OpenBurnBarTests/CLIBridgeTests and -only-testing:OpenBurnBarTests/CursorConnectorTests",
+          "expected": "All tests pass; fixture-level assertions show exact token values preserved without redistribution",
+          "observed": "34 tests executed, 0 failures. CLIBridge tests test_cliBridge_openAICompatibleUsage_parsesUsagePayload and test_cliBridge_openAICompatibleUsage_parsesFlatPayload verify exact bucket preservation. CursorConnector test_normalizeUsageEvent_includesCacheCreationTokensInTotals confirms input=120, output=80, cacheCreation=40, cacheRead=20, total=260 — exact values unchanged."
+        },
+        {
+          "action": "Inspect CLIBridge.openAICompatibleUsage implementation for exact-first precedence",
+          "expected": "Exact token buckets extracted directly from payload keys without redistribution",
+          "observed": "CLIBridge.swift extracts inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, reasoningTokens from payload paths and returns them in CLIUsageSnapshot. Returns nil only when ALL buckets are zero (guard at line 680). No redistribution logic applied to explicit buckets."
+        },
+        {
+          "action": "Inspect CursorConnectorManager.normalizeUsageEvent for exact bucket handling",
+          "expected": "Explicit prompt/completion/cache/reasoning buckets preserved as-is; normalization only fills missing buckets from total",
+          "observed": "CursorConnectorManager.swift extract prompt, completion, cacheCreation, cacheRead, reasoningTokens from payload paths. When total_tokens is present, normalization only fills missing prompt/completion from total minus cache overhead — explicit values are never overwritten. When explicit values are already present, they are used directly."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "testOutput": "m2-exact-ingestion-precision/group-a/xcode-test-output.txt",
+        "passingTests": [
+          "CLIBridgeTests/test_cliBridge_openAICompatibleUsage_parsesUsagePayload (input=120, output=80, cacheCreation=40, cacheRead=20, total=240)",
+          "CLIBridgeTests/test_cliBridge_openAICompatibleUsage_parsesFlatPayload (input=33, output=11, cacheRead=9)",
+          "CursorConnectorTests/test_normalizeUsageEvent_includesCacheCreationTokensInTotals (prompt=120, completion=80, cacheCreation=40, cacheRead=20, total=260)",
+          "CursorConnectorTests/test_normalizeUsageEvent_backfillsPromptAndCompletionAfterCacheOverhead (cacheCreation=50, cacheRead=25, prompt+completion=200, total=275)"
+        ],
+        "implementationNotes": "CLIBridge.swift lines 613-691: openAICompatibleUsage extracts exact buckets via firstInt multi-path lookup. Guard at line 680 returns nil only when ALL buckets (input, output, cacheCreation, cacheRead, reasoning) are zero. CursorConnectorManager.swift normalizeUsageEvent (lines 676-806): explicit buckets never redistributed; total_tokens normalization only fills missing prompt/completion."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-004",
+      "title": "Fallback invoked only when exact is unavailable",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run scoped xcodebuild tests for CLIBridgeTests and CursorConnectorTests",
+          "expected": "Tests pass; hasNoExplicitBuckets correctly gates fallback mode",
+          "observed": "34 tests executed, 0 failures. CursorConnectorTests test_normalizeUsageEvent_hasNoExplicitBuckets_includesReasoningTokens and test_normalizeUsageEvent_hasNoExplicitBuckets_falseWhenOnlyReasoningPresent verify that reasoning tokens alone prevent fallback."
+        },
+        {
+          "action": "Inspect CursorConnectorManager.hasNoExplicitBuckets implementation",
+          "expected": "Returns true only when prompt, completion, cacheCreation, cacheRead, AND reasoning are all zero",
+          "observed": "hasNoExplicitBuckets at CursorConnectorManager.swift line 665-666: `promptTokens == 0 && completionTokens == 0 && cacheCreationTokens == 0 && cacheReadTokens == 0 && reasoningTokens == 0`. This confirms fallback gating includes reasoning tokens."
+        },
+        {
+          "action": "Inspect normalizeUsageEvent fallback gating logic",
+          "expected": "Character-based fallback only executes when total_tokens is absent AND all explicit buckets are zero",
+          "observed": "CursorConnectorManager.swift line 784: character-based estimation (dividing char count by 3.35) only triggers when `prompt == 0 && completion == 0 && cacheCreation == 0 && cacheRead == 0 && reasoningTokens == 0 && inputCharHint + outputCharHint > 0`. When total_tokens is present but explicit buckets are missing, normalization (lines 763-783) derives input/output from total — this is normalization, not fallback. The distinction is explicitly documented in VAL-TOKEN-004 comments at lines 759-762."
+        },
+        {
+          "action": "Inspect CLIBridge.openAICompatibleUsage nil guard",
+          "expected": "Returns nil when all buckets are zero, allowing caller to invoke fallback",
+          "observed": "CLIBridge.swift line 680: `guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 || reasoningTokens > 0 else { return nil }`. Returns nil (triggering fallback) only when ALL exact buckets are zero/absent."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "testOutput": "m2-exact-ingestion-precision/group-a/xcode-test-output.txt",
+        "passingTests": [
+          "CursorConnectorTests/test_normalizeUsageEvent_hasNoExplicitBuckets_includesReasoningTokens (reasoning=25, hasNoExplicitBuckets=false)",
+          "CursorConnectorTests/test_normalizeUsageEvent_hasNoExplicitBuckets_falseWhenOnlyReasoningPresent (reasoning=50, hasNoExplicitBuckets=false)",
+          "CursorConnectorTests/test_normalizeUsageEvent_backfillsPromptAndCompletionAfterCacheOverhead (normalization from total, not fallback)"
+        ],
+        "implementationNotes": "CursorConnectorManager.swift lines 659-793: NormalizedUsageEvent.hasNoExplicitBuckets checks all 5 bucket types. Fallback (char estimation) gated by all-zero check. CLIBridge.swift line 680: nil guard checks all 5 buckets including reasoning. Both paths treat total_tokens normalization as distinct from fallback."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOKEN-006",
+      "title": "Reasoning and cache bucket integrity",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run scoped xcodebuild tests for reasoning token extraction",
+          "expected": "All reasoning token tests pass; tokens extracted from all known payload paths",
+          "observed": "34 tests executed, 0 failures. Five dedicated reasoning token tests pass: flat reasoning_tokens key, nested completion_tokens_details.reasoning_tokens, thinking_tokens alias, output_tokens_details.reasoning_tokens, and hasNoExplicitBuckets gating."
+        },
+        {
+          "action": "Verify reasoning token extraction paths in CLIBridge.openAICompatibleUsage",
+          "expected": "Reasoning tokens extracted from thinking_tokens, reasoning_tokens, thinkingTokens, reasoningTokens, completion_tokens_details.reasoning_tokens, output_tokens_details.reasoning_tokens",
+          "observed": "CLIBridge.swift lines 668-676: reasoningTokens extracted via firstInt with paths: thinking_tokens, reasoning_tokens, thinkingTokens, reasoningTokens, completion_tokens_details.reasoning_tokens, output_tokens_details.reasoning_tokens. All 6 paths covered."
+        },
+        {
+          "action": "Verify reasoning tokens excluded from completion in total calculation",
+          "expected": "CLIUsageSnapshot.totalTokens sums input + output + cacheCreation + reasoning (reasoning NOT folded into completion)",
+          "observed": "CLIBridge.swift lines 19-21: `var totalTokens: Int { inputTokens + outputTokens + cacheCreationTokens + reasoningTokens }`. Reasoning is a separate additive component, not folded into completion."
+        },
+        {
+          "action": "Verify reasoning tokens excluded from completion in normalizeUsageEvent total calculation",
+          "expected": "CursorConnectorManager.normalizeUsageEvent subtracts reasoning from availableForInOut to prevent double-counting",
+          "observed": "CursorConnectorManager.swift line 768: `let availableForInOut = max(normalizedTotal - cacheCreation - cacheRead - reasoningTokens, 0)`. Reasoning tokens explicitly subtracted from the pool used for deriving prompt/completion, preventing them from being added to completion."
+        },
+        {
+          "action": "Verify reasoning tokens preserved in final NormalizedUsageEvent output",
+          "expected": "reasoningTokens passed through as separate field in output",
+          "observed": "CursorConnectorManager.swift line 803: `reasoningTokens: max(reasoningTokens, 0)`. Explicitly preserved. Line 795-796 comment: 'Reasoning tokens are preserved explicitly, not folded into completion.'"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "testOutput": "m2-exact-ingestion-precision/group-a/xcode-test-output.txt",
+        "passingTests": [
+          "CursorConnectorTests/test_normalizeUsageEvent_extractsReasoningTokens_fromFlatPayload (reasoning=25, total=175)",
+          "CursorConnectorTests/test_normalizeUsageEvent_extractsReasoningTokens_fromNestedPayload (reasoning=30, total=180)",
+          "CursorConnectorTests/test_normalizeUsageEvent_extractsReasoningTokens_fromThinkingTokens (reasoning=20, total=170)",
+          "CursorConnectorTests/test_normalizeUsageEvent_extractsReasoningTokens_fromOutputTokensDetails (reasoning=35, total=185)",
+          "CursorConnectorTests/test_normalizeUsageEvent_hasNoExplicitBuckets_includesReasoningTokens (reasoning=25, hasNoExplicitBuckets=false)",
+          "CursorConnectorTests/test_normalizeUsageEvent_hasNoExplicitBuckets_falseWhenOnlyReasoningPresent (reasoning=50, hasNoExplicitBuckets=false)"
+        ],
+        "implementationNotes": "CLIBridge.swift CLIUsageSnapshot.totalTokens = input + output + cacheCreation + reasoning (no completion). CursorConnectorManager availableForInOut = total - cache - reasoning. Proxy script (line 1125-1133) also extracts reasoning_tokens from all paths."
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 3 assertions (VAL-TOKEN-001, VAL-TOKEN-004, VAL-TOKEN-006): all 3 passed. Executed 34 scoped tests (19 CLIBridgeTests + 15 CursorConnectorTests) with 0 failures. Exact token buckets are preserved without redistribution, fallback is gated by a comprehensive all-buckets-zero check that includes reasoning tokens, and reasoning/cache tokens are maintained as separate explicit buckets that are not folded into completion counts."
+}
