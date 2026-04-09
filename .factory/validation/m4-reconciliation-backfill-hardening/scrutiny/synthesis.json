@@ -1,11 +1,11 @@
 {
   "milestone": "m4-reconciliation-backfill-hardening",
-  "round": 4,
+  "round": 5,
   "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
-      "command": "scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh",
+      "command": "scripts/test-openburnbar-swift.sh; scripts/test-openburnbar-app.sh",
       "exitCode": 0
     },
     "typecheck": {
@@ -20,39 +20,44 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
+    "total": 2,
     "passed": 0,
-    "failed": 1,
+    "failed": 2,
     "failedFeatures": [
-      "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency"
+      "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests",
+      "m4-fix-backfill-idempotent-equal-timestamp-semantics"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency",
+      "featureId": "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests",
       "severity": "blocking",
-      "description": "BackfillSchedulerTests still validates runtime wiring via source-text scanning (`test_refreshAll_guardCondition_isPresent`) rather than executing UsageAggregator.refreshAll/runScheduledBackfillIfNeeded success/failure persistence paths, so required runtime integration coverage remains unmet."
+      "description": "Runtime wiring validation still relies on source-text scanning (`BackfillSchedulerTests.test_refreshAll_guardCondition_isPresent`) instead of executing `UsageAggregator.refreshAll/runScheduledBackfillIfNeeded` success/failure coexistence paths."
     },
     {
-      "featureId": "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency",
+      "featureId": "m4-fix-backfill-idempotent-equal-timestamp-semantics",
       "severity": "blocking",
-      "description": "BackfillCursorStore monotonic guard still permits backward movement through negative epsilon (`>= -monotonicEpsilon`) and widens tolerance to 1ms, violating strict no-backward progression semantics."
+      "description": "Backfill monotonic guard remains epsilon-based (`diff >= -epsilon`), which still permits bounded backward cursor movement and does not satisfy strict no-backward progression semantics."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills/token-accounting-worker",
-      "suggestion": "Require explicit command-level evidence of required startup-context reads before allowing `skillFeedback.followedProcedure=true`, and enforce this during scrutiny checks.",
-      "evidence": "Fix feature handoff for session `1c91c316-bba4-423b-9def-9124a1ff399b` marks followedProcedure true but verification commands omit mission/AGENTS/library read evidence.",
-      "isSystemic": true
+      "suggestion": "Enforce full 40-character commit SHA values in worker handoffs (not short hashes), and validate this during scrutiny.",
+      "evidence": "Review for `m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests` observed handoff `commitId` value `847ecd8` while the skill requires full SHA.",
+      "isSystemic": false
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "Shared architecture library content remains switcher-centric and not token-accounting focused.",
+      "observation": "Require startup context-read evidence in handoff before setting followedProcedure=true.",
+      "reason": "already-documented"
+    },
+    {
+      "observation": "Shared architecture library remains switcher-centric and light on token-accounting/backfill context.",
       "reason": "already-documented"
     }
   ],
-  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round3.json"
+  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round4.json"
 }

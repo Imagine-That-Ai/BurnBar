@@ -1,0 +1,28 @@
+{
+  "featureId": "fast-surfaces-fix-dashboard-accessibility-announcements",
+  "reviewedAt": "2026-04-09T22:59:12.645884Z",
+  "commitId": "070eda4d075dc1f31c85e5dea2396e3a80d768b3",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The change replaces the no-op accessibility helper with real NSAccessibility announcements and adds loading/load-result announcements, but it misses the switch failure transition announcement required by VAL-DASH-008 and the feature expected behavior.",
+    "issues": [
+      {
+        "file": "AgentLens/Views/Dashboard/Components/DashboardQuickSwitchView.swift",
+        "line": 638,
+        "severity": "blocking",
+        "description": "In the switch failure catch path, switchState is set to error but no accessibility announcement is emitted. This leaves an error transition unannounced (expected behavior requires success/error/loading announcements)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked skillFeedback.followedProcedure=true, but the recorded handoff evidence does not follow switcher-ui-worker procedure steps requiring broad validation and manual UI sanity checks.",
+      "evidence": "Skill file .factory/skills/switcher-ui-worker/SKILL.md step 6 requires scoped + broad validation and step 7 requires manual checks. Handoff 2026-04-09T15-42-02-008Z__fast-surfaces-fix-dashboard-accessibility-announcements__6693c20a-da9d-4bf5-b717-ecf162fd8695.json records only one scoped xcodebuild command and interactiveChecks: []"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed: the feature partially implements accessibility announcements but omits announcement on switch failure, so required error-state announcement coverage is incomplete."
+}

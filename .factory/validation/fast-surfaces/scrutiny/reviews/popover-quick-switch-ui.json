@@ -1,34 +1,45 @@
 {
   "featureId": "popover-quick-switch-ui",
-  "reviewedAt": "2026-04-09T15:26:06Z",
+  "reviewedAt": "2026-04-09T22:55:18Z",
   "commitId": "460c2c7babdaa1421ae025445dd307509f60053f",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "fail",
   "codeReview": {
-    "summary": "The feature adds a new popover switcher view and tests, but the new view is not integrated into the menu bar popover surface, so the user-facing quick-switch flow is not delivered.",
+    "summary": "The popover view was added and wired into the menu bar surface, but validation coverage for the required UI/accessibility behaviors is materially incomplete: the new \"SwitcherPopoverUITests\" do not exercise the SwiftUI popover surface and therefore do not verify several required VAL-POPOVER behaviors.",
     "issues": [
       {
-        "file": "AgentLens/Views/Popover/MenuBarPopoverView.swift",
-        "line": 99,
+        "file": "AgentLensTests/Active/SwitcherPopoverUITests.swift",
+        "line": 83,
         "severity": "blocking",
-        "description": "PopoverQuickSwitchView is never rendered in the popover. The main ScrollView content goes from provider list/Hermes strip directly to action bar without any switcher section, so VAL-POPOVER one-step quick switching is not available to users."
+        "description": "Contract-required popover UI behavior is not actually tested. VAL-POPOVER-001/004/005/006 call for xcodebuild UI/accessibility evidence and interaction traces, but this test file only mutates/reads SwitcherProfileStore and launch services (e.g., setActiveProfile/fetchActiveProfileState) and never exercises PopoverQuickSwitchView."
       },
       {
         "file": "AgentLensTests/Active/SwitcherPopoverUITests.swift",
-        "line": 77,
-        "severity": "non_blocking",
-        "description": "The new test suite primarily validates SwitcherProfileStore and launch services rather than the popover UI component behavior. This leaves gaps in verifying actual view wiring and interaction parity on the menu bar surface."
+        "line": 559,
+        "severity": "blocking",
+        "description": "VAL-POPOVER-010 latency check does not measure popover interaction latency; it measures direct local store operations (`setActiveProfile`, `fetchAllProfiles`) rather than selection-to-committed-state through the popover switch UI path."
+      },
+      {
+        "file": "AgentLens/Views/Popover/PopoverQuickSwitchView.swift",
+        "line": 66,
+        "severity": "blocking",
+        "description": "Root-level `.accessibilityElement(children: .combine)` risks collapsing interactive child controls into a single accessibility element, which conflicts with VAL-POPOVER-004's keyboard/accessibility parity requirement for navigable primary actions."
       }
     ]
   },
   "sharedStateObservations": [
     {
       "area": "skills",
-      "observation": "The worker marked skill procedure as followed, but required manual UI sanity checks are not evidenced in the handoff.",
-      "evidence": ".factory/skills/switcher-ui-worker/SKILL.md step 7 requires manual UI sanity checks; handoff file /Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/handoffs/2026-04-09T13-35-02-403Z__popover-quick-switch-ui__e76680fb-d64d-4a53-90ca-0f46e7e4c71f.json has verification.interactiveChecks = [] with skillFeedback.followedProcedure = true."
+      "observation": "The switcher-ui-worker procedure asks for UI/view-model tests but does not explicitly require that contract assertions tagged as UI/accessibility be validated through actual surface-level interaction tests. This allowed store-level tests to be presented as popover UI verification.",
+      "evidence": ".factory/skills/switcher-ui-worker/SKILL.md (Work Procedure step 3) versus AgentLensTests/Active/SwitcherPopoverUITests.swift (tests operate on SwitcherProfileStore/launch services, no PopoverQuickSwitchView usage)."
+    },
+    {
+      "area": "conventions",
+      "observation": "Architecture calls for switch actions to flow through a switch orchestrator with serialized/coalesced handling, but the popover view writes active profile state directly through the store. The architecture expectation may need stronger enforcement in mission/skill guidance.",
+      "evidence": ".factory/library/architecture.md lines 20-25 (Switch Orchestrator + serialized/coalesced invariant) vs AgentLens/Views/Popover/PopoverQuickSwitchView.swift lines 455-499 (direct `switcherStore.setActiveProfile` in view)."
     }
   ],
   "addressesFailureFrom": null,
-  "summary": "Review failed: although a popover switcher view was added, it is not connected into MenuBarPopoverView, so the requested popover quick-switch UX is not actually shipped in this feature commit."
+  "summary": "Reviewed feature popover-quick-switch-ui at commit 460c2c7babdaa1421ae025445dd307509f60053f. Implementation adds a popover quick-switch surface, but review fails due to blocking validation gaps: required UI/accessibility assertions are not exercised by the added tests, latency checks are store-level rather than popover-path measurements, and accessibility grouping in the view may undermine parity requirements."
 }

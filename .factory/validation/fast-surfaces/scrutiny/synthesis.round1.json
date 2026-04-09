@@ -1,0 +1,76 @@
+{
+  "milestone": "fast-surfaces",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "/Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-swift.sh && /Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-app.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath /Users/dewclaw/Documents/Projects/BurnBar/.spm-cache -derivedDataPath /Users/dewclaw/Documents/Projects/BurnBar/.derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix /Users/dewclaw/Documents/Projects/BurnBar/extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 5,
+    "passed": 3,
+    "failed": 2,
+    "failedFeatures": [
+      "dashboard-quick-switch-ui",
+      "popover-quick-switch-ui"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "dashboard-quick-switch-ui",
+      "severity": "blocking",
+      "description": "DashboardQuickSwitchView does not render actionable load-error state: loadData() sets error on failure but UI branches only by isLoading/profiles.isEmpty, causing error cases to fall into empty state instead of retry/recovery UX."
+    },
+    {
+      "featureId": "dashboard-quick-switch-ui",
+      "severity": "blocking",
+      "description": "DashboardQuickSwitchView accessibility announcements are not implemented; announceForAccessibility is a no-op so switch/launch state changes are not announced."
+    },
+    {
+      "featureId": "popover-quick-switch-ui",
+      "severity": "blocking",
+      "description": "PopoverQuickSwitchView is not integrated into MenuBarPopoverView, so the requested one-step popover quick-switch flow is not available in the actual popover surface."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills",
+      "suggestion": "Refine switcher-ui-worker procedure enforcement so followedProcedure=true requires concrete manual UI sanity-check evidence in handoff.interactiveChecks.",
+      "evidence": "Both dashboard-quick-switch-ui and popover-quick-switch-ui handoffs reported followedProcedure=true while interactiveChecks were empty.",
+      "isSystemic": true
+    },
+    {
+      "target": "skills",
+      "suggestion": "Clarify and enforce context-read evidence requirements for followedProcedure=true across worker skills, including explicit examples of acceptable content-inspection evidence.",
+      "evidence": "fast-surfaces-fix-backfillscheduler-regressions and fast-surfaces-fix-reconciliation-float-assertions reviews both flagged missing required context-read evidence despite followedProcedure=true.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add assignment guidance to prefer skill-to-task fit and avoid assigning narrowly scoped project wiring fixes to specialized domain skills that require unrelated procedural steps.",
+      "evidence": "core-engine-fix-backfillcursorstore-build-break review noted indexing-efficiency-worker procedure was mismatched for a pbxproj membership-only fix.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Repeated per-feature reports of missing context-read evidence for followedProcedure=true",
+      "reason": "duplicate"
+    }
+  ],
+  "previousRound": null
+}

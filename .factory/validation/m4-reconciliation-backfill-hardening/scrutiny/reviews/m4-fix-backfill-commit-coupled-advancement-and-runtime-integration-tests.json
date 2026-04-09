@@ -1,0 +1,45 @@
+{
+  "featureId": "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests",
+  "reviewedAt": "2026-04-09T22:50:02Z",
+  "commitId": "847ecd852d89328dc1ff7bb6e17fc7c4a8949f23",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Reviewed feature commit `847ecd852d89328dc1ff7bb6e17fc7c4a8949f23` and original failed feature commit `ae68a630f8999a62eec523b99a49bec6203a1613` from prior review. The commit-coupled gating in `UsageAggregator.refreshAll` is present, but the runtime execution coverage blocker is not fully addressed because the added test is source-text scanning rather than runtime execution of the refresh/backfill coexistence path.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/BackfillSchedulerTests.swift",
+        "line": 565,
+        "severity": "blocking",
+        "description": "`test_refreshAll_guardCondition_isPresent` verifies behavior by reading `UsageAggregator.swift` and string-matching guard text instead of executing `UsageAggregator.refreshAll()` with persistence success/failure outcomes. This does not satisfy the required runtime integration coverage for refreshAll/runScheduledBackfillIfNeeded coexistence behavior."
+      },
+      {
+        "file": "AgentLens/Services/DataStore/BackfillCursorStore.swift",
+        "line": 118,
+        "severity": "blocking",
+        "description": "The original failed feature commit (`ae68a630f8999a62eec523b99a49bec6203a1613`) retains negative-epsilon tolerance (`>= -monotonicEpsilon`, epsilon `0.001`) rather than strict no-backward semantics required by the original failed feature spec. Combined with missing runtime coverage in this fix feature, the runtime execution coverage blocker is not fully resolved across the two reviewed feature diffs."
+      },
+      {
+        "file": "AgentLensTests/Active/BackfillSchedulerTests.swift",
+        "line": 571,
+        "severity": "non_blocking",
+        "description": "The test uses an absolute developer-specific path (`/Users/dewclaw/Documents/Projects/BurnBar/...`), which is brittle across different machines/workspaces."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Handoff for the reviewed feature marks `followedProcedure=true` but does not show required startup context-read evidence mandated by the token-accounting-worker skill.",
+      "evidence": "Handoff `.../handoffs/2026-04-09T19-39-24-284Z__m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests__8625d292-6f05-4d15-9423-ad5914ea180a.json` lists only test/build commands in `verification.commandsRun`; no read commands for `mission.md`, `AGENTS.md`, `.factory/library/architecture.md`, or `.factory/library/user-testing.md`."
+    },
+    {
+      "area": "skills",
+      "observation": "Skill requires handoff `commitId` to be a full 40-character SHA, but this reviewed feature handoff uses a short hash.",
+      "evidence": "Same handoff records `commitId`: `847ecd8` instead of full SHA; SKILL.md section 'Handoff Discipline Requirements' requires full SHA-1 commit IDs."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/m4-reconciliation-backfill-hardening/scrutiny/reviews/m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency.json",
+  "summary": "Fail: while commit-coupled backfill gating was added, the feature still relied on source-file string matching rather than runtime integration execution, and the paired original failed feature diff still carried epsilon-based non-strict monotonic semantics. The runtime execution coverage blocker is therefore not fully addressed."
+}

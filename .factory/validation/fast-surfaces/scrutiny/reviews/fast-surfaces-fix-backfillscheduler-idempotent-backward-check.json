@@ -1,15 +1,28 @@
 {
   "featureId": "fast-surfaces-fix-backfillscheduler-idempotent-backward-check",
-  "reviewedAt": "2026-04-09T21:42:16Z",
+  "reviewedAt": "2026-04-09T22:54:13Z",
   "commitId": "ae68a630f8999a62eec523b99a49bec6203a1613",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
-  "status": "pass",
+  "status": "fail",
   "codeReview": {
-    "summary": "The fix directly addresses the prior scrutiny failure by relaxing the monotonic comparison tolerance in BackfillCursorStore.advanceCursor so repeated idempotent timestamp advances are no longer misclassified as backward movement after persistence round-trips. The guard still rejects meaningful backward advances, and the feature verification evidence includes idempotent, backward-rejection, and full BackfillScheduler suite runs.",
-    "issues": []
+    "summary": "The fix removes the flaky idempotent false-negative but does so by permitting a backward tolerance window, which breaks strict monotonic semantics required by the feature contract.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/DataStore/BackfillCursorStore.swift",
+        "line": 118,
+        "severity": "blocking",
+        "description": "The monotonic guard allows `newUpperBound.timeIntervalSince(currentBound) >= -0.001`, so genuine backward advances up to 1ms are accepted. The expected behavior requires idempotent repeats to pass while actual backward moves are still rejected."
+      }
+    ]
   },
-  "sharedStateObservations": [],
-  "addressesFailureFrom": ".factory/validation/fast-surfaces/scrutiny/synthesis.json",
-  "summary": "Reviewed handoff, transcript skeleton, prior synthesis, and commit ae68a630f8999a62eec523b99a49bec6203a1613. The change is scoped and adequate for the reported deterministic idempotent-backward-check failure; no blocking or non-blocking code issues identified."
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The indexing-efficiency-worker procedure appears over-broad for narrowly scoped app-layer backfill fixes, causing repeated procedure drift in validator evidence.",
+      "evidence": "Skill step 6 requires `swift test --package-path OpenBurnBarCore` (and retrieval evals when relevant), while this worker's transcript/handoff only shows scoped Xcode BackfillScheduler test commands."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. Commit ae68a630f8999a62eec523b99a49bec6203a1613 widens monotonic epsilon to 1ms, which fixes the flaky idempotent check but also admits small true backward cursor movement, so it does not fully satisfy the required monotonic/backward semantics."
 }

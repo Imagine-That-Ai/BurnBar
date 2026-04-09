@@ -1,39 +1,40 @@
 {
   "featureId": "fast-surfaces-add-dashboard-error-ui-render-tests",
-  "reviewedAt": "2026-04-09T21:42:46Z",
-  "commitId": "8096a517eca0bbe4bf76580a1ec3658746a99470",
+  "reviewedAt": "2026-04-09T22:58:32Z",
+  "commitId": "f64db49db62f71fbce59c8f25d46f1e82cca6d1e",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "fail",
   "codeReview": {
-    "summary": "This fix does not close the prior blocking gap: the added tests still verify store/data behavior only and do not assert DashboardQuickSwitchView error-branch rendering or actionable controls in the actual view surface.",
+    "summary": "This revision adds direct DashboardQuickSwitchView inspection coverage, but it still misses required assertion quality for actionable control wiring: Retry presence/wiring and accessibility-label checks are not actually validated by the named tests.",
     "issues": [
       {
         "file": "AgentLensTests/Active/SwitcherDashboardUITests.swift",
-        "line": 526,
+        "line": 1310,
         "severity": "blocking",
-        "description": "New tests (`test_errorStateRecovery_actionsAvailable`, `test_errorState_vs_emptyState_areDistinct`, `test_retryAction_reloadsData`, `test_openSettingsAction_isAvailable`) exercise DataStore CRUD/fetch semantics without instantiating `DashboardQuickSwitchView` or asserting visible error UI/actions (`Retry`, `Open Settings`). They would still pass if the view's error rendering branch/regression reappeared."
+        "description": "Retry control presence is not directly asserted. `test_errorState_hasRetryButton` uses `sut.find(ViewType.Button.self)` (line 1331), which can succeed with the header Settings button even if the error-state Retry control is removed."
       },
       {
         "file": "AgentLensTests/Active/SwitcherDashboardUITests.swift",
-        "line": 585,
+        "line": 1534,
         "severity": "blocking",
-        "description": "`test_storeFetchFailure_triggersErrorState` does not induce a throwing `fetchAllProfiles` path or assert any error-state rendering/action contract; it only checks benign nil/non-throw behavior on unrelated store calls, so the required load-error UI contract remains untested."
+        "description": "Retry action wiring is not verified. `test_errorState_retryButtonTriggersReload` taps `buttons.first` (line 1571) from `findAll(Button)` and does not assert post-tap state change, so it can pass while tapping the header Settings button or while Retry is non-functional."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherDashboardUITests.swift",
+        "line": 1338,
+        "severity": "non_blocking",
+        "description": "Accessibility-label tests are misnamed relative to assertions: `test_errorState_retryButton_hasAccessibilityLabel` and `test_errorState_openSettingsButton_hasAccessibilityLabel` never assert the configured accessibility labels; they only assert generic button counts and text presence."
       }
     ]
   },
   "sharedStateObservations": [
     {
       "area": "skills",
-      "observation": "The worker marked `followedProcedure: true`, but required broad validation and manual UI sanity checks from `switcher-ui-worker` were not evidenced.",
-      "evidence": "Skill requires step 6 scoped + `scripts/test-openburnbar-app.sh` and step 7 manual checks; handoff `2026-04-09T19-07-49-769Z__fast-surfaces-add-dashboard-error-ui-render-tests__6f9c4f33-1bff-4ef7-960b-ee21e64a01e0.json` lists only scoped `xcodebuild test` and `interactiveChecks: []`."
-    },
-    {
-      "area": "skills",
-      "observation": "Skill handoff-discipline requires full 40-char SHA in `commitId`, but this handoff uses a short hash while claiming procedure adherence.",
-      "evidence": "switcher-ui-worker SKILL.md 'Handoff Discipline Requirements' mandates full SHA; handoff `commitId` is `8096a51`."
+      "observation": "Worker marked `followedProcedure: true`, but the skill's required broad app test and manual UI sanity step were not evidenced in handoff verification.",
+      "evidence": "switcher-ui-worker SKILL.md step 6 requires scoped tests plus `scripts/test-openburnbar-app.sh`, and step 7 requires manual UI sanity checks; handoff `2026-04-09T22-34-11-929Z__fast-surfaces-add-dashboard-error-ui-render-tests__d0963f83-3870-414c-96d8-885ccfb0ed4a.json` lists only scoped `xcodebuild`/build-for-testing commands and `interactiveChecks: []`."
     }
   ],
-  "addressesFailureFrom": ".factory/validation/fast-surfaces/scrutiny/reviews/fast-surfaces-fix-dashboard-load-error-rendering.json",
-  "summary": "Reviewed prior failed scrutiny context, worker transcript skeleton, handoff, skill, and commit `8096a517...`. The added tests do not verify actual DashboardQuickSwitchView load-error rendering/actions, so the original blocking test-contract failure remains unresolved."
+  "addressesFailureFrom": null,
+  "summary": "Reviewed feature metadata, worker handoff/transcript skeleton, skill requirements, and commit `f64db49db62f71fbce59c8f25d46f1e82cca6d1e`. While view-level error rendering coverage was added, Retry control presence/wiring assertions remain insufficiently strict, so the feature does not fully satisfy the required actionable-control test contract."
 }

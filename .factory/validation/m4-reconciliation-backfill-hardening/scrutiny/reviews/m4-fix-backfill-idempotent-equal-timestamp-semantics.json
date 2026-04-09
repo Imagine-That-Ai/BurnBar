@@ -1,0 +1,33 @@
+{
+  "featureId": "m4-fix-backfill-idempotent-equal-timestamp-semantics",
+  "reviewedAt": "2026-04-09T22:49:59Z",
+  "commitId": "33f9ac23ddb36df2d2bc9eff18c73a67f2e5d5c4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Reviewed the fix handoff/transcript skeleton, prior failed review (`m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency`), and both diffs (`ae68a630...` and `33f9ac23...`). The strict no-backward/idempotent-equal blocker is not fully addressed: the fix still permits negative-delta cursor advances via epsilon.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/DataStore/BackfillCursorStore.swift",
+        "line": 118,
+        "severity": "blocking",
+        "description": "The monotonic guard remains `newUpperBound.timeIntervalSince(currentBound) >= -monotonicEpsilon` (with `monotonicEpsilon = 1e-9` in commit `33f9ac23...`). This still allows true backward movement within epsilon, violating the required strict no-backward semantics while trying to support idempotent equals. The prior failed feature (`ae68a630...`) had the same structural issue with a larger epsilon (1ms), so the blocker is reduced in magnitude but not resolved."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The handoff marks `skillFeedback.followedProcedure=true` but does not show required startup context-read evidence.",
+      "evidence": "Handoff `2026-04-09T19-48-26-495Z__m4-fix-backfill-idempotent-equal-timestamp-semantics__a5b69ae7-1c68-491a-9e27-807517b72378.json` lists only test and `git rev-parse` commands in `verification.commandsRun`; no command evidence for reading `mission.md`, `AGENTS.md`, `.factory/library/architecture.md`, or `.factory/library/user-testing.md` required by `.factory/skills/token-accounting-worker/SKILL.md`."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Shared architecture guidance remains switcher-centric and does not document token-accounting/backfill runtime context relevant to this mission.",
+      "evidence": ".factory/library/architecture.md focuses on multi-account switcher components (profile registry, launch adapters, switch orchestrator) and omits token-accounting/backfill/reconciliation architecture used in this feature set."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/m4-reconciliation-backfill-hardening/scrutiny/reviews/m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency.json",
+  "summary": "Fail: after reviewing transcript skeleton plus both commits, the fix still encodes negative-epsilon monotonic acceptance (`diff >= -epsilon`), so strict no-backward/idempotent-equal semantics are not fully satisfied."
+}

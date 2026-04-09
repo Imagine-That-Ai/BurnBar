@@ -1,21 +1,21 @@
 {
   "featureId": "core-engine-fix-backfillcursorstore-build-break",
-  "reviewedAt": "2026-04-09T15:26:04.727719Z",
+  "reviewedAt": "2026-04-09T22:54:04Z",
   "commitId": "307655e2eabe71b13c1b382a810949fb197c5748",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "pass",
   "codeReview": {
-    "summary": "Commit correctly wires existing BackfillCursorStore.swift into OpenBurnBar.xcodeproj by adding file reference, build file, DataStore group entry, and Sources build phase entry; this directly addresses the unresolved-type build break without changing runtime behavior.",
+    "summary": "The fix directly addresses the reported build break: BackfillCursorStore.swift existed on disk but was not included in OpenBurnBar.xcodeproj. The commit adds the missing PBXFileReference/PBXBuildFile entries, wires the file into the DataStore group, and includes it in PBXSourcesBuildPhase. This is the minimal, correct change needed to restore type resolution for DataStore and unblock app+test target compilation.",
     "issues": []
   },
   "sharedStateObservations": [
     {
       "area": "skills",
-      "observation": "The assigned skill (indexing-efficiency-worker) is heavily oriented to projection/indexing TDD invariants and retrieval evals, but this feature was a project-file membership fix; the procedure did not materially fit the task.",
-      "evidence": "Feature core-engine-fix-backfillcursorstore-build-break changed only OpenBurnBar.xcodeproj/project.pbxproj (+4 lines). Skill file .factory/skills/indexing-efficiency-worker/SKILL.md requires indexing-specific red/green and retrieval checks that are unrelated to this change type."
+      "observation": "The assigned skill (indexing-efficiency-worker) is mismatched for this class of fix. Its required procedure emphasizes TDD and retrieval/indexing invariant validation, while this feature was a project-file wiring repair. The worker still marked followedProcedure=true despite not performing that procedure.",
+      "evidence": "Feature is a build-break fix in project.pbxproj (commit 307655e2eabe71b13c1b382a810949fb197c5748) with no indexing logic changes; skill file .factory/skills/indexing-efficiency-worker/SKILL.md requires red/green tests and retrieval/indexing validators that were not run in this session transcript skeleton."
     }
   ],
   "addressesFailureFrom": null,
-  "summary": "Review passed: the fix is minimal and correct for the stated compile break, and evidence shows build-for-testing succeeded after the project file inclusion. One shared-state observation was recorded about skill-to-task mismatch."
+  "summary": "Reviewed feature core-engine-fix-backfillcursorstore-build-break and the associated commit. Implementation is scoped and correct for the failure mode, with no blocking code issues found; review passes. Logged one shared-state observation about skill-procedure mismatch for this type of project configuration fix."
 }

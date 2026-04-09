@@ -1,81 +1,111 @@
 {
   "milestone": "fast-surfaces",
-  "round": 3,
+  "round": 5,
   "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
-      "command": "scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh",
+      "command": "/Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-swift.sh && /Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-app.sh",
       "exitCode": 0
     },
     "typecheck": {
       "passed": true,
-      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "command": "xcodebuild build-for-testing -project /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath /Users/dewclaw/Documents/Projects/BurnBar/.spm-cache -derivedDataPath /Users/dewclaw/Documents/Projects/BurnBar/.derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
       "exitCode": 0
     },
     "lint": {
       "passed": true,
-      "command": "npm --prefix extensions/openburnbar run lint",
+      "command": "npm --prefix /Users/dewclaw/Documents/Projects/BurnBar/extensions/openburnbar run lint",
       "exitCode": 0
     }
   },
   "reviewsSummary": {
-    "total": 4,
-    "passed": 1,
-    "failed": 3,
+    "total": 12,
+    "passed": 4,
+    "failed": 8,
     "failedFeatures": [
       "fast-surfaces-add-dashboard-error-ui-render-tests",
+      "fast-surfaces-fix-backfillscheduler-idempotent-backward-check",
+      "fast-surfaces-fix-backfillscheduler-regressions",
+      "fast-surfaces-fix-dashboard-accessibility-announcements",
+      "fast-surfaces-fix-dashboard-load-error-rendering",
       "fast-surfaces-fix-dashboard-switch-failure-a11y-announcement",
-      "fast-surfaces-stabilize-backfillscheduler-idempotent-test"
+      "fast-surfaces-stabilize-backfillscheduler-idempotent-test",
+      "popover-quick-switch-ui"
     ]
   },
   "blockingIssues": [
     {
       "featureId": "fast-surfaces-add-dashboard-error-ui-render-tests",
       "severity": "blocking",
-      "description": "Added tests still validate store behavior rather than DashboardQuickSwitchView error rendering and actionable Retry/Open Settings controls, leaving VAL-DASH-004 contract coverage unresolved."
+      "description": "Retry control presence and wiring assertions remain non-specific; tests can pass by interacting with unrelated buttons rather than the error-state Retry path."
+    },
+    {
+      "featureId": "fast-surfaces-fix-backfillscheduler-idempotent-backward-check",
+      "severity": "blocking",
+      "description": "Monotonic guard allows small negative time deltas (`>= -0.001`), permitting real backward cursor movement that should remain rejected."
+    },
+    {
+      "featureId": "fast-surfaces-fix-backfillscheduler-regressions",
+      "severity": "blocking",
+      "description": "Backfill cursor monotonicity still allows backward movement up to epsilon, violating strict non-decreasing cursor semantics."
+    },
+    {
+      "featureId": "fast-surfaces-fix-dashboard-accessibility-announcements",
+      "severity": "blocking",
+      "description": "Switch-failure branch sets error state without emitting an accessibility announcement, leaving required error transition announcements incomplete."
+    },
+    {
+      "featureId": "fast-surfaces-fix-dashboard-load-error-rendering",
+      "severity": "blocking",
+      "description": "Regression tests remain store-centric and do not directly assert DashboardQuickSwitchView error rendering/actions (Retry/Open Settings) at the view surface."
     },
     {
       "featureId": "fast-surfaces-fix-dashboard-switch-failure-a11y-announcement",
       "severity": "blocking",
-      "description": "New tests do not assert UI/accessibility announcement outputs for failure/success/recovery transitions; they rely on comments and data-layer checks, so VAL-DASH-008 verification remains incomplete."
+      "description": "No view-level test forces switch failure and asserts failure announcement; current tests mainly validate success/same-profile or stubbed launch paths."
     },
     {
       "featureId": "fast-surfaces-stabilize-backfillscheduler-idempotent-test",
       "severity": "blocking",
-      "description": "The 1ns monotonic epsilon in this fix proved insufficient for persisted timestamp precision and was superseded by a later fix; the feature itself does not independently satisfy the stabilization goal."
+      "description": "Monotonic check accepts small negative deltas, reintroducing backward-movement allowance contrary to strict backward-rejection contract."
+    },
+    {
+      "featureId": "popover-quick-switch-ui",
+      "severity": "blocking",
+      "description": "Popover assertions are primarily store/service tests and do not validate contract-required popover UI interaction/accessibility paths."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "switcher-ui-worker skill",
-      "suggestion": "Require evidence-backed accessibility assertions for dashboard announcement fixes (assert posted notifications or accessibility value transitions), not comment-only tests.",
-      "evidence": "Both fast-surfaces-add-dashboard-error-ui-render-tests and fast-surfaces-fix-dashboard-switch-failure-a11y-announcement added store-centric tests that did not validate DashboardQuickSwitchView UI announcement outputs.",
+      "suggestion": "Require assertion-backed surface-level UI verification for dashboard/popover fixes (explicitly instantiate and assert target SwiftUI views and action wiring), not store-proxy checks.",
+      "evidence": "Multiple failing fast-surfaces UI reviews reported store-centric tests that did not prove required view-level rendering and announcement behavior.",
       "isSystemic": true
     },
     {
       "target": "switcher-ui-worker skill",
-      "suggestion": "Enforce manual UI sanity check evidence before allowing followedProcedure=true in handoffs.",
-      "evidence": "Multiple fast-surfaces switcher-ui handoffs report followedProcedure=true with interactiveChecks empty despite skill step requiring manual checks.",
+      "suggestion": "Enforce manual UI sanity-check evidence and context-read command evidence before allowing `followedProcedure=true` in handoffs.",
+      "evidence": "Several reviewed switcher-ui handoffs reported `followedProcedure=true` with `interactiveChecks: []` and no context-read evidence in verification commands.",
       "isSystemic": true
     },
     {
-      "target": "indexing-efficiency-worker skill",
-      "suggestion": "Add explicit timestamp-precision guidance for Date monotonic checks (SQLite/GRDB round-trip tolerance expectations).",
-      "evidence": "fast-surfaces-stabilize-backfillscheduler-idempotent-test used 1ns epsilon and required immediate follow-up with 1ms tolerance in fast-surfaces-fix-backfillscheduler-idempotent-backward-check.",
-      "isSystemic": false
+      "target": "indexing-efficiency-worker and token-accounting-worker skills",
+      "suggestion": "Tighten procedure compliance checks so required AGENTS/library reads and mandatory validation steps must be evidenced in handoff verification when `followedProcedure=true`.",
+      "evidence": "Review reports repeatedly observed missing required context-read evidence despite `followedProcedure=true` in backfill/reconciliation feature handoffs.",
+      "isSystemic": true
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "Require full 40-char SHA in handoff commitId.",
-      "reason": "already-documented"
+      "observation": "Treat every skill mismatch as requiring immediate skill reassignment rather than review note.",
+      "reason": "ambiguous"
     },
     {
-      "observation": "Require context-read command evidence before setting followedProcedure=true.",
-      "reason": "already-documented"
+      "observation": "Update architecture docs immediately from reviewer observations.",
+      "reason": "requires-orchestrator-decision"
     }
   ],
-  "previousRound": ".factory/validation/fast-surfaces/scrutiny/synthesis.round2.json"
+  "previousRound": ".factory/validation/fast-surfaces/scrutiny/synthesis.round4.json"
 }
