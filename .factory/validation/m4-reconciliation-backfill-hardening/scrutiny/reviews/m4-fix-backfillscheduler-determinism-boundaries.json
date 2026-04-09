@@ -1,0 +1,34 @@
+{
+  "featureId": "m4-fix-backfillscheduler-determinism-boundaries",
+  "reviewedAt": "2026-04-09T15:27:51.509460Z",
+  "commitId": "991904f5c08dae62b3cebcfc0486bbb0a4e6b9d4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix addresses flaky Date assertions, but it weakens the monotonic cursor invariant by allowing small backward cursor movement. This directly conflicts with deterministic monotonic semantics required by the feature.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/DataStore/BackfillCursorStore.swift",
+        "line": 115,
+        "severity": "blocking",
+        "description": "Monotonic enforcement now accepts `newUpperBound.timeIntervalSince(currentBound) >= -epsilon` with epsilon=1ms, which permits backward cursor regression up to 1ms. The feature requires monotonic/idempotent equal-timestamp semantics; equality should be allowed, but backward movement should still be rejected."
+      },
+      {
+        "file": "AgentLensTests/Active/BackfillSchedulerTests.swift",
+        "line": 184,
+        "severity": "non_blocking",
+        "description": "`test_cursor_advancesMonotonically` declares `dayOffset` but never uses it, so the loop does not drive sequential cursor positions. Combined with `nextBackfillWindow` completing once the cursor reaches `currentDate` (BackfillCursorStore.swift:196), this test effectively exercises at most a single window and no longer validates multi-step monotonic progression as its name suggests."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked `skillFeedback.followedProcedure=true`, but transcript evidence does not show required context reads from token-accounting-worker step 1 (`AGENTS.md`, `.factory/library/architecture.md`, `.factory/library/user-testing.md`).",
+      "evidence": "Handoff skillFeedback in handoff file sets followedProcedure=true; transcript skeleton string checks for worker session 4c2b6b67-17fe-4c12-aca7-9867b56e0411 contain `validation-contract.md` and `services.yaml` but not `AGENTS.md`, `.factory/library/architecture.md`, or `.factory/library/user-testing.md`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed handoff, transcript skeleton, and commit 991904f5c08dae62b3cebcfc0486bbb0a4e6b9d4. Result is FAIL due to a blocking monotonicity regression: equal-timestamp idempotency was implemented by allowing slight negative deltas, which can move the cursor backward."
+}

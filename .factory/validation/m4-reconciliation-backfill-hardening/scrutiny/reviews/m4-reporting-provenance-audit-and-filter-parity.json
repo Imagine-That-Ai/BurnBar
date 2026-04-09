@@ -1,0 +1,45 @@
+{
+  "featureId": "m4-reporting-provenance-audit-and-filter-parity",
+  "reviewedAt": "2026-04-09T15:27:43Z",
+  "commitId": "bc71bff3cc8aa4e6775ba0a3b1027bb078cbc375",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds provenance fields and broad test coverage, but provider-level provenance metadata is computed as the single highest-confidence row while totals still aggregate mixed-confidence rows. This can mislabel mixed exact+estimated aggregates as fully exact, violating the provenance-reporting contract intent.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/DataStore.swift",
+        "line": 285,
+        "severity": "blocking",
+        "description": "Provider aggregate provenance is derived from a dominant row (`dominantConfidence`/`dominantMethod`) instead of reflecting mixed-confidence composition. Because totals (`totalCost`, `totalTokens`) sum all rows, a provider with any exact row plus estimated rows is labeled `.exact`, which can misrepresent fallback-derived contributions."
+      },
+      {
+        "file": "AgentLens/Models/AgentProvider.swift",
+        "line": 509,
+        "severity": "blocking",
+        "description": "`ProviderSummary.hasEstimatedData` is inferred only from `provenanceConfidence`. With the dominant-row aggregation above, mixed datasets can return `false` even when estimated rows are included in totals, so consumers cannot reliably distinguish exact vs fallback-derived aggregate values."
+      },
+      {
+        "file": "AgentLens/Services/DataStore/UsageStore.swift",
+        "line": 501,
+        "severity": "blocking",
+        "description": "The same dominant-row provenance logic is duplicated in `UsageStore.makeProviderSummaries`, so direct usage-store summary paths inherit the same aggregate provenance mislabeling behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked `skillFeedback.followedProcedure=true`, but the required context-read evidence discipline in the token-accounting skill was not satisfied in handoff verification.",
+      "evidence": "Handoff file `.../handoffs/2026-04-09T14-31-59-020Z__m4-reporting-provenance-audit-and-filter-parity__1ce59740-7176-405e-9faa-e932a6791008.json` includes only test and `git rev-parse` commands under `verification.commandsRun`; no command evidence showing required context reads despite SKILL.md requiring that evidence when `followedProcedure=true`."
+    },
+    {
+      "area": "skills",
+      "observation": "The skill prescribes TDD red/green (add failing scoped tests first), but transcript order shows implementation edits before adding new tests.",
+      "evidence": "Transcript skeleton for worker session `1ce59740-7176-405e-9faa-e932a6791008` shows edits to `AgentProvider.swift` and `DataStore*.swift` before later adding VAL-CROSS-005/006/010 tests in `CrossSurfaceUpgradeTests.swift`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed due to a blocking aggregate-provenance correctness issue: provider summaries can report exact confidence for mixed exact+estimated totals. Report written with actionable file/line findings and skill/shared-state observations."
+}
