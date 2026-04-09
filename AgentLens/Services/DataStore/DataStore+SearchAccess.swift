@@ -89,6 +89,13 @@ extension DataStore {
         try searchIndexStore.replaceChunks(documentID: documentID, title: title, chunks: chunks)
     }
 
+    /// Incrementally applies a chunk diff for a document.
+    /// Compares new chunks against existing chunks by contentHash to minimize writes.
+    /// Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
+    func applySearchChunkDiff(documentID: String, title: String, chunks: [SearchChunkRecord]) throws -> ChunkDiffResult {
+        try searchIndexStore.applyChunkDiff(documentID: documentID, title: title, newChunks: chunks)
+    }
+
     /// Fetches existing embeddings keyed by contentHash for a document.
     /// Returns a mapping of contentHash -> (chunkID, vectorBlob) for chunks
     /// that have embeddings for the given version.

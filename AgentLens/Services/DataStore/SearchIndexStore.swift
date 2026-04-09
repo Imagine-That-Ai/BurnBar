@@ -296,6 +296,142 @@ final class SearchIndexStore {
         }
     }
 
+    /// Incrementally applies a chunk diff for a document.
+    /// Compares new chunks against existing chunks by contentHash to determine:
+    /// - **Unchanged** (same contentHash, same ID): skipped entirely — no writes.
+    /// - **Rekeyed** (same contentHash, different ID): old row deleted, new row inserted.
+    ///   Embeddings can be copied by contentHash in the caller.
+    /// - **Added** (new contentHash): inserted as new chunk.
+    /// - **Deleted** (existing contentHash not in new set): removed.
+    ///
+    /// Returns a `ChunkDiffResult` with counts for each operation category,
+    /// enabling callers to verify write-amplification behavior.
+    ///
+    /// Falls back to replace-all when content hashes are unavailable
+    /// (e.g., first projection with empty existing set).
+    func applyChunkDiff(
+        documentID: String,
+        title: String,
+        newChunks: [SearchChunkRecord]
+    ) throws -> ChunkDiffResult {
+        // Fetch existing chunks for this document
+        let existingChunks = try fetchChunks(documentID: documentID)
+
+        // If no existing chunks, just insert all (first projection)
+        if existingChunks.isEmpty {
+            guard newChunks.isEmpty == false else {
+                return ChunkDiffResult(unchanged: 0, rekeyed: 0, added: newChunks.count, deleted: 0, existingTotal: 0, newTotal: newChunks.count)
+            }
+            try replaceChunks(documentID: documentID, title: title, chunks: newChunks)
+            return ChunkDiffResult(unchanged: 0, rekeyed: 0, added: newChunks.count, deleted: 0, existingTotal: 0, newTotal: newChunks.count)
+        }
+
+        // Build contentHash -> chunk mappings
+        let existingByHash = Dictionary(grouping: existingChunks, by: { $0.contentHash ?? "" })
+        let newByHash = Dictionary(grouping: newChunks, by: { $0.contentHash ?? "" })
+
+        let existingHashes = Set(existingByHash.keys)
+        let newHashes = Set(newByHash.keys)
+
+        let unchangedHashes = existingHashes.intersection(newHashes)
+        let addedHashes = newHashes.subtracting(existingHashes)
+        let deletedHashes = existingHashes.subtracting(newHashes)
+
+        // Count rekeyed chunks (same hash but different chunk ID)
+        var rekeyedCount = 0
+        for hash in unchangedHashes {
+            let oldIDs = Set(existingByHash[hash]!.map(\.id))
+            let newIDs = Set(newByHash[hash]!.map(\.id))
+            if oldIDs != newIDs {
+                rekeyedCount += max(oldIDs.count, newIDs.count)
+            }
+        }
+
+        // Count truly unchanged (same hash AND same ID)
+        var unchangedCount = 0
+        for hash in unchangedHashes {
+            let oldIDs = Set(existingByHash[hash]!.map(\.id))
+            let newIDs = Set(newByHash[hash]!.map(\.id))
+            if oldIDs == newIDs {
+                unchangedCount += oldIDs.count
+            } else {
+                // Count the ones that ARE the same within a rekeyed group
+                unchangedCount += oldIDs.intersection(newIDs).count
+            }
+        }
+
+        // If the set of content hashes is identical AND all chunk IDs match,
+        // this is a true no-op — skip all writes entirely.
+        if deletedHashes.isEmpty && addedHashes.isEmpty && rekeyedCount == 0 {
+            return ChunkDiffResult(
+                unchanged: unchangedCount,
+                rekeyed: 0,
+                added: 0,
+                deleted: 0,
+                existingTotal: existingChunks.count,
+                newTotal: newChunks.count
+            )
+        }
+
+        // Apply the diff
+        try dbQueue.write { db in
+            let documentRow = try Row.fetchOne(
+                db,
+                sql: "SELECT projectName, provider FROM search_documents WHERE id = ?",
+                arguments: [documentID]
+            )
+            let projectName = documentRow?["projectName"] as? String ?? ""
+            let provider = documentRow?["provider"] as? String ?? ""
+
+            // Delete old chunks whose contentHash is no longer present
+            var oldIDsToDelete: [String] = deletedHashes.flatMap { existingByHash[$0]!.map(\.id) }
+
+            // Delete rekeyed old chunks (same hash, different ID)
+            for hash in unchangedHashes {
+                let oldChunks = existingByHash[hash]!
+                let newChunksForHash = newByHash[hash]!
+                let oldIDs = Set(oldChunks.map(\.id))
+                let newIDs = Set(newChunksForHash.map(\.id))
+                let staleIDs = oldIDs.subtracting(newIDs)
+                oldIDsToDelete.append(contentsOf: staleIDs)
+            }
+
+            // Perform deletes
+            for chunkID in oldIDsToDelete {
+                try db.execute(sql: "DELETE FROM search_chunks_fts WHERE chunkID = ?", arguments: [chunkID])
+                try db.execute(sql: "DELETE FROM search_chunks WHERE id = ?", arguments: [chunkID])
+            }
+
+            // Insert added chunks (new content hashes)
+            for hash in addedHashes {
+                for chunk in newByHash[hash]! {
+                    try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
+                }
+            }
+
+            // Insert rekeyed chunks (same content hash but new chunk ID — sourceVersionID changed)
+            for hash in unchangedHashes {
+                let oldChunks = existingByHash[hash]!
+                let newChunksForHash = newByHash[hash]!
+                let oldIDs = Set(oldChunks.map(\.id))
+                for chunk in newChunksForHash {
+                    if !oldIDs.contains(chunk.id) {
+                        try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
+                    }
+                }
+            }
+        }
+
+        return ChunkDiffResult(
+            unchanged: unchangedCount,
+            rekeyed: rekeyedCount,
+            added: addedHashes.reduce(0) { $0 + (newByHash[$1]?.count ?? 0) },
+            deleted: deletedHashes.reduce(0) { $0 + (existingByHash[$1]?.count ?? 0) },
+            existingTotal: existingChunks.count,
+            newTotal: newChunks.count
+        )
+    }
+
     func replaceChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) throws {
         try dbQueue.write { db in
             let documentRow = try Row.fetchOne(

@@ -877,8 +877,9 @@ final class ProjectionPipelineService {
             embeddingVersionID: embeddingVersionID
         )) ?? [:]
 
-        // Replace all chunks (old chunk IDs become stale when sourceVersionID changes).
-        try dataStore.replaceSearchChunks(documentID: document.id, title: title, chunks: chunks)
+        // Apply incremental chunk diff: only write changed/added/deleted chunks.
+        // Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
+        let chunkDiff = try dataStore.applySearchChunkDiff(documentID: document.id, title: title, chunks: chunks)
 
         // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.
         // This avoids expensive embedding provider calls for content that hasn't changed.
@@ -971,8 +972,9 @@ final class ProjectionPipelineService {
             embeddingVersionID: embeddingVersionID
         )) ?? [:]
 
-        // Replace all chunks (old chunk IDs become stale when sourceVersionID changes).
-        try dataStore.replaceSearchChunks(documentID: document.id, title: artifact.title, chunks: chunks)
+        // Apply incremental chunk diff: only write changed/added/deleted chunks.
+        // Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
+        let chunkDiff = try dataStore.applySearchChunkDiff(documentID: document.id, title: artifact.title, chunks: chunks)
 
         // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.
         var reusedEmbeddingCount = 0

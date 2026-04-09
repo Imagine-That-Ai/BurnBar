@@ -168,6 +168,40 @@ struct SearchChunkRecord: Identifiable, Equatable, Sendable {
     }
 }
 
+/// Result of an incremental chunk diff application.
+/// Tracks how many chunks were unchanged, rekeyed (same contentHash, new ID),
+/// added (new contentHash), or deleted (removed contentHash).
+struct ChunkDiffResult: Equatable, Sendable {
+    /// Chunks with identical contentHash AND chunkID — no writes performed.
+    let unchanged: Int
+    /// Chunks with same contentHash but different chunkID (sourceVersionID rekey).
+    /// Old rows deleted, new rows inserted; embedding reuse by contentHash.
+    let rekeyed: Int
+    /// Chunks with new contentHash not present in existing set — inserted.
+    let added: Int
+    /// Chunks whose contentHash is not in new set — deleted.
+    let deleted: Int
+    /// Total existing chunks before diff.
+    let existingTotal: Int
+    /// Total new chunks after diff.
+    let newTotal: Int
+
+    /// Total number of write operations (inserts + deletes).
+    var writeCount: Int {
+        return (rekeyed * 2) + added + (deleted * 2)
+    }
+
+    /// Total number of chunks that were skipped (no writes at all).
+    var skippedCount: Int {
+        return unchanged
+    }
+
+    /// Whether this diff was a complete no-op (no writes needed).
+    var isNoOp: Bool {
+        return writeCount == 0
+    }
+}
+
 enum SearchVisibilityScope: String, Codable, CaseIterable, Sendable {
     case all
     case personalOnly = "personal_only"

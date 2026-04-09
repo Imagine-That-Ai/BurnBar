@@ -2089,3 +2089,516 @@ private struct FailingTestEmbeddingProvider: ChunkEmbeddingProviding, Sendable {
         return [Float](repeating: 0, count: descriptor.dimensions)
     }
 }
+
+// MARK: - True Incremental Chunk Persistence Tests (m3-fix-true-incremental-chunk-persistence)
+
+extension ProjectionPipelineServiceTests {
+
+    // MARK: - Incremental diff correctly classifies unchanged/rekeyed/added/deleted
+
+    func test_applyChunkDiff_firstProjection_insertsAllChunks() throws {
+        // First projection: no existing chunks → all chunks are added.
+        let store = try makeDiscoveryInMemoryStore()
+        let documentID = "doc-incr-test-1"
+        let title = "First Projection"
+        let base = Date(timeIntervalSince1970: 1_743_000_000)
+
+        // Create a document first
+        let document = SearchDocumentRecord(
+            id: documentID,
+            sourceKind: .conversation,
+            sourceID: "conv-incr-1",
+            sourceVersionID: "v1",
+            provider: "claudeCode",
+            projectName: "Test",
+            title: title,
+            subtitle: "sub",
+            bodyPreview: "preview",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "hash1",
+            createdAt: base,
+            updatedAt: base
+        )
+        try store.upsertSearchDocument(document)
+
+        let chunks = [
+            SearchChunkRecord(id: "chunk-1", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-1", sourceVersionID: "v1", ordinal: 0, startOffset: 0, endOffset: 100, text: "First chunk text", contentHash: "hash-a", createdAt: base, updatedAt: base),
+            SearchChunkRecord(id: "chunk-2", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-1", sourceVersionID: "v1", ordinal: 1, startOffset: 100, endOffset: 200, text: "Second chunk text", contentHash: "hash-b", createdAt: base, updatedAt: base),
+            SearchChunkRecord(id: "chunk-3", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-1", sourceVersionID: "v1", ordinal: 2, startOffset: 200, endOffset: 300, text: "Third chunk text", contentHash: "hash-c", createdAt: base, updatedAt: base)
+        ]
+
+        let result = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
+
+        XCTAssertEqual(result.added, 3, "All three chunks should be added on first projection.")
+        XCTAssertEqual(result.deleted, 0)
+        XCTAssertEqual(result.rekeyed, 0)
+        XCTAssertEqual(result.unchanged, 0)
+        XCTAssertEqual(result.existingTotal, 0)
+        XCTAssertEqual(result.newTotal, 3)
+
+        let storedChunks = try store.fetchSearchChunks(documentID: documentID)
+        XCTAssertEqual(storedChunks.count, 3)
+    }
+
+    func test_applyChunkDiff_identicalContent_noWrites() throws {
+        // When chunks have identical contentHash AND chunkID, diff is a no-op.
+        let store = try makeDiscoveryInMemoryStore()
+        let documentID = "doc-incr-test-2"
+        let title = "No-op Test"
+        let base = Date(timeIntervalSince1970: 1_743_001_000)
+
+        let document = SearchDocumentRecord(
+            id: documentID,
+            sourceKind: .conversation,
+            sourceID: "conv-incr-2",
+            sourceVersionID: "v1",
+            provider: "claudeCode",
+            projectName: "Test",
+            title: title,
+            subtitle: "sub",
+            bodyPreview: "preview",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "hash2",
+            createdAt: base,
+            updatedAt: base
+        )
+        try store.upsertSearchDocument(document)
+
+        let chunks = [
+            SearchChunkRecord(id: "chunk-a", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-2", sourceVersionID: "v1", ordinal: 0, startOffset: 0, endOffset: 100, text: "Alpha", contentHash: "hash-alpha", createdAt: base, updatedAt: base),
+            SearchChunkRecord(id: "chunk-b", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-2", sourceVersionID: "v1", ordinal: 1, startOffset: 100, endOffset: 200, text: "Beta", contentHash: "hash-beta", createdAt: base, updatedAt: base)
+        ]
+
+        // First projection — all added
+        let firstResult = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
+        XCTAssertEqual(firstResult.added, 2)
+        XCTAssertTrue(firstResult.isNoOp == false)
+
+        // Second projection with IDENTICAL chunks — should be a complete no-op
+        let secondResult = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
+        XCTAssertTrue(secondResult.isNoOp, "Identical chunk set should be a complete no-op.")
+        XCTAssertEqual(secondResult.unchanged, 2, "Both chunks should be classified as unchanged.")
+        XCTAssertEqual(secondResult.writeCount, 0, "No writes should occur for unchanged chunks.")
+        XCTAssertEqual(secondResult.added, 0)
+        XCTAssertEqual(secondResult.deleted, 0)
+        XCTAssertEqual(secondResult.rekeyed, 0)
+
+        // Verify chunks are still in the store
+        let storedChunks = try store.fetchSearchChunks(documentID: documentID)
+        XCTAssertEqual(storedChunks.count, 2)
+    }
+
+    func test_applyChunkDiff_rekeyedChunks_onlyRekeysChangedIDs() throws {
+        // When contentHash is the same but chunk IDs differ (sourceVersionID change),
+        // only rekeyed chunks should be written, not unchanged ones.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let documentID = "doc-incr-test-3"
+        let title = "Rekey Test"
+        let base = Date(timeIntervalSince1970: 1_743_002_000)
+
+        let document = SearchDocumentRecord(
+            id: documentID,
+            sourceKind: .conversation,
+            sourceID: "conv-incr-3",
+            sourceVersionID: "v1",
+            provider: "claudeCode",
+            projectName: "Test",
+            title: title,
+            subtitle: "sub",
+            bodyPreview: "preview",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "hash3",
+            createdAt: base,
+            updatedAt: base
+        )
+        try store.upsertSearchDocument(document)
+
+        // First projection with v1 chunk IDs
+        let v1Chunks = [
+            SearchChunkRecord(id: "chunk-v1-a", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-3", sourceVersionID: "v1", ordinal: 0, startOffset: 0, endOffset: 100, text: "Same text", contentHash: "hash-same", createdAt: base, updatedAt: base),
+            SearchChunkRecord(id: "chunk-v1-b", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-3", sourceVersionID: "v1", ordinal: 1, startOffset: 100, endOffset: 200, text: "Also same", contentHash: "hash-also-same", createdAt: base, updatedAt: base)
+        ]
+        _ = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: v1Chunks)
+
+        // Second projection with v2 chunk IDs but SAME content hashes.
+        // This simulates metadata-only change where sourceVersionID changed chunk IDs
+        // but the actual chunk content is identical.
+        let v2Chunks = [
+            SearchChunkRecord(id: "chunk-v2-a", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-3", sourceVersionID: "v2", ordinal: 0, startOffset: 0, endOffset: 100, text: "Same text", contentHash: "hash-same", createdAt: base, updatedAt: base),
+            SearchChunkRecord(id: "chunk-v2-b", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-3", sourceVersionID: "v2", ordinal: 1, startOffset: 100, endOffset: 200, text: "Also same", contentHash: "hash-also-same", createdAt: base, updatedAt: base)
+        ]
+        let result = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: v2Chunks)
+
+        XCTAssertEqual(result.rekeyed, 2, "Both chunks should be classified as rekeyed (same hash, new IDs).")
+        XCTAssertEqual(result.unchanged, 0, "No chunks have identical IDs, so none are unchanged.")
+        XCTAssertEqual(result.added, 0, "No new content hashes were added.")
+        XCTAssertEqual(result.deleted, 0, "No content hashes were removed.")
+        XCTAssertEqual(result.writeCount, 4, "Rekeyed chunks require 2 deletes + 2 inserts = 4 writes.")
+
+        // Verify only v2 chunks exist
+        let storedChunks = try store.fetchSearchChunks(documentID: documentID)
+        XCTAssertEqual(storedChunks.count, 2)
+        let storedIDs = Set(storedChunks.map(\.id))
+        XCTAssertTrue(storedIDs.contains("chunk-v2-a"))
+        XCTAssertTrue(storedIDs.contains("chunk-v2-b"))
+        XCTAssertFalse(storedIDs.contains("chunk-v1-a"))
+        XCTAssertFalse(storedIDs.contains("chunk-v1-b"))
+    }
+
+    func test_applyChunkDiff_partialEdit_onlyWritesImpactedChunks() throws {
+        // Partial edit: one chunk deleted, one changed, one unchanged.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let documentID = "doc-incr-test-4"
+        let title = "Partial Edit"
+        let base = Date(timeIntervalSince1970: 1_743_003_000)
+
+        let document = SearchDocumentRecord(
+            id: documentID,
+            sourceKind: .conversation,
+            sourceID: "conv-incr-4",
+            sourceVersionID: "v1",
+            provider: "claudeCode",
+            projectName: "Test",
+            title: title,
+            subtitle: "sub",
+            bodyPreview: "preview",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "hash4",
+            createdAt: base,
+            updatedAt: base
+        )
+        try store.upsertSearchDocument(document)
+
+        // Initial: 3 chunks
+        let initialChunks = [
+            SearchChunkRecord(id: "chunk-head", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-4", sourceVersionID: "v1", ordinal: 0, startOffset: 0, endOffset: 100, text: "Head content", contentHash: "hash-head", createdAt: base, updatedAt: base),
+            SearchChunkRecord(id: "chunk-mid", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-4", sourceVersionID: "v1", ordinal: 1, startOffset: 100, endOffset: 200, text: "Middle content", contentHash: "hash-mid", createdAt: base, updatedAt: base),
+            SearchChunkRecord(id: "chunk-tail", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-4", sourceVersionID: "v1", ordinal: 2, startOffset: 200, endOffset: 300, text: "Tail content", contentHash: "hash-tail", createdAt: base, updatedAt: base)
+        ]
+        _ = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: initialChunks)
+
+        // Partial edit: head unchanged, middle changed (new content), tail removed
+        let editedChunks = [
+            SearchChunkRecord(id: "chunk-head", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-4", sourceVersionID: "v1", ordinal: 0, startOffset: 0, endOffset: 100, text: "Head content", contentHash: "hash-head", createdAt: base, updatedAt: base),
+            SearchChunkRecord(id: "chunk-mid-v2", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-4", sourceVersionID: "v1", ordinal: 1, startOffset: 100, endOffset: 250, text: "Modified middle content", contentHash: "hash-mid-v2", createdAt: base, updatedAt: base)
+        ]
+
+        let result = try store.applySearchChunkDiff(documentID: documentID, title: title, chunks: editedChunks)
+
+        XCTAssertEqual(result.unchanged, 1, "Head chunk should be unchanged.")
+        XCTAssertEqual(result.added, 1, "Modified middle chunk should be added (new contentHash).")
+        XCTAssertEqual(result.deleted, 2, "Tail chunk and old middle chunk should be deleted (contentHashes no longer present).")
+        XCTAssertEqual(result.rekeyed, 0, "No rekeyed chunks in this scenario.")
+        XCTAssertEqual(result.writeCount, 5, "2 deletes (tail + old mid, each DELETE on chunks + FTS) + 1 insert (new mid) = (deleted*2) + added = 4 + 1 = 5.")
+
+        // Verify final state
+        let storedChunks = try store.fetchSearchChunks(documentID: documentID)
+        XCTAssertEqual(storedChunks.count, 2)
+        let storedIDs = Set(storedChunks.map(\.id))
+        XCTAssertTrue(storedIDs.contains("chunk-head"))
+        XCTAssertTrue(storedIDs.contains("chunk-mid-v2"))
+        XCTAssertFalse(storedIDs.contains("chunk-mid"))
+        XCTAssertFalse(storedIDs.contains("chunk-tail"))
+    }
+
+    // MARK: - Write-amplification via projection pipeline
+
+    func test_incrementalChunkPersistence_metadataChange_doesNotRewriteUnchangedChunks() async throws {
+        // When only metadata changes (not text), the projection pipeline should use
+        // incremental diff that skips store-level writes for chunks with identical content.
+        // Write amplification should be bounded by rekeyed count only, not total chunk count.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "incr-wa-v1", seed: "incr-wa-seed")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-incr-wa",
+            chunkEmbedder: embedder
+        )
+        let base = Date(timeIntervalSince1970: 1_743_010_000)
+
+        // Create conversation with enough text for multiple chunks
+        let conversation = makeConversation(
+            id: "conv-incr-wa",
+            fullText: String(repeating: "Chunk persistence write amplification test content. ", count: 80),
+            indexedAt: base
+        )
+        try store.upsertConversation(conversation)
+        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        guard
+            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        else {
+            XCTFail("Expected projected document after initial projection.")
+            return
+        }
+
+        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        XCTAssertGreaterThan(initialChunks.count, 2, "Should have multiple chunks to test write amplification.")
+        let initialChunkIDs = Set(initialChunks.map(\.id))
+
+        // Update conversation metadata (messageCount) without changing fullText.
+        // This changes sourceVersionID → all chunk IDs change → but content hashes are identical.
+        let updatedConv = ConversationRecord(
+            id: conversation.id,
+            provider: conversation.provider,
+            sessionId: conversation.sessionId,
+            projectName: conversation.projectName,
+            startTime: conversation.startTime,
+            endTime: base.addingTimeInterval(5),
+            messageCount: 42,  // Different
+            userWordCount: conversation.userWordCount,
+            assistantWordCount: conversation.assistantWordCount,
+            keyFiles: conversation.keyFiles,
+            keyCommands: conversation.keyCommands,
+            keyTools: conversation.keyTools,
+            inferredTaskTitle: conversation.inferredTaskTitle,
+            lastAssistantMessage: conversation.lastAssistantMessage,
+            fullText: conversation.fullText,  // SAME
+            indexedAt: conversation.indexedAt,
+            fileModifiedAt: base.addingTimeInterval(5),
+            summary: nil,
+            summaryTitle: nil,
+            summaryUpdatedAt: nil,
+            summaryProvider: nil,
+            summaryModel: nil,
+            sourceType: conversation.sourceType
+        )
+        try store.upsertConversation(updatedConv)
+
+        // Run gap repair to trigger re-projection
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        // Verify final chunks exist with new IDs (rekeyed) but same content hashes
+        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalChunkIDs = Set(finalChunks.map(\.id))
+        XCTAssertNotEqual(initialChunkIDs, finalChunkIDs, "Chunk IDs should change due to sourceVersionID change.")
+
+        let initialHashes = Set(initialChunks.compactMap(\.contentHash))
+        let finalHashes = Set(finalChunks.compactMap(\.contentHash))
+        XCTAssertEqual(initialHashes, finalHashes, "Content hashes should be identical when text doesn't change.")
+
+        // All final chunks should have embeddings (reused via contentHash)
+        let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
+        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        XCTAssertEqual(
+            Set(finalEmbeddings.map(\.chunkID)), finalChunkIDs,
+            "All rekeyed chunks should have embeddings (reused by contentHash)."
+        )
+
+        // Verify the document was actually updated (content hash changed due to metadata)
+        let updatedDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        XCTAssertNotNil(updatedDoc)
+        XCTAssertEqual(
+            updatedDoc?.contentHash,
+            ProjectionIdentity.conversationContentHash(for: updatedConv)
+        )
+    }
+
+    func test_incrementalChunkPersistence_partialTextChange_minimalWrites() async throws {
+        // Partial text change should only write affected chunks at store level,
+        // not all chunks.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "incr-partial-v1", seed: "incr-partial-seed")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-incr-partial",
+            chunkEmbedder: embedder
+        )
+        let base = Date(timeIntervalSince1970: 1_743_020_000)
+
+        let longText = String(repeating: "Text content for partial edit write amplification test. ", count: 100)
+        let conversation = makeConversation(id: "conv-incr-partial", fullText: longText, indexedAt: base)
+        try store.upsertConversation(conversation)
+        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        guard
+            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        else {
+            XCTFail("Expected projected document.")
+            return
+        }
+
+        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        XCTAssertGreaterThan(initialChunks.count, 2, "Should have multiple chunks.")
+        let initialContentHashes = Set(initialChunks.compactMap(\.contentHash))
+
+        // Append text at the end — should only affect the last chunk(s)
+        let partialConv = ConversationRecord(
+            id: conversation.id,
+            provider: conversation.provider,
+            sessionId: conversation.sessionId,
+            projectName: conversation.projectName,
+            startTime: conversation.startTime,
+            endTime: base.addingTimeInterval(30),
+            messageCount: conversation.messageCount + 1,
+            userWordCount: conversation.userWordCount + 5,
+            assistantWordCount: conversation.assistantWordCount + 10,
+            keyFiles: conversation.keyFiles,
+            keyCommands: conversation.keyCommands,
+            keyTools: conversation.keyTools,
+            inferredTaskTitle: "Partial Edit",
+            lastAssistantMessage: conversation.lastAssistantMessage,
+            fullText: longText + " NEW CONTENT AT THE END.",
+            indexedAt: conversation.indexedAt,
+            fileModifiedAt: base.addingTimeInterval(30),
+            summary: nil,
+            summaryTitle: nil,
+            summaryUpdatedAt: nil,
+            summaryProvider: nil,
+            summaryModel: nil,
+            sourceType: conversation.sourceType
+        )
+        try store.upsertConversation(partialConv)
+
+        for _ in 0..<5 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalContentHashes = Set(finalChunks.compactMap(\.contentHash))
+
+        // Some content hashes should be unchanged (head chunks)
+        let unchangedHashes = initialContentHashes.intersection(finalContentHashes)
+        let newOrChangedHashes = finalContentHashes.subtracting(initialContentHashes)
+
+        XCTAssertGreaterThan(
+            unchangedHashes.count, 0,
+            "Some chunks should be unchanged after partial edit. " +
+            "Initial hashes: \(initialContentHashes.count), Final: \(finalContentHashes.count), " +
+            "Unchanged: \(unchangedHashes.count), New: \(newOrChangedHashes.count)"
+        )
+        XCTAssertGreaterThan(
+            newOrChangedHashes.count, 0,
+            "Some chunks should have new content hashes after partial edit."
+        )
+
+        // All chunks should have embeddings
+        let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
+        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        XCTAssertEqual(
+            Set(finalEmbeddings.map(\.chunkID)), Set(finalChunks.map(\.id)),
+            "All final chunks should have embeddings."
+        )
+    }
+
+    func test_incrementalChunkPersistence_artifactProjection_usesIncrementalDiff() async throws {
+        // Verify artifact projection also uses incremental diff (not replace-all).
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "incr-art-v1", seed: "incr-art-seed")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-incr-art",
+            chunkEmbedder: embedder
+        )
+        let base = Date(timeIntervalSince1970: 1_743_030_000)
+
+        let artifact = SourceArtifactRecord(
+            id: "artifact-incr",
+            sourceKind: .skillDoc,
+            canonicalPath: "/tmp/repo/SKILL.md",
+            rootPath: "/tmp/repo",
+            relativePath: "SKILL.md",
+            provenance: "basename:SKILL.MD",
+            title: "Skill Doc",
+            body: String(repeating: "Artifact content for incremental diff test. ", count: 50),
+            contentHash: "hash-art-v1",
+            fileSizeBytes: 42,
+            fileModifiedAt: base,
+            status: .active,
+            discoveredAt: base,
+            deletedAt: nil,
+            createdAt: base,
+            updatedAt: base
+        )
+        _ = try store.upsertSourceArtifact(artifact)
+
+        try service.enqueueSelectiveReproject(
+            sourceKind: artifact.sourceKind,
+            sourceID: artifact.id,
+            sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: artifact.contentHash),
+            jobType: .project,
+            priority: 5
+        )
+        _ = try await service.runSweep(maxJobs: 20)
+
+        guard
+            let document = try store.fetchSearchDocuments(sourceKind: artifact.sourceKind, sourceID: artifact.id).first
+        else {
+            XCTFail("Expected projected artifact document.")
+            return
+        }
+        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        XCTAssertGreaterThan(initialChunks.count, 1, "Artifact should have multiple chunks.")
+        let initialHashes = Set(initialChunks.compactMap(\.contentHash))
+
+        let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
+        let initialEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        XCTAssertEqual(initialEmbeddings.count, initialChunks.count)
+
+        // Update artifact with different contentHash but same text (simulating re-discovery with same body)
+        let updatedArtifact = SourceArtifactRecord(
+            id: artifact.id,
+            sourceKind: artifact.sourceKind,
+            canonicalPath: artifact.canonicalPath,
+            rootPath: artifact.rootPath,
+            relativePath: artifact.relativePath,
+            provenance: artifact.provenance,
+            title: "Skill Doc Updated Title",
+            body: artifact.body,  // SAME text
+            contentHash: "hash-art-v2",  // Different hash (would change if metadata differs)
+            fileSizeBytes: 42,
+            fileModifiedAt: base.addingTimeInterval(10),
+            status: .active,
+            discoveredAt: base,
+            deletedAt: nil,
+            createdAt: base,
+            updatedAt: base.addingTimeInterval(10)
+        )
+        _ = try store.upsertSourceArtifact(updatedArtifact)
+
+        try service.enqueueSelectiveReproject(
+            sourceKind: updatedArtifact.sourceKind,
+            sourceID: updatedArtifact.id,
+            sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: updatedArtifact.contentHash),
+            jobType: .reproject,
+            priority: 5
+        )
+        _ = try await service.runSweep(maxJobs: 20)
+
+        let finalChunks = try store.fetchSearchChunks(documentID: document.id)
+        let finalHashes = Set(finalChunks.compactMap(\.contentHash))
+
+        // Content hashes should be the same since body text is identical
+        XCTAssertEqual(initialHashes, finalHashes, "Content hashes should be identical when artifact body doesn't change.")
+
+        // All chunks should have embeddings
+        let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        XCTAssertEqual(
+            Set(finalEmbeddings.map(\.chunkID)), Set(finalChunks.map(\.id)),
+            "All artifact chunks should have embeddings after incremental re-projection."
+        )
+    }
+}
