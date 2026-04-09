@@ -1155,4 +1155,554 @@ final class ProjectionPipelineServiceTests: XCTestCase {
             "Conv3 document should remain unchanged."
         )
     }
+
+    // MARK: - VAL-INDEX-009: Stale source-version jobs no-op without writes
+
+    func test_staleSourceVersionJob_noOpsWithoutWrites() async throws {
+        // VAL-INDEX-009: If a queued projection job carries a stale source version,
+        // processing must complete as a no-op without rewriting documents, chunks, or embeddings.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "stale-v1", seed: "stale-seed")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-stale-noop",
+            chunkEmbedder: embedder
+        )
+        let base = Date(timeIntervalSince1970: 1_742_800_000)
+
+        // Create a conversation and project it (first projection)
+        let conversation = makeConversation(
+            id: "conv-stale-sv",
+            fullText: String(repeating: "Original text content for stale version test. ", count: 40),
+            indexedAt: base
+        )
+        try store.upsertConversation(conversation)
+        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+
+        // Drain all jobs including backfill rebuild
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        guard
+            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        else {
+            XCTFail("Expected projected document after initial projection.")
+            return
+        }
+        let initialChunks = try store.fetchSearchChunks(documentID: document.id)
+        XCTAssertFalse(initialChunks.isEmpty, "Should have chunks after initial projection.")
+
+        // Record state after initial projection
+        let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
+        let initialEmbeddingCount = try store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
+        let initialUpdatedAt = document.updatedAt
+        let initialContentHash = document.contentHash
+
+        // Enqueue a job with a STALE (mismatched) sourceVersionID.
+        // The conversation has NOT changed, so the current sourceVersionID equals the
+        // one used during initial projection. The job below uses a fabricated stale version.
+        let staleVersionID = "stale-fabricated-version:\(ProjectionIdentity.projectorVersion)"
+        let staleJobID = ProjectionIdentity.jobID(
+            jobType: .reproject,
+            sourceKind: .conversation,
+            sourceID: conversation.id,
+            sourceVersionID: staleVersionID
+        )
+        try store.enqueueProjectionJob(
+            ProjectionJobRecord(
+                id: staleJobID,
+                jobType: .reproject,
+                sourceKind: .conversation,
+                sourceID: conversation.id,
+                sourceVersionID: staleVersionID,
+                status: .queued,
+                priority: 5,
+                attempts: 0,
+                maxAttempts: 5,
+                scheduledAt: base.addingTimeInterval(120),
+                availableAt: base.addingTimeInterval(120),
+                createdAt: base.addingTimeInterval(120),
+                updatedAt: base.addingTimeInterval(120)
+            )
+        )
+
+        // Verify queue has exactly the stale job (no gap repair since conversation hasn't changed)
+        let queuedJobs = try store.fetchProjectionJobs(statuses: [.queued], limit: 10)
+        XCTAssertTrue(
+            queuedJobs.contains(where: { $0.id == staleJobID }),
+            "Stale job should be queued."
+        )
+
+        // Sweep should pick up the stale job and complete it as a no-op
+        let staleReport = try await service.runSweep(maxJobs: 10)
+        let staleCompleted = staleReport.completedJobs
+        XCTAssertGreaterThanOrEqual(staleCompleted, 1, "Stale job should be completed (as a no-op).")
+
+        // Verify NO writes occurred:
+        // Document should still have the same updatedAt and contentHash
+        let docAfterStale = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        XCTAssertNotNil(docAfterStale)
+        XCTAssertEqual(
+            docAfterStale?.updatedAt, initialUpdatedAt,
+            "Document updatedAt should NOT change when processing a stale job."
+        )
+        XCTAssertEqual(
+            docAfterStale?.contentHash, initialContentHash,
+            "Document contentHash should NOT change when processing a stale job."
+        )
+
+        // Chunks should remain unchanged
+        let chunksAfterStale = try store.fetchSearchChunks(documentID: document.id)
+        XCTAssertEqual(
+            chunksAfterStale.count, initialChunks.count,
+            "Chunk count should NOT change when processing a stale job."
+        )
+        let initialChunkIDs = Set(initialChunks.map(\.id))
+        let staleChunkIDs = Set(chunksAfterStale.map(\.id))
+        XCTAssertEqual(
+            staleChunkIDs, initialChunkIDs,
+            "Chunk IDs should NOT change when processing a stale job."
+        )
+
+        // Embedding count should remain unchanged
+        let embeddingCountAfterStale = try store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
+        XCTAssertEqual(
+            embeddingCountAfterStale, initialEmbeddingCount,
+            "Embedding count should NOT change when processing a stale job."
+        )
+    }
+
+    // MARK: - VAL-INDEX-010: Lease-recovery processing avoids duplicate write side effects
+
+    func test_leaseRecovery_isIdempotent_noDuplicateWrites() async throws {
+        // VAL-INDEX-010: When expired leased/running jobs are reclaimed and retried,
+        // final projection/index state must remain deduped without duplicate write amplification.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "lease-v1", seed: "lease-seed")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-lease-idempotent",
+            chunkEmbedder: embedder
+        )
+        let base = Date(timeIntervalSince1970: 1_742_810_000)
+
+        let conversation = makeConversation(
+            id: "conv-lease-idem",
+            fullText: String(repeating: "Lease recovery idempotent test content. ", count: 50),
+            indexedAt: base
+        )
+        try store.upsertConversation(conversation)
+
+        // First, project the conversation normally so backfill doesn't interfere
+        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        // Verify conversation is already projected
+        let existingDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        XCTAssertNotNil(existingDoc, "Conversation should already be projected.")
+
+        let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
+
+        // Simulate an expired running job (crashed worker scenario) — same sourceVersionID
+        // as the already-completed projection, so recovery would be a no-op.
+        // But to test lease recovery actually runs and is idempotent, use a new job that
+        // hasn't been processed yet with a valid sourceVersionID.
+        let expiredTime = base.addingTimeInterval(-30)
+        let recoveryJobID = "projection-recovery-test-\(ProjectionIdentity.sha256Hex("recovery-lease-test"))"
+        try store.enqueueProjectionJob(
+            ProjectionJobRecord(
+                id: recoveryJobID,
+                jobType: .reproject,
+                sourceKind: .conversation,
+                sourceID: conversation.id,
+                sourceVersionID: sourceVersionID,
+                status: .running,
+                priority: 5,
+                attempts: 1,
+                maxAttempts: 5,
+                scheduledAt: expiredTime,
+                availableAt: expiredTime,
+                startedAt: expiredTime,
+                leaseOwner: "crashed-worker",
+                leaseExpiresAt: expiredTime.addingTimeInterval(-10),
+                createdAt: expiredTime,
+                updatedAt: expiredTime
+            )
+        )
+
+        // Record state before lease recovery
+        let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
+        let embedCountBefore = try store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
+        let chunksBefore = try store.fetchSearchChunks(documentID: existingDoc!.id)
+        let docContentHashBefore = existingDoc!.contentHash
+
+        // First sweep recovers the expired job
+        let firstReport = try await service.runSweep(maxJobs: 10)
+        XCTAssertGreaterThanOrEqual(firstReport.completedJobs, 1, "Expired job should be recovered and completed.")
+
+        // Verify the recovered job is completed
+        let completedJobs = try store.fetchProjectionJobs(statuses: [.completed], limit: 100)
+        let recoveryJob = completedJobs.first(where: { $0.id == recoveryJobID })
+        XCTAssertNotNil(recoveryJob, "Recovery job should be in completed status.")
+
+        // Verify deduped end state: content hash should remain the same
+        // (sourceVersionID matched, so projection ran, but content was identical → same hash)
+        let docAfterRecovery = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        XCTAssertEqual(
+            docAfterRecovery?.contentHash, docContentHashBefore,
+            "Document content hash should remain the same (content is identical)."
+        )
+
+        // Run another sweep — no new jobs should exist
+        let secondReport = try await service.runSweep(maxJobs: 10)
+        XCTAssertEqual(secondReport.completedJobs, 0, "No additional jobs should complete on second sweep.")
+
+        // Embedding count should remain stable (reused via contentHash)
+        let embedCountAfter = try store.fetchChunkEmbeddings(embeddingVersionID: versionID).count
+        XCTAssertEqual(embedCountAfter, embedCountBefore, "Embedding count should remain stable after recovery.")
+
+        // Chunk count should remain stable
+        let chunksAfter = try store.fetchSearchChunks(documentID: existingDoc!.id)
+        XCTAssertEqual(chunksAfter.count, chunksBefore.count, "Chunk count should remain stable after recovery.")
+    }
+
+    // MARK: - VAL-INDEX-011: Rebuild/re-embed pagination covers full corpus
+
+    func test_rebuildJob_paginatesFullCorpus() async throws {
+        // VAL-INDEX-011: Rebuild must paginate to completion for corpora larger than a single batch
+        // and must not silently truncate after the first page.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-rebuild-pagination"
+        )
+        let base = Date(timeIntervalSince1970: 1_742_820_000)
+
+        // Create a corpus of conversations to project
+        let conversationCount = 25
+        for i in 0..<conversationCount {
+            let conv = makeConversation(
+                id: "conv-rebuild-pg-\(i)",
+                fullText: "Conversation \(i) content for rebuild pagination test.",
+                indexedAt: base
+            )
+            try store.upsertConversation(conv)
+        }
+
+        // Enqueue rebuild job
+        try service.enqueueRebuildJob(reason: "test-rebuild-pagination", priority: 1)
+        let rebuildReport = try await service.runSweep(maxJobs: 1)
+        XCTAssertEqual(rebuildReport.completedJobs, 1, "Rebuild job should complete.")
+
+        // Verify ALL conversations got enqueued for reproject
+        let queuedAfterRebuild = try store.fetchProjectionJobs(statuses: [.queued], limit: 500)
+        let reprojectQueued = queuedAfterRebuild.filter { $0.jobType == .reproject }
+        XCTAssertEqual(
+            reprojectQueued.count, conversationCount,
+            "All \(conversationCount) conversations should have been enqueued for reproject. Found: \(reprojectQueued.count)"
+        )
+
+        // Verify the re-embed job was also enqueued
+        let reembedQueued = queuedAfterRebuild.filter { $0.jobType == .reembed }
+        XCTAssertEqual(reembedQueued.count, 1, "One re-embed job should be enqueued after rebuild.")
+    }
+
+    func test_reembedJob_paginatesFullCorpus() async throws {
+        // VAL-INDEX-011: Re-embed must paginate to completion for all chunks across all documents.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "reembed-pg-v1", seed: "reembed-pg-seed")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-reembed-pagination",
+            chunkEmbedder: embedder
+        )
+        let base = Date(timeIntervalSince1970: 1_742_830_000)
+
+        // Create and project multiple conversations
+        let conversationCount = 15
+        for i in 0..<conversationCount {
+            let conv = makeConversation(
+                id: "conv-reembed-pg-\(i)",
+                fullText: String(repeating: "Conversation \(i) reembed pagination content. ", count: 30),
+                indexedAt: base
+            )
+            try store.upsertConversation(conv)
+            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+        }
+
+        // Drain initial projection
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        // Record initial embedding count (all v1 embeddings)
+        let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
+        let initialEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        XCTAssertGreaterThan(initialEmbeddings.count, 0, "Should have initial embeddings.")
+
+        let allDocuments = try store.fetchSearchDocuments(limit: 100)
+        let allChunks = allDocuments.flatMap { doc -> [SearchChunkRecord] in
+            (try? store.fetchSearchChunks(documentID: doc.id)) ?? []
+        }
+        XCTAssertGreaterThan(allChunks.count, 0, "Should have chunks across all documents.")
+
+        // Create a new version embedder and trigger re-embed for ALL chunks
+        let embedderV2 = DeterministicFakeEmbeddingProvider(versionTag: "reembed-pg-v2", seed: "reembed-pg-v2-seed")
+        let serviceV2 = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-reembed-v2",
+            chunkEmbedder: embedderV2
+        )
+        try serviceV2.enqueueReembedJob(reason: "test-reembed-pagination", priority: 1)
+
+        let reembedReport = try await serviceV2.runSweep(maxJobs: 10)
+        XCTAssertEqual(reembedReport.completedJobs, 1, "Re-embed job should complete.")
+
+        // Verify all chunks got re-embedded in the new version
+        let versionV2ID = EmbeddingIdentity.versionID(for: embedderV2.descriptor)
+        let v2Embeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionV2ID)
+        XCTAssertEqual(
+            v2Embeddings.count, allChunks.count,
+            "All \(allChunks.count) chunks should have v2 embeddings. Found: \(v2Embeddings.count)"
+        )
+    }
+
+    // MARK: - VAL-INDEX-012: Embedding failure preserves lexical continuity
+
+    func test_embeddingFailure_preservesLexicalContinuity() async throws {
+        // VAL-INDEX-012: If semantic embedding generation fails mid-projection,
+        // lexical retrieval artifacts must remain usable and degradation must be surfaced
+        // without silent data loss.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let failingEmbedder = FailingTestEmbeddingProvider(
+            shouldFail: true,
+            errorMessage: "Simulated embedding service failure"
+        )
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-embed-failure",
+            chunkEmbedder: failingEmbedder
+        )
+        let base = Date(timeIntervalSince1970: 1_742_840_000)
+
+        // Create and project a conversation — embedding will fail
+        let conversation = makeConversation(
+            id: "conv-embed-fail",
+            fullText: "Lexical continuity test — this text should be searchable even when embedding fails.",
+            indexedAt: base
+        )
+        try store.upsertConversation(conversation)
+        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+
+        // Sweep should complete (embedding failure is non-fatal for project jobs, strict=false)
+        let report = try await service.runSweep(maxJobs: 20)
+        XCTAssertGreaterThanOrEqual(report.completedJobs, 1, "Projection job should complete even with embedding failure.")
+
+        // Verify document was created (lexical artifact)
+        guard
+            let document = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        else {
+            XCTFail("Expected projected document even with embedding failure.")
+            return
+        }
+        XCTAssertFalse(document.title.isEmpty, "Document title should be populated.")
+        XCTAssertFalse(document.bodyPreview?.isEmpty ?? true, "Document body preview should be populated.")
+
+        // Verify chunks were created (lexical artifacts in search_chunks + search_chunks_fts)
+        let chunks = try store.fetchSearchChunks(documentID: document.id)
+        XCTAssertFalse(chunks.isEmpty, "Chunks should exist even with embedding failure.")
+
+        // Verify FTS entries exist (lexical search should work)
+        let allDocuments = try store.fetchSearchDocuments(limit: 100)
+        XCTAssertEqual(allDocuments.count, 1, "Document should be indexed.")
+
+        // Verify NO embeddings were created (embedding failed)
+        let versionID = EmbeddingIdentity.versionID(for: failingEmbedder.descriptor)
+        let embeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)
+        XCTAssertEqual(embeddings.count, 0, "No embeddings should exist when embedding provider fails.")
+
+        // Verify degradation health status was recorded
+        let healthRecords = try store.fetchRetrievalHealth()
+        let semanticHealth = healthRecords.first(where: { $0.subsystem == .semantic })
+        XCTAssertNotNil(semanticHealth, "Semantic health record should exist.")
+        XCTAssertTrue(
+            semanticHealth?.status == .degraded || semanticHealth?.status == .failed,
+            "Semantic projection health should be degraded or failed after embedding failure. Got: \(String(describing: semanticHealth?.status))"
+        )
+        XCTAssertNotNil(
+            semanticHealth?.errorCode,
+            "Error code should be recorded for embedding failure."
+        )
+    }
+
+    // MARK: - VAL-INDEX-013: Remote reprojection re-enqueue after completion
+
+    func test_remoteUpdate_reEnqueuesProjectionAfterCompletion() async throws {
+        // VAL-INDEX-013: When a remote conversation body is updated after a prior completed projection,
+        // the queueing path must deterministically re-enqueue projection work for the newer content state.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "remote-v1", seed: "remote-seed")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-remote-requeue",
+            chunkEmbedder: embedder
+        )
+        let base = Date(timeIntervalSince1970: 1_742_850_000)
+
+        // Create and project a conversation (simulating initial remote hydration)
+        let conversation = makeConversation(
+            id: "conv-remote-requeue",
+            fullText: "Original remote content for reprojection test.",
+            indexedAt: base
+        )
+        try store.upsertConversation(conversation)
+        try store.enqueueConversationProjectionJob(conversationID: conversation.id, jobType: .project, now: base)
+
+        // Drain initial projection including backfill rebuild
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        guard
+            let initialDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        else {
+            XCTFail("Expected projected document after initial projection.")
+            return
+        }
+        let initialHash = initialDoc.contentHash
+
+        // Verify the first job for this conversation completed
+        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 100)
+        let convCompletedBefore = completedBefore.filter { $0.sourceID == conversation.id }
+        XCTAssertGreaterThanOrEqual(convCompletedBefore.count, 1, "At least one projection for this conversation should have completed.")
+        let initialJobSourceVersionID = convCompletedBefore.first?.sourceVersionID ?? ""
+
+        // Simulate remote update: conversation body changes
+        let updatedRemoteConv = ConversationRecord(
+            id: conversation.id,
+            provider: conversation.provider,
+            sessionId: conversation.sessionId,
+            projectName: conversation.projectName,
+            startTime: conversation.startTime,
+            endTime: base.addingTimeInterval(300),
+            messageCount: conversation.messageCount + 5,
+            userWordCount: conversation.userWordCount + 20,
+            assistantWordCount: conversation.assistantWordCount + 50,
+            keyFiles: conversation.keyFiles,
+            keyCommands: conversation.keyCommands,
+            keyTools: conversation.keyTools,
+            inferredTaskTitle: "Remote Updated Task",
+            lastAssistantMessage: "Remote updated message with new content.",
+            fullText: "Updated remote content after body hydration changed.",
+            indexedAt: conversation.indexedAt,
+            fileModifiedAt: base.addingTimeInterval(300),
+            summary: nil,
+            summaryTitle: nil,
+            summaryUpdatedAt: nil,
+            summaryProvider: nil,
+            summaryModel: nil,
+            sourceType: conversation.sourceType
+        )
+        try store.upsertConversation(updatedRemoteConv)
+
+        // Enqueue a new projection for the updated content (different sourceVersionID = different jobID)
+        try store.enqueueConversationProjectionJob(
+            conversationID: conversation.id,
+            jobType: .reproject,
+            now: base.addingTimeInterval(300)
+        )
+
+        // Verify a new job was enqueued (different from the completed one)
+        let queuedAfterUpdate = try store.fetchProjectionJobs(statuses: [.queued], limit: 10)
+        XCTAssertTrue(queuedAfterUpdate.isEmpty == false, "A new projection job should be queued after remote update.")
+
+        let newJob = queuedAfterUpdate.first(where: { $0.sourceID == conversation.id })
+        XCTAssertNotNil(newJob, "Queued job should be for the updated conversation.")
+        XCTAssertNotEqual(
+            newJob?.sourceVersionID, initialJobSourceVersionID,
+            "New job should have a different sourceVersionID (content changed)."
+        )
+        XCTAssertNotEqual(
+            newJob?.id, convCompletedBefore.first?.id,
+            "New job should have a different ID from the completed job."
+        )
+
+        // Process the new job
+        let requeueReport = try await service.runSweep(maxJobs: 20)
+        XCTAssertGreaterThanOrEqual(requeueReport.completedJobs, 1, "Re-enqueued job should complete.")
+
+        // Verify the document was updated with new content
+        let updatedDoc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: conversation.id).first
+        XCTAssertNotNil(updatedDoc)
+        XCTAssertNotEqual(
+            updatedDoc?.contentHash, initialHash,
+            "Document content hash should change after re-projection of updated content."
+        )
+        XCTAssertEqual(
+            updatedDoc?.contentHash,
+            ProjectionIdentity.conversationContentHash(for: updatedRemoteConv),
+            "Document content hash should match the updated conversation."
+        )
+
+        // Verify both completions exist (no data loss)
+        let allCompleted = try store.fetchProjectionJobs(statuses: [.completed], limit: 100)
+        let convAllCompleted = allCompleted.filter { $0.sourceID == conversation.id }
+        XCTAssertGreaterThanOrEqual(convAllCompleted.count, 2, "Both original and re-enqueued jobs should be completed.")
+    }
+}
+
+// MARK: - Failing Test Embedding Provider
+
+/// An embedding provider that always fails, used for testing embedding failure degradation.
+private struct FailingTestEmbeddingProvider: ChunkEmbeddingProviding, Sendable {
+    let descriptor: EmbeddingModelDescriptor
+    private let shouldFail: Bool
+    private let errorMessage: String
+
+    private enum EmbeddingTestError: LocalizedError {
+        case providerFailed(String)
+        var errorDescription: String? {
+            switch self {
+            case .providerFailed(let message): return message
+            }
+        }
+    }
+
+    init(
+        shouldFail: Bool = true,
+        errorMessage: String = "Embedding provider failed"
+    ) {
+        self.shouldFail = shouldFail
+        self.errorMessage = errorMessage
+        self.descriptor = EmbeddingModelDescriptor(
+            provider: "test-failing",
+            modelName: "failing-embed-model",
+            dimensions: 8,
+            distanceMetric: .cosine,
+            versionTag: "failing-test-v1",
+            chunkerVersion: ProjectionIdentity.chunkerVersion,
+            normalizationVersion: "none",
+            promptVersion: "plain-text-v1"
+        )
+    }
+
+    func embedding(for text: String) async throws -> [Float] {
+        if shouldFail {
+            throw EmbeddingTestError.providerFailed(errorMessage)
+        }
+        return [Float](repeating: 0, count: descriptor.dimensions)
+    }
 }

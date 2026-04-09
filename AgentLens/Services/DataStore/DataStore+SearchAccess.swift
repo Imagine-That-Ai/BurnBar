@@ -11,6 +11,11 @@ extension DataStore {
         try searchIndexStore.fetchDocuments(limit: limit)
     }
 
+    /// Paginated document fetch using offset-based cursor.
+    func fetchSearchDocuments(limit: Int, offset: Int) throws -> [SearchDocumentRecord] {
+        try searchIndexStore.fetchDocuments(limit: limit, offset: offset)
+    }
+
     func fetchSearchDocuments(
         limit: Int = 500,
         provider: AgentProvider? = nil,

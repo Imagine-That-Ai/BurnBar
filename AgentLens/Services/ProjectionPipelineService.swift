@@ -517,51 +517,74 @@ final class ProjectionPipelineService {
         var enqueuedReprojects = 0
         var enqueuedPurges = 0
 
-        let conversations = try dataStore.fetchConversations(limit: 10_000)
-        for conversation in conversations {
-            let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
-            try enqueueSelectiveReproject(
-                sourceKind: .conversation,
-                sourceID: conversation.id,
-                sourceVersionID: sourceVersionID,
-                jobType: .reproject,
-                priority: 15
-            )
-            enqueuedReprojects += 1
-            if enqueuedReprojects.isMultiple(of: ProjectionPipelineRuntimeTuning.rebuildEnqueueYieldInterval) {
-                await Task.yield()
-            }
-        }
+        // Paginate through all conversations to avoid truncation for large corpora.
+        let rebuildPageSize = 1000
+        var conversationOffset = 0
+        while true {
+            let conversations = try dataStore.fetchConversations(limit: rebuildPageSize, offset: conversationOffset)
+            guard conversations.isEmpty == false else { break }
 
-        let artifacts = try dataStore.fetchSourceArtifacts(
-            includeDeleted: true,
-            rootPaths: nil,
-            sourceKinds: [.skillDoc, .agentDoc, .sharedArtifact]
-        )
-        for artifact in artifacts {
-            if artifact.status == .deleted {
+            for conversation in conversations {
+                let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
                 try enqueueSelectiveReproject(
-                    sourceKind: artifact.sourceKind,
-                    sourceID: artifact.id,
-                    sourceVersionID: ProjectionIdentity.deletedSourceVersionID,
-                    jobType: .purge,
-                    priority: 3
-                )
-                enqueuedPurges += 1
-            } else {
-                try enqueueSelectiveReproject(
-                    sourceKind: artifact.sourceKind,
-                    sourceID: artifact.id,
-                    sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: artifact.contentHash),
+                    sourceKind: .conversation,
+                    sourceID: conversation.id,
+                    sourceVersionID: sourceVersionID,
                     jobType: .reproject,
-                    priority: 10
+                    priority: 15
                 )
                 enqueuedReprojects += 1
+                if enqueuedReprojects.isMultiple(of: ProjectionPipelineRuntimeTuning.rebuildEnqueueYieldInterval) {
+                    await Task.yield()
+                }
             }
-            let totalEnqueued = enqueuedReprojects + enqueuedPurges
-            if totalEnqueued.isMultiple(of: ProjectionPipelineRuntimeTuning.rebuildEnqueueYieldInterval) {
-                await Task.yield()
+
+            conversationOffset += conversations.count
+            // If we got fewer than requested, we've reached the end
+            if conversations.count < rebuildPageSize { break }
+        }
+
+        // Paginate through all artifacts (including deleted for purge).
+        let artifactKinds: [SearchSourceKind] = [.skillDoc, .agentDoc, .sharedArtifact]
+        var artifactOffset = 0
+        while true {
+            let artifacts = try dataStore.fetchSourceArtifacts(
+                includeDeleted: true,
+                rootPaths: nil,
+                sourceKinds: artifactKinds,
+                limit: rebuildPageSize,
+                offset: artifactOffset
+            )
+            guard artifacts.isEmpty == false else { break }
+
+            for artifact in artifacts {
+                if artifact.status == .deleted {
+                    try enqueueSelectiveReproject(
+                        sourceKind: artifact.sourceKind,
+                        sourceID: artifact.id,
+                        sourceVersionID: ProjectionIdentity.deletedSourceVersionID,
+                        jobType: .purge,
+                        priority: 3
+                    )
+                    enqueuedPurges += 1
+                } else {
+                    try enqueueSelectiveReproject(
+                        sourceKind: artifact.sourceKind,
+                        sourceID: artifact.id,
+                        sourceVersionID: ProjectionIdentity.artifactSourceVersionID(contentHash: artifact.contentHash),
+                        jobType: .reproject,
+                        priority: 10
+                    )
+                    enqueuedReprojects += 1
+                }
+                let totalEnqueued = enqueuedReprojects + enqueuedPurges
+                if totalEnqueued.isMultiple(of: ProjectionPipelineRuntimeTuning.rebuildEnqueueYieldInterval) {
+                    await Task.yield()
+                }
             }
+
+            artifactOffset += artifacts.count
+            if artifacts.count < rebuildPageSize { break }
         }
 
         try enqueueReembedJob(reason: "rebuild", priority: 30)
@@ -599,12 +622,20 @@ final class ProjectionPipelineService {
             return try dataStore.fetchSearchChunks(sourceKind: sourceKind, sourceID: sourceID)
         }
 
-        let documents = try dataStore.fetchSearchDocuments(limit: 10_000)
-        guard documents.isEmpty == false else { return [] }
+        // Paginate through ALL documents to avoid truncation for large corpora.
+        let reembedPageSize = 1000
         var chunks: [SearchChunkRecord] = []
-        chunks.reserveCapacity(documents.count * 2)
-        for document in documents {
-            chunks.append(contentsOf: try dataStore.fetchSearchChunks(documentID: document.id))
+        var offset = 0
+        while true {
+            let documents = try dataStore.fetchSearchDocuments(limit: reembedPageSize, offset: offset)
+            guard documents.isEmpty == false else { break }
+
+            for document in documents {
+                chunks.append(contentsOf: try dataStore.fetchSearchChunks(documentID: document.id))
+            }
+
+            offset += documents.count
+            if documents.count < reembedPageSize { break }
         }
         return chunks
     }

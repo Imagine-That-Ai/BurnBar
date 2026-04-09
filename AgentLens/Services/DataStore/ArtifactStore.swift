@@ -188,6 +188,51 @@ final class ArtifactStore {
         }
     }
 
+    /// Paginated artifact fetch using offset-based cursor.
+    func fetchSourceArtifacts(
+        includeDeleted: Bool,
+        rootPaths: [String]?,
+        sourceKinds: [SearchSourceKind],
+        limit: Int,
+        offset: Int
+    ) throws -> [SourceArtifactRecord] {
+        guard sourceKinds.isEmpty == false else { return [] }
+        let normalizedRoots = (rootPaths ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let kindValues = sourceKinds.map(\.rawValue)
+        var clauses: [String] = []
+        var args: [any DatabaseValueConvertible] = []
+
+        if includeDeleted == false {
+            clauses.append("status != ?")
+            args.append(SourceArtifactStatus.deleted.rawValue)
+        }
+
+        clauses.append("sourceKind IN (\(OpenBurnBarDatabase.sqlPlaceholders(count: kindValues.count)))")
+        args.append(contentsOf: kindValues)
+
+        if normalizedRoots.isEmpty == false {
+            clauses.append("rootPath IN (\(OpenBurnBarDatabase.sqlPlaceholders(count: normalizedRoots.count)))")
+            args.append(contentsOf: normalizedRoots)
+        }
+
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        args.append(limit)
+        args.append(offset)
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM source_artifacts
+                \(whereSQL)
+                ORDER BY rootPath ASC, relativePath ASC
+                LIMIT ? OFFSET ?
+                """,
+                arguments: StatementArguments(args)
+            )
+            return rows.compactMap(Self.sourceArtifact(from:))
+        }
+    }
+
     func countSourceArtifacts(
         includeDeleted: Bool,
         rootPaths: [String]?,

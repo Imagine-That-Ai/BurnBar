@@ -18,6 +18,23 @@ extension DataStore {
         )
     }
 
+    /// Paginated artifact fetch using offset-based cursor.
+    func fetchSourceArtifacts(
+        includeDeleted: Bool,
+        rootPaths: [String]?,
+        sourceKinds: [SearchSourceKind],
+        limit: Int,
+        offset: Int
+    ) throws -> [SourceArtifactRecord] {
+        try artifactStore.fetchSourceArtifacts(
+            includeDeleted: includeDeleted,
+            rootPaths: rootPaths,
+            sourceKinds: sourceKinds,
+            limit: limit,
+            offset: offset
+        )
+    }
+
     func countSourceArtifacts(
         includeDeleted: Bool = false,
         rootPaths: [String]? = nil,

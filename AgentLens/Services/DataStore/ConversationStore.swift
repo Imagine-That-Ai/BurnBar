@@ -147,6 +147,23 @@ final class ConversationStore {
         }
     }
 
+    /// Paginated conversation fetch using offset-based cursor.
+    /// Returns conversations ordered by endTime/startTime for stable pagination.
+    func fetchConversations(limit: Int, offset: Int) throws -> [ConversationRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM conversations
+                ORDER BY COALESCE(endTime, startTime, indexedAt) DESC
+                LIMIT ? OFFSET ?
+                """,
+                arguments: [limit, offset]
+            )
+            return rows.compactMap { Self.conversation(from: $0) }
+        }
+    }
+
     func fetchConversations(ids: [String]) throws -> [ConversationRecord] {
         guard ids.isEmpty == false else { return [] }
         let uniqueIDs = Array(Set(ids)).sorted()

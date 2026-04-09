@@ -71,6 +71,22 @@ final class SearchIndexStore {
         }
     }
 
+    /// Paginated document fetch using offset-based cursor.
+    func fetchDocuments(limit: Int, offset: Int) throws -> [SearchDocumentRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM search_documents
+                ORDER BY indexedAt DESC, createdAt DESC
+                LIMIT ? OFFSET ?
+                """,
+                arguments: [limit, offset]
+            )
+            return rows.compactMap(Self.document(from:))
+        }
+    }
+
     func fetchDocuments(
         limit: Int,
         provider: String?,
@@ -267,100 +283,6 @@ final class SearchIndexStore {
             for chunk in chunks.sorted(by: { $0.ordinal < $1.ordinal }) {
                 try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
             }
-        }
-    }
-
-    /// Incremental chunk replacement: only writes chunks whose contentHash differs from
-    /// existing chunks. Unchanged chunks are preserved in place, avoiding unnecessary
-    /// FTS index churn and enabling embedding reuse for unchanged content.
-    /// Returns the set of chunk IDs that were actually written (new or changed).
-    @discardableResult
-    func replaceChunksIncremental(documentID: String, title: String, chunks: [SearchChunkRecord]) throws -> Set<String> {
-        try dbQueue.write { db in
-            let documentRow = try Row.fetchOne(
-                db,
-                sql: "SELECT projectName, provider FROM search_documents WHERE id = ?",
-                arguments: [documentID]
-            )
-            let projectName = documentRow?["projectName"] as? String ?? ""
-            let provider = documentRow?["provider"] as? String ?? ""
-
-            // Fetch existing chunks indexed by contentHash for O(1) lookup
-            let existingRows = try Row.fetchAll(
-                db,
-                sql: """
-                SELECT id, contentHash FROM search_chunks
-                WHERE documentID = ?
-                """,
-                arguments: [documentID]
-            )
-
-            // Index existing chunks by their contentHash — multiple chunks can share a hash
-            var existingByHash: [String: [String]] = [:]
-            var allExistingIDs: Set<String> = []
-            for row in existingRows {
-                let chunkID = row["id"] as? String ?? ""
-                let contentHash = row["contentHash"] as? String ?? ""
-                allExistingIDs.insert(chunkID)
-                if contentHash.isEmpty == false {
-                    existingByHash[contentHash, default: []].append(chunkID)
-                }
-            }
-
-            // Determine which new chunks are unchanged (same contentHash already exists)
-            var consumedExistingHashes: [String: Int] = [:]  // Track how many existing chunks we've matched per hash
-            let sortedChunks = chunks.sorted(by: { $0.ordinal < $1.ordinal })
-            var changedChunkIDs = Set<String>()
-            var newChunks: [SearchChunkRecord] = []
-
-            for chunk in sortedChunks {
-                guard let hash = chunk.contentHash, hash.isEmpty == false else {
-                    // No content hash — must write
-                    newChunks.append(chunk)
-                    changedChunkIDs.insert(chunk.id)
-                    continue
-                }
-
-                let existingCount = consumedExistingHashes[hash] ?? 0
-                let availableExisting = existingByHash[hash]?.count ?? 0
-
-                if existingCount < availableExisting {
-                    // This chunk's content already exists — skip writing it
-                    consumedExistingHashes[hash] = existingCount + 1
-                } else {
-                    // New or changed content
-                    newChunks.append(chunk)
-                    changedChunkIDs.insert(chunk.id)
-                }
-            }
-
-            // Delete old chunks whose contentHash no longer appears in new chunks
-            // All old chunks need to go since chunk IDs change with sourceVersionID
-            let newChunkIDs = Set(chunks.map(\.id))
-            let chunksToDelete = allExistingIDs.subtracting(newChunkIDs)
-            if chunksToDelete.isEmpty == false {
-                let deletePlaceholders = OpenBurnBarDatabase.sqlPlaceholders(count: chunksToDelete.count)
-                let sortedDeleteIDs = chunksToDelete.sorted()
-                try db.execute(
-                    sql: "DELETE FROM search_chunks_fts WHERE chunkID IN (\(deletePlaceholders))",
-                    arguments: StatementArguments(sortedDeleteIDs)
-                )
-                try db.execute(
-                    sql: "DELETE FROM chunk_embeddings WHERE chunkID IN (\(deletePlaceholders))",
-                    arguments: StatementArguments(sortedDeleteIDs)
-                )
-                try db.execute(
-                    sql: "DELETE FROM search_chunks WHERE id IN (\(deletePlaceholders))",
-                    arguments: StatementArguments(sortedDeleteIDs)
-                )
-            }
-
-            // Insert only changed/new chunks
-            for chunk in newChunks {
-                try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
-            }
-
-            return changedChunkIDs
         }
     }
 

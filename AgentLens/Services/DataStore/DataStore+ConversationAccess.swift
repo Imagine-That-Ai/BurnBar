@@ -26,6 +26,11 @@ extension DataStore {
         try conversationStore.fetchConversations(limit: limit)
     }
 
+    /// Paginated conversation fetch using offset-based cursor.
+    func fetchConversations(limit: Int, offset: Int) throws -> [ConversationRecord] {
+        try conversationStore.fetchConversations(limit: limit, offset: offset)
+    }
+
     /// Fetches multiple conversations by their IDs.
     /// Used by gap repair to check if indexed content is stale.
     func fetchConversations(ids: [String]) throws -> [ConversationRecord] {
