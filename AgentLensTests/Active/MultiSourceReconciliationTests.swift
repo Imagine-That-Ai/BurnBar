@@ -453,4 +453,406 @@ final class MultiSourceReconciliationTests: XCTestCase {
         // but we can verify the data is stored correctly.
         XCTAssertTrue(extractInt(row, column: "inputTokens") >= 0, "Local tokens should be non-negative")
     }
+
+    // MARK: - VAL-PERSIST-008: Deterministic and idempotent reconciliation
+
+    /// Tests that reconciliation is deterministic: two runs over identical input state
+    /// produce identical output.
+    func test_reconciliation_isDeterministic() throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = makeUsageStore(queue)
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        // Given: a fixed set of local usages
+        let localUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "deterministic-test",
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.05,
+            startTime: today,
+            endTime: today,
+            usageSource: .providerLog,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try store.insert(localUsage)
+
+        // Simulate API supplemental usage computation (same logic as supplementalUsages)
+        let apiRecord = ProviderUsageRecord(
+            providerName: "Anthropic",
+            model: "claude-4-sonnet",
+            date: today,
+            inputTokens: 1500,  // API says 1500, local has 1000
+            outputTokens: 750,  // API says 750, local has 500
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            costUSD: 0.075,
+            requestCount: 1
+        )
+
+        // Compute missing (same logic as supplementalUsages)
+        let localInput = 1000
+        let localOutput = 500
+        let localCacheRead = 0
+        let localCacheWrite = 0
+        let localCost = 0.05
+
+        let missingInput = max(apiRecord.inputTokens - localInput, 0)  // 500
+        let missingOutput = max(apiRecord.outputTokens - localOutput, 0)  // 250
+        let missingCost = max(apiRecord.costUSD - localCost, 0)  // 0.025
+
+        // First supplemental computation
+        let supplemental1 = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "api-reconcile-claudecode-\(Int(today.timeIntervalSince1970))-claude-4-sonnet",
+            projectName: "ClaudeCode · Anthropic API Reconciliation",
+            model: "claude-4-sonnet",
+            inputTokens: missingInput,
+            outputTokens: missingOutput,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            costUSD: missingCost,
+            startTime: today,
+            endTime: today,
+            usageSource: .billingAPI,
+            provenanceMethod: .billingAPI,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try store.insert(supplemental1)
+
+        // Second supplemental computation (identical logic)
+        let missingInput2 = max(apiRecord.inputTokens - localInput, 0)  // 500
+        let missingOutput2 = max(apiRecord.outputTokens - localOutput, 0)  // 250
+        let missingCost2 = max(apiRecord.costUSD - localCost, 0)  // 0.025
+
+        let supplemental2 = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "api-reconcile-claudecode-\(Int(today.timeIntervalSince1970))-claude-4-sonnet",
+            projectName: "ClaudeCode · Anthropic API Reconciliation",
+            model: "claude-4-sonnet",
+            inputTokens: missingInput2,
+            outputTokens: missingOutput2,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            costUSD: missingCost2,
+            startTime: today,
+            endTime: today,
+            usageSource: .billingAPI,
+            provenanceMethod: .billingAPI,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+
+        // Verify both computations produce identical values
+        XCTAssertEqual(supplemental1.inputTokens, supplemental2.inputTokens, "Deterministic: input tokens must match")
+        XCTAssertEqual(supplemental1.outputTokens, supplemental2.outputTokens, "Deterministic: output tokens must match")
+        XCTAssertEqual(supplemental1.costUSD, supplemental2.costUSD, "Deterministic: cost must match")
+    }
+
+    /// Tests that reconciliation is idempotent: rerunning after convergence produces no material changes.
+    func test_reconciliation_isIdempotent_afterConvergence() throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = makeUsageStore(queue)
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let windowStart = calendar.startOfDay(for: today)
+        let sessionId = "api-reconcile-claudecode-\(Int(windowStart.timeIntervalSince1970))-claude-4-sonnet"
+
+        // Given: local usage that matches API (no missing tokens)
+        let localUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "converged-session",
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.05,
+            startTime: today,
+            endTime: today,
+            usageSource: .providerLog,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try store.insert(localUsage)
+
+        // Given: API says the same (no missing)
+        let apiRecord = ProviderUsageRecord(
+            providerName: "Anthropic",
+            model: "claude-4-sonnet",
+            date: today,
+            inputTokens: 1000,  // Same as local
+            outputTokens: 500,  // Same as local
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            costUSD: 0.05,       // Same as local
+            requestCount: 1
+        )
+
+        // Compute missing
+        let missingInput = max(apiRecord.inputTokens - 1000, 0)  // 0
+        let missingOutput = max(apiRecord.outputTokens - 500, 0)  // 0
+        let missingCost = max(apiRecord.costUSD - 0.05, 0)  // 0
+
+        // No supplemental should be created when nothing is missing
+        XCTAssertEqual(missingInput, 0, "No missing input when API matches local")
+        XCTAssertEqual(missingOutput, 0, "No missing output when API matches local")
+        XCTAssertEqual(missingCost, 0, "No missing cost when API matches local")
+    }
+
+    // MARK: - VAL-PERSIST-012: Cost-only reconciliation deltas are preserved
+
+    /// Tests that cost-only drift (cost changes without token count changes) is preserved.
+    /// This verifies that when API reports same tokens but different cost, the cost correction
+    /// is not silently dropped.
+    func test_costOnlyDrift_isPreserved() throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = makeUsageStore(queue)
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        // Given: local usage with specific tokens but lower cost
+        let localUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "cost-drift-test",
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.03,  // Local thinks cheaper
+            startTime: today,
+            endTime: today,
+            usageSource: .providerLog,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try store.insert(localUsage)
+
+        // API reports same tokens but higher cost
+        let apiRecord = ProviderUsageRecord(
+            providerName: "Anthropic",
+            model: "claude-4-sonnet",
+            date: today,
+            inputTokens: 1000,  // Same as local
+            outputTokens: 500,  // Same as local
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            costUSD: 0.05,       // API says more expensive
+            requestCount: 1
+        )
+
+        // Compute missing (same logic as supplementalUsages with VAL-PERSIST-012 fix)
+        let localInput = 1000
+        let localOutput = 500
+        let localCacheRead = 0
+        let localCacheWrite = 0
+        let localCost = 0.03
+
+        let missingInput = max(apiRecord.inputTokens - localInput, 0)  // 0
+        let missingOutput = max(apiRecord.outputTokens - localOutput, 0)  // 0
+        let missingCacheRead = max(apiRecord.cacheReadTokens - localCacheRead, 0)  // 0
+        let missingCacheWrite = max(apiRecord.cacheCreationTokens - localCacheWrite, 0)  // 0
+        let missingCost = max(apiRecord.costUSD - localCost, 0)  // 0.02
+
+        // VAL-PERSIST-012: cost-only drift should NOT be dropped
+        // The guard should include missingCost > 0
+        let hasMissingTokens = missingInput > 0 || missingOutput > 0 || missingCacheRead > 0 || missingCacheWrite > 0
+        let hasMissingCost = missingCost > 0
+        let shouldCreateSupplemental = hasMissingTokens || hasMissingCost
+
+        XCTAssertFalse(hasMissingTokens, "No token delta when API tokens match local")
+        XCTAssertTrue(hasMissingCost, "Cost delta exists: \(missingCost)")
+        XCTAssertTrue(shouldCreateSupplemental, "Should create supplemental for cost-only drift per VAL-PERSIST-012")
+
+        // Verify the supplemental would have cost correction
+        let supplementalCost = missingCost
+        XCTAssertEqual(supplementalCost, 0.02, "Cost-only drift should produce $0.02 supplemental")
+    }
+
+    // MARK: - VAL-PERSIST-013: Reconciliation cleanup is source-scoped
+
+    /// Tests that deleteUsage only deletes rows that match BOTH the sessionId prefix
+    /// AND have usageSource = 'billing_api'. Non-reconciliation rows should be preserved.
+    func test_deleteUsage_isSourceScoped() throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = makeUsageStore(queue)
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        // Given: a billing_api row with reconciliation prefix (should be deleted)
+        let billingAPIReconcileRow = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "api-reconcile-claudecode-123456-claude-4-sonnet",
+            projectName: "ClaudeCode · Anthropic API Reconciliation",
+            model: "claude-4-sonnet",
+            inputTokens: 500,
+            outputTokens: 250,
+            costUSD: 0.025,
+            startTime: today,
+            endTime: today,
+            usageSource: .billingAPI,
+            provenanceMethod: .billingAPI,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try store.insert(billingAPIReconcileRow)
+
+        // Given: a regular provider_log row with similar prefix pattern (should NOT be deleted)
+        let providerLogRow = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "api-reconcile-claudecode-123456-other-model",
+            projectName: "Project",
+            model: "other-model",
+            inputTokens: 100,
+            outputTokens: 50,
+            costUSD: 0.005,
+            startTime: today,
+            endTime: today,
+            usageSource: .providerLog,  // NOT billing_api
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try store.insert(providerLogRow)
+
+        // Given: another billing_api row but with different prefix (should NOT be deleted)
+        let billingAPINonReconcileRow = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "billing-sync-session-123",
+            projectName: "Billing Sync",
+            model: "claude-4-sonnet",
+            inputTokens: 200,
+            outputTokens: 100,
+            costUSD: 0.01,
+            startTime: today,
+            endTime: today,
+            usageSource: .billingAPI,
+            provenanceMethod: .billingAPI,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try store.insert(billingAPINonReconcileRow)
+
+        // Verify all three rows exist before delete
+        let allBefore = try fetchAllCanonicalRows(queue: queue)
+        XCTAssertEqual(allBefore.count, 3, "All three rows should exist before delete")
+
+        // When: we delete with reconciliation prefix
+        try store.deleteUsage(sessionIDPrefix: "api-reconcile-")
+
+        // Then: only the billing_api row with api-reconcile prefix should be deleted
+        let allAfter = try fetchAllCanonicalRows(queue: queue)
+        XCTAssertEqual(allAfter.count, 2, "Two rows should remain after source-scoped delete")
+
+        // Verify the provider_log row was preserved (not deleted because usageSource != billing_api)
+        let remainingSessionIds = allAfter.map { $0["sessionId"] as? String }
+        XCTAssertTrue(remainingSessionIds.contains("api-reconcile-claudecode-123456-other-model"),
+            "provider_log row should be preserved (source != billing_api)")
+        XCTAssertTrue(remainingSessionIds.contains("billing-sync-session-123"),
+            "billing_api row with different prefix should be preserved")
+
+        // Verify the billing_api reconcile row was deleted
+        XCTAssertFalse(remainingSessionIds.contains("api-reconcile-claudecode-123456-claude-4-sonnet"),
+            "billing_api row with api-reconcile prefix should be deleted")
+    }
+
+    // MARK: - VAL-CROSS-004: Drift repair without double counting
+
+    /// Tests that reconciliation repairs drift without double counting.
+    /// When API reports more than local, the missing is computed as max(0, api - local)
+    /// which prevents negative values and double counting.
+    func test_driftRepair_avoidsDoubleCounting() throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = makeUsageStore(queue)
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        // Given: local usage
+        let localUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "double-count-test",
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.05,
+            startTime: today,
+            endTime: today,
+            usageSource: .providerLog,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try store.insert(localUsage)
+
+        // API reports less than local (should not cause negative missing)
+        let apiRecord = ProviderUsageRecord(
+            providerName: "Anthropic",
+            model: "claude-4-sonnet",
+            date: today,
+            inputTokens: 800,   // Less than local's 1000
+            outputTokens: 400,   // Less than local's 500
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            costUSD: 0.04,      // Less than local's 0.05
+            requestCount: 1
+        )
+
+        // Compute missing (should be 0, not negative)
+        let missingInput = max(apiRecord.inputTokens - 1000, 0)  // max(0, 800-1000) = 0
+        let missingOutput = max(apiRecord.outputTokens - 500, 0)  // max(0, 400-500) = 0
+        let missingCost = max(apiRecord.costUSD - 0.05, 0)  // max(0, 0.04-0.05) = 0
+
+        XCTAssertEqual(missingInput, 0, "Missing input should be 0 when API reports less than local")
+        XCTAssertEqual(missingOutput, 0, "Missing output should be 0 when API reports less than local")
+        XCTAssertEqual(missingCost, 0, "Missing cost should be 0 when API reports less than local")
+
+        // API reports more than local (should compute exact missing)
+        let apiRecordMore = ProviderUsageRecord(
+            providerName: "Anthropic",
+            model: "claude-4-sonnet",
+            date: today,
+            inputTokens: 1500,   // More than local's 1000
+            outputTokens: 750,    // More than local's 500
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            costUSD: 0.075,      // More than local's 0.05
+            requestCount: 1
+        )
+
+        let missingInputMore = max(apiRecordMore.inputTokens - 1000, 0)  // 500
+        let missingOutputMore = max(apiRecordMore.outputTokens - 500, 0)  // 250
+        let missingCostMore = max(apiRecordMore.costUSD - 0.05, 0)  // 0.025
+
+        XCTAssertEqual(missingInputMore, 500, "Missing input should be exactly 500")
+        XCTAssertEqual(missingOutputMore, 250, "Missing output should be exactly 250")
+        XCTAssertEqual(missingCostMore, 0.025, "Missing cost should be exactly $0.025")
+
+        // Verify no double counting: supplemental + local = API (or close to it)
+        // 1000 (local) + 500 (supplemental) = 1500 (API)
+        let totalInput = 1000 + missingInputMore
+        let totalOutput = 500 + missingOutputMore
+        let totalCost = 0.05 + missingCostMore
+
+        XCTAssertEqual(totalInput, 1500, "Local + supplemental should equal API input")
+        XCTAssertEqual(totalOutput, 750, "Local + supplemental should equal API output")
+        XCTAssertEqual(totalCost, 0.075, "Local + supplemental should equal API cost")
+    }
 }

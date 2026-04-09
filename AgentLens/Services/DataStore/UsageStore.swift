@@ -333,12 +333,18 @@ final class UsageStore {
         }
     }
 
+    // VAL-PERSIST-013: Reconciliation cleanup is source-scoped.
+    // Cleanup of prior API-reconciliation rows must be constrained by source semantics
+    // (billing_api) in addition to identifier prefix policy, so non-reconciliation rows
+    // are never deleted accidentally.
     func deleteUsage(sessionIDPrefix: String) throws {
         try dbQueue.write { db in
             try db.execute(
                 sql: """
                     DELETE FROM token_usage
-                    WHERE sessionId LIKE ? AND COALESCE(sourceDeviceId, '') = ''
+                    WHERE sessionId LIKE ?
+                    AND COALESCE(sourceDeviceId, '') = ''
+                    AND usageSource = 'billing_api'
                     """,
                 arguments: ["\(sessionIDPrefix)%"]
             )

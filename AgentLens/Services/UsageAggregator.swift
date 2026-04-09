@@ -327,7 +327,11 @@ final class UsageAggregator {
             let missingCacheWrite = max(record.cacheCreationTokens - localCacheWrite, 0)
             let missingCost = max(record.costUSD - localCost, 0)
 
-            guard missingInput > 0 || missingOutput > 0 || missingCacheRead > 0 || missingCacheWrite > 0 else {
+            // VAL-PERSIST-012: Cost-only reconciliation deltas are preserved.
+            // When reconciliation detects cost drift without positive token deltas,
+            // correction behavior must still be deterministic and persist expected cost adjustments.
+            // We include missingCost > 0 so cost-only corrections are not silently dropped.
+            guard missingInput > 0 || missingOutput > 0 || missingCacheRead > 0 || missingCacheWrite > 0 || missingCost > 0 else {
                 return nil
             }
 
