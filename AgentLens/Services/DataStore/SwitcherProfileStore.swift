@@ -34,26 +34,17 @@ public final class SwitcherProfileStore {
     }
 
     /// Sets the active profile. Pass nil to clear active selection.
+    /// Uses DELETE + INSERT to guarantee exactly one row in the active profile table.
+    /// This avoids the non-deterministic LIMIT 1 behavior when multiple rows exist.
     public func setActiveProfile(_ profileID: String?) throws {
         try dbQueue.write { db in
             let now = Date()
-            // Upsert the active profile state
+            // Delete all existing rows and insert fresh - guarantees single canonical row
+            try db.execute(sql: "DELETE FROM switcher_active_profile")
             try db.execute(
-                sql: """
-                INSERT INTO switcher_active_profile (activeProfileID, updatedAt)
-                VALUES (?, ?)
-                ON CONFLICT DO NOTHING
-                """,
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
                 arguments: [profileID, now]
             )
-            // If the row already exists, update it
-            let existing = try Row.fetchOne(db, sql: "SELECT rowid FROM switcher_active_profile LIMIT 1")
-            if existing != nil {
-                try db.execute(
-                    sql: "UPDATE switcher_active_profile SET activeProfileID = ?, updatedAt = ? WHERE rowid = ?",
-                    arguments: [profileID, now, existing!["rowid"]]
-                )
-            }
         }
     }
 
@@ -255,6 +246,7 @@ public final class SwitcherProfileStore {
     /// After deleting the active profile, selects a deterministic fallback:
     /// the profile with the lowest sortKey (and createdAt as tiebreaker).
     /// If no profiles remain, clears active state.
+    /// Uses DELETE + INSERT to guarantee exactly one row in the active profile table.
     public func selectFallbackActiveProfile() throws {
         try dbQueue.write { db in
             let fallback = try Row.fetchOne(
@@ -266,21 +258,12 @@ public final class SwitcherProfileStore {
                 """
             )
             let fallbackID: String? = fallback?["id"]
+            // Delete all existing rows and insert fresh - guarantees single canonical row
+            try db.execute(sql: "DELETE FROM switcher_active_profile")
             try db.execute(
-                sql: """
-                UPDATE switcher_active_profile
-                SET activeProfileID = ?, updatedAt = ?
-                WHERE rowid = (SELECT rowid FROM switcher_active_profile LIMIT 1)
-                """,
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
                 arguments: [fallbackID, Date()]
             )
-            // If no active_profile row exists yet, create one
-            if try Row.fetchOne(db, sql: "SELECT rowid FROM switcher_active_profile LIMIT 1") == nil {
-                try db.execute(
-                    sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
-                    arguments: [fallbackID, Date()]
-                )
-            }
         }
     }
 
