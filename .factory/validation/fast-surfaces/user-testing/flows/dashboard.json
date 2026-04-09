@@ -1,0 +1,271 @@
+{
+  "groupId": "dashboard",
+  "testedAt": "2026-04-09T23:49:14Z",
+  "isolation": {
+    "milestone": "fast-surfaces",
+    "missionDir": "/Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d",
+    "repoRoot": "/Users/dewclaw/Documents/Projects/BurnBar",
+    "reportPath": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/fast-surfaces/user-testing/flows/dashboard.json",
+    "evidenceDir": "/Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/evidence/fast-surfaces/dashboard"
+  },
+  "toolsUsed": [
+    "xcodebuild test",
+    "xcrun xcresulttool",
+    "python3"
+  ],
+  "commands": [
+    {
+      "command": "xcodebuild test -project /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -only-testing:\"OpenBurnBarTests/SwitcherDashboardUITests\" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' -resultBundlePath /Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/evidence/fast-surfaces/dashboard/SwitcherDashboardUITests.xcresult",
+      "exitCode": 0,
+      "evidence": "fast-surfaces/dashboard/xcodebuild-dashboard.log"
+    },
+    {
+      "command": "xcrun xcresulttool get test-results summary --path .../SwitcherDashboardUITests.xcresult --format json",
+      "exitCode": 0,
+      "evidence": "fast-surfaces/dashboard/test-summary.json"
+    },
+    {
+      "command": "xcrun xcresulttool get test-results tests --path .../SwitcherDashboardUITests.xcresult --format json",
+      "exitCode": 0,
+      "evidence": "fast-surfaces/dashboard/test-details.json"
+    },
+    {
+      "command": "xcrun xcresulttool export attachments --path .../SwitcherDashboardUITests.xcresult --output-path .../attachments",
+      "exitCode": 0,
+      "evidence": "fast-surfaces/dashboard/attachments/manifest.json"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "VAL-DASH-001",
+      "title": "Dashboard quick switch control is visible and usable",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run SwitcherDashboardUITests scoped suite",
+          "expected": "Visibility/quick-switch tests pass",
+          "observed": "test_dashboardQuickSwitchControl_isVisible() passed"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none in xcodebuild test output",
+        "network": "n/a (xcodebuild test surface)",
+        "artifacts": [
+          "fast-surfaces/dashboard/SwitcherDashboardUITests.xcresult",
+          "fast-surfaces/dashboard/test-details.json"
+        ],
+        "testCases": [
+          "SwitcherDashboardUITests/test_dashboardQuickSwitchControl_isVisible()"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DASH-002",
+      "title": "Active profile and switching feedback are clear",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run SwitcherDashboardUITests scoped suite",
+          "expected": "Active profile and transition feedback tests pass",
+          "observed": "test_activeProfile_shownOnLoad() and test_switchingFeedback_deterministic() passed"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none in xcodebuild test output",
+        "network": "n/a (xcodebuild test surface)",
+        "artifacts": [
+          "fast-surfaces/dashboard/SwitcherDashboardUITests.xcresult",
+          "fast-surfaces/dashboard/test-details.json"
+        ],
+        "testCases": [
+          "SwitcherDashboardUITests/test_activeProfile_shownOnLoad()",
+          "SwitcherDashboardUITests/test_switchingFeedback_deterministic()"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DASH-003",
+      "title": "Dashboard launch actions target selected profile",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run SwitcherDashboardUITests scoped suite",
+          "expected": "Launch action routing test passes",
+          "observed": "test_launchActions_targetSelectedProfile() passed"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none in xcodebuild test output",
+        "network": "n/a (xcodebuild test surface)",
+        "artifacts": [
+          "fast-surfaces/dashboard/SwitcherDashboardUITests.xcresult",
+          "fast-surfaces/dashboard/test-details.json"
+        ],
+        "testCases": [
+          "SwitcherDashboardUITests/test_launchActions_targetSelectedProfile()"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DASH-004",
+      "title": "Empty/loading/error states are recoverable",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run SwitcherDashboardUITests scoped suite",
+          "expected": "Empty/loading/error/recovery coverage passes",
+          "observed": "All state and recovery tests passed, including retry and open settings paths"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none in xcodebuild test output",
+        "network": "n/a (xcodebuild test surface)",
+        "artifacts": [
+          "fast-surfaces/dashboard/SwitcherDashboardUITests.xcresult",
+          "fast-surfaces/dashboard/test-details.json"
+        ],
+        "testCases": [
+          "SwitcherDashboardUITests/test_emptyState_noProfiles()",
+          "SwitcherDashboardUITests/test_loadingState_transitionsToLoaded()",
+          "SwitcherDashboardUITests/test_errorState_hasActionableRecovery()",
+          "SwitcherDashboardUITests/test_retryAction_reloadsData()",
+          "SwitcherDashboardUITests/test_openSettingsAction_isAvailable()",
+          "SwitcherDashboardUITests/test_storeFetchFailure_triggersErrorState()"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DASH-005",
+      "title": "Duplicate actions are suppressed during in-progress switch",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run SwitcherDashboardUITests scoped suite",
+          "expected": "Duplicate suppression test passes",
+          "observed": "test_duplicateSwitch_suppressed() passed"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none in xcodebuild test output",
+        "network": "n/a (xcodebuild test surface)",
+        "artifacts": [
+          "fast-surfaces/dashboard/SwitcherDashboardUITests.xcresult",
+          "fast-surfaces/dashboard/test-details.json"
+        ],
+        "testCases": [
+          "SwitcherDashboardUITests/test_duplicateSwitch_suppressed()"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DASH-006",
+      "title": "Dashboard launch failure UX is actionable and non-destructive",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run SwitcherDashboardUITests scoped suite",
+          "expected": "Launch failure remediation and state consistency tests pass",
+          "observed": "test_launchFailure_preservesActiveState() passed"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none in xcodebuild test output",
+        "network": "n/a (xcodebuild test surface)",
+        "artifacts": [
+          "fast-surfaces/dashboard/SwitcherDashboardUITests.xcresult",
+          "fast-surfaces/dashboard/test-details.json"
+        ],
+        "testCases": [
+          "SwitcherDashboardUITests/test_launchFailure_preservesActiveState()"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DASH-007",
+      "title": "Dashboard supports keyboard-only switch and launch flows",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run SwitcherDashboardUITests scoped suite",
+          "expected": "Keyboard-only operation test passes",
+          "observed": "test_keyboard_navigation_support() passed"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none in xcodebuild test output",
+        "network": "n/a (xcodebuild test surface)",
+        "artifacts": [
+          "fast-surfaces/dashboard/SwitcherDashboardUITests.xcresult",
+          "fast-surfaces/dashboard/test-details.json"
+        ],
+        "testCases": [
+          "SwitcherDashboardUITests/test_keyboard_navigation_support()"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DASH-008",
+      "title": "Screen-reader semantics and state announcements are correct",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run SwitcherDashboardUITests scoped suite",
+          "expected": "Accessibility semantics and announcement tests pass",
+          "observed": "Accessibility label/profile/announcement tests passed, including success, failure, and recovery transitions"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none in xcodebuild test output",
+        "network": "n/a (xcodebuild test surface)",
+        "artifacts": [
+          "fast-surfaces/dashboard/SwitcherDashboardUITests.xcresult",
+          "fast-surfaces/dashboard/test-details.json",
+          "fast-surfaces/dashboard/passed-test-cases.txt"
+        ],
+        "testCases": [
+          "SwitcherDashboardUITests/test_accessibility_labels_present()",
+          "SwitcherDashboardUITests/test_accessibilityProfile_forErrorState()",
+          "SwitcherDashboardUITests/test_switchFailure_announcesError()",
+          "SwitcherDashboardUITests/test_switchSuccess_announcesSuccess()",
+          "SwitcherDashboardUITests/test_errorRecovery_resetsAnnouncementState()",
+          "SwitcherDashboardUITests/test_viewLevel_loadErrorAnnounces()"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "xcresult attachment export reported no per-test attachments, so no standalone screenshot PNG files were emitted by this test surface.",
+      "resolved": true,
+      "resolution": "Used xcresult bundle + test-details.json + manifest.json as authoritative UI/integration evidence for VAL-DASH assertions.",
+      "affectedAssertions": [
+        "VAL-DASH-001",
+        "VAL-DASH-002",
+        "VAL-DASH-003",
+        "VAL-DASH-004",
+        "VAL-DASH-005",
+        "VAL-DASH-006",
+        "VAL-DASH-007",
+        "VAL-DASH-008"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated 8 dashboard assertions (VAL-DASH-001..008) via scoped SwitcherDashboardUITests run: 8 passed, 0 failed, 0 blocked. xcodebuild exited 0 with 56/56 tests passed."
+}

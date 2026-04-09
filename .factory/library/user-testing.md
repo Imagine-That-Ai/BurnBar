@@ -68,3 +68,21 @@ This keeps total concurrency at 4 while avoiding heavy-run contention.
   - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/SwitcherCLILaunchTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
   - `open -Ra "Safari" && open -Ra "Google Chrome"`
 - Keep logs/evidence secret-safe (no credential/token dumps).
+
+## Flow Validator Guidance: fast-surfaces-ui
+
+- Scope: Dashboard + Popover quick-switch user-surface assertions for milestone `fast-surfaces` (`VAL-DASH-*`, `VAL-POPOVER-*`).
+- Isolation boundary:
+  - Read/write only the assigned flow report under `.factory/validation/fast-surfaces/user-testing/flows/`.
+  - Save evidence only under the assigned mission evidence folder.
+  - Do not modify application source code during validation.
+- Execution constraints:
+  - Use scoped xcode tests tied to assigned assertions only.
+  - Keep to one heavy `xcodebuild test` process at a time across all validators.
+  - Use signing-off flags when needed:
+    - `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+- Allowed verification commands:
+  - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/SwitcherDashboardUITests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+  - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/SwitcherPopoverUITests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+- Evidence note:
+  - For `.xcresult` JSON extraction on current Xcode CLT, prefer `xcrun xcresulttool get object --legacy --path <bundle> --format json` over deprecated `get` forms.

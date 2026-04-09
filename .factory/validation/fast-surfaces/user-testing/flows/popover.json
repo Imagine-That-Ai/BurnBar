@@ -1,0 +1,142 @@
+{
+  "groupId": "popover",
+  "testedAt": "2026-04-09T23:52:28Z",
+  "isolation": {
+    "milestone": "fast-surfaces",
+    "missionDir": "/Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d",
+    "repoRoot": "/Users/dewclaw/Documents/Projects/BurnBar",
+    "reportPath": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/fast-surfaces/user-testing/flows/popover.json",
+    "evidenceDir": "/Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/evidence/fast-surfaces/popover"
+  },
+  "toolsUsed": ["xcodebuild", "xcrun xcresulttool"],
+  "commands": [
+    {
+      "command": "xcodebuild test -project /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination platform=macOS,arch=arm64 -only-testing:OpenBurnBarTests/SwitcherPopoverUITests CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' -resultBundlePath /Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/evidence/fast-surfaces/popover/switcher-popover.xcresult",
+      "exitCode": 0
+    },
+    {
+      "command": "xcrun xcresulttool get object --legacy --path /Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/evidence/fast-surfaces/popover/switcher-popover.xcresult --format json",
+      "exitCode": 0
+    }
+  ],
+  "assertions": [
+    {
+      "id": "VAL-POPOVER-001",
+      "title": "One-step popover switching flow",
+      "status": "pass",
+      "steps": [
+        {"action": "Run scoped SwitcherPopoverUITests suite", "expected": "One-step switch behavior tests pass", "observed": "test_oneStepSwitching_flow, test_switchWithoutLeavingPopover, and view-level render tests passed"}
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (xcodebuild test surface)",
+        "network": "n/a",
+        "artifacts": [
+          "fast-surfaces/popover/switcher-popover-xcodebuild.log",
+          "fast-surfaces/popover/switcher-popover.xcresult"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-POPOVER-002",
+      "title": "Popover active indicator is persisted and accurate",
+      "status": "pass",
+      "steps": [
+        {"action": "Run active-indicator persistence tests", "expected": "Exactly one active indicator and persisted reopen state", "observed": "test_exactlyOneActiveIndicator, test_activeIndicator_persistsAfterReopen, and view-level active indicator render test passed"}
+      ],
+      "evidence": {"screenshots": [], "consoleErrors": "n/a", "network": "n/a", "artifacts": ["fast-surfaces/popover/switcher-popover-xcodebuild.log"]},
+      "issues": null
+    },
+    {
+      "id": "VAL-POPOVER-003",
+      "title": "Popover status/error handling is actionable",
+      "status": "pass",
+      "steps": [
+        {"action": "Run switching-status/error-path tests", "expected": "In-progress, duplicate-blocking, and actionable failure states", "observed": "status + failure + duplicate + view-level error-state tests all passed"}
+      ],
+      "evidence": {"screenshots": [], "consoleErrors": "n/a", "network": "n/a", "artifacts": ["fast-surfaces/popover/switcher-popover-xcodebuild.log"]},
+      "issues": null
+    },
+    {
+      "id": "VAL-POPOVER-004",
+      "title": "Keyboard and mouse interaction parity",
+      "status": "pass",
+      "steps": [
+        {"action": "Run parity/accessibility tests", "expected": "Keyboard/mouse paths and accessibility announcements validated", "observed": "test_profileSelection_parity and view-level accessibility/announcement tests passed"}
+      ],
+      "evidence": {"screenshots": [], "consoleErrors": "n/a", "network": "n/a", "artifacts": ["fast-surfaces/popover/switcher-popover-xcodebuild.log"]},
+      "issues": null
+    },
+    {
+      "id": "VAL-POPOVER-005",
+      "title": "Popover empty state includes recovery CTA",
+      "status": "pass",
+      "steps": [
+        {"action": "Run empty-state tests", "expected": "Recovery CTA present and broken controls absent", "observed": "test_emptyState_showsRecoveryCTA, test_emptyState_noBrokenControls, and view-level empty-state tests passed"}
+      ],
+      "evidence": {"screenshots": [], "consoleErrors": "n/a", "network": "n/a", "artifacts": ["fast-surfaces/popover/switcher-popover-xcodebuild.log"]},
+      "issues": null
+    },
+    {
+      "id": "VAL-POPOVER-006",
+      "title": "Popover launch actions are distinct and unambiguous",
+      "status": "pass",
+      "steps": [
+        {"action": "Run switch-vs-launch distinction tests", "expected": "Switch and launch actions remain distinct", "observed": "test_switchAndLaunch_areDistinct, test_launchActions_areUnambiguous, and view-level launch-action test passed"}
+      ],
+      "evidence": {"screenshots": [], "consoleErrors": "n/a", "network": "n/a", "artifacts": ["fast-surfaces/popover/switcher-popover-xcodebuild.log"]},
+      "issues": null
+    },
+    {
+      "id": "VAL-POPOVER-007",
+      "title": "Popover launches route using current selected/active profile",
+      "status": "pass",
+      "steps": [
+        {"action": "Run current-profile launch-routing tests", "expected": "No stale profile routing", "observed": "test_launchUsesCurrentActiveProfile passed"}
+      ],
+      "evidence": {"screenshots": [], "consoleErrors": "n/a", "network": "n/a", "artifacts": ["fast-surfaces/popover/switcher-popover-xcodebuild.log"]},
+      "issues": null
+    },
+    {
+      "id": "VAL-POPOVER-008",
+      "title": "Stale persisted active profile degrades safely",
+      "status": "pass",
+      "steps": [
+        {"action": "Run stale-active-profile recovery tests", "expected": "Stale active marker cleared without crash", "observed": "test_staleActiveProfile_clearedSafely, test_staleActiveProfile_noCrash, and test_staleActiveProfile_neutralState passed"}
+      ],
+      "evidence": {"screenshots": [], "consoleErrors": "n/a", "network": "n/a", "artifacts": ["fast-surfaces/popover/switcher-popover-xcodebuild.log"]},
+      "issues": null
+    },
+    {
+      "id": "VAL-POPOVER-009",
+      "title": "Rapid repeated inputs resolve deterministically",
+      "status": "pass",
+      "steps": [
+        {"action": "Run rapid-input coalescing tests", "expected": "Burst inputs deterministic and non-corrupt", "observed": "test_rapidInputs_coalesced, test_burstInputs_nonCorrupt, and view-level rapid-input test passed"}
+      ],
+      "evidence": {"screenshots": [], "consoleErrors": "n/a", "network": "n/a", "artifacts": ["fast-surfaces/popover/switcher-popover-xcodebuild.log"]},
+      "issues": null
+    },
+    {
+      "id": "VAL-POPOVER-010",
+      "title": "Popover switch meets fast interaction budget",
+      "status": "pass",
+      "steps": [
+        {"action": "Run timing tests", "expected": "Switch and profile load within bounded latency", "observed": "test_switchMeetsLatencyBudget and test_profileLoad_meetsLatencyBudget passed"}
+      ],
+      "evidence": {"screenshots": [], "consoleErrors": "n/a", "network": "n/a", "artifacts": ["fast-surfaces/popover/switcher-popover-xcodebuild.log", "fast-surfaces/popover/switcher-popover-xcresult.json"]},
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "xcresulttool required the modern invocation `get object --legacy`; deprecated `get` form failed initially.",
+      "resolved": true,
+      "resolution": "Re-ran with `xcrun xcresulttool get object --legacy ...`.",
+      "affectedAssertions": ["VAL-POPOVER-001", "VAL-POPOVER-002", "VAL-POPOVER-003", "VAL-POPOVER-004", "VAL-POPOVER-005", "VAL-POPOVER-006", "VAL-POPOVER-007", "VAL-POPOVER-008", "VAL-POPOVER-009", "VAL-POPOVER-010"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 10 assertions (VAL-POPOVER-001..010) via scoped xcodebuild SwitcherPopoverUITests run: 10 passed, 0 failed, 0 blocked. Suite executed 44 tests with 0 failures."
+}
