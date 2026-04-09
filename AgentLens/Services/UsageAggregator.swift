@@ -234,11 +234,14 @@ final class UsageAggregator {
             parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
         }
 
-        // Advance backfill cursors after successful persistence.
+        // Advance backfill cursors only after successful persistence.
         // This wires BackfillCursorStore.nextBackfillWindow/advanceCursor into production:
         // VAL-PERSIST-006: Backfill run is bounded to 7-day window.
         // VAL-PERSIST-007: Backfill cursor progresses monotonically.
-        await runScheduledBackfillIfNeeded()
+        // VAL-PERSIST-004: Checkpoints advance only after successful commit.
+        if persistenceError == nil {
+            await runScheduledBackfillIfNeeded()
+        }
 
         // Unblock scan UI immediately after local parsing/persistence completes.
         isRefreshing = false
