@@ -224,7 +224,7 @@ final class ArtifactStore {
                 sql: """
                 SELECT * FROM source_artifacts
                 \(whereSQL)
-                ORDER BY rootPath ASC, relativePath ASC
+                ORDER BY rootPath ASC, relativePath ASC, id ASC
                 LIMIT ? OFFSET ?
                 """,
                 arguments: StatementArguments(args)

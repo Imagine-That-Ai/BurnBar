@@ -78,7 +78,7 @@ final class SearchIndexStore {
                 db,
                 sql: """
                 SELECT * FROM search_documents
-                ORDER BY indexedAt DESC, createdAt DESC
+                ORDER BY indexedAt DESC, createdAt DESC, id ASC
                 LIMIT ? OFFSET ?
                 """,
                 arguments: [limit, offset]
@@ -144,7 +144,7 @@ final class SearchIndexStore {
                 sql: """
                 SELECT * FROM search_documents
                 \(whereSQL)
-                ORDER BY COALESCE(sourceUpdatedAt, indexedAt) DESC, indexedAt DESC, createdAt DESC
+                ORDER BY COALESCE(sourceUpdatedAt, indexedAt) DESC, indexedAt DESC, createdAt DESC, id ASC
                 LIMIT ? OFFSET ?
                 """,
                 arguments: StatementArguments(queryArgs)

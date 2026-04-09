@@ -2602,3 +2602,359 @@ extension ProjectionPipelineServiceTests {
         )
     }
 }
+
+// MARK: - Deterministic Tie-Break Ordering for Offset Pagination
+
+extension ProjectionPipelineServiceTests {
+
+    // MARK: - Rebuild pagination with identical timestamps (tie-break by id)
+
+    func test_rebuildPagination_coversFullCorpus_withIdenticalTimestamps() async throws {
+        // When many conversations share the same endTime/startTime, the deterministic
+        // tie-breaker (id ASC) ensures no rows are skipped or duplicated across pages.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-rebuild-tiebreak"
+        )
+        let sharedTimestamp = Date(timeIntervalSince1970: 1_743_100_000)
+
+        // Create conversations all with the SAME endTime/startTime/indexedAt
+        let conversationCount = 20
+        for i in 0..<conversationCount {
+            let conv = ConversationRecord(
+                id: "conv-tiebreak-\(String(format: "%03d", i))",
+                provider: .claudeCode,
+                sessionId: "session-tiebreak-\(i)",
+                projectName: "OpenBurnBar",
+                startTime: sharedTimestamp.addingTimeInterval(-60),
+                endTime: sharedTimestamp,
+                messageCount: 4,
+                userWordCount: 20,
+                assistantWordCount: 40,
+                keyFiles: ["File.swift"],
+                keyCommands: ["swift test"],
+                keyTools: ["Read"],
+                inferredTaskTitle: "Tiebreak Test \(i)",
+                lastAssistantMessage: "Done.",
+                fullText: "Conversation \(i) content with identical timestamps for tiebreak test.",
+                indexedAt: sharedTimestamp,
+                fileModifiedAt: sharedTimestamp,
+                summary: nil,
+                summaryTitle: nil,
+                summaryUpdatedAt: nil,
+                summaryProvider: nil,
+                summaryModel: nil,
+                sourceType: .providerLog
+            )
+            try store.upsertConversation(conv)
+        }
+
+        // Verify all conversations were stored
+        let allConversations = try store.fetchConversations(limit: 100)
+        XCTAssertEqual(allConversations.count, conversationCount, "All conversations should be stored.")
+
+        // Enqueue and process rebuild job
+        try service.enqueueRebuildJob(reason: "test-rebuild-tiebreak", priority: 1)
+        let rebuildReport = try await service.runSweep(maxJobs: 1)
+        XCTAssertEqual(rebuildReport.completedJobs, 1, "Rebuild job should complete.")
+
+        // Verify ALL conversations with identical timestamps got enqueued for reproject
+        let queuedAfterRebuild = try store.fetchProjectionJobs(statuses: [.queued], limit: 500)
+        let reprojectQueued = queuedAfterRebuild.filter { $0.jobType == .reproject }
+        let reprojectSourceIDs = Set(reprojectQueued.compactMap { $0.sourceID })
+        XCTAssertEqual(
+            reprojectQueued.count, conversationCount,
+            "All \(conversationCount) conversations with identical timestamps should be enqueued. Found: \(reprojectQueued.count)"
+        )
+
+        // Verify no duplicates (same sourceID should appear only once)
+        let uniqueSourceIDs = Set(reprojectQueued.compactMap { $0.sourceID })
+        XCTAssertEqual(uniqueSourceIDs.count, conversationCount, "No duplicate enqueues for same conversation.")
+
+        // Verify all expected IDs are present
+        for i in 0..<conversationCount {
+            let expectedID = "conv-tiebreak-\(String(format: "%03d", i))"
+            XCTAssertTrue(
+                reprojectSourceIDs.contains(expectedID),
+                "Conversation \(expectedID) should be in the reproject queue."
+            )
+        }
+    }
+
+    // MARK: - Re-embed pagination with identical indexedAt (tie-break by id)
+
+    func test_reembedPagination_coversFullCorpus_withIdenticalTimestamps() async throws {
+        // When many search documents share the same indexedAt, the deterministic
+        // tie-breaker (id ASC) ensures all chunks are found and re-embedded.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "reembed-tie-v1", seed: "reembed-tie-seed")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-reembed-tiebreak",
+            chunkEmbedder: embedder
+        )
+        let sharedTimestamp = Date(timeIntervalSince1970: 1_743_110_000)
+
+        // Create and project conversations with identical timestamps
+        let conversationCount = 12
+        for i in 0..<conversationCount {
+            let conv = ConversationRecord(
+                id: "conv-reembed-tie-\(String(format: "%03d", i))",
+                provider: .claudeCode,
+                sessionId: "session-reembed-tie-\(i)",
+                projectName: "OpenBurnBar",
+                startTime: sharedTimestamp.addingTimeInterval(-60),
+                endTime: sharedTimestamp,
+                messageCount: 4,
+                userWordCount: 20,
+                assistantWordCount: 40,
+                keyFiles: ["File.swift"],
+                keyCommands: ["swift test"],
+                keyTools: ["Read"],
+                inferredTaskTitle: "Reembed Tiebreak \(i)",
+                lastAssistantMessage: "Done.",
+                fullText: String(repeating: "Conversation \(i) reembed tiebreak content. ", count: 30),
+                indexedAt: sharedTimestamp,
+                fileModifiedAt: sharedTimestamp,
+                summary: nil,
+                summaryTitle: nil,
+                summaryUpdatedAt: nil,
+                summaryProvider: nil,
+                summaryModel: nil,
+                sourceType: .providerLog
+            )
+            try store.upsertConversation(conv)
+            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: sharedTimestamp)
+        }
+
+        // Drain initial projection
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        // Verify all documents are indexed (with identical indexedAt)
+        let allDocs = try store.fetchSearchDocuments(limit: 100, sourceKinds: [.conversation])
+        XCTAssertEqual(allDocs.count, conversationCount, "All documents should be indexed.")
+
+        // Collect all chunk IDs across all documents
+        let allChunksBefore = allDocs.flatMap { doc -> [SearchChunkRecord] in
+            (try? store.fetchSearchChunks(documentID: doc.id)) ?? []
+        }
+        let allChunkIDsBefore = Set(allChunksBefore.map(\.id))
+        XCTAssertGreaterThan(allChunkIDsBefore.count, 0, "Should have chunks.")
+
+        // Trigger re-embed with new version — pagination must cover all documents
+        let embedderV2 = DeterministicFakeEmbeddingProvider(versionTag: "reembed-tie-v2", seed: "reembed-tie-v2-seed")
+        let serviceV2 = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-reembed-tie-v2",
+            chunkEmbedder: embedderV2
+        )
+        try serviceV2.enqueueReembedJob(reason: "test-reembed-tiebreak", priority: 1)
+
+        let reembedReport = try await serviceV2.runSweep(maxJobs: 10)
+        XCTAssertEqual(reembedReport.completedJobs, 1, "Re-embed job should complete.")
+
+        // Verify ALL chunks got re-embedded
+        let versionV2ID = EmbeddingIdentity.versionID(for: embedderV2.descriptor)
+        let v2Embeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionV2ID)
+        XCTAssertEqual(
+            v2Embeddings.count, allChunkIDsBefore.count,
+            "All \(allChunkIDsBefore.count) chunks should have v2 embeddings even with identical indexedAt. Found: \(v2Embeddings.count)"
+        )
+
+        let reembeddedChunkIDs = Set(v2Embeddings.map(\.chunkID))
+        XCTAssertEqual(
+            reembeddedChunkIDs, allChunkIDsBefore,
+            "Re-embedded chunk IDs should exactly match all original chunk IDs (no skips, no duplicates)."
+        )
+    }
+
+    // MARK: - Gap repair pagination with identical sourceUpdatedAt (tie-break by id)
+
+    func test_gapRepairPagination_coversFullCorpus_withIdenticalTimestamps() async throws {
+        // When indexed documents share the same sourceUpdatedAt/indexedAt, the deterministic
+        // tie-breaker ensures gap repair covers all documents across pages.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(dataStore: store, leaseOwner: "worker-gap-tiebreak")
+        let sharedTimestamp = Date(timeIntervalSince1970: 1_743_120_000)
+
+        // Create and project conversations with identical timestamps
+        let conversationCount = 15
+        for i in 0..<conversationCount {
+            let conv = ConversationRecord(
+                id: "conv-gap-tie-\(String(format: "%03d", i))",
+                provider: .claudeCode,
+                sessionId: "session-gap-tie-\(i)",
+                projectName: "OpenBurnBar",
+                startTime: sharedTimestamp.addingTimeInterval(-60),
+                endTime: sharedTimestamp,
+                messageCount: 4,
+                userWordCount: 20,
+                assistantWordCount: 40,
+                keyFiles: ["File.swift"],
+                keyCommands: ["swift test"],
+                keyTools: ["Read"],
+                inferredTaskTitle: "Gap Tiebreak \(i)",
+                lastAssistantMessage: "Done.",
+                fullText: "Original content for gap tiebreak conversation \(i).",
+                indexedAt: sharedTimestamp,
+                fileModifiedAt: sharedTimestamp,
+                summary: nil,
+                summaryTitle: nil,
+                summaryUpdatedAt: nil,
+                summaryProvider: nil,
+                summaryModel: nil,
+                sourceType: .providerLog
+            )
+            try store.upsertConversation(conv)
+            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: sharedTimestamp)
+        }
+
+        // Drain initial projection
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let indexedDocs = try store.fetchSearchDocuments(limit: 100, sourceKinds: [.conversation])
+        XCTAssertEqual(indexedDocs.count, conversationCount, "All conversations should be indexed.")
+
+        // Make ALL conversations stale (worst case: every document has a hash mismatch)
+        let staleIDs: [String] = (0..<conversationCount).map { "conv-gap-tie-\(String(format: "%03d", $0))" }
+        for staleID in staleIDs {
+            let updatedConv = ConversationRecord(
+                id: staleID,
+                provider: .claudeCode,
+                sessionId: "session-gap-tie-\(staleID)",
+                projectName: "OpenBurnBar",
+                startTime: sharedTimestamp.addingTimeInterval(-60),
+                endTime: sharedTimestamp,
+                messageCount: 99,
+                userWordCount: 100,
+                assistantWordCount: 200,
+                keyFiles: ["File.swift"],
+                keyCommands: ["swift test"],
+                keyTools: ["Read"],
+                inferredTaskTitle: "Updated Gap Tiebreak \(staleID)",
+                lastAssistantMessage: "Updated message.",
+                fullText: "Updated content for gap tiebreak conversation \(staleID).",
+                indexedAt: sharedTimestamp,
+                fileModifiedAt: sharedTimestamp,
+                summary: nil,
+                summaryTitle: nil,
+                summaryUpdatedAt: nil,
+                summaryProvider: nil,
+                summaryModel: nil,
+                sourceType: .providerLog
+            )
+            try store.upsertConversation(updatedConv)
+        }
+
+        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+
+        // Run gap repair — with all identical timestamps, pagination must still cover all stale docs
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 100)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let completedAfter = try store.fetchProjectionJobs(statuses: [.completed], limit: 500).count
+        let newCompleted = completedAfter - completedBefore
+
+        // Every stale conversation should have been detected and reprojected
+        XCTAssertEqual(
+            newCompleted, staleIDs.count,
+            "All \(staleIDs.count) stale conversations with identical timestamps should be detected via gap repair. Found: \(newCompleted) new completions."
+        )
+
+        // Verify each document hash was updated
+        for staleID in staleIDs {
+            let doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleID).first
+            let conv = try store.fetchConversation(id: staleID)
+            XCTAssertNotNil(doc, "Document should exist for \(staleID).")
+            XCTAssertNotNil(conv, "Conversation should exist for \(staleID).")
+            XCTAssertEqual(
+                doc?.contentHash,
+                ProjectionIdentity.conversationContentHash(for: conv!),
+                "Document hash should match updated conversation \(staleID)."
+            )
+        }
+    }
+
+    // MARK: - Pagination stability: repeated offset traversal yields the same total set
+
+    func test_offsetPagination_traversalYieldsCompleteSet_noSkipsNoDuplicates() async throws {
+        // Simulate what processRebuild / chunksForReembed / enqueueGapRepairIfNeeded do:
+        // walk through pages via offset and collect all IDs. Verify the total set is
+        // complete and contains no duplicates regardless of timestamp ties.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let sharedTimestamp = Date(timeIntervalSince1970: 1_743_130_000)
+        let pageSize = 5  // Small page size to exercise multiple pages
+
+        // Create conversations with identical timestamps
+        let conversationCount = 13
+        for i in 0..<conversationCount {
+            let conv = ConversationRecord(
+                id: "conv-pag-\(String(format: "%03d", i))",
+                provider: .claudeCode,
+                sessionId: "session-pag-\(i)",
+                projectName: "OpenBurnBar",
+                startTime: sharedTimestamp.addingTimeInterval(-60),
+                endTime: sharedTimestamp,
+                messageCount: 4,
+                userWordCount: 20,
+                assistantWordCount: 40,
+                keyFiles: ["File.swift"],
+                keyCommands: ["swift test"],
+                keyTools: ["Read"],
+                inferredTaskTitle: "Pagination Test \(i)",
+                lastAssistantMessage: "Done.",
+                fullText: "Content for pagination stability test \(i).",
+                indexedAt: sharedTimestamp,
+                fileModifiedAt: sharedTimestamp,
+                summary: nil,
+                summaryTitle: nil,
+                summaryUpdatedAt: nil,
+                summaryProvider: nil,
+                summaryModel: nil,
+                sourceType: .providerLog
+            )
+            try store.upsertConversation(conv)
+        }
+
+        // Paginate through conversations using offset
+        var collectedIDs: [String] = []
+        var offset = 0
+        while true {
+            let page = try store.fetchConversations(limit: pageSize, offset: offset)
+            guard page.isEmpty == false else { break }
+            for conv in page {
+                collectedIDs.append(conv.id)
+            }
+            offset += page.count
+            if page.count < pageSize { break }
+        }
+
+        // Verify completeness: all IDs present
+        let collectedSet = Set(collectedIDs)
+        XCTAssertEqual(
+            collectedIDs.count, conversationCount,
+            "Offset pagination should yield exactly \(conversationCount) conversations. Got \(collectedIDs.count)"
+        )
+        XCTAssertEqual(
+            collectedSet.count, conversationCount,
+            "No duplicates in paginated traversal. Unique count: \(collectedSet.count)"
+        )
+        for i in 0..<conversationCount {
+            let expectedID = "conv-pag-\(String(format: "%03d", i))"
+            XCTAssertTrue(collectedSet.contains(expectedID), "Missing \(expectedID) in paginated result.")
+        }
+    }
+}

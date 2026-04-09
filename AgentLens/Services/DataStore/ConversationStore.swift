@@ -155,7 +155,7 @@ final class ConversationStore {
                 db,
                 sql: """
                 SELECT * FROM conversations
-                ORDER BY COALESCE(endTime, startTime, indexedAt) DESC
+                ORDER BY COALESCE(endTime, startTime, indexedAt) DESC, id ASC
                 LIMIT ? OFFSET ?
                 """,
                 arguments: [limit, offset]
