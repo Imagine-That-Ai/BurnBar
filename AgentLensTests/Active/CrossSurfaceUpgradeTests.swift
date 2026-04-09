@@ -1170,4 +1170,176 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
         XCTAssertEqual(factoryFiltered?.provenanceConfidence ?? .unknown, .exact,
             "Factory should show exact (session 4 was exact)")
     }
+
+    // MARK: - VAL-CROSS-005 / Mixed-Confidence Aggregate Semantics
+
+    /// Verifies that provider summaries with mixed exact + estimated rows correctly
+    /// report hasEstimatedContributions=true rather than using dominant-row confidence.
+    /// This is the core fix for m4-fix-provider-summary-mixed-provenance-semantics.
+    func test_mixedConfidenceAggregate_hasEstimatedContributions_reflectsMixedComposition() throws {
+        let store = try makeInMemoryStore()
+        let baseDate = Date(timeIntervalSince1970: 1_745_000_000)
+
+        // Session 1: exact data
+        let exact1 = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "mixed-conf-exact-1",
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 5000,
+            outputTokens: 2500,
+            costUSD: 0.25,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try insertAndRefresh(usage: exact1, store: store)
+
+        // Session 2: estimated data (same provider, same model)
+        let estimate1 = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "mixed-conf-estimate-1",
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.05,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .lowConfidenceEstimate,
+            estimatorVersion: "char-ratio-v1"
+        )
+        try insertAndRefresh(usage: estimate1, store: store)
+
+        // Get provider summary
+        let summaries = store.providerSummaries
+        let claudeSummary = summaries.first(where: { $0.provider == .claudeCode })
+        XCTAssertNotNil(claudeSummary, "Claude Code summary should exist")
+
+        // The dominant confidence is exact (5000 tokens vs 1500 tokens, exact dominates)
+        XCTAssertEqual(claudeSummary?.provenanceConfidence, .exact,
+            "Dominant confidence should be exact (exact row has higher cost)")
+
+        // But hasEstimatedContributions must be true because we have estimated rows
+        XCTAssertTrue(claudeSummary?.hasEstimatedContributions ?? false,
+            "hasEstimatedContributions must be true when aggregate includes estimated rows")
+        XCTAssertTrue(claudeSummary?.hasEstimatedData ?? false,
+            "hasEstimatedData must be true when aggregate includes estimated rows")
+
+        // Model breakdown: same model has mixed exact + estimate
+        let sonnetModel = claudeSummary?.modelBreakdown.first(where: { $0.modelName == "claude-4-sonnet" })
+        XCTAssertNotNil(sonnetModel, "Sonnet model breakdown should exist")
+        XCTAssertEqual(sonnetModel?.provenanceConfidence, .exact,
+            "Model dominant confidence should be exact")
+        XCTAssertTrue(sonnetModel?.hasEstimatedContributions ?? false,
+            "Model hasEstimatedContributions must be true for mixed composition")
+    }
+
+    /// Verifies that a provider summary with only exact rows correctly reports
+    /// hasEstimatedContributions=false.
+    func test_allExactAggregate_hasEstimatedContributions_isFalse() throws {
+        let store = try makeInMemoryStore()
+        let baseDate = Date(timeIntervalSince1970: 1_745_100_000)
+
+        // Two exact sessions
+        let exact1 = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "all-exact-1",
+            projectName: "Project",
+            model: "claude-4-sonnet",
+            inputTokens: 2000,
+            outputTokens: 1000,
+            costUSD: 0.10,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try insertAndRefresh(usage: exact1, store: store)
+
+        let exact2 = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "all-exact-2",
+            projectName: "Project",
+            model: "claude-4-opus",
+            inputTokens: 10000,
+            outputTokens: 5000,
+            costUSD: 0.60,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try insertAndRefresh(usage: exact2, store: store)
+
+        let summaries = store.providerSummaries
+        let claudeSummary = summaries.first(where: { $0.provider == .claudeCode })
+        XCTAssertNotNil(claudeSummary)
+
+        XCTAssertEqual(claudeSummary?.provenanceConfidence, .exact)
+        XCTAssertFalse(claudeSummary?.hasEstimatedContributions ?? true,
+            "hasEstimatedContributions must be false when all rows are exact")
+        XCTAssertFalse(claudeSummary?.hasEstimatedData ?? false,
+            "hasEstimatedData must be false when all rows are exact")
+
+        // Both model breakdowns should also have hasEstimatedContributions=false
+        let sonnetModel = claudeSummary?.modelBreakdown.first(where: { $0.modelName == "claude-4-sonnet" })
+        let opusModel = claudeSummary?.modelBreakdown.first(where: { $0.modelName == "claude-4-opus" })
+        XCTAssertFalse(sonnetModel?.hasEstimatedContributions ?? true)
+        XCTAssertFalse(opusModel?.hasEstimatedContributions ?? true)
+    }
+
+    /// Verifies that derived-exact rows do not trigger hasEstimatedContributions=true.
+    func test_derivedExactRows_doNotTrigger_hasEstimatedContributions() throws {
+        let store = try makeInMemoryStore()
+        let baseDate = Date(timeIntervalSince1970: 1_745_200_000)
+
+        // One exact row and one derived-exact row (e.g., normalized from total_tokens)
+        let exact = TokenUsage(
+            provider: .cursor,
+            sessionId: "derived-exact-1",
+            projectName: "Project",
+            model: "gpt-4",
+            inputTokens: 1000,
+            outputTokens: 500,
+            costUSD: 0.03,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .connectorBridge,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        try insertAndRefresh(usage: exact, store: store)
+
+        let derived = TokenUsage(
+            provider: .cursor,
+            sessionId: "derived-exact-2",
+            projectName: "Project",
+            model: "gpt-4",
+            inputTokens: 2000,
+            outputTokens: 1000,
+            costUSD: 0.06,
+            startTime: baseDate,
+            endTime: baseDate.addingTimeInterval(60),
+            provenanceMethod: .connectorBridge,
+            provenanceConfidence: .derivedExact,
+            estimatorVersion: ""
+        )
+        try insertAndRefresh(usage: derived, store: store)
+
+        let summaries = store.providerSummaries
+        let cursorSummary = summaries.first(where: { $0.provider == .cursor })
+        XCTAssertNotNil(cursorSummary)
+
+        // Both exact and derived-exact should NOT trigger hasEstimatedContributions
+        XCTAssertFalse(cursorSummary?.hasEstimatedContributions ?? true,
+            "hasEstimatedContributions must be false when all rows are exact or derived-exact")
+        XCTAssertFalse(cursorSummary?.hasEstimatedData ?? false,
+            "hasEstimatedData must be false when all rows are exact or derived-exact")
+    }
 }

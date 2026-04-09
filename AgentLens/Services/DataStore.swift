@@ -248,8 +248,8 @@ final class DataStore {
 
             // Track model data including provenance
             // Key: model name
-            // Value: (input, output, cacheCreation, cacheRead, reasoning, cost, bestConfidence, bestMethod)
-            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, reasoning: Int, cost: Double, bestConfidence: UsageProvenanceConfidence, bestMethod: UsageProvenanceMethod)] = [:]
+            // Value: (input, output, cacheCreation, cacheRead, reasoning, cost, bestConfidence, bestMethod, hasEstimatedContributions)
+            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, reasoning: Int, cost: Double, bestConfidence: UsageProvenanceConfidence, bestMethod: UsageProvenanceMethod, hasEstimated: Bool)] = [:]
             for usage in providerUsages {
                 let existing = modelData[usage.model]
                 let newConfidence = usage.provenanceConfidence
@@ -269,6 +269,9 @@ final class DataStore {
                     bestConfidence = newConfidence
                     bestMethod = newMethod
                 }
+                // Track whether any row contributing to this model has estimated provenance
+                let rowIsEstimated = newConfidence != .exact && newConfidence != .derivedExact
+                let existingHasEstimated = existing?.hasEstimated ?? false
                 modelData[usage.model] = (
                     (existing?.0 ?? 0) + usage.inputTokens,
                     (existing?.1 ?? 0) + usage.outputTokens,
@@ -277,15 +280,21 @@ final class DataStore {
                     (existing?.4 ?? 0) + usage.reasoningTokens,
                     (existing?.5 ?? 0) + usage.cost,
                     bestConfidence,
-                    bestMethod
+                    bestMethod,
+                    existingHasEstimated || rowIsEstimated
                 )
             }
 
             // Compute dominant provenance for the provider overall (by cost-weighted tokens)
+            // Also track whether any row has estimated provenance
             var dominantConfidence: UsageProvenanceConfidence = .unknown
             var dominantMethod: UsageProvenanceMethod = .unknown
             var bestCostSoFar: Double = 0
+            var hasAnyEstimated: Bool = false
             for usage in providerUsages {
+                // Track estimated contributions
+                let rowIsEstimated = usage.provenanceConfidence != .exact && usage.provenanceConfidence != .derivedExact
+                hasAnyEstimated = hasAnyEstimated || rowIsEstimated
                 // Use cost as proxy for weight; prefer higher confidence
                 let weight = usage.cost > 0 ? usage.cost : 0.001
                 if usage.provenanceConfidence > dominantConfidence {
@@ -312,7 +321,8 @@ final class DataStore {
                     cost: data.5,
                     percentage: totalCost > 0 ? (data.5 / totalCost) * 100 : 0,
                     provenanceConfidence: data.bestConfidence,
-                    provenanceMethod: data.bestMethod
+                    provenanceMethod: data.bestMethod,
+                    hasEstimatedContributions: data.hasEstimated
                 )
             }
             .sorted { $0.cost > $1.cost }
@@ -326,7 +336,8 @@ final class DataStore {
                 sessionCount: providerUsages.count,
                 modelBreakdown: modelBreakdown,
                 provenanceConfidence: dominantConfidence,
-                provenanceMethod: dominantMethod
+                provenanceMethod: dominantMethod,
+                hasEstimatedContributions: hasAnyEstimated
             )
         }
         .sorted { $0.totalCost > $1.totalCost }

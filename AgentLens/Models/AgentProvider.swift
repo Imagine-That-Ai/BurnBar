@@ -500,6 +500,9 @@ struct ProviderSummary: Identifiable, Hashable {
     let provenanceConfidence: UsageProvenanceConfidence
     /// The dominant provenance method across all rows in this summary.
     let provenanceMethod: UsageProvenanceMethod
+    /// Whether any row contributing to this summary has estimated (non-exact/derived-exact) provenance.
+    /// This reflects mixed-confidence composition rather than dominant-row confidence.
+    let hasEstimatedContributions: Bool
 
     var formattedCost: String {
         totalCost.formatAsCost()
@@ -507,7 +510,7 @@ struct ProviderSummary: Identifiable, Hashable {
 
     /// Whether this summary contains any estimated (non-exact) data.
     var hasEstimatedData: Bool {
-        provenanceConfidence != .exact && provenanceConfidence != .derivedExact
+        hasEstimatedContributions
     }
 }
 
@@ -533,10 +536,13 @@ struct ModelUsage: Identifiable, Hashable {
     let provenanceConfidence: UsageProvenanceConfidence
     /// The dominant provenance method for this model's rows.
     let provenanceMethod: UsageProvenanceMethod
+    /// Whether any row contributing to this model's usage has estimated (non-exact/derived-exact) provenance.
+    /// This reflects mixed-confidence composition rather than dominant-row confidence.
+    let hasEstimatedContributions: Bool
 
     /// Whether this model usage contains any estimated (non-exact) data.
     var hasEstimatedData: Bool {
-        provenanceConfidence != .exact && provenanceConfidence != .derivedExact
+        hasEstimatedContributions
     }
 }
 
