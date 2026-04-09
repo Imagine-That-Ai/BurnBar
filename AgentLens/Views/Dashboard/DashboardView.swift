@@ -727,6 +727,10 @@ struct DashboardView: View {
                         }
                     }
                     OpenBurnBarDashboardOperatingSection(layer: operatingLayer)
+                    DashboardQuickSwitchView(
+                        dataStore: dataStore,
+                        onOpenSettings: { showingSettings = true }
+                    )
                     NarrativeCardView(dataStore: dataStore)
                     overviewHero
                     databaseCTA
