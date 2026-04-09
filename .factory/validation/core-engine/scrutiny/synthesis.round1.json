@@ -1,0 +1,113 @@
+{
+  "milestone": "core-engine",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 8,
+    "passed": 2,
+    "failed": 6,
+    "failedFeatures": [
+      "switcher-core-profile-registry",
+      "switcher-browser-launch-adapter",
+      "switcher-test-files-in-xcode-targets",
+      "switcher-cli-launch-adapter",
+      "settings-account-switcher-management-ui",
+      "core-engine-fix-projection-minimal-writes-flake"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "switcher-core-profile-registry",
+      "severity": "blocking",
+      "description": "Active profile persistence can become non-deterministic because setActiveProfile appends rows to switcher_active_profile and reads/writes use unordered LIMIT 1 semantics."
+    },
+    {
+      "featureId": "switcher-browser-launch-adapter",
+      "severity": "blocking",
+      "description": "SwitcherBrowserLaunchService defers cleanup in an un-awaited Task, allowing launchBrowser to return before coordinator state is cleared and causing nondeterministic 'launch already in progress' retries."
+    },
+    {
+      "featureId": "switcher-test-files-in-xcode-targets",
+      "severity": "blocking",
+      "description": "Feature contract required scoped xcodebuild -only-testing commands to pass, but recorded verification for this feature still had failing scoped runs."
+    },
+    {
+      "featureId": "switcher-cli-launch-adapter",
+      "severity": "blocking",
+      "description": "CLILaunchInvoker seeds ProcessInfo.processInfo.environment and overlays allowlisted keys, which still propagates ambient environment variables and violates allowlisted-only env propagation."
+    },
+    {
+      "featureId": "switcher-cli-launch-adapter",
+      "severity": "blocking",
+      "description": "validateWorkingDirectory relies on raw string-prefix checks without canonicalization, allowing potential home-boundary bypass patterns."
+    },
+    {
+      "featureId": "switcher-cli-launch-adapter",
+      "severity": "blocking",
+      "description": "trustedExecutablePaths include $HOME paths but expandPath handles only ~/, so trusted home-relative executable paths may never resolve."
+    },
+    {
+      "featureId": "settings-account-switcher-management-ui",
+      "severity": "blocking",
+      "description": "Edit form bindings read immutable profile snapshots while setters write @State, so typed edits are overwritten and edit flows are not operable."
+    },
+    {
+      "featureId": "core-engine-fix-projection-minimal-writes-flake",
+      "severity": "blocking",
+      "description": "Replacement assertion only bounds final chunk count and can pass under full rewrites, so minimal-write correctness coverage was weakened."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills",
+      "suggestion": "Adjust switcher-integration-worker and related worker skills to explicitly permit scoped validation for narrowly scoped test-fix or project-membership tasks, while still requiring full-stack validation for broader feature implementations.",
+      "evidence": "Multiple reviews observed workers executing scoped xcodebuild-only verification on narrow tasks while skills mandate broader stacks; this mismatch appeared in switcher-test-files-in-xcode-targets, switcher-fix-test-contract-mismatches, and core-engine-fix-switcher-browser-missing-chrome-test.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Require handoff commit IDs to be machine-verifiable (e.g., full SHA from `git rev-parse HEAD`) to preserve review traceability.",
+      "evidence": "Reviews for switcher-browser-launch-adapter and settings-account-switcher-management-ui reported invalid handoff commit IDs that did not resolve via git show.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add explicit reminder that newly added test files must be included in Xcode target membership when verification relies on scoped xcodebuild -only-testing.",
+      "evidence": "Switcher browser/profile test workflows repeatedly hit target-membership misses, and one dedicated fix feature existed solely to add these tests to OpenBurnBarTests target.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Individual reports that workers skipped specific prerequisite reads (AGENTS/library) in transcript skeletons.",
+      "reason": "ambiguous"
+    },
+    {
+      "observation": "Per-feature recommendation to narrow skill scope for only one worker skill instance.",
+      "reason": "duplicate"
+    },
+    {
+      "observation": "Session-only redaction placeholder naming inconsistency as shared-state guidance update.",
+      "reason": "code-defect-not-guidance"
+    }
+  ],
+  "previousRound": null
+}

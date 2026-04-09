@@ -1,0 +1,15 @@
+{
+  "featureId": "core-engine-fix-cli-env-allowlist-enforcement",
+  "reviewedAt": "2026-04-09T11:08:34Z",
+  "commitId": "d59eef8030afff396e94b1fcd585807f808bc4af",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix correctly addresses the prior allowlist-bypass failure by removing ambient environment inheritance from CLI process launch and constructing launch environments from allowlisted keys only. The new tests cover baseline allowlist construction and verify sensitive ambient keys are excluded.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": ".factory/validation/core-engine/scrutiny/reviews/switcher-cli-launch-adapter.json",
+  "summary": "Reviewed the fix feature transcript skeleton, the original failing feature diff (81ac876), and the fix diff (d59eef8030afff396e94b1fcd585807f808bc4af). The original blocking issue about inheriting full ambient environment in CLILaunchInvoker is resolved by switching to an allowlisted baseline, with focused regression tests added; this fix is sufficient for the targeted failure."
+}

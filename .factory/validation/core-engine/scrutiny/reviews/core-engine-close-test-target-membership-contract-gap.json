@@ -1,0 +1,21 @@
+{
+  "featureId": "core-engine-close-test-target-membership-contract-gap",
+  "reviewedAt": "2026-04-09T11:08:10Z",
+  "commitId": "f47b581",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The original failing feature diff (3ee7680) correctly wired both switcher test files into OpenBurnBarTests target membership but lacked successful scoped execution evidence. The fix feature transcript explicitly reran both required scoped xcodebuild -only-testing commands and recorded exitCode 0 for SwitcherProfileStoreTests and SwitcherBrowserLaunchTests, closing the contract gap. Current pbxproj still includes both files in group and sources entries, with no observed target-membership regression.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The switcher-integration-worker skill remains broad for verification-only fix features; it prescribes test-first implementation work that does not match contract-closure tasks focused on proving existing behavior.",
+      "evidence": ".factory/skills/switcher-integration-worker/SKILL.md (Work Procedure step 2) vs fix transcript skeleton (session 217a2a53-168c-48fb-aabd-aad19cfc44ec), which performed scoped verification rather than new failing-test authoring."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/core-engine/scrutiny/reviews/switcher-test-files-in-xcode-targets.json",
+  "summary": "Reviewed fix feature core-engine-close-test-target-membership-contract-gap, including its transcript skeleton and handoff, plus both diffs (3ee7680 original and f47b581 current-tree commit). Determination: pass — the original contract failure (missing successful scoped test proof) is adequately resolved by explicit passing scoped xcodebuild evidence for both required suites, and target membership remains present."
+}

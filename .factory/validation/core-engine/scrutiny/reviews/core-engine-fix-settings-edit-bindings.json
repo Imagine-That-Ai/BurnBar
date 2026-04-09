@@ -1,0 +1,26 @@
+{
+  "featureId": "core-engine-fix-settings-edit-bindings",
+  "reviewedAt": "2026-04-09T11:08:47Z",
+  "commitId": "c15782f71371dc6c39b9540cd2240c4e6ec7183e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix directly resolves the prior blocking defect: edit-sheet bindings now read/write mutable @State, and edit form state is initialized from the selected profile before presentation. This removes the immutable snapshot getter/setter mismatch that previously caused typed edits to be overwritten and not persisted.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The switcher-ui-worker procedure requires broad app validation and manual UI sanity checks, but the fix transcript/handoff only evidences scoped xcodebuild runs while still reporting followedProcedure=true.",
+      "evidence": ".factory/skills/switcher-ui-worker/SKILL.md (steps 6-7 require scripts/test-openburnbar-app.sh and manual checks); handoff for session 0e281f3d-123b-4eb2-bac1-887481e7f441 lists only scoped xcodebuild tests and interactiveChecks is empty."
+    },
+    {
+      "area": "conventions",
+      "observation": "Test naming may be misleading for workers: SwitcherSettingsUITests are explicitly store-level tests, not UI-interaction/binding tests, which can cause overconfidence when validating UI binding regressions.",
+      "evidence": "AgentLensTests/Active/SwitcherSettingsUITests.swift line 9: \"Tests all VAL-SETTINGS-* assertions that can be verified through store-level testing.\""
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/core-engine/scrutiny/reviews/settings-account-switcher-management-ui.json",
+  "summary": "Reviewed fix feature core-engine-fix-settings-edit-bindings against the prior failure in settings-account-switcher-management-ui by examining mission metadata, fix transcript skeleton, prior review, both handoffs, and both diffs (45d186134278c9a630ed245b65c3ba168cc83a3d and c15782f71371dc6c39b9540cd2240c4e6ec7183e). Result: PASS — the exact binding defect identified in the prior review is corrected and the edit path now uses mutable state consistently for persisted saves."
+}

@@ -1,0 +1,28 @@
+{
+  "featureId": "core-engine-fix-active-profile-determinism",
+  "reviewedAt": "2026-04-09T11:09:05Z",
+  "commitId": "6ae375d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix removes the immediate multi-row write path by switching active-state writes to DELETE+INSERT, but it does not deterministically recover legacy multi-row states on read/hydration; relaunch can still read an arbitrary row via unordered LIMIT 1 before any write path normalizes the table.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/DataStore/SwitcherProfileStore.swift",
+        "line": 26,
+        "severity": "blocking",
+        "description": "fetchActiveProfileState still uses `SELECT ... FROM switcher_active_profile LIMIT 1` with no ordering or canonical-row constraint. Existing databases created by prior behavior can already contain multiple rows (original bug), so relaunch hydration can still resolve a stale/arbitrary activeProfileID until setActiveProfile/selectFallbackActiveProfile is called."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherProfileStoreTests.swift",
+        "line": 257,
+        "severity": "non_blocking",
+        "description": "The fix feature claims regression coverage for repeated set/unset and relaunch hydration, but no new test asserts canonical single-row recovery from pre-existing multi-row state; current active-state tests only cover single-step set/clear/fallback paths."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": ".factory/validation/core-engine/scrutiny/reviews/switcher-core-profile-registry.json",
+  "summary": "Fix review failed. While commit 6ae375d addresses new multi-row writes, it does not fully close the original nondeterminism for already-corrupted active-profile tables because fetchActiveProfileState still performs unordered LIMIT 1 reads during relaunch hydration."
+}
