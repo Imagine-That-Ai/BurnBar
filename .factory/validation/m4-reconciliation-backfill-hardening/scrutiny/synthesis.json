@@ -1,6 +1,6 @@
 {
   "milestone": "m4-reconciliation-backfill-hardening",
-  "round": 6,
+  "round": 7,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,8 +20,8 @@
     }
   },
   "reviewsSummary": {
-    "total": 2,
-    "passed": 1,
+    "total": 1,
+    "passed": 0,
     "failed": 1,
     "failedFeatures": [
       "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests"
@@ -31,28 +31,18 @@
     {
       "featureId": "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests",
       "severity": "blocking",
-      "description": "Success-path test `test_refreshAll_withSuccessfulPersistence_allowsCursorAdvance` only asserts cursor existence after refresh, but the cursor is created before refresh and the assertion does not prove `runScheduledBackfillIfNeeded` advanced the cursor on successful persistence."
-    },
-    {
-      "featureId": "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests",
-      "severity": "blocking",
-      "description": "Failure-path test `test_refreshAll_withPersistenceFailure_preventsCursorAdvance` infers guard behavior from unchanged cursor state without proving the guarded persistence error path in `refreshAll`; it can pass due to other read-only write failures and does not conclusively verify commit-coupled advancement gating."
+      "description": "Failure-path test `test_refreshAll_withPersistenceFailure_preventsCursorAdvance` still only asserts unchanged cursor state in read-only mode and does not prove the `if persistenceError == nil` guard in `UsageAggregator.refreshAll` actually prevented scheduled backfill execution."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills/token-accounting-worker",
-      "suggestion": "Strengthen handoff traceability guidance so feature handoffs reference the implementation commit(s) that introduced behavioral changes, not only follow-up validation-artifact commits.",
-      "evidence": "Review for `m4-fix-backfill-idempotent-equal-timestamp-semantics` found handoff commit `38b3ada...` changed only `.factory/validation/**`, while the monotonic behavior fix lived in earlier commit `65706b3...`.",
-      "isSystemic": false
+      "suggestion": "Require explicit handoff/read evidence for `mission.md`, `AGENTS.md`, `.factory/library/architecture.md`, and `.factory/library/user-testing.md` before `followedProcedure=true` can be set.",
+      "evidence": "Latest review for `m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests` again found missing `user-testing.md` startup-read evidence despite `followedProcedure=true`, indicating recurring procedural drift.",
+      "isSystemic": true
     }
   ],
-  "rejectedObservations": [
-    {
-      "observation": "Require startup context-read evidence in handoff before setting followedProcedure=true.",
-      "reason": "already-documented"
-    }
-  ],
-  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round5.json"
+  "rejectedObservations": [],
+  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round6.json"
 }

@@ -1,34 +1,28 @@
 {
   "featureId": "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests",
-  "reviewedAt": "2026-04-09T23:25:38Z",
-  "commitId": "c5f49cd3df2943ba8a51f6eb152422c05af7790c",
+  "reviewedAt": "2026-04-09T23:45:03Z",
+  "commitId": "7475fbac3fc2652801cd416818b683c4822c5a5e",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "fail",
   "codeReview": {
-    "summary": "The rerun removed source-text scanning and added runtime-invoked refreshAll tests, but the new assertions do not prove the required commit-coupled advancement semantics end-to-end. The success-path test is non-discriminating, and the failure-path test can pass without demonstrating that refreshAll skipped runScheduledBackfillIfNeeded due to persistence failure.",
+    "summary": "The fix commit resolves the prior success-path gap by asserting measurable cursor advancement delta and version increments after refreshAll(). However, the failure-path test still does not prove that the persistence-error guard prevented runScheduledBackfillIfNeeded from running; unchanged cursor state can also occur when backfill is attempted against a read-only store and the advance write itself fails.",
     "issues": [
       {
         "file": "AgentLensTests/Active/BackfillSchedulerTests.swift",
-        "line": 594,
+        "line": 699,
         "severity": "blocking",
-        "description": "`test_refreshAll_withSuccessfulPersistence_allowsCursorAdvance` only asserts cursor existence (`XCTAssertNotNil(finalCursor)`), but the cursor is already created before `refreshAll()`. This does not validate that `runScheduledBackfillIfNeeded()` actually advanced the cursor on successful persistence, so the required success-path behavior is unproven."
-      },
-      {
-        "file": "AgentLensTests/Active/BackfillSchedulerTests.swift",
-        "line": 626,
-        "severity": "blocking",
-        "description": "`test_refreshAll_withPersistenceFailure_preventsCursorAdvance` makes the DB read-only and then infers guard behavior from unchanged cursor state, but it does not assert that the persistence write in `refreshAll()` failed in the guarded section. Because `refreshAll()` inserts `allUsages` (`UsageAggregator.swift:222`) and parsers may yield no rows, the insert path can be a no-op while cursor non-advancement is instead caused by read-only write failure during cursor update, not by `if persistenceError == nil` gating (`UsageAggregator.swift:242`)."
+        "description": "test_refreshAll_withPersistenceFailure_preventsCursorAdvance() asserts only unchanged cursor state after running refreshAll() on a read-only database, but it never asserts that persistenceError was actually triggered by dataStore.insert(allUsages) nor that backfill was skipped. Given refreshAll() gates backfill on `if persistenceError == nil` (UsageAggregator.swift:242), this test can still pass if runScheduledBackfillIfNeeded() runs and fails to write cursor changes due to read-only mode, so the required guard behavior remains unproven."
       }
     ]
   },
   "sharedStateObservations": [
     {
       "area": "skills",
-      "observation": "Procedure-evidence enforcement is still weak for token-accounting-worker handoffs marked `followedProcedure=true`.",
-      "evidence": "This handoff includes evidence for reading `mission.md` and `AGENTS.md` only (`head -n 3 mission.md && grep -n 'fulfills' AGENTS.md | head -n 5`), while `token-accounting-worker` step 1 also requires reading `.factory/library/architecture.md` and `.factory/library/user-testing.md`."
+      "observation": "token-accounting-worker procedure adherence evidence is still inconsistent with followedProcedure=true in this fix session.",
+      "evidence": "The skill requires reading mission.md, AGENTS.md, .factory/library/architecture.md, and .factory/library/user-testing.md, but transcript skeleton evidence shows reads for mission/AGENTS/architecture only (worker-transcripts.jsonl skeleton lines matching mission.md, AGENTS.md, architecture.md) and no user-testing.md read evidence; handoff verification.commandsRun only lists xcodebuild test."
     }
   ],
   "addressesFailureFrom": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/reviews/m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests.json",
-  "summary": "Fail: source-text scanning was removed, but the replacement tests still do not conclusively verify commit-coupled cursor advancement behavior across refreshAll success and persistence-failure paths."
+  "summary": "Fail: the prior success-path blocker is fixed, but the failure-path test still does not conclusively demonstrate that refreshAll() skipped scheduled backfill due to persistence error."
 }
