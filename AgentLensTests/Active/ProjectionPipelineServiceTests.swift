@@ -2521,6 +2521,26 @@ extension ProjectionPipelineServiceTests {
             "Zero preserved hashes indicates full rewrite instead of incremental update."
         )
 
+        // CRITICAL invariant: writeCount must be bounded for incremental partial edits.
+        // For incremental append: only tail chunks are added/deleted → writeCount < 2 * initialChunkCount.
+        // For full rewrite: all chunks are deleted + all re-inserted → writeCount = 2 * initialChunkCount.
+        // This assertion deterministically fails on full rewrite because writeCount would
+        // equal or exceed 2 * initialChunkCount, whereas incremental update has writeCount
+        // proportional to the small delta (new tail content + boundary shifts).
+        // With stable chunk identity, head chunks (same contentHash AND same chunkID) are unchanged (0 writes),
+        // while only tail/boundary chunks cause writes.
+        if let diffResult = service.lastChunkDiffResult {
+            XCTAssertLessThan(
+                diffResult.writeCount, initialChunkCount * 2,
+                "Write count (\(diffResult.writeCount)) must be less than 2x initial chunk count (\(initialChunkCount * 2)) " +
+                "for incremental partial edit. writeCount >= 2 * initialChunkCount indicates full rewrite. " +
+                "diff: unchanged=\(diffResult.unchanged), rekeyed=\(diffResult.rekeyed), " +
+                "added=\(diffResult.added), deleted=\(diffResult.deleted)"
+            )
+        } else {
+            XCTFail("Expected lastChunkDiffResult to be set after sweep.")
+        }
+
         // All final chunks should have embeddings
         let versionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
         let finalEmbeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionID)

@@ -141,6 +141,10 @@ final class ProjectionPipelineService {
     private var isSweeping = false
     private var didSeedBackfill = false
 
+    /// Captures the last ChunkDiffResult from processProjection for test verification.
+    /// This enables tests to assert on write-amplification invariants directly.
+    var lastChunkDiffResult: ChunkDiffResult?
+
     static func makeConfigured(
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
@@ -880,6 +884,7 @@ final class ProjectionPipelineService {
         // Apply incremental chunk diff: only write changed/added/deleted chunks.
         // Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
         let chunkDiff = try dataStore.applySearchChunkDiff(documentID: document.id, title: title, chunks: chunks)
+        self.lastChunkDiffResult = chunkDiff
 
         // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.
         // This avoids expensive embedding provider calls for content that hasn't changed.
@@ -975,6 +980,7 @@ final class ProjectionPipelineService {
         // Apply incremental chunk diff: only write changed/added/deleted chunks.
         // Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
         let chunkDiff = try dataStore.applySearchChunkDiff(documentID: document.id, title: artifact.title, chunks: chunks)
+        self.lastChunkDiffResult = chunkDiff
 
         // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.
         var reusedEmbeddingCount = 0
