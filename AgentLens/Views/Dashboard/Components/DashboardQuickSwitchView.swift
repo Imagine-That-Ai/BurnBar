@@ -53,6 +53,8 @@ struct DashboardQuickSwitchView: View {
 
             if isLoading {
                 loadingView
+            } else if let error = error {
+                errorStateView(message: error)
             } else if profiles.isEmpty {
                 emptyStateView
             } else {
@@ -149,6 +151,82 @@ struct DashboardQuickSwitchView: View {
         .padding(DesignSystem.Spacing.lg)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("No profiles. Open Settings to create profiles.")
+    }
+
+    // MARK: - Error State
+
+    /// Error state with actionable recovery controls (VAL-DASH-004).
+    /// Distinct from empty state - shows error icon, message, and two recovery actions.
+    private func errorStateView(message: String) -> some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(DesignSystem.Colors.error)
+
+            Text("Failed to Load Profiles")
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+            Text(message)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                // Retry action
+                Button {
+                    loadData()
+                } label: {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11))
+                        Text("Retry")
+                            .font(DesignSystem.Typography.caption)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, DesignSystem.Spacing.md)
+                    .padding(.vertical, DesignSystem.Spacing.sm)
+                    .background(DesignSystem.Colors.amber)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Retry loading profiles")
+
+                // Open Settings action
+                Button {
+                    onOpenSettings()
+                } label: {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 11))
+                        Text("Open Settings")
+                            .font(DesignSystem.Typography.caption)
+                    }
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .padding(.horizontal, DesignSystem.Spacing.md)
+                    .padding(.vertical, DesignSystem.Spacing.sm)
+                    .background(DesignSystem.Colors.surfaceElevated)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open Settings for profile management")
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(DesignSystem.Spacing.lg)
+        .background(DesignSystem.Colors.error.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.error.opacity(0.3), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Error loading profiles. \(message). Retry or open Settings.")
     }
 
     // MARK: - Profile Switcher Content
