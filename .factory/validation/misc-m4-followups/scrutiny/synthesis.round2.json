@@ -1,0 +1,57 @@
+{
+  "milestone": "misc-m4-followups",
+  "round": 2,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "/Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-swift.sh && /Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-app.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath /Users/dewclaw/Documents/Projects/BurnBar/.spm-cache -derivedDataPath /Users/dewclaw/Documents/Projects/BurnBar/.derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix /Users/dewclaw/Documents/Projects/BurnBar/extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 5,
+    "passed": 4,
+    "failed": 1,
+    "failedFeatures": [
+      "misc-fix-deriveddata-prune-active-safety"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "misc-fix-deriveddata-prune-active-safety",
+      "severity": "blocking",
+      "description": "`is_dir_in_use()` in `.factory/init.sh` uses `lsof +d \"$canon_dir\"`, which may miss open files in nested subpaths; this can still allow pruning active derived-data directories and does not fully resolve the active-directory safety blocker."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "library",
+      "suggestion": "Document active-directory safety caveat for derived-data cleanup: `lsof +d` is non-recursive and can miss nested open files; use recursive checks (`lsof +D` or equivalent strategy) when safety depends on nested build-tree activity.",
+      "evidence": "Fix review `misc-fix-deriveddata-prune-active-safety` reproduced a nested-file case where `lsof +d <candidate>` returned no PID while `lsof +D <candidate>` detected active use.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Procedure-compliance evidence remains inconsistent with workers marking followedProcedure=true despite incomplete startup-read evidence.",
+      "reason": "already-documented"
+    },
+    {
+      "observation": "Workers may attempt startup reads from `/Users/dewclaw/.factory/library/user-testing.md` instead of the repo-scoped `.factory/library/user-testing.md` path.",
+      "reason": "duplicate"
+    }
+  ],
+  "previousRound": ".factory/validation/misc-m4-followups/scrutiny/synthesis.round1.json"
+}

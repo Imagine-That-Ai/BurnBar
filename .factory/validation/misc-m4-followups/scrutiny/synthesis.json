@@ -1,7 +1,7 @@
 {
   "milestone": "misc-m4-followups",
-  "round": 2,
-  "status": "fail",
+  "round": 3,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,38 +20,14 @@
     }
   },
   "reviewsSummary": {
-    "total": 5,
-    "passed": 4,
-    "failed": 1,
-    "failedFeatures": [
-      "misc-fix-deriveddata-prune-active-safety"
-    ]
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "misc-fix-deriveddata-prune-active-safety",
-      "severity": "blocking",
-      "description": "`is_dir_in_use()` in `.factory/init.sh` uses `lsof +d \"$canon_dir\"`, which may miss open files in nested subpaths; this can still allow pruning active derived-data directories and does not fully resolve the active-directory safety blocker."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
-  "suggestedGuidanceUpdates": [
-    {
-      "target": "library",
-      "suggestion": "Document active-directory safety caveat for derived-data cleanup: `lsof +d` is non-recursive and can miss nested open files; use recursive checks (`lsof +D` or equivalent strategy) when safety depends on nested build-tree activity.",
-      "evidence": "Fix review `misc-fix-deriveddata-prune-active-safety` reproduced a nested-file case where `lsof +d <candidate>` returned no PID while `lsof +D <candidate>` detected active use.",
-      "isSystemic": false
-    }
-  ],
-  "rejectedObservations": [
-    {
-      "observation": "Procedure-compliance evidence remains inconsistent with workers marking followedProcedure=true despite incomplete startup-read evidence.",
-      "reason": "already-documented"
-    },
-    {
-      "observation": "Workers may attempt startup reads from `/Users/dewclaw/.factory/library/user-testing.md` instead of the repo-scoped `.factory/library/user-testing.md` path.",
-      "reason": "duplicate"
-    }
-  ],
-  "previousRound": ".factory/validation/misc-m4-followups/scrutiny/synthesis.round1.json"
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/misc-m4-followups/scrutiny/synthesis.round2.json"
 }
