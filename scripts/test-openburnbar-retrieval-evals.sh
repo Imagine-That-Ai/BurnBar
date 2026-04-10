@@ -7,6 +7,7 @@ cache_dir="$repo_root/.spm-cache"
 
 # Use a unique derived-data path per invocation to avoid races when
 # multiple validator reruns run concurrently.
+mkdir -p "$repo_root/.derived-data"
 derived_data_dir="$(mktemp -d "$repo_root/.derived-data/openburnbar-retrieval-evals.XXXXXX")"
 trap 'rm -rf "$derived_data_dir"' EXIT
 
