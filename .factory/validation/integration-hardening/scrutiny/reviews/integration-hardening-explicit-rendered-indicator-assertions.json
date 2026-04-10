@@ -1,0 +1,51 @@
+{
+  "featureId": "integration-hardening-explicit-rendered-indicator-assertions",
+  "reviewedAt": "2026-04-10T05:32:21Z",
+  "commitId": "276985f1b6f823c173b14d296c7c42031899c29f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix adds DEBUG helpers for rendered labels and UI-path switch triggers in Dashboard/Popover views, but it does not add or update cross-surface tests to consume those helpers. The remaining gaps from the prior failed review persist: VAL-CROSS rendered-indicator evidence is still non-specific renderability checks, switch synchronization remains store-mutation driven, and launch-chain proof is still inferred from store state/comments rather than exercised action paths.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2430,
+        "severity": "blocking",
+        "description": "Rendered-indicator proof for VAL-CROSS-001/002 remains insufficient: tests still assert only that Dashboard/Popover can be inspected (`XCTAssertNotNil` renderability) instead of asserting concrete active indicator labels/identifiers."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2531,
+        "severity": "blocking",
+        "description": "Cross-surface switch assertions are still driven by direct `localStore.setActiveProfile(...)` mutations (also at lines 2593, 2774, 2840) rather than UI control callback paths required by this fix."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2777,
+        "severity": "blocking",
+        "description": "VAL-CROSS-009 launch-chain evidence is still store-inferred (`fetchActiveProfileState`) and comment-based (line 2792, also 2858) instead of proving launch behavior through action/adapter invocation traces."
+      },
+      {
+        "file": "AgentLens/Views/Dashboard/Components/DashboardQuickSwitchView.swift",
+        "line": 894,
+        "severity": "blocking",
+        "description": "New helper seams (`testActiveProfileAccessibilityLabel`, `testTriggerSwitchViaUIAction`, and peers in Dashboard/Popover) are added but not consumed by tests, so they do not close the prior scrutiny failure."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Skill procedure compliance is overstated: `followedProcedure=true` is set without context-read evidence in verification commands.",
+      "evidence": "Handoff `verification.commandsRun` lists only xcodebuild test commands; `.factory/skills/switcher-ui-worker/SKILL.md` requires concrete context-read evidence before setting `followedProcedure=true`."
+    },
+    {
+      "area": "conventions",
+      "observation": "Cross-surface validation convention gap persists: feature-level fixes keep adding test seams without asserting explicit rendered indicators or UI-driven action chains in the contract tests.",
+      "evidence": "Current cross-flow tests at `SwitcherCrossFlowTests.swift:2430-2479, 2531, 2593, 2777, 2792, 2843, 2858` remain renderability/store-state centric despite `validation-contract.md` expectations for rendered and action-chain evidence."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-cross-surface-rendered-action-chain-contract-tests.json",
+  "summary": "Review result: fail. This re-run introduces useful DEBUG seams but does not apply them in the cross-surface contract assertions, so the original rendered-indicator and UI-action/launch-proof gaps remain unresolved."
+}

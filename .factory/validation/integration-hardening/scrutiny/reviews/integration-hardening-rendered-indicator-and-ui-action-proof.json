@@ -1,0 +1,51 @@
+{
+  "featureId": "integration-hardening-rendered-indicator-and-ui-action-proof",
+  "reviewedAt": "2026-04-10T05:32:49Z",
+  "commitId": "28ccfc60b41c847500d0deb7cf435b1701f10d3f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail. This re-run does not materially address the prior blocking findings for VAL-CROSS-001/002/009. The handoff commit points to an unrelated backfill test change and provides no implementation SHA traceability for this switcher feature. In the current SwitcherCrossFlowTests, rendered evidence remains non-concrete, switch synchronization is still store-mutation-driven, and launch-chain proof remains hypothetical rather than exercised through launch paths.",
+    "issues": [
+      {
+        "file": "/Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/handoffs/2026-04-10T04-52-59-517Z__integration-hardening-rendered-indicator-and-ui-action-proof__7f2eabea-99df-4acb-8b02-9c8c69d8a271.json",
+        "line": 6,
+        "severity": "blocking",
+        "description": "Handoff commitId resolves to an unrelated backfill portability commit (`AgentLensTests/Active/BackfillSchedulerTests.swift`) and does not contain switcher rendered-indicator/UI-action proof changes, so this fix feature lacks auditable implementation evidence."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2430,
+        "severity": "blocking",
+        "description": "Rendered evidence for VAL-CROSS-001/002 remains non-concrete: assertions only confirm the view can be inspected/rendered (`XCTAssertNotNil`) rather than asserting specific rendered active labels/indicators/accessibility text. Same pattern at line 2475."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2530,
+        "severity": "blocking",
+        "description": "Cross-surface switching is still driven by direct store mutation (`setActiveProfile`) while comments describe it as simulated UI action. This misses required UI-control-driven switching proof. Same pattern at lines 2592, 2773, and 2839."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2792,
+        "severity": "blocking",
+        "description": "VAL-CROSS-009 launch-chain proof remains hypothetical: tests state launch actions 'would use' active profiles but do not execute/verify launch integration seams from UI action paths. Same pattern at line 2858."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Skill procedure compliance is overstated: `followedProcedure=true` is set despite no context-read command evidence and no implementation-commit traceability when the referenced commit is non-feature/non-implementation for this task.",
+      "evidence": "Handoff `verification.commandsRun` includes only xcodebuild runs; `.factory/skills/switcher-ui-worker/SKILL.md` requires context-read evidence and implementation SHA traceability when final commit is artifact/non-implementation."
+    },
+    {
+      "area": "conventions",
+      "observation": "Validation hardening expectations for rendered/action-chain proofs remain inconsistently applied: tests continue to rely on inspectability and store-state assertions instead of concrete rendered indicators and UI-triggered action paths.",
+      "evidence": "`AgentLensTests/Active/SwitcherCrossFlowTests.swift:2430,2475,2530,2592,2773,2839,2792,2858`."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-cross-surface-rendered-action-chain-contract-tests.json",
+  "summary": "Review result: fail. The fix does not provide new auditable implementation evidence for this feature and does not resolve prior blockers around concrete rendered assertions, UI-action-driven switching, and launch-chain invocation proof."
+}

@@ -1,0 +1,28 @@
+{
+  "featureId": "integration-hardening-production-log-sink-redaction-proof",
+  "reviewedAt": "2026-04-10T05:33:40Z",
+  "commitId": "0e85c560e92ce21105ad556aa2fd0ed1857b9c18",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix introduces LogEmitter-based interception and improves several startup/sync checks, but VAL-CROSS-006 is still not fully satisfied because at least one startup/sync assertion path can pass without any emitted production log capture and still depends on test-local helper collection.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/SwitcherRuntimeLogCaptureTests.swift",
+        "line": 314,
+        "severity": "blocking",
+        "description": "In `test_startupProfileFetch_capturesRuntimeLogs_noSecrets`, the test clears `capturedLogMessages` and then calls `fetchAllProfiles()` (non-logging path) before asserting on `allLogs` merged with `RuntimeLogCapture` helper strings. Because there is no emitted-log assertion (e.g., non-empty captured production logs), this startup check can pass with zero intercepted production log output, which does not meet the emitted-log evidence expectation for VAL-CROSS-006."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker set `followedProcedure=true`, but handoff verification omits required context-read evidence and full procedure coverage described by the skill.",
+      "evidence": ".factory/skills/switcher-integration-worker/SKILL.md requires explicit context-read evidence in `verification.commandsRun` when `followedProcedure=true` and lists a broader validation stack. The handoff for session a129cc65-a840-4179-b844-8d3fbb01bfc7 only reports one scoped xcodebuild command."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-runtime-emitted-log-redaction-startup-sync-contract-tests.json",
+  "summary": "Compared with the original failed feature/review, this rerun materially improves runtime interception by introducing `LogEmitter` and wiring startup/sync tests to capture emitted messages in multiple cases. However, a startup fetch assertion still permits helper-only evidence without guaranteed emitted-log capture, so VAL-CROSS-006 is not yet fully proven."
+}

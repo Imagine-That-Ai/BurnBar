@@ -1,6 +1,6 @@
 {
   "milestone": "integration-hardening",
-  "round": 4,
+  "round": 5,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -21,79 +21,81 @@
   },
   "reviewsSummary": {
     "total": 4,
-    "passed": 0,
-    "failed": 4,
+    "passed": 1,
+    "failed": 3,
     "failedFeatures": [
-      "integration-hardening-cross-surface-rendered-action-chain-contract-tests",
-      "integration-hardening-final-active-profile-launch-routing-contract-tests",
-      "integration-hardening-runtime-emitted-log-redaction-startup-sync-contract-tests",
-      "integration-hardening-fix-cli-active-routing-test-availability-awareness"
+      "integration-hardening-rendered-indicator-and-ui-action-proof",
+      "integration-hardening-explicit-rendered-indicator-assertions",
+      "integration-hardening-production-log-sink-redaction-proof"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "integration-hardening-cross-surface-rendered-action-chain-contract-tests",
+      "featureId": "integration-hardening-rendered-indicator-and-ui-action-proof",
       "severity": "blocking",
-      "description": "VAL-CROSS-001/002 rendered evidence remains missing: tests still rely on `inspect()` non-nil and store-state reads instead of asserting rendered Dashboard/Popover active indicators and labels."
+      "description": "Handoff commitId resolves to an unrelated backfill portability commit (`AgentLensTests/Active/BackfillSchedulerTests.swift`) and does not contain switcher rendered-indicator/UI-action proof changes, so this fix feature lacks auditable implementation evidence."
     },
     {
-      "featureId": "integration-hardening-cross-surface-rendered-action-chain-contract-tests",
+      "featureId": "integration-hardening-rendered-indicator-and-ui-action-proof",
       "severity": "blocking",
-      "description": "Cross-surface switch synchronization still uses direct `setActiveProfile(...)` store mutation rather than user-action switch paths in Dashboard/Popover."
+      "description": "Rendered evidence for VAL-CROSS-001/002 remains non-concrete: assertions only confirm the view can be inspected/rendered (`XCTAssertNotNil`) rather than asserting specific rendered active labels/indicators/accessibility text. Same pattern at line 2475."
     },
     {
-      "featureId": "integration-hardening-cross-surface-rendered-action-chain-contract-tests",
+      "featureId": "integration-hardening-rendered-indicator-and-ui-action-proof",
       "severity": "blocking",
-      "description": "VAL-CROSS-009 launch-chain assertions still do not invoke browser/CLI adapters/services and therefore do not prove action-chain routing behavior."
+      "description": "Cross-surface switching is still driven by direct store mutation (`setActiveProfile`) while comments describe it as simulated UI action. This misses required UI-control-driven switching proof. Same pattern at lines 2592, 2773, and 2839."
     },
     {
-      "featureId": "integration-hardening-final-active-profile-launch-routing-contract-tests",
+      "featureId": "integration-hardening-rendered-indicator-and-ui-action-proof",
       "severity": "blocking",
-      "description": "Rapid-switch browser A→B→C test only verifies browser type/error-class outcomes, so stale routing to A/B can still pass; final committed profile-ID routing is not proven."
+      "description": "VAL-CROSS-009 launch-chain proof remains hypothetical: tests state launch actions 'would use' active profiles but do not execute/verify launch integration seams from UI action paths. Same pattern at line 2858."
     },
     {
-      "featureId": "integration-hardening-final-active-profile-launch-routing-contract-tests",
+      "featureId": "integration-hardening-explicit-rendered-indicator-assertions",
       "severity": "blocking",
-      "description": "Rapid-switch CLI A→B→C test similarly validates executable type, not routed profile ID, leaving final active-profile routing evidence incomplete."
+      "description": "Rendered-indicator proof for VAL-CROSS-001/002 remains insufficient: tests still assert only that Dashboard/Popover can be inspected (`XCTAssertNotNil` renderability) instead of asserting concrete active indicator labels/identifiers."
     },
     {
-      "featureId": "integration-hardening-runtime-emitted-log-redaction-startup-sync-contract-tests",
+      "featureId": "integration-hardening-explicit-rendered-indicator-assertions",
       "severity": "blocking",
-      "description": "Runtime log tests still populate test-local collectors with helper strings rather than intercepting emitted startup/sync log sink output from production callsites."
+      "description": "Cross-surface switch assertions are still driven by direct `localStore.setActiveProfile(...)` mutations (also at lines 2593, 2774, 2840) rather than UI control callback paths required by this fix."
     },
     {
-      "featureId": "integration-hardening-runtime-emitted-log-redaction-startup-sync-contract-tests",
+      "featureId": "integration-hardening-explicit-rendered-indicator-assertions",
       "severity": "blocking",
-      "description": "Cross-flow VAL-CROSS-006 checks remain helper-driven and do not verify deterministic emitted-log capture for startup/sync paths."
+      "description": "VAL-CROSS-009 launch-chain evidence is still store-inferred (`fetchActiveProfileState`) and comment-based (line 2792, also 2858) instead of proving launch behavior through action/adapter invocation traces."
     },
     {
-      "featureId": "integration-hardening-fix-cli-active-routing-test-availability-awareness",
+      "featureId": "integration-hardening-explicit-rendered-indicator-assertions",
       "severity": "blocking",
-      "description": "Fix scope mismatch: commit hardens CLI executable-availability assertions but does not remediate original failed feature's cross-surface contract gaps."
+      "description": "New helper seams (`testActiveProfileAccessibilityLabel`, `testTriggerSwitchViaUIAction`, and peers in Dashboard/Popover) are added but not consumed by tests, so they do not close the prior scrutiny failure."
+    },
+    {
+      "featureId": "integration-hardening-production-log-sink-redaction-proof",
+      "severity": "blocking",
+      "description": "In `test_startupProfileFetch_capturesRuntimeLogs_noSecrets`, the test clears `capturedLogMessages` and then calls `fetchAllProfiles()` (non-logging path) before asserting on `allLogs` merged with `RuntimeLogCapture` helper strings. Because there is no emitted-log assertion (e.g., non-empty captured production logs), this startup check can pass with zero intercepted production log output, which does not meet the emitted-log evidence expectation for VAL-CROSS-006."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
+      "target": "Skill .factory/skills/switcher-ui-worker/SKILL.md and .factory/skills/switcher-integration-worker/SKILL.md",
+      "suggestion": "Enforce a handoff gate: when followedProcedure=true, verification.commandsRun must include explicit context-read evidence and implementation commit traceability; otherwise require followedProcedure=false.",
+      "evidence": "All four reviews this round reported followedProcedure/context-read evidence drift; repeated in two prior rounds for integration-hardening.",
+      "isSystemic": true
+    },
+    {
       "target": "Mission AGENTS.md",
-      "suggestion": "Add a known-constraint note that CLI rapid-switch active-routing tests are availability-dependent on local executable presence and should use deterministic availability-aware assertions in contract tests.",
-      "evidence": "Feature integration-hardening-fix-cli-active-routing-test-availability-awareness had to harden environment-dependent CLI routing assertions, while AGENTS currently documents only analogous browser environment sensitivity.",
+      "suggestion": "Add explicit VAL-CROSS evidence rule that rendered-indicator claims must assert concrete rendered labels/identifiers and switch/launch claims must be driven by UI-action or adapter invocation paths, not direct store mutation or comments.",
+      "evidence": "Features integration-hardening-rendered-indicator-and-ui-action-proof and integration-hardening-explicit-rendered-indicator-assertions still failed for renderability-only and store-mutation-centric proofs.",
       "isSystemic": false
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "Repeated followedProcedure/context-read-evidence and incomplete validation-stack observations in switcher worker handoffs.",
-      "reason": "already-documented"
-    },
-    {
-      "observation": "Repeated recommendation to require rendered UI/action-chain evidence for VAL-CROSS in switcher UI work.",
-      "reason": "already-documented"
-    },
-    {
-      "observation": "Potential library/services updates from review findings.",
+      "observation": "Repeated recommendation to broaden validator stack in feature worker handoffs",
       "reason": "ambiguous"
     }
   ],
-  "previousRound": ".factory/validation/integration-hardening/scrutiny/synthesis.round3.json"
+  "previousRound": ".factory/validation/integration-hardening/scrutiny/synthesis.round4.json"
 }
