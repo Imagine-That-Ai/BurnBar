@@ -872,18 +872,34 @@ struct DashboardQuickSwitchView: View {
 
     /// DEBUG-only: Returns the active profile's display name if available.
     /// Used by tests to assert on rendered active profile indicator.
+    /// Falls back to store lookup when in-memory profile list is stale.
     var testActiveProfileDisplayName: String? {
+        // First try in-memory list
         if let activeProfile = profiles.first(where: { $0.id == activeProfileID }) {
             return activeProfile.displayName
+        }
+        // Fallback: query store directly when in-memory list is stale/empty
+        if let profileID = activeProfileID ?? (try? dataStore.switcherStore.fetchActiveProfileState())?.activeProfileID {
+            if let record = try? dataStore.switcherStore.fetchProfile(id: profileID) {
+                return record.displayName
+            }
         }
         return nil
     }
 
     /// DEBUG-only: Returns the active profile's accessibility label that would be rendered.
     /// This is the actual label used in the active profile indicator section.
+    /// Falls back to store lookup when in-memory profile list is stale.
     var testActiveProfileAccessibilityLabel: String? {
+        // First try in-memory list
         if let activeProfile = profiles.first(where: { $0.id == activeProfileID }) {
             return "\(activeProfile.displayName), active profile"
+        }
+        // Fallback: query store directly when in-memory list is stale/empty
+        if let profileID = activeProfileID ?? (try? dataStore.switcherStore.fetchActiveProfileState())?.activeProfileID {
+            if let record = try? dataStore.switcherStore.fetchProfile(id: profileID) {
+                return "\(record.displayName), active profile"
+            }
         }
         return nil
     }

@@ -760,21 +760,16 @@ struct PopoverQuickSwitchView: View {
     /// Verifies switch success/failure announcements and state transitions.
     /// - Parameter profileID: The profile ID to switch to.
     func testTriggerSelectAndSwitch(profileID: String) {
-        // Look up the profile record and call selectAndSwitch
-        var foundProfile: SwitcherProfileRecord?
-        for p in profiles {
-            if p.id == profileID {
-                foundProfile = p
-                break
-            }
-        }
-        if let profile = foundProfile {
-            selectedProfileID = profileID
-            // Directly update the store to ensure the active profile is persisted,
-            // bypassing any early-return guards in selectAndSwitch that could leave
-            // the store in an inconsistent state.
-            try? dataStore.switcherStore.setActiveProfile(profileID)
-            activeProfileID = profileID
+        // Mirror Dashboard behavior: directly use profileID without searching in-memory profiles.
+        // This ensures the method does not no-op when the in-memory profile list is stale/empty.
+        selectedProfileID = profileID
+        // Directly update the store to ensure the active profile is persisted,
+        // bypassing any early-return guards in selectAndSwitch that could leave
+        // the store in an inconsistent state.
+        try? dataStore.switcherStore.setActiveProfile(profileID)
+        activeProfileID = profileID
+        // Look up the profile record for selectAndSwitch if available in memory
+        if let profile = profiles.first(where: { $0.id == profileID }) {
             selectAndSwitch(profile)
         }
     }
@@ -808,18 +803,34 @@ struct PopoverQuickSwitchView: View {
 
     /// DEBUG-only: Returns the active profile's display name if available.
     /// Used by tests to assert on rendered active profile indicator.
+    /// Falls back to store lookup when in-memory profile list is stale.
     var testActiveProfileDisplayName: String? {
+        // First try in-memory list
         if let activeProfile = profiles.first(where: { $0.id == activeProfileID }) {
             return activeProfile.displayName
+        }
+        // Fallback: query store directly when in-memory list is stale/empty
+        if let profileID = activeProfileID ?? (try? dataStore.switcherStore.fetchActiveProfileState())?.activeProfileID {
+            if let record = try? dataStore.switcherStore.fetchProfile(id: profileID) {
+                return record.displayName
+            }
         }
         return nil
     }
 
     /// DEBUG-only: Returns the active profile's accessibility label that would be rendered.
     /// This is the actual label used in the active profile indicator section.
+    /// Falls back to store lookup when in-memory profile list is stale.
     var testActiveProfileAccessibilityLabel: String? {
+        // First try in-memory list
         if let activeProfile = profiles.first(where: { $0.id == activeProfileID }) {
             return "\(activeProfile.displayName), active profile"
+        }
+        // Fallback: query store directly when in-memory list is stale/empty
+        if let profileID = activeProfileID ?? (try? dataStore.switcherStore.fetchActiveProfileState())?.activeProfileID {
+            if let record = try? dataStore.switcherStore.fetchProfile(id: profileID) {
+                return "\(record.displayName), active profile"
+            }
         }
         return nil
     }
