@@ -17,29 +17,70 @@ None.
 
 ## Work Procedure
 
-1. Read `mission.md`, `AGENTS.md`, `.factory/library/architecture.md`, and `.factory/library/user-testing.md`.
-2. Identify the exact assertion IDs in `fulfills` and list their pass/fail conditions before editing.
-3. Implement TDD red/green:
+### Phase 0: Startup Context Reads (MANDATORY — must be evidenced before `followedProcedure=true`)
+
+Before beginning any implementation work, you MUST read ALL of the following files and record evidence of each read in `verification.commandsRun`. This is a hard prerequisite — if any required read is missing from command evidence, `followedProcedure` MUST be set to `false`.
+
+**Required reads (from `worker-base` Phase 1.1):**
+
+| # | File | Purpose | Evidence Command |
+|---|------|---------|-----------------|
+| 1 | `{missionDir}/mission.md` | Understand full scope and strategy | `head -n 10 {missionDir}/mission.md` or equivalent |
+| 2 | `{missionDir}/AGENTS.md` | Mission boundaries, implementation conventions | `head -n 20 {missionDir}/AGENTS.md` or equivalent |
+| 3 | `{missionDir}/features.json` | Feature status, milestone context | `jq '.features \| length' {missionDir}/features.json` |
+| 4 | `.factory/services.yaml` | Command/service manifest | `head -n 5 .factory/services.yaml` |
+| 5 | `.factory/library/architecture.md` | Component boundaries, data flows | `head -n 5 .factory/library/architecture.md` |
+| 6 | `.factory/library/user-testing.md` | User testing guidance | `head -n 5 .factory/library/user-testing.md` |
+
+**Additional conditional reads:**
+- If your feature has `fulfills` assertion IDs → read those from `{missionDir}/validation-contract.md`
+- If milestone context is needed → `jq --arg m "<milestone>" '.features \| map(select(.milestone == $m)) \| map({id, status})' {missionDir}/features.json`
+- If library has other relevant files → `ls .factory/library/` and read as needed
+
+**Evidence requirements:**
+- Each read MUST produce a `commandsRun` entry in the final handoff's `verification` section.
+- The entry MUST show actual file content was read (e.g., `head`, `grep`, `cat` output), not merely that the file exists.
+- Example acceptable evidence:
+  ```json
+  {"command": "head -n 10 {missionDir}/mission.md", "exitCode": 0, "observation": "Read mission goal section confirming token accounting scope."}
+  ```
+- Example UNACCEPTABLE evidence:
+  ```json
+  {"command": "test -f {missionDir}/mission.md", "exitCode": 0, "observation": "File exists."}
+  ```
+
+### Phase 1–4: Implementation
+
+1. **Identify assertions** — If your feature has `fulfills`, list assertion IDs and pass/fail conditions before editing code.
+2. **TDD red/green:**
    - Add or update failing scoped tests first.
    - Confirm failure.
    - Implement minimal code changes to satisfy assertions.
-4. Preserve exact-first precedence:
+3. **Preserve exact-first precedence:**
    - Exact rows must never be downgraded by lower-confidence writes.
    - Fallback must only run when exact buckets are absent.
-5. For persistence/reconciliation features, include datastore evidence:
+4. **Datastore evidence** (for persistence/reconciliation features):
    - Add assertions/queries validating dedupe, precedence, checkpoint safety, and idempotency.
-6. Run scoped validators relevant to changed area first, then broader gates:
+5. **Run scoped validators** relevant to changed area first, then broader gates:
    - `swift test --package-path OpenBurnBarCore`
    - `xcodebuild test` scoped `-only-testing` targets for changed contracts
    - `scripts/test-openburnbar-app.sh` when app-layer behavior changed
    - `npm --prefix extensions/openburnbar run lint`
-7. In `skillFeedback`, report procedure adherence truthfully:
-   - Set `followedProcedure=false` if required red/green or required reads/verification were skipped.
-   - Do not mark `followedProcedure=true` when deviations occurred.
-8. Keep commit/handoff traceability strict:
+
+### Phase 5: Skill Feedback Integrity
+
+6. In `skillFeedback`, report procedure adherence truthfully:
+   - **MUST set `followedProcedure=false`** if ANY of these were skipped or missing:
+     - Any required Phase 0 startup read (from the table above)
+     - Any required read-evidence entry in `verification.commandsRun`
+     - TDD red/green steps for features with `fulfills` assertions
+   - **MAY set `followedProcedure=true`** ONLY when:
+     - All required reads are present in `verification.commandsRun` with actual content evidence
+     - All applicable implementation steps were followed without deviation
+7. Keep commit/handoff traceability strict:
    - Use a resolvable commit SHA in handoff `commitId` (verify with `git rev-parse`).
-9. Ensure no long-running or watch processes remain.
-10. Produce a complete handoff with concrete evidence, not generic statements.
+8. Ensure no long-running or watch processes remain.
+9. Produce a complete handoff with concrete evidence, not generic statements.
 
 ## Example Handoff
 
@@ -50,6 +91,36 @@ None.
   "whatWasLeftUndone": "",
   "verification": {
     "commandsRun": [
+      {
+        "command": "head -n 10 ~/.factory/missions/<mission-id>/mission.md",
+        "exitCode": 0,
+        "observation": "Read mission goal section — confirmed token accounting scope and milestones."
+      },
+      {
+        "command": "head -n 20 ~/.factory/missions/<mission-id>/AGENTS.md",
+        "exitCode": 0,
+        "observation": "Read AGENTS mission boundaries — noted port constraints 3190-3199, off-limits ports 5000/7000/8642/11434."
+      },
+      {
+        "command": "jq '.features | length' ~/.factory/missions/<mission-id>/features.json",
+        "exitCode": 0,
+        "observation": "Confirmed feature count — read milestone context for m1-provenance-foundation."
+      },
+      {
+        "command": "head -n 5 .factory/services.yaml",
+        "exitCode": 0,
+        "observation": "Read services manifest — verified test command path (scripts/test-openburnbar-swift.sh)."
+      },
+      {
+        "command": "head -n 5 .factory/library/architecture.md",
+        "exitCode": 0,
+        "observation": "Read architecture doc — confirmed component boundaries for persistence layer."
+      },
+      {
+        "command": "head -n 5 .factory/library/user-testing.md",
+        "exitCode": 0,
+        "observation": "Read user-testing guidance — noted flow validator isolation rules."
+      },
       {
         "command": "swift test --package-path OpenBurnBarCore",
         "exitCode": 0,
@@ -96,7 +167,7 @@ None.
 
 ## Handoff Discipline Requirements
 
-Every EndFeatureRun handoff MUST satisfy both of the following requirements to be considered valid:
+Every EndFeatureRun handoff MUST satisfy all of the following requirements to be considered valid:
 
 ### 1. Full SHA Commit ID
 
@@ -106,30 +177,46 @@ The `commitId` field in handoffs MUST be a **full machine-resolvable SHA-1 commi
 
 **Why this matters:** Short hashes and symbolic refs are ambiguous across clones and can become dangling references after rebases or force-pushes. Full SHAs are immutable and universally auditable.
 
-### 2. Context Read Evidence for `followedProcedure=true`
+### 2. Startup Read Evidence for `followedProcedure=true`
 
-Before setting `followedProcedure: true` in `skillFeedback`, you MUST demonstrate concrete evidence that you read the required context files listed in Phase 1.1 of `worker-base`. This is not self-certification — it requires showing what you actually read.
+**This is a hard gate.** Setting `followedProcedure: true` without ALL required read-evidence entries in `verification.commandsRun` is a compliance violation that will be caught by scrutiny.
 
-**Required evidence format:** In your `verification.commandsRun` array, include entries like:
+**Required evidence** — Before setting `followedProcedure: true`, you MUST include `commandsRun` entries for each of the following (see Phase 0 table above for the canonical list):
 
-```json
-{
-  "command": "head -n 3 mission.md && grep -n 'fulfills' AGENTS.md | head -n 5",
-  "exitCode": 0,
-  "observation": "Read mission.md goal section and AGENTS.md fulfills list during Phase 1.1 startup."
-}
-```
+| Read | Minimum Evidence |
+|------|-----------------|
+| `mission.md` | `head -n N` or `grep` showing actual file content |
+| `AGENTS.md` | `head -n N` or `grep` showing actual file content (especially boundaries) |
+| `features.json` | `jq` query or `head` showing feature/milestone context |
+| `.factory/services.yaml` | `head -n N` showing command/service manifest |
+| `.factory/library/architecture.md` | `head -n N` showing component overview |
+| `.factory/library/user-testing.md` | `head -n N` showing testing guidance |
 
-The evidence must demonstrate actual content was read (e.g., `head`, `grep`, `cat`, `rg` output showing file content), not merely that files exist (which `test -f` proves). For example, `rg -n 'phase' AGENTS.md` shows actual matching lines, while `test -f AGENTS.md` only proves the file exists.
+**Evidence quality rules:**
+- MUST demonstrate actual content was read (e.g., `head`, `grep`, `cat`, `rg` output showing file content).
+- MUST NOT be existence checks only (`test -f`, `ls` without content).
+- Example acceptable: `head -n 10 mission.md` → observation describes what was in those lines.
+- Example unacceptable: `test -f mission.md` → only proves file exists, not that content was read.
+
+**Checklist before submitting handoff (verify each):**
+- [ ] `mission.md` read evidence present in `commandsRun`
+- [ ] `AGENTS.md` read evidence present in `commandsRun`
+- [ ] `features.json` read evidence present in `commandsRun`
+- [ ] `.factory/services.yaml` read evidence present in `commandsRun`
+- [ ] `.factory/library/architecture.md` read evidence present in `commandsRun`
+- [ ] `.factory/library/user-testing.md` read evidence present in `commandsRun`
+
+### 3. Deviation Reporting
 
 **If you deviated from the procedure:** You MUST set `followedProcedure: false` and document every deviation in `skillFeedback.deviations` with:
 - `step`: Which phase/step was skipped or altered
 - `whatIDidInstead`: What you actually did
 - `why`: Blocking condition, better approach discovered, or unclear instruction
 
-**Auditability:** These two requirements make every handoff independently verifiable:
+**Auditability:** These requirements make every handoff independently verifiable:
 - Full SHAs can be checked with `git rev-parse` and compared against `git log`
-- Context read evidence can be validated against Phase 1.1 requirements in `worker-base`
+- Context read evidence can be validated against the Phase 0 table and checklist above
+- Scrutiny validators can programmatically check for required evidence entries
 
 ## When to Return to Orchestrator
 
