@@ -168,6 +168,22 @@ Recommended scheduling:
 - Evidence note:
   - For `.xcresult` JSON extraction on current Xcode CLT, prefer `xcrun xcresulttool get object --legacy --path <bundle> --format json` over deprecated `get` forms.
 
+### Flow Validator Guidance: integration-hardening-crossflow-ui
+
+- Scope: cross-surface integration assertions for milestone `integration-hardening` (`VAL-CROSS-001` through `VAL-CROSS-010`).
+- Isolation boundary:
+  - Read/write only assigned flow reports under `.factory/validation/integration-hardening/user-testing/flows/`.
+  - Save evidence only under the assigned mission evidence folder.
+  - Do not modify application source code during validation.
+- Execution constraints:
+  - Run at most one heavy `xcodebuild test` validator at a time.
+  - Use signing-off flags:
+    - `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+- Preferred verification command:
+  - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/SwitcherCrossFlowTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+- Evidence note:
+  - Extract result bundles with `xcrun xcresulttool get object --legacy --path <bundle> --format json`.
+
 ### Crossflow UI seam reliability notes (integration-hardening)
 
 - For `SwitcherCrossFlowTests`, avoid relying only on view-local `@State` profile collections in debug seams. Use store-backed fallback seams for active-indicator getters so assertions remain deterministic after reload/hydration paths.
