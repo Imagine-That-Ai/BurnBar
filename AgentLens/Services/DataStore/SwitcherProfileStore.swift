@@ -117,22 +117,35 @@ public final class SwitcherProfileStore {
 
     /// Fetches the current active profile state.
     /// Performs cleanup of legacy duplicate rows if present during hydration.
-    /// Uses ORDER BY updatedAt DESC to deterministically select the most recent row.
+    /// Uses ORDER BY activeProfileID IS NOT NULL, updatedAt DESC to deterministically select
+    /// the most recent row with a non-NULL activeProfileID (preferring active rows over NULL).
     public func fetchActiveProfileState() throws -> SwitcherActiveProfileState {
         try dbQueue.write { db in
             // Clean up legacy duplicate rows if any exist.
-            // Keep only the row with the most recent updatedAt.
-            // This ensures deterministic hydration even when legacy code left multiple rows.
+            // Keep only the row with the most recent updatedAt that has an activeProfileID.
+            // NULL activeProfileID rows are cleaned up preferentially.
+            // Using COALESCE to treat NULL updatedAt as epoch (oldest) so NULL rows are deleted
+            // when a non-NULL row exists.
             try db.execute(sql: """
                 DELETE FROM switcher_active_profile
                 WHERE rowid NOT IN (
                     SELECT rowid FROM switcher_active_profile
-                    ORDER BY updatedAt DESC
+                    WHERE activeProfileID IS NOT NULL
+                    ORDER BY COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
                     LIMIT 1
                 )
             """)
 
-            let row = try Row.fetchOne(db, sql: "SELECT activeProfileID, updatedAt FROM switcher_active_profile LIMIT 1")
+            // Now select the remaining row with proper ordering
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT activeProfileID, updatedAt FROM switcher_active_profile
+                    ORDER BY activeProfileID IS NOT NULL DESC,
+                             COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
+                    LIMIT 1
+                """
+            )
             guard let row else {
                 return SwitcherActiveProfileState(activeProfileID: nil)
             }
