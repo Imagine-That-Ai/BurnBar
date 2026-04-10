@@ -109,14 +109,36 @@ Before setting `followedProcedure: true` in `skillFeedback`, you MUST demonstrat
 
 The evidence must demonstrate actual content was read (e.g., `head`, `grep`, `cat`, `rg` output showing file content), not merely that files exist (which `test -f` proves). For example, `rg -n 'phase' AGENTS.md` shows actual matching lines, while `test -f AGENTS.md` only proves the file exists.
 
+### 3. Implementation Commit Traceability
+
+When the final commit referenced by `commitId` is a **non-implementation artifact commit** (e.g., `chore(...)`, `docs(...)`, `test(validation):...`, or any commit that does not contain the feature's production/test code changes), the worker MUST also include the actual implementation commit SHA(s) in the handoff so that scrutiny reviewers can unambiguously map the implementation diff to the feature scope.
+
+**Implementation commits** are commits whose diff contains the substantive code changes for the assigned feature (production code, test code, configuration changes that implement the feature behavior).
+
+**Artifact commits** are commits whose diff is limited to validation synthesis, documentation updates, `.factory/` state commits, or other non-implementation housekeeping.
+
+**How to provide implementation commit traceability:**
+
+1. **During work**: Record the commit SHA(s) of your implementation commit(s) as you make them (use `git rev-parse HEAD` after each implementation commit).
+2. **At handoff**: If your `commitId` points to an artifact commit, include the implementation SHA(s) in `handoff.whatWasImplemented` with a clear reference, e.g.:
+   ```
+   "whatWasImplemented": "Implemented X (implementation commit: abc1234...full SHA...). Final commit def... includes validation artifacts."
+   ```
+3. **Verification**: Scrutiny reviewers can then run `git show <implementation-sha> --stat` to see the actual feature diff.
+
+**Compliance:** If your `commitId` references an artifact commit but no implementation commit SHA is included, `followedProcedure` MUST be set to `false` with a deviation documenting the omission.
+
+### 4. Deviation Reporting
+
 **If you deviated from the procedure:** You MUST set `followedProcedure: false` and document every deviation in `skillFeedback.deviations` with:
 - `step`: Which phase/step was skipped or altered
 - `whatIDidInstead`: What you actually did
 - `why`: Blocking condition, better approach discovered, or unclear instruction
 
-**Auditability:** These two requirements make every handoff independently verifiable:
+**Auditability:** These requirements make every handoff independently verifiable:
 - Full SHAs can be checked with `git rev-parse` and compared against `git log`
 - Context read evidence can be validated against Phase 1.1 requirements in `worker-base`
+- Implementation commit traceability can be validated by checking whether `commitId` is an artifact commit and whether implementation SHAs are provided
 
 ## When to Return to Orchestrator
 
