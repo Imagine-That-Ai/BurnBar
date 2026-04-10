@@ -165,6 +165,7 @@
 		AA0000000000000000000001 /* PopoverQuickSwitchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000002 /* PopoverQuickSwitchView.swift */; };
 		AA0000000000000000000003 /* SwitcherPopoverUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000004 /* SwitcherPopoverUITests.swift */; };
 		CROSS00000000000000000001 /* SwitcherCrossFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CROSS00000000000000000002 /* SwitcherCrossFlowTests.swift */; };
+		CROSS000000000000RTLOG01 /* SwitcherRuntimeLogCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CROSS000000000000RTLOG02 /* SwitcherRuntimeLogCaptureTests.swift */; };
 		8488AD2C9CB26F96504052EF /* OpenBurnBarDaemonServerTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6623DDB231233436128FA75 /* OpenBurnBarDaemonServerTypes.swift */; };
 		848EA231EEA32C3C08E94632 /* TokenUsageProvenanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 047CEF0267BCD11F9F8E9420 /* TokenUsageProvenanceTests.swift */; };
 		85579002D62BFDE58AF4A9A2 /* SearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF0BC832DD4F6C22F0FC801C /* SearchService.swift */; };
@@ -365,6 +366,7 @@
 		AA0000000000000000000002 /* PopoverQuickSwitchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverQuickSwitchView.swift; sourceTree = "<group>"; };
 		AA0000000000000000000004 /* SwitcherPopoverUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherPopoverUITests.swift; sourceTree = "<group>"; };
 		CROSS00000000000000000002 /* SwitcherCrossFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherCrossFlowTests.swift; sourceTree = "<group>"; };
+		CROSS000000000000RTLOG02 /* SwitcherRuntimeLogCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherRuntimeLogCaptureTests.swift; sourceTree = "<group>"; };
 		0FC8315913C35BC77E9F49F1 /* OnboardingConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingConnectView.swift; sourceTree = "<group>"; };
 		12068541DA3F5C3D57B1F7DE /* CodexRolloutScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRolloutScanner.swift; sourceTree = "<group>"; };
 		13F043566936750728A8A885 /* DeterministicEmbeddingProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeterministicEmbeddingProviders.swift; sourceTree = "<group>"; };
@@ -1063,6 +1065,7 @@
 				D1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6 /* SwitcherDashboardUITests.swift */,
 				AA0000000000000000000004 /* SwitcherPopoverUITests.swift */,
 				CROSS00000000000000000002 /* SwitcherCrossFlowTests.swift */,
+				CROSS000000000000RTLOG02 /* SwitcherRuntimeLogCaptureTests.swift */,
 				EBB0C9D18B36867A7CB11124 /* TokenAccountingPrecedenceTests.swift */,
 				BBBB00000000000000000004 /* BackfillSchedulerTests.swift */,
 				047CEF0267BCD11F9F8E9420 /* TokenUsageProvenanceTests.swift */,

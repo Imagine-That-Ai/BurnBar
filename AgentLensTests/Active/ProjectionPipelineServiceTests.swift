@@ -3009,4 +3009,443 @@ extension ProjectionPipelineServiceTests {
             XCTAssertTrue(collectedSet.contains(expectedID), "Missing \(expectedID) in paginated result.")
         }
     }
+
+    // MARK: - Multi-page boundary coverage (>1000 rows via injectable page size)
+
+    func test_rebuildJob_paginatesBeyondNominalPageSize() async throws {
+        // With a small injectable page size (e.g., 100), rebuild must paginate
+        // through >1000 conversations covering 11+ pages without skip or duplication.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-rebuild-boundary",
+            paginationPageSize: 100
+        )
+        let base = Date(timeIntervalSince1970: 1_743_200_000)
+
+        let conversationCount = 1050
+        for i in 0..<conversationCount {
+            let conv = makeConversation(
+                id: "conv-boundary-rebuild-\(i)",
+                fullText: "Boundary rebuild content \(i).",
+                indexedAt: base
+            )
+            try store.upsertConversation(conv)
+        }
+
+        try service.enqueueRebuildJob(reason: "test-boundary-rebuild", priority: 1)
+        let rebuildReport = try await service.runSweep(maxJobs: 1)
+        XCTAssertEqual(rebuildReport.completedJobs, 1, "Rebuild job should complete.")
+
+        // Verify ALL conversations got enqueued for reproject
+        let queuedAfterRebuild = try store.fetchProjectionJobs(statuses: [.queued], limit: 5000)
+        let reprojectQueued = queuedAfterRebuild.filter { $0.jobType == .reproject && $0.sourceKind == .conversation }
+        XCTAssertEqual(
+            reprojectQueued.count, conversationCount,
+            "All \(conversationCount) conversations should be enqueued for reproject across 11 pages. Found: \(reprojectQueued.count)"
+        )
+
+        // Verify no duplicates in the reproject queue
+        let reprojectIDs = reprojectQueued.compactMap { $0.sourceID }
+        let uniqueIDs = Set(reprojectIDs)
+        XCTAssertEqual(
+            uniqueIDs.count, conversationCount,
+            "No duplicate reproject enqueues. Unique IDs: \(uniqueIDs.count), total: \(reprojectIDs.count)"
+        )
+    }
+
+    func test_rebuildJob_boundaryCrossing_pageLastElement() async throws {
+        // Verify no skip/duplicate when the boundary falls exactly at pageSize.
+        // With pageSize=50 and 100 conversations, page 1 ends at row 50,
+        // page 2 starts at row 51 — boundary crossing must be seamless.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-rebuild-exact-boundary",
+            paginationPageSize: 50
+        )
+        let base = Date(timeIntervalSince1970: 1_743_210_000)
+
+        let conversationCount = 100
+        for i in 0..<conversationCount {
+            let conv = makeConversation(
+                id: "conv-exact-bnd-\(String(format: "%04d", i))",
+                fullText: "Exact boundary content \(i).",
+                indexedAt: base
+            )
+            try store.upsertConversation(conv)
+        }
+
+        try service.enqueueRebuildJob(reason: "test-exact-boundary", priority: 1)
+        let rebuildReport = try await service.runSweep(maxJobs: 1)
+        XCTAssertEqual(rebuildReport.completedJobs, 1)
+
+        let queued = try store.fetchProjectionJobs(statuses: [.queued], limit: 500)
+        let reprojectIDs = Set(queued.filter { $0.jobType == .reproject }.compactMap { $0.sourceID })
+        XCTAssertEqual(
+            reprojectIDs.count, conversationCount,
+            "Exactly \(conversationCount) unique conversations at page boundary. Found: \(reprojectIDs.count)"
+        )
+    }
+
+    func test_gapRepair_paginatesBeyondNominalPageSize() async throws {
+        // With a small injectable page size (100), gap repair must cover >1000
+        // indexed documents and detect all stale entries across 11+ pages.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-gap-boundary",
+            paginationPageSize: 100
+        )
+        let base = Date(timeIntervalSince1970: 1_743_220_000)
+
+        let conversationCount = 1050
+        for i in 0..<conversationCount {
+            let conv = makeConversation(
+                id: "conv-boundary-gap-\(i)",
+                fullText: "Original gap boundary content \(i).",
+                indexedAt: base
+            )
+            try store.upsertConversation(conv)
+            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+        }
+
+        // Drain initial projection
+        for _ in 0..<20 {
+            let report = try await service.runSweep(maxJobs: 100)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let indexedDocs = try store.fetchSearchDocuments(limit: 5000, sourceKinds: [.conversation])
+        XCTAssertEqual(indexedDocs.count, conversationCount, "All conversations should be indexed.")
+
+        // Stale every 7th conversation (150 stale, spread across pages)
+        let staleIDs: [String] = (0..<conversationCount).filter { $0 % 7 == 0 }.map { "conv-boundary-gap-\($0)" }
+        for staleID in staleIDs {
+            let updatedConv = ConversationRecord(
+                id: staleID,
+                provider: .claudeCode,
+                sessionId: "session-\(staleID)",
+                projectName: "OpenBurnBar",
+                startTime: base.addingTimeInterval(-60),
+                endTime: base.addingTimeInterval(60),
+                messageCount: 20,
+                userWordCount: 100,
+                assistantWordCount: 200,
+                keyFiles: ["File.swift"],
+                keyCommands: ["swift test"],
+                keyTools: ["Read", "Edit"],
+                inferredTaskTitle: "Updated Boundary Task \(staleID)",
+                lastAssistantMessage: "Updated boundary message.",
+                fullText: "Updated content for \(staleID) — boundary gap test.",
+                indexedAt: base,
+                fileModifiedAt: base.addingTimeInterval(60),
+                summary: nil,
+                summaryTitle: nil,
+                summaryUpdatedAt: nil,
+                summaryProvider: nil,
+                summaryModel: nil,
+                sourceType: .providerLog
+            )
+            try store.upsertConversation(updatedConv)
+        }
+
+        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 10000).count
+
+        // Run gap repair — must paginate through all 1050 documents
+        for _ in 0..<20 {
+            let report = try await service.runSweep(maxJobs: 200)
+            if report.leasedJobs == 0 { break }
+        }
+
+        // Count only gap repair reproject completions (priority 3), not initial projection completions
+        let gapRepairReprojects = try store.fetchProjectionJobs(statuses: [.completed], limit: 10000).filter {
+            $0.jobType == .reproject && $0.priority == 3
+        }
+        XCTAssertEqual(
+            gapRepairReprojects.count, staleIDs.count,
+            "All \(staleIDs.count) stale conversations across >10 pages should be detected and reprojected. Found: \(gapRepairReprojects.count) gap repair completions."
+        )
+
+        // Verify each stale document hash was updated
+        for staleID in staleIDs {
+            let doc = try store.fetchSearchDocuments(sourceKind: .conversation, sourceID: staleID).first
+            let conv = try store.fetchConversation(id: staleID)
+            XCTAssertNotNil(doc, "Document should exist for stale conversation \(staleID).")
+            XCTAssertNotNil(conv, "Conversation should exist for stale conversation \(staleID).")
+            XCTAssertEqual(
+                doc?.contentHash,
+                ProjectionIdentity.conversationContentHash(for: conv!),
+                "Document hash should match updated conversation \(staleID)."
+            )
+        }
+    }
+
+    func test_gapRepair_boundaryCrossing_withMixedPageSizes() async throws {
+        // Verify gap repair works correctly with various injectable page sizes
+        // to catch boundary-dependent regressions. Use an awkward page size (37)
+        // that doesn't divide evenly into the corpus size.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-gap-mixed-boundary",
+            paginationPageSize: 37
+        )
+        let base = Date(timeIntervalSince1970: 1_743_230_000)
+
+        let conversationCount = 200
+        for i in 0..<conversationCount {
+            let conv = makeConversation(
+                id: "conv-mixed-bnd-\(i)",
+                fullText: "Mixed boundary content \(i).",
+                indexedAt: base
+            )
+            try store.upsertConversation(conv)
+            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+        }
+
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 50)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let indexedDocs = try store.fetchSearchDocuments(limit: 500, sourceKinds: [.conversation])
+        XCTAssertEqual(indexedDocs.count, conversationCount)
+
+        // Stale conversations at page boundaries: items 36, 37, 73, 74, 110, 111, etc.
+        let boundaryStaleIndices = [36, 37, 73, 74, 110, 111, 147, 148, 184, 185]
+        let staleIDs = boundaryStaleIndices.map { "conv-mixed-bnd-\($0)" }
+        for staleID in staleIDs {
+            let updatedConv = ConversationRecord(
+                id: staleID,
+                provider: .claudeCode,
+                sessionId: "session-\(staleID)",
+                projectName: "OpenBurnBar",
+                startTime: base.addingTimeInterval(-60),
+                endTime: base.addingTimeInterval(60),
+                messageCount: 10,
+                userWordCount: 50,
+                assistantWordCount: 100,
+                keyFiles: ["File.swift"],
+                keyCommands: ["swift test"],
+                keyTools: ["Read"],
+                inferredTaskTitle: "Mixed Boundary Stale \(staleID)",
+                lastAssistantMessage: "Stale at boundary.",
+                fullText: "Updated mixed boundary content for \(staleID).",
+                indexedAt: base,
+                fileModifiedAt: base.addingTimeInterval(60),
+                summary: nil,
+                summaryTitle: nil,
+                summaryUpdatedAt: nil,
+                summaryProvider: nil,
+                summaryModel: nil,
+                sourceType: .providerLog
+            )
+            try store.upsertConversation(updatedConv)
+        }
+
+        let completedBefore = try store.fetchProjectionJobs(statuses: [.completed], limit: 1000).count
+
+        for _ in 0..<10 {
+            let report = try await service.runSweep(maxJobs: 100)
+            if report.leasedJobs == 0 { break }
+        }
+
+        // Count only gap repair reproject completions (priority 3)
+        let gapRepairReprojects = try store.fetchProjectionJobs(statuses: [.completed], limit: 1000).filter {
+            $0.jobType == .reproject && $0.priority == 3
+        }
+        XCTAssertEqual(
+            gapRepairReprojects.count, staleIDs.count,
+            "All \(staleIDs.count) stale conversations at page boundaries should be detected. Found: \(gapRepairReprojects.count) gap repair completions."
+        )
+    }
+
+    func test_reembedJob_paginatesBeyondNominalPageSize() async throws {
+        // With a small injectable page size, re-embed must collect chunks from
+        // >1000 documents and re-embed them all without truncation.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "reembed-boundary-v1", seed: "reembed-boundary-seed")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-reembed-boundary",
+            chunkEmbedder: embedder,
+            paginationPageSize: 100
+        )
+        let base = Date(timeIntervalSince1970: 1_743_240_000)
+
+        // Create and project conversations to produce many search documents
+        let conversationCount = 250
+        for i in 0..<conversationCount {
+            let conv = makeConversation(
+                id: "conv-boundary-reembed-\(i)",
+                fullText: String(repeating: "Reembed boundary content \(i). ", count: 20),
+                indexedAt: base
+            )
+            try store.upsertConversation(conv)
+            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+        }
+
+        // Drain initial projection
+        for _ in 0..<15 {
+            let report = try await service.runSweep(maxJobs: 100)
+            if report.leasedJobs == 0 { break }
+        }
+
+        let allDocuments = try store.fetchSearchDocuments(limit: 500, sourceKinds: [.conversation])
+        let allChunks = allDocuments.flatMap { doc -> [SearchChunkRecord] in
+            (try? store.fetchSearchChunks(documentID: doc.id)) ?? []
+        }
+        XCTAssertGreaterThan(allDocuments.count, 100, "Should have >100 documents for boundary test.")
+        XCTAssertGreaterThan(allChunks.count, 100, "Should have >100 chunks for boundary test.")
+
+        // Trigger re-embed with new version — must paginate through all documents
+        let embedderV2 = DeterministicFakeEmbeddingProvider(versionTag: "reembed-boundary-v2", seed: "reembed-boundary-v2-seed")
+        let serviceV2 = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-reembed-boundary-v2",
+            chunkEmbedder: embedderV2,
+            paginationPageSize: 100
+        )
+        try serviceV2.enqueueReembedJob(reason: "test-reembed-boundary", priority: 1)
+
+        let reembedReport = try await serviceV2.runSweep(maxJobs: 10)
+        XCTAssertEqual(reembedReport.completedJobs, 1, "Re-embed job should complete.")
+
+        let versionV2ID = EmbeddingIdentity.versionID(for: embedderV2.descriptor)
+        let v2Embeddings = try store.fetchChunkEmbeddings(embeddingVersionID: versionV2ID)
+        XCTAssertEqual(
+            v2Embeddings.count, allChunks.count,
+            "All \(allChunks.count) chunks should have v2 embeddings after paginated re-embed. Found: \(v2Embeddings.count)"
+        )
+    }
+
+    func test_offsetPagination_noSkipOrDuplicate_acrossExactBoundary() async throws {
+        // Deterministic check: with a corpus sized exactly N * pageSize,
+        // offset pagination must yield N * pageSize items with no skip/duplicate.
+        // Tests the boundary condition where the last page is exactly full.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let sharedTimestamp = Date(timeIntervalSince1970: 1_743_250_000)
+        let pageSize = 250
+        let pageCount = 5
+        let conversationCount = pageSize * pageCount  // exactly 1250
+
+        for i in 0..<conversationCount {
+            let conv = ConversationRecord(
+                id: "conv-dup-check-\(String(format: "%05d", i))",
+                provider: .claudeCode,
+                sessionId: "session-dup-\(i)",
+                projectName: "OpenBurnBar",
+                startTime: sharedTimestamp.addingTimeInterval(-60),
+                endTime: sharedTimestamp,
+                messageCount: 4,
+                userWordCount: 20,
+                assistantWordCount: 40,
+                keyFiles: ["File.swift"],
+                keyCommands: ["swift test"],
+                keyTools: ["Read"],
+                inferredTaskTitle: "Dup Check \(i)",
+                lastAssistantMessage: "Done.",
+                fullText: "Content for duplicate check \(i).",
+                indexedAt: sharedTimestamp,
+                fileModifiedAt: sharedTimestamp,
+                summary: nil,
+                summaryTitle: nil,
+                summaryUpdatedAt: nil,
+                summaryProvider: nil,
+                summaryModel: nil,
+                sourceType: .providerLog
+            )
+            try store.upsertConversation(conv)
+        }
+
+        // Paginate through conversations using offset
+        var collectedIDs: [String] = []
+        var offset = 0
+        var pagesTraversed = 0
+        while true {
+            let page = try store.fetchConversations(limit: pageSize, offset: offset)
+            guard page.isEmpty == false else { break }
+            pagesTraversed += 1
+            for conv in page {
+                collectedIDs.append(conv.id)
+            }
+            offset += page.count
+            if page.count < pageSize { break }
+        }
+
+        XCTAssertEqual(pagesTraversed, pageCount, "Should traverse exactly \(pageCount) pages. Got: \(pagesTraversed)")
+        XCTAssertEqual(collectedIDs.count, conversationCount, "Should yield exactly \(conversationCount) IDs. Got: \(collectedIDs.count)")
+
+        let collectedSet = Set(collectedIDs)
+        XCTAssertEqual(collectedSet.count, conversationCount, "No duplicates. Unique: \(collectedSet.count), total: \(collectedIDs.count)")
+
+        // Verify boundary items exist (first and last of each page)
+        for pageIdx in 0..<pageCount {
+            let firstInPage = "conv-dup-check-\(String(format: "%05d", pageIdx * pageSize))"
+            let lastInPage = "conv-dup-check-\(String(format: "%05d", (pageIdx + 1) * pageSize - 1))"
+            XCTAssertTrue(collectedSet.contains(firstInPage), "Missing first item of page \(pageIdx): \(firstInPage)")
+            XCTAssertTrue(collectedSet.contains(lastInPage), "Missing last item of page \(pageIdx): \(lastInPage)")
+        }
+    }
+
+    func test_searchDocumentPagination_noSkipOrDuplicate_acrossExactBoundary() async throws {
+        // Verify search document offset pagination with a corpus exactly matching
+        // page boundaries, using the same ordering as gap repair.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_743_260_000)
+        let pageSize = 200
+        let pageCount = 3
+        let conversationCount = pageSize * pageCount  // exactly 600
+
+        for i in 0..<conversationCount {
+            let conv = makeConversation(
+                id: "conv-doc-pag-\(String(format: "%04d", i))",
+                fullText: "Doc pagination content \(i).",
+                indexedAt: base
+            )
+            try store.upsertConversation(conv)
+            try store.enqueueConversationProjectionJob(conversationID: conv.id, jobType: .project, now: base)
+        }
+
+        for _ in 0..<15 {
+            let report = try await ProjectionPipelineService(
+                dataStore: store,
+                leaseOwner: "worker-doc-pag-proj"
+            ).runSweep(maxJobs: 100)
+            if report.leasedJobs == 0 { break }
+        }
+
+        // Paginate through search documents using the same query as gap repair
+        var collectedIDs: [String] = []
+        var offset = 0
+        var pagesTraversed = 0
+        while true {
+            let page = try store.fetchSearchDocuments(
+                limit: pageSize,
+                offset: offset,
+                sourceKinds: [.conversation]
+            )
+            guard page.isEmpty == false else { break }
+            pagesTraversed += 1
+            for doc in page {
+                collectedIDs.append(doc.sourceID)
+            }
+            offset += page.count
+            if page.count < pageSize { break }
+        }
+
+        XCTAssertEqual(pagesTraversed, pageCount, "Should traverse exactly \(pageCount) pages of search documents. Got: \(pagesTraversed)")
+        XCTAssertEqual(collectedIDs.count, conversationCount, "Should yield exactly \(conversationCount) document source IDs. Got: \(collectedIDs.count)")
+
+        let collectedSet = Set(collectedIDs)
+        XCTAssertEqual(collectedSet.count, conversationCount, "No duplicates in search document pagination. Unique: \(collectedSet.count)")
+    }
 }

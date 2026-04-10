@@ -138,6 +138,7 @@ final class ProjectionPipelineService {
     private let chunkEmbedder: any ChunkEmbeddingProviding
     private let embeddingModelID: String
     private let embeddingVersionID: String
+    private let paginationPageSize: Int
     private var isSweeping = false
     private var didSeedBackfill = false
 
@@ -171,7 +172,8 @@ final class ProjectionPipelineService {
         leaseOwner: String = "projection-worker-\(UUID().uuidString)",
         nowProvider: @escaping () -> Date = Date.init,
         chunker: ProjectionChunker = ProjectionChunker(),
-        chunkEmbedder: any ChunkEmbeddingProviding = DeterministicFakeEmbeddingProvider()
+        chunkEmbedder: any ChunkEmbeddingProviding = DeterministicFakeEmbeddingProvider(),
+        paginationPageSize: Int = 1000
     ) {
         self.dataStore = dataStore
         self.leaseOwner = leaseOwner
@@ -180,6 +182,7 @@ final class ProjectionPipelineService {
         self.chunkEmbedder = chunkEmbedder
         self.embeddingModelID = EmbeddingIdentity.modelID(for: chunkEmbedder.descriptor)
         self.embeddingVersionID = EmbeddingIdentity.versionID(for: chunkEmbedder.descriptor)
+        self.paginationPageSize = max(1, paginationPageSize)
     }
 
     private static func makeChunkEmbedder(
@@ -427,7 +430,7 @@ final class ProjectionPipelineService {
     private func enqueueGapRepairIfNeeded() throws {
         // Paginate through ALL indexed conversation documents to cover the full corpus.
         // Uses deterministic ordering with stable tie-breaks across pages.
-        let repairPageSize = 1000
+        let repairPageSize = paginationPageSize
         var documentOffset = 0
         var hasProcessedAnyPage = false
 
@@ -553,7 +556,7 @@ final class ProjectionPipelineService {
         var enqueuedPurges = 0
 
         // Paginate through all conversations to avoid truncation for large corpora.
-        let rebuildPageSize = 1000
+        let rebuildPageSize = paginationPageSize
         var conversationOffset = 0
         while true {
             let conversations = try dataStore.fetchConversations(limit: rebuildPageSize, offset: conversationOffset)
@@ -658,7 +661,7 @@ final class ProjectionPipelineService {
         }
 
         // Paginate through ALL documents to avoid truncation for large corpora.
-        let reembedPageSize = 1000
+        let reembedPageSize = paginationPageSize
         var chunks: [SearchChunkRecord] = []
         var offset = 0
         while true {
