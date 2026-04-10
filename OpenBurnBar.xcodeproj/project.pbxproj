@@ -1589,6 +1589,7 @@
 				A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6 /* SwitcherDashboardUITests.swift in Sources */,
 				AA0000000000000000000003 /* SwitcherPopoverUITests.swift in Sources */,
 				CROSS00000000000000000001 /* SwitcherCrossFlowTests.swift in Sources */,
+				CROSS000000000000RTLOG01 /* SwitcherRuntimeLogCaptureTests.swift in Sources */,
 				DD9DAE5BF3CCDE8FFB72237E /* TestableClaudeCodeParser.swift in Sources */,
 				EBC6ADD0C9829CD762B697BE /* TokenAccountingPrecedenceTests.swift in Sources */,
 				848EA231EEA32C3C08E94632 /* TokenUsageProvenanceTests.swift in Sources */,
