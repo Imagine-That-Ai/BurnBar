@@ -2,6 +2,46 @@ import SwiftUI
 import AppKit
 import OpenBurnBarCore
 
+// MARK: - Switcher Data Loading Protocol
+
+/// Protocol for injectable switcher data source.
+/// Allows UI tests to provide deterministic mock data without requiring
+/// a real DataStore or SwitcherProfileStore instance.
+///
+/// Production: Use `DataStoreSwitcherDataLoading` which wraps `DataStore.switcherStore`.
+/// Tests: Use `MockSwitcherDataLoading` for deterministic test data.
+protocol SwitcherDataLoading {
+    /// Fetches all switcher profiles.
+    func fetchAllProfiles() throws -> [SwitcherProfileRecord]
+
+    /// Validates and recovers active profile state.
+    func validateAndRecoverActiveProfile() throws -> SwitcherActiveProfileState
+
+    /// Sets the active profile by ID.
+    func setActiveProfile(_ profileID: String) throws
+}
+
+/// Production implementation that wraps `DataStore.switcherStore`.
+final class DataStoreSwitcherDataLoading: SwitcherDataLoading {
+    private let store: SwitcherProfileStore
+
+    init(store: SwitcherProfileStore) {
+        self.store = store
+    }
+
+    func fetchAllProfiles() throws -> [SwitcherProfileRecord] {
+        try store.fetchAllProfiles()
+    }
+
+    func validateAndRecoverActiveProfile() throws -> SwitcherActiveProfileState {
+        try store.validateAndRecoverActiveProfile()
+    }
+
+    func setActiveProfile(_ profileID: String) throws {
+        try store.setActiveProfile(profileID)
+    }
+}
+
 // MARK: - Dashboard Quick Switch View
 
 /// Dashboard quick-switch surface for fast profile switching and launch actions.
@@ -19,6 +59,11 @@ import OpenBurnBarCore
 struct DashboardQuickSwitchView: View {
     let dataStore: DataStore
     let onOpenSettings: () -> Void
+
+    // Injectable data source for testability
+    // Production uses DataStoreSwitcherDataLoading wrapping dataStore.switcherStore
+    // Tests can inject MockSwitcherDataLoading for deterministic data
+    private let switcherDataLoading: any SwitcherDataLoading
 
     @State private var profiles: [SwitcherProfileRecord] = []
     @State private var activeProfileID: String?
@@ -56,10 +101,36 @@ struct DashboardQuickSwitchView: View {
         self.testInjectedError = testInjectedError
         self.skipLoadData = skipLoadData
         self.testAnnouncementHandler = testAnnouncementHandler
+        self.switcherDataLoading = DataStoreSwitcherDataLoading(store: dataStore.switcherStore)
     }
 
     /// When true, loadData() is skipped in onAppear - for testing error/empty states.
     private let skipLoadData: Bool
+
+    /// DEBUG-only initializer that allows injecting a custom data source for testing.
+    /// This enables direct control over profile data for deterministic UI rendering tests.
+    /// - Parameters:
+    ///   - dataStore: The data store to use (required for launch services).
+    ///   - onOpenSettings: Callback when settings button is tapped.
+    ///   - switcherDataLoading: Injectable data source for profile loading.
+    ///   - testInjectedError: Error message to pre-populate for testing error UI rendering.
+    ///   - skipLoadData: When true, skips calling loadData() in onAppear (for testing error/empty states).
+    ///   - testAnnouncementHandler: Optional callback to capture accessibility announcements.
+    init(dataStore: DataStore, onOpenSettings: @escaping () -> Void, switcherDataLoading: any SwitcherDataLoading, testInjectedError: String? = nil, skipLoadData: Bool = false, testAnnouncementHandler: ((String) -> Void)? = nil) {
+        self.dataStore = dataStore
+        self.onOpenSettings = onOpenSettings
+        self.switcherDataLoading = switcherDataLoading
+        self.testInjectedError = testInjectedError
+        self.skipLoadData = skipLoadData
+        self.testAnnouncementHandler = testAnnouncementHandler
+    }
+    #else
+    /// Production initializer.
+    init(dataStore: DataStore, onOpenSettings: @escaping () -> Void) {
+        self.dataStore = dataStore
+        self.onOpenSettings = onOpenSettings
+        self.switcherDataLoading = DataStoreSwitcherDataLoading(store: dataStore.switcherStore)
+    }
     #endif
 
     private enum SwitchState: Equatable {
@@ -653,8 +724,8 @@ struct DashboardQuickSwitchView: View {
         announceForAccessibility("Loading profiles")
 
         do {
-            profiles = try dataStore.switcherStore.fetchAllProfiles()
-            let state = try dataStore.switcherStore.validateAndRecoverActiveProfile()
+            profiles = try switcherDataLoading.fetchAllProfiles()
+            let state = try switcherDataLoading.validateAndRecoverActiveProfile()
             activeProfileID = state.activeProfileID
             selectedProfileID = state.activeProfileID ?? profiles.first?.id
 
@@ -692,7 +763,7 @@ struct DashboardQuickSwitchView: View {
         }
 
         do {
-            try dataStore.switcherStore.setActiveProfile(profileID)
+            try switcherDataLoading.setActiveProfile(profileID)
             activeProfileID = profileID
 
             withAnimation(DesignSystem.Animation.snappy) {

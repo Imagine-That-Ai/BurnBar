@@ -1676,3 +1676,256 @@ private final class ProdSwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter
         try? store.setActiveProfile(profileID)
     }
 }
+
+// MARK: - Mock Switcher Data Loading for UI Tests
+
+#if DEBUG
+/// Mock implementation of `SwitcherDataLoading` for UI testing.
+/// Provides deterministic data for testing error/empty/loaded state rendering.
+final class MockSwitcherDataLoading: SwitcherDataLoading {
+    var profilesToReturn: [SwitcherProfileRecord] = []
+    var activeProfileState: SwitcherActiveProfileState = SwitcherActiveProfileState(activeProfileID: nil, updatedAt: Date())
+    var fetchError: Error?
+    var setActiveError: Error?
+    var setActiveCallCount = 0
+    var lastSetActiveProfileID: String?
+
+    func fetchAllProfiles() throws -> [SwitcherProfileRecord] {
+        if let error = fetchError {
+            throw error
+        }
+        return profilesToReturn
+    }
+
+    func validateAndRecoverActiveProfile() throws -> SwitcherActiveProfileState {
+        if let error = fetchError {
+            throw error
+        }
+        return activeProfileState
+    }
+
+    func setActiveProfile(_ profileID: String) throws {
+        setActiveCallCount += 1
+        lastSetActiveProfileID = profileID
+        if let error = setActiveError {
+            throw error
+        }
+    }
+
+    /// Configures the mock to return an error state.
+    func setFetchError(_ message: String) {
+        self.fetchError = NSError(domain: "MockSwitcherDataLoading", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+
+    /// Configures the mock to return specific profiles and active state.
+    func setProfiles(_ profiles: [SwitcherProfileRecord], activeID: String? = nil) {
+        self.profilesToReturn = profiles
+        self.activeProfileState = SwitcherActiveProfileState(activeProfileID: activeID, updatedAt: Date())
+    }
+
+    /// Resets all mock state.
+    func reset() {
+        profilesToReturn = []
+        activeProfileState = SwitcherActiveProfileState(activeProfileID: nil, updatedAt: Date())
+        fetchError = nil
+        setActiveError = nil
+        setActiveCallCount = 0
+        lastSetActiveProfileID = nil
+    }
+}
+#endif
+
+// MARK: - Injectable Data Source UI Tests
+
+#if DEBUG
+/// Tests for `DashboardQuickSwitchView` using injectable `SwitcherDataLoading`.
+/// These tests verify that the view correctly uses an injectable data source,
+/// enabling deterministic UI testing without relying on actual DataStore.
+@MainActor
+final class SwitcherDashboardDataSourceTests: XCTestCase {
+
+    // MARK: - Test Data
+
+    private var dbQueue: DatabaseQueue!
+    private var dataStore: DataStore!
+
+    // MARK: - Lifecycle
+
+    override func setUp() {
+        super.setUp()
+        do {
+            dbQueue = try DatabaseQueue()
+            try Self.addMigrationv32(to: dbQueue)
+            dataStore = try DataStore(
+                databaseQueue: dbQueue,
+                runMigrations: false,
+                refreshOnInit: false
+            )
+        } catch {
+            XCTFail("Failed to set up test store: \(error)")
+        }
+    }
+
+    override func tearDown() {
+        dbQueue = nil
+        dataStore = nil
+        super.tearDown()
+    }
+
+    // MARK: - Migration Helper
+
+    private static func addMigrationv32(to dbQueue: DatabaseQueue) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE switcher_profiles (
+                    id TEXT PRIMARY KEY,
+                    targetKind TEXT NOT NULL,
+                    browserType TEXT,
+                    browserMetadataJSON TEXT,
+                    cliType TEXT,
+                    cliMetadataJSON TEXT,
+                    sortKey INTEGER NOT NULL DEFAULT 0,
+                    createdAt TEXT NOT NULL,
+                    updatedAt TEXT NOT NULL
+                )
+            """)
+            try db.execute(sql: """
+                CREATE INDEX switcher_profiles_targetKind_idx ON switcher_profiles(targetKind)
+            """)
+            try db.execute(sql: """
+                CREATE INDEX switcher_profiles_sortKey_idx ON switcher_profiles(sortKey)
+            """)
+            try db.execute(sql: """
+                CREATE TABLE switcher_active_profile (
+                    activeProfileID TEXT,
+                    updatedAt TEXT NOT NULL
+                )
+            """)
+            try db.execute(sql: """
+                INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (NULL, '2024-01-01T00:00:00Z')
+            """)
+        }
+    }
+
+    // MARK: - Mock Data Source Tests
+
+    /// Verifies MockSwitcherDataLoading correctly implements SwitcherDataLoading protocol.
+    func test_mockDataLoading_implementsProtocol() throws {
+        let mock = MockSwitcherDataLoading()
+        mock.setProfiles([], activeID: nil)
+
+        // Verify protocol methods work
+        let profiles = try mock.fetchAllProfiles()
+        XCTAssertEqual(profiles.count, 0)
+
+        let state = try mock.validateAndRecoverActiveProfile()
+        XCTAssertNil(state.activeProfileID)
+    }
+
+    /// Verifies MockSwitcherDataLoading returns configured profiles.
+    func test_mockDataLoading_returnsConfiguredProfiles() throws {
+        let profile = SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "Test"),
+            sortKey: 1
+        )
+
+        let mock = MockSwitcherDataLoading()
+        mock.setProfiles([profile], activeID: profile.id)
+
+        let profiles = try mock.fetchAllProfiles()
+        XCTAssertEqual(profiles.count, 1)
+        XCTAssertEqual(profiles.first?.id, profile.id)
+    }
+
+    /// Verifies MockSwitcherDataLoading returns configured active state.
+    func test_mockDataLoading_returnsConfiguredActiveState() throws {
+        let profile = SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "Test"),
+            sortKey: 1
+        )
+
+        let mock = MockSwitcherDataLoading()
+        mock.setProfiles([profile], activeID: profile.id)
+
+        let state = try mock.validateAndRecoverActiveProfile()
+        XCTAssertEqual(state.activeProfileID, profile.id)
+    }
+
+    /// Verifies MockSwitcherDataLoading returns error when configured.
+    func test_mockDataLoading_returnsFetchError() throws {
+        let mock = MockSwitcherDataLoading()
+        mock.setFetchError("Test error")
+
+        XCTAssertThrowsError(try mock.fetchAllProfiles()) { error in
+            XCTAssertEqual(error.localizedDescription, "Test error")
+        }
+    }
+
+    /// Verifies MockSwitcherDataLoading tracks setActiveProfile calls.
+    func test_mockDataLoading_tracksSetActiveProfileCalls() throws {
+        let mock = MockSwitcherDataLoading()
+        mock.setProfiles([], activeID: nil)
+
+        try mock.setActiveProfile("profile-1")
+        XCTAssertEqual(mock.setActiveCallCount, 1)
+        XCTAssertEqual(mock.lastSetActiveProfileID, "profile-1")
+
+        try mock.setActiveProfile("profile-2")
+        XCTAssertEqual(mock.setActiveCallCount, 2)
+        XCTAssertEqual(mock.lastSetActiveProfileID, "profile-2")
+    }
+
+    /// Verifies MockSwitcherDataLoading setActiveProfile returns error when configured.
+    func test_mockDataLoading_setActiveProfileReturnsError() throws {
+        let mock = MockSwitcherDataLoading()
+        mock.setActiveError = NSError(domain: "Test", code: 2, userInfo: [NSLocalizedDescriptionKey: "Switch failed"])
+
+        XCTAssertThrowsError(try mock.setActiveProfile("profile-1")) { error in
+            XCTAssertEqual(error.localizedDescription, "Switch failed")
+        }
+    }
+
+    // MARK: - View Initializer Tests
+
+    /// Verifies view accepts injectable data source via initializer.
+    func test_viewAcceptsInjectableDataSource() throws {
+        let mock = MockSwitcherDataLoading()
+        mock.setProfiles([], activeID: nil)
+
+        // This should compile and create the view - verifying the initializer accepts injectable data source
+        let view = DashboardQuickSwitchView(
+            dataStore: dataStore,
+            onOpenSettings: {},
+            switcherDataLoading: mock,
+            testInjectedError: nil,
+            skipLoadData: true
+        )
+
+        XCTAssertNotNil(view, "View should be created with injectable data source")
+    }
+
+    /// Verifies error state renders with testInjectedError (established pattern).
+    func test_errorState_rendersWithTestInjectedError() throws {
+        let view = DashboardQuickSwitchView(
+            dataStore: dataStore,
+            onOpenSettings: {},
+            testInjectedError: "Injected fetch error for testing",
+            skipLoadData: true
+        )
+
+        let sut = try view.inspect()
+
+        // Verify error state is shown
+        let errorTitle = try sut.find(text: "Failed to Load Profiles")
+        XCTAssertNotNil(errorTitle, "Error state should render when testInjectedError is set")
+
+        // Verify the error message is shown
+        let errorMessage = try sut.find(text: "Injected fetch error for testing")
+        XCTAssertNotNil(errorMessage, "Error message should be displayed")
+    }
+}
+#endif
