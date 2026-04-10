@@ -9,7 +9,31 @@ cache_dir="$repo_root/.spm-cache"
 # multiple validator reruns run concurrently (e.g. repeated scrutiny).
 mkdir -p "$repo_root/.derived-data"
 derived_data_dir="$(mktemp -d "$repo_root/.derived-data/openburnbar-app-tests.XXXXXX")"
-trap 'rm -rf "$derived_data_dir"' EXIT
+
+# Robust cleanup with retry/backoff to handle transient "Directory not empty"
+# errors that can occur when derived-data removal races with lingering processes.
+cleanup_derived_data() {
+    local max_attempts=5
+    local attempt=1
+    local delay=0.5
+
+    while [ $attempt -le $max_attempts ]; do
+        if rm -rf "$derived_data_dir" 2>/dev/null; then
+            return 0
+        fi
+
+        if [ $attempt -lt $max_attempts ]; then
+            sleep "$delay"
+            delay=$((delay * 2))
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    # Final attempt — let any error surface so trap exit code reflects failure
+    rm -rf "$derived_data_dir" || true
+}
+
+trap 'cleanup_derived_data' EXIT
 
 mkdir -p "$cache_dir"
 
