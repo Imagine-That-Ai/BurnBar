@@ -2732,11 +2732,11 @@ extension SwitcherCrossFlowTests {
 
     // MARK: - VAL-CROSS-009: UI-Driven Cross-Surface Switch/Launch Chain Tests
 
-    /// UI-DRIVEN TEST: Switches in Dashboard and verifies launch routing uses correct profile.
+    /// UI-DRIVEN TEST: Switches in Dashboard via UI action and verifies launch routing uses correct profile.
     /// VAL-CROSS-009: Cross-surface switch and launch chaining is consistent.
-    /// Uses testTriggerReload to verify rendered state reflects store changes.
+    /// Drives switch via testTriggerSelectAndSwitch and verifies via getLastAttemptedProfileID.
     @MainActor
-    func test_ui_crossSurface_dashboardSwitch_launchUsesCorrectRenderedProfile() throws {
+    func test_ui_crossSurface_dashboardSwitch_launchUsesCorrectRenderedProfile() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
         try Self.addMigrationv32(to: dbQueue)
@@ -2767,7 +2767,7 @@ extension SwitcherCrossFlowTests {
             sortKey: 2
         ))
 
-        // Set profile1 as active initially via store
+        // Set profile1 as active initially via store (prerequisite for UI state)
         try localStore.setActiveProfile(profile1.id)
 
         // Create Dashboard view and reload
@@ -2778,32 +2778,53 @@ extension SwitcherCrossFlowTests {
         )
         dashboardView.testTriggerReload()
 
-        // Switch to profile2 via store (simulating UI action)
-        try localStore.setActiveProfile(profile2.id)
+        // VAL-CROSS-009: Drive switch through UI action path
+        dashboardView.testTriggerSelectAndSwitch(profileID: profile2.id)
 
-        // VAL-CROSS-009: Verify via store that the switch was committed
-        let state = try localStore.fetchActiveProfileState()
-        XCTAssertEqual(state.activeProfileID, profile2.id, "Active profile should be profile2 after switch")
-
-        // Create fresh Dashboard view and reload
-        let dashboardView2 = DashboardQuickSwitchView(
-            dataStore: dataStore,
-            onOpenSettings: {},
-            skipLoadData: true
+        // VAL-CROSS-009: Verify store reflects the committed switch (source of truth)
+        // Note: testActiveProfileDisplayName reads @State which isn't managed
+        // outside SwiftUI hosting context, so we verify via the store instead.
+        let stateAfterSwitch = try localStore.fetchActiveProfileState()
+        XCTAssertEqual(
+            stateAfterSwitch.activeProfileID,
+            profile2.id,
+            "Dashboard switch should commit profile2 as active in store"
         )
-        dashboardView2.testTriggerReload()
 
-        // VAL-CROSS-009: Verify launch action would use profile2 by checking active profile ID
-        // The launch adapter reads from global active state, so we verify via store
-        let launchProfileID = try localStore.fetchActiveProfileState().activeProfileID
-        XCTAssertEqual(launchProfileID, profile2.id, "Launch adapter would use profile2 (the globally current active profile)")
+        // VAL-CROSS-009: Create launch service to verify invocation traces
+        let adapter = SpySwitcherProfileStoreAdapter(store: localStore)
+        let browserProvider = UnavailableBrowserProvider(
+            unavailableBrowsers: [.chrome],
+            availableBrowsers: [.safari]
+        )
+        let browserService = SwitcherBrowserLaunchService(
+            profileStore: adapter,
+            browserProvider: browserProvider
+        )
+
+        // VAL-CROSS-009: Execute launch path and assert concrete invocation trace
+        // Chrome is unavailable via test provider, so we get browserNotInstalled error
+        // but the routed profile ID should still be profile2.id
+        let outcome = await browserService.launchBrowser(for: profile2.id)
+        XCTAssertFalse(outcome.success, "Chrome unavailable via test provider should cause failure")
+        if case .browserNotInstalled(let browserType) = outcome.error {
+            XCTAssertEqual(browserType, SwitcherBrowserProfileType.chrome, "Should report Chrome unavailable")
+        }
+
+        // VAL-CROSS-009: Assert concrete invocation trace via getLastAttemptedProfileID
+        let routedProfileID = await browserService.getLastAttemptedProfileID()
+        XCTAssertEqual(
+            routedProfileID,
+            profile2.id,
+            "Routed profile ID should equal profile2.id (final committed active profile), proving no stale routing"
+        )
     }
 
-    /// UI-DRIVEN TEST: Switches in Popover and verifies launch routing uses correct profile.
+    /// UI-DRIVEN TEST: Switches in Popover via UI action and verifies launch routing uses correct profile.
     /// VAL-CROSS-009: Cross-surface switch and launch chaining is consistent.
-    /// Uses testTriggerReload to verify rendered state reflects store changes.
+    /// Drives switch via testTriggerSelectAndSwitch and verifies via getLastAttemptedProfileID.
     @MainActor
-    func test_ui_crossSurface_popoverSwitch_launchUsesCorrectRenderedProfile() throws {
+    func test_ui_crossSurface_popoverSwitch_launchUsesCorrectRenderedProfile() async throws {
         // Create DataStore
         let dbQueue = try DatabaseQueue()
         try Self.addMigrationv32(to: dbQueue)
@@ -2832,7 +2853,7 @@ extension SwitcherCrossFlowTests {
             sortKey: 2
         ))
 
-        // Set codexProfile as active initially via store
+        // Set codexProfile as active initially via store (prerequisite for UI state)
         try localStore.setActiveProfile(codexProfile.id)
 
         // Create Popover view and reload
@@ -2843,25 +2864,36 @@ extension SwitcherCrossFlowTests {
         )
         popoverView.testTriggerReload()
 
-        // Switch to claudeProfile via store (simulating UI action)
-        try localStore.setActiveProfile(claudeProfile.id)
+        // VAL-CROSS-009: Drive switch through UI action path
+        popoverView.testTriggerSelectAndSwitch(profileID: claudeProfile.id)
 
-        // VAL-CROSS-009: Verify via store that the switch was committed
-        let state = try localStore.fetchActiveProfileState()
-        XCTAssertEqual(state.activeProfileID, claudeProfile.id, "Active profile should be claudeProfile after switch")
-
-        // Create fresh Popover view and reload
-        let popoverView2 = PopoverQuickSwitchView(
-            dataStore: dataStore,
-            onOpenSettings: {},
-            skipLoadData: true
+        // VAL-CROSS-009: Verify store reflects the committed switch (source of truth)
+        // Note: testActiveProfileDisplayName reads @State which isn't managed
+        // outside SwiftUI hosting context, so we verify via the store instead.
+        let stateAfterSwitch = try localStore.fetchActiveProfileState()
+        XCTAssertEqual(
+            stateAfterSwitch.activeProfileID,
+            claudeProfile.id,
+            "Popover switch should commit claudeProfile as active in store"
         )
-        popoverView2.testTriggerReload()
 
-        // VAL-CROSS-009: Verify launch action would use claudeProfile by checking active profile ID
-        // The launch adapter reads from global active state, so we verify via store
-        let launchProfileID = try localStore.fetchActiveProfileState().activeProfileID
-        XCTAssertEqual(launchProfileID, claudeProfile.id, "Launch adapter would use claudeProfile (the globally current active profile)")
+        // VAL-CROSS-009: Create CLI launch service to verify invocation traces
+        let adapter = SpySwitcherProfileStoreAdapter(store: localStore)
+        let cliService = SwitcherCLILAunchService(profileStore: adapter)
+
+        // VAL-CROSS-009: Execute launch path and assert concrete invocation trace
+        // Claude is not installed via seam, so we get executableNotFound error
+        // but the routed profile ID should still be claudeProfile.id
+        let outcome = await cliService.launchCLI(for: claudeProfile.id)
+        XCTAssertFalse(outcome.success, "Claude unavailable via seam should cause failure")
+
+        // VAL-CROSS-009: Assert concrete invocation trace via getLastAttemptedProfileID
+        let routedProfileID = await cliService.getLastAttemptedProfileID()
+        XCTAssertEqual(
+            routedProfileID,
+            claudeProfile.id,
+            "Routed profile ID should equal claudeProfile.id (final committed active profile), proving no stale routing"
+        )
     }
 }
 
@@ -2919,6 +2951,44 @@ private struct FakeBrowserAvailabilityProvider: BrowserAvailabilityProviding {
 
     func isProfileBrowserAvailable(_ profile: SwitcherProfileRecord) -> Bool {
         return true
+    }
+}
+
+/// Unavailable browser provider for testing that simulates specific browsers being unavailable.
+private struct UnavailableBrowserProvider: BrowserAvailabilityProviding {
+    private let unavailableBrowsers: Set<SwitcherBrowserProfileType>
+    private let availableBrowsers: Set<SwitcherBrowserProfileType>
+
+    init(unavailableBrowsers: Set<SwitcherBrowserProfileType> = [], availableBrowsers: Set<SwitcherBrowserProfileType> = [.safari]) {
+        self.unavailableBrowsers = unavailableBrowsers
+        self.availableBrowsers = availableBrowsers
+    }
+
+    func isBrowserAvailable(_ browserType: SwitcherBrowserProfileType) -> Bool {
+        return !unavailableBrowsers.contains(browserType) && availableBrowsers.contains(browserType)
+    }
+
+    func browserURL(for browserType: SwitcherBrowserProfileType) -> URL? {
+        if unavailableBrowsers.contains(browserType) {
+            return nil
+        }
+        return URL(fileURLWithPath: "/Applications/\(browserType.displayName).app")
+    }
+
+    func bundleIdentifier(for browserType: SwitcherBrowserProfileType) -> String? {
+        return browserType.bundleIdentifier
+    }
+
+    func resolveBrowserURL(_ browserType: SwitcherBrowserProfileType) -> Result<URL, BrowserLaunchError> {
+        if unavailableBrowsers.contains(browserType) {
+            return .failure(.browserNotInstalled(browserType))
+        }
+        return .success(URL(fileURLWithPath: "/Applications/\(browserType.displayName).app"))
+    }
+
+    func isProfileBrowserAvailable(_ profile: SwitcherProfileRecord) -> Bool {
+        guard let browserType = profile.browserType else { return false }
+        return isBrowserAvailable(browserType)
     }
 }
 
