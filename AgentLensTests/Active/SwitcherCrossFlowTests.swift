@@ -1974,13 +1974,21 @@ extension SwitcherCrossFlowTests {
         var dashboardState = try localStore.fetchActiveProfileState()
         XCTAssertEqual(dashboardState.activeProfileID, p1.id)
 
-        // ACTIONABLE: Execute switch via testTriggerSwitch (simulates user selecting p2 and switching)
+        // ACTIONABLE: Execute switch via UI action seam (testTriggerSelectAndSwitch)
         // First select p2 as the target
         let profiles = try localStore.fetchAllProfiles()
         XCTAssertTrue(profiles.contains { $0.id == p2.id })
 
-        // Switch to p2 via store (simulating Dashboard switch action)
-        try localStore.setActiveProfile(p2.id)
+        // Switch to p2 via UI action seam (not direct localStore.setActiveProfile)
+        // Note: selectAndSwitch() calls setActiveProfile() and updates activeProfileID,
+        // but performSwitch() returns early since selectedProfileID == activeProfileID after selectAndSwitch.
+        // So we call testTriggerReload() to sync the view state from the store.
+        dashboardView.testTriggerSelectAndSwitch(profileID: p2.id)
+        // Call reload multiple times to ensure state is properly synced
+        dashboardView.testTriggerReload()
+        dashboardView.testTriggerReload()
+        dashboardView.testTriggerReload()
+        dashboardView.testTriggerReload()
 
         // VAL-CROSS-009 assertion: verify cross-surface active-state synchronization
         dashboardState = try localStore.fetchActiveProfileState()
@@ -2047,8 +2055,14 @@ extension SwitcherCrossFlowTests {
         var popoverState = try localStore.fetchActiveProfileState()
         XCTAssertEqual(popoverState.activeProfileID, chromeProfile.id)
 
-        // ACTIONABLE: Execute switch in Popover (switch to Safari)
-        try localStore.setActiveProfile(safariProfile.id)
+        // ACTIONABLE: Execute switch in Popover via UI action seam (testTriggerSelectAndSwitch)
+        // Note: selectAndSwitch() calls setActiveProfile() and updates activeProfileID,
+        // but performSwitch() returns early since selectedProfileID == activeProfileID after selectAndSwitch.
+        // So we call testTriggerReload() to sync the view state from the store.
+        popoverView.testTriggerSelectAndSwitch(profileID: safariProfile.id)
+        // Call reload twice to ensure state is properly synced
+        popoverView.testTriggerReload()
+        popoverView.testTriggerReload()
 
         // VAL-CROSS-009 assertion: verify cross-surface active-state synchronization
         popoverState = try localStore.fetchActiveProfileState()
@@ -2425,13 +2439,18 @@ extension SwitcherCrossFlowTests {
         // Use testTriggerReload() to actually reload from store
         dashboardView.testTriggerReload()
 
-        // VAL-CROSS-001/002: Verify Dashboard view renders without crashing
-        let sut = try dashboardView.inspect()
-        XCTAssertNotNil(sut, "Dashboard view should render without crashing")
-
-        // The view renders - verify by checking it can be inspected
-        let viewRenders = try dashboardView.inspect()
-        XCTAssertNotNil(viewRenders, "Dashboard should render active profile section")
+        // VAL-CROSS-001/002: Assert concrete rendered indicator values
+        // (replaces primary XCTAssertNotNil renderability assertions)
+        XCTAssertEqual(
+            dashboardView.testActiveProfileDisplayName,
+            "Chrome Rendered Profile",
+            "Dashboard should render the active profile display name"
+        )
+        XCTAssertEqual(
+            dashboardView.testActiveProfileAccessibilityLabel,
+            "Chrome Rendered Profile, active profile",
+            "Dashboard should render the active profile accessibility label"
+        )
     }
 
     /// UI-DRIVEN TEST: Creates profile via store and uses testTriggerReload to verify Popover renders it.
@@ -2470,13 +2489,18 @@ extension SwitcherCrossFlowTests {
         // Use testTriggerReload() to actually reload from store
         popoverView.testTriggerReload()
 
-        // VAL-CROSS-001/002: Verify Popover view renders without crashing
-        let sut = try popoverView.inspect()
-        XCTAssertNotNil(sut, "Popover view should render without crashing")
-
-        // ViewInspector can access the view hierarchy when it renders successfully
-        let viewRenders = try popoverView.inspect()
-        XCTAssertNotNil(viewRenders, "Popover should render active profile indicator")
+        // VAL-CROSS-001/002: Assert concrete rendered indicator values
+        // (replaces primary XCTAssertNotNil renderability assertions)
+        XCTAssertEqual(
+            popoverView.testActiveProfileDisplayName,
+            "Claude Rendered Profile",
+            "Popover should render the active profile display name"
+        )
+        XCTAssertEqual(
+            popoverView.testActiveProfileAccessibilityLabel,
+            "Claude Rendered Profile, active profile",
+            "Popover should render the active profile accessibility label"
+        )
     }
 
     // MARK: - VAL-CROSS-002: UI-Driven Cross-Surface Active State Sync Tests
@@ -2527,8 +2551,14 @@ extension SwitcherCrossFlowTests {
         )
         dashboardView.testTriggerReload()
 
-        // Switch to p2 via store (simulating UI action)
-        try localStore.setActiveProfile(p2.id)
+        // Switch to p2 via UI action seam (testTriggerSelectAndSwitch)
+        // Note: selectAndSwitch() calls setActiveProfile() and updates activeProfileID,
+        // but performSwitch() returns early since selectedProfileID == activeProfileID after selectAndSwitch.
+        // So we call testTriggerReload() to sync the view state from the store.
+        dashboardView.testTriggerSelectAndSwitch(profileID: p2.id)
+        // Call reload twice to ensure state is properly synced
+        dashboardView.testTriggerReload()
+        dashboardView.testTriggerReload()
 
         // VAL-CROSS-002: Verify via store that the switch was committed
         let dashboardState = try localStore.fetchActiveProfileState()
@@ -2593,8 +2623,14 @@ extension SwitcherCrossFlowTests {
         )
         popoverView.testTriggerReload()
 
-        // Switch to safariProfile via store (simulating UI action)
-        try localStore.setActiveProfile(safariProfile.id)
+        // Switch to safariProfile via UI action seam (testTriggerSelectAndSwitch)
+        // Note: selectAndSwitch() calls setActiveProfile() and updates activeProfileID,
+        // but performSwitch() returns early since selectedProfileID == activeProfileID after selectAndSwitch.
+        // So we call testTriggerReload() to sync the view state from the store.
+        popoverView.testTriggerSelectAndSwitch(profileID: safariProfile.id)
+        // Call reload twice to ensure state is properly synced
+        popoverView.testTriggerReload()
+        popoverView.testTriggerReload()
 
         // VAL-CROSS-002: Verify via store that the switch was committed
         let popoverState = try localStore.fetchActiveProfileState()
@@ -2778,10 +2814,14 @@ extension SwitcherCrossFlowTests {
         )
         dashboardView.testTriggerReload()
 
-        // VAL-CROSS-009: Drive switch through store (mirroring what performSwitch() does)
-        // Note: testTriggerSelectAndSwitch relies on @State which isn't managed
-        // outside SwiftUI hosting context, so we drive the switch via store directly.
-        try localStore.setActiveProfile(profile2.id)
+        // VAL-CROSS-009: Drive switch through UI action seam (testTriggerSelectAndSwitch)
+        // Note: selectAndSwitch() calls setActiveProfile() and updates activeProfileID,
+        // but performSwitch() returns early since selectedProfileID == activeProfileID after selectAndSwitch.
+        // So we call testTriggerReload() to sync the view state from the store.
+        dashboardView.testTriggerSelectAndSwitch(profileID: profile2.id)
+        // Call reload twice to ensure state is properly synced
+        dashboardView.testTriggerReload()
+        dashboardView.testTriggerReload()
 
         // VAL-CROSS-009: Verify store reflects the committed switch
         let stateAfterSwitch = try localStore.fetchActiveProfileState()
@@ -2864,10 +2904,14 @@ extension SwitcherCrossFlowTests {
         )
         popoverView.testTriggerReload()
 
-        // VAL-CROSS-009: Drive switch through store (mirroring what selectAndSwitch() does)
-        // Note: testTriggerSelectAndSwitch relies on @State which isn't managed
-        // outside SwiftUI hosting context, so we drive the switch via store directly.
-        try localStore.setActiveProfile(claudeProfile.id)
+        // VAL-CROSS-009: Drive switch through UI action seam (testTriggerSelectAndSwitch)
+        // Note: selectAndSwitch() calls setActiveProfile() and updates activeProfileID,
+        // but performSwitch() returns early since selectedProfileID == activeProfileID after selectAndSwitch.
+        // So we call testTriggerReload() to sync the view state from the store.
+        popoverView.testTriggerSelectAndSwitch(profileID: claudeProfile.id)
+        // Call reload twice to ensure state is properly synced
+        popoverView.testTriggerReload()
+        popoverView.testTriggerReload()
 
         // VAL-CROSS-009: Verify store reflects the committed switch
         let stateAfterSwitch = try localStore.fetchActiveProfileState()
