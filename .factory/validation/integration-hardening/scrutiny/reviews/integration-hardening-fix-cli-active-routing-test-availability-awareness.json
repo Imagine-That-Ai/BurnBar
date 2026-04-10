@@ -1,0 +1,33 @@
+{
+  "featureId": "integration-hardening-fix-cli-active-routing-test-availability-awareness",
+  "reviewedAt": "2026-04-10T04:18:18Z",
+  "commitId": "9039c7aacc773b963791b269d0e06e65e4227312",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix commit correctly makes two CLI active-routing tests availability-aware, but as a fix review it does not address the prior failed feature's blocking findings, which were in cross-surface contract coverage and not in this file.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/SwitcherCLILaunchTests.swift",
+        "line": 1153,
+        "severity": "blocking",
+        "description": "Scope mismatch with the prior failure: this fix only updates CLI active-routing availability assertions, while the prior failed review (.factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-verify-cli-launch-chain-test-discovery.json) flagged unresolved blocking gaps in cross-surface contract tests. Neither reviewed commit modifies AgentLensTests/Active/SwitcherCrossFlowTests.swift, so the original failure is not remediated by this fix."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked followedProcedure=true but did not provide required context-read evidence in verification.commandsRun.",
+      "evidence": "Handoff 2026-04-10T04-11-11-081Z...f64d9b4f...json has skillFeedback.followedProcedure=true and only test/script commands under verification.commandsRun; switcher-integration-worker/SKILL.md requires explicit context-read evidence for followedProcedure=true (\"Context Read Evidence for followedProcedure=true\")."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Mission AGENTS tracks one environment-dependent browser negative-path test but not the analogous CLI availability-dependent rapid-switch tests that also need availability-aware assertions.",
+      "evidence": "Mission AGENTS.md documents SwitcherBrowserLaunchTests environment sensitivity under Known Pre-Existing Issues, while this feature/handoff had to harden CLI active-routing tests for executable availability."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-verify-cli-launch-chain-test-discovery.json",
+  "summary": "Reviewed fix feature f64d9b4f and both relevant diffs (9039c7a..., ddbcf9d...) plus transcript skeleton and prior review. Although 9039c7a makes rapid-switch CLI tests environment-agnostic as described, it does not resolve the original failed feature's blocking cross-surface gaps, so this fix review is failed."
+}

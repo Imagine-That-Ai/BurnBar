@@ -1,6 +1,6 @@
 {
   "milestone": "integration-hardening",
-  "round": 3,
+  "round": 4,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -24,69 +24,76 @@
     "passed": 0,
     "failed": 4,
     "failedFeatures": [
-      "integration-hardening-cross-surface-ui-actionable-assertions",
-      "integration-hardening-launch-chain-invocation-evidence",
-      "integration-hardening-verify-cli-launch-chain-test-discovery",
-      "integration-hardening-runtime-log-redaction-contract-tests"
+      "integration-hardening-cross-surface-rendered-action-chain-contract-tests",
+      "integration-hardening-final-active-profile-launch-routing-contract-tests",
+      "integration-hardening-runtime-emitted-log-redaction-startup-sync-contract-tests",
+      "integration-hardening-fix-cli-active-routing-test-availability-awareness"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "integration-hardening-cross-surface-ui-actionable-assertions",
+      "featureId": "integration-hardening-cross-surface-rendered-action-chain-contract-tests",
       "severity": "blocking",
-      "description": "Cross-surface tests still validate Settings\u2192Dashboard/Popover propagation via store reads and direct state mutation instead of asserting rendered Dashboard/Popover indicators driven by real UI switch actions."
+      "description": "VAL-CROSS-001/002 rendered evidence remains missing: tests still rely on `inspect()` non-nil and store-state reads instead of asserting rendered Dashboard/Popover active indicators and labels."
     },
     {
-      "featureId": "integration-hardening-launch-chain-invocation-evidence",
+      "featureId": "integration-hardening-cross-surface-rendered-action-chain-contract-tests",
       "severity": "blocking",
-      "description": "Rapid-switch launch tests invoke launch services with explicit profile IDs without exercising committed active-profile routing after a switch chain, so VAL-CROSS-004/009 evidence remains incomplete."
+      "description": "Cross-surface switch synchronization still uses direct `setActiveProfile(...)` store mutation rather than user-action switch paths in Dashboard/Popover."
     },
     {
-      "featureId": "integration-hardening-launch-chain-invocation-evidence",
+      "featureId": "integration-hardening-cross-surface-rendered-action-chain-contract-tests",
       "severity": "blocking",
-      "description": "Prior CTA/navigation and runtime-log blockers from integration-hardening-add-ui-level-cross-surface-contract-tests are not resolved by the launch-only fix commit."
+      "description": "VAL-CROSS-009 launch-chain assertions still do not invoke browser/CLI adapters/services and therefore do not prove action-chain routing behavior."
     },
     {
-      "featureId": "integration-hardening-verify-cli-launch-chain-test-discovery",
+      "featureId": "integration-hardening-final-active-profile-launch-routing-contract-tests",
       "severity": "blocking",
-      "description": "Fix commit provides validation artifacts but no persistent code/project hardening changes, so prior cross-surface contract gaps remain unresolved."
+      "description": "Rapid-switch browser A→B→C test only verifies browser type/error-class outcomes, so stale routing to A/B can still pass; final committed profile-ID routing is not proven."
     },
     {
-      "featureId": "integration-hardening-runtime-log-redaction-contract-tests",
+      "featureId": "integration-hardening-final-active-profile-launch-routing-contract-tests",
       "severity": "blocking",
-      "description": "Runtime secret-safety tests do not capture/inspect emitted startup/sync logs; assertions are mostly store/redactor-helper level and can miss callsite logging regressions."
+      "description": "Rapid-switch CLI A→B→C test similarly validates executable type, not routed profile ID, leaving final active-profile routing evidence incomplete."
+    },
+    {
+      "featureId": "integration-hardening-runtime-emitted-log-redaction-startup-sync-contract-tests",
+      "severity": "blocking",
+      "description": "Runtime log tests still populate test-local collectors with helper strings rather than intercepting emitted startup/sync log sink output from production callsites."
+    },
+    {
+      "featureId": "integration-hardening-runtime-emitted-log-redaction-startup-sync-contract-tests",
+      "severity": "blocking",
+      "description": "Cross-flow VAL-CROSS-006 checks remain helper-driven and do not verify deterministic emitted-log capture for startup/sync paths."
+    },
+    {
+      "featureId": "integration-hardening-fix-cli-active-routing-test-availability-awareness",
+      "severity": "blocking",
+      "description": "Fix scope mismatch: commit hardens CLI executable-availability assertions but does not remediate original failed feature's cross-surface contract gaps."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
-      "target": ".factory/skills/switcher-ui-worker/SKILL.md",
-      "suggestion": "Require VAL-CROSS UI-evidence fixes to assert rendered Dashboard/Popover state transitions and indicator propagation via user-action paths, not store-only assertions.",
-      "evidence": "Feature integration-hardening-cross-surface-ui-actionable-assertions still failed while using store-level checks for propagation and direct active-state mutation.",
-      "isSystemic": true
-    },
-    {
-      "target": ".factory/skills/switcher-integration-worker/SKILL.md",
-      "suggestion": "Enforce followedProcedure=true only when handoff includes required context-read evidence and full validation stack evidence (not just scoped xcodebuild runs).",
-      "evidence": "Multiple integration-hardening fix reviews reported followedProcedure=true while missing context-read commands and required validation/smoke coverage.",
-      "isSystemic": true
-    },
-    {
       "target": "Mission AGENTS.md",
-      "suggestion": "Add an explicit known-constraint note that stale DerivedData can hide scoped test discovery; require fresh derivedDataPath evidence when a fix is specifically about test discovery.",
-      "evidence": "Feature integration-hardening-verify-cli-launch-chain-test-discovery reported discovery behavior tied to cache state, but AGENTS known constraints do not currently document this pitfall.",
+      "suggestion": "Add a known-constraint note that CLI rapid-switch active-routing tests are availability-dependent on local executable presence and should use deterministic availability-aware assertions in contract tests.",
+      "evidence": "Feature integration-hardening-fix-cli-active-routing-test-availability-awareness had to harden environment-dependent CLI routing assertions, while AGENTS currently documents only analogous browser environment sensitivity.",
       "isSystemic": false
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "Repeat observations that followedProcedure lacked context-read evidence in individual reviews.",
-      "reason": "duplicate"
+      "observation": "Repeated followedProcedure/context-read-evidence and incomplete validation-stack observations in switcher worker handoffs.",
+      "reason": "already-documented"
     },
     {
-      "observation": "Architecture-level note that active profile should drive launches.",
+      "observation": "Repeated recommendation to require rendered UI/action-chain evidence for VAL-CROSS in switcher UI work.",
       "reason": "already-documented"
+    },
+    {
+      "observation": "Potential library/services updates from review findings.",
+      "reason": "ambiguous"
     }
   ],
-  "previousRound": ".factory/validation/integration-hardening/scrutiny/synthesis.round2.json"
+  "previousRound": ".factory/validation/integration-hardening/scrutiny/synthesis.round3.json"
 }

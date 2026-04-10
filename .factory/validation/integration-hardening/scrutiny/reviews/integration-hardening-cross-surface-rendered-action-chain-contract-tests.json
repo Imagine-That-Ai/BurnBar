@@ -1,0 +1,51 @@
+{
+  "featureId": "integration-hardening-cross-surface-rendered-action-chain-contract-tests",
+  "reviewedAt": "2026-04-10T04:18:12Z",
+  "commitId": "5a55e6357f055e8291de5558889f8257612ce22e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix adds test-only reload/switch hooks and new tests, but the blocking gaps from the prior failure remain: assertions are still largely store-centric, switch actions are still simulated via direct store mutation, and launch-chain behavior is still not exercised through launch adapters/services. CTA tap coverage is improved, but the original failure is not fully addressed.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2407,
+        "severity": "blocking",
+        "description": "Rendered-view evidence for VAL-CROSS-001/002 is still missing. The test only asserts that `inspect()` is non-nil (same pattern at line 2452) and does not assert rendered profile labels/active indicators/accessibility state in Dashboard/Popover."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2503,
+        "severity": "blocking",
+        "description": "Cross-surface synchronization remains store-driven: tests switch by direct `localStore.setActiveProfile(...)` mutation (also lines 2565, 2746, 2812) instead of executing switch actions through Dashboard/Popover controls as required."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2750,
+        "severity": "blocking",
+        "description": "VAL-CROSS-009 launch-chain assertions still do not invoke browser/CLI launch paths. Tests only re-check active store state (same pattern at line 2816) and include hypothetical comments (lines 2765, 2831) instead of adapter/service invocation evidence."
+      },
+      {
+        "file": "AgentLens/Views/Dashboard/Components/DashboardQuickSwitchView.swift",
+        "line": 839,
+        "severity": "blocking",
+        "description": "The fix adds `testTriggerSelectAndSwitch(profileID:)` hooks (Dashboard line 839; Popover equivalent at `AgentLens/Views/Popover/PopoverQuickSwitchView.swift:758`), but no new tests call these hooks. The intended user-action path remains unexercised."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked `followedProcedure=true` without context-read command evidence required by the skill's handoff discipline.",
+      "evidence": "Handoff `verification.commandsRun` includes only xcodebuild/git commands; `.factory/skills/switcher-ui-worker/SKILL.md` requires concrete context-read evidence before `followedProcedure=true`."
+    },
+    {
+      "area": "conventions",
+      "observation": "Cross-surface contract interpretation remains inconsistent: workers keep satisfying VAL-CROSS-001/002/009 with store-state checks and render-without-crash assertions rather than explicit rendered indicator and action-chain evidence.",
+      "evidence": "`validation-contract.md` requires rendered UI evidence and action traces; fix tests at `SwitcherCrossFlowTests.swift:2407, 2452, 2503, 2750` still center on store mutation/state reads."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-cross-surface-ui-actionable-assertions.json",
+  "summary": "Review result: fail. Although CTA actionability remains covered, the fix does not resolve the prior blocking deficiencies for rendered UI assertions, user-action-driven switch execution, or launch-path invocation evidence."
+}

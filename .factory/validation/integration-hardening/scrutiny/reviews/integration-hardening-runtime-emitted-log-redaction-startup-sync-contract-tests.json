@@ -1,0 +1,40 @@
+{
+  "featureId": "integration-hardening-runtime-emitted-log-redaction-startup-sync-contract-tests",
+  "reviewedAt": "2026-04-10T04:18:21Z",
+  "commitId": "30525c4602dac52b2c73e5ec41c620d15ea94716",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix improves coverage breadth, but it still does not capture emitted runtime logs from actual logging callsites/sinks on startup and sync paths. Both updated suites primarily push manually assembled strings into a test-local collector, so regressions in real log emission would still be missed.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/SwitcherRuntimeLogCaptureTests.swift",
+        "line": 102,
+        "severity": "blocking",
+        "description": "The new RuntimeLogCapture is not wired to any production logger/sink; it only appends manually provided strings. Tests then feed profile fields/state via helper calls (e.g., lines 263, 267, 293, 327), which does not assert what runtime startup/sync logging paths actually emit."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 1337,
+        "severity": "blocking",
+        "description": "UI-level VAL-CROSS-006 checks also use a test-local RuntimeLogCapture populated by direct helper invocations (lines 1340-1345) rather than intercepting emitted runtime logs. This remains helper-driven and does not satisfy deterministic log-sink interception expected by the contract."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherRuntimeLogCaptureTests.swift",
+        "line": 720,
+        "severity": "non_blocking",
+        "description": "The test logs `filteredEnv` before redaction and then asserts secret-pattern absence across captured text, making outcomes environment-dependent (passes when secrets are absent, can fail when host env contains real secrets) and not representative of actual redacted logging behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked `followedProcedure=true`, but handoff verification still omits context-read evidence required by the skill's handoff discipline.",
+      "evidence": ".factory/skills/switcher-integration-worker/SKILL.md requires concrete context-read commands when `followedProcedure=true`; this handoff's `verification.commandsRun` only lists two xcodebuild test commands."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-runtime-log-redaction-contract-tests.json",
+  "summary": "Fix review failed. Compared with the original failed commit (791ea95...), this revision broadens tests but still does not capture real emitted runtime logs from startup/sync logging paths, so the prior VAL-CROSS-006 failure remains unresolved."
+}
