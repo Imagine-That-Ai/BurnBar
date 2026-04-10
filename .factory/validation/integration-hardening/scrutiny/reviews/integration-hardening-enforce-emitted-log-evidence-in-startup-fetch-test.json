@@ -1,0 +1,21 @@
+{
+  "featureId": "integration-hardening-enforce-emitted-log-evidence-in-startup-fetch-test",
+  "reviewedAt": "2026-04-10T07:28:48Z",
+  "commitId": "fc83e287eacacb4e8adf684df2d3eed6296a2ad6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The rerun fix directly addresses the prior blocking gap: startup fetch now uses an emitted-log path and asserts non-empty captured production log output before secret-safety checks, so VAL-CROSS-006 evidence can no longer pass on helper-only aggregation.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked `followedProcedure=true`, but the handoff verification evidence still omits explicit context-read commands required by the skill's handoff discipline.",
+      "evidence": ".factory/skills/switcher-integration-worker/SKILL.md requires context-read evidence in `verification.commandsRun` before setting `followedProcedure=true`; handoff 2026-04-10T06-04-17-038Z__integration-hardening-enforce-emitted-log-evidence-in-startup-fetch-test__79a48c3d-4130-44a5-b971-9a9f23fea6bf.json lists only test execution commands."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-production-log-sink-redaction-proof.json",
+  "summary": "Reviewed fix commit fc83e287 against prior failing review for integration-hardening-production-log-sink-redaction-proof. The new `fetchAllProfilesWithLogging()` emission path plus non-empty emitted-log assertion in `test_startupProfileFetch_capturesRuntimeLogs_noSecrets` closes the original failure mode, so this fix passes."
+}
