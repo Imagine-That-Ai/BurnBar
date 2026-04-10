@@ -746,6 +746,22 @@ struct PopoverQuickSwitchView: View {
         }
     }
 
+    /// DEBUG-only: Reloads data from store and updates view state.
+    /// This actually calls loadData() to refresh profiles and active state for testing.
+    func testTriggerReload() {
+        loadData()
+    }
+
+    /// DEBUG-only: Selects a profile and performs switch action.
+    /// Verifies switch success/failure announcements and state transitions.
+    /// - Parameter profileID: The profile ID to switch to.
+    func testTriggerSelectAndSwitch(profileID: String) {
+        // Look up the profile record and call selectAndSwitch
+        if let profile = profiles.first(where: { $0.id == profileID }) {
+            selectAndSwitch(profile)
+        }
+    }
+
     /// DEBUG-only: Triggers selectAndSwitch for testing announcement behavior.
     /// Requires selectedProfileID to be set. Verifies switch success/failure announcements.
     func testTriggerSwitch() {
