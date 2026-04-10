@@ -1,45 +1,45 @@
 {
   "featureId": "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency",
-  "reviewedAt": "2026-04-09T21:42:59Z",
-  "commitId": "ae68a630f8999a62eec523b99a49bec6203a1613",
+  "reviewedAt": "2026-04-10T00:44:16Z",
+  "commitId": "65d2570f11512848055771e41b2277bd11852fa3",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "fail",
   "codeReview": {
-    "summary": "Reviewed the fix feature handoff/transcript and commit `ae68a630f8999a62eec523b99a49bec6203a1613` against prior failed commits `847ecd852d89328dc1ff7bb6e17fc7c4a8949f23` and `33f9ac23ddb36df2d2bc9eff18c73a67f2e5d5c4`. The rerun does not resolve the prior blocking findings: runtime integration coverage for `refreshAll`/`runScheduledBackfillIfNeeded` is still source-text scanning only, and strict no-backward semantics are still relaxed by negative epsilon allowance.",
+    "summary": "The fix does not resolve the original blocker from the prior failed review and does not satisfy this feature’s strict monotonic requirement. It removes source-text scanning, but replaces it with direct `BackfillCursorStore.advanceCursor` tests that do not execute `UsageAggregator.refreshAll` success/failure paths, and it retains negative epsilon tolerance in the monotonic guard.",
     "issues": [
       {
         "file": "AgentLensTests/Active/BackfillSchedulerTests.swift",
-        "line": 565,
+        "line": 578,
         "severity": "blocking",
-        "description": "The claimed runtime integration coverage remains a source-text check (`test_refreshAll_guardCondition_isPresent`) that reads `UsageAggregator.swift` and asserts string presence rather than executing `UsageAggregator.refreshAll()` with persistence success/failure paths. This does not satisfy the feature requirement to add true runtime integration tests for both scenarios."
-      },
-      {
-        "file": "AgentLens/Services/DataStore/BackfillCursorStore.swift",
-        "line": 118,
-        "severity": "blocking",
-        "description": "Monotonic guard still allows backward movement via negative epsilon (`>= -monotonicEpsilon`), and this rerun increases that allowance to 1ms (`monotonicEpsilon = 0.001`). The feature and prior failure require strict no-backward progression while preserving equal-timestamp idempotency without reopening negative backward epsilon."
+        "description": "The new failure-path test (`test_backfillGuard_persistenceFailure_preventsCursorAdvance`) does not run `UsageAggregator.refreshAll()` or assert the persistence-error branch signal; it directly calls `BackfillCursorStore.advanceCursor` with a backward timestamp. This does not prove the prior failed requirement (explicit runtime evidence that `refreshAll` hit persistence error and skipped `runScheduledBackfillIfNeeded`)."
       },
       {
         "file": "AgentLensTests/Active/BackfillSchedulerTests.swift",
-        "line": 571,
-        "severity": "non_blocking",
-        "description": "The test hardcodes an absolute developer-specific path (`/Users/dewclaw/Documents/Projects/BurnBar/...`), making it brittle across CI/workspaces."
+        "line": 625,
+        "severity": "blocking",
+        "description": "The new success-path test (`test_backfillGuard_persistenceSuccess_allowsCursorAdvance`) also bypasses `UsageAggregator.refreshAll()` and therefore does not provide required runtime execution coverage for `refreshAll`/`runScheduledBackfillIfNeeded` success behavior."
+      },
+      {
+        "file": "AgentLens/Services/DataStore/BackfillCursorStore.swift",
+        "line": 123,
+        "severity": "blocking",
+        "description": "Monotonic enforcement still allows backward movement within epsilon (`guard diff >= -monotonicEpsilon`, `monotonicEpsilon = 0.001`). This conflicts with the feature’s strict no-backward requirement ('without any negative epsilon allowance')."
       }
     ]
   },
   "sharedStateObservations": [
     {
       "area": "skills",
-      "observation": "Handoff marks `skillFeedback.followedProcedure=true` without evidence of required startup context reads.",
-      "evidence": "Handoff file `.../handoffs/2026-04-09T21-11-09-757Z__m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency__1c91c316-bba4-423b-9def-9124a1ff399b.json` lists only test/log commands in `verification.commandsRun`; no command demonstrates reading `mission.md`, `AGENTS.md`, `.factory/library/architecture.md`, or `.factory/library/user-testing.md` as required by `.factory/skills/token-accounting-worker/SKILL.md`."
+      "observation": "Worker marked `skillFeedback.followedProcedure=true`, but transcript evidence does not show all required context reads from the skill.",
+      "evidence": "token-accounting-worker requires reading `mission.md`, `AGENTS.md`, `.factory/library/architecture.md`, and `.factory/library/user-testing.md`. Transcript skeleton for session `31663266-3c1a-4728-8f22-65355bf2bed7` shows reads for mission/validation/features/services and code files, but no explicit reads of AGENTS, architecture.md, or user-testing.md before proceeding."
     },
     {
       "area": "knowledge",
-      "observation": "Shared architecture guidance remains switcher-focused and omits token-accounting/backfill runtime context used in this mission.",
-      "evidence": ".factory/library/architecture.md documents multi-account switcher architecture (profile registry, launch adapters, switch orchestrator) rather than token-accounting/backfill/reconciliation flows, while this feature targets BackfillCursorStore/UsageAggregator semantics."
+      "observation": "Shared architecture/testing library docs remain switcher-focused and are misaligned with this token-accounting/backfill mission scope.",
+      "evidence": ".factory/library/architecture.md and .factory/library/user-testing.md describe account-switcher surfaces/flows rather than backfill/reconciliation runtime architecture, reducing usefulness for token-accounting workers."
     }
   ],
-  "addressesFailureFrom": ".factory/validation/m4-reconciliation-backfill-hardening/scrutiny/reviews/m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests.json; .factory/validation/m4-reconciliation-backfill-hardening/scrutiny/reviews/m4-fix-backfill-idempotent-equal-timestamp-semantics.json",
-  "summary": "Fail: the rerun commit did not add the required runtime execution tests and further relaxes backward monotonic enforcement with a larger negative epsilon allowance, so the two prior blocking failures are not resolved."
+  "addressesFailureFrom": ".factory/validation/m4-reconciliation-backfill-hardening/scrutiny/reviews/m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests.json",
+  "summary": "Fail: this fix does not address the original failed requirement for explicit `refreshAll` persistence-failure execution proof, and it still permits negative-epsilon backward cursor movement."
 }

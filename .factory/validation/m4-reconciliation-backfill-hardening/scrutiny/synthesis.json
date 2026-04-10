@@ -1,11 +1,11 @@
 {
   "milestone": "m4-reconciliation-backfill-hardening",
-  "round": 7,
+  "round": 8,
   "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
-      "command": "/Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-swift.sh && /Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-app.sh",
+      "command": "swift test --package-path /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBarCore && swift test --package-path /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBarDaemon && xcodebuild test -project /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS\" -clonedSourcePackagesDirPath /Users/dewclaw/Documents/Projects/BurnBar/.spm-cache -derivedDataPath /Users/dewclaw/Documents/Projects/BurnBar/.derived-data/openburnbar-app-tests-rerun CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -only-testing:\"OpenBurnBarTests\"",
       "exitCode": 0
     },
     "typecheck": {
@@ -24,25 +24,41 @@
     "passed": 0,
     "failed": 1,
     "failedFeatures": [
-      "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests"
+      "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests",
+      "featureId": "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency",
       "severity": "blocking",
-      "description": "Failure-path test `test_refreshAll_withPersistenceFailure_preventsCursorAdvance` still only asserts unchanged cursor state in read-only mode and does not prove the `if persistenceError == nil` guard in `UsageAggregator.refreshAll` actually prevented scheduled backfill execution."
+      "description": "BackfillSchedulerTests failure-path/success-path additions still bypass UsageAggregator.refreshAll and do not provide runtime proof that persistence failure prevents runScheduledBackfillIfNeeded execution."
+    },
+    {
+      "featureId": "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency",
+      "severity": "blocking",
+      "description": "New success-path coverage similarly does not execute UsageAggregator.refreshAll/runScheduledBackfillIfNeeded runtime path, so original scrutiny blocker remains unresolved."
+    },
+    {
+      "featureId": "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency",
+      "severity": "blocking",
+      "description": "BackfillCursorStore monotonic guard still allows negative-epsilon backward movement (diff >= -0.001), violating strict no-backward requirement."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills/token-accounting-worker",
-      "suggestion": "Require explicit handoff/read evidence for `mission.md`, `AGENTS.md`, `.factory/library/architecture.md`, and `.factory/library/user-testing.md` before `followedProcedure=true` can be set.",
-      "evidence": "Latest review for `m4-fix-backfill-commit-coupled-advancement-and-runtime-integration-tests` again found missing `user-testing.md` startup-read evidence despite `followedProcedure=true`, indicating recurring procedural drift.",
+      "suggestion": "Require explicit transcript evidence for startup reads (mission.md, AGENTS.md, .factory/library/architecture.md, .factory/library/user-testing.md) before allowing followedProcedure=true in handoff.",
+      "evidence": "Reviewer observed missing AGENTS/library startup-read evidence in fix session 31663266-3c1a-4728-8f22-65355bf2bed7 despite followedProcedure=true.",
+      "isSystemic": true
+    },
+    {
+      "target": "library",
+      "suggestion": "Refresh .factory/library/architecture.md and .factory/library/user-testing.md with token-accounting/backfill-specific guidance so workers are not directed by stale switcher-centric context.",
+      "evidence": "Reviewer reported both library files remain switcher-focused and not aligned to m4 reconciliation/backfill implementation scope.",
       "isSystemic": true
     }
   ],
   "rejectedObservations": [],
-  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round6.json"
+  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round7.json"
 }
