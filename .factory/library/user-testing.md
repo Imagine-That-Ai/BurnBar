@@ -168,6 +168,11 @@ Recommended scheduling:
 - Evidence note:
   - For `.xcresult` JSON extraction on current Xcode CLT, prefer `xcrun xcresulttool get object --legacy --path <bundle> --format json` over deprecated `get` forms.
 
+### Crossflow UI seam reliability notes (integration-hardening)
+
+- For `SwitcherCrossFlowTests`, avoid relying only on view-local `@State` profile collections in debug seams. Use store-backed fallback seams for active-indicator getters so assertions remain deterministic after reload/hydration paths.
+- In tests that call `testTriggerSelectAndSwitch`, follow with `testTriggerReload` before asserting rendered indicator seams when view-local state may be stale; this aligns assertions with persisted active-profile state used by Dashboard/Popover test seams.
+
 ---
 
 ## Shared Cross-Subsystem Guidance

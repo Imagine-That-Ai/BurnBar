@@ -1,0 +1,26 @@
+{
+  "featureId": "integration-hardening-crossflow-proof-v2-with-auditable-diff",
+  "reviewedAt": "2026-04-10T16:44:45Z",
+  "commitId": "3dc5fc2d35c013d8ac1e1ebee95009acfd579ee7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass. The fix commit addresses the prior blocking gaps: rendered-indicator tests now assert concrete display/accessibility seam values, cross-surface switch-sync tests invoke UI action seams instead of direct store switching for the primary action, and VAL-CROSS-009 tests execute launch paths and assert invocation traces via getLastAttemptedProfileID.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The skill requires explicit context-read evidence before setting followedProcedure=true, but this handoff marks followedProcedure=true without command evidence that Phase 1.1 context files were read.",
+      "evidence": ".factory/skills/switcher-integration-worker/SKILL.md ('Context Read Evidence for followedProcedure=true'); handoff 2026-04-10T16-22-32-728Z__integration-hardening-crossflow-proof-v2-with-auditable-diff__8d014f6d-b88d-47a6-8ad7-1d1e93b4ffba.json has skillFeedback.followedProcedure=true and verification.commandsRun entries only for test commands."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Crossflow UI seam tests rely on repeated testTriggerReload() after testTriggerSelectAndSwitch due view-state seam behavior, but this caveat is not captured in shared architecture/testing guidance.",
+      "evidence": "Commit 3dc5fc2 diff in AgentLensTests/Active/SwitcherCrossFlowTests.swift adds repeated reload calls with comments explaining performSwitch() early-return behavior when selectedProfileID == activeProfileID."
+    }
+  ],
+  "addressesFailureFrom": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-finalize-crossflow-rendered-ui-launch-trace-evidence.json",
+  "summary": "Reviewed feature metadata, fix handoff/transcript skeleton, worker skill, mission shared-state docs, and both diffs (failed commit 01921b8cc62428f51cc6819bb7579d5db2ca4a90 and fix commit 3dc5fc2d35c013d8ac1e1ebee95009acfd579ee7). The fix adequately resolves the original failure: concrete rendered seam assertions are present, primary switch proofs are UI-action-seam driven, and launch routing is proven through concrete invocation traces."
+}

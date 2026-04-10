@@ -1,0 +1,39 @@
+{
+  "featureId": "integration-hardening-fix-ui-action-seam-sync-for-crossflow-tests",
+  "reviewedAt": "2026-04-10T16:44:57Z",
+  "commitId": "27463c06c435ef9d4d66011da10814f1d406867f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail. The fix improves seam behavior, but it does not satisfy the feature contract or fully resolve the prior failure: crossflow tests were still failing, and one test seam path still no-ops when in-memory profiles are stale.",
+    "issues": [
+      {
+        "file": "AgentLens/Views/Popover/PopoverQuickSwitchView.swift",
+        "line": 761,
+        "severity": "blocking",
+        "description": "`testTriggerSelectAndSwitch` still gates switch execution on an in-memory profile lookup (`if let profile = foundProfile`). In test contexts where `profiles` is stale/empty, this path no-ops and does not exercise `selectAndSwitch`, so UI-action-driven switch proof remains unreliable."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2430,
+        "severity": "blocking",
+        "description": "Prior blocking gaps from `integration-hardening-finalize-crossflow-rendered-ui-launch-trace-evidence` remain unaddressed by this fix commit because this file is unchanged in `27463c06...`; rendered-indicator and UI-action-proof obligations from the failed review are not resolved here."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`switcher-ui-worker` procedure compliance is overstated: handoff sets `followedProcedure=true` without manual UI checks or context-read evidence required by the skill file.",
+      "evidence": "Handoff `2026-04-10T14-44-44-032Z__integration-hardening-fix-ui-action-seam-sync-for-crossflow-tests__6e073f26-ef8c-4cf6-aaa3-d4e5cf6c9d65.json` shows `interactiveChecks: []` and only test commands; `.factory/skills/switcher-ui-worker/SKILL.md` requires manual UI sanity checks and context-read evidence when claiming `followedProcedure=true`."
+    },
+    {
+      "area": "knowledge",
+      "observation": "SwiftUI debug seams used by crossflow tests are brittle when they depend on view-local `@State` collections (`profiles`) rather than store-backed identifiers; this recurring constraint is not captured in shared testing guidance.",
+      "evidence": "Fix commit `27463c06...` attempted seam stabilization but kept popover `testTriggerSelectAndSwitch` dependent on in-memory profile lookup. Handoff still reports 9 failing crossflow tests and attributes failures to reload/seam behavior."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-finalize-crossflow-rendered-ui-launch-trace-evidence.json",
+  "summary": "Reviewed mission artifacts, prior failed review, fix handoff/transcript skeleton, skill requirements, and both diffs (`01921b8cc62428f51cc6819bb7579d5db2ca4a90` and `27463c06c435ef9d4d66011da10814f1d406867f`). The fix is insufficient: it partially patches seam behavior but does not close the prior failure contract and still leaves unreliable UI-action seam behavior in popover test hooks."
+}

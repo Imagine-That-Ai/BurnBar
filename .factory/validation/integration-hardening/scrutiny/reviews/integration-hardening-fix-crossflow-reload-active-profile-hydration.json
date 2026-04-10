@@ -1,0 +1,21 @@
+{
+  "featureId": "integration-hardening-fix-crossflow-reload-active-profile-hydration",
+  "reviewedAt": "2026-04-10T16:45:40Z",
+  "commitId": "4458ec1df4121507e03be8928114c4eab365d5d7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass. The fix closes the prior crossflow failure by making Dashboard/Popover active-profile debug seams hydrate deterministically from persisted store state when in-memory lists are stale, which unblocks concrete rendered-indicator assertions in reload-driven test contexts.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The switcher-core-worker procedure requires reading `.factory/library/user-testing.md` and providing context-read evidence when `followedProcedure=true`, but this run's transcript/handoff does not show that file being read or any context-read evidence command outputs.",
+      "evidence": "Skill requirement: `.factory/skills/switcher-core-worker/SKILL.md` Work Procedure step 1 + Handoff Discipline requirement 2. Transcript skeleton for session `a4fcb4d5-d8a1-4e52-a85d-c50971e9fdac` shows reads for mission.md, validation-contract.md, validation-state.json, features.json, architecture.md but no `.factory/library/user-testing.md`. Handoff `2026-04-10T16-11-59-281Z__integration-hardening-fix-crossflow-reload-active-profile-hydration__a4fcb4d5-d8a1-4e52-a85d-c50971e9fdac.json` sets `skillFeedback.followedProcedure: true` without context-read evidence entries in `verification.commandsRun`."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-finalize-crossflow-rendered-ui-launch-trace-evidence.json",
+  "summary": "Reviewed fix feature metadata, handoff, transcript skeleton, prior failure review, and both key diffs (`01921b8...` and `4458ec1...`, with related hydration commits `27463c0...` and `01bde9c...`). The original blocking failure is adequately addressed: concrete rendered-indicator seams now hydrate reliably via store fallback during reload/test contexts, and the previously flagged UI-action path expectations are present in current crossflow tests."
+}
