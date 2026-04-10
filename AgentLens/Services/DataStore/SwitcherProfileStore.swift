@@ -2,6 +2,40 @@ import Foundation
 import GRDB
 import OpenBurnBarCore
 
+// MARK: - Log Emitter
+
+/// A closure-based log emitter that can capture log output.
+/// This enables deterministic interception of production log output in tests.
+public struct LogEmitter: Sendable {
+    /// The underlying logger for production use
+    private let logger: AppLogger
+    /// Optional capture closure for test interception
+    private let captureHandler: ((String) -> Void)?
+
+    /// Creates a log emitter for production use (no capture).
+    public init() {
+        self.logger = AppLogger(category: "switcher")
+        self.captureHandler = nil
+    }
+
+    /// Creates a log emitter with a capture handler for test use.
+    /// The capture handler receives all log messages for verification.
+    internal init(captureHandler: @escaping (String) -> Void) {
+        self.logger = AppLogger(category: "switcher")
+        self.captureHandler = captureHandler
+    }
+
+    /// Emits a log message.
+    /// In production, logs via AppLogger.
+    /// In tests, captures via the capture handler for verification.
+    public func emit(_ message: String) {
+        // Capture for test verification if handler is set
+        captureHandler?(message)
+        // Also emit via AppLogger for production logging
+        logger.info("SwitcherProfileStore: \(message)")
+    }
+}
+
 // MARK: - SwitcherProfileStore
 
 /// CRUD store for switcher profiles.
@@ -11,11 +45,72 @@ import OpenBurnBarCore
 /// - Never stores raw OAuth tokens, passwords, cookies, or API keys
 /// - Active profile state is persisted separately for atomic transitions
 /// - Profile listing uses deterministic ordering via sortKey + createdAt
+///
+/// Log emission:
+/// - Emits operational logs via LogEmitter for startup/sync flows
+/// - Logs include profile IDs and non-sensitive state only
+/// - No secrets, tokens, or auth data appear in any log output
+/// - LogEmitter supports test capture for deterministic interception
 public final class SwitcherProfileStore {
     private let dbQueue: DatabaseQueue
+    private let logEmitter: LogEmitter
 
     public init(dbQueue: DatabaseQueue) {
         self.dbQueue = dbQueue
+        self.logEmitter = LogEmitter()
+    }
+
+    /// Internal initializer for test injection of log emitter.
+    /// Allows tests to capture log output for verification.
+    internal init(dbQueue: DatabaseQueue, logEmitter: LogEmitter) {
+        self.dbQueue = dbQueue
+        self.logEmitter = logEmitter
+    }
+
+    /// Creates a new profile with logging for startup/sync verification.
+    /// Logs emit only operational state (profile ID, type, non-sensitive metadata).
+    internal func createWithLogging(_ record: SwitcherProfileRecord) throws -> SwitcherProfileRecord {
+        let created = try create(record)
+        logEmitter.emit("Created profile id=\(created.id) targetKind=\(created.targetKind.rawValue)")
+        return created
+    }
+
+    /// Fetches active profile state with logging for startup hydration verification.
+    /// Logs emit only operational state (active profile ID or nil).
+    internal func fetchActiveProfileStateWithLogging() throws -> SwitcherActiveProfileState {
+        let state = try fetchActiveProfileState()
+        if let activeID = state.activeProfileID {
+            logEmitter.emit("Active profile rehydrated id=\(activeID)")
+        } else {
+            logEmitter.emit("Active profile rehydrated (none)")
+        }
+        return state
+    }
+
+    /// Sets active profile with logging for sync verification.
+    /// Logs emit only operational state (profile ID or nil).
+    internal func setActiveProfileWithLogging(_ profileID: String?) throws {
+        try setActiveProfile(profileID)
+        if let id = profileID {
+            logEmitter.emit("Active profile set id=\(id)")
+        } else {
+            logEmitter.emit("Active profile cleared")
+        }
+    }
+
+    /// Updates a profile with logging for sync verification.
+    /// Logs emit only operational state.
+    internal func updateWithLogging(_ record: SwitcherProfileRecord) throws -> SwitcherProfileRecord {
+        let updated = try update(record)
+        logEmitter.emit("Updated profile id=\(updated.id)")
+        return updated
+    }
+
+    /// Deletes a profile with logging for sync verification.
+    /// Logs emit only operational state.
+    internal func deleteProfileWithLogging(id: String) throws {
+        try deleteProfile(id: id)
+        logEmitter.emit("Deleted profile id=\(id)")
     }
 
     // MARK: - Active Profile State

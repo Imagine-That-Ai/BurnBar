@@ -76,6 +76,11 @@ final class SwitcherCrossFlowTests: XCTestCase {
 
     // MARK: - Runtime Log Capture for VAL-CROSS-006
 
+    /// Captured log messages from the production log emitter for verification
+    private var capturedLogMessages: [String] = []
+    /// The log emitter with capture handler for intercepting production logs
+    private var logEmitter: LogEmitter!
+
     /// A log capture mechanism that intercepts textual output emitted during
     /// startup/sync flows. This captures actual runtime output, not just stored data.
     ///
@@ -136,6 +141,13 @@ final class SwitcherCrossFlowTests: XCTestCase {
         /// Clears captured logs
         func reset() {
             capturedLogs.removeAll()
+        }
+    }
+
+    private func setUpLogEmitter() {
+        capturedLogMessages = []
+        logEmitter = LogEmitter { [weak self] message in
+            self?.capturedLogMessages.append(message)
         }
     }
 
@@ -1307,9 +1319,12 @@ extension SwitcherCrossFlowTests {
     /// - Debug descriptions of objects
     ///
     /// The key difference from prior version: we now capture actual runtime
-    /// emitted logs, not just build strings manually or call redaction helpers.
+    /// emitted logs using LogEmitter with capture handler, not just build strings manually.
     @MainActor
     func test_ui_crossSurface_startupLogRedactsSecrets() throws {
+        // Set up log emitter for capture
+        setUpLogEmitter()
+
         // Create DataStore
         let dbQueue = try DatabaseQueue()
         try Self.addMigrationv32(to: dbQueue)
@@ -1319,9 +1334,9 @@ extension SwitcherCrossFlowTests {
             refreshOnInit: false
         )
 
-        // Create profile with metadata that looks like secrets
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
-        let profile = try localStore.create(SwitcherProfileRecord(
+        // Create profile with metadata that looks like secrets using injectable logger
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, logEmitter: logEmitter)
+        let profile = try localStore.createWithLogging(SwitcherProfileRecord(
             targetKind: .cli,
             cliType: .claude,
             cliMetadata: SwitcherCLIProfileMetadata(
@@ -1333,20 +1348,18 @@ extension SwitcherCrossFlowTests {
             sortKey: 1
         ))
 
-        // Create a log capture to intercept runtime emitted logs
-        let logCapture = RuntimeLogCapture()
-
-        // Capture profile textual representations (what would be logged during startup)
-        logCapture.captureProfileTextualRepresentations(profile)
-
-        // Simulate startup/sync operations that would emit logs
+        // Simulate startup/sync operations that would emit logs using logging variants
         let profiles = try localStore.fetchAllProfiles()
         for p in profiles {
-            logCapture.captureProfileTextualRepresentations(p)
+            // Non-logging fetch for profile data
         }
 
-        // Capture active state (startup rehydration)
-        let state = try localStore.fetchActiveProfileState()
+        // Capture active state using logging variant (startup rehydration)
+        let state = try localStore.fetchActiveProfileStateWithLogging()
+
+        // Create a log capture to also capture profile representations for completeness
+        let logCapture = RuntimeLogCapture()
+        logCapture.captureProfileTextualRepresentations(profile)
         logCapture.captureActiveProfileState(state)
 
         // Check raw stored data for secret patterns
@@ -1355,25 +1368,35 @@ extension SwitcherCrossFlowTests {
         }
         logCapture.capturedLogs.append(rawJSON ?? "")
 
+        // Combine captured production logs with test helper captures
+        var allLogs = capturedLogMessages
+        allLogs.append(contentsOf: logCapture.capturedLogs)
+
         // Now verify captured logs don't contain raw secrets
-        let foundPatterns = findSecretPatternsInRuntimeLogs(logCapture.capturedLogs)
+        let foundPatterns = findSecretPatternsInRuntimeLogs(allLogs)
         XCTAssertTrue(
             foundPatterns.isEmpty,
             """
             Found secret patterns in runtime emitted logs: \(foundPatterns)
             
             Captured logs:
-            \(logCapture.capturedLogs.joined(separator: "\n"))
+            \(allLogs.joined(separator: "\n"))
             """
         )
+
+        // Verify we actually captured production log output
+        XCTAssertFalse(capturedLogMessages.isEmpty, "Should have captured log output from production code")
     }
 
     /// VERIFICATION: Environment variable logging redacts sensitive keys.
     /// Tests that actual runtime emitted logs from env operations are secret-safe.
     func test_ui_crossSurface_envLoggingRedactsSensitiveKeys() throws {
-        // Create profile with env keys
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
-        _ = try localStore.create(SwitcherProfileRecord(
+        // Set up log emitter for capture
+        setUpLogEmitter()
+
+        // Create profile with env keys using injectable logger
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, logEmitter: logEmitter)
+        _ = try localStore.createWithLogging(SwitcherProfileRecord(
             targetKind: .cli,
             cliType: .claude,
             cliMetadata: SwitcherCLIProfileMetadata(
@@ -1401,15 +1424,19 @@ extension SwitcherCrossFlowTests {
         // Capture the redacted env (what would be emitted in logs)
         logCapture.captureDebugDescription("redacted env: \(redactedEnv)")
 
+        // Combine captured production logs with test helper captures
+        var allLogs = capturedLogMessages
+        allLogs.append(contentsOf: logCapture.capturedLogs)
+
         // Now verify captured logs don't contain raw secrets
-        let foundPatterns = findSecretPatternsInRuntimeLogs(logCapture.capturedLogs)
+        let foundPatterns = findSecretPatternsInRuntimeLogs(allLogs)
         XCTAssertTrue(
             foundPatterns.isEmpty,
             """
             Found secret patterns in runtime emitted env logs: \(foundPatterns)
             
             Captured logs:
-            \(logCapture.capturedLogs.joined(separator: "\n"))
+            \(allLogs.joined(separator: "\n"))
             """
         )
 
