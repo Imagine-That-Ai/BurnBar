@@ -1,0 +1,28 @@
+{
+  "featureId": "misc-prune-stale-derived-data-directories",
+  "reviewedAt": "2026-04-10T04:20:00Z",
+  "commitId": "67ce2f14337d515172d178b599d8fd2552e5a3e9",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds age-based pruning in .factory/init.sh, but the deletion predicate is based on top-level directory mtime only, which can incorrectly classify still-active per-invocation derived-data directories as stale during long-running jobs.",
+    "issues": [
+      {
+        "file": ".factory/init.sh",
+        "line": 31,
+        "severity": "blocking",
+        "description": "Pruning selects directories solely by `-not -newermt \"${PRUNE_AGE_HOURS} hours ago\"` and then deletes them with `rm -rf` (line 29). Active xcodebuild runs can continue working in nested paths without updating the top-level temp directory mtime, so a concurrent init after >4h can delete an in-use per-invocation directory. This violates the requirement to avoid deleting active run directories."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "A new operational knob (`DERIVED_DATA_PRUNE_AGE_HOURS`) and startup pruning behavior were introduced, but shared-state guidance does not mention how validators should tune/disable pruning for unusually long-running runs.",
+      "evidence": ".factory/init.sh:24-31 defines `DERIVED_DATA_PRUNE_AGE_HOURS`; .factory/library/user-testing.md derived-data isolation section documents mktemp isolation but no pruning/tuning guidance."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed handoff, commit diff, transcript skeleton, and skill guidance for feature misc-prune-stale-derived-data-directories. Found one blocking correctness issue: age-only mtime pruning can remove active per-invocation derived-data directories in long-running/concurrent scenarios, so the feature does not fully satisfy the active-directory safety requirement."
+}

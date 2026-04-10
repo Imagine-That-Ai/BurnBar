@@ -1,0 +1,26 @@
+{
+  "featureId": "misc-remote-watermark-test-warning-cleanup",
+  "reviewedAt": "2026-04-10T04:19:30Z",
+  "commitId": "c7eeea973c4ce644adbd81aa3089ac789077f77a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewed handoff, transcript skeleton, and commit c7eeea9. The implementation is narrowly scoped to removing two redundant `try try` expressions in `RemoteSyncWatermarkTests` (`try tx2.commit()` in both affected tests), with no assertion or behavioral changes. This matches the feature description and expected behavior, and no regression risk was found in the diff.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Procedure-adherence reporting is inconsistent for this run: `skillFeedback.followedProcedure` is `true`, but the handoff `verification.commandsRun` only records the scoped xcode test command and does not include the required startup-read evidence entries.",
+      "evidence": "Handoff file `/Users/dewclaw/.factory/missions/76dfbf36-62ab-43ad-899f-b8b8f9e47932/handoffs/2026-04-10T01-54-14-573Z__misc-remote-watermark-test-warning-cleanup__afee0aa8-99b5-4aca-a7fb-2cd2d1fe49c4.json` shows `skillFeedback.followedProcedure: true` with only one `commandsRun` entry; required-read rules are documented in mission `AGENTS.md` and `.factory/skills/token-accounting-worker/SKILL.md`."
+    },
+    {
+      "area": "conventions",
+      "observation": "Handoff commit traceability convention was not followed: handoff `commitId` is a short hash, while mission/skill guidance requires a full 40-character SHA.",
+      "evidence": "Same handoff file records `commitId: \"c7eeea9\"`; full-SHA requirement is documented in `/Users/dewclaw/.factory/missions/76dfbf36-62ab-43ad-899f-b8b8f9e47932/AGENTS.md` and `.factory/skills/token-accounting-worker/SKILL.md`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature implementation passes review: only the intended redundant-`try` cleanup was made, preserving existing test behavior. No code defects/regressions found. Noted process-level adherence gaps in handoff evidence formatting (startup-read evidence and full-SHA commit ID)."
+}

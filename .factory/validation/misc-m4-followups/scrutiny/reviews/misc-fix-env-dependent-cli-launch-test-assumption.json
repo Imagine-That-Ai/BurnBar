@@ -1,0 +1,28 @@
+{
+  "featureId": "misc-fix-env-dependent-cli-launch-test-assumption",
+  "reviewedAt": "2026-04-10T04:20:57Z",
+  "commitId": "9039c7aacc773b963791b269d0e06e65e4227312",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The codex/claude active-state routing tests were made environment-aware as intended, but the same commit also altered a different launch test in a way that reintroduces environment-dependent failure when Claude is installed.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/SwitcherCLILaunchTests.swift",
+        "line": 942,
+        "severity": "blocking",
+        "description": "`test_launchCLI_rejectsConcurrentLaunchSameProfile` now executes two launches sequentially (`await` then `await`, lines 935-936) and asserts at least one failure (`XCTAssertTrue(hasAlreadyInProgress || !outcome1.success || !outcome2.success)`). When `/opt/homebrew/bin/claude` is installed, `launchCLI` can succeed for both calls (process launch returns success immediately in `CLILaunchInvoker.launchCLI`, OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherCLILAunchService.swift:572-575), making this assertion fail and causing environment-dependent app-test behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The feature's verification step in mission shared state points to the wrong XCTest class, which can produce a false-green targeted run with zero executed tests.",
+      "evidence": "/Users/dewclaw/.factory/missions/76dfbf36-62ab-43ad-899f-b8b8f9e47932/features.json:1555 uses `-only-testing:\"OpenBurnBarTests/SwitcherCrossFlowTests/test_activeStateRouting_cliLaunch_rapidSwitchABC_usesFinalCommittedProfile\"`, but the test is defined in `SwitcherCLILaunchServiceTests` (AgentLensTests/Active/SwitcherCLILaunchTests.swift:1254). Transcript skeleton for worker session 580791e8-65db-4e5b-9a84-d1af6a8d3597 records an initial run with \"Executed 0 tests\" before correcting the selector."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the assigned feature's handoff, transcript skeleton, skill context, and commit diff. Result is fail due to one blocking regression: a modified same-profile CLI launch test now depends on Claude installation state and can fail on machines where Claude is installed."
+}
