@@ -216,16 +216,42 @@ Test scripts use per-invocation derived-data isolation (unique `.derived-data/ci
 
 **Critical: Flow validator success requires existence of required flow report file(s).**
 
+#### Enforcement Script
+
+The runtime enforcement is implemented by `.factory/library/verify-flow-report-finalization.sh`. This script MUST be called before a user-testing validation run can report success.
+
+**Usage:**
+```bash
+# Basic usage (checks default reports: settings-ui.json launch-contracts.json)
+./.factory/library/verify-flow-report-finalization.sh <milestone>
+
+# With specific reports
+./.factory/library/verify-flow-report-finalization.sh <milestone> report1.json report2.json
+
+# Example for core-engine milestone
+./.factory/library/verify-flow-report-finalization.sh core-engine
+```
+
+**Exit codes:**
+- `0` - All required flow reports exist; validator MAY report success
+- `1` - One or more required flow reports are missing; validator MUST NOT report success
+
+#### Required Procedure
+
 When completing a user-testing validation run:
 
-1. **Verify flow reports exist**: Before reporting success, confirm all expected flow report JSON files were created in `.factory/validation/<milestone>/user-testing/flows/`.
+1. **Call enforcement script BEFORE synthesis**: Run the verification script to check all required flow reports exist:
+   ```bash
+   .factory/library/verify-flow-report-finalization.sh <milestone>
+   ```
+   If this script exits with code 1, the validation run MUST NOT report success.
 
-2. **Missing report = explicit failure**: If any expected flow report is missing, the validator must fail with diagnostics listing:
+2. **Missing report = explicit failure**: If the script fails, it prints diagnostics including:
    - Which flow report file(s) were expected but not found
    - The path(s) where they were expected
    - The actual contents of the flows directory at time of check
 
-3. **Synthesis must track flow reports**: The `synthesis.json` file MUST include a `flowReports` array listing all created flow report paths. Example:
+3. **Synthesis must track flow reports**: On success, the script outputs the `flowReports` JSON array for inclusion in `synthesis.json`:
    ```json
    "flowReports": [
      ".factory/validation/<milestone>/user-testing/flows/settings-ui.json",
@@ -233,19 +259,26 @@ When completing a user-testing validation run:
    ]
    ```
 
-4. **Validation check command**: After completing a flow run, verify reports exist:
-   ```bash
-   FLOWS_DIR=".factory/validation/<milestone>/user-testing/flows"
-   REQUIRED_REPORTS="settings-ui.json launch-contracts.json"
-   for report in $REQUIRED_REPORTS; do
-     if [ ! -f "$FLOWS_DIR/$report" ]; then
-       echo "ERROR: Missing required flow report: $FLOWS_DIR/$report"
-       echo "Directory contents:"
-       ls -la "$FLOWS_DIR/"
-       exit 1
-     fi
-   done
-   echo "All required flow reports present."
-   ```
+4. **No silent success**: A validation run that passes tests but fails to persist flow reports must NOT report as `pass`. The missing report is a blocking failure requiring explicit diagnostics.
 
-5. **No silent success**: A validation run that passes tests but fails to persist flow reports must NOT report as `pass`. The missing report is a blocking failure requiring explicit diagnostics.
+#### Manual Verification
+
+To verify the enforcement is working correctly:
+
+```bash
+# 1. Run with all reports present - should PASS
+./.factory/library/verify-flow-report-finalization.sh <milestone>
+echo "Exit code: $?"  # Should be 0
+
+# 2. Temporarily remove a report - should FAIL
+mv .factory/validation/<milestone>/user-testing/flows/report.json \
+   .factory/validation/<milestone>/user-testing/flows/report.json.bak
+./.factory/library/verify-flow-report-finalization.sh <milestone>
+echo "Exit code: $?"  # Should be 1
+mv .factory/validation/<milestone>/user-testing/flows/report.json.bak \
+   .factory/validation/<milestone>/user-testing/flows/report.json
+
+# 3. Restore and run again - should PASS
+./.factory/library/verify-flow-report-finalization.sh <milestone>
+echo "Exit code: $?"  # Should be 0
+```
