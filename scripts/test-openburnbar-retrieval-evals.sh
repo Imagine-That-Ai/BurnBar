@@ -4,10 +4,13 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cache_dir="$repo_root/.spm-cache"
-derived_data_dir="$repo_root/.derived-data/openburnbar-retrieval-evals"
 
-rm -rf "$derived_data_dir"
-mkdir -p "$cache_dir" "$derived_data_dir"
+# Use a unique derived-data path per invocation to avoid races when
+# multiple validator reruns run concurrently.
+derived_data_dir="$(mktemp -d "$repo_root/.derived-data/openburnbar-retrieval-evals.XXXXXX")"
+trap 'rm -rf "$derived_data_dir"' EXIT
+
+mkdir -p "$cache_dir"
 
 xcodebuild test \
   -project "$repo_root/OpenBurnBar.xcodeproj" \

@@ -7,7 +7,7 @@ SCHEME="OpenBurnBar"
 CONFIGURATION="Debug"
 DESTINATION="platform=macOS"
 CACHE_DIR="$ROOT_DIR/.spm-cache"
-DERIVED_DATA_DIR="$ROOT_DIR/.derived-data"
+DERIVED_DATA_DIR="$ROOT_DIR/.derived-data/ci-build"
 MODE="build"
 DO_CLEAN=0
 
