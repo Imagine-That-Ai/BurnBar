@@ -220,21 +220,37 @@ Test scripts use per-invocation derived-data isolation (unique `.derived-data/ci
 
 The runtime enforcement is implemented by `.factory/library/verify-flow-report-finalization.sh`. This script MUST be called before a user-testing validation run can report success.
 
+**Milestone-Aware Defaults:**
+The script uses milestone-aware default report sets — you do not need to specify reports manually for known milestones:
+
+| Milestone | Default Reports |
+|-----------|----------------|
+| `core-engine` | `settings-ui.json`, `launch-contracts.json` |
+| `fast-surfaces` | `dashboard.json`, `popover.json` |
+| `m1-provenance-foundation` | `group-core-persistence.json`, `group-remote-watermark.json` |
+| `m2-exact-ingestion-precision` | `group-a.json`, `group-b.json` |
+| `m3-hybrid-indexing-efficiency` | `group-a.json`, `group-b.json` |
+| `m4-reconciliation-backfill-hardening` | `group-reconciliation-core.json`, `group-reporting-audit.json` |
+
 **Usage:**
 ```bash
-# Basic usage (checks default reports: settings-ui.json launch-contracts.json)
+# Basic usage (uses milestone-aware defaults automatically)
 ./.factory/library/verify-flow-report-finalization.sh <milestone>
 
-# With specific reports
+# With explicit reports (overrides milestone defaults)
 ./.factory/library/verify-flow-report-finalization.sh <milestone> report1.json report2.json
 
-# Example for core-engine milestone
-./.factory/library/verify-flow-report-finalization.sh core-engine
+# Example for fast-surfaces milestone (uses dashboard.json, popover.json)
+./.factory/library/verify-flow-report-finalization.sh fast-surfaces
+
+# Example with explicit override
+./.factory/library/verify-flow-report-finalization.sh fast-surfaces custom-report.json
 ```
 
 **Exit codes:**
 - `0` - All required flow reports exist; validator MAY report success
 - `1` - One or more required flow reports are missing; validator MUST NOT report success
+- `1` - No milestone default available and no reports specified
 
 #### Required Procedure
 
@@ -254,10 +270,11 @@ When completing a user-testing validation run:
 3. **Synthesis must track flow reports**: On success, the script outputs the `flowReports` JSON array for inclusion in `synthesis.json`:
    ```json
    "flowReports": [
-     ".factory/validation/<milestone>/user-testing/flows/settings-ui.json",
-     ".factory/validation/<milestone>/user-testing/flows/launch-contracts.json"
+     ".factory/validation/<milestone>/user-testing/flows/<report1>.json",
+     ".factory/validation/<milestone>/user-testing/flows/<report2>.json"
    ]
    ```
+   The actual reports will match the milestone's default set (e.g., `fast-surfaces` produces `dashboard.json` and `popover.json`).
 
 4. **No silent success**: A validation run that passes tests but fails to persist flow reports must NOT report as `pass`. The missing report is a blocking failure requiring explicit diagnostics.
 

@@ -12,11 +12,20 @@
 #
 # Arguments:
 #   milestone    - The milestone name (e.g., core-engine, fast-surfaces)
-#   reportN      - Optional: specific report filenames to check (default: settings-ui.json launch-contracts.json)
+#   reportN      - Optional: specific report filenames to check
+#                  (defaults are milestone-aware via built-in mapping)
 #
 # Exit codes:
 #   0 - All required flow reports exist
 #   1 - One or more required flow reports are missing
+#
+# Default Report Mapping (milestone-aware):
+#   core-engine: settings-ui.json, launch-contracts.json
+#   fast-surfaces: dashboard.json, popover.json
+#   m1-provenance-foundation: group-core-persistence.json, group-remote-watermark.json
+#   m2-exact-ingestion-precision: group-a.json, group-b.json
+#   m3-hybrid-indexing-efficiency: group-a.json, group-b.json
+#   m4-reconciliation-backfill-hardening: group-reconciliation-core.json, group-reporting-audit.json
 #
 # This script implements the enforcement described in user-testing.md:
 # "Flow Report Finalization - Critical: Flow validator success requires
@@ -56,23 +65,114 @@ if [ $# -lt 1 ]; then
     echo "Arguments:" >&2
     echo "  milestone    - The milestone name (e.g., core-engine, fast-surfaces)" >&2
     echo "  reportN      - Optional: specific report filenames to check" >&2
-    echo "                (default: settings-ui.json launch-contracts.json)" >&2
+    echo "                (defaults are milestone-aware via built-in mapping)" >&2
+    echo "" >&2
+    echo "Default report mapping:" >&2
+    echo "  core-engine: settings-ui.json, launch-contracts.json" >&2
+    echo "  fast-surfaces: dashboard.json, popover.json" >&2
+    echo "  m1-provenance-foundation: group-core-persistence.json, group-remote-watermark.json" >&2
+    echo "  m2-exact-ingestion-precision: group-a.json, group-b.json" >&2
+    echo "  m3-hybrid-indexing-efficiency: group-a.json, group-b.json" >&2
+    echo "  m4-reconciliation-backfill-hardening: group-reconciliation-core.json, group-reporting-audit.json" >&2
+    echo "" >&2
+    echo "If no default is available for the milestone, reports must be specified explicitly." >&2
     exit 1
 fi
 
 MILESTONE="$1"
 shift
 
+# Construct the repo root path early (needed for milestone default lookup)
+# The flows directory is at: .factory/validation/<milestone>/user-testing/flows/
+REPO_ROOT="$(git -C "$(dirname "$0")/../../../" rev-parse --show-toplevel 2>/dev/null || echo ".")"
+
+# Milestone-specific default required reports mapping
+# Maps milestone names to their required flow report filenames.
+# This mapping is milestone-aware: each milestone has its own set of reports
+# that must exist before a validation run can report success.
+get_milestone_default_reports() {
+    local milestone="$1"
+    case "$milestone" in
+        core-engine)
+            echo "settings-ui.json launch-contracts.json"
+            ;;
+        fast-surfaces)
+            echo "dashboard.json popover.json"
+            ;;
+        integration-hardening)
+            echo "settings-ui.json launch-contracts.json"
+            ;;
+        m1-provenance-foundation)
+            echo "group-core-persistence.json group-remote-watermark.json"
+            ;;
+        m2-exact-ingestion-precision)
+            echo "group-a.json group-b.json"
+            ;;
+        m3-hybrid-indexing-efficiency)
+            echo "group-a.json group-b.json"
+            ;;
+        m4-reconciliation-backfill-hardening)
+            echo "group-reconciliation-core.json group-reporting-audit.json"
+            ;;
+        misc-core-engine-followups|misc-infra-followups|misc-m4-followups)
+            # Misc milestones may have variable reports - try to infer from synthesis.json
+            echo ""
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+# Try to read flowReports from synthesis.json for a milestone
+get_synthesis_flow_reports() {
+    local milestone="$1"
+    local synthesis_path="${REPO_ROOT}/.factory/validation/${milestone}/user-testing/synthesis.json"
+    if [ -f "$synthesis_path" ]; then
+        # Extract flowReports array from synthesis.json using grep and sed
+        local flow_reports
+        flow_reports=$(grep -o '"flowReports": \[[^]]*\]' "$synthesis_path" 2>/dev/null | head -1 || true)
+        if [ -n "$flow_reports" ]; then
+            # Extract just the filenames from the array
+            echo "$flow_reports" | sed -n 's/.*flows\/\([^"]*\.json\).*/\1/p' | tr '\n' ' '
+            return 0
+        fi
+    fi
+    # Return empty string instead of 1 to avoid triggering set -e
+    return 0
+}
+
 # Default required reports if not specified
 if [ $# -eq 0 ]; then
-    REQUIRED_REPORTS="settings-ui.json launch-contracts.json"
+    # First try milestone-specific defaults
+    REQUIRED_REPORTS=$(get_milestone_default_reports "$MILESTONE")
+    
+    # If milestone has no hardcoded defaults, try to read from synthesis.json
+    if [ -z "$REQUIRED_REPORTS" ]; then
+        REQUIRED_REPORTS=$(get_synthesis_flow_reports "$MILESTONE")
+    fi
+    
+    # If still empty, we cannot proceed - enforcement must be explicit
+    if [ -z "$REQUIRED_REPORTS" ]; then
+        error "=== Flow Report Finalization FAILED ==="
+        error ""
+        error "No default required reports found for milestone: ${MILESTONE}"
+        error ""
+        error "This milestone does not have milestone-aware default reports configured."
+        error "You must specify reports explicitly: $0 <milestone> [report1 report2 ...]"
+        error ""
+        error "To fix: Provide required report filenames as arguments, e.g.:"
+        error "  $0 ${MILESTONE} dashboard.json popover.json"
+        error ""
+        error "Or add this milestone to the milestone-defaults mapping in the script."
+        exit 1
+    fi
 else
     REQUIRED_REPORTS="$*"
 fi
 
 # Construct the flows directory path
 # The flows directory is at: .factory/validation/<milestone>/user-testing/flows/
-REPO_ROOT="$(git -C "$(dirname "$0")/../../../" rev-parse --show-toplevel 2>/dev/null || echo ".")"
 FLOWS_DIR="${REPO_ROOT}/.factory/validation/${MILESTONE}/user-testing/flows"
 
 info "=== Flow Report Finalization Enforcement ==="
