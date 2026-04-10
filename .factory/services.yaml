@@ -8,5 +8,16 @@ commands:
   browser_smoke: open -Ra "Safari" && open -Ra "Google Chrome"
   test_retrieval: scripts/test-openburnbar-retrieval-evals.sh
   build: scripts/build.sh --build --configuration Debug --cache-dir .spm-cache --derived-data .derived-data/ci-build
+  # Integrated milestone validation with flow report enforcement
+  # Uses MILESTONE env var - must be set before invoking
+  # Runs verify-flow-report-finalization.sh before validators to ensure
+  # required flow reports exist before success can be reported
+  validate: |
+    if [ -z "${MILESTONE:-}" ]; then
+      echo "Error: MILESTONE environment variable must be set" >&2
+      echo "Usage: MILESTONE=<milestone> ./scripts/validate-milestone.sh" >&2
+      exit 1
+    fi
+    ./scripts/validate-milestone.sh "$MILESTONE"
 
 services: {}
