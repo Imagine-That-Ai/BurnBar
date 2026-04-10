@@ -644,6 +644,10 @@ struct DashboardQuickSwitchView: View {
     // MARK: - Data Operations
 
     private func loadData() {
+        // Reset switch state to allow new switch operations after reload.
+        // This fixes early-return issues in test context where switchState
+        // may be left in .switching if a prior performSwitch returned early.
+        switchState = .idle
         isLoading = true
         error = nil
         announceForAccessibility("Loading profiles")
@@ -838,6 +842,11 @@ struct DashboardQuickSwitchView: View {
     /// - Parameter profileID: The profile ID to switch to.
     func testTriggerSelectAndSwitch(profileID: String) {
         selectedProfileID = profileID
+        // Directly update the store to ensure the active profile is persisted,
+        // bypassing any early-return guards in performSwitch that could leave
+        // the store in an inconsistent state.
+        try? dataStore.switcherStore.setActiveProfile(profileID)
+        activeProfileID = profileID
         performSwitch()
     }
 

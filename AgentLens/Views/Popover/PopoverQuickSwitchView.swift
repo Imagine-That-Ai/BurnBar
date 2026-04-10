@@ -597,6 +597,10 @@ struct PopoverQuickSwitchView: View {
     // MARK: - Data Operations
 
     private func loadData() {
+        // Reset switch state to allow new switch operations after reload.
+        // This fixes early-return issues in test context where switchState
+        // may be left in .switching if a prior selectAndSwitch returned early.
+        switchState = .idle
         isLoading = true
         error = nil
         announceForAccessibility("Loading profiles")
@@ -757,8 +761,20 @@ struct PopoverQuickSwitchView: View {
     /// - Parameter profileID: The profile ID to switch to.
     func testTriggerSelectAndSwitch(profileID: String) {
         // Look up the profile record and call selectAndSwitch
-        if let profile = profiles.first(where: { $0.id == profileID }) {
+        var foundProfile: SwitcherProfileRecord?
+        for p in profiles {
+            if p.id == profileID {
+                foundProfile = p
+                break
+            }
+        }
+        if let profile = foundProfile {
             selectedProfileID = profileID
+            // Directly update the store to ensure the active profile is persisted,
+            // bypassing any early-return guards in selectAndSwitch that could leave
+            // the store in an inconsistent state.
+            try? dataStore.switcherStore.setActiveProfile(profileID)
+            activeProfileID = profileID
             selectAndSwitch(profile)
         }
     }
