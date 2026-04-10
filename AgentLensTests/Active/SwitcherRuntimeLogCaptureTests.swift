@@ -313,12 +313,18 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         // Clear logs from creation
         capturedLogMessages.removeAll()
 
-        // Fetch profile using logging variant
-        let fetchedProfiles = try store.fetchAllProfiles()
+        // Fetch profiles using logging variant - emits through LogEmitter
+        let fetchedProfiles = try store.fetchAllProfilesWithLogging()
         for fetched in fetchedProfiles {
             logCapture.reset()
             logCapture.captureProfileTextualRepresentations(fetched)
         }
+
+        // Assert that we captured emitted production logs (not just helper-only strings)
+        XCTAssertFalse(
+            capturedLogMessages.isEmpty,
+            "Should have captured emitted production log output from fetchAllProfilesWithLogging()"
+        )
 
         // Combine captured log messages
         var allLogs = capturedLogMessages

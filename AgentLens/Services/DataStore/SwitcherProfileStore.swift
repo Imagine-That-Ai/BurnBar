@@ -233,6 +233,20 @@ public final class SwitcherProfileStore {
         }
     }
 
+    /// Fetches all profiles with logging for startup/sync verification.
+    /// Logs emit only operational state (profile count and IDs).
+    internal func fetchAllProfilesWithLogging() throws -> [SwitcherProfileRecord] {
+        let profiles = try fetchAllProfiles()
+        let count = profiles.count
+        if count == 0 {
+            logEmitter.emit("Fetched 0 profiles")
+        } else {
+            let ids = profiles.map { $0.id }.joined(separator: ", ")
+            logEmitter.emit("Fetched \(count) profile(s): \(ids)")
+        }
+        return profiles
+    }
+
     /// Fetches all profiles of a given target kind.
     public func fetchProfiles(targetKind: SwitcherProfileTargetKind) throws -> [SwitcherProfileRecord] {
         try dbQueue.read { db in
