@@ -1,0 +1,34 @@
+{
+  "featureId": "misc-infra-fix-multisource-reconciliation-test-compile-drift",
+  "reviewedAt": "2026-04-10T20:26:35Z",
+  "commitId": "1d56271a2ce8b7e92b70779eaacc79312e39d77b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The target test file currently appears compile-aligned (ProviderUsageRecord calls include cacheReadTokens/cacheCreationTokens/requestCount), but the committed diff referenced by this feature is unrelated to MultiSourceReconciliationTests and does not provide auditable implementation traceability for this feature.",
+    "issues": [
+      {
+        "file": ".factory/library/user-testing.md",
+        "line": 215,
+        "severity": "blocking",
+        "description": "The feature handoff commitId resolves to a commit that changes flow-validator documentation/synthesis artifacts, not MultiSourceReconciliationTests compile-drift code; therefore the reviewed diff does not implement the assigned feature scope."
+      },
+      {
+        "file": "/Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/handoffs/2026-04-10T17-45-22-195Z__misc-infra-fix-multisource-reconciliation-test-compile-drift__f41510e7-b08f-4a20-bbd1-39a57cfcfda2.json",
+        "line": 11,
+        "severity": "blocking",
+        "description": "Handoff states the fix was already present in prior commits but does not include implementation commit SHA(s), so scrutiny cannot map this feature to the actual implementation diff as required for traceability."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Skill handoff discipline requires implementation SHA traceability when commitId points to an artifact/non-implementation commit; this run marked followedProcedure=true without providing those SHA references.",
+      "evidence": "Skill requirement: .factory/skills/indexing-efficiency-worker/SKILL.md (Handoff Discipline Requirements #3). Handoff evidence: commitId at line 6 points to unrelated artifact commit, whatWasImplemented at line 11 references prior commits without SHAs, followedProcedure=true at line 34."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed transcript skeleton and commit diff for misc-infra-fix-multisource-reconciliation-test-compile-drift. Current code appears compile-aligned, but the feature fails scrutiny because the referenced commit is out-of-scope and the handoff lacks implementation-commit traceability to the actual fix."
+}
