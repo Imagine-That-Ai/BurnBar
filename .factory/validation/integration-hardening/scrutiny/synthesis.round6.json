@@ -1,0 +1,74 @@
+{
+  "milestone": "integration-hardening",
+  "round": 6,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 1,
+    "failed": 1,
+    "failedFeatures": [
+      "integration-hardening-consume-rendered-ui-seams-in-crossflow-tests"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "integration-hardening-consume-rendered-ui-seams-in-crossflow-tests",
+      "severity": "blocking",
+      "description": "Rendered indicator assertions in SwitcherCrossFlowTests remain renderability-only (`XCTAssertNotNil`) and do not consume concrete rendered seams (`testActiveProfileDisplayName` / `testActiveProfileAccessibilityLabel`) required to close explicit rendered-indicator failures."
+    },
+    {
+      "featureId": "integration-hardening-consume-rendered-ui-seams-in-crossflow-tests",
+      "severity": "blocking",
+      "description": "Popover rendered-indicator proof remains renderability-only (`XCTAssertNotNil`) instead of asserting active labels/identifiers via DEBUG seams."
+    },
+    {
+      "featureId": "integration-hardening-consume-rendered-ui-seams-in-crossflow-tests",
+      "severity": "blocking",
+      "description": "Cross-surface switch evidence still relies on direct store mutation (`localStore.setActiveProfile(...)`) under simulated UI comments, rather than UI callback/action paths required by prior scrutiny findings."
+    },
+    {
+      "featureId": "integration-hardening-consume-rendered-ui-seams-in-crossflow-tests",
+      "severity": "blocking",
+      "description": "VAL-CROSS-009 launch-chain checks remain store-inference/comment based (`launch adapter would use ...`) and do not assert concrete launch invocation traces from UI action paths."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "Skill .factory/skills/switcher-integration-worker/SKILL.md",
+      "suggestion": "Enforce handoff compliance so `followedProcedure=true` is only allowed when `verification.commandsRun` includes concrete context-read evidence (Read/Grep/content-inspection commands), not only test execution commands.",
+      "evidence": "Both rerun reviews reported missing context-read evidence while handoffs declared `followedProcedure=true`, repeating the same drift previously flagged in integration-hardening scrutiny rounds.",
+      "isSystemic": true
+    },
+    {
+      "target": "Mission AGENTS.md",
+      "suggestion": "Add explicit VAL-CROSS evidence rule: rendered-indicator claims must assert concrete rendered labels/identifiers via seams, and switch/launch claims must be proven through UI action callbacks or adapter invocation traces (not direct store mutation/comments).",
+      "evidence": "The same rendered/store-inference pattern persisted across multiple integration-hardening fix attempts and remains the active blocker in this rerun.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Repeat recommendation to add context-read evidence discipline to switcher worker handoffs",
+      "reason": "already-documented"
+    }
+  ],
+  "previousRound": ".factory/validation/integration-hardening/scrutiny/synthesis.round5.json"
+}

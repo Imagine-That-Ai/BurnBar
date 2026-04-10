@@ -1,0 +1,57 @@
+{
+  "featureId": "integration-hardening-finalize-crossflow-rendered-ui-launch-trace-evidence",
+  "reviewedAt": "2026-04-10T12:29:25Z",
+  "commitId": "0cf5417116be732d49896716519067940053f545",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail. The fix feature does not resolve the prior blocking failure. The reviewed feature commit is a scrutiny-artifact synthesis commit (no switcher implementation changes), and the crossflow tests still use renderability/store-state proxies instead of concrete rendered indicators, UI-callback-driven switching evidence, and launch invocation traces.",
+    "issues": [
+      {
+        "file": ".factory/validation/integration-hardening/scrutiny/synthesis.json",
+        "line": 1,
+        "severity": "blocking",
+        "description": "Feature commit `0cf5417116be732d49896716519067940053f545` contains only `.factory/validation/...` synthesis/review artifacts and no implementation/test code changes for the assigned switcher crossflow fix."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2430,
+        "severity": "blocking",
+        "description": "Dashboard rendered-indicator proof is still renderability-only (`XCTAssertNotNil`), not a concrete rendered active label/identifier assertion via seams or accessibility query."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2475,
+        "severity": "blocking",
+        "description": "Popover rendered-indicator proof remains renderability-only (`XCTAssertNotNil`) rather than asserting concrete active rendered indicator values."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2530,
+        "severity": "blocking",
+        "description": "Cross-surface switching evidence still uses direct store mutation (`setActiveProfile`) under 'simulating UI action' comments (also at lines 2596, 2781, 2846), so UI action callback path proof is still missing."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2799,
+        "severity": "blocking",
+        "description": "VAL-CROSS-009 launch-chain checks remain store-inference/comment-based (`Launch adapter would use ...`) instead of asserting concrete launch invocation traces from a UI-driven action path (also line 2864)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Handoff marked `followedProcedure=true` even though required handoff-discipline evidence is incomplete: no context-read evidence in `verification.commandsRun`, and implementation traceability for artifact `commitId` is not provided with full SHA(s).",
+      "evidence": "`.factory/skills/switcher-integration-worker/SKILL.md` requires context-read evidence and implementation SHA traceability when `commitId` is a non-implementation artifact commit. Handoff `2026-04-10T08-22-34-081Z__...__3e0058ae-96b2-4f70-a6e6-977a9940a193.json` sets `followedProcedure=true`, lists only test commands, and references short hashes (`f8ffd58`, `fc83e28`) in prose."
+    },
+    {
+      "area": "conventions",
+      "observation": "Mission guidance does not explicitly codify the scrutiny requirement that VAL-CROSS rendered-indicator/switch/launch evidence must come from concrete rendered seams/accessibility and UI-callback/launch-invocation traces, leading to repeated store/renderability proxy regressions.",
+      "evidence": "Repeated failures continue on `SwitcherCrossFlowTests.swift` lines 2430/2475/2530/2596/2781/2799/2846/2864, while mission `AGENTS.md` testing guidance remains high-level and does not define this evidence bar explicitly."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-consume-rendered-ui-seams-in-crossflow-tests.json",
+  "summary": "Reviewed fix session `3e0058ae-96b2-4f70-a6e6-977a9940a193`, its handoff/transcript skeleton, and both feature diffs (`0cf5417...` and prior failed `f8ffd580...`). The fix does not address the prior failure: no implementation diff exists in the reviewed fix commit, and the same blocking crossflow evidence gaps remain in current tests."
+}
