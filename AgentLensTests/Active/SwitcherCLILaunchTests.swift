@@ -1004,6 +1004,13 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
                 // launchFailed also proves the service was invoked and reached the launch attempt
             }
         }
+
+        // VAL-CROSS-004: Assert the routed profile ID equals the final committed active profile ID.
+        // This proves that launchCLI was called with claudeProfile.id, not stale codex.id.
+        // Evidence is captured from the coordinator's lastAttemptedProfileID trace.
+        let routedProfileID = await service.getLastAttemptedProfileID()
+        XCTAssertEqual(routedProfileID, claudeProfile.id,
+            "Routed profile ID should equal claudeProfile.id (final committed active profile), proving no stale A/B routing")
     }
 
     /// VAL-CROSS-004: CLI launch invokes correct profile after rapid switch from codex to claude.
@@ -1043,6 +1050,12 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
                 XCTFail("Profile not found in store - launch path was not properly invoked")
             }
         }
+
+        // VAL-CROSS-004: Assert the routed profile ID equals the specified profile ID.
+        // Evidence is captured from the coordinator's lastAttemptedProfileID trace.
+        let routedProfileID = await service.getLastAttemptedProfileID()
+        XCTAssertEqual(routedProfileID, claudeProfile.id,
+            "Routed profile ID should equal claudeProfile.id, proving correct routing")
     }
 
     /// VAL-CROSS-004: CLI launch rejects browser profile kind at service level.
@@ -1216,6 +1229,13 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
                 XCTFail("Got profileNotFound - the active profile claude should have been found in store")
             }
         }
+
+        // VAL-CROSS-004: Assert the routed profile ID equals the final committed active profile ID.
+        // This proves that launchUsingActiveProfile() read claudeProfile.id from global state,
+        // not stale codexProfile.id. Evidence is captured from the coordinator's lastAttemptedProfileID trace.
+        let routedProfileID = await service.getLastAttemptedProfileID()
+        XCTAssertEqual(routedProfileID, claudeProfile.id,
+            "Routed profile ID should equal claudeProfile.id (final committed active profile), proving no stale A/B routing")
     }
 
     /// VAL-CROSS-004: CLI launch via launchUsingActiveProfile() returns noActiveProfile
@@ -1328,6 +1348,14 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
                 XCTFail("Got profileNotFound - the active profile codexC should have been found in store")
             }
         }
+
+        // VAL-CROSS-004: Assert the routed profile ID equals the final committed active profile ID.
+        // This proves that after A->B->C rapid switch, launchUsingActiveProfile()
+        // read codexC.id from global state, not stale codexA.id or codexB.id.
+        // Evidence is captured from the coordinator's lastAttemptedProfileID trace.
+        let routedProfileID = await service.getLastAttemptedProfileID()
+        XCTAssertEqual(routedProfileID, codexC.id,
+            "Routed profile ID should equal codexC.id (final committed active profile after A->B->C switch), proving no stale A/B routing")
     }
 }
 

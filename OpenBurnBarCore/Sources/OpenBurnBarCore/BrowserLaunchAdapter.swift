@@ -368,6 +368,7 @@ public enum BrowserLaunchError: Error, Equatable, Sendable {
 public actor BrowserLaunchCoordinator {
     private var pendingLaunches: Set<String> = []
     private var lastLaunchedProfileID: String?
+    private var lastAttemptedProfileID: String?
     private var launchSequence: Int = 0
 
     public init() {}
@@ -381,6 +382,8 @@ public actor BrowserLaunchCoordinator {
         }
         pendingLaunches.insert(profileID)
         launchSequence += 1
+        // Track the profile ID on every attempt (not just success) for test verification
+        lastAttemptedProfileID = profileID
         return launchSequence
     }
 
@@ -395,6 +398,12 @@ public actor BrowserLaunchCoordinator {
     /// Returns the last successfully launched profile ID.
     public func getLastLaunchedProfileID() -> String? {
         return lastLaunchedProfileID
+    }
+
+    /// Returns the last attempted profile ID, regardless of success or failure.
+    /// This is used for test verification to prove the correct profile was routed.
+    public func getLastAttemptedProfileID() -> String? {
+        return lastAttemptedProfileID
     }
 
     /// Returns true if there's a launch in progress for the given profile.

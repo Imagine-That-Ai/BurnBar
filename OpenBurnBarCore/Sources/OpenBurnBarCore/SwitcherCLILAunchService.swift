@@ -492,6 +492,7 @@ public enum CLILaunchError: Error, Equatable, Sendable {
 public actor CLILaunchCoordinator {
     private var pendingLaunches: Set<String> = []
     private var lastLaunchedProfileID: String?
+    private var lastAttemptedProfileID: String?
     private var launchSequence: Int = 0
 
     public init() {}
@@ -505,6 +506,8 @@ public actor CLILaunchCoordinator {
         }
         pendingLaunches.insert(profileID)
         launchSequence += 1
+        // Track the profile ID on every attempt (not just success) for test verification
+        lastAttemptedProfileID = profileID
         return launchSequence
     }
 
@@ -519,6 +522,12 @@ public actor CLILaunchCoordinator {
     /// Returns the last successfully launched profile ID.
     public func getLastLaunchedProfileID() -> String? {
         return lastLaunchedProfileID
+    }
+
+    /// Returns the last attempted profile ID, regardless of success or failure.
+    /// This is used for test verification to prove the correct profile was routed.
+    public func getLastAttemptedProfileID() -> String? {
+        return lastAttemptedProfileID
     }
 
     /// Returns true if there's a launch in progress for the given profile.
@@ -771,6 +780,13 @@ public final class SwitcherCLILAunchService: @unchecked Sendable {
     /// Returns the resolved executable path for a CLI type.
     public func executablePath(for cliType: SwitcherCLIProfileType) -> String? {
         return CLILaunchAdapter.executablePath(for: cliType)
+    }
+
+    /// Returns the last attempted profile ID from the coordinator, for test verification.
+    /// This allows tests to verify that the correct profile ID was routed through
+    /// the launch service, not just that an error occurred.
+    public func getLastAttemptedProfileID() async -> String? {
+        return await coordinator.getLastAttemptedProfileID()
     }
 }
 

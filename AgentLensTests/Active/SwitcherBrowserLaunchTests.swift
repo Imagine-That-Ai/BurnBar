@@ -717,10 +717,6 @@ final class SwitcherBrowserLaunchServiceTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 1_000) // Minimal delay to simulate rapid switch
         try? await Task.sleep(nanoseconds: 1_000)
 
-        // Verify store state shows chrome2 as active (this is the "final committed active profile")
-        // Since we can't directly query active profile from InMemorySwitcherProfileStoreAdapter,
-        // we verify by calling launchBrowser - it should use chrome2's profile
-
         // VAL-CROSS-004: Call launchBrowser through the real service adapter path.
         // The service reads the profile from the store at launch time.
         // If browser was available, it would launch chrome2 (the profile we pass).
@@ -739,6 +735,13 @@ final class SwitcherBrowserLaunchServiceTests: XCTestCase {
         } else {
             XCTFail("Expected .browserNotInstalled error, got \(String(describing: outcome.error))")
         }
+
+        // VAL-CROSS-004: Assert the routed profile ID equals the final committed active profile ID.
+        // This proves that launchBrowser was called with chrome2.id, not stale chrome1.id.
+        // Evidence is captured from the coordinator's lastAttemptedProfileID trace.
+        let routedProfileID = await serviceWithProvider.getLastAttemptedProfileID()
+        XCTAssertEqual(routedProfileID, chrome2.id,
+            "Routed profile ID should equal chrome2.id (final committed active profile), proving no stale A/B routing")
     }
 
     /// VAL-CROSS-004: Browser launch invokes correct profile after rapid switch from chrome1 to chrome2.
@@ -778,6 +781,12 @@ final class SwitcherBrowserLaunchServiceTests: XCTestCase {
         } else {
             XCTFail("Expected .browserNotInstalled error, got \(String(describing: outcome.error))")
         }
+
+        // VAL-CROSS-004: Assert the routed profile ID equals the specified profile ID.
+        // Evidence is captured from the coordinator's lastAttemptedProfileID trace.
+        let routedProfileID = await serviceWithProvider.getLastAttemptedProfileID()
+        XCTAssertEqual(routedProfileID, chromeProfile.id,
+            "Routed profile ID should equal chromeProfile.id, proving correct routing")
     }
 
     /// VAL-CROSS-004: Browser launch rejects CLI profile kind at service level.
@@ -937,6 +946,13 @@ final class SwitcherBrowserLaunchServiceTests: XCTestCase {
         } else {
             XCTFail("Expected .browserNotInstalled error, got \(String(describing: outcome.error))")
         }
+
+        // VAL-CROSS-004: Assert the routed profile ID equals the final committed active profile ID.
+        // This proves that launchUsingActiveProfile() read chrome2.id from global state,
+        // not stale chrome1.id. Evidence is captured from the coordinator's lastAttemptedProfileID trace.
+        let routedProfileID = await serviceWithProvider.getLastAttemptedProfileID()
+        XCTAssertEqual(routedProfileID, chrome2.id,
+            "Routed profile ID should equal chrome2.id (final committed active profile), proving no stale A/B routing")
     }
 
     /// VAL-CROSS-004: Browser launch via launchUsingActiveProfile() returns noActiveProfile
@@ -1040,6 +1056,14 @@ final class SwitcherBrowserLaunchServiceTests: XCTestCase {
         } else {
             XCTFail("Expected .browserNotInstalled, got \(String(describing: outcome.error))")
         }
+
+        // VAL-CROSS-004: Assert the routed profile ID equals the final committed active profile ID.
+        // This proves that after A->B->C rapid switch, launchUsingActiveProfile()
+        // read chromeC.id from global state, not stale chromeA.id or chromeB.id.
+        // Evidence is captured from the coordinator's lastAttemptedProfileID trace.
+        let routedProfileID = await serviceWithProvider.getLastAttemptedProfileID()
+        XCTAssertEqual(routedProfileID, chromeC.id,
+            "Routed profile ID should equal chromeC.id (final committed active profile after A->B->C switch), proving no stale A/B routing")
     }
 }
 

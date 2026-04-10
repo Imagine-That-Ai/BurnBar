@@ -258,6 +258,13 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
     public func browserURL(for browserType: SwitcherBrowserProfileType) -> URL? {
         return browserProvider.browserURL(for: browserType)
     }
+
+    /// Returns the last attempted profile ID from the coordinator, for test verification.
+    /// This allows tests to verify that the correct profile ID was routed through
+    /// the launch service, not just that an error occurred.
+    public func getLastAttemptedProfileID() async -> String? {
+        return await coordinator.getLastAttemptedProfileID()
+    }
 }
 
 // MARK: - Launch Outcome
