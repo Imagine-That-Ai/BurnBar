@@ -1,52 +1,45 @@
 {
   "featureId": "integration-hardening-finalize-crossflow-rendered-ui-launch-trace-evidence",
-  "reviewedAt": "2026-04-10T12:39:28Z",
-  "commitId": "0cf5417116be732d49896716519067940053f545",
+  "reviewedAt": "2026-04-10T14:00:00Z",
+  "commitId": "01921b8cc62428f51cc6819bb7579d5db2ca4a90",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "fail",
   "codeReview": {
-    "summary": "Fail. The latest fix session does not resolve the prior blocking failure. Latest feature commit `0cf5417...` is a scrutiny artifact commit with no switcher implementation changes, while current `SwitcherCrossFlowTests` still rely on renderability/store-proxy assertions instead of concrete rendered indicators, UI-action callbacks, and launch invocation traces required by the feature contract.",
+    "summary": "Fail. This rerun replaces launch-comment inference with invocation-trace assertions, but it still does not satisfy the full feature contract: rendered-indicator tests remain renderability-only and cross-surface switch-sync proofs remain store-driven instead of UI-action-driven.",
     "issues": [
-      {
-        "file": ".factory/validation/integration-hardening/scrutiny/synthesis.json",
-        "line": 1,
-        "severity": "blocking",
-        "description": "Latest feature commit `0cf5417116be732d49896716519067940053f545` modifies only scrutiny artifacts (`.factory/validation/...`) and contains no implementation/test changes for this feature (confirmed via `git show --stat 0cf5417...`)."
-      },
       {
         "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
         "line": 2430,
         "severity": "blocking",
-        "description": "`test_ui_crossSurface_dashboardRendersCreatedProfile_withActiveIndicator` still asserts only `XCTAssertNotNil` renderability (lines 2430, 2434), not concrete rendered indicator seams (`testActiveProfileDisplayName` / `testActiveProfileAccessibilityLabel`) required by expected behavior."
+        "description": "`test_ui_crossSurface_dashboardRendersCreatedProfile_withActiveIndicator` still uses renderability-only assertions (`XCTAssertNotNil` at lines 2430 and 2434) instead of concrete rendered indicator seams (`testActiveProfileDisplayName` / `testActiveProfileAccessibilityLabel`) required by expectedBehavior."
       },
       {
         "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
         "line": 2475,
         "severity": "blocking",
-        "description": "`test_ui_crossSurface_popoverRendersCreatedProfile_withActiveIndicator` still uses renderability-only assertions (`XCTAssertNotNil` at lines 2475, 2479) instead of concrete rendered label/accessibility assertions."
+        "description": "`test_ui_crossSurface_popoverRendersCreatedProfile_withActiveIndicator` still uses renderability-only assertions (`XCTAssertNotNil` at lines 2475 and 2479) rather than explicit rendered label/accessibility assertions."
       },
       {
         "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
         "line": 2531,
         "severity": "blocking",
-        "description": "Cross-surface switching proofs remain store-driven (`localStore.setActiveProfile` at lines 2531 and 2597) rather than UI-action-driven via `testTriggerSelectAndSwitch` / `testTriggerSwitchViaUIAction` as required."
-      },
-      {
-        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
-        "line": 2799,
-        "severity": "blocking",
-        "description": "Launch-chain assertions remain store-inference/comment-based (`\"Launch adapter would use ...\"` at lines 2799 and 2864) instead of concrete launch invocation trace evidence (e.g., `getLastAttemptedProfileID`) from UI-driven switch+launch flow."
+        "description": "Cross-surface switch synchronization proofs remain store-driven (`localStore.setActiveProfile` at lines 2531 and 2597) instead of using UI callback paths (`testTriggerSelectAndSwitch` / `testTriggerSwitchViaUIAction`) as required."
       }
     ]
   },
   "sharedStateObservations": [
     {
       "area": "skills",
-      "observation": "`switcher-ui-worker` procedure includes manual UI sanity checks, but handoff marks `followedProcedure=true` while providing no interactive checks evidence.",
-      "evidence": "` .factory/skills/switcher-ui-worker/SKILL.md` step 7 requires manual UI sanity checks; handoff `2026-04-10T08-22-34-081Z__...__3e0058ae-96b2-4f70-a6e6-977a9940a193.json` has `verification.interactiveChecks: []` and `skillFeedback.followedProcedure: true`."
+      "observation": "`switcher-ui-worker` requires manual UI sanity checks, but this rerun handoff reports `followedProcedure=true` with no interactive evidence.",
+      "evidence": ".factory/skills/switcher-ui-worker/SKILL.md step 7 requires manual UI checks; handoff `2026-04-10T13-42-24-814Z__integration-hardening-finalize-crossflow-rendered-ui-launch-trace-evidence__c2b2bdab-d34c-4eda-a7bd-7383e67ee828.json` has `verification.interactiveChecks: []` and `skillFeedback.followedProcedure: true`."
+    },
+    {
+      "area": "knowledge",
+      "observation": "There is recurring confusion about using SwiftUI test seams that depend on `@State` outside a hosted render context; this behavior is not captured in shared testing guidance.",
+      "evidence": Worker transcript skeleton for session `c2b2bdab-d34c-4eda-a7bd-7383e67ee828` documents attempted `testTriggerSelectAndSwitch` usage followed by fallback to store-driven switching due `@State` seam limitations."
     }
   ],
-  "addressesFailureFrom": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-finalize-crossflow-rendered-ui-launch-trace-evidence.json",
-  "summary": "Reviewed latest fix session `3e0058ae-96b2-4f70-a6e6-977a9940a193`, prior synthesis (`round7`), prior review, transcript skeleton, and both prior/latest feature diffs (`f8ffd58...` and `0cf5417...`). The fix is not adequate: latest commit has no implementation changes, and required crossflow assertions (concrete rendered indicators, UI-action-driven switch evidence, and launch invocation trace proof) are still missing in current `SwitcherCrossFlowTests`."
+  "addressesFailureFrom": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/integration-hardening/scrutiny/synthesis.json",
+  "summary": "Reviewed feature metadata, rerun handoff/session transcript skeleton, prior failure synthesis, skill requirements, and commit `01921b8cc62428f51cc6819bb7579d5db2ca4a90`. Prior launch-trace failure is addressed, but two original blocking areas remain unresolved: concrete rendered-indicator assertions and UI-action-driven cross-surface switch proofs."
 }
