@@ -1,6 +1,6 @@
 {
   "milestone": "misc-infra-followups",
-  "round": 3,
+  "round": 4,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -24,37 +24,40 @@
     "passed": 0,
     "failed": 1,
     "failedFeatures": [
-      "misc-infra-wire-generic-flow-report-enforcement-into-validator-runtime"
+      "misc-infra-integrate-flow-report-enforcement-into-validator-execution-path"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "misc-infra-wire-generic-flow-report-enforcement-into-validator-runtime",
+      "featureId": "misc-infra-integrate-flow-report-enforcement-into-validator-execution-path",
       "severity": "blocking",
-      "description": "Fix remains doc/script-scoped: required flow-report checks are still not enforced inside validator runtime finalization, so validator success can occur without guaranteed report persistence."
+      "description": "Fix still relies on wrapper/procedural invocation (`scripts/validate-milestone.sh` and `commands.validate`) and does not prove a non-bypassable user-testing runtime finalization gate before success synthesis."
     },
     {
       "featureId": "misc-infra-traceability-backfill-multisource-compile-drift",
       "severity": "blocking",
-      "description": "Carried forward from round 2: no new fix feature in this rerun addressed missing machine-auditable implementation SHA linkage for compile-drift scope traceability."
+      "description": "Carried forward: no new fix feature in this rerun addressed missing machine-auditable implementation SHA linkage for compile-drift scope traceability."
     },
     {
       "featureId": "misc-infra-traceability-backfill-xcresulttool-modern-invocation",
       "severity": "blocking",
-      "description": "Carried forward from round 2: no new fix feature in this rerun addressed malformed/non-resolvable handoff commit linkage for xcresulttool modernization traceability."
+      "description": "Carried forward: no new fix feature in this rerun addressed malformed/non-resolvable handoff commit linkage for xcresulttool modernization traceability."
     }
   ],
   "appliedUpdates": [],
-  "suggestedGuidanceUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Route validator/runtime infrastructure features (services.yaml, validation scripts, .factory/library validator contracts) to an infra/validation-aligned skill instead of switcher UI/integration skills.",
+      "evidence": "In milestone misc-infra-followups, both `misc-infra-wire-generic-flow-report-enforcement-into-validator-runtime` and `misc-infra-integrate-flow-report-enforcement-into-validator-execution-path` were assigned `switcher-integration-worker`, and scrutiny repeatedly found unresolved validator-runtime contract gaps.",
+      "isSystemic": true
+    }
+  ],
   "rejectedObservations": [
     {
-      "observation": "Repeat recommendation to re-route misc-infra work off switcher-integration-worker skill.",
-      "reason": "duplicate"
-    },
-    {
-      "observation": "Add generalized knowledge docs about validator runtime ownership without concrete authoritative source.",
+      "observation": "Update shared knowledge docs to assert exactly which runtime consumes `.factory/services.yaml` `commands.validate` today.",
       "reason": "ambiguous"
     }
   ],
-  "previousRound": ".factory/validation/misc-infra-followups/scrutiny/synthesis.round2.json"
+  "previousRound": ".factory/validation/misc-infra-followups/scrutiny/synthesis.round3.json"
 }

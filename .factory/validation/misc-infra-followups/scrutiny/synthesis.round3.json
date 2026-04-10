@@ -1,0 +1,60 @@
+{
+  "milestone": "misc-infra-followups",
+  "round": 3,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "misc-infra-wire-generic-flow-report-enforcement-into-validator-runtime"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "misc-infra-wire-generic-flow-report-enforcement-into-validator-runtime",
+      "severity": "blocking",
+      "description": "Fix remains doc/script-scoped: required flow-report checks are still not enforced inside validator runtime finalization, so validator success can occur without guaranteed report persistence."
+    },
+    {
+      "featureId": "misc-infra-traceability-backfill-multisource-compile-drift",
+      "severity": "blocking",
+      "description": "Carried forward from round 2: no new fix feature in this rerun addressed missing machine-auditable implementation SHA linkage for compile-drift scope traceability."
+    },
+    {
+      "featureId": "misc-infra-traceability-backfill-xcresulttool-modern-invocation",
+      "severity": "blocking",
+      "description": "Carried forward from round 2: no new fix feature in this rerun addressed malformed/non-resolvable handoff commit linkage for xcresulttool modernization traceability."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [
+    {
+      "observation": "Repeat recommendation to re-route misc-infra work off switcher-integration-worker skill.",
+      "reason": "duplicate"
+    },
+    {
+      "observation": "Add generalized knowledge docs about validator runtime ownership without concrete authoritative source.",
+      "reason": "ambiguous"
+    }
+  ],
+  "previousRound": ".factory/validation/misc-infra-followups/scrutiny/synthesis.round2.json"
+}
