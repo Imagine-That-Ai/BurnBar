@@ -418,6 +418,7 @@ public enum CLILaunchError: Error, Equatable, Sendable {
     case launchSpawnFailed(String)
     case launchTimeout
     case launchFailed(String)
+    case noActiveProfile
 
     public var errorDescription: String? {
         switch self {
@@ -454,6 +455,9 @@ public enum CLILaunchError: Error, Equatable, Sendable {
 
         case .launchFailed(let detail):
             return "CLI launch failed: \(detail)"
+
+        case .noActiveProfile:
+            return "No active CLI profile is set."
         }
     }
 
@@ -474,6 +478,8 @@ public enum CLILaunchError: Error, Equatable, Sendable {
             return "Edit the profile to remove disallowed arguments."
         case .launchConfigurationFailed, .launchSpawnFailed, .launchTimeout, .launchFailed:
             return "Try launching the CLI manually. If the issue persists, check your installation."
+        case .noActiveProfile:
+            return "Set an active CLI profile in Settings, Dashboard, or the menu bar popover."
         }
     }
 }
@@ -732,6 +738,27 @@ public final class SwitcherCLILAunchService: @unchecked Sendable {
                 return CLILaunchOutcome(success: false, error: error)
             }
         }
+    }
+
+    /// Launches the CLI for the current active profile.
+    /// This method reads the active profile ID from the store and launches it
+    /// without requiring an explicit profile ID override.
+    ///
+    /// This is the key method for active-state routing - it proves that
+    /// the launch adapter consumes the final committed global active profile.
+    ///
+    /// Returns `.noActiveProfile` if no profile is currently active.
+    public func launchUsingActiveProfile() async -> CLILaunchOutcome {
+        // Fetch the active profile ID from global state
+        guard let activeProfileID = profileStore.fetchActiveProfileID() else {
+            return CLILaunchOutcome(
+                success: false,
+                error: .noActiveProfile
+            )
+        }
+
+        // Launch using the active profile ID
+        return await launchCLI(for: activeProfileID)
     }
 
     // MARK: - Availability Checking

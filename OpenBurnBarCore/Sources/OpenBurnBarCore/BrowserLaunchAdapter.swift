@@ -297,6 +297,7 @@ public enum BrowserLaunchError: Error, Equatable, Sendable {
     case launchConfigurationFailed(String)
     case launchTimeout
     case launchFailed(String)
+    case noActiveProfile
 
     public var errorDescription: String? {
         switch self {
@@ -330,6 +331,9 @@ public enum BrowserLaunchError: Error, Equatable, Sendable {
 
         case .launchFailed(let detail):
             return "Browser launch failed: \(detail)"
+
+        case .noActiveProfile:
+            return "No active browser profile is set."
         }
     }
 
@@ -350,6 +354,8 @@ public enum BrowserLaunchError: Error, Equatable, Sendable {
             return "Contact BurnBar support if you need this argument to be allowlisted."
         case .launchConfigurationFailed, .launchTimeout, .launchFailed:
             return "Try launching the browser manually. If the issue persists, restart your Mac."
+        case .noActiveProfile:
+            return "Set an active browser profile in Settings, Dashboard, or the menu bar popover."
         }
     }
 }

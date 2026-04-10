@@ -2701,6 +2701,14 @@ private final class SpySwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter 
         fetchAllProfilesCallCount += 1
         return (try? store.fetchAllProfiles()) ?? []
     }
+
+    func fetchActiveProfileID() -> String? {
+        try? store.fetchActiveProfileState().activeProfileID
+    }
+
+    func setActiveProfileID(_ profileID: String?) {
+        try? store.setActiveProfile(profileID)
+    }
 }
 
 /// Fake browser availability provider for testing.

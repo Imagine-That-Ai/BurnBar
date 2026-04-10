@@ -808,4 +808,12 @@ private final class PopoverSwitcherProfileAdapter: SwitcherProfileStoreAdapter {
     func fetchAllProfiles() -> [SwitcherProfileRecord] {
         (try? store.fetchAllProfiles()) ?? []
     }
+
+    func fetchActiveProfileID() -> String? {
+        try? store.fetchActiveProfileState().activeProfileID
+    }
+
+    func setActiveProfileID(_ profileID: String?) {
+        try? store.setActiveProfile(profileID)
+    }
 }

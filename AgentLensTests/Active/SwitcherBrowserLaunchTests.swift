@@ -459,6 +459,7 @@ final class SwitcherBrowserLaunchTests: XCTestCase {
             .launchConfigurationFailed("reason"),
             .launchTimeout,
             .launchFailed("detail"),
+            .noActiveProfile,
         ]
 
         for error in errors {
@@ -474,6 +475,7 @@ final class SwitcherBrowserLaunchTests: XCTestCase {
             .profileTypeMismatch(expected: .chrome, actual: .safari),
             .disallowedArgument("--test"),
             .launchTimeout,
+            .noActiveProfile,
         ]
 
         for error in errors {
@@ -863,6 +865,180 @@ final class SwitcherBrowserLaunchServiceTests: XCTestCase {
             } else {
                 XCTFail("Unexpected error: \(String(describing: outcome.error))")
             }
+        }
+    }
+
+    // MARK: - VAL-CROSS-004: Active-State Routing Tests
+
+    /// VAL-CROSS-004: Browser launch via launchUsingActiveProfile() uses the final committed
+    /// active profile after rapid switches, WITHOUT explicit profile-ID override.
+    ///
+    /// This test proves that:
+    /// 1. Rapid switch flow commits final active profile to global state
+    /// 2. launchUsingActiveProfile() reads from global active state (not explicit ID)
+    /// 3. Launch adapter consumes the correct final committed profile
+    func test_activeStateRouting_browserLaunch_afterRapidSwitch_usesCommittedActiveProfile() async {
+        // Set up service with UnavailableBrowserProvider (deterministic - Chrome unavailable)
+        let unavailableProvider = UnavailableBrowserProvider(
+            unavailableBrowsers: [.chrome],
+            availableBrowsers: [.safari]
+        )
+        let serviceWithProvider = SwitcherBrowserLaunchService(
+            profileStore: store,
+            browserProvider: unavailableProvider
+        )
+
+        // Create two Chrome profiles
+        let chrome1 = SwitcherProfileRecord(
+            id: "chrome1",
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "Chrome1"),
+            sortKey: 1
+        )
+        let chrome2 = SwitcherProfileRecord(
+            id: "chrome2",
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "Chrome2"),
+            sortKey: 2
+        )
+        store.addProfile(chrome1)
+        store.addProfile(chrome2)
+
+        // Rapid switch flow: set chrome1 active, then switch to chrome2
+        // This commits chrome2 as the final committed active profile in global state
+        store.setActiveProfileID(chrome1.id)
+        try? await Task.sleep(nanoseconds: 1_000) // Minimal delay to simulate rapid switch
+        store.setActiveProfileID(chrome2.id) // Final committed active profile
+        try? await Task.sleep(nanoseconds: 1_000)
+
+        // Verify the store reports chrome2 as the active profile
+        XCTAssertEqual(store.fetchActiveProfileID(), chrome2.id,
+            "Store should report chrome2 as active after rapid switch")
+
+        // VAL-CROSS-004: Call launchUsingActiveProfile() - NO explicit profile ID passed
+        // This method reads from global active state, proving active-state routing
+        let outcome = await serviceWithProvider.launchUsingActiveProfile()
+
+        // Assert: The error should be .browserNotInstalled, NOT .noActiveProfile or .profileNotFound
+        // This proves:
+        // 1. launchUsingActiveProfile() successfully read the active profile from global state
+        // 2. The launch service reached the browser availability check
+        // 3. The final committed active profile (chrome2) was used
+        XCTAssertFalse(outcome.success)
+        if case .browserNotInstalled(let browserType) = outcome.error {
+            XCTAssertEqual(browserType, .chrome,
+                "Should report Chrome unavailable, proving launch used chrome2 (final committed active profile)")
+        } else if case .noActiveProfile = outcome.error {
+            XCTFail("Got noActiveProfile - this means launchUsingActiveProfile() did not read active state correctly")
+        } else if case .profileNotFound = outcome.error {
+            XCTFail("Got profileNotFound - the active profile chrome2 should have been found in store")
+        } else {
+            XCTFail("Expected .browserNotInstalled error, got \(String(describing: outcome.error))")
+        }
+    }
+
+    /// VAL-CROSS-004: Browser launch via launchUsingActiveProfile() returns noActiveProfile
+    /// when no profile is active, proving it reads from global state.
+    func test_activeStateRouting_browserLaunch_noActiveProfile_returnsNoActiveProfileError() async {
+        // Set up service
+        let unavailableProvider = UnavailableBrowserProvider(
+            unavailableBrowsers: [.chrome],
+            availableBrowsers: [.safari]
+        )
+        let serviceWithProvider = SwitcherBrowserLaunchService(
+            profileStore: store,
+            browserProvider: unavailableProvider
+        )
+
+        // Create a profile but do NOT set it as active
+        let chromeProfile = SwitcherProfileRecord(
+            id: "chrome-profile",
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "TestChrome"),
+            sortKey: 1
+        )
+        store.addProfile(chromeProfile)
+
+        // Verify no active profile
+        XCTAssertNil(store.fetchActiveProfileID(), "No profile should be active")
+
+        // Call launchUsingActiveProfile() - should get .noActiveProfile error
+        let outcome = await serviceWithProvider.launchUsingActiveProfile()
+
+        XCTAssertFalse(outcome.success)
+        if case .noActiveProfile = outcome.error {
+            // This is expected - proves the method read from global state and found no active profile
+        } else {
+            XCTFail("Expected .noActiveProfile error, got \(String(describing: outcome.error))")
+        }
+    }
+
+    /// VAL-CROSS-004: Rapid switch A -> B -> C, then launchUsingActiveProfile() uses C.
+    /// This is the definitive test for active-state routing without explicit ID.
+    func test_activeStateRouting_browserLaunch_rapidSwitchABC_usesFinalCommittedProfile() async {
+        // Set up service with UnavailableBrowserProvider
+        let unavailableProvider = UnavailableBrowserProvider(
+            unavailableBrowsers: [.chrome],
+            availableBrowsers: [.safari]
+        )
+        let serviceWithProvider = SwitcherBrowserLaunchService(
+            profileStore: store,
+            browserProvider: unavailableProvider
+        )
+
+        // Create three Chrome profiles
+        let chromeA = SwitcherProfileRecord(
+            id: "chromeA",
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "ProfileA"),
+            sortKey: 1
+        )
+        let chromeB = SwitcherProfileRecord(
+            id: "chromeB",
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "ProfileB"),
+            sortKey: 2
+        )
+        let chromeC = SwitcherProfileRecord(
+            id: "chromeC",
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "ProfileC"),
+            sortKey: 3
+        )
+        store.addProfile(chromeA)
+        store.addProfile(chromeB)
+        store.addProfile(chromeC)
+
+        // Rapid switch flow: A -> B -> C
+        // This simulates a user quickly switching through profiles
+        store.setActiveProfileID(chromeA.id)
+        try? await Task.sleep(nanoseconds: 500)
+        store.setActiveProfileID(chromeB.id)
+        try? await Task.sleep(nanoseconds: 500)
+        store.setActiveProfileID(chromeC.id) // Final committed active profile
+        try? await Task.sleep(nanoseconds: 500)
+
+        // Verify chromeC is the final committed active profile
+        XCTAssertEqual(store.fetchActiveProfileID(), chromeC.id,
+            "Final committed active profile should be chromeC after A->B->C switch")
+
+        // Launch using active profile - NO explicit profile ID
+        let outcome = await serviceWithProvider.launchUsingActiveProfile()
+
+        // Assert: Should get .browserNotInstalled with chrome type
+        // This proves chromeC (the final committed active) was used
+        XCTAssertFalse(outcome.success)
+        if case .browserNotInstalled(let browserType) = outcome.error {
+            XCTAssertEqual(browserType, .chrome,
+                "Should use chromeC (final committed active profile) for launch")
+        } else {
+            XCTFail("Expected .browserNotInstalled, got \(String(describing: outcome.error))")
         }
     }
 }

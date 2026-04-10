@@ -1337,6 +1337,14 @@ private final class PopoverTestSwitcherProfileAdapter: SwitcherProfileStoreAdapt
     func fetchAllProfiles() -> [SwitcherProfileRecord] {
         (try? store.fetchAllProfiles()) ?? []
     }
+
+    func fetchActiveProfileID() -> String? {
+        try? store.fetchActiveProfileState().activeProfileID
+    }
+
+    func setActiveProfileID(_ profileID: String?) {
+        try? store.setActiveProfile(profileID)
+    }
 }
 
 // MARK: - Profile Record Batch Creation Extension

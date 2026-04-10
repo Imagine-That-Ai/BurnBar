@@ -140,6 +140,27 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
         }
     }
 
+    /// Launches the browser for the current active profile.
+    /// This method reads the active profile ID from the store and launches it
+    /// without requiring an explicit profile ID override.
+    ///
+    /// This is the key method for active-state routing - it proves that
+    /// the launch adapter consumes the final committed global active profile.
+    ///
+    /// Returns `.noActiveProfile` if no profile is currently active.
+    public func launchUsingActiveProfile() async -> LaunchOutcome {
+        // Fetch the active profile ID from global state
+        guard let activeProfileID = profileStore.fetchActiveProfileID() else {
+            return LaunchOutcome(
+                success: false,
+                error: .noActiveProfile
+            )
+        }
+
+        // Launch using the active profile ID
+        return await launchBrowser(for: activeProfileID)
+    }
+
     /// Launches Chrome for the given profile.
     private func launchChrome(profile: SwitcherProfileRecord) async -> LaunchOutcome {
         // First check browser availability using our injectable provider
@@ -263,6 +284,10 @@ public struct LaunchOutcome: Equatable, Sendable {
 public protocol SwitcherProfileStoreAdapter: Sendable {
     func fetchProfile(id: String) -> SwitcherProfileRecord?
     func fetchAllProfiles() -> [SwitcherProfileRecord]
+    /// Returns the currently active profile ID, if any.
+    func fetchActiveProfileID() -> String?
+    /// Sets the active profile ID. Pass nil to clear.
+    func setActiveProfileID(_ profileID: String?)
 }
 
 // MARK: - In-Memory Adapter for Testing
@@ -270,6 +295,7 @@ public protocol SwitcherProfileStoreAdapter: Sendable {
 /// In-memory adapter for testing without GRDB.
 public final class InMemorySwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter, @unchecked Sendable {
     private var profiles: [String: SwitcherProfileRecord] = [:]
+    private var activeProfileID: String?
     private let lock = NSLock()
 
     public init() {}
@@ -290,5 +316,17 @@ public final class InMemorySwitcherProfileStoreAdapter: SwitcherProfileStoreAdap
         lock.lock()
         defer { lock.unlock() }
         return Array(profiles.values).sorted { $0.sortKey < $1.sortKey }
+    }
+
+    public func fetchActiveProfileID() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return activeProfileID
+    }
+
+    public func setActiveProfileID(_ profileID: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        activeProfileID = profileID
     }
 }
