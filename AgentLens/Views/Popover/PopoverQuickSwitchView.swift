@@ -758,6 +758,7 @@ struct PopoverQuickSwitchView: View {
     func testTriggerSelectAndSwitch(profileID: String) {
         // Look up the profile record and call selectAndSwitch
         if let profile = profiles.first(where: { $0.id == profileID }) {
+            selectedProfileID = profileID
             selectAndSwitch(profile)
         }
     }

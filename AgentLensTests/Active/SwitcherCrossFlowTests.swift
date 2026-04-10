@@ -2516,7 +2516,7 @@ extension SwitcherCrossFlowTests {
             sortKey: 2
         ))
 
-        // Set p1 as active initially
+        // Set p1 as active initially via store
         try localStore.setActiveProfile(p1.id)
 
         // Create Dashboard view and reload
@@ -2529,6 +2529,10 @@ extension SwitcherCrossFlowTests {
 
         // Switch to p2 via store (simulating UI action)
         try localStore.setActiveProfile(p2.id)
+
+        // VAL-CROSS-002: Verify via store that the switch was committed
+        let dashboardState = try localStore.fetchActiveProfileState()
+        XCTAssertEqual(dashboardState.activeProfileID, p2.id, "Dashboard switch should update active state")
 
         // VAL-CROSS-002: Create fresh Popover view and reload - it should see p2 as active
         let popoverView = PopoverQuickSwitchView(
@@ -2578,7 +2582,7 @@ extension SwitcherCrossFlowTests {
             sortKey: 2
         ))
 
-        // Set chrome as active initially
+        // Set chrome as active initially via store
         try localStore.setActiveProfile(chromeProfile.id)
 
         // Create Popover view and reload
@@ -2591,6 +2595,10 @@ extension SwitcherCrossFlowTests {
 
         // Switch to safariProfile via store (simulating UI action)
         try localStore.setActiveProfile(safariProfile.id)
+
+        // VAL-CROSS-002: Verify via store that the switch was committed
+        let popoverState = try localStore.fetchActiveProfileState()
+        XCTAssertEqual(popoverState.activeProfileID, safariProfile.id, "Popover switch should update active state")
 
         // VAL-CROSS-002: Create fresh Dashboard view and reload - it should see safariProfile as active
         let dashboardView = DashboardQuickSwitchView(
@@ -2759,7 +2767,7 @@ extension SwitcherCrossFlowTests {
             sortKey: 2
         ))
 
-        // Set profile1 as active initially
+        // Set profile1 as active initially via store
         try localStore.setActiveProfile(profile1.id)
 
         // Create Dashboard view and reload
@@ -2785,11 +2793,10 @@ extension SwitcherCrossFlowTests {
         )
         dashboardView2.testTriggerReload()
 
-        // View renders successfully with updated state
-        let sut = try dashboardView2.inspect()
-        XCTAssertNotNil(sut, "Dashboard should render with profile2 as active")
-
-        // This verifies that launch actions would use profile2 (the globally current active profile)
+        // VAL-CROSS-009: Verify launch action would use profile2 by checking active profile ID
+        // The launch adapter reads from global active state, so we verify via store
+        let launchProfileID = try localStore.fetchActiveProfileState().activeProfileID
+        XCTAssertEqual(launchProfileID, profile2.id, "Launch adapter would use profile2 (the globally current active profile)")
     }
 
     /// UI-DRIVEN TEST: Switches in Popover and verifies launch routing uses correct profile.
@@ -2825,7 +2832,7 @@ extension SwitcherCrossFlowTests {
             sortKey: 2
         ))
 
-        // Set codexProfile as active initially
+        // Set codexProfile as active initially via store
         try localStore.setActiveProfile(codexProfile.id)
 
         // Create Popover view and reload
@@ -2851,11 +2858,10 @@ extension SwitcherCrossFlowTests {
         )
         popoverView2.testTriggerReload()
 
-        // View renders successfully with updated state
-        let sut = try popoverView2.inspect()
-        XCTAssertNotNil(sut, "Popover should render with claudeProfile as active")
-
-        // This verifies that launch actions would use claudeProfile (the globally current active profile)
+        // VAL-CROSS-009: Verify launch action would use claudeProfile by checking active profile ID
+        // The launch adapter reads from global active state, so we verify via store
+        let launchProfileID = try localStore.fetchActiveProfileState().activeProfileID
+        XCTAssertEqual(launchProfileID, claudeProfile.id, "Launch adapter would use claudeProfile (the globally current active profile)")
     }
 }
 

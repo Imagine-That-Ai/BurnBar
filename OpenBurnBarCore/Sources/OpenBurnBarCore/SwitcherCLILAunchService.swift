@@ -30,6 +30,12 @@ public enum CLILaunchAdapter {
         case failure(CLILaunchError)
     }
 
+    // MARK: - Executable Resolution Seam (Testability)
+
+    /// Injectable resolver for executable availability.
+    /// Defaults to real filesystem resolution. Override in tests for deterministic behavior.
+    public static var executableResolver: ((_ cliType: SwitcherCLIProfileType) -> URL?)?
+
     // MARK: - Allowlisted Environment Variables
 
     /// Environment variables that are allowlisted for CLI profile launching.
@@ -89,6 +95,11 @@ public enum CLILaunchAdapter {
     /// Security: This only checks predefined trusted paths, preventing
     /// PATH/CWD hijack attacks where malicious code could be injected.
     public static func resolveExecutable(for cliType: SwitcherCLIProfileType) -> URL? {
+        // Use injected resolver if available (for deterministic testing)
+        if let resolver = executableResolver {
+            return resolver(cliType)
+        }
+
         for trustedPathTemplate in cliType.trustedExecutablePaths {
             // Expand ~ to home directory
             let expandedPath = expandPath(trustedPathTemplate)
@@ -546,14 +557,27 @@ public actor CLILaunchCoordinator {
 /// Actually performs the CLI launch using Foundation Process.
 /// Isolated to prevent direct invocation outside of the coordinator.
 public struct CLILaunchInvoker {
+    /// Injectable launch handler for deterministic testing.
+    /// When set, replaces the real Process-based launch with the provided handler.
+    /// Receives the launch parameters and returns a Result.
+    public static var launchHandler: ((URL, [String], [String: String], String?) async -> Result<Void, CLILaunchError>)?
+
     /// Launches a CLI process with the given configuration.
     /// Returns immediately after spawning the process.
+    ///
+    /// Testability: If `launchHandler` is set, it is called instead of spawning
+    /// a real process, allowing tests to simulate launch outcomes deterministically.
     public static func launchCLI(
         executable: URL,
         args: [String] = [],
         env: [String: String] = [:],
         workingDirectory: String? = nil
     ) async -> Result<Void, CLILaunchError> {
+        // Use injected handler if available (for deterministic testing)
+        if let handler = launchHandler {
+            return await handler(executable, args, env, workingDirectory)
+        }
+
         return await withCheckedContinuation { continuation in
             let process = Process()
             process.executableURL = executable

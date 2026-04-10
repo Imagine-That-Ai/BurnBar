@@ -2,39 +2,72 @@ import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
+// MARK: - Test Seam Helpers
+
+/// Creates a temporary executable file at the given path and returns a cleanup closure.
+private func makeTempExecutable(at path: String, content: String = "#!/bin/sh\nexit 0\n") -> () -> Void {
+    FileManager.default.createFile(atPath: path, contents: content.data(using: .utf8))
+    try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+    return {
+        try? FileManager.default.removeItem(atPath: path)
+    }
+}
+
 // MARK: - Switcher CLI Launch Tests
 
 @MainActor
 final class SwitcherCLILaunchTests: XCTestCase {
 
-    // MARK: - Executable Resolution
-
-    func test_resolveExecutable_acceptsValidPaths() {
-        // Test that the resolution logic works for valid paths
-        let codexAvailable = CLILaunchAdapter.isExecutableAvailable(.codex)
-        let claudeAvailable = CLILaunchAdapter.isExecutableAvailable(.claude)
-        let opencodeAvailable = CLILaunchAdapter.isExecutableAvailable(.opencode)
-
-        // At least one CLI should be available (or none if not installed)
-        XCTAssertTrue(codexAvailable == true || codexAvailable == false)
-        XCTAssertTrue(claudeAvailable == true || claudeAvailable == false)
-        XCTAssertTrue(opencodeAvailable == true || opencodeAvailable == false)
+    override func tearDown() {
+        // Always reset seams after each test to avoid cross-test contamination
+        CLILaunchAdapter.executableResolver = nil
+        CLILaunchInvoker.launchHandler = nil
+        super.tearDown()
     }
 
-    func test_resolveExecutable_rejectsUntrustedPaths() {
-        // The adapter should only resolve trusted paths
-        // Trying to resolve a random executable should fail
-        let tempProcess = Process()
-        tempProcess.executableURL = URL(fileURLWithPath: "/tmp/malicious")
+    // MARK: - Executable Resolution (Deterministic via Seam)
 
-        // The CLILaunchAdapter should not return URLs for untrusted paths
+    func test_resolveExecutable_returnsNil_whenSeamReturnsNil() {
+        // When the seam returns nil, the executable is not available
+        CLILaunchAdapter.executableResolver = { _ in nil }
+        XCTAssertNil(CLILaunchAdapter.resolveExecutable(for: .codex))
+        XCTAssertNil(CLILaunchAdapter.resolveExecutable(for: .claude))
+        XCTAssertNil(CLILaunchAdapter.resolveExecutable(for: .opencode))
+        XCTAssertFalse(CLILaunchAdapter.isExecutableAvailable(.codex))
+        XCTAssertFalse(CLILaunchAdapter.isExecutableAvailable(.claude))
+    }
+
+    func test_resolveExecutable_returnsURL_whenSeamReturnsURL() {
+        // When the seam returns a URL, the executable is available
+        let fakeURL = URL(fileURLWithPath: "/tmp/test-codex")
+        CLILaunchAdapter.executableResolver = { cliType in
+            if cliType == .codex { return fakeURL }
+            return nil
+        }
+        XCTAssertEqual(CLILaunchAdapter.resolveExecutable(for: .codex), fakeURL)
+        XCTAssertTrue(CLILaunchAdapter.isExecutableAvailable(.codex))
+        XCTAssertFalse(CLILaunchAdapter.isExecutableAvailable(.claude))
+    }
+
+    func test_resolveExecutable_usesRealFilesystem_whenNoSeam() {
+        // Without a seam, uses real filesystem resolution
+        CLILaunchAdapter.executableResolver = nil
         let result = CLILaunchAdapter.resolveExecutable(for: .claude)
-        // Result is either nil (not found) or a trusted path
+        // Result is either nil (not installed) or a trusted path
         if let url = result {
-            // Verify it's an actual file
             var isDir: ObjCBool = false
             XCTAssertTrue(FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir))
             XCTAssertFalse(isDir.boolValue)
+        }
+    }
+
+    func test_resolveExecutable_acceptsValidPaths() {
+        // Test that resolution works for real executables via filesystem
+        CLILaunchAdapter.executableResolver = nil
+        for cliType: SwitcherCLIProfileType in [.codex, .claude, .opencode] {
+            let available = CLILaunchAdapter.isExecutableAvailable(cliType)
+            XCTAssertTrue(available == true || available == false,
+                "isExecutableAvailable should return a boolean for \(cliType.displayName)")
         }
     }
 
@@ -304,6 +337,14 @@ final class SwitcherCLILaunchTests: XCTestCase {
         // This test verifies that when building a CLI launch config,
         // the environment is built from the allowlisted baseline only,
         // NOT from the full ambient environment.
+        // Use seam to make claude available so we can inspect the config.
+        let claudeURL = URL(fileURLWithPath: "/tmp/test-baseline-claude")
+        let cleanup = makeTempExecutable(at: claudeURL.path)
+        defer { cleanup() }
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .claude ? claudeURL : nil
+        }
+
         let metadata = SwitcherCLIProfileMetadata(
             envKeysToPass: [],
             displayLabel: nil
@@ -317,7 +358,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         let result = CLILaunchAdapter.buildCLILaunch(profile: profile)
 
-        // If Claude is installed, check the env
+        // Claude is available via seam - check the env
         if case .success(let config) = result {
             // The env should only contain keys from allowlistedEnvKeys
             // It should NOT contain any sensitive ambient keys
@@ -433,6 +474,14 @@ final class SwitcherCLILaunchTests: XCTestCase {
     // MARK: - Build CLI Launch
 
     func test_buildCLILaunch_returnsCorrectConfiguration() {
+        // Use seam to make claude available
+        let claudeURL = URL(fileURLWithPath: "/tmp/test-cfg-claude")
+        let cleanup = makeTempExecutable(at: claudeURL.path)
+        defer { cleanup() }
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .claude ? claudeURL : nil
+        }
+
         let metadata = SwitcherCLIProfileMetadata(
             workingDirectory: nil,
             additionalArgs: ["--verbose"],
@@ -448,16 +497,23 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         let result = CLILaunchAdapter.buildCLILaunch(profile: profile)
 
-        // If Claude is installed, should succeed
+        // Claude is available via seam — should succeed
         if case .success(let config) = result {
             XCTAssertEqual(config.args, ["--verbose"])
             XCTAssertTrue(config.env.keys.contains("HOME"))
             XCTAssertTrue(config.env.keys.contains("PATH"))
         }
-        // If Claude is not installed, this is acceptable
     }
 
     func test_buildCLILaunch_addsValidatedArgs() {
+        // Use seam to make claude available
+        let claudeURL = URL(fileURLWithPath: "/tmp/test-args-claude")
+        let cleanup = makeTempExecutable(at: claudeURL.path)
+        defer { cleanup() }
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .claude ? claudeURL : nil
+        }
+
         let metadata = SwitcherCLIProfileMetadata(
             additionalArgs: ["--verbose", "--debug"],
             envKeysToPass: [],
@@ -475,7 +531,6 @@ final class SwitcherCLILaunchTests: XCTestCase {
             additionalArgs: ["--quiet"]
         )
 
-        // If Claude is installed
         if case .success(let config) = result {
             XCTAssertTrue(config.args.contains("--verbose"))
             XCTAssertTrue(config.args.contains("--debug"))
@@ -496,14 +551,16 @@ final class SwitcherCLILaunchTests: XCTestCase {
             sortKey: 1
         )
 
-        let result = CLILaunchAdapter.buildCLILaunch(profile: profile)
-        // If Claude is installed, should get disallowedArgument error
-        // If not installed, will get executableNotFound first
-        if CLILaunchAdapter.isExecutableAvailable(.claude) {
-            XCTAssertFailure(result, CLILaunchError.disallowedArgument("--disallowed"))
-        } else {
-            XCTAssertFailure(result, CLILaunchError.executableNotFound(.claude))
+        // Use seam to make claude available, so we get disallowedArgument (not executableNotFound)
+        let claudeURL = URL(fileURLWithPath: "/tmp/test-disallowed-claude")
+        let cleanup = makeTempExecutable(at: claudeURL.path)
+        defer { cleanup() }
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .claude ? claudeURL : nil
         }
+
+        let result = CLILaunchAdapter.buildCLILaunch(profile: profile)
+        XCTAssertFailure(result, CLILaunchError.disallowedArgument("--disallowed"))
     }
 
     func test_buildCLILaunch_rejectsBrowserProfile() {
@@ -519,6 +576,14 @@ final class SwitcherCLILaunchTests: XCTestCase {
     }
 
     func test_buildCLILaunch_filtersEnvVariables() {
+        // Use seam to make claude available
+        let claudeURL = URL(fileURLWithPath: "/tmp/test-envfilter-claude")
+        let cleanup = makeTempExecutable(at: claudeURL.path)
+        defer { cleanup() }
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .claude ? claudeURL : nil
+        }
+
         let metadata = SwitcherCLIProfileMetadata(
             envKeysToPass: ["HOME", "PATH", "SECRET_KEY"],
             displayLabel: nil
@@ -532,7 +597,6 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         let result = CLILaunchAdapter.buildCLILaunch(profile: profile)
 
-        // If Claude is installed
         if case .success(let config) = result {
             XCTAssertTrue(config.env.keys.contains("HOME"))
             XCTAssertTrue(config.env.keys.contains("PATH"))
@@ -540,20 +604,28 @@ final class SwitcherCLILaunchTests: XCTestCase {
         }
     }
 
-    // MARK: - Executable Availability
+    // MARK: - Executable Availability (Deterministic via Seam)
 
     func test_isCLIAvailable_returnsBoolean() {
-        let available = CLILaunchAdapter.isExecutableAvailable(.claude)
-        // Just verify it returns a boolean
-        XCTAssertTrue(available == true || available == false)
+        // Use seam to control availability deterministically
+        CLILaunchAdapter.executableResolver = { _ in nil }
+        XCTAssertFalse(CLILaunchAdapter.isExecutableAvailable(.claude))
+
+        CLILaunchAdapter.executableResolver = { _ in URL(fileURLWithPath: "/tmp/fake") }
+        XCTAssertTrue(CLILaunchAdapter.isExecutableAvailable(.claude))
     }
 
-    func test_executablePath_returnsPathOrNil() {
-        let path = CLILaunchAdapter.executablePath(for: .claude)
-        // If Claude is installed, path should be non-nil
-        if CLILaunchAdapter.isExecutableAvailable(.claude) {
-            XCTAssertNotNil(path)
+    func test_executablePath_returnsPathForAvailableCLI() {
+        // Use seam to control availability deterministically
+        let fakePath = "/tmp/test-claude-deterministic"
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .claude ? URL(fileURLWithPath: fakePath) : nil
         }
+
+        let path = CLILaunchAdapter.executablePath(for: .claude)
+        XCTAssertEqual(path, fakePath)
+
+        XCTAssertNil(CLILaunchAdapter.executablePath(for: .codex))
     }
 
     // MARK: - Launch Outcome
@@ -783,6 +855,13 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         service = SwitcherCLILAunchService(profileStore: store)
     }
 
+    override func tearDown() {
+        // Always reset seams after each test to avoid cross-test contamination
+        CLILaunchAdapter.executableResolver = nil
+        CLILaunchInvoker.launchHandler = nil
+        super.tearDown()
+    }
+
     func test_launchCLI_reportsProfileNotFound_whenProfileMissing() async {
         let outcome = await service.launchCLI(for: "nonexistent-profile")
 
@@ -835,7 +914,12 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         }
     }
 
+    // MARK: - Executable Not Found (Deterministic via Seam)
+
     func test_launchCLI_reportsExecutableNotFound_whenNotInstalled() async {
+        // Use seam to make claude NOT available deterministically
+        CLILaunchAdapter.executableResolver = { _ in nil }
+
         let profile = SwitcherProfileRecord(
             id: "claude-profile",
             targetKind: .cli,
@@ -847,19 +931,18 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
 
         let outcome = await service.launchCLI(for: "claude-profile")
 
-        // If Claude is installed, this will succeed (or fail for other reasons)
-        // If not installed, should get executableNotFound
-        if !CLILaunchAdapter.isExecutableAvailable(.claude) {
-            XCTAssertFalse(outcome.success)
-            if case .executableNotFound(let cliType) = outcome.error {
-                XCTAssertEqual(cliType, .claude)
-            } else {
-                XCTFail("Expected .executableNotFound error")
-            }
+        XCTAssertFalse(outcome.success)
+        if case .executableNotFound(let cliType) = outcome.error {
+            XCTAssertEqual(cliType, .claude)
+        } else {
+            XCTFail("Expected .executableNotFound error")
         }
     }
 
     func test_launchCLI_usesCorrectCLIType() async {
+        // Use seam to make codex NOT available deterministically
+        CLILaunchAdapter.executableResolver = { _ in nil }
+
         let profile = SwitcherProfileRecord(
             id: "codex-profile",
             targetKind: .cli,
@@ -872,12 +955,10 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         // Use the typed launch method
         let outcome = await service.launchCLI(cliType: .codex, profileID: "codex-profile")
 
-        // If Codex is not installed, should get executableNotFound
-        if !CLILaunchAdapter.isExecutableAvailable(.codex) {
-            XCTAssertFalse(outcome.success)
-            if case .executableNotFound(let cliType) = outcome.error {
-                XCTAssertEqual(cliType, .codex)
-            }
+        // Codex is not available via seam -> must get executableNotFound
+        XCTAssertFalse(outcome.success)
+        if case .executableNotFound(let cliType) = outcome.error {
+            XCTAssertEqual(cliType, .codex)
         }
     }
 
@@ -903,23 +984,46 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         }
     }
 
+    // MARK: - Availability (Deterministic via Seam)
+
     func test_isCLIAvailable_checksClaude() {
-        let available = service.isCLIAvailable(.claude)
-        // Just verify it returns a boolean
-        XCTAssertTrue(available == true || available == false)
+        // Use seam for deterministic control
+        CLILaunchAdapter.executableResolver = { _ in nil }
+        XCTAssertFalse(service.isCLIAvailable(.claude))
+
+        CLILaunchAdapter.executableResolver = { _ in URL(fileURLWithPath: "/tmp/fake") }
+        XCTAssertTrue(service.isCLIAvailable(.claude))
     }
 
     func test_executablePath_returnsPathForAvailableCLI() {
-        let path = service.executablePath(for: .claude)
-        // If Claude is installed, should return a path
-        if service.isCLIAvailable(.claude) {
-            XCTAssertNotNil(path)
-        } else {
-            XCTAssertNil(path)
+        // Use seam for deterministic control
+        let fakePath = "/tmp/test-claude-service"
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .claude ? URL(fileURLWithPath: fakePath) : nil
         }
+
+        XCTAssertEqual(service.executablePath(for: .claude), fakePath)
+        XCTAssertNil(service.executablePath(for: .codex))
     }
 
+    // MARK: - Concurrent Launch (Deterministic via Seam)
+
     func test_launchCLI_rejectsConcurrentLaunchSameProfile() async {
+        // Use seam to make claude available with a simulated launch handler
+        let claudeURL = URL(fileURLWithPath: "/tmp/test-concurrent-claude")
+        let cleanup = makeTempExecutable(at: claudeURL.path)
+        defer { cleanup() }
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .claude ? claudeURL : nil
+        }
+        // Simulate a launch that never completes (stays in-progress)
+        CLILaunchInvoker.launchHandler = { _, _, _, _ in
+            // Never return — simulates an in-progress launch
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            return .success(())
+        }
+
         let profile = SwitcherProfileRecord(
             id: "test-profile",
             targetKind: .cli,
@@ -929,139 +1033,101 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         )
         store.addProfile(profile)
 
-        // Launch twice concurrently - second should be rejected if the first
-        // is still in progress. If Claude is not installed, both will fail
-        // but the coordinator still serializes them.
-        let outcome1 = await service.launchCLI(for: "test-profile")
-        let outcome2 = await service.launchCLI(for: "test-profile")
+        // Launch once — this will block in the handler
+        let launchTask = Task { await service.launchCLI(for: "test-profile") }
+        // Give the first launch time to start
+        try? await Task.sleep(nanoseconds: 50_000)
 
-        // At least one should fail (either already-in-progress or executable not found)
-        // The coordinator guarantees at most one active launch per profile.
-        let hasAlreadyInProgress = outcome1.error == .launchFailed("Launch already in progress for this profile") ||
-                                   outcome2.error == .launchFailed("Launch already in progress for this profile")
-        XCTAssertTrue(hasAlreadyInProgress || !outcome1.success || !outcome2.success)
+        // Second launch should be rejected (already in progress)
+        let outcome2 = await service.launchCLI(for: "test-profile")
+        XCTAssertEqual(outcome2.error, .launchFailed("Launch already in progress for this profile"))
+
+        // Cancel the blocked first launch and clean up
+        launchTask.cancel()
+        CLILaunchInvoker.launchHandler = nil
     }
 
     // MARK: - VAL-CROSS-004: Launch Chain Invocation Evidence
 
     /// VAL-CROSS-004: CLI launch uses final committed active profile after rapid switches.
-    /// Uses deterministic test seam via executable availability check.
-    /// This test invokes launch through the real SwitcherCLILAunchService adapter path,
-    /// proving that launch services are invoked with the final committed active profile.
-    ///
-    /// Environment-deterministic: passes whether or not claude is installed.
+    /// Uses deterministic test seam to control executable availability.
     func test_launchChain_cliLaunch_afterRapidSwitch_usesFinalCommittedActiveProfile() async {
         // Create two CLI profiles
         let codexProfile = SwitcherProfileRecord(
             id: "codex",
             targetKind: .cli,
             cliType: .codex,
-            cliMetadata: SwitcherCLIProfileMetadata(
-                displayLabel: "Codex CLI"
-            ),
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex CLI"),
             sortKey: 1
         )
         let claudeProfile = SwitcherProfileRecord(
             id: "claude",
             targetKind: .cli,
             cliType: .claude,
-            cliMetadata: SwitcherCLIProfileMetadata(
-                displayLabel: "Claude CLI"
-            ),
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Claude CLI"),
             sortKey: 2
         )
         store.addProfile(codexProfile)
         store.addProfile(claudeProfile)
 
-        // Rapid switch scenario: simulate user switching from codex to claude quickly
-        // The final committed active profile is claude
+        // Use seams: claude is NOT installed (deterministic), launch handler records the call
+        CLILaunchAdapter.executableResolver = { _ in nil }
+        CLILaunchInvoker.launchHandler = { _, _, _, _ in .success(()) }
+
         try? await Task.sleep(nanoseconds: 1_000)
         try? await Task.sleep(nanoseconds: 1_000)
 
         // VAL-CROSS-004: Call launchCLI through the real service adapter path.
-        // The key assertion is that the service must NOT fail with .profileNotFound,
-        // proving it reached the executable availability check (or beyond).
+        // Claude is NOT available via seam, so must get .executableNotFound for claude.
         let outcome = await service.launchCLI(for: claudeProfile.id)
 
-        // Environment-deterministic: whether claude is installed determines the outcome.
-        let claudeInstalled = CLILaunchAdapter.isExecutableAvailable(.claude)
-        if claudeInstalled {
-            // Claude IS installed: launch may succeed or fail with a launch-time error.
-            // Either outcome proves the service reached the launch step with the correct profile.
-            if case .profileNotFound = outcome.error {
-                XCTFail("Got profileNotFound - store lookup failed before reaching executable availability check")
-            }
-        } else {
-            // Claude NOT installed: must get .executableNotFound, proving the service
-            // reached the executable availability check with the correct profile type.
-            XCTAssertFalse(outcome.success,
-                "Expected failure when claude is not installed")
-            if case .executableNotFound(let cliType) = outcome.error {
-                XCTAssertEqual(cliType, .claude, "Should report Claude not found, proving launch path was invoked")
-            } else if case .profileNotFound = outcome.error {
-                XCTFail("Got profileNotFound - this would mean the store lookup failed before reaching executable availability check")
-            } else if case .launchFailed = outcome.error {
-                // launchFailed also proves the service was invoked and reached the launch attempt
-            }
+        // Must get .executableNotFound, proving the service reached the executable check
+        XCTAssertFalse(outcome.success,
+            "Expected failure when claude is not available via seam")
+        if case .executableNotFound(let cliType) = outcome.error {
+            XCTAssertEqual(cliType, .claude, "Should report Claude not found, proving launch path was invoked")
+        } else if case .profileNotFound = outcome.error {
+            XCTFail("Got profileNotFound - store lookup failed before reaching executable availability check")
         }
 
         // VAL-CROSS-004: Assert the routed profile ID equals the final committed active profile ID.
-        // This proves that launchCLI was called with claudeProfile.id, not stale codex.id.
-        // Evidence is captured from the coordinator's lastAttemptedProfileID trace.
         let routedProfileID = await service.getLastAttemptedProfileID()
         XCTAssertEqual(routedProfileID, claudeProfile.id,
             "Routed profile ID should equal claudeProfile.id (final committed active profile), proving no stale A/B routing")
     }
 
     /// VAL-CROSS-004: CLI launch invokes correct profile after rapid switch from codex to claude.
-    /// Verifies that calling launchCLI with claudeProfile.id after switching uses claude's profile.
-    ///
-    /// Environment-deterministic: passes whether or not claude is installed.
     func test_launchChain_cliLaunch_withProfileID_usesSpecifiedProfile() async {
         // Create a Claude profile
         let claudeProfile = SwitcherProfileRecord(
             id: "claude-profile",
             targetKind: .cli,
             cliType: .claude,
-            cliMetadata: SwitcherCLIProfileMetadata(
-                displayLabel: "Test Claude"
-            ),
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Test Claude"),
             sortKey: 1
         )
         store.addProfile(claudeProfile)
 
+        // Use seam: claude is NOT installed (deterministic)
+        CLILaunchAdapter.executableResolver = { _ in nil }
+
         // Call launchCLI with claudeProfile.id
         let outcome = await service.launchCLI(for: claudeProfile.id)
 
-        // Should NOT get .profileNotFound - that would mean the profile wasn't found.
-        // Whether claude is installed determines the outcome, but the service must
-        // have reached beyond the store lookup.
-        let claudeInstalled = CLILaunchAdapter.isExecutableAvailable(.claude)
-        if claudeInstalled {
-            // Claude IS installed: launch may succeed or fail at the launch step.
-            // Either outcome proves the profile was found and used.
-            if case .profileNotFound = outcome.error {
-                XCTFail("Profile not found in store - launch path was not properly invoked")
-            }
-        } else {
-            // Claude NOT installed: should get .executableNotFound.
-            XCTAssertFalse(outcome.success)
-            if case .profileNotFound = outcome.error {
-                XCTFail("Profile not found in store - launch path was not properly invoked")
-            }
+        // Claude NOT installed via seam: should get .executableNotFound
+        XCTAssertFalse(outcome.success)
+        if case .profileNotFound = outcome.error {
+            XCTFail("Profile not found in store - launch path was not properly invoked")
         }
 
         // VAL-CROSS-004: Assert the routed profile ID equals the specified profile ID.
-        // Evidence is captured from the coordinator's lastAttemptedProfileID trace.
         let routedProfileID = await service.getLastAttemptedProfileID()
         XCTAssertEqual(routedProfileID, claudeProfile.id,
             "Routed profile ID should equal claudeProfile.id, proving correct routing")
     }
 
     /// VAL-CROSS-004: CLI launch rejects browser profile kind at service level.
-    /// Proves the launch service validates profile kind before reaching executable availability check.
     func test_launchChain_cliLaunch_rejectsBrowserProfile_atServiceLevel() async {
-        // Create a browser profile
         let browserProfile = SwitcherProfileRecord(
             id: "browser-profile",
             targetKind: .browser,
@@ -1071,10 +1137,8 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         )
         store.addProfile(browserProfile)
 
-        // Call launchCLI with browser profile ID
         let outcome = await service.launchCLI(for: browserProfile.id)
 
-        // Should get .profileKindMismatch - proves service validates profile kind
         XCTAssertFalse(outcome.success)
         if case .profileKindMismatch(let expected, let actual) = outcome.error {
             XCTAssertEqual(expected, .cli)
@@ -1085,9 +1149,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
     }
 
     /// VAL-CROSS-004: CLI launch with type mismatch is rejected at service level.
-    /// Proves the launch service validates CLI type matches before building launch config.
     func test_launchChain_cliLaunch_typeMismatch_rejectedAtServiceLevel() async {
-        // Create a Claude profile
         let claudeProfile = SwitcherProfileRecord(
             id: "claude-profile",
             targetKind: .cli,
@@ -1097,10 +1159,8 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         )
         store.addProfile(claudeProfile)
 
-        // Try to launch as Codex using typed method
         let outcome = await service.launchCLI(cliType: .codex, profileID: claudeProfile.id)
 
-        // Should get .profileTypeMismatch - proves service validates CLI type
         XCTAssertFalse(outcome.success)
         if case .profileTypeMismatch(let expected, let actual) = outcome.error {
             XCTAssertEqual(expected, .codex)
@@ -1111,9 +1171,6 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
     }
 
     /// VAL-CROSS-004: Rapid sequential CLI launch requests are serialized by coordinator.
-    /// Tests that concurrent launch attempts for different profiles are handled correctly.
-    ///
-    /// Environment-deterministic: passes whether or not CLIs are installed.
     func test_launchChain_cliLaunch_concurrentLaunches_differentProfiles() async {
         // Create Codex and Claude profiles
         let codexProfile = SwitcherProfileRecord(
@@ -1133,6 +1190,10 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         store.addProfile(codexProfile)
         store.addProfile(claudeProfile)
 
+        // Use seam: both executables NOT installed + simulated handler
+        CLILaunchAdapter.executableResolver = { _ in nil }
+        CLILaunchInvoker.launchHandler = { _, _, _, _ in .success(()) }
+
         // Launch both profiles concurrently
         async let launch1 = service.launchCLI(for: codexProfile.id)
         async let launch2 = service.launchCLI(for: claudeProfile.id)
@@ -1140,15 +1201,14 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         let outcomes = await [launch1, launch2]
 
         // The coordinator handles serialization between different profiles.
-        // If executables are not installed, we get executableNotFound errors.
-        // If installed, launches may succeed or fail at the launch step.
-        // Either way, the coordinator does not deadlock or crash.
+        // With the seam, both will fail with executableNotFound (no actual spawn).
         for outcome in outcomes {
-            if case .launchFailed(let msg) = outcome.error {
-                // "already in progress" proves coordinator serialized
-                XCTAssertTrue(msg.contains("already in progress") || !outcome.success)
-            }
-            // Other outcomes (success, executableNotFound, etc.) are all valid
+            // Either executableNotFound (from buildCLILaunch) or success (from handler bypass)
+            // Both are valid — coordinator did not deadlock or crash
+            XCTAssertTrue(
+                outcome.success || outcome.error != nil,
+                "Outcome should be either success or a typed error"
+            )
         }
     }
 
@@ -1156,83 +1216,52 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
 
     /// VAL-CROSS-004: CLI launch via launchUsingActiveProfile() uses the final committed
     /// active profile after rapid switches, WITHOUT explicit profile-ID override.
-    ///
-    /// This test proves that:
-    /// 1. Rapid switch flow commits final active profile to global state
-    /// 2. launchUsingActiveProfile() reads from global state (not explicit ID)
-    /// 3. Launch adapter consumes the correct final committed profile
-    ///
-    /// Environment-deterministic: passes whether or not the CLI is installed.
     func test_activeStateRouting_cliLaunch_afterRapidSwitch_usesCommittedActiveProfile() async {
-        // Create two CLI profiles
         let codexProfile = SwitcherProfileRecord(
             id: "codex",
             targetKind: .cli,
             cliType: .codex,
-            cliMetadata: SwitcherCLIProfileMetadata(
-                displayLabel: "Codex CLI"
-            ),
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex CLI"),
             sortKey: 1
         )
         let claudeProfile = SwitcherProfileRecord(
             id: "claude",
             targetKind: .cli,
             cliType: .claude,
-            cliMetadata: SwitcherCLIProfileMetadata(
-                displayLabel: "Claude CLI"
-            ),
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Claude CLI"),
             sortKey: 2
         )
         store.addProfile(codexProfile)
         store.addProfile(claudeProfile)
 
+        // Use seam: claude is NOT installed (deterministic)
+        CLILaunchAdapter.executableResolver = { _ in nil }
+
         // Rapid switch flow: set codex active, then switch to claude
-        // This commits claude as the final committed active profile in global state
         store.setActiveProfileID(codexProfile.id)
-        try? await Task.sleep(nanoseconds: 1_000) // Minimal delay to simulate rapid switch
+        try? await Task.sleep(nanoseconds: 1_000)
         store.setActiveProfileID(claudeProfile.id) // Final committed active profile
         try? await Task.sleep(nanoseconds: 1_000)
 
-        // Verify the store reports claude as the active profile
         XCTAssertEqual(store.fetchActiveProfileID(), claudeProfile.id,
             "Store should report claude as active after rapid switch")
 
-        // VAL-CROSS-004: Call launchUsingActiveProfile() - NO explicit profile ID passed
-        // This method reads from global active state, proving active-state routing
+        // VAL-CROSS-004: Call launchUsingActiveProfile() - NO explicit profile ID
         let outcome = await service.launchUsingActiveProfile()
 
-        // Environment-deterministic assertion: the result depends on whether claude is installed.
-        // Either way, the service must NOT fail with .noActiveProfile or .profileNotFound,
-        // proving it correctly read the active profile from global state and resolved it in the store.
-        let claudeInstalled = CLILaunchAdapter.isExecutableAvailable(.claude)
-        if claudeInstalled {
-            // Claude is installed: launch may succeed or fail with a launch-time error.
-            // Either outcome proves the service reached the launch step with the correct profile.
-            // (We do NOT assert outcome.success because the actual launch may fail for
-            // environment-specific reasons like missing working directory.)
-            if case .noActiveProfile = outcome.error {
-                XCTFail("Got noActiveProfile - launchUsingActiveProfile() did not read active state correctly")
-            } else if case .profileNotFound = outcome.error {
-                XCTFail("Got profileNotFound - the active profile claude should have been found in store")
-            }
-        } else {
-            // Claude is NOT installed: must get .executableNotFound, proving the service
-            // used the correct profile type (claude) and reached the executable availability check.
-            XCTAssertFalse(outcome.success,
-                "Expected failure when claude is not installed")
-            if case .executableNotFound(let cliType) = outcome.error {
-                XCTAssertEqual(cliType, .claude,
-                    "Should report Claude not found, proving launch used claude (final committed active profile)")
-            } else if case .noActiveProfile = outcome.error {
-                XCTFail("Got noActiveProfile - this means launchUsingActiveProfile() did not read active state correctly")
-            } else if case .profileNotFound = outcome.error {
-                XCTFail("Got profileNotFound - the active profile claude should have been found in store")
-            }
+        // Claude is NOT available via seam -> must get .executableNotFound
+        XCTAssertFalse(outcome.success,
+            "Expected failure when claude is not available via seam")
+        if case .executableNotFound(let cliType) = outcome.error {
+            XCTAssertEqual(cliType, .claude,
+                "Should report Claude not found, proving launch used claude (final committed active profile)")
+        } else if case .noActiveProfile = outcome.error {
+            XCTFail("Got noActiveProfile - launchUsingActiveProfile() did not read active state correctly")
+        } else if case .profileNotFound = outcome.error {
+            XCTFail("Got profileNotFound - the active profile claude should have been found in store")
         }
 
-        // VAL-CROSS-004: Assert the routed profile ID equals the final committed active profile ID.
-        // This proves that launchUsingActiveProfile() read claudeProfile.id from global state,
-        // not stale codexProfile.id. Evidence is captured from the coordinator's lastAttemptedProfileID trace.
+        // VAL-CROSS-004: Assert routed profile ID = final committed active profile ID
         let routedProfileID = await service.getLastAttemptedProfileID()
         XCTAssertEqual(routedProfileID, claudeProfile.id,
             "Routed profile ID should equal claudeProfile.id (final committed active profile), proving no stale A/B routing")
@@ -1241,71 +1270,49 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
     /// VAL-CROSS-004: CLI launch via launchUsingActiveProfile() returns noActiveProfile
     /// when no profile is active, proving it reads from global state.
     func test_activeStateRouting_cliLaunch_noActiveProfile_returnsNoActiveProfileError() async {
-        // Create a profile but do NOT set it as active
         let claudeProfile = SwitcherProfileRecord(
             id: "claude-profile",
             targetKind: .cli,
             cliType: .claude,
-            cliMetadata: SwitcherCLIProfileMetadata(
-                displayLabel: "Test Claude"
-            ),
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Test Claude"),
             sortKey: 1
         )
         store.addProfile(claudeProfile)
 
-        // Verify no active profile
         XCTAssertNil(store.fetchActiveProfileID(), "No profile should be active")
 
-        // Call launchUsingActiveProfile() - should get .noActiveProfile error
         let outcome = await service.launchUsingActiveProfile()
 
         XCTAssertFalse(outcome.success)
         if case .noActiveProfile = outcome.error {
-            // This is expected - proves the method read from global state and found no active profile
+            // Expected — proves the method read from global state
         } else {
             XCTFail("Expected .noActiveProfile error, got \(String(describing: outcome.error))")
         }
     }
 
     /// VAL-CROSS-004: Rapid switch A -> B -> C, then launchUsingActiveProfile() uses C.
-    /// This is the definitive test for active-state routing without explicit ID.
-    ///
-    /// Environment-deterministic: passes whether or not codex is installed.
     func test_activeStateRouting_cliLaunch_rapidSwitchABC_usesFinalCommittedProfile() async {
-        // Create three CLI profiles
         let codexA = SwitcherProfileRecord(
-            id: "codexA",
-            targetKind: .cli,
-            cliType: .codex,
-            cliMetadata: SwitcherCLIProfileMetadata(
-                displayLabel: "Codex A"
-            ),
-            sortKey: 1
+            id: "codexA", targetKind: .cli, cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex A"), sortKey: 1
         )
         let codexB = SwitcherProfileRecord(
-            id: "codexB",
-            targetKind: .cli,
-            cliType: .codex,
-            cliMetadata: SwitcherCLIProfileMetadata(
-                displayLabel: "Codex B"
-            ),
-            sortKey: 2
+            id: "codexB", targetKind: .cli, cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex B"), sortKey: 2
         )
         let codexC = SwitcherProfileRecord(
-            id: "codexC",
-            targetKind: .cli,
-            cliType: .codex,
-            cliMetadata: SwitcherCLIProfileMetadata(
-                displayLabel: "Codex C"
-            ),
-            sortKey: 3
+            id: "codexC", targetKind: .cli, cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex C"), sortKey: 3
         )
         store.addProfile(codexA)
         store.addProfile(codexB)
         store.addProfile(codexC)
 
-        // Rapid switch flow: A -> B -> C
-        // This simulates a user quickly switching through profiles
+        // Use seam: codex is NOT installed (deterministic)
+        CLILaunchAdapter.executableResolver = { _ in nil }
+
+        // Rapid switch: A -> B -> C
         store.setActiveProfileID(codexA.id)
         try? await Task.sleep(nanoseconds: 500)
         store.setActiveProfileID(codexB.id)
@@ -1313,46 +1320,24 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         store.setActiveProfileID(codexC.id) // Final committed active profile
         try? await Task.sleep(nanoseconds: 500)
 
-        // Verify codexC is the final committed active profile
         XCTAssertEqual(store.fetchActiveProfileID(), codexC.id,
             "Final committed active profile should be codexC after A->B->C switch")
 
-        // Launch using active profile - NO explicit profile ID
         let outcome = await service.launchUsingActiveProfile()
 
-        // Environment-deterministic assertion: the result depends on whether codex is installed.
-        // Either way, the service must NOT fail with .noActiveProfile or .profileNotFound,
-        // proving it correctly read the active profile from global state and resolved it in the store.
-        let codexInstalled = CLILaunchAdapter.isExecutableAvailable(.codex)
-        if codexInstalled {
-            // Codex IS installed: launch may succeed or fail with a launch-time error.
-            // Either outcome proves the service reached the launch step with the correct profile.
-            // (We do NOT assert outcome.success because the actual launch may fail for
-            // environment-specific reasons like missing working directory.)
-            if case .noActiveProfile = outcome.error {
-                XCTFail("Got noActiveProfile - launchUsingActiveProfile() did not read active state correctly")
-            } else if case .profileNotFound = outcome.error {
-                XCTFail("Got profileNotFound - the active profile codexC should have been found in store")
-            }
-        } else {
-            // Codex NOT installed: must get .executableNotFound, proving the service
-            // used the correct profile type (codex) and reached the executable availability check.
-            XCTAssertFalse(outcome.success,
-                "Expected failure when codex is not installed")
-            if case .executableNotFound(let cliType) = outcome.error {
-                XCTAssertEqual(cliType, .codex,
-                    "Should use codexC (final committed active profile) for launch")
-            } else if case .noActiveProfile = outcome.error {
-                XCTFail("Got noActiveProfile - launchUsingActiveProfile() did not read active state correctly")
-            } else if case .profileNotFound = outcome.error {
-                XCTFail("Got profileNotFound - the active profile codexC should have been found in store")
-            }
+        // Codex NOT available via seam -> must get .executableNotFound
+        XCTAssertFalse(outcome.success,
+            "Expected failure when codex is not available via seam")
+        if case .executableNotFound(let cliType) = outcome.error {
+            XCTAssertEqual(cliType, .codex,
+                "Should use codexC (final committed active profile) for launch")
+        } else if case .noActiveProfile = outcome.error {
+            XCTFail("Got noActiveProfile - launchUsingActiveProfile() did not read active state correctly")
+        } else if case .profileNotFound = outcome.error {
+            XCTFail("Got profileNotFound - the active profile codexC should have been found in store")
         }
 
-        // VAL-CROSS-004: Assert the routed profile ID equals the final committed active profile ID.
-        // This proves that after A->B->C rapid switch, launchUsingActiveProfile()
-        // read codexC.id from global state, not stale codexA.id or codexB.id.
-        // Evidence is captured from the coordinator's lastAttemptedProfileID trace.
+        // VAL-CROSS-004: Assert routed profile ID = final committed active profile ID
         let routedProfileID = await service.getLastAttemptedProfileID()
         XCTAssertEqual(routedProfileID, codexC.id,
             "Routed profile ID should equal codexC.id (final committed active profile after A->B->C switch), proving no stale A/B routing")
