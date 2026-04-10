@@ -3448,4 +3448,404 @@ extension ProjectionPipelineServiceTests {
         let collectedSet = Set(collectedIDs)
         XCTAssertEqual(collectedSet.count, conversationCount, "No duplicates in search document pagination. Unique: \(collectedSet.count)")
     }
+
+    // MARK: - Artifact pagination boundary: multi-page no-skip/no-duplicate
+
+    private func makeSourceArtifact(
+        id: String,
+        sourceKind: SearchSourceKind,
+        rootPath: String,
+        relativePath: String,
+        contentHash: String,
+        status: SourceArtifactStatus = .active,
+        base: Date
+    ) -> SourceArtifactRecord {
+        SourceArtifactRecord(
+            id: id,
+            sourceKind: sourceKind,
+            canonicalPath: "\(rootPath)/\(relativePath)",
+            rootPath: rootPath,
+            relativePath: relativePath,
+            provenance: "basename:\(relativePath.uppercased())",
+            title: "Artifact \(id)",
+            body: "Body of artifact \(id).",
+            contentHash: contentHash,
+            fileSizeBytes: 100,
+            fileModifiedAt: base,
+            status: status,
+            discoveredAt: base,
+            deletedAt: status == .deleted ? base.addingTimeInterval(60) : nil,
+            createdAt: base,
+            updatedAt: base
+        )
+    }
+
+    func test_artifactPagination_traversalYieldsCompleteSet_noSkipsNoDuplicates() async throws {
+        // Directly exercise ArtifactStore.fetchSourceArtifacts pagination with a corpus
+        // larger than page size. Verifies the underlying query used by processRebuild's
+        // artifact loop covers all artifacts across multiple pages.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_743_270_000)
+        let pageSize = 100
+        let kinds: [SearchSourceKind] = [.skillDoc, .agentDoc, .sharedArtifact]
+        let artifactCount = 1050  // >1000, spanning 11 pages
+
+        let rootPaths = ["/root/a", "/root/b", "/root/c"]
+        for i in 0..<artifactCount {
+            let kind = kinds[i % kinds.count]
+            let rootPath = rootPaths[i % rootPaths.count]
+            let artifact = makeSourceArtifact(
+                id: "artifact-pag-\(String(format: "%04d", i))",
+                sourceKind: kind,
+                rootPath: rootPath,
+                relativePath: "path/\(i).md",
+                contentHash: "hash-\(i)",
+                base: base
+            )
+            _ = try store.upsertSourceArtifact(artifact)
+        }
+
+        // Verify total count via count query
+        let totalCount = try store.countSourceArtifacts(includeDeleted: true, rootPaths: nil, sourceKinds: kinds)
+        XCTAssertEqual(totalCount, artifactCount, "Should have \(artifactCount) artifacts total.")
+
+        // Paginate through all artifacts using the same query as processRebuild
+        var collectedIDs: [String] = []
+        var offset = 0
+        var pagesTraversed = 0
+        while true {
+            let page = try store.fetchSourceArtifacts(
+                includeDeleted: true,
+                rootPaths: nil,
+                sourceKinds: kinds,
+                limit: pageSize,
+                offset: offset
+            )
+            guard page.isEmpty == false else { break }
+            pagesTraversed += 1
+            for artifact in page {
+                collectedIDs.append(artifact.id)
+            }
+            offset += page.count
+            if page.count < pageSize { break }
+        }
+
+        XCTAssertEqual(collectedIDs.count, artifactCount, "Should yield exactly \(artifactCount) artifacts. Got: \(collectedIDs.count)")
+        XCTAssertEqual(Set(collectedIDs).count, artifactCount, "No duplicates in artifact pagination. Unique: \(Set(collectedIDs).count), total: \(collectedIDs.count)")
+        XCTAssertGreaterThanOrEqual(pagesTraversed, 11, "Should traverse at least 11 pages with pageSize=\(pageSize) and \(artifactCount) artifacts. Got: \(pagesTraversed)")
+
+        // Verify every expected artifact ID is present
+        for i in 0..<artifactCount {
+            let expectedID = "artifact-pag-\(String(format: "%04d", i))"
+            XCTAssertTrue(Set(collectedIDs).contains(expectedID), "Missing \(expectedID) in paginated artifact result.")
+        }
+    }
+
+    func test_artifactPagination_noSkipOrDuplicate_acrossExactBoundary() async throws {
+        // With a corpus sized exactly N * pageSize, artifact pagination must yield
+        // N * pageSize items with no skip/duplicate. Tests the boundary condition
+        // where the last page is exactly full.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_743_280_000)
+        let pageSize = 250
+        let pageCount = 4
+        let artifactCount = pageSize * pageCount  // exactly 1000
+        let kinds: [SearchSourceKind] = [.skillDoc, .agentDoc, .sharedArtifact]
+
+        for i in 0..<artifactCount {
+            let kind = kinds[i % kinds.count]
+            let artifact = makeSourceArtifact(
+                id: "art-exact-bnd-\(String(format: "%05d", i))",
+                sourceKind: kind,
+                rootPath: "/root/exact",
+                relativePath: "\(i).md",
+                contentHash: "hash-exact-\(i)",
+                base: base
+            )
+            _ = try store.upsertSourceArtifact(artifact)
+        }
+
+        var collectedIDs: [String] = []
+        var offset = 0
+        var pagesTraversed = 0
+        while true {
+            let page = try store.fetchSourceArtifacts(
+                includeDeleted: true,
+                rootPaths: nil,
+                sourceKinds: kinds,
+                limit: pageSize,
+                offset: offset
+            )
+            guard page.isEmpty == false else { break }
+            pagesTraversed += 1
+            for artifact in page {
+                collectedIDs.append(artifact.id)
+            }
+            offset += page.count
+            if page.count < pageSize { break }
+        }
+
+        XCTAssertEqual(pagesTraversed, pageCount, "Should traverse exactly \(pageCount) pages. Got: \(pagesTraversed)")
+        XCTAssertEqual(collectedIDs.count, artifactCount, "Should yield exactly \(artifactCount) IDs. Got: \(collectedIDs.count)")
+        XCTAssertEqual(Set(collectedIDs).count, artifactCount, "No duplicates. Unique: \(Set(collectedIDs).count), total: \(collectedIDs.count)")
+
+        // Verify boundary items exist (first and last of each page)
+        for pageIdx in 0..<pageCount {
+            let firstInPage = "art-exact-bnd-\(String(format: "%05d", pageIdx * pageSize))"
+            let lastInPage = "art-exact-bnd-\(String(format: "%05d", (pageIdx + 1) * pageSize - 1))"
+            XCTAssertTrue(Set(collectedIDs).contains(firstInPage), "Missing first item of page \(pageIdx): \(firstInPage)")
+            XCTAssertTrue(Set(collectedIDs).contains(lastInPage), "Missing last item of page \(pageIdx): \(lastInPage)")
+        }
+    }
+
+    func test_artifactPagination_nonDivisibleCorpusSize_noSkipsNoDuplicates() async throws {
+        // With a page size that doesn't evenly divide the corpus size (e.g., 37),
+        // artifact pagination must still cover all items without skip/duplicate.
+        // The last page will be a partial page.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_743_290_000)
+        let pageSize = 37
+        let artifactCount = 200  // 200 / 37 = 5 full pages + 15 remainder
+        let kinds: [SearchSourceKind] = [.skillDoc, .agentDoc, .sharedArtifact]
+
+        for i in 0..<artifactCount {
+            let kind = kinds[i % kinds.count]
+            let artifact = makeSourceArtifact(
+                id: "art-nondiv-\(String(format: "%04d", i))",
+                sourceKind: kind,
+                rootPath: "/root/nondiv",
+                relativePath: "file-\(i).md",
+                contentHash: "hash-nondiv-\(i)",
+                base: base
+            )
+            _ = try store.upsertSourceArtifact(artifact)
+        }
+
+        var collectedIDs: [String] = []
+        var offset = 0
+        var pagesTraversed = 0
+        while true {
+            let page = try store.fetchSourceArtifacts(
+                includeDeleted: true,
+                rootPaths: nil,
+                sourceKinds: kinds,
+                limit: pageSize,
+                offset: offset
+            )
+            guard page.isEmpty == false else { break }
+            pagesTraversed += 1
+            for artifact in page {
+                collectedIDs.append(artifact.id)
+            }
+            offset += page.count
+            if page.count < pageSize { break }
+        }
+
+        let expectedPages = Int(ceil(Double(artifactCount) / Double(pageSize)))  // 6 pages
+        XCTAssertEqual(pagesTraversed, expectedPages, "Should traverse exactly \(expectedPages) pages (incl. partial last page). Got: \(pagesTraversed)")
+        XCTAssertEqual(collectedIDs.count, artifactCount, "Should yield exactly \(artifactCount) artifacts. Got: \(collectedIDs.count)")
+        XCTAssertEqual(Set(collectedIDs).count, artifactCount, "No duplicates with non-divisible page size. Unique: \(Set(collectedIDs).count)")
+    }
+
+    func test_rebuildJob_artifactPagination_coversAllArtifactsAcrossPages() async throws {
+        // End-to-end: rebuild must paginate through ALL artifacts (including deleted)
+        // and enqueue reproject/purge jobs for each. Uses a small injectable page size
+        // and >pageSize artifacts to exercise multi-page artifact traversal.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-rebuild-artifact-boundary",
+            paginationPageSize: 100
+        )
+        let base = Date(timeIntervalSince1970: 1_743_300_000)
+
+        let kinds: [SearchSourceKind] = [.skillDoc, .agentDoc, .sharedArtifact]
+        let activeCount = 900
+        let deletedCount = 150
+        let totalArtifacts = activeCount + deletedCount  // 1050, spanning 11 pages
+
+        // Insert active artifacts
+        for i in 0..<activeCount {
+            let kind = kinds[i % kinds.count]
+            let artifact = makeSourceArtifact(
+                id: "art-rebuild-active-\(String(format: "%04d", i))",
+                sourceKind: kind,
+                rootPath: "/root/rebuild",
+                relativePath: "active-\(i).md",
+                contentHash: "hash-active-\(i)",
+                base: base
+            )
+            _ = try store.upsertSourceArtifact(artifact)
+        }
+
+        // Insert deleted artifacts (must insert as active then mark deleted,
+        // because upsertSourceArtifact hardcodes .active on new inserts)
+        for i in 0..<deletedCount {
+            let kind = kinds[i % kinds.count]
+            let artifact = makeSourceArtifact(
+                id: "art-rebuild-deleted-\(String(format: "%04d", i))",
+                sourceKind: kind,
+                rootPath: "/root/rebuild",
+                relativePath: "deleted-\(i).md",
+                contentHash: "hash-deleted-\(i)",
+                base: base
+            )
+            _ = try store.upsertSourceArtifact(artifact)
+            XCTAssertTrue(try store.markSourceArtifactDeleted(id: artifact.id, deletedAt: base.addingTimeInterval(60)))
+        }
+
+        try service.enqueueRebuildJob(reason: "test-artifact-boundary-rebuild", priority: 1)
+        let rebuildReport = try await service.runSweep(maxJobs: 1)
+        XCTAssertEqual(rebuildReport.completedJobs, 1, "Rebuild job should complete.")
+
+        // Verify ALL artifacts got enqueued
+        let queuedAfterRebuild = try store.fetchProjectionJobs(statuses: [.queued], limit: 5000)
+        let reprojectQueued = queuedAfterRebuild.filter { $0.jobType == .reproject && $0.sourceKind != .conversation }
+        let purgeQueued = queuedAfterRebuild.filter { $0.jobType == .purge }
+
+        XCTAssertEqual(
+            reprojectQueued.count, activeCount,
+            "All \(activeCount) active artifacts should be enqueued for reproject across 11 pages. Found: \(reprojectQueued.count)"
+        )
+        XCTAssertEqual(
+            purgeQueued.count, deletedCount,
+            "All \(deletedCount) deleted artifacts should be enqueued for purge. Found: \(purgeQueued.count)"
+        )
+
+        // Verify no duplicate enqueues
+        let reprojectIDs = reprojectQueued.compactMap { $0.sourceID }
+        let uniqueReprojectIDs = Set(reprojectIDs)
+        XCTAssertEqual(
+            uniqueReprojectIDs.count, activeCount,
+            "No duplicate reproject enqueues for artifacts. Unique: \(uniqueReprojectIDs.count), total: \(reprojectIDs.count)"
+        )
+
+        let purgeIDs = purgeQueued.compactMap { $0.sourceID }
+        let uniquePurgeIDs = Set(purgeIDs)
+        XCTAssertEqual(
+            uniquePurgeIDs.count, deletedCount,
+            "No duplicate purge enqueues for artifacts. Unique: \(uniquePurgeIDs.count), total: \(purgeIDs.count)"
+        )
+    }
+
+    func test_rebuildJob_artifactPagination_exactBoundarySize() async throws {
+        // With artifact count exactly N * pageSize, rebuild must correctly
+        // handle the last full page without off-by-one skip or duplicate.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-rebuild-artifact-exact",
+            paginationPageSize: 50
+        )
+        let base = Date(timeIntervalSince1970: 1_743_310_000)
+
+        let kinds: [SearchSourceKind] = [.skillDoc, .agentDoc]
+        let artifactCount = 200  // exactly 4 pages at pageSize 50
+
+        for i in 0..<artifactCount {
+            let kind = kinds[i % kinds.count]
+            let artifact = makeSourceArtifact(
+                id: "art-exact-rebuild-\(String(format: "%04d", i))",
+                sourceKind: kind,
+                rootPath: "/root/exact-rebuild",
+                relativePath: "\(i).md",
+                contentHash: "hash-exact-rebuild-\(i)",
+                base: base
+            )
+            _ = try store.upsertSourceArtifact(artifact)
+        }
+
+        try service.enqueueRebuildJob(reason: "test-artifact-exact-boundary", priority: 1)
+        let rebuildReport = try await service.runSweep(maxJobs: 1)
+        XCTAssertEqual(rebuildReport.completedJobs, 1)
+
+        let queued = try store.fetchProjectionJobs(statuses: [.queued], limit: 500)
+        let artifactReprojectIDs = Set(queued.filter { $0.jobType == .reproject && $0.sourceKind != .conversation }.compactMap { $0.sourceID })
+        XCTAssertEqual(
+            artifactReprojectIDs.count, artifactCount,
+            "Exactly \(artifactCount) unique artifacts at exact page boundary. Found: \(artifactReprojectIDs.count)"
+        )
+
+        // Verify boundary items (first and last of each page)
+        for pageIdx in 0..<4 {
+            let firstInPage = "art-exact-rebuild-\(String(format: "%04d", pageIdx * 50))"
+            let lastInPage = "art-exact-rebuild-\(String(format: "%04d", (pageIdx + 1) * 50 - 1))"
+            XCTAssertTrue(artifactReprojectIDs.contains(firstInPage), "Missing first item of artifact page \(pageIdx): \(firstInPage)")
+            XCTAssertTrue(artifactReprojectIDs.contains(lastInPage), "Missing last item of artifact page \(pageIdx): \(lastInPage)")
+        }
+    }
+
+    func test_rebuildJob_artifactPagination_nonDivisiblePageSize() async throws {
+        // With a page size (37) that doesn't evenly divide the corpus size,
+        // rebuild must still cover all artifacts including the partial last page.
+
+        let store = try makeDiscoveryInMemoryStore()
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-rebuild-artifact-nondiv",
+            paginationPageSize: 37
+        )
+        let base = Date(timeIntervalSince1970: 1_743_320_000)
+
+        let kinds: [SearchSourceKind] = [.skillDoc, .agentDoc, .sharedArtifact]
+        let activeCount = 180
+        let deletedCount = 25
+        let totalArtifacts = activeCount + deletedCount  // 205 / 37 = 5 full + 20 remainder
+
+        for i in 0..<activeCount {
+            let kind = kinds[i % kinds.count]
+            let artifact = makeSourceArtifact(
+                id: "art-nondiv-active-\(String(format: "%04d", i))",
+                sourceKind: kind,
+                rootPath: "/root/nondiv-rebuild",
+                relativePath: "active-\(i).md",
+                contentHash: "hash-nondiv-active-\(i)",
+                base: base
+            )
+            _ = try store.upsertSourceArtifact(artifact)
+        }
+
+        for i in 0..<deletedCount {
+            let kind = kinds[i % kinds.count]
+            let artifact = makeSourceArtifact(
+                id: "art-nondiv-deleted-\(String(format: "%04d", i))",
+                sourceKind: kind,
+                rootPath: "/root/nondiv-rebuild",
+                relativePath: "deleted-\(i).md",
+                contentHash: "hash-nondiv-deleted-\(i)",
+                base: base
+            )
+            _ = try store.upsertSourceArtifact(artifact)
+            XCTAssertTrue(try store.markSourceArtifactDeleted(id: artifact.id, deletedAt: base.addingTimeInterval(60)))
+        }
+
+        try service.enqueueRebuildJob(reason: "test-artifact-nondiv-rebuild", priority: 1)
+        let rebuildReport = try await service.runSweep(maxJobs: 1)
+        XCTAssertEqual(rebuildReport.completedJobs, 1)
+
+        let queued = try store.fetchProjectionJobs(statuses: [.queued], limit: 500)
+        let reprojectQueued = queued.filter { $0.jobType == .reproject && $0.sourceKind != .conversation }
+        let purgeQueued = queued.filter { $0.jobType == .purge }
+
+        XCTAssertEqual(
+            reprojectQueued.count, activeCount,
+            "All \(activeCount) active artifacts with non-divisible page size. Found: \(reprojectQueued.count)"
+        )
+        XCTAssertEqual(
+            purgeQueued.count, deletedCount,
+            "All \(deletedCount) deleted artifacts with non-divisible page size. Found: \(purgeQueued.count)"
+        )
+
+        // No duplicates
+        XCTAssertEqual(
+            Set(reprojectQueued.compactMap { $0.sourceID }).count,
+            activeCount,
+            "No duplicate artifact reproject enqueues with non-divisible page size"
+        )
+    }
 }
