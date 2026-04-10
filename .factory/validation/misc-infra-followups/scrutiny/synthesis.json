@@ -1,6 +1,6 @@
 {
   "milestone": "misc-infra-followups",
-  "round": 2,
+  "round": 3,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,61 +20,41 @@
     }
   },
   "reviewsSummary": {
-    "total": 4,
-    "passed": 1,
-    "failed": 3,
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
     "failedFeatures": [
-      "misc-infra-rework-flow-validator-finalization-enforcement",
-      "misc-infra-traceability-backfill-multisource-compile-drift",
-      "misc-infra-traceability-backfill-xcresulttool-modern-invocation"
+      "misc-infra-wire-generic-flow-report-enforcement-into-validator-runtime"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "misc-infra-rework-flow-validator-finalization-enforcement",
+      "featureId": "misc-infra-wire-generic-flow-report-enforcement-into-validator-runtime",
       "severity": "blocking",
-      "description": "Finalization enforcement remains procedural-only: changes are docs + script, but validator runtime finalization still does not enforce required-flow-report persistence before success."
-    },
-    {
-      "featureId": "misc-infra-rework-flow-validator-finalization-enforcement",
-      "severity": "blocking",
-      "description": "verify-flow-report-finalization defaults to core-engine-specific report names (settings-ui/launch-contracts), so default contract is not milestone-generic and can misclassify valid runs."
+      "description": "Fix remains doc/script-scoped: required flow-report checks are still not enforced inside validator runtime finalization, so validator success can occur without guaranteed report persistence."
     },
     {
       "featureId": "misc-infra-traceability-backfill-multisource-compile-drift",
       "severity": "blocking",
-      "description": "Backfilled traceability cites implementation commit 61153f... that updates epsilon-tolerance assertions, not compile-drift parameter wiring (cacheReadTokens/cacheCreationTokens/requestCount), leaving scope linkage unresolved."
+      "description": "Carried forward from round 2: no new fix feature in this rerun addressed missing machine-auditable implementation SHA linkage for compile-drift scope traceability."
     },
     {
       "featureId": "misc-infra-traceability-backfill-xcresulttool-modern-invocation",
       "severity": "blocking",
-      "description": "Handoff commitId remains malformed/non-resolvable, so the primary machine-auditable commit linkage requirement is still not met despite improved textual evidence."
+      "description": "Carried forward from round 2: no new fix feature in this rerun addressed malformed/non-resolvable handoff commit linkage for xcresulttool modernization traceability."
     }
   ],
   "appliedUpdates": [],
-  "suggestedGuidanceUpdates": [
-    {
-      "target": "skills",
-      "suggestion": "Enforce handoff metadata gates automatically: reject/flag `followedProcedure: true` without explicit context-read evidence and reject non-resolvable commitId values before handoff acceptance.",
-      "evidence": "Multiple misc-infra-followups rerun reviews still found procedural compliance claims with missing evidence, and one fix handoff used malformed commitId while marked as procedure-following.",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Route misc-infra/script/traceability features to an infra-appropriate worker skill instead of switcher-integration-worker to reduce repeated procedure mismatch and noisy compliance reporting.",
-      "evidence": "Three of four rerun feature reviews observed switcher-integration-worker procedure misfit for infra/traceability work in this milestone.",
-      "isSystemic": true
-    }
-  ],
+  "suggestedGuidanceUpdates": [],
   "rejectedObservations": [
     {
-      "observation": "Add immediate library documentation updates for validator-runtime file ownership.",
-      "reason": "ambiguous"
+      "observation": "Repeat recommendation to re-route misc-infra work off switcher-integration-worker skill.",
+      "reason": "duplicate"
     },
     {
-      "observation": "Per-feature repeats that switcher-integration-worker is a poor fit.",
-      "reason": "duplicate"
+      "observation": "Add generalized knowledge docs about validator runtime ownership without concrete authoritative source.",
+      "reason": "ambiguous"
     }
   ],
-  "previousRound": ".factory/validation/misc-infra-followups/scrutiny/synthesis.round1.json"
+  "previousRound": ".factory/validation/misc-infra-followups/scrutiny/synthesis.round2.json"
 }
