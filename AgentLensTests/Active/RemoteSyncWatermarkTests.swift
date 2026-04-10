@@ -124,7 +124,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
             collectionKind: collectionKind
         )
         tx2.recordProcessedItem(remoteUpdatedAt: Date())
-        try try tx2.commit()
+        try tx2.commit()
 
         // Then: version incremented
         let watermark = try watermarkStore.fetchWatermark(accountUid: accountUid, collectionKind: collectionKind)
@@ -160,7 +160,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
             collectionKind: collectionKind
         )
         tx2.recordProcessedItem(remoteUpdatedAt: Date())
-        try try tx2.commit()
+        try tx2.commit()
 
         // Then: both watermarks exist independently
         let watermark1 = try watermarkStore.fetchWatermark(accountUid: account1, collectionKind: collectionKind)
