@@ -26,30 +26,44 @@ mkdir -p "$repo_root/.factory/validation"
 # Safe because:
 #   - Only removes direct children of .derived-data/ (never the parent itself).
 #   - Uses find -maxdepth 1 so nested structures aren't traversed unsafely.
-#   - Active-run lsof check prevents deletion of in-use directories.
+#   - Active-run lsof +D (recursive) check prevents deletion of in-use
+#     directories, including when open files are inside nested subdirectories.
 #   - Age threshold (4h default) provides additional margin; even with age=0,
 #     active directories are protected.
 #   - Idempotent: re-running is a no-op if nothing is stale.
 
-# Returns 0 (true) if any process has open file handles under the given directory.
-# Uses lsof to check for active file descriptors — no PID files or markers needed.
+# Returns 0 (true) if any process has open file handles under the given directory
+# tree (including deeply nested subdirectories).
+# Uses lsof to check the kernel's open file table — no PID files or markers needed.
 #
-# Strategy: lsof +d checks the kernel's open file table for references to the
-# directory inode, which catches both processes using the directory as cwd and
-# processes with files open within it. On macOS this is efficient (~70ms even
-# for large directories) because it operates on the kernel file table directly,
-# not by scanning the filesystem. This catches xcodebuild, swift-frontend,
-# swiftc, and other build processes that hold open file handles during compilation.
+# Strategy: lsof +D recursively descends the entire directory tree and checks
+# for open file descriptors at any depth. This is critical because xcodebuild,
+# swift-frontend, swiftc, and other build processes open files deep inside
+# derived-data directories (e.g., Build/Products/Debug/...), and the non-recursive
+# lsof +d flag only checks the immediate directory level — missing nested files.
+#
+# Why +D (recursive) instead of +d (single directory):
+#   lsof +d only reports open files directly under the specified directory,
+#   not in subdirectories. For derived-data directories that can be many levels
+#   deep (Build/Intermediates.noindex/...), this would miss active build files
+#   and allow the prune logic to delete directories still in use.
+#
+# Performance: ~0.1–0.7s per directory on macOS (operates on kernel file table,
+# not filesystem scan). Since prune only runs once per init invocation and
+# candidates are already filtered by age, this is acceptable.
+#
+# The -x f flag enables crossing filesystem boundaries, which is needed because
+# macOS derived-data directories may contain symlink forests or mount points.
 is_dir_in_use() {
   local dir="$1"
   local canon_dir
   canon_dir="$(cd "$dir" && pwd -P)"
-  # lsof +d lists processes that have the directory or files within it open.
-  # Redirect stderr to suppress permission errors (non-fatal for our guard).
+  # lsof +D recursively lists processes that have any file in the directory
+  # tree open. Redirect stderr to suppress permission errors (non-fatal).
   # The -F p field outputs just the PID; we only need to know if any exist.
   # Note: lsof exits 1 even when it finds matches, so we use || true to avoid
   # pipefail/errexit killing the pipeline before grep can evaluate the output.
-  if { lsof +d "$canon_dir" -F p 2>/dev/null || true; } | grep -q '^p'; then
+  if { lsof +x f +D "$canon_dir" -F p 2>/dev/null || true; } | grep -q '^p'; then
     return 0  # in use
   fi
   return 1  # not in use
