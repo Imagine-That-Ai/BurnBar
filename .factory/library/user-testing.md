@@ -211,3 +211,41 @@ Test scripts use per-invocation derived-data isolation (unique `.derived-data/ci
 | `scripts/test-openburnbar-app.sh` | Full app test suite |
 | `scripts/test-openburnbar-retrieval-evals.sh` | Retrieval/projection correctness |
 | `swift test --package-path OpenBurnBarCore` | Core package tests only |
+
+### Flow Report Finalization
+
+**Critical: Flow validator success requires existence of required flow report file(s).**
+
+When completing a user-testing validation run:
+
+1. **Verify flow reports exist**: Before reporting success, confirm all expected flow report JSON files were created in `.factory/validation/<milestone>/user-testing/flows/`.
+
+2. **Missing report = explicit failure**: If any expected flow report is missing, the validator must fail with diagnostics listing:
+   - Which flow report file(s) were expected but not found
+   - The path(s) where they were expected
+   - The actual contents of the flows directory at time of check
+
+3. **Synthesis must track flow reports**: The `synthesis.json` file MUST include a `flowReports` array listing all created flow report paths. Example:
+   ```json
+   "flowReports": [
+     ".factory/validation/<milestone>/user-testing/flows/settings-ui.json",
+     ".factory/validation/<milestone>/user-testing/flows/launch-contracts.json"
+   ]
+   ```
+
+4. **Validation check command**: After completing a flow run, verify reports exist:
+   ```bash
+   FLOWS_DIR=".factory/validation/<milestone>/user-testing/flows"
+   REQUIRED_REPORTS="settings-ui.json launch-contracts.json"
+   for report in $REQUIRED_REPORTS; do
+     if [ ! -f "$FLOWS_DIR/$report" ]; then
+       echo "ERROR: Missing required flow report: $FLOWS_DIR/$report"
+       echo "Directory contents:"
+       ls -la "$FLOWS_DIR/"
+       exit 1
+     fi
+   done
+   echo "All required flow reports present."
+   ```
+
+5. **No silent success**: A validation run that passes tests but fails to persist flow reports must NOT report as `pass`. The missing report is a blocking failure requiring explicit diagnostics.

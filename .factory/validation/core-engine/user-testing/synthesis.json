@@ -52,5 +52,9 @@
       "source": "setup"
     }
   ],
-  "previousRound": null
+  "previousRound": null,
+  "flowReports": [
+    ".factory/validation/core-engine/user-testing/flows/settings-ui.json",
+    ".factory/validation/core-engine/user-testing/flows/launch-contracts.json"
+  ]
 }
