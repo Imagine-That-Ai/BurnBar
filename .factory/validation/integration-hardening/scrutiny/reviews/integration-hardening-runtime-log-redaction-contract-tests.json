@@ -1,0 +1,39 @@
+{
+  "featureId": "integration-hardening-runtime-log-redaction-contract-tests",
+  "reviewedAt": "2026-04-10T02:47:57Z",
+  "commitId": "791ea95a3c32ce18ea05e4a7fffca8a75a5e8985",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix adds a new test file, but it still does not implement runtime log-capture assertions against actual emitted startup/sync logs. Most assertions validate stored metadata and direct redactor helper output, so regressions in real logging callsites can still pass undetected.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/SwitcherRuntimeLogCaptureTests.swift",
+        "line": 98,
+        "severity": "blocking",
+        "description": "The core capture helper (`captureStoreOutputs`) only inspects serialized metadata and database rows; it does not attach a log sink or capture emitted logs from startup/sync paths. This does not satisfy VAL-CROSS-006 runtime log-capture requirements."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherRuntimeLogCaptureTests.swift",
+        "line": 401,
+        "severity": "blocking",
+        "description": "The redaction coverage remains helper-level: the test manually calls `CLILaunchAdapter.filterAllowlistedEnvironment` and `CLILaunchRedactor.redactEnvironment` instead of executing logging-producing startup/sync flows and asserting on emitted log lines."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked `followedProcedure=true`, but the handoff still lacks context-read evidence required by the skill's handoff-discipline section.",
+      "evidence": "switcher-integration-worker/SKILL.md requires concrete read-evidence commands when `followedProcedure=true`; this handoff's `verification.commandsRun` only lists two test commands plus `git rev-parse HEAD`."
+    },
+    {
+      "area": "skills",
+      "observation": "Skill step 6 requires collecting log evidence for integration hardening, but the implementation and handoff evidence stayed at helper/store assertions and did not provide emitted-log traces.",
+      "evidence": "switcher-integration-worker/SKILL.md step 6 calls for UI/state/launch/log evidence; new tests center on DB/store outputs and direct redactor calls (SwitcherRuntimeLogCaptureTests.swift lines 98-127 and 401-442)."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-add-ui-level-cross-surface-contract-tests.json",
+  "summary": "Fix review failed. Although the new suite increases secret-safety assertions, it still does not capture and assert real runtime startup/sync log emission, so the prior VAL-CROSS-006 failure is not adequately resolved."
+}

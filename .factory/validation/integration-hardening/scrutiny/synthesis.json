@@ -1,6 +1,6 @@
 {
   "milestone": "integration-hardening",
-  "round": 2,
+  "round": 3,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,50 +20,73 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
+    "total": 4,
     "passed": 0,
-    "failed": 1,
+    "failed": 4,
     "failedFeatures": [
-      "integration-hardening-add-ui-level-cross-surface-contract-tests"
+      "integration-hardening-cross-surface-ui-actionable-assertions",
+      "integration-hardening-launch-chain-invocation-evidence",
+      "integration-hardening-verify-cli-launch-chain-test-discovery",
+      "integration-hardening-runtime-log-redaction-contract-tests"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "integration-hardening-add-ui-level-cross-surface-contract-tests",
+      "featureId": "integration-hardening-cross-surface-ui-actionable-assertions",
       "severity": "blocking",
-      "description": "UI handoff coverage remains non-actionable: tests instantiate views but do not assert rendered state transitions or UI indicator propagation proving Settings → Dashboard/Popover visibility behavior."
+      "description": "Cross-surface tests still validate Settings\u2192Dashboard/Popover propagation via store reads and direct state mutation instead of asserting rendered Dashboard/Popover indicators driven by real UI switch actions."
     },
     {
-      "featureId": "integration-hardening-add-ui-level-cross-surface-contract-tests",
+      "featureId": "integration-hardening-launch-chain-invocation-evidence",
       "severity": "blocking",
-      "description": "Launch chaining still is not exercised through browser/CLI launch adapters; tests include hypothetical comments instead of invoking launch services with assertions on final-profile routing."
+      "description": "Rapid-switch launch tests invoke launch services with explicit profile IDs without exercising committed active-profile routing after a switch chain, so VAL-CROSS-004/009 evidence remains incomplete."
     },
     {
-      "featureId": "integration-hardening-add-ui-level-cross-surface-contract-tests",
+      "featureId": "integration-hardening-launch-chain-invocation-evidence",
       "severity": "blocking",
-      "description": "Error CTA routing checks only control presence and do not execute CTA interactions or assert onOpenSettings/navigation side effects required by VAL-CROSS-008."
+      "description": "Prior CTA/navigation and runtime-log blockers from integration-hardening-add-ui-level-cross-surface-contract-tests are not resolved by the launch-only fix commit."
     },
     {
-      "featureId": "integration-hardening-add-ui-level-cross-surface-contract-tests",
+      "featureId": "integration-hardening-verify-cli-launch-chain-test-discovery",
       "severity": "blocking",
-      "description": "Startup/sync secret-safety is still not validated via captured runtime logs; current test approach uses in-memory redactor calls and does not verify actual logging outputs."
+      "description": "Fix commit provides validation artifacts but no persistent code/project hardening changes, so prior cross-surface contract gaps remain unresolved."
+    },
+    {
+      "featureId": "integration-hardening-runtime-log-redaction-contract-tests",
+      "severity": "blocking",
+      "description": "Runtime secret-safety tests do not capture/inspect emitted startup/sync logs; assertions are mostly store/redactor-helper level and can miss callsite logging regressions."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
+      "target": ".factory/skills/switcher-ui-worker/SKILL.md",
+      "suggestion": "Require VAL-CROSS UI-evidence fixes to assert rendered Dashboard/Popover state transitions and indicator propagation via user-action paths, not store-only assertions.",
+      "evidence": "Feature integration-hardening-cross-surface-ui-actionable-assertions still failed while using store-level checks for propagation and direct active-state mutation.",
+      "isSystemic": true
+    },
+    {
       "target": ".factory/skills/switcher-integration-worker/SKILL.md",
-      "suggestion": "Require explicit evidence artifacts for cross-surface hardening (UI interaction traces, launch invocation traces, and runtime log-capture/redaction assertions) before allowing followedProcedure=true.",
-      "evidence": "Round 2 fix feature still reported followedProcedure=true while missing launch/log/UI trace evidence expected by skill step 6.",
+      "suggestion": "Enforce followedProcedure=true only when handoff includes required context-read evidence and full validation stack evidence (not just scoped xcodebuild runs).",
+      "evidence": "Multiple integration-hardening fix reviews reported followedProcedure=true while missing context-read commands and required validation/smoke coverage.",
       "isSystemic": true
     },
     {
       "target": "Mission AGENTS.md",
-      "suggestion": "State that VAL-CROSS evidence must include actionable flow assertions (tap/callback/navigation and launch invocation outcomes), not only UI text presence or store-state checks.",
-      "evidence": "Review found repeated pattern of static presence/store assertions that did not satisfy VAL-CROSS-004/006/008/009 behavioral traces.",
+      "suggestion": "Add an explicit known-constraint note that stale DerivedData can hide scoped test discovery; require fresh derivedDataPath evidence when a fix is specifically about test discovery.",
+      "evidence": "Feature integration-hardening-verify-cli-launch-chain-test-discovery reported discovery behavior tied to cache state, but AGENTS known constraints do not currently document this pitfall.",
       "isSystemic": false
     }
   ],
-  "rejectedObservations": [],
-  "previousRound": ".factory/validation/integration-hardening/scrutiny/synthesis.round1.json"
+  "rejectedObservations": [
+    {
+      "observation": "Repeat observations that followedProcedure lacked context-read evidence in individual reviews.",
+      "reason": "duplicate"
+    },
+    {
+      "observation": "Architecture-level note that active profile should drive launches.",
+      "reason": "already-documented"
+    }
+  ],
+  "previousRound": ".factory/validation/integration-hardening/scrutiny/synthesis.round2.json"
 }

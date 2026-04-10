@@ -1,0 +1,69 @@
+{
+  "milestone": "integration-hardening",
+  "round": 2,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "integration-hardening-add-ui-level-cross-surface-contract-tests"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "integration-hardening-add-ui-level-cross-surface-contract-tests",
+      "severity": "blocking",
+      "description": "UI handoff coverage remains non-actionable: tests instantiate views but do not assert rendered state transitions or UI indicator propagation proving Settings → Dashboard/Popover visibility behavior."
+    },
+    {
+      "featureId": "integration-hardening-add-ui-level-cross-surface-contract-tests",
+      "severity": "blocking",
+      "description": "Launch chaining still is not exercised through browser/CLI launch adapters; tests include hypothetical comments instead of invoking launch services with assertions on final-profile routing."
+    },
+    {
+      "featureId": "integration-hardening-add-ui-level-cross-surface-contract-tests",
+      "severity": "blocking",
+      "description": "Error CTA routing checks only control presence and do not execute CTA interactions or assert onOpenSettings/navigation side effects required by VAL-CROSS-008."
+    },
+    {
+      "featureId": "integration-hardening-add-ui-level-cross-surface-contract-tests",
+      "severity": "blocking",
+      "description": "Startup/sync secret-safety is still not validated via captured runtime logs; current test approach uses in-memory redactor calls and does not verify actual logging outputs."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": ".factory/skills/switcher-integration-worker/SKILL.md",
+      "suggestion": "Require explicit evidence artifacts for cross-surface hardening (UI interaction traces, launch invocation traces, and runtime log-capture/redaction assertions) before allowing followedProcedure=true.",
+      "evidence": "Round 2 fix feature still reported followedProcedure=true while missing launch/log/UI trace evidence expected by skill step 6.",
+      "isSystemic": true
+    },
+    {
+      "target": "Mission AGENTS.md",
+      "suggestion": "State that VAL-CROSS evidence must include actionable flow assertions (tap/callback/navigation and launch invocation outcomes), not only UI text presence or store-state checks.",
+      "evidence": "Review found repeated pattern of static presence/store assertions that did not satisfy VAL-CROSS-004/006/008/009 behavioral traces.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/integration-hardening/scrutiny/synthesis.round1.json"
+}

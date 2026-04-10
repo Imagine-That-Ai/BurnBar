@@ -1,0 +1,56 @@
+{
+  "featureId": "integration-hardening-cross-surface-ui-actionable-assertions",
+  "reviewedAt": "2026-04-10T02:47:44Z",
+  "commitId": "d99248507f103be3ad8a702b3d84e9323724bfb5",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix improves CTA actionability by tapping error-state buttons and asserting callbacks, but it still does not provide the required actionable UI-level propagation and launch-chain evidence. Relative to the original failed feature, this closes the CTA-presence gap but leaves key blocking coverage gaps unresolved.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2043,
+        "severity": "blocking",
+        "description": "Settings→Dashboard propagation is still asserted via direct store reads (`dataStore.switcherStore.fetchAllProfiles`) rather than rendered Dashboard indicators/rows. This does not satisfy the feature expectation for view-level rendered active/profile assertions or VAL-CROSS-001/002 UI evidence."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 2089,
+        "severity": "blocking",
+        "description": "Settings→Popover propagation test also verifies only store contents after reload, not Popover-rendered profile/active indicators. The test remains store-centric rather than actionable UI evidence."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 1801,
+        "severity": "blocking",
+        "description": "Cross-surface synchronization tests still perform `localStore.setActiveProfile(...)` directly (same at line 1869) instead of executing switch actions from Dashboard/Popover controls. This misses the required UI-action path for VAL-CROSS-009."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 1950,
+        "severity": "blocking",
+        "description": "Launch-chain assertions remain hypothetical (`\"Launch adapter would use ...\"`) and only re-check active-profile state (same pattern at line 1996). No browser/CLI launch adapter/service invocation is exercised, so the original launch-path blocker from the prior failed feature is not resolved."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The switcher-ui-worker handoff sets `followedProcedure=true` but omits required context-read command evidence.",
+      "evidence": "Skill requirement: `.factory/skills/switcher-ui-worker/SKILL.md` (\"Context Read Evidence for followedProcedure=true\"). Handoff `verification.commandsRun` only lists xcodebuild tests and no mission/context file-read commands."
+    },
+    {
+      "area": "skills",
+      "observation": "Skill procedure requires broader validation and manual UI sanity checks, but handoff evidence includes only scoped xcodebuild suites and no interactive checks.",
+      "evidence": "Skill procedure steps 6-7 in `.factory/skills/switcher-ui-worker/SKILL.md` require `scripts/test-openburnbar-app.sh` and manual sanity checks; handoff `interactiveChecks` is empty and commands do not include the app script."
+    },
+    {
+      "area": "conventions",
+      "observation": "Workers continue to satisfy cross-surface contracts with store assertions even when contract language asks for action-chain/UI trace evidence, indicating evidence expectations are still being interpreted inconsistently.",
+      "evidence": "`validation-contract.md` VAL-CROSS-001/002/009 evidence calls for end-to-end flow traces and matching UI indicators/cross-surface action chains, but new tests at `SwitcherCrossFlowTests.swift:2043`, `2089`, and `1801`/`1869` assert store state directly."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-add-ui-level-cross-surface-contract-tests.json",
+  "summary": "Review result: fail. This fix meaningfully improves VAL-CROSS-008 by tapping CTAs and asserting callbacks, but it does not yet provide actionable UI-level propagation assertions or real launch-chain invocation evidence, so the original failure is only partially addressed."
+}

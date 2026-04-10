@@ -1,0 +1,39 @@
+{
+  "featureId": "integration-hardening-verify-cli-launch-chain-test-discovery",
+  "reviewedAt": "2026-04-10T02:47:01Z",
+  "commitId": "ddbcf9dc9dccde909d50017c5fbb54676d6fab7f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix commit only records validation artifacts and does not change switcher test/source or target-membership wiring, so it does not remediate the prior blocking failures from integration-hardening-add-ui-level-cross-surface-contract-tests.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 920,
+        "severity": "blocking",
+        "description": "Prior blocking gaps (UI-level cross-surface behavioral assertions, actionable CTA routing assertions, and runtime-log-path redaction validation) remain unaddressed by this fix. The reviewed fix commit does not modify this file, so the previously failed coverage remains unresolved."
+      },
+      {
+        "file": ".factory/library/user-testing.md",
+        "line": 89,
+        "severity": "non_blocking",
+        "description": "The fix commit includes unrelated factory/library and validation-artifact updates instead of persistent discovery hardening in app/test project files (e.g., test target membership/build config). This weakens traceability between the feature objective and committed implementation."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked followedProcedure=true, but the handoff did not execute the full validation stack listed in switcher-integration-worker (swift test + app script + relevant smoke), only scoped xcodebuild commands.",
+      "evidence": "switcher-integration-worker/SKILL.md step 5 requires the full validation stack; handoff for session 824808b6-50fc-41d7-86c5-f20c7ffc406a lists only scoped xcodebuild runs."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The derived-data cache/discovery pitfall (tests present but not discovered until using a fresh derivedDataPath) appears operationally important and recurring, but it is not captured in mission AGENTS known constraints.",
+      "evidence": "Feature precondition and handoff explicitly reference Xcode cached test bundle causing discovery miss; mission AGENTS known constraints mention destination/signing issues but not discovery-cache behavior."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/integration-hardening-add-ui-level-cross-surface-contract-tests.json",
+  "summary": "Review failed. The fix commit demonstrates scoped test execution evidence under a fresh derived data path, but it does not implement code/project changes that resolve the original failed feature’s blocking assertions, so the prior failure is not adequately addressed by this fix alone."
+}
