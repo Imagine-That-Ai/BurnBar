@@ -2,7 +2,14 @@ commands:
   install: xcodebuild -resolvePackageDependencies -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-resolve && npm --prefix extensions/openburnbar ci
   typecheck: xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
   lint: npm --prefix extensions/openburnbar run lint
-  test: scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh
+  # Flow report enforcement is non-bypassable: invoked by both test and validate commands.
+  # The enforcement script checks for required flow reports and fails if they are missing.
+  # For milestones without configured flow reports, the enforcement passes gracefully.
+  test: |
+    if [ -n "${MILESTONE:-}" ]; then
+      ./.factory/library/verify-flow-report-finalization.sh "$MILESTONE" || exit 1
+    fi
+    scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh
   test_app: scripts/test-openburnbar-app.sh
   test_swift: scripts/test-openburnbar-swift.sh
   browser_smoke: open -Ra "Safari" && open -Ra "Google Chrome"
