@@ -1,6 +1,6 @@
 {
   "milestone": "misc-m4-followups",
-  "round": 1,
+  "round": 2,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,84 +20,38 @@
     }
   },
   "reviewsSummary": {
-    "total": 10,
-    "passed": 5,
-    "failed": 5,
+    "total": 5,
+    "passed": 4,
+    "failed": 1,
     "failedFeatures": [
-      "misc-pagination-boundary-coverage-over-1000",
-      "misc-fix-backfill-test-path-portability",
-      "misc-prune-stale-derived-data-directories",
-      "misc-fix-env-dependent-cli-launch-test-assumption",
-      "misc-harden-test-deriveddata-isolation"
+      "misc-fix-deriveddata-prune-active-safety"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "misc-pagination-boundary-coverage-over-1000",
+      "featureId": "misc-fix-deriveddata-prune-active-safety",
       "severity": "blocking",
-      "description": "Added pagination coverage does not include explicit multi-page boundary tests for artifact pagination; deterministic no-skip/no-duplicate behavior for artifact pages remains unverified."
-    },
-    {
-      "featureId": "misc-fix-backfill-test-path-portability",
-      "severity": "blocking",
-      "description": "Handoff references a non-implementation docs commit and does not provide implementation SHA traceability, so the claimed portability change is not reviewable against a concrete code diff."
-    },
-    {
-      "featureId": "misc-prune-stale-derived-data-directories",
-      "severity": "blocking",
-      "description": "Derived-data pruning deletes directories based on top-level mtime age alone; active long-running build directories can be removed concurrently, violating active-directory safety."
-    },
-    {
-      "featureId": "misc-fix-env-dependent-cli-launch-test-assumption",
-      "severity": "blocking",
-      "description": "Updated concurrent-launch rejection test is now environment-dependent and can fail when CLI executables are installed because it performs sequential launches and asserts at least one failure."
-    },
-    {
-      "featureId": "misc-harden-test-deriveddata-isolation",
-      "severity": "blocking",
-      "description": "Scripts switched to `mktemp -d` under `.derived-data/*` without first ensuring the `.derived-data` parent exists, causing immediate failure on clean workspaces."
+      "description": "`is_dir_in_use()` in `.factory/init.sh` uses `lsof +d \"$canon_dir\"`, which may miss open files in nested subpaths; this can still allow pruning active derived-data directories and does not fully resolve the active-directory safety blocker."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
-      "target": "AGENTS.md",
-      "suggestion": "Add explicit scrutiny enforcement language that `skillFeedback.followedProcedure` must be false when required startup-read evidence entries are missing from `verification.commandsRun`.",
-      "evidence": "Multiple reviews flagged handoffs marked `followedProcedure=true` despite missing required startup-read evidence entries (e.g., misc-remote-watermark-test-warning-cleanup, misc-pagination-boundary-coverage-over-1000, misc-stabilize-switcher-working-tree-drift).",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Require full-SHA commit IDs and implementation SHA traceability checks as a strict gate before feature handoff acceptance, including explicit handling for no-op features.",
-      "evidence": "misc-remote-watermark-test-warning-cleanup used a short commit ID and misc-fix-backfill-test-path-portability used a non-implementation artifact commit without implementation SHA traceability.",
-      "isSystemic": true
-    },
-    {
-      "target": "skills",
-      "suggestion": "Centralize implementation-commit traceability guidance in a shared base skill/procedure instead of duplicating it across multiple worker skill files.",
-      "evidence": "misc-enforce-worker-implementation-commit-traceability duplicated the same rule in five worker skills, creating maintenance drift risk.",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Require feature verification selectors to be validated against real XCTest class/method names when writing `verificationSteps` in mission features.",
-      "evidence": "misc-fix-env-dependent-cli-launch-test-assumption initially used an incorrect `-only-testing` selector from features.json and produced a zero-tests run before correction.",
+      "target": "library",
+      "suggestion": "Document active-directory safety caveat for derived-data cleanup: `lsof +d` is non-recursive and can miss nested open files; use recursive checks (`lsof +D` or equivalent strategy) when safety depends on nested build-tree activity.",
+      "evidence": "Fix review `misc-fix-deriveddata-prune-active-safety` reproduced a nested-file case where `lsof +d <candidate>` returned no PID while `lsof +D <candidate>` detected active use.",
       "isSystemic": false
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "Feature preconditions for backfill path portability appear stale relative to current repository state.",
-      "reason": "ambiguous"
+      "observation": "Procedure-compliance evidence remains inconsistent with workers marking followedProcedure=true despite incomplete startup-read evidence.",
+      "reason": "already-documented"
     },
     {
-      "observation": "Document pruning knob tuning (`DERIVED_DATA_PRUNE_AGE_HOURS`) in shared library guidance now.",
-      "reason": "wrong"
-    },
-    {
-      "observation": "Worker verification did not exercise clean-workspace setup for `.derived-data` existence.",
+      "observation": "Workers may attempt startup reads from `/Users/dewclaw/.factory/library/user-testing.md` instead of the repo-scoped `.factory/library/user-testing.md` path.",
       "reason": "duplicate"
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/misc-m4-followups/scrutiny/synthesis.round1.json"
 }

@@ -1,0 +1,21 @@
+{
+  "featureId": "misc-fix-cli-launch-test-determinism-with-installed-executables",
+  "reviewedAt": "2026-04-10T12:32:38Z",
+  "commitId": "fc83e287eacacb4e8adf684df2d3eed6296a2ad6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix addresses the prior blocking determinism failure by replacing host-environment branching with deterministic seams (`CLILaunchAdapter.executableResolver`, `CLILaunchInvoker.launchHandler`) and by converting same-profile launch contention into controlled in-progress simulation. The previously failing same-profile assertion path is now deterministic and no longer depends on locally installed CLI binaries.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Transcript skeleton shows an attempted startup read at `/Users/dewclaw/.factory/library/user-testing.md` (ENOENT) before proceeding; guidance should explicitly steer workers to the repo-scoped path to avoid recurring startup noise.",
+      "evidence": "worker-transcripts.jsonl entry for session `662457d3-c2d9-40fe-a9d1-ae52246fc116` includes `Read` on `/Users/dewclaw/.factory/library/user-testing.md` followed by `Error reading file: ENOENT`, while the valid file exists at `/Users/dewclaw/Documents/Projects/BurnBar/.factory/library/user-testing.md`."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/misc-m4-followups/scrutiny/reviews/misc-fix-env-dependent-cli-launch-test-assumption.json",
+  "summary": "PASS: Reviewed prior failed diff (9039c7a...) and fix implementation diff (f8ffd580...), plus fix-session transcript skeleton evidence. The original blocking flaw (environment-dependent same-profile concurrent-launch assertion) is resolved with deterministic seam-based in-progress simulation; no remaining blocking code issues found."
+}

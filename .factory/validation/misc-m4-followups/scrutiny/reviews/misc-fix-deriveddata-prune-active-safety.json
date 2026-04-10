@@ -1,0 +1,28 @@
+{
+  "featureId": "misc-fix-deriveddata-prune-active-safety",
+  "reviewedAt": "2026-04-10T12:31:52Z",
+  "commitId": "4990aa8e94ce1c0e48f5e569358a32dfe108d49b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix adds an in-use guard before pruning, but it still uses a non-recursive lsof mode that can miss active derived-data directories whose open files are under nested subpaths.",
+    "issues": [
+      {
+        "file": ".factory/init.sh",
+        "line": 52,
+        "severity": "blocking",
+        "description": "`is_dir_in_use()` checks `lsof +d \"$canon_dir\" -F p`, but `+d` does not reliably detect open files below deeper nested paths in the candidate directory. In local reproduction with an open file at `<candidate>/child/file.log`, `lsof +d <candidate>` returned no PID while `lsof +D <candidate>` did. Because prune candidates are top-level derived-data dirs containing deep build trees, active xcodebuild/test writes can still be missed and then removed by `rm -rf`, so the original active-directory safety blocker is not fully resolved."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Shared guidance does not currently capture `lsof +d` vs `lsof +D` behavior for active-directory safety checks, which allowed an incorrect assumption that `+d` protects nested in-use build trees.",
+      "evidence": "`.factory/init.sh` comments at lines 37-40 and 47 claim `lsof +d` catches files within the directory; worker handoff for this feature reports validation only with a cwd-holding process (`bash /tmp/test-prune-safety3.sh`) and does not include nested-open-file evidence."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/misc-m4-followups/scrutiny/reviews/misc-prune-stale-derived-data-directories.json",
+  "summary": "Reviewed prior failure, original and fix diffs, handoffs, transcript skeletons, and skill guidance. Result is fail: the fix improves safety but retains a blocking detection gap (`lsof +d` non-recursive behavior) that can still permit deletion of active derived-data directories in real nested build-write scenarios."
+}
