@@ -15,7 +15,7 @@ derived_data_dir="$(mktemp -d "$repo_root/.derived-data/openburnbar-app-tests.XX
 cleanup_derived_data() {
     local max_attempts=5
     local attempt=1
-    local delay=0.5
+    local delay_tenths=5  # delay in tenths of a second (5 = 0.5s)
 
     while [ $attempt -le $max_attempts ]; do
         if rm -rf "$derived_data_dir" 2>/dev/null; then
@@ -23,8 +23,8 @@ cleanup_derived_data() {
         fi
 
         if [ $attempt -lt $max_attempts ]; then
-            sleep "$delay"
-            delay=$((delay * 2))
+            sleep "$(awk "BEGIN{printf \"%.1f\", $delay_tenths/10}")"
+            delay_tenths=$((delay_tenths * 2))
         fi
         attempt=$((attempt + 1))
     done
