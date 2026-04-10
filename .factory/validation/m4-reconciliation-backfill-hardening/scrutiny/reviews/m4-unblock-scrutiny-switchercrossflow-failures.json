@@ -1,0 +1,45 @@
+{
+  "featureId": "m4-unblock-scrutiny-switchercrossflow-failures",
+  "reviewedAt": "2026-04-10T01:04:46Z",
+  "commitId": "7518bb9b72f9348e4e193623afcdb8a2cf4a428b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail. The reviewed fix commit is test-only and does not resolve the prior blocking findings from m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency. After comparing both diffs, this feature introduces SwitcherCrossFlow tests but does not touch the backfill runtime guard/monotonic logic or its runtime-coverage tests that were previously marked blocking.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 1,
+        "severity": "blocking",
+        "description": "The fix commit only adds cross-surface switcher tests and project wiring; it does not implement code changes for the prior failed backfill feature blockers. This does not constitute a fix for the earlier blocking review findings."
+      },
+      {
+        "file": "AgentLens/Services/DataStore/BackfillCursorStore.swift",
+        "line": 123,
+        "severity": "blocking",
+        "description": "Original blocking area from prior review (strict monotonic backfill cursor behavior) is not modified by this fix commit. Therefore this rerun fix does not directly resolve that prior blocker."
+      },
+      {
+        "file": "AgentLensTests/Active/BackfillSchedulerTests.swift",
+        "line": 578,
+        "severity": "blocking",
+        "description": "Original blocking area from prior review (runtime execution coverage expectations for refreshAll/runScheduledBackfillIfNeeded success/failure paths) is not modified by this fix commit, so prior blocker resolution is not demonstrated by this feature diff."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Handoff commit ID does not satisfy the skill's handoff discipline requirement for full 40-char SHA.",
+      "evidence": "Handoff file lists \"commitId\": \"7518bb9\" while .factory/skills/switcher-integration-worker/SKILL.md requires a full SHA-1 commit ID."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker marked followedProcedure=true without showing required context-read evidence in commandsRun.",
+      "evidence": "SKILL.md requires concrete read-evidence for required context when followedProcedure=true; handoff verification.commandsRun only shows xcodebuild test invocations and no context-read commands."
+    }
+  ],
+  "addressesFailureFrom": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/reviews/m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency.json",
+  "summary": "Reviewed transcript skeleton, handoff, and both diffs (original failed feature commit 65d2570f11512848055771e41b2277bd11852fa3 and fix commit 7518bb9b72f9348e4e193623afcdb8a2cf4a428b). Determination: fail, because this fix is orthogonal (switcher test additions) and does not resolve the prior blocking backfill issues documented in the referenced failed review."
+}

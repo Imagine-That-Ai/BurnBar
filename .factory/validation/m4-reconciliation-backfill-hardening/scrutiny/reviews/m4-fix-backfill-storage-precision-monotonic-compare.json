@@ -1,0 +1,39 @@
+{
+  "featureId": "m4-fix-backfill-storage-precision-monotonic-compare",
+  "reviewedAt": "2026-04-10T01:04:32Z",
+  "commitId": "65706b37de2a601c749be9902b5aa060d7bc71b9",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "This fix correctly replaces negative-epsilon monotonic comparison with storage-precision normalization in BackfillCursorStore, but it does not resolve the original review's remaining blocking runtime-coverage issues tied to UsageAggregator.refreshAll/runScheduledBackfillIfNeeded execution paths.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/BackfillSchedulerTests.swift",
+        "line": 578,
+        "severity": "blocking",
+        "description": "At the reviewed fix commit, `test_backfillGuard_persistenceFailure_preventsCursorAdvance` still validates behavior by directly calling `BackfillCursorStore.advanceCursor` instead of exercising `UsageAggregator.refreshAll()` persistence-failure runtime flow, so the original blocking requirement for explicit refreshAll guard-path execution evidence remains unmet."
+      },
+      {
+        "file": "AgentLensTests/Active/BackfillSchedulerTests.swift",
+        "line": 625,
+        "severity": "blocking",
+        "description": "At the reviewed fix commit, `test_backfillGuard_persistenceSuccess_allowsCursorAdvance` still bypasses `UsageAggregator.refreshAll()`/`runScheduledBackfillIfNeeded()` and therefore does not provide the required runtime success-path execution proof from the prior failed review."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker set `skillFeedback.followedProcedure=true`, but transcript evidence does not show reads of all required token-accounting-worker context files.",
+      "evidence": "token-accounting-worker step 1 requires reading `mission.md`, `AGENTS.md`, `.factory/library/architecture.md`, and `.factory/library/user-testing.md`. Transcript skeleton for session `cd8c620b-9247-4f8c-9f43-75aae84ec518` includes mission/validation/features/AGENTS/services reads, but no `.factory/library/architecture.md` or `.factory/library/user-testing.md` reads."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Shared library guidance remains misaligned with this backfill/token-accounting mission area.",
+      "evidence": ".factory/library/architecture.md and .factory/library/user-testing.md are still switcher-centric (browser/CLI account-switcher flows) rather than backfill/reconciliation/token-accounting architecture/testing guidance."
+    }
+  ],
+  "addressesFailureFrom": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/reviews/m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency.json",
+  "summary": "Fail: the storage-precision monotonic comparison fix is implemented, but this rerun does not close the prior blocking runtime-coverage gaps for refreshAll guard-path execution proof."
+}

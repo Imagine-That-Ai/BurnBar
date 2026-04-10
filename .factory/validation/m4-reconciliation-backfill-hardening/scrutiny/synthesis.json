@@ -1,11 +1,11 @@
 {
   "milestone": "m4-reconciliation-backfill-hardening",
-  "round": 8,
+  "round": 9,
   "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
-      "command": "swift test --package-path /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBarCore && swift test --package-path /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBarDaemon && xcodebuild test -project /Users/dewclaw/Documents/Projects/BurnBar/OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS\" -clonedSourcePackagesDirPath /Users/dewclaw/Documents/Projects/BurnBar/.spm-cache -derivedDataPath /Users/dewclaw/Documents/Projects/BurnBar/.derived-data/openburnbar-app-tests-rerun CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -only-testing:\"OpenBurnBarTests\"",
+      "command": "/Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-swift.sh && /Users/dewclaw/Documents/Projects/BurnBar/scripts/test-openburnbar-app.sh",
       "exitCode": 0
     },
     "typecheck": {
@@ -20,45 +20,47 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
+    "total": 2,
     "passed": 0,
-    "failed": 1,
+    "failed": 2,
     "failedFeatures": [
-      "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency"
+      "m4-fix-backfill-storage-precision-monotonic-compare",
+      "m4-unblock-scrutiny-switchercrossflow-failures"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency",
+      "featureId": "m4-fix-backfill-storage-precision-monotonic-compare",
       "severity": "blocking",
-      "description": "BackfillSchedulerTests failure-path/success-path additions still bypass UsageAggregator.refreshAll and do not provide runtime proof that persistence failure prevents runScheduledBackfillIfNeeded execution."
+      "description": "BackfillSchedulerTests runtime guard tests still validate direct BackfillCursorStore.advanceCursor behavior and do not execute UsageAggregator.refreshAll/runScheduledBackfillIfNeeded failure/success runtime paths required by the prior failed review."
     },
     {
-      "featureId": "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency",
+      "featureId": "m4-unblock-scrutiny-switchercrossflow-failures",
       "severity": "blocking",
-      "description": "New success-path coverage similarly does not execute UsageAggregator.refreshAll/runScheduledBackfillIfNeeded runtime path, so original scrutiny blocker remains unresolved."
-    },
-    {
-      "featureId": "m4-fix-backfill-runtime-execution-coverage-and-strict-idempotency",
-      "severity": "blocking",
-      "description": "BackfillCursorStore monotonic guard still allows negative-epsilon backward movement (diff >= -0.001), violating strict no-backward requirement."
+      "description": "Fix is orthogonal to the prior backfill blockers: commit adds switcher cross-flow tests and project wiring, but does not modify backfill runtime guard logic or runtime-coverage tests tied to the original failure."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills/token-accounting-worker",
-      "suggestion": "Require explicit transcript evidence for startup reads (mission.md, AGENTS.md, .factory/library/architecture.md, .factory/library/user-testing.md) before allowing followedProcedure=true in handoff.",
-      "evidence": "Reviewer observed missing AGENTS/library startup-read evidence in fix session 31663266-3c1a-4728-8f22-65355bf2bed7 despite followedProcedure=true.",
+      "suggestion": "Enforce required startup-read evidence for mission + AGENTS + .factory/library files in verification.commandsRun before allowing followedProcedure=true.",
+      "evidence": "Review of m4-fix-backfill-storage-precision-monotonic-compare reported missing .factory/library/architecture.md and .factory/library/user-testing.md read evidence while followedProcedure=true.",
+      "isSystemic": true
+    },
+    {
+      "target": "skills/switcher-integration-worker",
+      "suggestion": "Require full 40-character commit SHA and required context-read evidence whenever followedProcedure=true in handoff.",
+      "evidence": "Review of m4-unblock-scrutiny-switchercrossflow-failures found abbreviated commitId and missing context-read evidence despite followedProcedure=true.",
       "isSystemic": true
     },
     {
       "target": "library",
-      "suggestion": "Refresh .factory/library/architecture.md and .factory/library/user-testing.md with token-accounting/backfill-specific guidance so workers are not directed by stale switcher-centric context.",
-      "evidence": "Reviewer reported both library files remain switcher-focused and not aligned to m4 reconciliation/backfill implementation scope.",
+      "suggestion": "Refresh .factory/library/architecture.md and .factory/library/user-testing.md so token-accounting/backfill workers are not guided by switcher-centric content.",
+      "evidence": "Review flagged both shared library files as switcher-focused and misaligned with m4 reconciliation/backfill mission context.",
       "isSystemic": true
     }
   ],
   "rejectedObservations": [],
-  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round7.json"
+  "previousRound": "/Users/dewclaw/Documents/Projects/BurnBar/.factory/validation/m4-reconciliation-backfill-hardening/scrutiny/synthesis.round8.json"
 }
