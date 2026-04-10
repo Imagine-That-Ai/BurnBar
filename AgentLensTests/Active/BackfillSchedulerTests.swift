@@ -599,6 +599,15 @@ final class BackfillSchedulerTests: XCTestCase {
         let aggregator = UsageAggregator(dataStore: store)
         await aggregator.refreshAll()
 
+        // Verify success-path signals:
+        // - persistenceErrorMessage should be nil (proving insert succeeded)
+        // - parserImportError should be nil (proving no import errors)
+        // - errors should be empty or only contain non-blocking issues
+        XCTAssertNil(
+            aggregator.persistenceErrorMessage,
+            "persistenceErrorMessage should be nil when insert() succeeds"
+        )
+
         // Verify post-refresh cursor state
         let finalCursor = try fetchCursor(store: store, provider: .claudeCode)
         XCTAssertNotNil(finalCursor, "Cursor should exist after refreshAll()")
@@ -698,7 +707,18 @@ final class BackfillSchedulerTests: XCTestCase {
             let aggregator = UsageAggregator(dataStore: readOnlyStore)
             await aggregator.refreshAll()
 
-            // Step 6: Verify cursor was NOT advanced (persistence failure was gated)
+            // Step 6: EXPLICIT EXECUTION SIGNAL - verify persistenceError was set by insert() failure.
+            // This proves the guard condition `if persistenceErrorMessage == nil` evaluated to false,
+            // which means runScheduledBackfillIfNeeded() was prevented from executing.
+            // This is the key difference from simply verifying cursor didn't move.
+            // Note: errors may contain provider-level parser errors (unrelated to backfill), so we
+            // don't assert on errors.isEmpty here - only persistenceErrorMessage proves the guard was hit.
+            XCTAssertNotNil(
+                aggregator.persistenceErrorMessage,
+                "persistenceErrorMessage should be set when insert() fails - this is the explicit signal that the guard prevented backfill"
+            )
+
+            // Step 7: Verify cursor was NOT advanced (persistence failure was gated)
             // The cursor should still be at the EXACT initial position with same version
             let cursorAfter = try readOnlyStore.backfillCursorStore.fetchCursor(for: .claudeCode)
             XCTAssertNotNil(cursorAfter, "Cursor should still exist")

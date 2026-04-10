@@ -115,6 +115,9 @@ final class UsageAggregator {
     private(set) var errors: [AgentProvider: String] = [:]
     private(set) var parserImportError: String?
     private(set) var parserHealth: [AgentProvider: ParserHealth] = [:]
+    /// Set when usage row persistence fails during refreshAll().
+    /// Tests can read this to verify the guard condition was triggered.
+    private(set) var persistenceErrorMessage: String?
     /// Usage records fetched from provider billing APIs (separate from log-parsed data).
     private(set) var apiUsages: [ProviderUsageRecord] = []
     private var projectionWorkerTask: Task<Void, Never>?
@@ -180,6 +183,7 @@ final class UsageAggregator {
         errors = [:]
         parserImportError = nil
         parserHealth = [:]
+        persistenceErrorMessage = nil
 
         // VAL-TOKEN-008: Set fallback estimator based on user flag before parsing.
         // Tokenizer-assisted fallback runs only when the flag is enabled AND exact buckets are unavailable.
@@ -214,8 +218,6 @@ final class UsageAggregator {
             }
         }
 
-        var persistenceError: String?
-
         // Store all usages and reload from SQLite so the in-memory array
         // includes both parser output and any chat-inserted rows.
         do {
@@ -225,11 +227,11 @@ final class UsageAggregator {
         } catch {
             let message = "Failed to store imported usage rows: \(error.localizedDescription)"
             parserImportError = message
-            persistenceError = message
+            persistenceErrorMessage = message
         }
 
         do {
-            try upsertParserImportHealth(importedUsageCount: allUsages.count, persistenceError: persistenceError)
+            try upsertParserImportHealth(importedUsageCount: allUsages.count, persistenceError: persistenceErrorMessage)
         } catch {
             parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
         }
@@ -239,7 +241,7 @@ final class UsageAggregator {
         // VAL-PERSIST-006: Backfill run is bounded to 7-day window.
         // VAL-PERSIST-007: Backfill cursor progresses monotonically.
         // VAL-PERSIST-004: Checkpoints advance only after successful commit.
-        if persistenceError == nil {
+        if persistenceErrorMessage == nil {
             await runScheduledBackfillIfNeeded()
         }
 
