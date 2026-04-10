@@ -1,0 +1,17 @@
+{
+  "milestone": "misc-m4-followups",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null,
+  "notes": "No completed implementation feature in this milestone declared fulfills assertion IDs; no pending assertions were testable in user testing."
+}

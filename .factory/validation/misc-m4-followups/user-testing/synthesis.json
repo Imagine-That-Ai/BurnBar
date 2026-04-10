@@ -1,0 +1,23 @@
+{
+  "milestone": "misc-m4-followups",
+  "round": 2,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "flow-report",
+      "description": "Recorded no-assertions rerun flow report at .factory/validation/misc-m4-followups/user-testing/flows/no-assertions-round2.json.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": ".factory/validation/misc-m4-followups/user-testing/synthesis.round1.json",
+  "notes": "Rerun found no failed/blocked assertions and no newly fulfilled assertion IDs in completed misc-m4-followups features; no pending assertions were testable, so status remains pass."
+}
