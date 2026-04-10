@@ -788,6 +788,46 @@ struct PopoverQuickSwitchView: View {
     func testTriggerLaunch(profile: SwitcherProfileRecord) {
         announceForAccessibility("Launch error: Test launch path for \(profile.displayName)")
     }
+
+    /// DEBUG-only: Returns the active profile's display name if available.
+    /// Used by tests to assert on rendered active profile indicator.
+    var testActiveProfileDisplayName: String? {
+        if let activeProfile = profiles.first(where: { $0.id == activeProfileID }) {
+            return activeProfile.displayName
+        }
+        return nil
+    }
+
+    /// DEBUG-only: Returns the active profile's accessibility label that would be rendered.
+    /// This is the actual label used in the active profile indicator section.
+    var testActiveProfileAccessibilityLabel: String? {
+        if let activeProfile = profiles.first(where: { $0.id == activeProfileID }) {
+            return "\(activeProfile.displayName), active profile"
+        }
+        return nil
+    }
+
+    /// DEBUG-only: Returns the selected profile's display name if available.
+    var testSelectedProfileDisplayName: String? {
+        if let selected = profiles.first(where: { $0.id == selectedProfileID }) {
+            return selected.displayName
+        }
+        return nil
+    }
+
+    /// DEBUG-only: Triggers switch action via the UI action path (selectAndSwitch).
+    /// This exercises the actual UI callback for the popover's one-step switching.
+    /// Returns the accessibility announcement that was made.
+    @discardableResult
+    func testTriggerSwitchViaUIAction() -> String? {
+        guard let profileID = selectedProfileID,
+              let profile = profiles.first(where: { $0.id == profileID }) else {
+            return nil
+        }
+        let before = accessibilityAnnouncement
+        selectAndSwitch(profile)
+        return accessibilityAnnouncement != before ? accessibilityAnnouncement : nil
+    }
     #endif
 }
 

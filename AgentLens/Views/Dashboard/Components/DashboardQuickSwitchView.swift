@@ -861,6 +861,42 @@ struct DashboardQuickSwitchView: View {
         }
     }
 
+    /// DEBUG-only: Returns the active profile's display name if available.
+    /// Used by tests to assert on rendered active profile indicator.
+    var testActiveProfileDisplayName: String? {
+        if let activeProfile = profiles.first(where: { $0.id == activeProfileID }) {
+            return activeProfile.displayName
+        }
+        return nil
+    }
+
+    /// DEBUG-only: Returns the active profile's accessibility label that would be rendered.
+    /// This is the actual label used in the active profile indicator section.
+    var testActiveProfileAccessibilityLabel: String? {
+        if let activeProfile = profiles.first(where: { $0.id == activeProfileID }) {
+            return "\(activeProfile.displayName), active profile"
+        }
+        return nil
+    }
+
+    /// DEBUG-only: Returns the selected profile's display name if available.
+    var testSelectedProfileDisplayName: String? {
+        if let selected = profiles.first(where: { $0.id == selectedProfileID }) {
+            return selected.displayName
+        }
+        return nil
+    }
+
+    /// DEBUG-only: Triggers switch action via the UI action path (performSwitch).
+    /// This exercises the actual UI callback, unlike testTriggerSwitch() which bypasses it.
+    /// Returns the accessibility announcement that was made.
+    @discardableResult
+    func testTriggerSwitchViaUIAction() -> String? {
+        let before = accessibilityAnnouncement
+        performSwitch()
+        return accessibilityAnnouncement != before ? accessibilityAnnouncement : nil
+    }
+
     /// DEBUG-only: Triggers performLaunch for the given profile.
     /// Verifies launch success/failure announcements.
     /// - Parameter profile: The profile to launch.
