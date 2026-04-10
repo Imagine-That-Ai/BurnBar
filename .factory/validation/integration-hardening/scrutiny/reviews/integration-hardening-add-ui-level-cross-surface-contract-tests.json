@@ -1,0 +1,56 @@
+{
+  "featureId": "integration-hardening-add-ui-level-cross-surface-contract-tests",
+  "reviewedAt": "2026-04-10T01:06:29Z",
+  "commitId": "1af48c171c430e82d4346a6ff1c95187d4012282",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix adds many new tests, but core VAL-CROSS failures remain: tests still mostly validate store state or static UI presence rather than exercising actionable UI routing, real launch-path chaining, and startup/sync log-capture redaction behavior.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 920,
+        "severity": "blocking",
+        "description": "UI handoff coverage is still not assertion-backed at the component wiring level. The dashboard/popover tests instantiate views but only assert the locally created profile metadata string (and not rendered view state, selected row, or UI indicator propagation). This does not prove Settings→Dashboard/Popover visibility behavior."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 1068,
+        "severity": "blocking",
+        "description": "Launch chaining is still not tested through a real launch path. The test comments that launch 'would use' the final profile, but no launch service/adapter invocation occurs and the added spy/fake launch helpers are never exercised, so stale-profile launch regressions can still pass."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 1367,
+        "severity": "blocking",
+        "description": "Error CTA routing remains incomplete: tests check for button text presence in injected error state but do not tap CTAs or assert onOpenSettings/navigation side effects. This misses the required error-to-settings routing flow verification."
+      },
+      {
+        "file": "AgentLensTests/Active/SwitcherCrossFlowTests.swift",
+        "line": 1216,
+        "severity": "blocking",
+        "description": "Startup/sync log redaction is not validated via captured runtime logs. The test builds an in-memory string and directly calls CLILaunchRedactor helper methods, which is closer to unit behavior and does not verify actual startup/sync logging output paths for secret leakage."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker reports followedProcedure=true, but the handoff evidence does not show the skill's required collection of UI traces, launch traces, and log evidence for this integration feature.",
+      "evidence": "switcher-integration-worker/SKILL.md step 6 requires UI/state/launch/log evidence; handoff verification only reports one scoped xcodebuild command and no trace artifacts."
+    },
+    {
+      "area": "skills",
+      "observation": "Skill handoff discipline requires context-read evidence when followedProcedure=true, but the handoff omits commands demonstrating mission/context file reads.",
+      "evidence": "switcher-integration-worker/SKILL.md (Handoff Discipline: Context Read Evidence) requires commands showing actual content reads; handoff verification.commandsRun only includes the test command."
+    },
+    {
+      "area": "conventions",
+      "observation": "Cross-surface contract evidence expectations emphasize end-to-end traces; current test style still relies heavily on store-state assertions and static UI presence checks.",
+      "evidence": "validation-contract.md VAL-CROSS-001..010 evidence requires end-to-end flow traces, CTA navigation traces, launch chain traces, and log scan outputs; several new tests assert text presence/comments without executing those flows."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/integration-hardening/scrutiny/reviews/switcher-cross-surface-integration-hardening.json",
+  "summary": "Fix review failed. Although the commit adds UI-oriented test scaffolding, it still does not adequately verify actionable error CTA routing, real launch-path chaining, and startup/sync log redaction via runtime log capture, so the original blocking VAL-CROSS gaps are not fully resolved."
+}

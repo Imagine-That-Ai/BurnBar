@@ -1,6 +1,6 @@
 {
   "milestone": "integration-hardening",
-  "round": 1,
+  "round": 2,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -24,46 +24,46 @@
     "passed": 0,
     "failed": 1,
     "failedFeatures": [
-      "switcher-cross-surface-integration-hardening"
+      "integration-hardening-add-ui-level-cross-surface-contract-tests"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "switcher-cross-surface-integration-hardening",
+      "featureId": "integration-hardening-add-ui-level-cross-surface-contract-tests",
       "severity": "blocking",
-      "description": "Cross-surface assertions are implemented via direct reads/writes to a single SwitcherProfileStore instance without instantiating Settings/Dashboard/Popover surfaces, so real cross-surface wiring and handoff regressions are not detected."
+      "description": "UI handoff coverage remains non-actionable: tests instantiate views but do not assert rendered state transitions or UI indicator propagation proving Settings → Dashboard/Popover visibility behavior."
     },
     {
-      "featureId": "switcher-cross-surface-integration-hardening",
+      "featureId": "integration-hardening-add-ui-level-cross-surface-contract-tests",
       "severity": "blocking",
-      "description": "VAL-CROSS-009/004 launch chaining is not exercised through browser/CLI launch adapters; tests only assert activeProfileID changes and include hypothetical comments instead of launch invocations."
+      "description": "Launch chaining still is not exercised through browser/CLI launch adapters; tests include hypothetical comments instead of invoking launch services with assertions on final-profile routing."
     },
     {
-      "featureId": "switcher-cross-surface-integration-hardening",
+      "featureId": "integration-hardening-add-ui-level-cross-surface-contract-tests",
       "severity": "blocking",
-      "description": "VAL-CROSS-008 error CTA routing is not validated through error-state trigger and CTA navigation assertions; current test path only checks persistence updates."
+      "description": "Error CTA routing checks only control presence and do not execute CTA interactions or assert onOpenSettings/navigation side effects required by VAL-CROSS-008."
     },
     {
-      "featureId": "switcher-cross-surface-integration-hardening",
+      "featureId": "integration-hardening-add-ui-level-cross-surface-contract-tests",
       "severity": "blocking",
-      "description": "VAL-CROSS-006 startup/sync log secret-safety is not covered by log capture/redaction assertions; tests only inspect metadata JSON content."
+      "description": "Startup/sync secret-safety is still not validated via captured runtime logs; current test approach uses in-memory redactor calls and does not verify actual logging outputs."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": ".factory/skills/switcher-integration-worker/SKILL.md",
-      "suggestion": "Add a stricter evidence gate requiring explicit UI-surface interaction traces, launch-adapter invocation assertions, and startup/sync log redaction checks before allowing followedProcedure=true for cross-surface integration features.",
-      "evidence": "Review of switcher-cross-surface-integration-hardening found store-centric tests and no direct UI/launch/log evidence despite this being an integration-hardening contract.",
-      "isSystemic": false
+      "suggestion": "Require explicit evidence artifacts for cross-surface hardening (UI interaction traces, launch invocation traces, and runtime log-capture/redaction assertions) before allowing followedProcedure=true.",
+      "evidence": "Round 2 fix feature still reported followedProcedure=true while missing launch/log/UI trace evidence expected by skill step 6.",
+      "isSystemic": true
     },
     {
       "target": "Mission AGENTS.md",
-      "suggestion": "Clarify that validation-contract assertions specifying UI integration traces must be satisfied with UI-level or harnessed integration tests, not solely store-state tests.",
-      "evidence": "Validation-contract entries VAL-CROSS-001/002/003/007/008/010 call for UI integration evidence, while reviewed coverage remained mostly state-store assertions.",
+      "suggestion": "State that VAL-CROSS evidence must include actionable flow assertions (tap/callback/navigation and launch invocation outcomes), not only UI text presence or store-state checks.",
+      "evidence": "Review found repeated pattern of static presence/store assertions that did not satisfy VAL-CROSS-004/006/008/009 behavioral traces.",
       "isSystemic": false
     }
   ],
   "rejectedObservations": [],
-  "previousRound": null
+  "previousRound": ".factory/validation/integration-hardening/scrutiny/synthesis.round1.json"
 }

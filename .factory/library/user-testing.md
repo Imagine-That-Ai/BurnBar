@@ -86,3 +86,23 @@ This keeps total concurrency at 4 while avoiding heavy-run contention.
   - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/SwitcherPopoverUITests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
 - Evidence note:
   - For `.xcresult` JSON extraction on current Xcode CLT, prefer `xcrun xcresulttool get object --legacy --path <bundle> --format json` over deprecated `get` forms.
+
+## Flow Validator Guidance: m4-reconciliation-xcode
+
+- Scope: token-accounting reconciliation/backfill hardening assertions for milestone `m4-reconciliation-backfill-hardening`:
+  - `VAL-PERSIST-006`, `VAL-PERSIST-007`, `VAL-PERSIST-008`, `VAL-PERSIST-012`, `VAL-PERSIST-013`
+  - `VAL-CROSS-003`, `VAL-CROSS-004`, `VAL-CROSS-005`, `VAL-CROSS-006`, `VAL-CROSS-010`
+- Isolation boundary:
+  - Read/write only assigned flow report path under `.factory/validation/m4-reconciliation-backfill-hardening/user-testing/flows/`.
+  - Save evidence only under the assigned mission evidence folder.
+  - Do not modify application source code during validation.
+- Execution constraints:
+  - Heavy `xcodebuild` runs are serialized (`max 1` concurrent heavy validator).
+  - Use signing-off flags:
+    - `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+- Preferred scoped commands:
+  - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/BackfillSchedulerTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+  - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/MultiSourceReconciliationTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+  - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/CrossSurfaceUpgradeTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+- Supplemental evidence commands:
+  - `sqlite3 "$HOME/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite" "SELECT usageSource, COUNT(*) FROM token_usage WHERE usageSource='billing_api' GROUP BY usageSource;"`
