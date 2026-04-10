@@ -1,0 +1,26 @@
+{
+  "featureId": "misc-infra-rework-app-test-cleanup-backoff-and-proof",
+  "reviewedAt": "2026-04-10T21:35:29Z",
+  "commitId": "ddb309a75dbd76d8f78062305883a106df1be857",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix directly addresses the prior blocking failure by replacing decimal arithmetic in retry backoff with integer-safe arithmetic and preserves retry/backoff cleanup behavior. Handoff/transcript evidence also includes a successful `scripts/test-openburnbar-app.sh` run, satisfying the prior proof gap.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The assigned `switcher-integration-worker` skill remains a poor fit for infrastructure script repairs; its mandated integration-test-first procedure does not match this task type, yet handoff still reports `followedProcedure: true`.",
+      "evidence": "Feature metadata maps this script-only fix to `switcher-integration-worker` (features.json). SKILL.md requires failing integration tests first and a broader stack; transcript/handoff for workerSessionId `787af3a7-7e7d-42fc-aa6d-0c2a0c8c0ddc` instead performs targeted script edit + app script run."
+    },
+    {
+      "area": "skills",
+      "observation": "Skill compliance evidence requirements for `followedProcedure: true` are not being enforced consistently.",
+      "evidence": "SKILL.md requires explicit context-read evidence in `verification.commandsRun` before claiming `followedProcedure: true`; this handoff's verification list contains syntax/test/sha commands only and no mission/AGENTS content-read evidence."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/misc-infra-followups/scrutiny/reviews/misc-infra-harden-app-test-cleanup-script.json",
+  "summary": "Pass. Compared both diffs and the fix transcript: the original commit `990d723...` introduced a blocking decimal arithmetic bug (`delay=0.5` with `$((...))`), and the fix commit `ddb309a...` corrects it via integer tenths backoff while preserving retry cleanup semantics. The fix also provides successful app-suite evidence (`scripts/test-openburnbar-app.sh` exit 0), adequately addressing the original failure."
+}

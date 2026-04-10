@@ -1,0 +1,28 @@
+{
+  "featureId": "misc-infra-traceability-backfill-xcresulttool-modern-invocation",
+  "reviewedAt": "2026-04-10T21:35:58Z",
+  "commitId": "192a964feat(misc-infra): implement runtime flow report finalization enforcement",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix handoff now cites the correct implementing SHAs and line evidence for modern `xcresulttool get object --legacy` guidance, and those SHAs resolve to commits that touched the cited guidance lines. However, the handoff `commitId` is still non-machine-resolvable (malformed) and does not point to the implementation commits, so traceability remains non-auditable from the primary commit pointer and the prior failure is not fully corrected.",
+    "issues": [
+      {
+        "file": ".factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/handoffs/2026-04-10T20-53-00-529Z__misc-infra-traceability-backfill-xcresulttool-modern-invocation__50472dd8-1ed4-4be3-b688-7e192bbc49c2.json",
+        "line": 6,
+        "severity": "blocking",
+        "description": "Handoff `commitId` is malformed (`192a964feat(misc-infra): ...`) and cannot be resolved by git, violating auditable commit linkage. The original failing feature diff (`8c720b6...`) is unrelated to xcresulttool guidance, and the fix still does not provide a valid primary commit reference that reviewers can directly audit."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The skill requires full 40-char resolvable SHA in `commitId`, but the workflow accepted a malformed value while `followedProcedure` remained true; this indicates enforcement is procedural-only rather than reliably validated.",
+      "evidence": ".factory/skills/switcher-integration-worker/SKILL.md (\"Full SHA Commit ID\" requirement) vs handoff commitId in 2026-04-10T20-53-00-529Z__misc-infra-traceability-backfill-xcresulttool-modern-invocation__50472dd8-1ed4-4be3-b688-7e192bbc49c2.json."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/misc-infra-followups/scrutiny/reviews/misc-infra-standardize-xcresulttool-modern-invocation.json",
+  "summary": "Reviewed fix transcript skeleton and both feature diffs: original feature commit (`8c720b6...`) remains unrelated, and fix handoff adds correct implementing SHA evidence (`84fc1f9...`, `a1a9f74...`) but still fails because its primary `commitId` is malformed/non-resolvable. Result: fail; prior traceability failure not fully addressed."
+}
