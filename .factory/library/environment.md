@@ -7,12 +7,19 @@ Environment variables, external dependencies, and setup notes for this mission.
 
 ---
 
-## Account Switcher Mission Notes
+## Token Accounting Mission Notes
 
-- This mission does not require new external credentials.
+- This mission does not require new external credentials for core ingestion/indexing work.
+- Provider API reconciliation paths remain guarded by existing local environment availability.
+- Optional tokenizer-assisted fallback path must remain feature-flagged and default-off.
+- Reserved helper port range for this mission (if needed): `3190-3199`.
+- Off-limits ports: `5000`, `7000`, `8642`, `11434`.
+
+## Account Switcher Notes
+
 - OAuth sessions remain managed by browser/provider sign-in (Google/Apple flows).
 - BurnBar stores profile references and launch metadata only.
-- Reserved helper port range for this mission (if needed): `8310-8339`.
+- Reserved helper port range for switcher (if needed): `8310-8339`.
 
 ## Required Local Tooling
 - Xcode + `xcodebuild`
