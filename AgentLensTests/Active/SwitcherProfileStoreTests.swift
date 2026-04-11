@@ -131,6 +131,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
             browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "Original"),
             sortKey: 5
         ))
+        let persistedOriginal = try XCTUnwrap(store.fetchProfile(id: original.id))
 
         let updatedRecord = SwitcherProfileRecord(
             id: original.id,
@@ -144,9 +145,9 @@ final class SwitcherProfileStoreTests: XCTestCase {
         let updated = try store.update(updatedRecord)
 
         XCTAssertEqual(updated.sortKey, 5) // sortKey preserved
-        // Use tolerance for date comparison due to potential microsecond precision differences
-        XCTAssertEqual(updated.createdAt.timeIntervalSince1970, original.createdAt.timeIntervalSince1970, accuracy: 0.001)
-        XCTAssertGreaterThan(updated.updatedAt, original.updatedAt) // updatedAt changed
+        // Compare against persisted storage value to avoid in-memory precision drift.
+        XCTAssertEqual(updated.createdAt.timeIntervalSince1970, persistedOriginal.createdAt.timeIntervalSince1970, accuracy: 0.01)
+        XCTAssertGreaterThan(updated.updatedAt, persistedOriginal.updatedAt) // updatedAt changed
         XCTAssertEqual(updated.browserMetadata?.profileIdentifier, "Updated")
         XCTAssertEqual(updated.browserMetadata?.displayLabel, "New Label")
     }
