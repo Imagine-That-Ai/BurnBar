@@ -217,6 +217,13 @@ final class OpenBurnBarDaemonManager {
         self.usageSyncService = usageSyncService ?? OpenBurnBarDaemonUsageSyncService(paths: paths)
     }
 
+    /// Unix socket RPC uses blocking `connect`/`read` loops. Must not run on the main actor or the UI hangs.
+    private func daemonRPC<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+        try await Task.detached(priority: .utility) {
+            try work()
+        }.value
+    }
+
     var socketPathDisplay: String {
         paths.socketURL.path
     }
@@ -239,7 +246,7 @@ final class OpenBurnBarDaemonManager {
         self.dataStore = dataStore
         OpenBurnBarDaemonLocalNotificationRelay.shared.start()
         exportControllerActivitySnapshot()
-        refreshRuntimeSnapshot()
+        Task { await refreshRuntimeSnapshot() }
     }
 
     func updateProviderConfiguration(
@@ -254,7 +261,10 @@ final class OpenBurnBarDaemonManager {
         }
 
         await performBusyWork {
-            var snapshot = try dependencies.requestConfig(paths.socketURL)
+            let socketURL = paths.socketURL
+            var snapshot = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.config(at: socketURL)
+            }
             guard let index = snapshot.providers.firstIndex(where: { $0.providerID == providerID }) else {
                 throw OpenBurnBarDaemonManagerError.rpcError("Provider '\(providerID)' is not available in daemon config.")
             }
@@ -271,15 +281,21 @@ final class OpenBurnBarDaemonManager {
             }
             snapshot.providers[index] = settings
 
-            _ = try dependencies.updateConfig(paths.socketURL, snapshot)
+            let snapshotToWrite = snapshot
+            _ = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.updateConfig(snapshotToWrite, at: socketURL)
+            }
         }
     }
 
     func refreshHealth() async {
         exportControllerActivitySnapshot()
         status = .checking
+        let socketURL = paths.socketURL
         do {
-            let response = try dependencies.requestHealth(paths.socketURL)
+            let response = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.health(at: socketURL)
+            }
             let snapshot = OpenBurnBarDaemonHealthSnapshot(response: response)
             if snapshot.versionMismatch {
                 status = .unhealthy("Daemon protocol version \(snapshot.protocolVersion) does not match OpenBurnBarCore \(BurnBarProtocolVersion.current).")
@@ -296,7 +312,7 @@ final class OpenBurnBarDaemonManager {
                 lastError = nil
             }
         }
-        refreshRuntimeSnapshot()
+        await refreshRuntimeSnapshot()
     }
 
     func installAndStart() async {
@@ -358,16 +374,20 @@ final class OpenBurnBarDaemonManager {
         } catch {
             status = .unhealthy(error.localizedDescription)
             lastError = error.localizedDescription
-            refreshRuntimeSnapshot()
+            await refreshRuntimeSnapshot()
         }
     }
 
-    private func refreshRuntimeSnapshot() {
+    private func refreshRuntimeSnapshot() async {
         if case .healthy = status {
+            let socketURL = paths.socketURL
             do {
-                let configSnapshot = try dependencies.requestConfig(paths.socketURL)
-                let usageEvents = try dependencies.requestRecentUsage(paths.socketURL, 20)
-                let projects = try dependencies.requestControllerProjects(paths.socketURL)
+                let (configSnapshot, usageEvents, projects) = try await daemonRPC {
+                    let config = try OpenBurnBarDaemonSocketClient.config(at: socketURL)
+                    let usage = try OpenBurnBarDaemonSocketClient.recentUsage(at: socketURL, limit: 20)
+                    let projects = try OpenBurnBarDaemonSocketClient.controllerProjects(at: socketURL)
+                    return (config, usage, projects)
+                }
                 let snapshot = usageSyncService.runtimeSnapshot(
                     from: configSnapshot,
                     usageEvents: usageEvents,
@@ -528,8 +548,11 @@ final class OpenBurnBarDaemonManager {
 
     private func awaitHealthy(timeoutSeconds: TimeInterval = 10) async throws {
         let deadline = Date().addingTimeInterval(timeoutSeconds)
+        let socketURL = paths.socketURL
         while Date() < deadline {
-            if let response = try? dependencies.requestHealth(paths.socketURL),
+            if let response = try? await daemonRPC({
+                try OpenBurnBarDaemonSocketClient.health(at: socketURL)
+            }),
                response.ok,
                response.protocolVersion == BurnBarProtocolVersion.current {
                 return
@@ -543,7 +566,10 @@ final class OpenBurnBarDaemonManager {
     }
 
     func fetchControllerRuntimeSnapshot() async throws -> OpenBurnBarControllerRuntimeSnapshot {
-        try OpenBurnBarDaemonSocketClient.controllerRuntimeSnapshot(at: paths.socketURL)
+        let socketURL = paths.socketURL
+        return try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.controllerRuntimeSnapshot(at: socketURL)
+        }
     }
 
     func answerControllerQuestion(
@@ -551,32 +577,41 @@ final class OpenBurnBarDaemonManager {
         answer: String,
         selectedOptionID: String? = nil
     ) async throws -> OpenBurnBarControllerRuntimeSnapshot? {
-        try OpenBurnBarDaemonSocketClient.answerControllerQuestion(
-            questionID: questionID,
-            answer: answer,
-            selectedOptionID: selectedOptionID,
-            at: paths.socketURL
-        )
+        let socketURL = paths.socketURL
+        return try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.answerControllerQuestion(
+                questionID: questionID,
+                answer: answer,
+                selectedOptionID: selectedOptionID,
+                at: socketURL
+            )
+        }
     }
 
     func completeControllerFollowup(
         followupID: String
     ) async throws -> OpenBurnBarControllerRuntimeSnapshot? {
-        try OpenBurnBarDaemonSocketClient.completeControllerFollowup(
-            followupID: followupID,
-            at: paths.socketURL
-        )
+        let socketURL = paths.socketURL
+        return try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.completeControllerFollowup(
+                followupID: followupID,
+                at: socketURL
+            )
+        }
     }
 
     func snoozeControllerFollowup(
         followupID: String,
         until: Date
     ) async throws -> OpenBurnBarControllerRuntimeSnapshot? {
-        try OpenBurnBarDaemonSocketClient.snoozeControllerFollowup(
-            followupID: followupID,
-            until: until,
-            at: paths.socketURL
-        )
+        let socketURL = paths.socketURL
+        return try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.snoozeControllerFollowup(
+                followupID: followupID,
+                until: until,
+                at: socketURL
+            )
+        }
     }
 
     func scheduleControllerFollowupCalendar(
@@ -585,13 +620,16 @@ final class OpenBurnBarDaemonManager {
         start: Date,
         durationMinutes: Int
     ) async throws -> OpenBurnBarControllerRuntimeSnapshot? {
-        try OpenBurnBarDaemonSocketClient.scheduleControllerFollowupCalendar(
-            followupID: followupID,
-            title: title,
-            start: start,
-            durationMinutes: durationMinutes,
-            at: paths.socketURL
-        )
+        let socketURL = paths.socketURL
+        return try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.scheduleControllerFollowupCalendar(
+                followupID: followupID,
+                title: title,
+                start: start,
+                durationMinutes: durationMinutes,
+                at: socketURL
+            )
+        }
     }
 
     func refreshControllerProjects() async throws -> [BurnBarReviewProjectSnapshot] {
@@ -601,7 +639,10 @@ final class OpenBurnBarDaemonManager {
         }
 
         exportControllerActivitySnapshot()
-        let projects = try dependencies.requestControllerProjects(paths.socketURL)
+        let socketURL = paths.socketURL
+        let projects = try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.controllerProjects(at: socketURL)
+        }
         controllerProjects = projects
         return projects
     }
@@ -613,9 +654,15 @@ final class OpenBurnBarDaemonManager {
             return
         }
 
+        let socketURL = paths.socketURL
         do {
-            connectorPlaneSnapshot = try OpenBurnBarDaemonSocketClient.connectorPlane(at: paths.socketURL)
-            browserToolingSnapshot = try OpenBurnBarDaemonSocketClient.browserTooling(at: paths.socketURL)
+            let (plane, tooling) = try await daemonRPC {
+                let plane = try OpenBurnBarDaemonSocketClient.connectorPlane(at: socketURL)
+                let tooling = try OpenBurnBarDaemonSocketClient.browserTooling(at: socketURL)
+                return (plane, tooling)
+            }
+            connectorPlaneSnapshot = plane
+            browserToolingSnapshot = tooling
             lastError = nil
         } catch {
             lastError = error.localizedDescription
@@ -631,14 +678,17 @@ final class OpenBurnBarDaemonManager {
             throw OpenBurnBarDaemonManagerError.rpcError("OpenBurnBar daemon must be healthy before updating connectors.")
         }
 
-        let snapshot = try OpenBurnBarDaemonSocketClient.updateConnectorConfig(
-            BurnBarConnectorConfigUpdateRequest(
-                config: config,
-                secret: secret,
-                replaceSecret: replaceSecret
-            ),
-            at: paths.socketURL
-        )
+        let socketURL = paths.socketURL
+        let snapshot = try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.updateConnectorConfig(
+                BurnBarConnectorConfigUpdateRequest(
+                    config: config,
+                    secret: secret,
+                    replaceSecret: replaceSecret
+                ),
+                at: socketURL
+            )
+        }
         connectorPlaneSnapshot = snapshot
         return snapshot
     }
@@ -651,11 +701,16 @@ final class OpenBurnBarDaemonManager {
             throw OpenBurnBarDaemonManagerError.rpcError("OpenBurnBar daemon must be healthy before testing connectors.")
         }
 
-        let response = try OpenBurnBarDaemonSocketClient.performConnectorAction(
-            BurnBarConnectorActionRequest(kind: kind, action: action),
-            at: paths.socketURL
-        )
-        connectorPlaneSnapshot = try? OpenBurnBarDaemonSocketClient.connectorPlane(at: paths.socketURL)
+        let socketURL = paths.socketURL
+        let response = try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.performConnectorAction(
+                BurnBarConnectorActionRequest(kind: kind, action: action),
+                at: socketURL
+            )
+        }
+        connectorPlaneSnapshot = try? await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.connectorPlane(at: socketURL)
+        }
         return response
     }
 
@@ -666,7 +721,10 @@ final class OpenBurnBarDaemonManager {
             throw OpenBurnBarDaemonManagerError.rpcError("OpenBurnBar daemon must be healthy before updating browser tooling.")
         }
 
-        let snapshot = try OpenBurnBarDaemonSocketClient.updateBrowserTooling(request, at: paths.socketURL)
+        let socketURL = paths.socketURL
+        let snapshot = try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.updateBrowserTooling(request, at: socketURL)
+        }
         browserToolingSnapshot = snapshot
         return snapshot
     }
@@ -678,8 +736,13 @@ final class OpenBurnBarDaemonManager {
             throw OpenBurnBarDaemonManagerError.rpcError("OpenBurnBar daemon must be healthy before using browser tooling.")
         }
 
-        let response = try OpenBurnBarDaemonSocketClient.performBrowserAction(request, at: paths.socketURL)
-        browserToolingSnapshot = try? OpenBurnBarDaemonSocketClient.browserTooling(at: paths.socketURL)
+        let socketURL = paths.socketURL
+        let response = try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.performBrowserAction(request, at: socketURL)
+        }
+        browserToolingSnapshot = try? await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.browserTooling(at: socketURL)
+        }
         return response
     }
 
@@ -690,7 +753,10 @@ final class OpenBurnBarDaemonManager {
             throw OpenBurnBarDaemonManagerError.rpcError("OpenBurnBar daemon must be healthy before saving controller projects.")
         }
 
-        let saved = try dependencies.upsertControllerProject(paths.socketURL, project)
+        let socketURL = paths.socketURL
+        let saved = try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.upsertControllerProject(project, at: socketURL)
+        }
         _ = try await refreshControllerProjects()
         return saved
     }
@@ -721,21 +787,22 @@ final class OpenBurnBarDaemonManager {
             summary = "Triggered manually from OpenBurnBar."
         }
 
-        let response = try dependencies.recordControllerReviewRun(
-            paths.socketURL,
-            BurnBarReviewRunSnapshot(
-                id: "review-\(UUID().uuidString)",
-                projectSlug: projectSlug,
-                cadence: cadence,
-                recordedAt: Date(),
-                summary: summary,
-                questionCount: 0,
-                followupCount: 0,
-                missionCount: 0,
-                origin: origin,
-                triggeredBy: triggeredBy
-            )
+        let socketURL = paths.socketURL
+        let run = BurnBarReviewRunSnapshot(
+            id: "review-\(UUID().uuidString)",
+            projectSlug: projectSlug,
+            cadence: cadence,
+            recordedAt: Date(),
+            summary: summary,
+            questionCount: 0,
+            followupCount: 0,
+            missionCount: 0,
+            origin: origin,
+            triggeredBy: triggeredBy
         )
+        let response = try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.recordControllerReviewRun(run, at: socketURL)
+        }
         _ = try await refreshControllerProjects()
         return response
     }
@@ -779,7 +846,10 @@ final class OpenBurnBarDaemonManager {
             )
         )
 
-        _ = try OpenBurnBarDaemonSocketClient.updateNotificationConfig(config, at: paths.socketURL)
+        let socketURL = paths.socketURL
+        _ = try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.updateNotificationConfig(config, at: socketURL)
+        }
     }
 
     private func exportControllerActivitySnapshot() {
