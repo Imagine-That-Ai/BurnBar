@@ -1,0 +1,39 @@
+{
+  "featureId": "misc-infra-validator-runtime-non-bypassable-hardening-followup",
+  "reviewedAt": "2026-04-11T00:42:45Z",
+  "commitId": "f0b90aba05b89d364cfa35de95f6ac4c531ae899",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The change hardens one command path, but it does not fully satisfy the feature contract for non-bypassable enforcement in validator runtime finalization and does not provide validator-runtime-level proof.",
+    "issues": [
+      {
+        "file": ".factory/services.yaml",
+        "line": 9,
+        "severity": "blocking",
+        "description": "Enforcement remains bypassable because it is conditional on `MILESTONE` being set (`if [ -n \"${MILESTONE:-}\" ]`). If runtime invocation omits `MILESTONE`, `commands.test` skips enforcement entirely, which conflicts with the requirement that success cannot be emitted when required flow reports are missing regardless of invocation wrapper."
+      },
+      {
+        "file": "/Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/handoffs/2026-04-10T23-15-14-136Z__misc-infra-validator-runtime-non-bypassable-hardening-followup__d5e2a58e-97d6-4cd7-80b0-def67cc70cbc.json",
+        "line": 21,
+        "severity": "blocking",
+        "description": "Verification evidence is script-level, not validator-runtime-level: reported negative/positive checks invoke `verify-flow-report-finalization.sh` directly (lines 21/26/31) rather than demonstrating failure/success through the actual validator runtime finalization path requested by the feature."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The assigned skill (`switcher-integration-worker`) is switcher UI/integration-focused and does not match this infra-validator hardening task, increasing risk of procedure mismatch (e.g., switcher-specific test-first guidance not applicable here).",
+      "evidence": "/Users/dewclaw/.factory/missions/11939f59-0807-4ae2-ae9a-d828e0733f7d/features.json:1907 sets `skillName` to `switcher-integration-worker`; .factory/skills/switcher-integration-worker/SKILL.md describes cross-surface switcher work rather than validator runtime enforcement."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Validator runtime ownership/integration point is under-documented in shared state, causing workers to infer runtime behavior from command manifests and potentially implement enforcement in the wrong layer.",
+      "evidence": "Transcript skeleton for worker `d5e2a58e-97d6-4cd7-80b0-def67cc70cbc` repeatedly notes inability to locate validator runtime code and pivots to services.yaml command wiring as a practical substitute."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: commit f0b90aba hardens `commands.test` but still leaves a conditional bypass when `MILESTONE` is unset and does not provide validator-runtime finalization evidence. Enforcement is improved but not proven non-bypassable at the required runtime layer."
+}

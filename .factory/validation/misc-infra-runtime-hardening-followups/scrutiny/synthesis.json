@@ -1,0 +1,58 @@
+{
+  "milestone": "misc-infra-runtime-hardening-followups",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "MILESTONE=\"misc-infra-runtime-hardening-followups\"; if [ -n \"${MILESTONE:-}\" ]; then ./.factory/library/verify-flow-report-finalization.sh \"$MILESTONE\" || exit 1; fi; scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "misc-infra-validator-runtime-non-bypassable-hardening-followup"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "misc-infra-validator-runtime-non-bypassable-hardening-followup",
+      "severity": "blocking",
+      "description": "Flow-report enforcement in `.factory/services.yaml` remains conditional on `MILESTONE` being set, so `commands.test` can still bypass enforcement if runtime invocation omits the environment variable."
+    },
+    {
+      "featureId": "misc-infra-validator-runtime-non-bypassable-hardening-followup",
+      "severity": "blocking",
+      "description": "Feature verification evidence does not prove validator-runtime finalization behavior: checks call `verify-flow-report-finalization.sh` directly instead of demonstrating negative/positive outcomes through the validator runtime finalization path."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add guidance that infrastructure/runtime-hardening features must be assigned to a skill aligned with validator/runtime internals (or a dedicated infra skill), not a surface-specific switcher skill.",
+      "evidence": "This feature was assigned `switcher-integration-worker` despite implementing validator runtime hardening, and review found contract-mismatched implementation/proof.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Validator runtime ownership/integration points are under-documented in shared state.",
+      "reason": "ambiguous; reviewer evidence identifies uncertainty but does not provide concrete, verified runtime locations suitable for immediate library or services updates."
+    }
+  ],
+  "previousRound": null
+}
