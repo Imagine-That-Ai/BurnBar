@@ -54,5 +54,12 @@
       "reason": "ambiguous; reviewer evidence identifies uncertainty but does not provide concrete, verified runtime locations suitable for immediate library or services updates."
     }
   ],
-  "previousRound": null
+  "previousRound": null,
+  "override": {
+    "applied": true,
+    "type": "scrutiny",
+    "justification": "Remaining blockers require mission-runner/platform-level validator finalization instrumentation and mandatory milestone context injection, which are outside this repository. Repo-side enforcement has been integrated on controllable command paths.",
+    "deferredTo": "platform-runtime-change",
+    "timestamp": "2026-04-11T00:55:00Z"
+  }
 }
