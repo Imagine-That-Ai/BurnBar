@@ -129,29 +129,8 @@ final class UsageAggregator {
     private var projectionSweepRequested = false
     private var lastProjectionInsightRefreshAt: Date?
 
-    init(
-        dataStore: DataStore,
-        cloudSync: CloudSyncService? = nil,
-        sessionMirror: ICloudSessionMirrorService? = nil,
-        settingsManager: SettingsManager = .shared,
-        usageAPIService: ProviderUsageAPIService? = nil,
-        providerAPIKeyStore: ProviderAPIKeyStore = .shared,
-        quotaService: ProviderQuotaService = .shared,
-        artifactDiscoveryService: ArtifactDiscoveryService? = nil,
-        projectionPipelineService: ProjectionPipelineService? = nil
-    ) {
-        self.dataStore = dataStore
-        self.cloudSync = cloudSync
-        self.sessionMirror = sessionMirror
-        self.settingsManager = settingsManager
-        self.usageAPIService = usageAPIService ?? ProviderUsageAPIService(keyStore: providerAPIKeyStore)
-        self.providerAPIKeyStore = providerAPIKeyStore
-        self.quotaService = quotaService
-        self.artifactDiscoveryService = artifactDiscoveryService
-            ?? ArtifactDiscoveryService(dataStore: dataStore, settingsProvider: settingsManager)
-        self.projectionPipelineServiceOverride = projectionPipelineService
-        self.hasCompletedInitialSummarySweep = settingsManager.summaryInitialSweepCompleted
-        self.parsers = [
+    private static func defaultParsers() -> [AgentProvider: any LogParser] {
+        [
             .factory: FactoryDroidParser(),
             .claudeCode: ClaudeCodeParser(),
             .copilot: CopilotParser(),
@@ -177,6 +156,32 @@ final class UsageAggregator {
             .geminiCLI: GeminiCLIParser(),
             .goose: GooseParser(),
         ]
+    }
+
+    init(
+        dataStore: DataStore,
+        cloudSync: CloudSyncService? = nil,
+        sessionMirror: ICloudSessionMirrorService? = nil,
+        settingsManager: SettingsManager = .shared,
+        usageAPIService: ProviderUsageAPIService? = nil,
+        providerAPIKeyStore: ProviderAPIKeyStore = .shared,
+        quotaService: ProviderQuotaService = .shared,
+        artifactDiscoveryService: ArtifactDiscoveryService? = nil,
+        projectionPipelineService: ProjectionPipelineService? = nil,
+        parserOverrides: [AgentProvider: any LogParser]? = nil
+    ) {
+        self.dataStore = dataStore
+        self.cloudSync = cloudSync
+        self.sessionMirror = sessionMirror
+        self.settingsManager = settingsManager
+        self.usageAPIService = usageAPIService ?? ProviderUsageAPIService(keyStore: providerAPIKeyStore)
+        self.providerAPIKeyStore = providerAPIKeyStore
+        self.quotaService = quotaService
+        self.artifactDiscoveryService = artifactDiscoveryService
+            ?? ArtifactDiscoveryService(dataStore: dataStore, settingsProvider: settingsManager)
+        self.projectionPipelineServiceOverride = projectionPipelineService
+        self.hasCompletedInitialSummarySweep = settingsManager.summaryInitialSweepCompleted
+        self.parsers = parserOverrides ?? Self.defaultParsers()
     }
 
     // MARK: - Refresh All

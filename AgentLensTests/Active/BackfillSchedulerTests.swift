@@ -13,6 +13,15 @@ final class BackfillSchedulerTests: XCTestCase {
 
     // MARK: - Helpers
 
+    private struct DeterministicSingleUsageParser: LogParser {
+        let provider: AgentProvider
+        let usage: TokenUsage
+
+        func parse() async throws -> ParseResult {
+            ParseResult(usages: [usage], conversations: [])
+        }
+    }
+
     private func makeInMemoryDataStore() throws -> DataStore {
         let queue = try DatabaseQueue()
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -651,20 +660,40 @@ final class BackfillSchedulerTests: XCTestCase {
         // Create a temporary file-based database
         let tempDir = FileManager.default.temporaryDirectory
         let dbPath = tempDir.appendingPathComponent("backfill-guard-test-\(UUID().uuidString).sqlite")
+        let now = Date()
+        let deterministicUsage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "backfill-guard-\(UUID().uuidString)",
+            projectName: "Backfill Guard Test",
+            model: "claude-sonnet-4",
+            inputTokens: 42,
+            outputTokens: 7,
+            startTime: now.addingTimeInterval(-120),
+            endTime: now,
+            usageSource: .providerLog,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
+        )
+        let parserOverrides: [AgentProvider: any LogParser] = [
+            .claudeCode: DeterministicSingleUsageParser(provider: .claudeCode, usage: deterministicUsage),
+        ]
 
         do {
             // Step 1: Create and set up the database with cursor state
-            let queue = try DatabaseQueue(path: dbPath.path)
-            let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
-            let cursorStore = store.backfillCursorStore
+            var queue: DatabaseQueue? = try DatabaseQueue(path: dbPath.path)
+            var store: DataStore? = try DataStore(databaseQueue: queue!, runMigrations: true, refreshOnInit: false)
+            guard let writableStore = store else {
+                XCTFail("Expected writable store to initialize")
+                return
+            }
+            let cursorStore = writableStore.backfillCursorStore
 
             // Set up an initial cursor position using deterministic timestamps
-            let now = Date()
             let fiveDaysAgo = now.addingTimeInterval(-5 * 24 * 60 * 60)
             try cursorStore.advanceCursor(for: .claudeCode, newUpperBound: fiveDaysAgo)
 
             // Verify initial cursor state
-            guard let cursorBefore = try fetchCursor(store: store, provider: .claudeCode) else {
+            guard let cursorBefore = try fetchCursor(store: writableStore, provider: .claudeCode) else {
                 XCTFail("Expected cursor to exist after initial advance")
                 return
             }
@@ -674,10 +703,8 @@ final class BackfillSchedulerTests: XCTestCase {
             // Step 2: Close the queue to release file handles
             // This is critical - we must release the DatabaseQueue's hold on the file
             // before we can make it read-only without causing "vnode unlinked" errors
-            var queueRef: DatabaseQueue? = queue
-            var storeRef: DataStore? = store
-            queueRef = nil
-            storeRef = nil
+            store = nil
+            queue = nil
 
             // Step 3: Make the database file read-only at filesystem level
             // This will cause insert() to fail when refreshAll() tries to persist usages
@@ -700,41 +727,44 @@ final class BackfillSchedulerTests: XCTestCase {
             readOnlyConfig.prepareDatabase { db in
                 try? db.execute(sql: "PRAGMA journal_mode = DELETE")
             }
-            let readOnlyQueue = try DatabaseQueue(path: dbPath.path, configuration: readOnlyConfig)
-            let readOnlyStore = try DataStore(databaseQueue: readOnlyQueue, runMigrations: false, refreshOnInit: false)
+            do {
+                let readOnlyQueue = try DatabaseQueue(path: dbPath.path, configuration: readOnlyConfig)
+                let readOnlyStore = try DataStore(databaseQueue: readOnlyQueue, runMigrations: false, refreshOnInit: false)
 
-            // Step 5: Call refreshAll() - this should fail to insert and not advance the cursor
-            let aggregator = UsageAggregator(dataStore: readOnlyStore)
-            await aggregator.refreshAll()
+                // Step 5: Call refreshAll() - this should fail to insert and not advance the cursor.
+                // Use a deterministic parser override so CI/local both attempt at least one write.
+                let aggregator = UsageAggregator(
+                    dataStore: readOnlyStore,
+                    parserOverrides: parserOverrides
+                )
+                await aggregator.refreshAll()
 
-            // Step 6: EXPLICIT EXECUTION SIGNAL - verify persistenceError was set by insert() failure.
-            // This proves the guard condition `if persistenceErrorMessage == nil` evaluated to false,
-            // which means runScheduledBackfillIfNeeded() was prevented from executing.
-            // This is the key difference from simply verifying cursor didn't move.
-            // Note: errors may contain provider-level parser errors (unrelated to backfill), so we
-            // don't assert on errors.isEmpty here - only persistenceErrorMessage proves the guard was hit.
-            XCTAssertNotNil(
-                aggregator.persistenceErrorMessage,
-                "persistenceErrorMessage should be set when insert() fails - this is the explicit signal that the guard prevented backfill"
-            )
+                // Step 6: EXPLICIT EXECUTION SIGNAL - verify persistenceError was set by insert() failure.
+                // This proves the guard condition `if persistenceErrorMessage == nil` evaluated to false,
+                // which means runScheduledBackfillIfNeeded() was prevented from executing.
+                XCTAssertNotNil(
+                    aggregator.persistenceErrorMessage,
+                    "persistenceErrorMessage should be set when insert() fails - this is the explicit signal that the guard prevented backfill"
+                )
 
-            // Step 7: Verify cursor was NOT advanced (persistence failure was gated)
-            // The cursor should still be at the EXACT initial position with same version
-            let cursorAfter = try readOnlyStore.backfillCursorStore.fetchCursor(for: .claudeCode)
-            XCTAssertNotNil(cursorAfter, "Cursor should still exist")
+                // Step 7: Verify cursor was NOT advanced (persistence failure was gated)
+                // The cursor should still be at the EXACT initial position with same version
+                let cursorAfter = try readOnlyStore.backfillCursorStore.fetchCursor(for: .claudeCode)
+                XCTAssertNotNil(cursorAfter, "Cursor should still exist")
 
-            // STRENGTHENED: Verify EXACT unchanged position (not just "not advanced")
-            XCTAssertEqual(
-                cursorAfter?.lastProcessedWindowUpperBound?.timeIntervalSince(positionBefore) ?? -1,
-                0,
-                accuracy: 1,
-                "Cursor should remain at EXACT initial position when persistence fails (guard verified)"
-            )
-            XCTAssertEqual(
-                cursorAfter?.version ?? 0,
-                versionBefore,
-                "Cursor version should not change when persistence fails (guard verified)"
-            )
+                // STRENGTHENED: Verify EXACT unchanged position (not just "not advanced")
+                XCTAssertEqual(
+                    cursorAfter?.lastProcessedWindowUpperBound?.timeIntervalSince(positionBefore) ?? -1,
+                    0,
+                    accuracy: 1,
+                    "Cursor should remain at EXACT initial position when persistence fails (guard verified)"
+                )
+                XCTAssertEqual(
+                    cursorAfter?.version ?? 0,
+                    versionBefore,
+                    "Cursor version should not change when persistence fails (guard verified)"
+                )
+            }
 
             // Clean up: restore permissions before removing
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dbPath.path)
