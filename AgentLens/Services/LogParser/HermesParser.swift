@@ -52,11 +52,15 @@ final class HermesParser: LogParser, @unchecked Sendable {
 
             let dbURL = hermesHome.appendingPathComponent("state.db")
             if fileManager.fileExists(atPath: dbURL.path), fileSize(at: dbURL) > 0 {
-                let sqliteResult = try parseSQLiteDatabase(dbURL: dbURL, scope: scope)
-                usages.append(contentsOf: sqliteResult.usages)
-                conversations.append(contentsOf: sqliteResult.conversations)
-                seenSessionIds.formUnion(sqliteResult.usages.map(\.sessionId))
-                seenSessionIds.formUnion(sqliteResult.conversations.map(\.sessionId))
+                do {
+                    let sqliteResult = try parseSQLiteDatabase(dbURL: dbURL, scope: scope)
+                    usages.append(contentsOf: sqliteResult.usages)
+                    conversations.append(contentsOf: sqliteResult.conversations)
+                    seenSessionIds.formUnion(sqliteResult.usages.map(\.sessionId))
+                    seenSessionIds.formUnion(sqliteResult.conversations.map(\.sessionId))
+                } catch {
+                    // Continue with gateway/CLI fallback files when a scoped SQLite DB is unreadable.
+                }
             }
 
             let indexURL = sessionsDir.appendingPathComponent("sessions.json")
@@ -141,12 +145,54 @@ final class HermesParser: LogParser, @unchecked Sendable {
         dbURL: URL,
         scope: HermesHomeScope
     ) throws -> ParseResult {
-        var usages: [TokenUsage] = []
-        var conversations: [ConversationRecord] = []
+        if shouldParseSQLiteFromSnapshot(dbURL: dbURL) {
+            return try parseSQLiteDatabaseSnapshot(dbURL: dbURL, scope: scope)
+        }
 
         var config = Configuration()
         config.readonly = true
         let dbQueue = try DatabaseQueue(path: dbURL.path, configuration: config)
+        return try parseSQLiteDatabase(dbQueue: dbQueue, dbURL: dbURL, scope: scope)
+    }
+
+    private func parseSQLiteDatabaseSnapshot(
+        dbURL: URL,
+        scope: HermesHomeScope
+    ) throws -> ParseResult {
+        let snapshotRoot = fileManager.temporaryDirectory.appendingPathComponent("openburnbar-hermes-parser", isDirectory: true)
+        try fileManager.createDirectory(at: snapshotRoot, withIntermediateDirectories: true)
+        let snapshotDir = snapshotRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fileManager.createDirectory(at: snapshotDir, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: snapshotDir) }
+
+        let snapshotURL = snapshotDir.appendingPathComponent(dbURL.lastPathComponent)
+        try fileManager.copyItem(at: dbURL, to: snapshotURL)
+
+        for suffix in ["-wal", "-shm"] {
+            let sourceSidecar = dbURL.path + suffix
+            guard fileManager.fileExists(atPath: sourceSidecar) else { continue }
+            try fileManager.copyItem(
+                atPath: sourceSidecar,
+                toPath: snapshotURL.path + suffix
+            )
+        }
+
+        let dbQueue = try DatabaseQueue(path: snapshotURL.path)
+        return try parseSQLiteDatabase(dbQueue: dbQueue, dbURL: dbURL, scope: scope)
+    }
+
+    private func shouldParseSQLiteFromSnapshot(dbURL: URL) -> Bool {
+        let walPath = dbURL.path + "-wal"
+        return !fileManager.fileExists(atPath: walPath)
+    }
+
+    private func parseSQLiteDatabase(
+        dbQueue: DatabaseQueue,
+        dbURL: URL,
+        scope: HermesHomeScope
+    ) throws -> ParseResult {
+        var usages: [TokenUsage] = []
+        var conversations: [ConversationRecord] = []
 
         try dbQueue.read { db in
             let tables = Set(try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type='table'"))

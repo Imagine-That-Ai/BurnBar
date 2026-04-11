@@ -70,13 +70,16 @@ final class UsageAggregator {
     }
     private enum ProjectionWorkerPolicy {
         /// Process indexing incrementally to keep UI work responsive.
-        static let maxJobsPerPass = 12
+        static let maxJobsPerPass = 8
+        static let catchUpMaxJobsPerPass = 20
         /// Small delay between backlog passes to reduce CPU pressure.
-        static let backlogDelayNanoseconds: UInt64 = 300_000_000
+        static let backlogDelayNanoseconds: UInt64 = 500_000_000
         /// Coalesce rapid-fire queue requests.
         static let coalesceDelayNanoseconds: UInt64 = 750_000_000
         /// Avoid rebuilding workflow insights on every tiny pass.
         static let insightRefreshCooldown: TimeInterval = 10
+        /// Trim redundant queued conversation jobs when backlog explodes.
+        static let backlogCompactionThreshold = 400
     }
     private enum AutoSummaryPolicy {
         /// Keep automatic summaries lightweight so background refreshes do not
@@ -86,6 +89,8 @@ final class UsageAggregator {
         static let maxBatchSize = 8
         static let maxFirstLoadBatchSize = 16
         static let maxConcurrency = 2
+        /// Pause summary churn while projection queue is already overloaded.
+        static let pauseWhenProjectionQueueExceeds = 300
     }
 
     private let dataStore: DataStore
@@ -192,12 +197,14 @@ final class UsageAggregator {
             : .characterRatio
 
         let refreshStartedAt = Date()
+        let parsePhaseStartedAt = Date()
         var allUsages: [TokenUsage] = []
         var indexedConversationChanges = 0
 
-        for (provider, parser) in parsers {
+        let parserEntries = parsers.sorted { $0.key.rawValue < $1.key.rawValue }
+        for (provider, parser) in parserEntries {
             do {
-                let result = try await parser.parse()
+                let result = try await parseProviderOffMainActor(parser)
                 let usages = result.usages
                 var providerHealth: ParserHealth = usages.isEmpty ? .empty : .healthy(sessionCount: usages.count)
                 allUsages.append(contentsOf: usages)
@@ -217,18 +224,21 @@ final class UsageAggregator {
                 errors[provider] = error.localizedDescription
             }
         }
+        let parsePhaseDuration = Date().timeIntervalSince(parsePhaseStartedAt)
 
         // Store all usages and reload from SQLite so the in-memory array
         // includes both parser output and any chat-inserted rows.
+        let persistencePhaseStartedAt = Date()
         do {
-            try dataStore.insert(allUsages)
-            dataStore.refresh()
+            let refreshedRecords = try await persistAndReloadUsageRows(allUsages)
+            dataStore.replaceUsages(refreshedRecords)
             lastRefresh = Date()
         } catch {
             let message = "Failed to store imported usage rows: \(error.localizedDescription)"
             parserImportError = message
             persistenceErrorMessage = message
         }
+        let persistencePhaseDuration = Date().timeIntervalSince(persistencePhaseStartedAt)
 
         do {
             try upsertParserImportHealth(importedUsageCount: allUsages.count, persistenceError: persistenceErrorMessage)
@@ -248,9 +258,16 @@ final class UsageAggregator {
         // Unblock scan UI immediately after local parsing/persistence completes.
         isRefreshing = false
 
-        let pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
+        var pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
+        if pendingProjectionJobs >= ProjectionWorkerPolicy.backlogCompactionThreshold {
+            let removed = (try? dataStore.compactConversationProjectionBacklog()) ?? 0
+            if removed > 0 {
+                pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? pendingProjectionJobs
+            }
+        }
         launchArtifactDiscoverySweep()
-        if indexedConversationChanges > 0 {
+        if indexedConversationChanges > 0,
+           pendingProjectionJobs < AutoSummaryPolicy.pauseWhenProjectionQueueExceeds {
             launchAutoSummarySweep(indexedAfter: refreshStartedAt)
         }
         if indexedConversationChanges > 0 || pendingProjectionJobs > 0 {
@@ -258,10 +275,11 @@ final class UsageAggregator {
         }
 
         // Fetch from provider billing APIs (complementary to log parsing)
+        let postPersistencePhaseStartedAt = Date()
         var apiSupplementalUsages: [TokenUsage] = []
         do {
-            try dataStore.deleteUsage(sessionIDPrefix: Self.apiReconciliationSessionPrefix)
-            dataStore.refresh()
+            let refreshedRecords = try await deleteAndReloadUsageRows(sessionIDPrefix: Self.apiReconciliationSessionPrefix)
+            dataStore.replaceUsages(refreshedRecords)
         } catch {
             parserImportError = "Failed to clear prior API-reconciled usage rows: \(error.localizedDescription)"
         }
@@ -289,8 +307,8 @@ final class UsageAggregator {
             apiSupplementalUsages = supplementalUsages(from: apiUsages, existingUsages: canonicalBaseline)
             if !apiSupplementalUsages.isEmpty {
                 do {
-                    try dataStore.insert(apiSupplementalUsages)
-                    dataStore.refresh()
+                    let refreshedRecords = try await persistAndReloadUsageRows(apiSupplementalUsages)
+                    dataStore.replaceUsages(refreshedRecords)
                 } catch {
                     let message = "Failed to store API-reconciled usage rows: \(error.localizedDescription)"
                     parserImportError = message
@@ -309,6 +327,22 @@ final class UsageAggregator {
         await cloudSync?.syncSharedArtifacts()
 
         await sessionMirror?.syncIfNeeded()
+
+        let postPersistencePhaseDuration = Date().timeIntervalSince(postPersistencePhaseStartedAt)
+        let totalDuration = Date().timeIntervalSince(refreshStartedAt)
+        AppLogger.parser.info(
+            "usage_refresh_timing",
+            metadata: [
+                "parse_ms": Self.formatMilliseconds(parsePhaseDuration),
+                "persist_ms": Self.formatMilliseconds(persistencePhaseDuration),
+                "post_persist_ms": Self.formatMilliseconds(postPersistencePhaseDuration),
+                "total_ms": Self.formatMilliseconds(totalDuration),
+                "providers_scanned": String(parserEntries.count),
+                "usage_rows": String(allUsages.count),
+                "indexed_changes": String(indexedConversationChanges),
+                "api_supplemental_rows": String(apiSupplementalUsages.count),
+            ]
+        )
     }
 
     fileprivate func supplementalUsages(
@@ -384,6 +418,42 @@ final class UsageAggregator {
                 provenanceConfidence: .exact
             )
         }
+    }
+
+    private func parseProviderOffMainActor(_ parser: any LogParser) async throws -> ParseResult {
+        try await Task.detached(priority: .utility) {
+            try await parser.parse()
+        }.value
+    }
+
+    private func persistAndReloadUsageRows(_ usages: [TokenUsage]) async throws -> [TokenUsage] {
+        guard usages.isEmpty == false else {
+            return try await reloadUsageRows()
+        }
+        let usageStore = dataStore.usageStore
+        return try await Task.detached(priority: .utility) {
+            try usageStore.insert(usages)
+            return try usageStore.fetchAllUsage()
+        }.value
+    }
+
+    private func deleteAndReloadUsageRows(sessionIDPrefix: String) async throws -> [TokenUsage] {
+        let usageStore = dataStore.usageStore
+        return try await Task.detached(priority: .utility) {
+            try usageStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
+            return try usageStore.fetchAllUsage()
+        }.value
+    }
+
+    private func reloadUsageRows() async throws -> [TokenUsage] {
+        let usageStore = dataStore.usageStore
+        return try await Task.detached(priority: .utility) {
+            try usageStore.fetchAllUsage()
+        }.value
+    }
+
+    private static func formatMilliseconds(_ seconds: TimeInterval) -> String {
+        String(format: "%.2f", seconds * 1_000)
     }
 
     // MARK: - Test Helpers
@@ -719,11 +789,15 @@ private extension UsageAggregator {
     @discardableResult
     func runProjectionSweep() async -> Bool {
         do {
+            let queueDepthBeforeSweep = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+            let maxJobs = queueDepthBeforeSweep >= ProjectionWorkerPolicy.backlogCompactionThreshold
+                ? ProjectionWorkerPolicy.catchUpMaxJobsPerPass
+                : ProjectionWorkerPolicy.maxJobsPerPass
             let report = try await makeProjectionPipelineService().runSweep(
-                maxJobs: ProjectionWorkerPolicy.maxJobsPerPass
+                maxJobs: maxJobs
             )
             let queueDepth = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
-            let hasBacklog = queueDepth > 0 || report.leasedJobs >= ProjectionWorkerPolicy.maxJobsPerPass
+            let hasBacklog = queueDepth > 0 || report.leasedJobs >= maxJobs
 
             if shouldRefreshProjectionInsights(report: report, hasBacklog: hasBacklog) {
                 _ = WorkflowInsightRollupService(dataStore: dataStore).snapshot(refreshIfStale: true)
@@ -785,6 +859,15 @@ private extension UsageAggregator {
     func markSummaryItemProcessing(_ conversation: ConversationRecord) {
         if let idx = summaryQueue.firstIndex(where: { $0.id == conversation.id }) {
             summaryQueue[idx].status = .processing
+        } else {
+            summaryQueue.append(
+                SummaryQueueItem(
+                    id: conversation.id,
+                    title: conversation.inferredTaskTitle.isEmpty ? conversation.sessionId : conversation.inferredTaskTitle,
+                    status: .processing,
+                    provider: nil
+                )
+            )
         }
         summaryCurrentTitle = conversation.inferredTaskTitle.isEmpty
             ? conversation.sessionId : conversation.inferredTaskTitle
@@ -828,20 +911,13 @@ private extension UsageAggregator {
             }
         }
 
-        // Get real total up-front
-        let allPending = (try? dataStore.fetchConversationsNeedingSummary(
-            limit: 10_000,
+        // Get total count without loading full transcript payloads.
+        summaryProgressTotal = (try? dataStore.countConversationsNeedingSummary(
             now: Date(),
             retryCooldown: Self.summaryFailureRetryCooldown,
             indexedAfter: indexedAfter
-        )) ?? []
-        summaryProgressTotal = allPending.count
-        summaryQueue = allPending.map {
-            SummaryQueueItem(
-                id: $0.id,
-                title: $0.inferredTaskTitle.isEmpty ? $0.sessionId : $0.inferredTaskTitle
-            )
-        }
+        )) ?? 0
+        summaryQueue = []
 
         var failedIDs = Set<String>()
         var loopsRemaining = 1

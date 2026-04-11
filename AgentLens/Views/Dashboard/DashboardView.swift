@@ -38,6 +38,7 @@ struct DashboardView: View {
     @State private var showCLIConsentSheet = false
     @State private var showSessionLogCloudConsent = false
     @State private var sessionLogJumpTarget: ConversationJumpTarget?
+    @State private var sessionLogJumpLookup: [String: ConversationRecord] = [:]
     @State private var dashboardCanvasSize: CGSize = .zero
     var chatController: ChatSessionController
     @State private var quotaService = ProviderQuotaService.shared
@@ -201,6 +202,7 @@ struct DashboardView: View {
             if !settingsManager.conversationIndexingConsentShown {
                 showIndexingConsent = true
             }
+            refreshSessionLogJumpLookup()
         }
         .alert("Index conversation history?", isPresented: $showIndexingConsent) {
             Button("Enable") {
@@ -232,6 +234,9 @@ struct DashboardView: View {
             if isSignedIn && !settingsManager.sessionLogCloudBackupConsentShown {
                 showSessionLogCloudConsent = true
             }
+        }
+        .onChange(of: dataStore.lastRefresh) { _, _ in
+            refreshSessionLogJumpLookup()
         }
         .onChange(of: navigationCoordinator.pendingNavigation) { _, destination in
             guard let destination else { return }
@@ -991,8 +996,7 @@ struct DashboardView: View {
     private func sessionLogJumpTarget(for question: OpenBurnBarControllerQuestion) -> ConversationJumpTarget? {
         let sessionID = question.deepLink?.targetID ?? question.sessionID
         guard let sessionID else { return nil }
-        guard let logs = try? dataStore.fetchAllSessionLogs(limit: 1000),
-              let conversation = logs.first(where: { $0.sessionId == sessionID }) else {
+        guard let conversation = sessionLogJumpLookup[sessionID] else {
             return nil
         }
         return ConversationJumpTarget(
@@ -1002,6 +1006,15 @@ struct DashboardView: View {
             endOffset: question.prompt.count,
             source: .retrieval
         )
+    }
+
+    private func refreshSessionLogJumpLookup() {
+        let logs = (try? dataStore.fetchSessionLogSummaries(limit: 1000)) ?? []
+        var lookup: [String: ConversationRecord] = [:]
+        for log in logs where lookup[log.sessionId] == nil {
+            lookup[log.sessionId] = log
+        }
+        sessionLogJumpLookup = lookup
     }
 
     private var emptyOverviewView: some View {

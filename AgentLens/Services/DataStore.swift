@@ -108,67 +108,80 @@ final class DataStore {
     private(set) var isLoading = false
     private(set) var lastRefresh: Date?
     private(set) var rollingDailyAverage: Double = 0
+    private var aggregateCache: UsageAggregateCache = .empty
+
+    private struct UsageAggregateCache {
+        let totalCostToday: Double
+        let totalCostThisWeek: Double
+        let totalCostThisMonth: Double
+        let totalCostAllTime: Double
+        let totalTokensToday: Int
+        let totalTokensThisWeek: Int
+        let totalTokensThisMonth: Int
+        let totalTokensAllTime: Int
+        let rollingDailyAverage: Double
+        let distinctUsageDayCount: Int
+        let last7DayCosts: [Double]
+        let last7DayTokenTotals: [Int]
+        let providerSummaries: [ProviderSummary]
+        let modelSummaries: [ModelSummary]
+        let topProviderToday: (provider: AgentProvider, cost: Double)?
+
+        static let empty = UsageAggregateCache(
+            totalCostToday: 0,
+            totalCostThisWeek: 0,
+            totalCostThisMonth: 0,
+            totalCostAllTime: 0,
+            totalTokensToday: 0,
+            totalTokensThisWeek: 0,
+            totalTokensThisMonth: 0,
+            totalTokensAllTime: 0,
+            rollingDailyAverage: 0,
+            distinctUsageDayCount: 0,
+            last7DayCosts: Array(repeating: 0, count: 7),
+            last7DayTokenTotals: Array(repeating: 0, count: 7),
+            providerSummaries: [],
+            modelSummaries: [],
+            topProviderToday: nil
+        )
+    }
 
     // MARK: - Computed Properties
 
     var totalCostToday: Double {
-        let calendar = Calendar.current
-        return usages
-            .filter { calendar.isDateInToday($0.startTime) }
-            .reduce(0) { $0 + $1.cost }
+        aggregateCache.totalCostToday
     }
 
     var totalCostThisWeek: Double {
-        let calendar = Calendar.current
-        let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        return usages
-            .filter { $0.startTime >= weekAgo }
-            .reduce(0) { $0 + $1.cost }
+        aggregateCache.totalCostThisWeek
     }
 
     var totalCostThisMonth: Double {
-        let calendar = Calendar.current
-        let monthAgo = calendar.date(byAdding: .month, value: -1, to: Date()) ?? Date()
-        return usages
-            .filter { $0.startTime >= monthAgo }
-            .reduce(0) { $0 + $1.cost }
+        aggregateCache.totalCostThisMonth
     }
 
     var totalCostAllTime: Double {
-        usages.reduce(0) { $0 + $1.cost }
+        aggregateCache.totalCostAllTime
     }
 
     var totalTokensToday: Int {
-        let calendar = Calendar.current
-        return usages
-            .filter { calendar.isDateInToday($0.startTime) }
-            .reduce(0) { $0 + $1.totalTokens }
+        aggregateCache.totalTokensToday
     }
 
     var totalTokensThisWeek: Int {
-        let calendar = Calendar.current
-        let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        return usages
-            .filter { $0.startTime >= weekAgo }
-            .reduce(0) { $0 + $1.totalTokens }
+        aggregateCache.totalTokensThisWeek
     }
 
     var totalTokensThisMonth: Int {
-        let calendar = Calendar.current
-        let monthAgo = calendar.date(byAdding: .month, value: -1, to: Date()) ?? Date()
-        return usages
-            .filter { $0.startTime >= monthAgo }
-            .reduce(0) { $0 + $1.totalTokens }
+        aggregateCache.totalTokensThisMonth
     }
 
     var totalTokensAllTime: Int {
-        usages.reduce(0) { $0 + $1.totalTokens }
+        aggregateCache.totalTokensAllTime
     }
 
     var moodBand: MoodBand {
-        let calendar = Calendar.current
-        let distinctDays = Set(usages.map { calendar.startOfDay(for: $0.startTime) })
-        guard distinctDays.count >= 2 else { return .baseline }
+        guard aggregateCache.distinctUsageDayCount >= 2 else { return .baseline }
         let today = totalCostToday
         guard today > 0 else { return .quiet }
         guard rollingDailyAverage > 0 else { return .onPace }
@@ -200,32 +213,16 @@ final class DataStore {
 
     /// Last 7 calendar days of daily cost, zero-filled, oldest first.
     var last7DayCosts: [Double] {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        return (0..<7).reversed().map { offset -> Double in
-            let day = calendar.date(byAdding: .day, value: -offset, to: today)!
-            let next = calendar.date(byAdding: .day, value: 1, to: day)!
-            return usages
-                .filter { $0.startTime >= day && $0.startTime < next }
-                .reduce(0) { $0 + $1.cost }
-        }
+        aggregateCache.last7DayCosts
     }
 
     /// Last 7 calendar days of total tokens per day (for token-mode sparkline).
     var last7DayTokenTotals: [Int] {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        return (0..<7).reversed().map { offset -> Int in
-            let day = calendar.date(byAdding: .day, value: -offset, to: today)!
-            let next = calendar.date(byAdding: .day, value: 1, to: day)!
-            return usages
-                .filter { $0.startTime >= day && $0.startTime < next }
-                .reduce(0) { $0 + $1.totalTokens }
-        }
+        aggregateCache.last7DayTokenTotals
     }
 
     var providerSummaries: [ProviderSummary] {
-        Self.makeProviderSummaries(from: usages)
+        aggregateCache.providerSummaries
     }
 
     var hasEstimatedProviders: Bool {
@@ -346,7 +343,7 @@ final class DataStore {
     // MARK: - Model Summaries
 
     var modelSummaries: [ModelSummary] {
-        Self.makeModelSummaries(from: usages)
+        aggregateCache.modelSummaries
     }
 
     func modelSummaries(in dateRange: ClosedRange<Date>?) -> [ModelSummary] {
@@ -445,15 +442,7 @@ final class DataStore {
     }
 
     func topProviderToday() -> (provider: AgentProvider, cost: Double)? {
-        let calendar = Calendar.current
-        let todayUsages = usages.filter { calendar.isDateInToday($0.startTime) }
-
-        var costs: [AgentProvider: Double] = [:]
-        for usage in todayUsages {
-            costs[usage.provider, default: 0] += usage.cost
-        }
-
-        return costs.max { $0.value < $1.value }.map { ($0.key, $0.value) }
+        aggregateCache.topProviderToday
     }
 
     // MARK: - Initialization
@@ -496,8 +485,10 @@ final class DataStore {
     // MARK: - Cache Refresh
 
     func replaceUsages(_ newUsages: [TokenUsage]) {
-        usages = newUsages.sorted { $0.startTime > $1.startTime }
-        rollingDailyAverage = computeRollingAverage()
+        let sortedUsages = newUsages.sorted { $0.startTime > $1.startTime }
+        usages = sortedUsages
+        aggregateCache = rebuildAggregateCache(from: sortedUsages)
+        rollingDailyAverage = aggregateCache.rollingDailyAverage
         lastRefresh = Date()
     }
 
@@ -514,20 +505,89 @@ final class DataStore {
         isLoading = false
     }
 
-    private func computeRollingAverage() -> Double {
+    private func rebuildAggregateCache(from usages: [TokenUsage]) -> UsageAggregateCache {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        var total: Double = 0
+        let now = Date()
+        let todayStart = calendar.startOfDay(for: now)
+        let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
+        let monthAgo = calendar.date(byAdding: .month, value: -1, to: now) ?? now
 
-        for dayOffset in 1...7 {
-            let day = calendar.date(byAdding: .day, value: -dayOffset, to: today)!
-            let nextDay = calendar.date(byAdding: .day, value: 1, to: day)!
-            let dayCost = usages
-                .filter { $0.startTime >= day && $0.startTime < nextDay }
-                .reduce(0) { $0 + $1.cost }
-            total += dayCost
+        var totalCostToday: Double = 0
+        var totalCostThisWeek: Double = 0
+        var totalCostThisMonth: Double = 0
+        var totalCostAllTime: Double = 0
+
+        var totalTokensToday = 0
+        var totalTokensThisWeek = 0
+        var totalTokensThisMonth = 0
+        var totalTokensAllTime = 0
+
+        var distinctDays = Set<Date>()
+        var dayCost: [Date: Double] = [:]
+        var dayTokens: [Date: Int] = [:]
+        var todayProviderCost: [AgentProvider: Double] = [:]
+
+        for usage in usages {
+            totalCostAllTime += usage.cost
+            totalTokensAllTime += usage.totalTokens
+
+            let dayStart = calendar.startOfDay(for: usage.startTime)
+            distinctDays.insert(dayStart)
+            dayCost[dayStart, default: 0] += usage.cost
+            dayTokens[dayStart, default: 0] += usage.totalTokens
+
+            if usage.startTime >= weekAgo {
+                totalCostThisWeek += usage.cost
+                totalTokensThisWeek += usage.totalTokens
+            }
+            if usage.startTime >= monthAgo {
+                totalCostThisMonth += usage.cost
+                totalTokensThisMonth += usage.totalTokens
+            }
+            if calendar.isDateInToday(usage.startTime) {
+                totalCostToday += usage.cost
+                totalTokensToday += usage.totalTokens
+                todayProviderCost[usage.provider, default: 0] += usage.cost
+            }
         }
 
-        return total / 7
+        var rollingDailyTotal: Double = 0
+        for dayOffset in 1...7 {
+            if let day = calendar.date(byAdding: .day, value: -dayOffset, to: todayStart) {
+                rollingDailyTotal += dayCost[day, default: 0]
+            }
+        }
+        let rollingDailyAverage = rollingDailyTotal / 7
+
+        let last7DayCosts = (0..<7).reversed().map { offset -> Double in
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: todayStart) else { return 0 }
+            return dayCost[day, default: 0]
+        }
+        let last7DayTokenTotals = (0..<7).reversed().map { offset -> Int in
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: todayStart) else { return 0 }
+            return dayTokens[day, default: 0]
+        }
+
+        let topProviderToday = todayProviderCost
+            .max { $0.value < $1.value }
+            .map { ($0.key, $0.value) }
+
+        return UsageAggregateCache(
+            totalCostToday: totalCostToday,
+            totalCostThisWeek: totalCostThisWeek,
+            totalCostThisMonth: totalCostThisMonth,
+            totalCostAllTime: totalCostAllTime,
+            totalTokensToday: totalTokensToday,
+            totalTokensThisWeek: totalTokensThisWeek,
+            totalTokensThisMonth: totalTokensThisMonth,
+            totalTokensAllTime: totalTokensAllTime,
+            rollingDailyAverage: rollingDailyAverage,
+            distinctUsageDayCount: distinctDays.count,
+            last7DayCosts: last7DayCosts,
+            last7DayTokenTotals: last7DayTokenTotals,
+            providerSummaries: Self.makeProviderSummaries(from: usages),
+            modelSummaries: Self.makeModelSummaries(from: usages),
+            topProviderToday: topProviderToday
+        )
     }
 }

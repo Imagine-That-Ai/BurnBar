@@ -41,9 +41,16 @@ final class ForgeDevParser: LogParser, @unchecked Sendable {
         if !databasePaths.isEmpty {
             var usagesBySessionId: [String: TokenUsage] = [:]
             var conversationsBySessionId: [String: ConversationRecord] = [:]
+            var parsedReadableDatabase = false
 
             for dbPath in databasePaths {
-                let result = try parseDatabase(at: dbPath)
+                let result: ParseResult
+                do {
+                    result = try parseDatabase(at: dbPath)
+                } catch {
+                    continue
+                }
+                parsedReadableDatabase = true
                 for usage in result.usages {
                     usagesBySessionId[usage.sessionId] = usage
                 }
@@ -52,10 +59,12 @@ final class ForgeDevParser: LogParser, @unchecked Sendable {
                 }
             }
 
-            return ParseResult(
-                usages: Array(usagesBySessionId.values),
-                conversations: Array(conversationsBySessionId.values)
-            )
+            if parsedReadableDatabase {
+                return ParseResult(
+                    usages: Array(usagesBySessionId.values),
+                    conversations: Array(conversationsBySessionId.values)
+                )
+            }
         }
 
         let sessionsPath = (provider.logDirectory as NSString).expandingTildeInPath
@@ -103,10 +112,47 @@ final class ForgeDevParser: LogParser, @unchecked Sendable {
     // MARK: - SQLite
 
     private func parseDatabase(at dbPath: String) throws -> ParseResult {
+        if shouldParseFromSnapshot(dbPath: dbPath) {
+            return try parseSnapshotDatabase(at: dbPath)
+        }
+
         var config = Configuration()
         config.readonly = true
         let dbQueue = try DatabaseQueue(path: dbPath, configuration: config)
+        return try parseDatabase(dbQueue: dbQueue)
+    }
 
+    private func parseSnapshotDatabase(at dbPath: String) throws -> ParseResult {
+        let fm = FileManager.default
+        let snapshotRoot = fm.temporaryDirectory.appendingPathComponent("openburnbar-forge-parser", isDirectory: true)
+        try fm.createDirectory(at: snapshotRoot, withIntermediateDirectories: true)
+        let snapshotDir = snapshotRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fm.createDirectory(at: snapshotDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: snapshotDir) }
+
+        let sourceURL = URL(fileURLWithPath: dbPath)
+        let snapshotURL = snapshotDir.appendingPathComponent(sourceURL.lastPathComponent)
+        try fm.copyItem(at: sourceURL, to: snapshotURL)
+
+        for suffix in ["-wal", "-shm"] {
+            let sourceSidecar = dbPath + suffix
+            guard fm.fileExists(atPath: sourceSidecar) else { continue }
+            try fm.copyItem(
+                atPath: sourceSidecar,
+                toPath: snapshotURL.path + suffix
+            )
+        }
+
+        let dbQueue = try DatabaseQueue(path: snapshotURL.path)
+        return try parseDatabase(dbQueue: dbQueue)
+    }
+
+    private func shouldParseFromSnapshot(dbPath: String) -> Bool {
+        let walPath = dbPath + "-wal"
+        return !FileManager.default.fileExists(atPath: walPath)
+    }
+
+    private func parseDatabase(dbQueue: DatabaseQueue) throws -> ParseResult {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 

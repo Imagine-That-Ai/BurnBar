@@ -508,7 +508,7 @@ final class SettingsManager {
         self.logPaths = loadedLogPaths
         
         let loadedInterval = defaults.double(forKey: "refreshInterval")
-        self.refreshInterval = loadedInterval == 0 ? 60 : loadedInterval
+        self.refreshInterval = loadedInterval == 0 ? 600 : loadedInterval
         
         let hasLaunched = defaults.bool(forKey: "hasLaunchedBefore")
         self.showInMenuBar = hasLaunched ? defaults.bool(forKey: "showInMenuBar") : true

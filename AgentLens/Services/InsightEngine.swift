@@ -126,7 +126,12 @@ final class WorkflowInsightRollupService {
         var payload = loadMaterializedPayload()
         var freshness = freshness(for: payload, context: context)
 
-        if refreshIfStale, freshness == .stale, context.hasInputs {
+        let canRefreshSynchronously = context.hasInputs
+            && context.rebuildInProgress == false
+            && context.pendingJobCount == 0
+            && context.failedJobCount == 0
+
+        if refreshIfStale, freshness == .stale, canRefreshSynchronously {
             do {
                 let refreshed = try materialize(context: context)
                 payload = refreshed
@@ -165,17 +170,20 @@ final class WorkflowInsightRollupService {
     }
 
     private func buildContext() throws -> RollupContext {
-        let pending = try dataStore.fetchProjectionJobs(statuses: [.queued, .leased, .running], limit: 2_000)
-        let failed = try dataStore.fetchProjectionJobs(statuses: [.failed, .canceled], limit: 500)
+        let pendingCount = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+        let failedCount = try dataStore.countProjectionJobs(statuses: [.failed, .canceled])
+        let rebuildInProgress = try dataStore.hasProjectionJobs(
+            statuses: [.queued, .leased, .running],
+            jobTypes: [.rebuild, .reembed]
+        )
         let latestIndexedAt = try dataStore.fetchSearchDocuments(limit: 1).first?.indexedAt
         let latestUsageAt = dataStore.usages.map(\.endTime).max()
-        let rebuildInProgress = pending.contains { $0.jobType == .rebuild || $0.jobType == .reembed }
         let hasInputs = !dataStore.usages.isEmpty || latestIndexedAt != nil
         return RollupContext(
             latestUsageAt: latestUsageAt,
             latestIndexedAt: latestIndexedAt,
-            pendingJobCount: pending.count,
-            failedJobCount: failed.count,
+            pendingJobCount: pendingCount,
+            failedJobCount: failedCount,
             rebuildInProgress: rebuildInProgress,
             hasInputs: hasInputs
         )

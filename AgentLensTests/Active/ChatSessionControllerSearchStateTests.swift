@@ -38,7 +38,13 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
         XCTAssertTrue(controller.isSearching)
         XCTAssertTrue(controller.searchResults.isEmpty)
 
-        try await Task.sleep(nanoseconds: 140_000_000)
+        let completed = await waitForSearchState(
+            timeoutSeconds: 1.0,
+            pollIntervalNanoseconds: 20_000_000
+        ) {
+            controller.searchResults.map(\.conversation.id) == ["beta"] && controller.isSearching == false
+        }
+        XCTAssertTrue(completed)
         XCTAssertEqual(controller.searchResults.map(\.conversation.id), ["beta"])
         XCTAssertFalse(controller.isSearching)
         XCTAssertEqual(provider.requestedQueries, ["alpha", "beta"])
@@ -335,6 +341,22 @@ private func makeSearchResult(id: String, title: String) -> SearchResult {
     )
 
     return SearchResult(conversation: conversation, snippet: "snippet-\(id)", rank: 1.0)
+}
+
+@MainActor
+private func waitForSearchState(
+    timeoutSeconds: TimeInterval,
+    pollIntervalNanoseconds: UInt64 = 10_000_000,
+    condition: @escaping () -> Bool
+) async -> Bool {
+    let deadline = Date().addingTimeInterval(timeoutSeconds)
+    while Date() < deadline {
+        if condition() {
+            return true
+        }
+        try? await Task.sleep(nanoseconds: pollIntervalNanoseconds)
+    }
+    return condition()
 }
 
 // MARK: - Dashboard chat evidence pack

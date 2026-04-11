@@ -76,6 +76,19 @@ extension DataStore {
         )
     }
 
+    func countConversationsNeedingSummary(
+        staleAfter: TimeInterval = 30 * 60,
+        now: Date = Date(),
+        retryCooldown: TimeInterval? = nil,
+        indexedAfter: Date? = nil
+    ) throws -> Int {
+        try conversationStore.countConversationsNeedingSummary(
+            now: now,
+            retryCooldown: retryCooldown ?? staleAfter,
+            indexedAfter: indexedAfter
+        )
+    }
+
     func summarySpendToday(now: Date = Date()) throws -> Double {
         try conversationStore.summarySpendToday(now: now)
     }

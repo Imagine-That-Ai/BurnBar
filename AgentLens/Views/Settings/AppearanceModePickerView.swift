@@ -5,7 +5,6 @@ import SwiftUI
 /// A styled picker for choosing the application appearance mode
 struct AppearanceModePicker: View {
     @Binding var selection: AppearanceMode
-    @State private var hoveredMode: AppearanceMode?
     @Environment(\.colorScheme) private var colorScheme
 
     private struct ModeSpec {
@@ -54,7 +53,6 @@ struct AppearanceModePicker: View {
 
     private func modeCard(_ spec: ModeSpec) -> some View {
         let isSelected = selection == spec.mode
-        let isHovered = hoveredMode == spec.mode
 
         return Button {
             withAnimation(DesignSystem.Animation.standard) {
@@ -108,11 +106,6 @@ struct AppearanceModePicker: View {
                             : Color(hex: spec.borderHex),
                         lineWidth: isSelected ? 1.5 : 0.5
                     )
-            }
-            .onHover { hovering in
-                withAnimation(DesignSystem.Animation.snappy) {
-                    hoveredMode = hovering ? spec.mode : nil
-                }
             }
         }
         .buttonStyle(.plain)

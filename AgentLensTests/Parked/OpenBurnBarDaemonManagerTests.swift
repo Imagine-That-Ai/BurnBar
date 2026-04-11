@@ -364,7 +364,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
 
         let service = OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
         let snapshot = service.refreshState(
-            insertUsage: { inserted.append($0) },
+            insertUsages: { inserted.append(contentsOf: $0) },
             refreshUsageCache: { refreshed = true }
         )
 

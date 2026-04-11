@@ -36,6 +36,11 @@ final class AccountManager {
     /// Retains `AppleSignInPresentationCoordinator` until Sign in with Apple completes.
     private var appleSignInPresentation: AppleSignInPresentationCoordinator?
 
+    /// Avoids calling `FirebaseApp.app()` when no default app exists, which can emit noisy logs.
+    private static var hasConfiguredFirebaseApp: Bool {
+        !(FirebaseApp.allApps ?? [:]).isEmpty
+    }
+
     // MARK: - Init
 
     private init() {
@@ -47,7 +52,7 @@ final class AccountManager {
 
     private func configureFirebase() {
         guard Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil,
-              FirebaseApp.app() != nil else {
+              Self.hasConfiguredFirebaseApp else {
             return
         }
         isFirebaseAvailable = true
@@ -62,6 +67,7 @@ final class AccountManager {
     }
 
     private func configureGoogleSignInIfPossible() {
+        guard Self.hasConfiguredFirebaseApp else { return }
         guard let clientID = FirebaseApp.app()?.options.clientID else { return }
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
     }
@@ -140,7 +146,8 @@ final class AccountManager {
         guard isFirebaseAvailable else {
             throw AccountError.firebaseNotConfigured
         }
-        guard let clientID = FirebaseApp.app()?.options.clientID else {
+        guard Self.hasConfiguredFirebaseApp,
+              let clientID = FirebaseApp.app()?.options.clientID else {
             throw AccountError.firebaseNotConfigured
         }
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
@@ -176,7 +183,7 @@ final class AccountManager {
     // MARK: - Sign Out
 
     func signOut() throws {
-        if FirebaseApp.app() != nil {
+        if isFirebaseAvailable {
             try Auth.auth().signOut()
         }
         GIDSignIn.sharedInstance.signOut()

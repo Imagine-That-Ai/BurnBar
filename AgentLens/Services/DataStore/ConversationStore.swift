@@ -228,10 +228,10 @@ final class ConversationStore {
                 sql: """
                 UPDATE conversations
                 SET summary = ?, summaryTitle = ?, summaryUpdatedAt = ?, summaryAttemptedAt = ?, summaryProvider = ?, summaryModel = ?,
-                    indexedAt = ?, conversationSyncedAt = NULL, logSyncedAt = NULL
+                    conversationSyncedAt = NULL, logSyncedAt = NULL
                 WHERE id = ?
                 """,
-                arguments: [summary, title, updatedAt, updatedAt, provider, model, updatedAt, id]
+                arguments: [summary, title, updatedAt, updatedAt, provider, model, id]
             )
 
             try db.execute(
@@ -272,33 +272,14 @@ final class ConversationStore {
     ) throws -> [ConversationRecord] {
         let cutoff = now.addingTimeInterval(-max(retryCooldown, 0))
         return try dbQueue.read { db in
-            var sql = """
+            let (whereSQL, whereArguments) = summaryCandidateWhereClause(
+                cutoff: cutoff,
+                indexedAfter: indexedAfter
+            )
+            var arguments = whereArguments
+            let sql = """
                 SELECT * FROM conversations
-                WHERE fullText <> ''
-                AND (
-                    summary IS NULL
-                    OR summaryTitle IS NULL
-                    OR summaryUpdatedAt IS NULL
-                    OR summaryUpdatedAt < indexedAt
-                )
-                AND (
-                    summaryAttemptedAt IS NULL
-                    OR summaryAttemptedAt <= ?
-                    OR indexedAt > summaryAttemptedAt
-                )
-                """
-            var arguments: [any DatabaseValueConvertible] = [cutoff]
-
-            if let indexedAfter {
-                sql += """
-
-                AND indexedAt >= ?
-                """
-                arguments.append(indexedAfter)
-            }
-
-            sql += """
-
+                \(whereSQL)
                 ORDER BY COALESCE(endTime, startTime, indexedAt) DESC
                 LIMIT ?
                 """
@@ -310,6 +291,29 @@ final class ConversationStore {
                 arguments: StatementArguments(arguments)
             )
             return rows.compactMap { Self.conversation(from: $0) }
+        }
+    }
+
+    func countConversationsNeedingSummary(
+        now: Date = Date(),
+        retryCooldown: TimeInterval = 60 * 60,
+        indexedAfter: Date? = nil
+    ) throws -> Int {
+        let cutoff = now.addingTimeInterval(-max(retryCooldown, 0))
+        return try dbQueue.read { db in
+            let (whereSQL, arguments) = summaryCandidateWhereClause(
+                cutoff: cutoff,
+                indexedAfter: indexedAfter
+            )
+            return try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM conversations
+                \(whereSQL)
+                """,
+                arguments: StatementArguments(arguments)
+            ) ?? 0
         }
     }
 
@@ -328,6 +332,37 @@ final class ConversationStore {
                 arguments: [start, end]
             ) ?? 0
         }
+    }
+
+    private func summaryCandidateWhereClause(
+        cutoff: Date,
+        indexedAfter: Date?
+    ) -> (sql: String, arguments: [any DatabaseValueConvertible]) {
+        var sql = """
+        WHERE messageCount > 0
+        AND (
+            summary IS NULL
+            OR summaryTitle IS NULL
+            OR summaryUpdatedAt IS NULL
+            OR summaryUpdatedAt < indexedAt
+        )
+        AND (
+            summaryAttemptedAt IS NULL
+            OR summaryAttemptedAt <= ?
+            OR indexedAt > summaryAttemptedAt
+        )
+        """
+        var arguments: [any DatabaseValueConvertible] = [cutoff]
+
+        if let indexedAfter {
+            sql += """
+
+            AND indexedAt >= ?
+            """
+            arguments.append(indexedAfter)
+        }
+
+        return (sql, arguments)
     }
 
     func deleteAllIndexedConversations() throws {

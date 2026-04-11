@@ -22,7 +22,8 @@ enum OpenBurnBarOperatingComposer {
         let insightBrief = InsightBriefSnapshot.build(
             from: dataStore,
             intelligenceService: searchService,
-            rollupService: rollupService
+            rollupService: rollupService,
+            refreshRollups: false
         )
         let retrievalHealth = RetrievalHealthService(dataStore: dataStore).snapshot(
             indexingEnabled: settingsManager.conversationIndexingEnabled,

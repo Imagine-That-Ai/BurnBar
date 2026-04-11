@@ -68,6 +68,7 @@ struct GeneralSettingsView: View {
                             Text("30s").tag(TimeInterval(30))
                             Text("1m").tag(TimeInterval(60))
                             Text("5m").tag(TimeInterval(300))
+                            Text("10m").tag(TimeInterval(600))
                             Text("15m").tag(TimeInterval(900))
                         }
                         .pickerStyle(.menu)

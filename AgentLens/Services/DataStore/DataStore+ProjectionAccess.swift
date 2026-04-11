@@ -49,6 +49,17 @@ extension DataStore {
         try projectionStore.countProjectionJobs(statuses: statuses)
     }
 
+    func compactConversationProjectionBacklog() throws -> Int {
+        try projectionStore.compactConversationProjectionBacklog()
+    }
+
+    func hasProjectionJobs(
+        statuses: [ProjectionJobStatus],
+        jobTypes: [ProjectionJobType]
+    ) throws -> Bool {
+        try projectionStore.hasProjectionJobs(statuses: statuses, jobTypes: jobTypes)
+    }
+
     func leaseNextProjectionJob(
         leaseOwner: String,
         leaseDuration: TimeInterval,

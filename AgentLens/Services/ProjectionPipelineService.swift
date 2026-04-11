@@ -24,6 +24,8 @@ private enum OpenBurnBarProjectionPerformanceTimer {
 private enum ProjectionPipelineRuntimeTuning {
     /// Keep per-pass work bounded so indexing remains low-impact.
     static let defaultSweepMaxJobs = 24
+    /// Skip gap-repair corpus scans when there is already a large projection backlog.
+    static let gapRepairQueueDepthThreshold = 120
     /// Batch chunk embedding/upsert to avoid large CPU and memory spikes.
     static let embeddingBatchSize = 24
     /// Yield periodically while persisting embeddings.
@@ -51,8 +53,6 @@ enum ProjectionIdentity {
             record.sessionId,
             record.projectName,
             record.inferredTaskTitle,
-            record.summaryTitle ?? "",
-            record.summary ?? "",
             record.lastAssistantMessage,
             record.fullText,
             record.keyFiles.joined(separator: "\u{1F}"),
@@ -328,7 +328,10 @@ final class ProjectionPipelineService {
         let sweepStartedAt = OpenBurnBarProjectionPerformanceTimer.now()
 
         try ensureBackfillSeededIfNeeded()
-        try? enqueueGapRepairIfNeeded()
+        let pendingQueueDepth = try dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+        if pendingQueueDepth <= ProjectionPipelineRuntimeTuning.gapRepairQueueDepthThreshold {
+            try? enqueueGapRepairIfNeeded()
+        }
 
         var report = ProjectionSweepReport()
         var lastErrorCode: String?
@@ -1029,18 +1032,12 @@ final class ProjectionPipelineService {
     }
 
     private func projectedConversationTitle(_ conversation: ConversationRecord) -> String {
-        let summaryTitle = conversation.summaryTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if summaryTitle.isEmpty == false { return summaryTitle }
         let inferred = conversation.inferredTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         if inferred.isEmpty == false { return inferred }
         return conversation.sessionId
     }
 
     private func projectedConversationPreview(_ conversation: ConversationRecord) -> String {
-        let summary = conversation.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if summary.isEmpty == false {
-            return String(summary.prefix(320))
-        }
         let assistant = conversation.lastAssistantMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         if assistant.isEmpty == false {
             return String(assistant.prefix(320))

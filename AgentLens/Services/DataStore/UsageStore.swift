@@ -5,7 +5,7 @@ import OpenBurnBarCore
 // MARK: - UsageStore
 
 /// Token-usage CRUD, sync helpers, refresh reads, and provider/model summary builders.
-final class UsageStore {
+final class UsageStore: @unchecked Sendable {
     private let dbQueue: DatabaseQueue
 
     init(dbQueue: DatabaseQueue) {
@@ -16,133 +16,16 @@ final class UsageStore {
 
     func insert(_ usage: TokenUsage) throws {
         try dbQueue.write { db in
-            try db.execute(
-                sql: """
-                    INSERT INTO token_usage (
-                        id, provider, sessionId, projectName, model,
-                        inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
-                        reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
-                        usageSource, sourceDeviceId, sourceDeviceName, isRemote,
-                        provenanceMethod, provenanceConfidence, estimatorVersion
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, '')) DO UPDATE SET
-                        projectName = excluded.projectName,
-                        inputTokens = excluded.inputTokens,
-                        outputTokens = excluded.outputTokens,
-                        cacheCreationTokens = excluded.cacheCreationTokens,
-                        cacheReadTokens = excluded.cacheReadTokens,
-                        reasoningTokens = excluded.reasoningTokens,
-                        totalTokens = excluded.totalTokens,
-                        cost = excluded.cost,
-                        startTime = excluded.startTime,
-                        endTime = excluded.endTime,
-                        createdAt = excluded.createdAt,
-                        -- VAL-TOKEN-009: Preserve source identity on equal-confidence upserts.
-                        -- Only update usageSource when incoming confidence is strictly higher.
-                        usageSource = CASE
-                            WHEN
-                                CASE excluded.provenanceConfidence
-                                    WHEN 'exact' THEN 4
-                                    WHEN 'derived_exact' THEN 3
-                                    WHEN 'high_confidence_estimate' THEN 2
-                                    WHEN 'low_confidence_estimate' THEN 1
-                                    ELSE 0
-                                END
-                                >
-                                CASE token_usage.provenanceConfidence
-                                    WHEN 'exact' THEN 4
-                                    WHEN 'derived_exact' THEN 3
-                                    WHEN 'high_confidence_estimate' THEN 2
-                                    WHEN 'low_confidence_estimate' THEN 1
-                                    ELSE 0
-                                END
-                            THEN excluded.usageSource
-                            ELSE token_usage.usageSource
-                        END,
-                        provenanceMethod = excluded.provenanceMethod,
-                        provenanceConfidence = CASE
-                            WHEN
-                                CASE excluded.provenanceConfidence
-                                    WHEN 'exact' THEN 4
-                                    WHEN 'derived_exact' THEN 3
-                                    WHEN 'high_confidence_estimate' THEN 2
-                                    WHEN 'low_confidence_estimate' THEN 1
-                                    ELSE 0
-                                END
-                                >=
-                                CASE token_usage.provenanceConfidence
-                                    WHEN 'exact' THEN 4
-                                    WHEN 'derived_exact' THEN 3
-                                    WHEN 'high_confidence_estimate' THEN 2
-                                    WHEN 'low_confidence_estimate' THEN 1
-                                    ELSE 0
-                                END
-                            THEN excluded.provenanceConfidence
-                            ELSE token_usage.provenanceConfidence
-                        END,
-                        estimatorVersion = excluded.estimatorVersion,
-                        syncedAt = NULL
-                    WHERE
-                        CASE excluded.provenanceConfidence
-                            WHEN 'exact' THEN 4
-                            WHEN 'derived_exact' THEN 3
-                            WHEN 'high_confidence_estimate' THEN 2
-                            WHEN 'low_confidence_estimate' THEN 1
-                            ELSE 0
-                        END
-                        >=
-                        CASE token_usage.provenanceConfidence
-                            WHEN 'exact' THEN 4
-                            WHEN 'derived_exact' THEN 3
-                            WHEN 'high_confidence_estimate' THEN 2
-                            WHEN 'low_confidence_estimate' THEN 1
-                            ELSE 0
-                        END
-                        AND (
-                            token_usage.projectName != excluded.projectName
-                            OR token_usage.inputTokens != excluded.inputTokens
-                            OR token_usage.outputTokens != excluded.outputTokens
-                            OR token_usage.cacheCreationTokens != excluded.cacheCreationTokens
-                            OR token_usage.cacheReadTokens != excluded.cacheReadTokens
-                            OR token_usage.reasoningTokens != excluded.reasoningTokens
-                            OR token_usage.totalTokens != excluded.totalTokens
-                            OR token_usage.cost != excluded.cost
-                            OR token_usage.startTime != excluded.startTime
-                            OR token_usage.endTime != excluded.endTime
-                            OR token_usage.usageSource != excluded.usageSource
-                        )
-                    """,
-                arguments: [
-                    usage.id.uuidString,
-                    usage.provider.rawValue,
-                    usage.sessionId,
-                    usage.projectName,
-                    usage.model,
-                    usage.inputTokens,
-                    usage.outputTokens,
-                    usage.cacheCreationTokens,
-                    usage.cacheReadTokens,
-                    usage.reasoningTokens,
-                    usage.totalTokens,
-                    usage.cost,
-                    usage.startTime,
-                    usage.endTime,
-                    usage.createdAt,
-                    usage.usageSource.rawValue,
-                    usage.sourceDeviceId,
-                    usage.sourceDeviceName,
-                    usage.isRemote ? 1 : 0,
-                    usage.provenanceMethod.rawValue,
-                    usage.provenanceConfidence.rawValue,
-                    usage.estimatorVersion
-                ]
-            )
+            try upsertUsage(usage, in: db)
         }
     }
 
     func insert(_ newUsages: [TokenUsage]) throws {
-        for usage in newUsages {
-            try insert(usage)
+        guard !newUsages.isEmpty else { return }
+        try dbQueue.write { db in
+            for usage in newUsages {
+                try upsertUsage(usage, in: db)
+            }
         }
     }
 
@@ -589,5 +472,131 @@ final class UsageStore {
                 providerBreakdown: providerBreakdown
             )
         }.sorted { $0.totalCost > $1.totalCost }
+    }
+
+    private func upsertUsage(_ usage: TokenUsage, in db: Database) throws {
+        let statement = try db.cachedStatement(
+            sql: """
+                INSERT INTO token_usage (
+                    id, provider, sessionId, projectName, model,
+                    inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
+                    reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
+                    usageSource, sourceDeviceId, sourceDeviceName, isRemote,
+                    provenanceMethod, provenanceConfidence, estimatorVersion
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, '')) DO UPDATE SET
+                    projectName = excluded.projectName,
+                    inputTokens = excluded.inputTokens,
+                    outputTokens = excluded.outputTokens,
+                    cacheCreationTokens = excluded.cacheCreationTokens,
+                    cacheReadTokens = excluded.cacheReadTokens,
+                    reasoningTokens = excluded.reasoningTokens,
+                    totalTokens = excluded.totalTokens,
+                    cost = excluded.cost,
+                    startTime = excluded.startTime,
+                    endTime = excluded.endTime,
+                    createdAt = excluded.createdAt,
+                    -- VAL-TOKEN-009: Preserve source identity on equal-confidence upserts.
+                    -- Only update usageSource when incoming confidence is strictly higher.
+                    usageSource = CASE
+                        WHEN
+                            CASE excluded.provenanceConfidence
+                                WHEN 'exact' THEN 4
+                                WHEN 'derived_exact' THEN 3
+                                WHEN 'high_confidence_estimate' THEN 2
+                                WHEN 'low_confidence_estimate' THEN 1
+                                ELSE 0
+                            END
+                            >
+                            CASE token_usage.provenanceConfidence
+                                WHEN 'exact' THEN 4
+                                WHEN 'derived_exact' THEN 3
+                                WHEN 'high_confidence_estimate' THEN 2
+                                WHEN 'low_confidence_estimate' THEN 1
+                                ELSE 0
+                            END
+                        THEN excluded.usageSource
+                        ELSE token_usage.usageSource
+                    END,
+                    provenanceMethod = excluded.provenanceMethod,
+                    provenanceConfidence = CASE
+                        WHEN
+                            CASE excluded.provenanceConfidence
+                                WHEN 'exact' THEN 4
+                                WHEN 'derived_exact' THEN 3
+                                WHEN 'high_confidence_estimate' THEN 2
+                                WHEN 'low_confidence_estimate' THEN 1
+                                ELSE 0
+                            END
+                            >=
+                            CASE token_usage.provenanceConfidence
+                                WHEN 'exact' THEN 4
+                                WHEN 'derived_exact' THEN 3
+                                WHEN 'high_confidence_estimate' THEN 2
+                                WHEN 'low_confidence_estimate' THEN 1
+                                ELSE 0
+                            END
+                        THEN excluded.provenanceConfidence
+                        ELSE token_usage.provenanceConfidence
+                    END,
+                    estimatorVersion = excluded.estimatorVersion,
+                    syncedAt = NULL
+                WHERE
+                    CASE excluded.provenanceConfidence
+                        WHEN 'exact' THEN 4
+                        WHEN 'derived_exact' THEN 3
+                        WHEN 'high_confidence_estimate' THEN 2
+                        WHEN 'low_confidence_estimate' THEN 1
+                        ELSE 0
+                    END
+                    >=
+                    CASE token_usage.provenanceConfidence
+                        WHEN 'exact' THEN 4
+                        WHEN 'derived_exact' THEN 3
+                        WHEN 'high_confidence_estimate' THEN 2
+                        WHEN 'low_confidence_estimate' THEN 1
+                        ELSE 0
+                    END
+                    AND (
+                        token_usage.projectName != excluded.projectName
+                        OR token_usage.inputTokens != excluded.inputTokens
+                        OR token_usage.outputTokens != excluded.outputTokens
+                        OR token_usage.cacheCreationTokens != excluded.cacheCreationTokens
+                        OR token_usage.cacheReadTokens != excluded.cacheReadTokens
+                        OR token_usage.reasoningTokens != excluded.reasoningTokens
+                        OR token_usage.totalTokens != excluded.totalTokens
+                        OR token_usage.cost != excluded.cost
+                        OR token_usage.startTime != excluded.startTime
+                        OR token_usage.endTime != excluded.endTime
+                        OR token_usage.usageSource != excluded.usageSource
+                    )
+                """,
+        )
+        try statement.execute(
+            arguments: [
+                usage.id.uuidString,
+                usage.provider.rawValue,
+                usage.sessionId,
+                usage.projectName,
+                usage.model,
+                usage.inputTokens,
+                usage.outputTokens,
+                usage.cacheCreationTokens,
+                usage.cacheReadTokens,
+                usage.reasoningTokens,
+                usage.totalTokens,
+                usage.cost,
+                usage.startTime,
+                usage.endTime,
+                usage.createdAt,
+                usage.usageSource.rawValue,
+                usage.sourceDeviceId,
+                usage.sourceDeviceName,
+                usage.isRemote ? 1 : 0,
+                usage.provenanceMethod.rawValue,
+                usage.provenanceConfidence.rawValue,
+                usage.estimatorVersion
+            ]
+        )
     }
 }

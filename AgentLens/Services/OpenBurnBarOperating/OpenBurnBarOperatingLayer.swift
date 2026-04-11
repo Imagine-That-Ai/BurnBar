@@ -24,6 +24,21 @@ final class OpenBurnBarOperatingLayer {
     var actionFeedback: OpenBurnBarActionFeedback?
     var controllerFeedback: OpenBurnBarControllerFeedback?
 
+    private struct SnapshotCacheKey: Equatable {
+        let stateRevision: Int
+        let lastRefresh: Date?
+        let usageCount: Int
+        let daemonStatus: OpenBurnBarDaemonStatus
+        let conversationIndexingEnabled: Bool
+        let controllerRuntimeEnabled: Bool
+        let isSignedIn: Bool
+        let aggregatorIsRefreshing: Bool
+        let chatIsStreaming: Bool
+    }
+
+    private var snapshotCacheKey: SnapshotCacheKey?
+    private var cachedSnapshot: OpenBurnBarOperatingSnapshot?
+
     init(
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
@@ -41,10 +56,24 @@ final class OpenBurnBarOperatingLayer {
     }
 
     var snapshot: OpenBurnBarOperatingSnapshot {
-        _ = stateRevision
+        let cacheKey = SnapshotCacheKey(
+            stateRevision: stateRevision,
+            lastRefresh: dataStore.lastRefresh,
+            usageCount: dataStore.usages.count,
+            daemonStatus: daemonManager.status,
+            conversationIndexingEnabled: settingsManager.conversationIndexingEnabled,
+            controllerRuntimeEnabled: settingsManager.controllerRuntimeEnabled,
+            isSignedIn: accountManager.isSignedIn,
+            aggregatorIsRefreshing: aggregator?.isRefreshing == true,
+            chatIsStreaming: chatController?.isStreaming == true
+        )
+        if snapshotCacheKey == cacheKey, let cachedSnapshot {
+            return cachedSnapshot
+        }
+
         let actionRecords = (try? dataStore.fetchOperatingActionRecords(limit: 200)) ?? []
         let cachedControllerRuntime = (try? dataStore.fetchControllerRuntimeMirror()) ?? nil
-        return OpenBurnBarOperatingComposer.build(
+        let composed = OpenBurnBarOperatingComposer.build(
             dataStore: dataStore,
             settingsManager: settingsManager,
             accountManager: accountManager,
@@ -54,6 +83,9 @@ final class OpenBurnBarOperatingLayer {
             actionRecords: actionRecords,
             cachedControllerRuntime: cachedControllerRuntime
         )
+        snapshotCacheKey = cacheKey
+        cachedSnapshot = composed
+        return composed
     }
 
     func clearActionFeedback() {

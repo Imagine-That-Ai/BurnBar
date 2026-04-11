@@ -33,7 +33,7 @@ final class CloudSyncService {
     private let dataStore: DataStore
     private let accountManager: AccountManager
 
-    /// `Firestore.firestore()` is only read from sync methods that guard `FirebaseApp.app()` first.
+    /// `Firestore.firestore()` is only read from sync methods that guard `accountManager.isFirebaseAvailable` first.
     private var db: Firestore { Firestore.firestore() }
 
     private struct SharedArtifactSyncReport: Equatable, Sendable {
@@ -105,7 +105,7 @@ final class CloudSyncService {
 
     /// Upload all unsynced local rows to Firestore. Call after refreshAll().
     func uploadPending() async {
-        guard FirebaseApp.app() != nil,
+        guard accountManager.isFirebaseAvailable,
               accountManager.isSignedIn,
               accountManager.isCloudSyncEnabled,
               !syncIsSuppressed(),
@@ -156,7 +156,7 @@ final class CloudSyncService {
     /// Uploads unsynced conversation metadata (excluding full transcripts) for cross-device recall.
     /// Runs at the end of `UsageAggregator.refreshAll()` (after `uploadPending()`), matching token sync cadence.
     func uploadPendingConversations() async {
-        guard FirebaseApp.app() != nil,
+        guard accountManager.isFirebaseAvailable,
               accountManager.isSignedIn,
               accountManager.isCloudSyncEnabled,
               SettingsManager.shared.conversationCloudBackupEnabled,
@@ -208,7 +208,7 @@ final class CloudSyncService {
     /// Uploads chat threads and messages to Firestore for cross-device resume.
     /// Layout: `users/{uid}/chat_threads/{deviceId}_{threadId}` (thread metadata + messages array).
     func uploadPendingChatThreads() async {
-        guard FirebaseApp.app() != nil,
+        guard accountManager.isFirebaseAvailable,
               accountManager.isSignedIn,
               accountManager.isCloudSyncEnabled,
               !syncIsSuppressed(),
@@ -277,7 +277,7 @@ final class CloudSyncService {
     func syncSharedArtifacts(maxRemoteArtifacts: Int = 300) async {
         guard !isSyncing, !syncIsSuppressed() else { return }
 
-        let firebaseAvailable = FirebaseApp.app() != nil
+        let firebaseAvailable = accountManager.isFirebaseAvailable
         let signedIn = accountManager.isSignedIn
         let cloudEnabled = accountManager.isCloudSyncEnabled
         let uid: String? = firebaseAvailable ? Auth.auth().currentUser?.uid : nil
@@ -1506,7 +1506,7 @@ final class CloudSyncService {
     /// VAL-PERSIST-010: Watermark advances only after successful sync commit.
     /// VAL-PERSIST-011: Watermark scope is account-aware and collection-safe.
     func downloadRemoteData(uid: String? = nil) async {
-        guard FirebaseApp.app() != nil, accountManager.isSignedIn else { return }
+        guard accountManager.isFirebaseAvailable, accountManager.isSignedIn else { return }
         let resolvedUid = uid ?? Auth.auth().currentUser?.uid
         guard let resolvedUid else { return }
         let localDeviceId = accountManager.deviceId
@@ -1556,7 +1556,7 @@ final class CloudSyncService {
 
     /// Updates the local device name in Firestore (called from Settings).
     func updateLocalDeviceName(_ name: String) async {
-        guard FirebaseApp.app() != nil, let uid = Auth.auth().currentUser?.uid else { return }
+        guard accountManager.isFirebaseAvailable, let uid = Auth.auth().currentUser?.uid else { return }
         let devicesRef = db.collection("users").document(uid).collection("devices")
         try? await devicesRef.document(accountManager.deviceId).setData(["deviceName": name], merge: true)
     }
@@ -1799,7 +1799,7 @@ final class CloudSyncService {
 
     /// Fetch sum of cost across all devices for this user (last 90 days).
     func fetchCloudTotal(uid: String? = nil) async {
-        guard FirebaseApp.app() != nil else { return }
+        guard accountManager.isFirebaseAvailable else { return }
         let resolvedUid = uid ?? Auth.auth().currentUser?.uid
         guard let resolvedUid else { return }
 
@@ -1924,7 +1924,7 @@ final class CloudSyncService {
     /// Gated separately on `sessionLogCloudBackupEnabled`.
     /// Uses its own dirty flag (`logSyncedAt`) so it is independent of metadata sync.
     func uploadPendingSessionLogs() async {
-        guard FirebaseApp.app() != nil,
+        guard accountManager.isFirebaseAvailable,
               accountManager.isSignedIn,
               accountManager.isCloudSyncEnabled,
               SettingsManager.shared.sessionLogCloudBackupEnabled,
@@ -2009,7 +2009,7 @@ final class CloudSyncService {
     /// Fetches session log manifests from Firestore for the signed-in user.
     /// Returns ConversationRecords with empty fullText; body is fetched lazily via fetchCloudSessionLogBody(docId:).
     func fetchCloudSessionLogs(limit: Int = 200) async throws -> [ConversationRecord] {
-        guard FirebaseApp.app() != nil,
+        guard accountManager.isFirebaseAvailable,
               accountManager.isSignedIn,
               let uid = Auth.auth().currentUser?.uid else { return [] }
 
@@ -2058,7 +2058,7 @@ final class CloudSyncService {
     /// Reassembles chunk sub-documents into the full Markdown body for a session log.
     /// - Parameter docId: The Firestore document ID (stored in `record.sessionId` for cloud-sourced records).
     func fetchCloudSessionLogBody(docId: String) async throws -> String {
-        guard FirebaseApp.app() != nil,
+        guard accountManager.isFirebaseAvailable,
               let uid = Auth.auth().currentUser?.uid else { return "" }
 
         let snapshot = try await db

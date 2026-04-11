@@ -109,6 +109,62 @@ final class ProjectionStore {
         }
     }
 
+    func hasProjectionJobs(
+        statuses: [ProjectionJobStatus],
+        jobTypes: [ProjectionJobType]
+    ) throws -> Bool {
+        guard statuses.isEmpty == false, jobTypes.isEmpty == false else { return false }
+        let statusPlaceholders = statuses.map { _ in "?" }.joined(separator: ", ")
+        let jobTypePlaceholders = jobTypes.map { _ in "?" }.joined(separator: ", ")
+        let args: [any DatabaseValueConvertible] = statuses.map(\.rawValue) + jobTypes.map(\.rawValue)
+
+        return try dbQueue.read { db in
+            (try Int.fetchOne(
+                db,
+                sql: """
+                SELECT 1
+                FROM projection_jobs
+                WHERE status IN (\(statusPlaceholders))
+                  AND jobType IN (\(jobTypePlaceholders))
+                LIMIT 1
+                """,
+                arguments: StatementArguments(args)
+            )) != nil
+        }
+    }
+
+    /// Drops redundant queued/failed/canceled conversation projection jobs, keeping only
+    /// the newest entry per `(sourceID, jobType)` so large stale backlogs do not monopolize sweeps.
+    func compactConversationProjectionBacklog() throws -> Int {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                DELETE FROM projection_jobs
+                WHERE sourceKind = ?
+                  AND status IN (?, ?, ?)
+                  AND rowid NOT IN (
+                      SELECT MAX(rowid)
+                      FROM projection_jobs
+                      WHERE sourceKind = ?
+                        AND status IN (?, ?, ?)
+                      GROUP BY sourceID, jobType
+                  )
+                """,
+                arguments: [
+                    SearchSourceKind.conversation.rawValue,
+                    ProjectionJobStatus.queued.rawValue,
+                    ProjectionJobStatus.failed.rawValue,
+                    ProjectionJobStatus.canceled.rawValue,
+                    SearchSourceKind.conversation.rawValue,
+                    ProjectionJobStatus.queued.rawValue,
+                    ProjectionJobStatus.failed.rawValue,
+                    ProjectionJobStatus.canceled.rawValue,
+                ]
+            )
+            return try Int.fetchOne(db, sql: "SELECT changes()") ?? 0
+        }
+    }
+
     func leaseNextJob(leaseOwner: String, leaseExpiresAt: Date, now: Date) throws -> ProjectionJobRecord? {
         try dbQueue.write { db in
             guard let row = try Row.fetchOne(

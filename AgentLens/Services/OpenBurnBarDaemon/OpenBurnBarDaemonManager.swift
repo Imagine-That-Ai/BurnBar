@@ -391,9 +391,9 @@ final class OpenBurnBarDaemonManager {
                 let snapshot = usageSyncService.runtimeSnapshot(
                     from: configSnapshot,
                     usageEvents: usageEvents,
-                    insertUsage: dataStore.map { store in
-                        { usage in
-                            try store.insert(usage)
+                    insertUsages: dataStore.map { store in
+                        { usages in
+                            try store.insert(usages)
                         }
                     },
                     refreshUsageCache: dataStore.map { store in
@@ -414,9 +414,9 @@ final class OpenBurnBarDaemonManager {
         }
 
         let snapshot = usageSyncService.refreshState(
-            insertUsage: dataStore.map { store in
-                { usage in
-                    try store.insert(usage)
+            insertUsages: dataStore.map { store in
+                { usages in
+                    try store.insert(usages)
                 }
             },
             refreshUsageCache: dataStore.map { store in
@@ -1133,16 +1133,14 @@ final class OpenBurnBarDaemonUsageSyncService {
 
     @discardableResult
     func refreshState(
-        insertUsage: ((TokenUsage) throws -> Void)? = nil,
+        insertUsages: (([TokenUsage]) throws -> Void)? = nil,
         refreshUsageCache: (() -> Void)? = nil
     ) -> OpenBurnBarDaemonRuntimeSnapshot {
         let usageRecords = loadUsageRecords()
         let importedUsages = usageRecords.compactMap { tokenUsage(from: $0) }
 
-        if let insertUsage, !importedUsages.isEmpty {
-            for usage in importedUsages {
-                try? insertUsage(usage)
-            }
+        if let insertUsages, !importedUsages.isEmpty {
+            try? insertUsages(importedUsages)
             refreshUsageCache?()
         }
 
@@ -1161,15 +1159,13 @@ final class OpenBurnBarDaemonUsageSyncService {
     func runtimeSnapshot(
         from configSnapshot: BurnBarProviderConfigurationSnapshot,
         usageEvents: [BurnBarUsageEvent],
-        insertUsage: ((TokenUsage) throws -> Void)? = nil,
+        insertUsages: (([TokenUsage]) throws -> Void)? = nil,
         refreshUsageCache: (() -> Void)? = nil
     ) -> OpenBurnBarDaemonRuntimeSnapshot {
         let importedUsages = usageEvents.compactMap { tokenUsage(from: $0) }
 
-        if let insertUsage, !importedUsages.isEmpty {
-            for usage in importedUsages {
-                try? insertUsage(usage)
-            }
+        if let insertUsages, !importedUsages.isEmpty {
+            try? insertUsages(importedUsages)
             refreshUsageCache?()
         }
 
