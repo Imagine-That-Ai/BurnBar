@@ -270,14 +270,28 @@ The Mac app sources live under **`AgentLens/`** because renaming folders is a pe
 
 ## Install
 
-### Download the latest macOS release (recommended)
+### How your users install and open it
+
+### 1. GitHub Release DMG (recommended)
+
+This is the normal user path.
 
 1. Open [GitHub Releases](https://github.com/Ajnunezg/BurnBar/releases)
 2. Download the latest `OpenBurnBar-<version>-macOS.dmg`
-3. Open the DMG and drag `OpenBurnBar.app` into `Applications`
-4. Launch `OpenBurnBar`
+3. Open the `.dmg`
+4. Drag `OpenBurnBar.app` into `Applications`
+5. Open `OpenBurnBar` from:
+   - `Applications`
+   - Spotlight: `Cmd+Space`, then type `OpenBurnBar`
 
-### Build from source (fallback)
+If macOS blocks first launch:
+
+- right-click `OpenBurnBar.app` → `Open` → `Open`
+- or go to `System Settings` → `Privacy & Security` → `Open Anyway`
+
+If the DMG is notarized, users should usually just double-click and launch.
+
+### 2. Terminal source install (fallback)
 
 ```bash
 git clone https://github.com/Ajnunezg/BurnBar.git
@@ -285,6 +299,15 @@ cd BurnBar
 make install    # builds Release .app → /Applications
 open -a OpenBurnBar
 ```
+
+### 3. Xcode (contributor/dev path)
+
+For developers only:
+
+1. Open `OpenBurnBar.xcodeproj`
+2. Select the `OpenBurnBar` scheme
+3. Press Run
+4. The app launches, then they can pin/use it from the menu bar
 
 See [QUICKSTART.md](QUICKSTART.md) for the install matrix (DMG, source build, Xcode, and Homebrew tap status).
 
