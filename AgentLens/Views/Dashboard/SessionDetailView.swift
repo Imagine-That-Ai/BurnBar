@@ -6,6 +6,7 @@ struct SessionDetailView: View {
     let session: TokenUsage
     let theme: ProviderTheme
     var dataStore: DataStore
+    var onOpenSessionLog: ((ConversationJumpTarget) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var conversation: ConversationRecord?
@@ -29,6 +30,11 @@ struct SessionDetailView: View {
             if SettingsManager.shared.conversationIndexingEnabled, conversation != nil {
                 Divider().background(DesignSystem.Colors.border)
                 summarizeSection
+
+                if let conv = conversation, let onOpenSessionLog {
+                    Divider().background(DesignSystem.Colors.border)
+                    viewSessionLogButton(conversation: conv, onOpen: onOpenSessionLog)
+                }
             }
 
             Divider().background(DesignSystem.Colors.border)
@@ -44,6 +50,36 @@ struct SessionDetailView: View {
             conversation = try? dataStore.fetchConversation(id: id)
             summaryText = conversation?.summary
         }
+    }
+
+    // MARK: - View Session Log
+
+    private func viewSessionLogButton(conversation: ConversationRecord, onOpen: @escaping (ConversationJumpTarget) -> Void) -> some View {
+        let snippet = conversation.summary?.nonEmpty
+            ?? conversation.summaryTitle?.nonEmpty
+            ?? conversation.lastAssistantMessage
+        let target = ConversationJumpTarget(
+            conversation: conversation,
+            snippet: snippet,
+            startOffset: 0,
+            endOffset: snippet.count,
+            source: .retrieval
+        )
+        return Button {
+            dismiss()
+            onOpen(target)
+        } label: {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.system(size: 13, weight: .medium))
+                Text("View Full Session Log")
+                    .font(DesignSystem.Typography.caption)
+            }
+            .foregroundStyle(theme.primaryColor)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Summarize

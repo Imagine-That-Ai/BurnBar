@@ -188,7 +188,7 @@ struct NotificationsSettingsView: View {
                             }
                             Spacer()
                             Picker("", selection: $settingsManager.controllerDefaultSnoozeMinutes) {
-                                ForEach([30, 60, 90, 120, 240], id: \.self) { minutes in
+                                ForEach([30, 60, 90, 120, 180, 240], id: \.self) { minutes in
                                     Text("\(minutes) min").tag(minutes)
                                 }
                             }

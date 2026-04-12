@@ -25,24 +25,40 @@ struct OnboardingChatEngineView: View {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                     ForEach(ChatBackendID.allCases) { backend in
-                        Toggle(isOn: Binding(
-                            get: { enabledBackends.contains(backend) },
-                            set: { on in
-                                if on {
-                                    enabledBackends.insert(backend)
-                                } else {
-                                    enabledBackends.remove(backend)
+                        HStack(spacing: DesignSystem.Spacing.sm) {
+                            backendLogo(for: backend)
+
+                            Toggle(isOn: Binding(
+                                get: { enabledBackends.contains(backend) },
+                                set: { on in
+                                    if on {
+                                        enabledBackends.insert(backend)
+                                    } else {
+                                        enabledBackends.remove(backend)
+                                    }
+                                    let ordered = ChatBackendID.allCases.filter { enabledBackends.contains($0) }
+                                    if !ordered.contains(defaultEngine) {
+                                        defaultEngine = ordered.first ?? .codex
+                                    }
                                 }
-                                // Keep default in sync
-                                let ordered = ChatBackendID.allCases.filter { enabledBackends.contains($0) }
-                                if !ordered.contains(defaultEngine) {
-                                    defaultEngine = ordered.first ?? .codex
-                                }
+                            )) {
+                                Text(backend.displayName)
+                                    .font(DesignSystem.Typography.body)
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
                             }
-                        )) {
-                            Text(backend.displayName)
-                                .font(DesignSystem.Typography.body)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                            if backend == .hermes {
+                                Spacer()
+                                Button("Setup wizard") {
+                                    WindowManager.shared.openHermesSetupWizard(
+                                        settingsManager: SettingsManager.shared,
+                                        chatController: chatController
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                            }
                         }
                     }
                 }
@@ -92,5 +108,12 @@ struct OnboardingChatEngineView: View {
         Circle()
             .fill(ok ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
             .frame(width: 8, height: 8)
+    }
+
+    @ViewBuilder
+    private func backendLogo(for backend: ChatBackendID) -> some View {
+        if let provider = backend.agentProvider {
+            ProviderLogoView(provider: provider, size: 22, useFallbackColor: true)
+        }
     }
 }

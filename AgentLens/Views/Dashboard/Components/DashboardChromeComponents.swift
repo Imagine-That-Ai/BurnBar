@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import WebKit
 struct StatCard: View {
@@ -68,6 +69,128 @@ struct StatCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(DesignSystem.Spacing.lg)
         }
+    }
+}
+
+// MARK: - Cycling Provider Icon
+
+/// A compact icon that cycles through provider logos with a spring scale+fade animation.
+struct CyclingProviderIconView: View {
+    let providers: [AgentProvider]
+    let size: CGFloat
+    let interval: TimeInterval
+
+    @State private var currentIndex: Int
+
+    private let timer: Publishers.Autoconnect<Timer.TimerPublisher>
+
+    init(providers: [AgentProvider], size: CGFloat = 11, interval: TimeInterval = 2.2, startOffset: Int = 0) {
+        self.providers = providers
+        self.size = size
+        self.interval = interval
+        self.timer = Timer.publish(every: interval, on: .main, in: .common).autoconnect()
+        self._currentIndex = State(initialValue: providers.isEmpty ? 0 : startOffset % providers.count)
+    }
+
+    var body: some View {
+        ZStack {
+            if !providers.isEmpty {
+                ProviderLogoView(provider: providers[currentIndex], size: size)
+                    .id(currentIndex)
+                    .transition(
+                        .asymmetric(
+                            insertion: .scale(scale: 0.25).combined(with: .opacity),
+                            removal: .scale(scale: 1.6).combined(with: .opacity)
+                        )
+                    )
+            }
+        }
+        .frame(width: size, height: size)
+        .animation(.spring(response: 0.28, dampingFraction: 0.68), value: currentIndex)
+        .onReceive(timer) { _ in
+            guard providers.count > 1 else { return }
+            currentIndex = (currentIndex + 1) % providers.count
+        }
+    }
+}
+
+// MARK: - Glass Segmented Picker
+
+struct GlassSegmentedPicker<Option: RawRepresentable & CaseIterable & Identifiable & Hashable>: View
+where Option.RawValue == String, Option.AllCases: RandomAccessCollection {
+    @Binding var selection: Option
+    var icons: ((Option) -> String)?
+    var iconViews: ((Option) -> AnyView)?
+
+    init(selection: Binding<Option>, icons: ((Option) -> String)? = nil) {
+        self._selection = selection
+        self.icons = icons
+        self.iconViews = nil
+    }
+
+    init(selection: Binding<Option>, iconViews: @escaping (Option) -> AnyView) {
+        self._selection = selection
+        self.icons = nil
+        self.iconViews = iconViews
+    }
+
+    private var allCases: [Option] {
+        Array(Option.allCases)
+    }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(allCases) { option in
+                let isSelected = selection == option
+                Button {
+                    withAnimation(DesignSystem.Animation.snappy) {
+                        selection = option
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        if let iconViews {
+                            iconViews(option)
+                                .frame(width: 11, height: 11)
+                        } else if let icons {
+                            Image(systemName: icons(option))
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                        Text(option.rawValue)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundStyle(isSelected ? .white : DesignSystem.Colors.textSecondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .fill(isSelected ? AnyShapeStyle(DesignSystem.Colors.primaryGradient) : AnyShapeStyle(.clear))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm + 2, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm + 2, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.45))
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm + 2, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm + 2, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.5
+                )
+        )
     }
 }
 

@@ -91,6 +91,7 @@ struct SessionLedgerSection<EmptyLedger: View>: View {
     let usages: [TokenUsage]
     let theme: ProviderTheme
     @Binding var selectedSession: TokenUsage?
+    let onOpenUsage: ((TokenUsage) -> Void)?
     let displayMode: UsageDisplayMode
     /// Model drill-down shows which agent ran the session; provider drill-down hides it.
     let showsAgentBadge: Bool
@@ -104,6 +105,7 @@ struct SessionLedgerSection<EmptyLedger: View>: View {
         usages: [TokenUsage],
         theme: ProviderTheme,
         selectedSession: Binding<TokenUsage?>,
+        onOpenUsage: ((TokenUsage) -> Void)? = nil,
         displayMode: UsageDisplayMode,
         showsAgentBadge: Bool,
         footerCaption: String,
@@ -112,6 +114,7 @@ struct SessionLedgerSection<EmptyLedger: View>: View {
         self.usages = usages
         self.theme = theme
         self._selectedSession = selectedSession
+        self.onOpenUsage = onOpenUsage
         self.displayMode = displayMode
         self.showsAgentBadge = showsAgentBadge
         self.footerCaption = footerCaption
@@ -243,7 +246,11 @@ struct SessionLedgerSection<EmptyLedger: View>: View {
                                 displayMode: displayMode,
                                 showsAgentBadge: showsAgentBadge
                             ) {
-                                selectedSession = usage
+                                if let onOpenUsage {
+                                    onOpenUsage(usage)
+                                } else {
+                                    selectedSession = usage
+                                }
                             }
                         }
                     }
@@ -313,12 +320,11 @@ private struct SessionLedgerEntryRow: View {
     }
 
     var body: some View {
-        Button(action: onTap) {
-            GlassCard(interactive: true) {
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .fill(theme.gradient)
-                        .frame(width: 3)
+        GlassCard(interactive: true) {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(theme.gradient)
+                    .frame(width: 3)
 
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: DesignSystem.Spacing.sm) {
@@ -373,7 +379,6 @@ private struct SessionLedgerEntryRow: View {
                         .stroke(cacheEfficient ? DesignSystem.Colors.success : Color.clear, lineWidth: 1.5)
                 )
             }
-        }
-        .buttonStyle(.plain)
+        .onTapGesture(perform: onTap)
     }
 }

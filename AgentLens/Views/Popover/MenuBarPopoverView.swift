@@ -28,10 +28,10 @@ struct MenuBarPopoverView: View {
         insightSnapshot.insights
     }
 
-    /// Cap the scrollable body at ~75% of screen height minus header/action bar.
+    /// Cap the scrollable body at ~90% of screen height minus header/action bar.
     private var popoverScrollMaxHeight: CGFloat {
         let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
-        return max(screenHeight * 0.75 - 120, 300)
+        return max(screenHeight * 0.90 - 80, 400)
     }
 
     private var menuBarSparklineSeries: [Double] {
@@ -96,14 +96,14 @@ struct MenuBarPopoverView: View {
                     freshnessBar
                     Divider().background(DesignSystem.Colors.border)
 
+                    QuotaPopoverBar(
+                        quotaService: quotaService ?? ProviderQuotaService.shared,
+                        dataStore: dataStore
+                    )
+                    Divider().background(DesignSystem.Colors.border)
+
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: 0) {
-                            QuotaCommandCenter(
-                                quotaService: quotaService ?? ProviderQuotaService.shared,
-                                settingsManager: settingsManager,
-                                dataStore: dataStore
-                            )
-                            Divider().background(DesignSystem.Colors.border)
                             PopoverOperatingTray(
                                 operatingLayer: operatingLayer,
                                 onOpenDashboard: {
@@ -245,6 +245,15 @@ struct MenuBarPopoverView: View {
                 Spacer()
 
                 if !dataStore.usages.isEmpty {
+                    Text(settingsManager.formatUsageMetric(cost: dataStore.totalCostToday, tokens: dataStore.totalTokensToday))
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.primaryGradient)
+                        .popoverTooltip("Today's total cost/tokens")
+
+                    Text("·")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+
                     Text("\(dataStore.usages.count) session\(dataStore.usages.count == 1 ? "" : "s")")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -376,10 +385,15 @@ struct MenuBarPopoverView: View {
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                     .multilineTextAlignment(.center)
-                Text("Supports Claude Code, Factory, Codex, and more.")
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .multilineTextAlignment(.center)
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 9))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    Text("The first scan reads your full log history and may take a moment.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .multilineTextAlignment(.center)
+                }
             } else {
                 Image(systemName: "tray")
                     .font(.system(size: 28))
@@ -442,7 +456,7 @@ private struct PopoverOperatingTray: View {
             layer: operatingLayer,
             onOpenDashboard: onOpenDashboard
         )
-        .frame(maxHeight: 280)
+        .frame(maxHeight: 380)
         .clipped()
     }
 }
@@ -747,8 +761,9 @@ struct GlassIconButton<Label: View>: View {
                     )
 
                 if isLoading {
-                    ProgressView()
-                        .controlSize(.mini)
+                    AnimatedMiningPickView()
+                        .frame(width: 20, height: 20)
+                        .clipShape(.circle)
                 } else {
                     label()
                 }

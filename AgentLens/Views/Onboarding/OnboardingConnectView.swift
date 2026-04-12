@@ -75,10 +75,7 @@ struct OnboardingConnectView: View {
                             .font(.system(size: 12))
                             .foregroundStyle(ready ? DesignSystem.Colors.success : DesignSystem.Colors.warning)
 
-                        Image(systemName: provider.iconName)
-                            .font(.system(size: 12))
-                            .foregroundStyle(DesignSystem.Colors.primary(for: provider))
-                            .frame(width: 16)
+                        ProviderLogoView(provider: provider, size: 16, useFallbackColor: true)
 
                         Text(provider.displayName)
                             .font(DesignSystem.Typography.caption)

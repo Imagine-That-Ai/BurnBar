@@ -3,28 +3,6 @@ import Foundation
 import LocalAuthentication
 import Security
 
-#if os(macOS)
-private func withToolPlaneKeychainInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
-    var previousAllowed = DarwinBoolean(true)
-    let readStatus = SecKeychainGetUserInteractionAllowed(&previousAllowed)
-    let disableStatus = SecKeychainSetUserInteractionAllowed(false)
-    defer {
-        if disableStatus == errSecSuccess {
-            if readStatus == errSecSuccess {
-                _ = SecKeychainSetUserInteractionAllowed(previousAllowed.boolValue)
-            } else {
-                _ = SecKeychainSetUserInteractionAllowed(true)
-            }
-        }
-    }
-    return try operation()
-}
-#else
-private func withToolPlaneKeychainInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
-    try operation()
-}
-#endif
-
 public protocol BurnBarConnectorSecretStoring: Sendable {
     func secret(for connector: BurnBarConnectorKind) async throws -> String?
     func setSecret(_ secret: String?, for connector: BurnBarConnectorKind) async throws
@@ -74,7 +52,7 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
             query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
         }
         var item: CFTypeRef?
-        let status = withToolPlaneKeychainInteractionDisabled {
+        let status = withKeychainUserInteractionDisabled {
             SecItemCopyMatching(query as CFDictionary, &item)
         }
         if status == errSecItemNotFound

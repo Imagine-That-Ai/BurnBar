@@ -41,6 +41,25 @@ struct OnboardingCompleteView: View {
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+
+                if sessionCount == 0 {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 11))
+                            .foregroundStyle(DesignSystem.Colors.warning)
+                        Text("No historical sessions were found. Your dashboard may look empty until your agents log new activity. You can trigger a manual scan anytime from the toolbar.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, DesignSystem.Spacing.md)
+                    .padding(.vertical, DesignSystem.Spacing.sm)
+                    .background {
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .fill(DesignSystem.Colors.warning.opacity(0.06))
+                    }
+                }
             }
 
             Spacer()

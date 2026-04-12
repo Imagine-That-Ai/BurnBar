@@ -55,6 +55,16 @@ struct ChatGatewaySettingsView: View {
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
 
+                Button("Guided Hermes setup") {
+                    WindowManager.shared.openHermesSetupWizard(
+                        settingsManager: settingsManager,
+                        chatController: nil
+                    )
+                }
+                .buttonStyle(.bordered)
+                .tint(DesignSystem.Colors.hermesAureate)
+                .font(DesignSystem.Typography.caption)
+
                 Text("Leave the field below empty unless you set API_SERVER_KEY in ~/.hermes/.env — then paste the same value here so OpenBurnBar can connect.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)

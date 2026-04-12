@@ -2,12 +2,26 @@ import OpenBurnBarCore
 import Foundation
 
 public struct BurnBarResolvedProviderConfiguration: Sendable {
+    public struct ResolvedCredentialSlot: Sendable {
+        public let slot: BurnBarProviderCredentialSlot
+        public let apiKey: String?
+    }
+
     public let provider: BurnBarCatalogProvider
     public let settings: BurnBarProviderSettings
     public let preferredModels: [BurnBarCatalogModel]
+    public let credentialSlots: [ResolvedCredentialSlot]
     public let apiKey: String?
 
     public var hasCredential: Bool {
+        if credentialSlots.contains(where: {
+            guard let apiKey = $0.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                return false
+            }
+            return !apiKey.isEmpty
+        }) {
+            return true
+        }
         guard let apiKey else { return false }
         return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -169,6 +183,194 @@ public actor BurnBarConfigStore {
         )
     }
 
+    @discardableResult
+    public func upsertCredentialSlot(
+        providerID: String,
+        slotID: String? = nil,
+        label: String,
+        apiKey: String,
+        isEnabled: Bool = true
+    ) async throws -> BurnBarProviderCredentialSlot {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard BurnBarSupportedProvider.isSupported(providerID: normalizedProviderID) else {
+            throw BurnBarConfigStoreError.unsupportedProvider(normalizedProviderID)
+        }
+
+        let normalizedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedLabel = normalizedLabel.isEmpty ? "Plan \(slotID ?? "")".trimmingCharacters(in: .whitespacesAndNewlines) : normalizedLabel
+        let resolvedSlotID = (slotID?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? UUID().uuidString
+
+        var updatedSlot = BurnBarProviderCredentialSlot(slotID: resolvedSlotID, label: resolvedLabel, isEnabled: isEnabled, status: isEnabled ? .ready : .disabled)
+        let updatedSettings = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            if let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == resolvedSlotID }) {
+                var existing = mutable.credentialSlots[index]
+                existing.label = resolvedLabel
+                existing.isEnabled = isEnabled
+                existing.status = isEnabled ? .ready : .disabled
+                existing.updatedAt = Date()
+                mutable.credentialSlots[index] = existing
+                updatedSlot = existing
+            } else {
+                mutable.credentialSlots.append(updatedSlot)
+            }
+            if mutable.preferredCredentialSlotID == nil {
+                mutable.preferredCredentialSlotID = resolvedSlotID
+            }
+            return mutable
+        }
+
+        if key.isEmpty == false {
+            try await secretStore.setSecret(key, for: slotSecretStoreKey(providerID: normalizedProviderID, slotID: resolvedSlotID))
+        }
+
+        logger.notice(
+            "provider_slot_upserted",
+            metadata: [
+                "provider_id": normalizedProviderID,
+                "slot_id": resolvedSlotID,
+                "slots": "\(updatedSettings.credentialSlots.count)"
+            ]
+        )
+        return updatedSlot
+    }
+
+    public func setCredentialSlotEnabled(
+        providerID: String,
+        slotID: String,
+        isEnabled: Bool
+    ) throws {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            guard let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
+                return mutable
+            }
+            var slot = mutable.credentialSlots[index]
+            slot.isEnabled = isEnabled
+            slot.status = isEnabled ? .ready : .disabled
+            slot.updatedAt = Date()
+            mutable.credentialSlots[index] = slot
+            if mutable.preferredCredentialSlotID == slotID, isEnabled == false {
+                mutable.preferredCredentialSlotID = mutable.credentialSlots.first(where: { $0.isEnabled })?.slotID
+            }
+            return mutable
+        }
+    }
+
+    public func removeCredentialSlot(
+        providerID: String,
+        slotID: String
+    ) async throws {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            mutable.credentialSlots.removeAll { $0.slotID == slotID }
+            if mutable.preferredCredentialSlotID == slotID {
+                mutable.preferredCredentialSlotID = mutable.credentialSlots.first(where: { $0.isEnabled })?.slotID
+            }
+            return mutable
+        }
+        try await secretStore.setSecret(nil, for: slotSecretStoreKey(providerID: normalizedProviderID, slotID: slotID))
+    }
+
+    public func setPreferredCredentialSlot(
+        providerID: String,
+        slotID: String?
+    ) throws {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            if let slotID {
+                guard mutable.credentialSlots.contains(where: { $0.slotID == slotID }) else {
+                    return mutable
+                }
+                mutable.preferredCredentialSlotID = slotID
+            } else {
+                mutable.preferredCredentialSlotID = nil
+            }
+            return mutable
+        }
+    }
+
+    public func recordCredentialSelection(
+        providerID: String,
+        slotID: String
+    ) throws {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            guard let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
+                return mutable
+            }
+            var slot = mutable.credentialSlots[index]
+            slot.lastSelectedAt = Date()
+            slot.updatedAt = Date()
+            if slot.isEnabled {
+                slot.status = .ready
+            }
+            mutable.credentialSlots[index] = slot
+            return mutable
+        }
+    }
+
+    public func updateCredentialSlotStatus(
+        providerID: String,
+        slotID: String,
+        status: BurnBarProviderCredentialSlotStatus,
+        cooldownUntil: Date?,
+        message: String?
+    ) throws {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            guard let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
+                return mutable
+            }
+            var slot = mutable.credentialSlots[index]
+            slot.status = status
+            slot.cooldownUntil = cooldownUntil
+            slot.lastStatusMessage = message
+            slot.updatedAt = Date()
+            mutable.credentialSlots[index] = slot
+            return mutable
+        }
+    }
+
+    public func updateCredentialSlotQuota(
+        providerID: String,
+        slotID: String,
+        remainingPercent: Double?,
+        resetsAt: Date?,
+        message: String?
+    ) throws {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            guard let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
+                return mutable
+            }
+            var slot = mutable.credentialSlots[index]
+            slot.lastQuotaRemainingPercent = remainingPercent
+            slot.lastQuotaResetsAt = resetsAt
+            slot.lastStatusMessage = message
+            if slot.isEnabled {
+                if let remainingPercent, remainingPercent <= 0 {
+                    slot.status = .exhausted
+                } else if let cooldownUntil = slot.cooldownUntil, cooldownUntil > Date() {
+                    slot.status = .coolingDown
+                } else {
+                    slot.status = .ready
+                    slot.cooldownUntil = nil
+                }
+            }
+            slot.updatedAt = Date()
+            mutable.credentialSlots[index] = slot
+            return mutable
+        }
+    }
+
     public func resolvedConfigurations() async throws -> [BurnBarResolvedProviderConfiguration] {
         let orderedProviders = try snapshot().providers
             .sorted { catalogSupport.providerSortRank(providerID: $0.providerID) < catalogSupport.providerSortRank(providerID: $1.providerID) }
@@ -178,16 +380,45 @@ public actor BurnBarConfigStore {
 
         for settings in orderedProviders {
             let provider = try catalogSupport.requiredProvider(id: settings.providerID)
-            let secret = try await secretStore.secret(for: settings.providerID)
+            var mutableSettings = settings
+            let legacySecret = try await secretStore.secret(for: settings.providerID)
+            if mutableSettings.credentialSlots.isEmpty,
+               let legacySecret,
+               legacySecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                let migratedSlot = BurnBarProviderCredentialSlot(
+                    slotID: "default",
+                    label: "Default plan",
+                    isEnabled: true,
+                    status: .ready
+                )
+                mutableSettings.credentialSlots = [migratedSlot]
+                mutableSettings.preferredCredentialSlotID = migratedSlot.slotID
+                _ = try upsertProvider(mutableSettings)
+                try await secretStore.setSecret(legacySecret, for: slotSecretStoreKey(providerID: settings.providerID, slotID: migratedSlot.slotID))
+            }
+
+            var resolvedSlots: [BurnBarResolvedProviderConfiguration.ResolvedCredentialSlot] = []
+            resolvedSlots.reserveCapacity(mutableSettings.credentialSlots.count)
+            for slot in mutableSettings.credentialSlots {
+                let key = try await secretStore.secret(for: slotSecretStoreKey(providerID: settings.providerID, slotID: slot.slotID))
+                resolvedSlots.append(.init(slot: slot, apiKey: key))
+            }
+
+            let selectedKey = selectPreferredAPIKey(
+                settings: mutableSettings,
+                resolvedSlots: resolvedSlots,
+                legacySecret: legacySecret
+            )
             resolved.append(
                 BurnBarResolvedProviderConfiguration(
                     provider: provider,
-                    settings: settings,
+                    settings: mutableSettings,
                     preferredModels: catalogSupport.preferredModels(
-                        providerID: settings.providerID,
-                        preferredModelIDs: settings.preferredModelIDs
+                        providerID: mutableSettings.providerID,
+                        preferredModelIDs: mutableSettings.preferredModelIDs
                     ),
-                    apiKey: secret
+                    credentialSlots: resolvedSlots,
+                    apiKey: selectedKey
                 )
             )
         }
@@ -200,6 +431,68 @@ public actor BurnBarConfigStore {
             throw BurnBarConfigStoreError.unsupportedProvider(providerID)
         }
         return configuration
+    }
+
+    private func slotSecretStoreKey(providerID: String, slotID: String) -> String {
+        "\(providerID).slot.\(slotID)"
+    }
+
+    private func mutateProviderSettings(
+        providerID: String,
+        mutate: (BurnBarProviderSettings) -> BurnBarProviderSettings
+    ) throws -> BurnBarProviderSettings {
+        guard BurnBarSupportedProvider.isSupported(providerID: providerID) else {
+            throw BurnBarConfigStoreError.unsupportedProvider(providerID)
+        }
+
+        var currentSnapshot = try snapshot()
+        guard let index = currentSnapshot.providers.firstIndex(where: { $0.providerID == providerID }) else {
+            throw BurnBarConfigStoreError.unsupportedProvider(providerID)
+        }
+
+        let mutatedSettings = mutate(currentSnapshot.providers[index])
+        let normalizedSettings = try normalize(mutatedSettings, defaults: makeDefaultSnapshot())
+        currentSnapshot.providers[index] = normalizedSettings
+        let normalizedSnapshot = try normalize(currentSnapshot, defaults: makeDefaultSnapshot())
+        try persist(normalizedSnapshot)
+        cachedSnapshot = normalizedSnapshot
+        return normalizedSettings
+    }
+
+    private func selectPreferredAPIKey(
+        settings: BurnBarProviderSettings,
+        resolvedSlots: [BurnBarResolvedProviderConfiguration.ResolvedCredentialSlot],
+        legacySecret: String?
+    ) -> String? {
+        let activeSlots = resolvedSlots.filter { resolved in
+            guard resolved.slot.isEnabled else { return false }
+            guard let key = resolved.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
+                return false
+            }
+            if let cooldown = resolved.slot.cooldownUntil, cooldown > Date() {
+                return false
+            }
+            return resolved.slot.status != .exhausted
+                && resolved.slot.status != .missingSecret
+                && resolved.slot.status != .disabled
+        }
+
+        if let preferredSlotID = settings.preferredCredentialSlotID,
+           let preferred = activeSlots.first(where: { $0.slot.slotID == preferredSlotID }) {
+            return preferred.apiKey
+        }
+
+        if let next = activeSlots.sorted(by: {
+            ($0.slot.lastSelectedAt ?? .distantPast) < ($1.slot.lastSelectedAt ?? .distantPast)
+        }).first {
+            return next.apiKey
+        }
+
+        if let legacySecret,
+           !legacySecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return legacySecret
+        }
+        return nil
     }
 
     private func normalize(
@@ -236,12 +529,37 @@ public actor BurnBarConfigStore {
 
         let fallbackModels = defaultSnapshot.providerSettings(id: settings.providerID)?.preferredModelIDs ?? []
         let preferredModelIDs = settings.preferredModelIDs.isEmpty ? fallbackModels : settings.preferredModelIDs
+        let normalizedSlots = settings.credentialSlots.map { slot in
+            BurnBarProviderCredentialSlot(
+                slotID: slot.slotID.trimmingCharacters(in: .whitespacesAndNewlines),
+                label: slot.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Plan" : slot.label.trimmingCharacters(in: .whitespacesAndNewlines),
+                isEnabled: slot.isEnabled,
+                status: slot.isEnabled ? (slot.status == .disabled ? .ready : slot.status) : .disabled,
+                cooldownUntil: slot.cooldownUntil,
+                lastSelectedAt: slot.lastSelectedAt,
+                lastQuotaRemainingPercent: slot.lastQuotaRemainingPercent,
+                lastQuotaResetsAt: slot.lastQuotaResetsAt,
+                lastStatusMessage: slot.lastStatusMessage,
+                updatedAt: slot.updatedAt
+            )
+        }.filter { !$0.slotID.isEmpty }
+
+        let preferredSlotID: String? = {
+            guard let preferred = settings.preferredCredentialSlotID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !preferred.isEmpty,
+                  normalizedSlots.contains(where: { $0.slotID == preferred }) else {
+                return nil
+            }
+            return preferred
+        }()
 
         return BurnBarProviderSettings(
             providerID: settings.providerID,
             isEnabled: settings.isEnabled,
             baseURL: settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
-            preferredModelIDs: preferredModelIDs
+            preferredModelIDs: preferredModelIDs,
+            preferredCredentialSlotID: preferredSlotID,
+            credentialSlots: normalizedSlots
         )
     }
 

@@ -2,6 +2,12 @@
 *.xcodeproj/*
 !*.xcodeproj/project.pbxproj
 !*.xcodeproj/xcshareddata/
+# Embedded workspace holds SwiftPM lockfile — un-ignore parents so Package.resolved can be tracked
+!*.xcodeproj/project.xcworkspace/
+!*.xcodeproj/project.xcworkspace/contents.xcworkspacedata
+!*.xcodeproj/project.xcworkspace/xcshareddata/
+!*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+!*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 *.xcworkspace/*
 !*.xcworkspace/contents.xcworkspacedata
 !*.xcworkspace/xcshareddata/

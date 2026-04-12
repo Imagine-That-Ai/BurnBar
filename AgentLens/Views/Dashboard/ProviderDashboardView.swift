@@ -13,11 +13,10 @@ struct ProviderCard: View {
     private var theme: ProviderTheme { ProviderTheme.theme(for: summary.provider) }
 
     var body: some View {
-        Button(action: onTap) {
-            GlassCard(interactive: true) {
-                HStack(spacing: DesignSystem.Spacing.lg) {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                        Text(String(format: "%02d", rank))
+        GlassCard(interactive: true) {
+            HStack(spacing: DesignSystem.Spacing.lg) {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    Text(String(format: "%02d", rank))
                             .font(DesignSystem.Typography.mono)
                             .foregroundStyle(DesignSystem.Colors.textMuted)
 
@@ -100,9 +99,8 @@ struct ProviderCard: View {
                     }
                 }
                 .padding(DesignSystem.Spacing.lg)
-            }
         }
-        .buttonStyle(.plain)
+        .onTapGesture(perform: onTap)
     }
 
     @ViewBuilder
@@ -158,6 +156,7 @@ struct ProviderDashboardView: View {
     let provider: AgentProvider
     let dataStore: DataStore
     let timeRange: TimeRange
+    var onOpenSessionLog: ((ConversationJumpTarget) -> Void)? = nil
 
     @Bindable private var settingsManager = SettingsManager.shared
     @State private var selectedSession: TokenUsage?
@@ -198,7 +197,7 @@ struct ProviderDashboardView: View {
         }
         .scrollContentBackground(.hidden)
         .sheet(item: $selectedSession) { session in
-            SessionDetailView(session: session, theme: theme, dataStore: dataStore)
+            SessionDetailView(session: session, theme: theme, dataStore: dataStore, onOpenSessionLog: onOpenSessionLog)
         }
     }
 
@@ -343,6 +342,7 @@ struct ProviderDashboardView: View {
                 usages: usages,
                 theme: theme,
                 selectedSession: $selectedSession,
+                onOpenUsage: openUsage,
                 displayMode: settingsManager.usageDisplayMode,
                 showsAgentBadge: false,
                 footerCaption: "Search paths, models, and session ids for \(provider.displayName). Groups use session start time within the range above."
@@ -377,6 +377,45 @@ struct ProviderDashboardView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, DesignSystem.Spacing.xxl)
+    }
+
+    private func openUsage(_ usage: TokenUsage) {
+        guard let target = jumpTarget(for: usage) else {
+            selectedSession = usage
+            return
+        }
+        if let onOpenSessionLog {
+            onOpenSessionLog(target)
+        } else {
+            selectedSession = usage
+        }
+    }
+
+    private func jumpTarget(for usage: TokenUsage) -> ConversationJumpTarget? {
+        guard let conversation = conversationForUsage(usage) else {
+            return nil
+        }
+        let snippet = conversation.summary?.nonEmpty
+            ?? conversation.summaryTitle?.nonEmpty
+            ?? conversation.lastAssistantMessage
+        return ConversationJumpTarget(
+            conversation: conversation,
+            snippet: snippet,
+            startOffset: 0,
+            endOffset: snippet.count,
+            source: .retrieval
+        )
+    }
+
+    private func conversationForUsage(_ usage: TokenUsage) -> ConversationRecord? {
+        let conversationID = ConversationRecord.stableId(provider: usage.provider, sessionId: usage.sessionId)
+        if let conversation = try? dataStore.fetchConversation(id: conversationID) {
+            return conversation
+        }
+
+        return try? dataStore
+            .fetchSessionLogSummaries(limit: 1000)
+            .first(where: { $0.sessionId == usage.sessionId && $0.provider == usage.provider })
     }
 
     private var usages: [TokenUsage] {

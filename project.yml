@@ -72,6 +72,32 @@ targets:
         CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
+    preBuildScripts:
+      - name: Configure Firebase Auth Resources
+        script: |
+          set -euo pipefail
+          SOURCE_PLIST="${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist"
+          DEST_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
+          INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
+
+          if [[ ! -f "${SOURCE_PLIST}" ]]; then
+            echo "warning: GoogleService-Info.plist not found; Google, Apple, and email auth remain disabled."
+            exit 0
+          fi
+
+          /usr/bin/ditto "${SOURCE_PLIST}" "${DEST_PLIST}"
+
+          REVERSED_CLIENT_ID="$(
+            /usr/libexec/PlistBuddy -c "Print :REVERSED_CLIENT_ID" "${SOURCE_PLIST}" 2>/dev/null || true
+          )"
+          if [[ -n "${REVERSED_CLIENT_ID}" ]]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleURLTypes:1:CFBundleURLSchemes:0 ${REVERSED_CLIENT_ID}" "${INFO_PLIST}"
+          fi
+        inputFiles:
+          - $(PROJECT_DIR)/AgentLens/Resources/GoogleService-Info.plist
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist
     dependencies:
       - target: OpenBurnBarDaemonExecutable
         link: false

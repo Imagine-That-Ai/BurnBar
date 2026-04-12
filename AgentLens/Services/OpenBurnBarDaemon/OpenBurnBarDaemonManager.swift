@@ -189,6 +189,10 @@ final class OpenBurnBarDaemonManager {
         service: OpenBurnBarIdentity.controllerRuntimeKeychainService,
         legacyServices: OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
     )
+    private static let providerRuntimeSecrets = KeychainStore(
+        service: OpenBurnBarIdentity.cursorConnectorKeychainService,
+        legacyServices: OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
+    )
 
     private let paths: OpenBurnBarDaemonRuntimePaths
     private let dependencies: OpenBurnBarDaemonDependencies
@@ -288,6 +292,219 @@ final class OpenBurnBarDaemonManager {
         }
     }
 
+    func addProviderCredentialSlot(
+        providerID: String,
+        label: String,
+        apiKey: String
+    ) async {
+        guard case .healthy = status else {
+            lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
+            return
+        }
+
+        await performBusyWork {
+            let normalizedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalizedLabel.isEmpty, !normalizedKey.isEmpty else {
+                throw OpenBurnBarDaemonManagerError.rpcError("Plan label and API key are required.")
+            }
+
+            let slotID = UUID().uuidString
+            let newSlot = BurnBarProviderCredentialSlot(
+                slotID: slotID,
+                label: normalizedLabel,
+                isEnabled: true,
+                status: .ready
+            )
+
+            try await mutateProviderSettingsSnapshot(providerID: providerID) { settings in
+                var mutable = settings
+                mutable.credentialSlots.append(newSlot)
+                if mutable.preferredCredentialSlotID == nil {
+                    mutable.preferredCredentialSlotID = slotID
+                }
+                return mutable
+            }
+
+            try Self.providerRuntimeSecrets.set(
+                normalizedKey,
+                for: slotSecretAccount(providerID: providerID, slotID: slotID)
+            )
+        }
+    }
+
+    func updateProviderCredentialSlot(
+        providerID: String,
+        slotID: String,
+        label: String? = nil,
+        isEnabled: Bool? = nil,
+        apiKey: String? = nil
+    ) async {
+        guard case .healthy = status else {
+            lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
+            return
+        }
+
+        await performBusyWork {
+            try await mutateProviderSettingsSnapshot(providerID: providerID) { settings in
+                var mutable = settings
+                guard let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
+                    throw OpenBurnBarDaemonManagerError.rpcError("Credential slot '\(slotID)' was not found.")
+                }
+
+                var slot = mutable.credentialSlots[index]
+                if let label {
+                    let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        slot.label = trimmed
+                    }
+                }
+                if let isEnabled {
+                    slot.isEnabled = isEnabled
+                    slot.status = isEnabled ? .ready : .disabled
+                    if !isEnabled, mutable.preferredCredentialSlotID == slotID {
+                        mutable.preferredCredentialSlotID = mutable.credentialSlots.first(where: { $0.slotID != slotID && $0.isEnabled })?.slotID
+                    }
+                }
+                slot.updatedAt = Date()
+                mutable.credentialSlots[index] = slot
+                return mutable
+            }
+
+            if let apiKey {
+                let normalizedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                if normalizedKey.isEmpty {
+                    try Self.providerRuntimeSecrets.delete(account: slotSecretAccount(providerID: providerID, slotID: slotID))
+                } else {
+                    try Self.providerRuntimeSecrets.set(
+                        normalizedKey,
+                        for: slotSecretAccount(providerID: providerID, slotID: slotID)
+                    )
+                }
+            }
+        }
+    }
+
+    func removeProviderCredentialSlot(
+        providerID: String,
+        slotID: String
+    ) async {
+        guard case .healthy = status else {
+            lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
+            return
+        }
+
+        await performBusyWork {
+            try await mutateProviderSettingsSnapshot(providerID: providerID) { settings in
+                var mutable = settings
+                mutable.credentialSlots.removeAll { $0.slotID == slotID }
+                if mutable.preferredCredentialSlotID == slotID {
+                    mutable.preferredCredentialSlotID = mutable.credentialSlots.first(where: { $0.isEnabled })?.slotID
+                }
+                return mutable
+            }
+            try Self.providerRuntimeSecrets.delete(account: slotSecretAccount(providerID: providerID, slotID: slotID))
+        }
+    }
+
+    func setPreferredProviderCredentialSlot(
+        providerID: String,
+        slotID: String?
+    ) async {
+        guard case .healthy = status else {
+            lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
+            return
+        }
+
+        await performBusyWork {
+            try await mutateProviderSettingsSnapshot(providerID: providerID) { settings in
+                var mutable = settings
+                if let slotID {
+                    guard mutable.credentialSlots.contains(where: { $0.slotID == slotID }) else {
+                        throw OpenBurnBarDaemonManagerError.rpcError("Credential slot '\(slotID)' was not found.")
+                    }
+                    mutable.preferredCredentialSlotID = slotID
+                } else {
+                    mutable.preferredCredentialSlotID = nil
+                }
+                return mutable
+            }
+        }
+    }
+
+    func refreshProviderCredentialSlotQuotas(providerID: String? = nil) async {
+        guard case .healthy = status else {
+            lastError = "OpenBurnBar daemon must be healthy before refreshing provider plan quotas."
+            return
+        }
+
+        await performBusyWork {
+            let socketURL = paths.socketURL
+            var snapshot = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.config(at: socketURL)
+            }
+
+            var didMutate = false
+            for providerIndex in snapshot.providers.indices {
+                var settings = snapshot.providers[providerIndex]
+                if let providerID, settings.providerID != providerID {
+                    continue
+                }
+                guard let quotaProvider = quotaCapableProvider(for: settings.providerID) else {
+                    continue
+                }
+
+                for slotIndex in settings.credentialSlots.indices {
+                    var slot = settings.credentialSlots[slotIndex]
+                    let account = slotSecretAccount(providerID: settings.providerID, slotID: slot.slotID)
+                    let apiKey = try Self.providerRuntimeSecrets.string(for: account)?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                    if let apiKey, !apiKey.isEmpty {
+                        do {
+                            let quotaSnapshot = try await ProviderQuotaService.shared.fetchSnapshot(
+                                for: quotaProvider,
+                                apiKeyOverride: apiKey
+                            )
+                            let bucket = quotaSnapshot.primaryBucket ?? quotaSnapshot.buckets.first
+                            slot.lastQuotaRemainingPercent = bucket?.remainingPercent
+                            slot.lastQuotaResetsAt = bucket?.resetsAt
+                            slot.lastStatusMessage = quotaSnapshot.statusMessage
+                            if slot.isEnabled {
+                                if let remaining = bucket?.remainingPercent, remaining <= 0 {
+                                    slot.status = .exhausted
+                                } else {
+                                    slot.status = .ready
+                                }
+                                slot.cooldownUntil = nil
+                            }
+                        } catch {
+                            slot.lastStatusMessage = error.localizedDescription
+                            if slot.isEnabled {
+                                slot.status = .coolingDown
+                                slot.cooldownUntil = Calendar.current.date(byAdding: .minute, value: 5, to: Date())
+                            }
+                        }
+                    } else {
+                        slot.status = .missingSecret
+                        slot.lastStatusMessage = "Missing API key"
+                    }
+
+                    slot.updatedAt = Date()
+                    settings.credentialSlots[slotIndex] = slot
+                    didMutate = true
+                }
+
+                snapshot.providers[providerIndex] = settings
+            }
+
+            if didMutate {
+                _ = try await daemonRPC {
+                    try OpenBurnBarDaemonSocketClient.updateConfig(snapshot, at: socketURL)
+                }
+            }
+        }
+    }
+
     func refreshHealth() async {
         exportControllerActivitySnapshot()
         status = .checking
@@ -361,6 +578,38 @@ final class OpenBurnBarDaemonManager {
     private var isInstalled: Bool {
         dependencies.fileManager.fileExists(atPath: paths.launchAgentPlistURL.path)
             || dependencies.fileManager.fileExists(atPath: paths.installedBinaryURL.path)
+    }
+
+    private func mutateProviderSettingsSnapshot(
+        providerID: String,
+        mutate: @escaping (BurnBarProviderSettings) throws -> BurnBarProviderSettings
+    ) async throws {
+        let socketURL = paths.socketURL
+        var snapshot = try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.config(at: socketURL)
+        }
+        guard let index = snapshot.providers.firstIndex(where: { $0.providerID == providerID }) else {
+            throw OpenBurnBarDaemonManagerError.rpcError("Provider '\(providerID)' is not available in daemon config.")
+        }
+        snapshot.providers[index] = try mutate(snapshot.providers[index])
+        _ = try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.updateConfig(snapshot, at: socketURL)
+        }
+    }
+
+    private func slotSecretAccount(providerID: String, slotID: String) -> String {
+        "provider.\(providerID).slot.\(slotID).apiKey"
+    }
+
+    private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
+        switch providerID.lowercased() {
+        case "minimax":
+            return .minimax
+        case "zai":
+            return .zai
+        default:
+            return nil
+        }
     }
 
     private func performBusyWork(_ operation: () async throws -> Void) async {
@@ -877,10 +1126,13 @@ final class OpenBurnBarDaemonManager {
         let start = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date().addingTimeInterval(-7 * 24 * 60 * 60)
         let recentUsages = dataStore.usages(in: start...Date())
 
-        let allProjectNames = Set(
-            conversations.map(\.projectName).filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
-            + recentUsages.map(\.projectName).filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
-        )
+        let conversationProjects = conversations.map(\.projectName).filter {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+        let usageProjects = recentUsages.map(\.projectName).filter {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+        let allProjectNames = Set(conversationProjects + usageProjects)
 
         let projects = allProjectNames.compactMap { projectName -> BurnBarControllerActivityProject? in
             let slug = Self.slug(for: projectName)
@@ -1085,11 +1337,27 @@ enum OpenBurnBarDaemonBinaryResolver {
 
 
 struct OpenBurnBarDaemonProviderConfiguration: Equatable, Identifiable {
+    struct CredentialSlot: Equatable, Identifiable {
+        let slotID: String
+        let label: String
+        let isEnabled: Bool
+        let status: BurnBarProviderCredentialSlotStatus
+        let cooldownUntil: Date?
+        let lastSelectedAt: Date?
+        let lastQuotaRemainingPercent: Double?
+        let lastQuotaResetsAt: Date?
+        let lastStatusMessage: String?
+
+        var id: String { slotID }
+    }
+
     let providerID: String
     let provider: AgentProvider
     let isEnabled: Bool
     let baseURL: String
     let preferredModelIDs: [String]
+    let preferredCredentialSlotID: String?
+    let credentialSlots: [CredentialSlot]
 
     var id: String { providerID }
     var displayName: String { provider.displayName }
@@ -1185,10 +1453,15 @@ final class OpenBurnBarDaemonUsageSyncService {
             return BurnBarProviderConfigurationSnapshot(providers: [])
         }
 
-        guard
-            let data = try? Data(contentsOf: paths.providerConfigURL),
-            let snapshot = try? decoder.decode(StoredProviderConfigurationSnapshot.self, from: data)
-        else {
+        guard let data = try? Data(contentsOf: paths.providerConfigURL) else {
+            return BurnBarProviderConfigurationSnapshot(providers: [])
+        }
+
+        if let directSnapshot = try? decoder.decode(BurnBarProviderConfigurationSnapshot.self, from: data) {
+            return directSnapshot
+        }
+
+        guard let snapshot = try? decoder.decode(StoredProviderConfigurationSnapshot.self, from: data) else {
             return BurnBarProviderConfigurationSnapshot(providers: [])
         }
 
@@ -1198,7 +1471,9 @@ final class OpenBurnBarDaemonUsageSyncService {
                     providerID: settings.providerID,
                     isEnabled: settings.isEnabled,
                     baseURL: settings.baseURL,
-                    preferredModelIDs: settings.preferredModelIDs
+                    preferredModelIDs: settings.preferredModelIDs,
+                    preferredCredentialSlotID: settings.preferredCredentialSlotID,
+                    credentialSlots: settings.credentialSlots
                 )
             }
         )
@@ -1215,7 +1490,21 @@ final class OpenBurnBarDaemonUsageSyncService {
                     provider: provider,
                     isEnabled: settings.isEnabled,
                     baseURL: settings.baseURL,
-                    preferredModelIDs: settings.preferredModelIDs
+                    preferredModelIDs: settings.preferredModelIDs,
+                    preferredCredentialSlotID: settings.preferredCredentialSlotID,
+                    credentialSlots: settings.credentialSlots.map { slot in
+                        OpenBurnBarDaemonProviderConfiguration.CredentialSlot(
+                            slotID: slot.slotID,
+                            label: slot.label,
+                            isEnabled: slot.isEnabled,
+                            status: slot.status,
+                            cooldownUntil: slot.cooldownUntil,
+                            lastSelectedAt: slot.lastSelectedAt,
+                            lastQuotaRemainingPercent: slot.lastQuotaRemainingPercent,
+                            lastQuotaResetsAt: slot.lastQuotaResetsAt,
+                            lastStatusMessage: slot.lastStatusMessage
+                        )
+                    }
                 )
             }
             .sorted { providerSortOrder($0.provider) < providerSortOrder($1.provider) }
@@ -1362,6 +1651,27 @@ private struct StoredProviderSettings: Codable {
     let isEnabled: Bool
     let baseURL: String
     let preferredModelIDs: [String]
+    let preferredCredentialSlotID: String?
+    let credentialSlots: [BurnBarProviderCredentialSlot]
+
+    private enum CodingKeys: String, CodingKey {
+        case providerID
+        case isEnabled
+        case baseURL
+        case preferredModelIDs
+        case preferredCredentialSlotID
+        case credentialSlots
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        providerID = try container.decode(String.self, forKey: .providerID)
+        isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
+        baseURL = try container.decode(String.self, forKey: .baseURL)
+        preferredModelIDs = try container.decode([String].self, forKey: .preferredModelIDs)
+        preferredCredentialSlotID = try container.decodeIfPresent(String.self, forKey: .preferredCredentialSlotID)
+        credentialSlots = try container.decodeIfPresent([BurnBarProviderCredentialSlot].self, forKey: .credentialSlots) ?? []
+    }
 }
 
 private struct StoredUsageRecord: Codable {

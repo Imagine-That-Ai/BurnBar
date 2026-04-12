@@ -1,5 +1,5 @@
 import XCTest
-import OpenBurnBarCore
+@testable import OpenBurnBarCore
 @testable import OpenBurnBar
 
 // MARK: - Test Seam Helpers
@@ -21,6 +21,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
     override func tearDown() {
         // Always reset seams after each test to avoid cross-test contamination
         CLILaunchAdapter.executableResolver = nil
+        CLILaunchAdapter.environmentProvider = { ProcessInfo.processInfo.environment }
+        CLILaunchAdapter.homeDirectoryProvider = { FileManager.default.homeDirectoryForCurrentUser.path }
         CLILaunchInvoker.launchHandler = nil
         super.tearDown()
     }
@@ -69,6 +71,66 @@ final class SwitcherCLILaunchTests: XCTestCase {
             XCTAssertTrue(available == true || available == false,
                 "isExecutableAvailable should return a boolean for \(cliType.displayName)")
         }
+    }
+
+    func test_resolveExecutable_expandsDollarHOMETrustedPaths() throws {
+        let tempHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempHome, withIntermediateDirectories: true, attributes: nil)
+        defer { try? FileManager.default.removeItem(at: tempHome) }
+
+        let executablePath = tempHome
+            .appendingPathComponent(".opencode/bin/opencode", isDirectory: false)
+            .path
+        try FileManager.default.createDirectory(
+            atPath: URL(fileURLWithPath: executablePath).deletingLastPathComponent().path,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        let cleanup = makeTempExecutable(at: executablePath)
+        defer { cleanup() }
+
+        CLILaunchAdapter.homeDirectoryProvider = { tempHome.path }
+        CLILaunchAdapter.environmentProvider = { [:] }
+
+        XCTAssertEqual(
+            CLILaunchAdapter.resolveExecutable(for: .opencode)?.path,
+            executablePath
+        )
+    }
+
+    func test_resolveExecutable_findsCursorManagedCodexBinary() throws {
+        let tempHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempHome, withIntermediateDirectories: true, attributes: nil)
+        defer { try? FileManager.default.removeItem(at: tempHome) }
+
+        let executablePath = tempHome
+            .appendingPathComponent(
+                ".cursor/extensions/openai.chatgpt-test/bin/macos-aarch64/codex",
+                isDirectory: false
+            )
+            .path
+        try FileManager.default.createDirectory(
+            atPath: URL(fileURLWithPath: executablePath).deletingLastPathComponent().path,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        let cleanup = makeTempExecutable(at: executablePath)
+        defer { cleanup() }
+
+        CLILaunchAdapter.homeDirectoryProvider = { tempHome.path }
+        CLILaunchAdapter.environmentProvider = {
+            [
+                "HOME": tempHome.path,
+                "SHELL": "/bin/zsh",
+            ]
+        }
+
+        XCTAssertEqual(
+            CLILaunchAdapter.resolveExecutable(for: .codex)?.path,
+            executablePath
+        )
     }
 
     // MARK: - Working Directory Validation

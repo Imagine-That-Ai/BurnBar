@@ -73,6 +73,25 @@ final class BurnBarConfigStoreTests: XCTestCase {
         }
     }
 
+    func testResolvedConfigurationMigratesLegacySecretToDefaultSlot() async throws {
+        let harness = try makeHarness(name: "legacy-migration")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+        try await harness.configStore.setSecret("legacy-zai-key", for: "zai")
+
+        let configuration = try await harness.configStore.resolvedConfiguration(for: "zai")
+        XCTAssertEqual(configuration.credentialSlots.count, 1)
+        XCTAssertEqual(configuration.credentialSlots.first?.slot.slotID, "default")
+        XCTAssertEqual(configuration.credentialSlots.first?.apiKey, "legacy-zai-key")
+        XCTAssertEqual(configuration.settings.preferredCredentialSlotID, "default")
+    }
+
     private func makeHarness(name: String) throws -> BurnBarConfigStoreHarness {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-config-store-\(name)-\(UUID().uuidString)", isDirectory: true)

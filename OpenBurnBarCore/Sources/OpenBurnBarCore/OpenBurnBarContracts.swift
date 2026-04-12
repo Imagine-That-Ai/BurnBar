@@ -518,11 +518,60 @@ public struct BurnBarCatalogResponse: Codable, Hashable, Sendable {
     }
 }
 
+public enum BurnBarProviderCredentialSlotStatus: String, Codable, CaseIterable, Hashable, Sendable {
+    case ready
+    case coolingDown
+    case exhausted
+    case disabled
+    case missingSecret
+}
+
+public struct BurnBarProviderCredentialSlot: Codable, Hashable, Identifiable, Sendable {
+    public let slotID: String
+    public var label: String
+    public var isEnabled: Bool
+    public var status: BurnBarProviderCredentialSlotStatus
+    public var cooldownUntil: Date?
+    public var lastSelectedAt: Date?
+    public var lastQuotaRemainingPercent: Double?
+    public var lastQuotaResetsAt: Date?
+    public var lastStatusMessage: String?
+    public var updatedAt: Date
+
+    public var id: String { slotID }
+
+    public init(
+        slotID: String = UUID().uuidString,
+        label: String,
+        isEnabled: Bool = true,
+        status: BurnBarProviderCredentialSlotStatus = .ready,
+        cooldownUntil: Date? = nil,
+        lastSelectedAt: Date? = nil,
+        lastQuotaRemainingPercent: Double? = nil,
+        lastQuotaResetsAt: Date? = nil,
+        lastStatusMessage: String? = nil,
+        updatedAt: Date = Date()
+    ) {
+        self.slotID = slotID
+        self.label = label
+        self.isEnabled = isEnabled
+        self.status = status
+        self.cooldownUntil = cooldownUntil
+        self.lastSelectedAt = lastSelectedAt
+        self.lastQuotaRemainingPercent = lastQuotaRemainingPercent
+        self.lastQuotaResetsAt = lastQuotaResetsAt
+        self.lastStatusMessage = lastStatusMessage
+        self.updatedAt = updatedAt
+    }
+}
+
 public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable {
     public let providerID: String
     public var isEnabled: Bool
     public var baseURL: String
     public var preferredModelIDs: [String]
+    public var preferredCredentialSlotID: String?
+    public var credentialSlots: [BurnBarProviderCredentialSlot]
 
     public var id: String { providerID }
 
@@ -530,12 +579,35 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         providerID: String,
         isEnabled: Bool = false,
         baseURL: String,
-        preferredModelIDs: [String]
+        preferredModelIDs: [String],
+        preferredCredentialSlotID: String? = nil,
+        credentialSlots: [BurnBarProviderCredentialSlot] = []
     ) {
         self.providerID = providerID
         self.isEnabled = isEnabled
         self.baseURL = baseURL
         self.preferredModelIDs = preferredModelIDs
+        self.preferredCredentialSlotID = preferredCredentialSlotID
+        self.credentialSlots = credentialSlots
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case providerID
+        case isEnabled
+        case baseURL
+        case preferredModelIDs
+        case preferredCredentialSlotID
+        case credentialSlots
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        providerID = try container.decode(String.self, forKey: .providerID)
+        isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
+        baseURL = try container.decode(String.self, forKey: .baseURL)
+        preferredModelIDs = try container.decode([String].self, forKey: .preferredModelIDs)
+        preferredCredentialSlotID = try container.decodeIfPresent(String.self, forKey: .preferredCredentialSlotID)
+        credentialSlots = try container.decodeIfPresent([BurnBarProviderCredentialSlot].self, forKey: .credentialSlots) ?? []
     }
 }
 

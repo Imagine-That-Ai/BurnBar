@@ -281,6 +281,11 @@ final class SettingsManager {
         didSet { save() }
     }
 
+    /// User completed the switcher profile onboarding wizard.
+    var switcherOnboardingCompleted: Bool {
+        didSet { save() }
+    }
+
     /// Comma-separated `AgentProvider.rawValue` list — providers the user selected during onboarding.
     var selectedOnboardingProvidersCSV: String {
         didSet { save() }
@@ -629,6 +634,7 @@ final class SettingsManager {
         )
         self.hermesChatModelOverride = defaults.string(forKey: "hermesChatModelOverride") ?? ""
         self.chatBackendOnboardingCompleted = defaults.bool(forKey: "chatBackendOnboardingCompleted")
+        self.switcherOnboardingCompleted = defaults.bool(forKey: "switcherOnboardingCompleted")
         self.selectedOnboardingProvidersCSV = defaults.string(forKey: "selectedOnboardingProvidersCSV") ?? ""
 
         if defaults.object(forKey: "enabledChatBackendIDsCSV") != nil {
@@ -811,6 +817,7 @@ final class SettingsManager {
         defaults.set(openClawGatewayBaseURL, forKey: "openClawGatewayBaseURL")
         defaults.set(hermesChatModelOverride, forKey: "hermesChatModelOverride")
         defaults.set(chatBackendOnboardingCompleted, forKey: "chatBackendOnboardingCompleted")
+        defaults.set(switcherOnboardingCompleted, forKey: "switcherOnboardingCompleted")
         defaults.set(selectedOnboardingProvidersCSV, forKey: "selectedOnboardingProvidersCSV")
         defaults.set(enabledChatBackendIDsCSV, forKey: "enabledChatBackendIDsCSV")
         defaults.set(usageDisplayMode.rawValue, forKey: "usageDisplayMode")

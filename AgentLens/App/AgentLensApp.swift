@@ -69,6 +69,8 @@ final class WindowManager: ObservableObject {
     private var dashboardWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
+    private var hermesSetupWindow: NSWindow?
+    private var switcherOnboardingWindow: NSWindow?
 
     func openDashboard(
         dataStore: DataStore,
@@ -207,6 +209,88 @@ final class WindowManager: ObservableObject {
         window.isReleasedWhenClosed = false
 
         onboardingWindow = window
+    }
+
+    func openHermesSetupWizard(
+        settingsManager: SettingsManager,
+        chatController: ChatSessionController?
+    ) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        if let window = hermesSetupWindow {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let contentView = HermesSetupWizardView(
+            settingsManager: settingsManager,
+            chatController: chatController,
+            onDismiss: { [weak self] in
+                self?.hermesSetupWindow?.close()
+                self?.hermesSetupWindow = nil
+            }
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 580),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Set up Hermes"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = NSColor(DesignSystem.Colors.background)
+        window.contentView = NSHostingView(rootView: contentView)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        window.isReleasedWhenClosed = false
+
+        hermesSetupWindow = window
+    }
+
+    func openSwitcherOnboardingWizard(
+        dataStore: DataStore,
+        settingsManager: SettingsManager,
+        onOpenSettings: @escaping () -> Void
+    ) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        if let window = switcherOnboardingWindow {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let contentView = SwitcherOnboardingWizardView(
+            dataStore: dataStore,
+            settingsManager: settingsManager,
+            onDismiss: { [weak self] in
+                self?.switcherOnboardingWindow?.close()
+                self?.switcherOnboardingWindow = nil
+            },
+            onOpenSettings: { [weak self] in
+                self?.switcherOnboardingWindow?.close()
+                self?.switcherOnboardingWindow = nil
+                onOpenSettings()
+            }
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 620),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Set Up Account Switching"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = NSColor(DesignSystem.Colors.background)
+        window.contentView = NSHostingView(rootView: contentView)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        window.isReleasedWhenClosed = false
+
+        switcherOnboardingWindow = window
     }
 }
 
@@ -432,8 +516,17 @@ struct OpenBurnBarApp: App {
                     }
                     // Probe Hermes availability in the background
                     Task {
-                        await chatController.probeHermesAvailability()
-                        await chatController.probeOpenClawAvailability()
+                        let enabledBackends = Set(settingsManager.enabledChatBackends)
+                        if enabledBackends.contains(.hermes) || chatController.chatBackend == .hermes {
+                            await chatController.probeHermesAvailability()
+                        } else {
+                            chatController.hermesAvailable = false
+                        }
+                        if enabledBackends.contains(.openclaw) || chatController.chatBackend == .openclaw {
+                            await chatController.probeOpenClawAvailability()
+                        } else {
+                            chatController.openClawAvailable = false
+                        }
                         await OpenBurnBarDaemonManager.shared.refreshHealth()
                         await operatingLayer.refreshControllerRuntime()
                     }
@@ -526,8 +619,9 @@ struct MenuBarLabel: View {
         .overlay(alignment: .topTrailing) {
             Group {
                 if isRefreshing {
-                    ProgressView()
-                        .controlSize(.mini)
+                    AnimatedMiningPickView()
+                        .frame(width: 14, height: 14)
+                        .clipShape(.circle)
                         .scaleEffect(0.5)
                         .offset(x: 3, y: -3)
                 } else if showCostIncrease {

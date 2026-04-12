@@ -35,6 +35,15 @@ struct ChatPanel: View {
             brief = controller.buildInsightBriefSnapshot(refreshRollups: false)
             controller.loadPersistedMessages()
             controller.reclampPanelOffset(container: containerSize, padding: edgePadding)
+            Task {
+                let enabled = settingsManager.enabledChatBackends
+                if enabled.contains(.hermes) {
+                    await controller.probeHermesAvailability()
+                }
+                if enabled.contains(.openclaw) {
+                    await controller.probeOpenClawAvailability()
+                }
+            }
         }
         .onChange(of: dataStore.lastRefresh) { _, _ in
             Task { @MainActor in
@@ -53,6 +62,19 @@ struct ChatPanel: View {
         }
         .onChange(of: settingsManager.enabledChatBackendIDsCSV) { _, _ in
             controller.syncChatBackendWithEnabledBackends()
+            Task {
+                let enabled = settingsManager.enabledChatBackends
+                if enabled.contains(.hermes) {
+                    await controller.probeHermesAvailability()
+                } else {
+                    controller.hermesAvailable = false
+                }
+                if enabled.contains(.openclaw) {
+                    await controller.probeOpenClawAvailability()
+                } else {
+                    controller.openClawAvailable = false
+                }
+            }
         }
         .onChange(of: containerSize) { _, new in
             controller.reclampPanelOffset(container: new, padding: edgePadding)

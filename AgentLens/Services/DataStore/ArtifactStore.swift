@@ -32,18 +32,22 @@ final class ArtifactStore {
             let existing = existingRow.flatMap(Self.sourceArtifact(from:))
 
             if let existing {
-                let isUnchanged =
-                    existing.status == .active
-                    && existing.sourceKind == artifact.sourceKind
-                    && existing.canonicalPath == artifact.canonicalPath
+                let pathsMatch =
+                    existing.canonicalPath == artifact.canonicalPath
                     && existing.rootPath == artifact.rootPath
                     && existing.relativePath == artifact.relativePath
-                    && existing.provenance == artifact.provenance
+                let textMatch =
+                    existing.provenance == artifact.provenance
                     && existing.title == artifact.title
                     && existing.body == artifact.body
                     && existing.contentHash == artifact.contentHash
-                    && existing.fileSizeBytes == artifact.fileSizeBytes
+                let fileMatch =
+                    existing.fileSizeBytes == artifact.fileSizeBytes
                     && existing.fileModifiedAt == artifact.fileModifiedAt
+                let isUnchanged =
+                    existing.status == .active
+                    && existing.sourceKind == artifact.sourceKind
+                    && pathsMatch && textMatch && fileMatch
 
                 if isUnchanged {
                     try db.execute(

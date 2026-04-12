@@ -954,21 +954,27 @@ final class ConversationStore {
         resolvedSummaryProvider: String?,
         resolvedSummaryModel: String?
     ) -> Bool {
-        let coreUnchanged =
+        let identityMatch =
             existing.provider == incoming.provider
             && existing.sessionId == incoming.sessionId
             && existing.projectName == incoming.projectName
-            && existing.startTime == incoming.startTime
+        let timingMatch =
+            existing.startTime == incoming.startTime
             && existing.endTime == incoming.endTime
-            && existing.messageCount == incoming.messageCount
+        let countsMatch =
+            existing.messageCount == incoming.messageCount
             && existing.userWordCount == incoming.userWordCount
             && existing.assistantWordCount == incoming.assistantWordCount
-            && existing.keyFiles == incoming.keyFiles
+        let keysMatch =
+            existing.keyFiles == incoming.keyFiles
             && existing.keyCommands == incoming.keyCommands
             && existing.keyTools == incoming.keyTools
-            && existing.inferredTaskTitle == incoming.inferredTaskTitle
+        let textMatch =
+            existing.inferredTaskTitle == incoming.inferredTaskTitle
             && existing.lastAssistantMessage == incoming.lastAssistantMessage
             && existing.fullText == incoming.fullText
+        let coreUnchanged =
+            identityMatch && timingMatch && countsMatch && keysMatch && textMatch
 
         let summaryUnchanged =
             existing.summary == resolvedSummary

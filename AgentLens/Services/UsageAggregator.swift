@@ -71,9 +71,9 @@ final class UsageAggregator {
     private enum ProjectionWorkerPolicy {
         /// Process indexing incrementally to keep UI work responsive.
         static let maxJobsPerPass = 8
-        static let catchUpMaxJobsPerPass = 20
+        static let catchUpMaxJobsPerPass = 64
         /// Small delay between backlog passes to reduce CPU pressure.
-        static let backlogDelayNanoseconds: UInt64 = 500_000_000
+        static let backlogDelayNanoseconds: UInt64 = 100_000_000
         /// Coalesce rapid-fire queue requests.
         static let coalesceDelayNanoseconds: UInt64 = 750_000_000
         /// Avoid rebuilding workflow insights on every tiny pass.
@@ -205,6 +205,7 @@ final class UsageAggregator {
         let parsePhaseStartedAt = Date()
         var allUsages: [TokenUsage] = []
         var indexedConversationChanges = 0
+        var provisionalUsageMap = Dictionary(uniqueKeysWithValues: dataStore.usages.map { ($0.id, $0) })
 
         let parserEntries = parsers.sorted { $0.key.rawValue < $1.key.rawValue }
         for (provider, parser) in parserEntries {
@@ -224,6 +225,13 @@ final class UsageAggregator {
                     }
                 }
                 parserHealth[provider] = providerHealth
+                if usages.isEmpty == false {
+                    for usage in usages {
+                        provisionalUsageMap[usage.id] = usage
+                    }
+                    dataStore.replaceUsages(Array(provisionalUsageMap.values))
+                    lastRefresh = Date()
+                }
             } catch {
                 parserHealth[provider] = .failed(error: error.localizedDescription)
                 errors[provider] = error.localizedDescription

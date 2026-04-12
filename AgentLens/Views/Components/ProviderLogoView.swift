@@ -14,7 +14,11 @@ struct ProviderLogoView: View {
 
     var body: some View {
         Group {
-            if let logoURL = provider.logoURL {
+            if let assetName = provider.bundledLogoName {
+                Image(assetName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else if let logoURL = provider.logoURL {
                 AsyncImage(url: logoURL) { phase in
                     switch phase {
                     case .empty:

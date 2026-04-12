@@ -1,8 +1,11 @@
 import SwiftUI
+import OpenBurnBarCore
 
 struct ProvidersSettingsView: View {
     @Bindable var settingsManager: SettingsManager
     @Bindable var daemonManager: OpenBurnBarDaemonManager
+
+    @State private var wizardProviderID: ProviderWizardTarget?
 
     private var providers: [AgentProvider] {
         AgentProvider.allCases.sorted { $0.displayName < $1.displayName }
@@ -37,17 +40,7 @@ struct ProvidersSettingsView: View {
                                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                         } else {
                             ForEach(daemonManager.providerConfigurations) { configuration in
-                                RoutedProviderRow(
-                                    configuration: configuration,
-                                    onToggle: { enabled in
-                                        Task {
-                                            await daemonManager.updateProviderConfiguration(
-                                                providerID: configuration.providerID,
-                                                isEnabled: enabled
-                                            )
-                                        }
-                                    }
-                                )
+                                providerCard(configuration)
 
                                 if configuration.id != daemonManager.providerConfigurations.last?.id {
                                     Divider().background(DesignSystem.Colors.border)
@@ -81,45 +74,95 @@ struct ProvidersSettingsView: View {
         }
         .background(DesignSystem.Colors.background)
         .scrollContentBackground(.hidden)
+        .sheet(item: $wizardProviderID) { target in
+            ProviderPlanWizardView(
+                daemonManager: daemonManager,
+                initialProviderID: target.providerID
+            ) {
+                wizardProviderID = nil
+            }
+        }
+    }
+
+    // MARK: - Provider Card
+
+    @ViewBuilder
+    private func providerCard(_ config: OpenBurnBarDaemonProviderConfiguration) -> some View {
+        Button {
+            wizardProviderID = ProviderWizardTarget(providerID: config.providerID)
+        } label: {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                ProviderLogoView(provider: config.provider, size: 28, useFallbackColor: false)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Text(config.displayName)
+                            .font(DesignSystem.Typography.headline)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                        if config.isEnabled == false {
+                            Text("Off")
+                                .font(DesignSystem.Typography.tiny)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(DesignSystem.Colors.textMuted.opacity(0.15))
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    if config.credentialSlots.isEmpty {
+                        Text("No plans configured")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    } else {
+                        HStack(spacing: DesignSystem.Spacing.sm) {
+                            ForEach(config.credentialSlots) { slot in
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(slotStatusColor(for: slot.status))
+                                        .frame(width: 6, height: 6)
+                                    Text(slot.label)
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                    if let pct = slot.lastQuotaRemainingPercent {
+                                        Text("\(Int(pct.rounded()))%")
+                                            .font(DesignSystem.Typography.monoTiny)
+                                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(DesignSystem.Spacing.md)
+            .background(DesignSystem.Colors.surfaceElevated.opacity(0.3))
+            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func slotStatusColor(for status: BurnBarProviderCredentialSlotStatus) -> Color {
+        switch status {
+        case .ready: return DesignSystem.Colors.success
+        case .coolingDown: return DesignSystem.Colors.warning
+        case .exhausted, .missingSecret: return DesignSystem.Colors.error
+        case .disabled: return DesignSystem.Colors.textMuted
+        }
     }
 }
 
-private struct RoutedProviderRow: View {
-    let configuration: OpenBurnBarDaemonProviderConfiguration
-    let onToggle: (Bool) -> Void
+// MARK: - Wizard Sheet Target
 
-    var body: some View {
-        HStack(spacing: DesignSystem.Spacing.md) {
-            ProviderLogoView(provider: configuration.provider, size: 20, useFallbackColor: false)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(configuration.displayName)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text(configuration.baseURL)
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                if configuration.preferredModelIDs.isEmpty == false {
-                    Text(configuration.preferredModelIDs.joined(separator: ", "))
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .lineLimit(2)
-                }
-            }
-
-            Spacer()
-
-            Toggle(
-                "",
-                isOn: Binding(
-                    get: { configuration.isEnabled },
-                    set: onToggle
-                )
-            )
-            .labelsHidden()
-            .toggleStyle(SwitchToggleStyle(tint: DesignSystem.Colors.blaze))
-        }
-    }
+private struct ProviderWizardTarget: Identifiable {
+    let providerID: String
+    var id: String { providerID }
 }
 
 private struct ProviderObservationRow: View {

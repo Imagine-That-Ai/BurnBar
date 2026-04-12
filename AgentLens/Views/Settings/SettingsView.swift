@@ -1,7 +1,6 @@
 import AppKit
 import AuthenticationServices
 import OpenBurnBarCore
-@preconcurrency import FirebaseAuth
 import SwiftUI
 
 // MARK: - Settings View
@@ -82,30 +81,31 @@ struct SettingsView: View {
                 .navigationTitle("Daemon")
         case .account:
             AccountSettingsView(
-                currentUser: Auth.auth().currentUser,
-                isAnonymous: Auth.auth().currentUser?.isAnonymous ?? true,
+                currentUser: accountManager.currentUser,
+                isAnonymous: accountManager.isAnonymousUser,
+                isFirebaseAvailable: accountManager.isFirebaseAvailable,
                 onLinkGoogle: {
-                    Task { @MainActor in
-                        guard let window = NSApp.keyWindow else { return }
-                        try? await accountManager.signInWithGoogle(presentingWindow: window)
+                    guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
+                        throw AccountActionError.missingPresentationWindow
                     }
+                    try await accountManager.signInWithGoogle(presentingWindow: window)
                 },
-                onLinkEmail: { email, password in
-                    Task { @MainActor in
-                        try? await Auth.auth().signIn(withEmail: email, password: password)
-                    }
+                onEmailSignIn: { email, password in
+                    try await accountManager.signInWithEmail(email: email, password: password)
+                },
+                onEmailSignUp: { email, password in
+                    try await accountManager.signUpWithEmail(email: email, password: password)
                 },
                 onLinkApple: {
-                    Task { @MainActor in
-                        guard let window = NSApp.keyWindow else { return }
-                        try? await accountManager.signInWithApple(presentingWindow: window)
+                    guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
+                        throw AccountActionError.missingPresentationWindow
                     }
+                    try await accountManager.signInWithApple(presentingWindow: window)
                 },
                 onUpgradeToPremium: {},
                 onDeleteAccount: {
                     Task { @MainActor in
-                        guard let user = Auth.auth().currentUser else { return }
-                        try? await user.delete()
+                        try? await accountManager.deleteCurrentUser()
                     }
                 },
                 onSignOut: {
@@ -125,6 +125,17 @@ struct SettingsView: View {
         case .switcher:
             AccountSwitcherSettingsView(dataStore: dataStore)
                 .navigationTitle("Account Switcher")
+        }
+    }
+}
+
+private enum AccountActionError: LocalizedError {
+    case missingPresentationWindow
+
+    var errorDescription: String? {
+        switch self {
+        case .missingPresentationWindow:
+            return "OpenBurnBar could not find a window to present the sign-in flow."
         }
     }
 }

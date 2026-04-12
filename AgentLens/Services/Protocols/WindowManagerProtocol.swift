@@ -74,6 +74,19 @@ protocol WindowManagerProtocol: AnyObject {
         chatController: ChatSessionController?,
         onOpenDashboard: @escaping () -> Void
     )
+
+    // MARK: - Switcher Onboarding Wizard
+
+    /// Opens the account switcher onboarding wizard window.
+    /// - Parameters:
+    ///   - dataStore: The data store instance.
+    ///   - settingsManager: The settings manager.
+    ///   - onOpenSettings: Closure called when user wants to open settings.
+    func openSwitcherOnboardingWizard(
+        dataStore: DataStore,
+        settingsManager: SettingsManager,
+        onOpenSettings: @escaping () -> Void
+    )
 }
 
 // MARK: - WindowManager Extension

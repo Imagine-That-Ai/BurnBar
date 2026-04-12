@@ -169,6 +169,31 @@ struct AccountSwitcherSettingsView: View {
                 .frame(maxWidth: .infinity)
             }
 
+            // Setup wizard button
+            Button {
+                WindowManager.shared.openSwitcherOnboardingWizard(
+                    dataStore: dataStore,
+                    settingsManager: SettingsManager.shared,
+                    onOpenSettings: {}
+                )
+            } label: {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                    Text("Setup Wizard")
+                }
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.amber)
+                .padding(.horizontal, DesignSystem.Spacing.lg)
+                .padding(.vertical, DesignSystem.Spacing.sm)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .strokeBorder(DesignSystem.Colors.amber, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open profile setup wizard")
+
             // Supported targets section (VAL-SETTINGS-002)
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                 Text("Supported Targets")

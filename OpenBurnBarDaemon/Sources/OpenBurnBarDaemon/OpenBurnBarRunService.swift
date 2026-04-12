@@ -739,6 +739,36 @@ public actor BurnBarRunService {
                 try await writeCheckpoint(for: run)
             }
         } catch {
+            if shouldFailOverProviderError(error) {
+                let currentRoute = run.route
+                let excludedRouteKey = router.routeKey(
+                    providerID: currentRoute.providerID,
+                    slotID: currentRoute.credentialSlotID
+                )
+                if let fallbackRoute = try? await router.route(
+                    modelName: run.modelID,
+                    excludedRouteKeys: [excludedRouteKey]
+                ) {
+                    await router.markRouteFailure(currentRoute, error: error)
+                    run.route = fallbackRoute
+                    try await appendJournalEvent(
+                        BurnBarRunJournalEvent(
+                            runID: run.runID,
+                            kind: .recoveryDecided,
+                            phase: run.snapshot.phase,
+                            payload: .object([
+                                "strategy": .string("provider_failover"),
+                                "from_route": .string(excludedRouteKey),
+                                "to_route": .string(router.routeKey(providerID: fallbackRoute.providerID, slotID: fallbackRoute.credentialSlotID))
+                            ]),
+                            emittedAt: Date()
+                        )
+                    )
+                    try await runAgentLoop(for: &run)
+                    return
+                }
+            }
+
             let recoveryDecision = recoveryEngine.decideLoopFailure(error)
             run.lastRecoveryDecision = recoveryDecision
             try await appendJournalEvent(
@@ -1250,53 +1280,97 @@ public actor BurnBarRunService {
 
     private func executeProviderOnlyRun(for run: inout BurnBarManagedRun) async throws {
         try transition(&run, to: .modelStreaming)
-        let usageEvent: BurnBarUsageEvent
-        do {
-            let providerResult = try await providerExecutor.complete(
-                prompt: run.originalPrompt,
-                route: run.route
-            )
-            usageEvent = BurnBarUsageEvent(
-                runID: run.runID,
-                providerID: run.route.providerID,
-                modelID: run.route.resolvedModelID,
-                inputTokens: providerResult.inputTokens,
-                outputTokens: providerResult.outputTokens,
-                cacheCreationTokens: providerResult.cacheCreationTokens,
-                cacheReadTokens: providerResult.cacheReadTokens,
-                cost: run.route.pricing.cost(
+        var attemptedRouteKeys: Set<String> = [router.routeKey(providerID: run.route.providerID, slotID: run.route.credentialSlotID)]
+        var candidateRoutes: [BurnBarProviderRoute] = [run.route]
+        let additionalRoutes = (try? await router.candidateRoutes(
+            modelName: run.modelID,
+            excludedRouteKeys: attemptedRouteKeys
+        )) ?? []
+        candidateRoutes.append(contentsOf: additionalRoutes)
+
+        for (index, route) in candidateRoutes.enumerated() {
+            run.route = route
+            do {
+                let providerResult = try await providerExecutor.complete(
+                    prompt: run.originalPrompt,
+                    route: route
+                )
+                await router.markRouteSuccess(route)
+                let usageEvent = BurnBarUsageEvent(
+                    runID: run.runID,
+                    providerID: route.providerID,
+                    modelID: route.resolvedModelID,
                     inputTokens: providerResult.inputTokens,
                     outputTokens: providerResult.outputTokens,
                     cacheCreationTokens: providerResult.cacheCreationTokens,
-                    cacheReadTokens: providerResult.cacheReadTokens
-                ),
-                recordedAt: Date()
-            )
-        } catch {
-            try transition(
-                &run,
-                to: .failed,
-                errorMessage: error.localizedDescription,
-                activeApprovalID: nil
-            )
-            try await appendJournalEvent(
-                BurnBarRunJournalEvent(
-                    runID: run.runID,
-                    kind: .runFailed,
-                    phase: run.snapshot.phase,
-                    payload: .object(["message": .string(error.localizedDescription)]),
-                    emittedAt: Date()
+                    cacheReadTokens: providerResult.cacheReadTokens,
+                    cost: route.pricing.cost(
+                        inputTokens: providerResult.inputTokens,
+                        outputTokens: providerResult.outputTokens,
+                        cacheCreationTokens: providerResult.cacheCreationTokens,
+                        cacheReadTokens: providerResult.cacheReadTokens
+                    ),
+                    recordedAt: Date()
                 )
-            )
-            try await writeCheckpoint(for: run)
-            return
+                try transition(&run, to: .completed, activeApprovalID: nil)
+                _ = try await usageRecorder.record(
+                    usageEvent,
+                    idempotencyKey: "run:\(run.runID.rawValue):attempt:\(run.attempt)"
+                )
+                return
+            } catch {
+                await router.markRouteFailure(route, error: error)
+                let routeKey = router.routeKey(providerID: route.providerID, slotID: route.credentialSlotID)
+                attemptedRouteKeys.insert(routeKey)
+                let canFailOver = shouldFailOverProviderError(error)
+                let hasMoreCandidates = index < candidateRoutes.count - 1
+                if canFailOver && hasMoreCandidates {
+                    continue
+                }
+
+                try transition(
+                    &run,
+                    to: .failed,
+                    errorMessage: error.localizedDescription,
+                    activeApprovalID: nil
+                )
+                try await appendJournalEvent(
+                    BurnBarRunJournalEvent(
+                        runID: run.runID,
+                        kind: .runFailed,
+                        phase: run.snapshot.phase,
+                        payload: .object(["message": .string(error.localizedDescription)]),
+                        emittedAt: Date()
+                    )
+                )
+                try await writeCheckpoint(for: run)
+                return
+            }
+        }
+        throw BurnBarRunServiceError.routeFailed("No provider route was available for execution.")
+    }
+
+    private func shouldFailOverProviderError(_ error: Error) -> Bool {
+        if let providerError = error as? BurnBarProviderExecutorError {
+            switch providerError {
+            case .upstreamError(let statusCode, let body):
+                if statusCode == 429 || statusCode == 401 || statusCode == 403 || statusCode == 402 {
+                    return true
+                }
+                let normalizedBody = body.lowercased()
+                return normalizedBody.contains("quota")
+                    || normalizedBody.contains("rate")
+                    || normalizedBody.contains("insufficient")
+                    || normalizedBody.contains("exhaust")
+            case .invalidBaseURL, .invalidResponse:
+                return false
+            }
         }
 
-        try transition(&run, to: .completed, activeApprovalID: nil)
-        _ = try await usageRecorder.record(
-            usageEvent,
-            idempotencyKey: "run:\(run.runID.rawValue):attempt:\(run.attempt)"
-        )
+        let description = error.localizedDescription.lowercased()
+        return description.contains("quota")
+            || description.contains("rate limit")
+            || description.contains("429")
     }
 }
 

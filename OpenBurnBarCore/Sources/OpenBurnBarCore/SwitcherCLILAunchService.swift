@@ -35,6 +35,8 @@ public enum CLILaunchAdapter {
     /// Injectable resolver for executable availability.
     /// Defaults to real filesystem resolution. Override in tests for deterministic behavior.
     public static var executableResolver: ((_ cliType: SwitcherCLIProfileType) -> URL?)?
+    static var environmentProvider: () -> [String: String] = { ProcessInfo.processInfo.environment }
+    static var homeDirectoryProvider: () -> String = { FileManager.default.homeDirectoryForCurrentUser.path }
 
     // MARK: - Allowlisted Environment Variables
 
@@ -100,37 +102,270 @@ public enum CLILaunchAdapter {
             return resolver(cliType)
         }
 
-        for trustedPathTemplate in cliType.trustedExecutablePaths {
-            // Expand ~ to home directory
-            let expandedPath = expandPath(trustedPathTemplate)
+        let fileManager = FileManager.default
+        let environment = environmentProvider()
+        let homeDirectory = homeDirectoryProvider()
 
-            let fileManager = FileManager.default
-            var isDirectory: ObjCBool = false
-
-            // Check if file exists and is executable
-            guard fileManager.fileExists(atPath: expandedPath, isDirectory: &isDirectory),
-                  !isDirectory.boolValue else {
-                continue
+        for directory in trustedExecutableSearchDirectories(
+            for: cliType,
+            environment: environment,
+            homeDirectory: homeDirectory,
+            fileManager: fileManager
+        ) {
+            let candidatePath = URL(fileURLWithPath: directory)
+                .appendingPathComponent(cliType.executableName)
+                .path
+            if fileManager.isExecutableFile(atPath: candidatePath) {
+                return URL(fileURLWithPath: candidatePath)
             }
+        }
 
-            // Verify it's actually executable
-            guard fileManager.isExecutableFile(atPath: expandedPath) else {
-                continue
-            }
-
-            return URL(fileURLWithPath: expandedPath)
+        if let shellPath = resolveExecutableFromLoginShell(
+            named: cliType.executableName,
+            environment: environment,
+            fileManager: fileManager
+        ), isTrustedResolvedExecutable(
+            shellPath,
+            for: cliType,
+            environment: environment,
+            homeDirectory: homeDirectory,
+            fileManager: fileManager
+        ) {
+            return URL(fileURLWithPath: shellPath)
         }
 
         return nil
     }
 
     /// Expands ~ in paths to the user's home directory.
-    private static func expandPath(_ path: String) -> String {
+    static func expandPath(_ path: String, homeDirectory: String? = nil) -> String {
+        let homeDir = homeDirectory ?? homeDirectoryProvider()
+
+        if path == "~" {
+            return homeDir
+        }
         if path.hasPrefix("~/") {
-            let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
             return homeDir + String(path.dropFirst(1))
         }
+        if path == "$HOME" || path == "${HOME}" {
+            return homeDir
+        }
+        if path.hasPrefix("$HOME/") {
+            return homeDir + "/" + String(path.dropFirst("$HOME/".count))
+        }
+        if path.hasPrefix("${HOME}/") {
+            return homeDir + "/" + String(path.dropFirst("${HOME}/".count))
+        }
         return path
+    }
+
+    static func trustedExecutableSearchDirectories(
+        for cliType: SwitcherCLIProfileType,
+        environment: [String: String],
+        homeDirectory: String,
+        fileManager: FileManager = .default
+    ) -> [String] {
+        let explicitDirectories = cliType.trustedExecutablePaths.map {
+            URL(fileURLWithPath: expandPath($0, homeDirectory: homeDirectory))
+                .deletingLastPathComponent()
+                .path
+        }
+
+        return deduplicatedDirectories(
+            explicitDirectories
+            + standardExecutableSearchDirectories(homeDirectory: homeDirectory)
+            + userManagedExecutableSearchDirectories(homeDirectory: homeDirectory, fileManager: fileManager)
+            + ideManagedExecutableSearchDirectories(homeDirectory: homeDirectory, fileManager: fileManager)
+        )
+    }
+
+    private static func standardExecutableSearchDirectories(homeDirectory: String) -> [String] {
+        [
+            "\(homeDirectory)/.local/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+        ]
+    }
+
+    private static func userManagedExecutableSearchDirectories(
+        homeDirectory: String,
+        fileManager: FileManager = .default
+    ) -> [String] {
+        var directories = [
+            "\(homeDirectory)/.codex/bin",
+            "\(homeDirectory)/.claude/bin",
+            "\(homeDirectory)/.opencode/bin",
+            "\(homeDirectory)/.npm-global/bin",
+            "\(homeDirectory)/.bun/bin",
+            "\(homeDirectory)/.volta/bin",
+            "\(homeDirectory)/.asdf/shims",
+            "\(homeDirectory)/.mise/shims",
+        ]
+
+        directories.append(contentsOf:
+            contentsOfDirectory(
+                atPath: "\(homeDirectory)/.nvm/versions/node",
+                appending: "/bin",
+                fileManager: fileManager
+            )
+        )
+
+        directories.append(contentsOf:
+            contentsOfDirectory(
+                atPath: "\(homeDirectory)/.fnm/node-versions",
+                appending: "/installation/bin",
+                fileManager: fileManager
+            )
+        )
+
+        return directories
+    }
+
+    private static func ideManagedExecutableSearchDirectories(
+        homeDirectory: String,
+        fileManager: FileManager = .default
+    ) -> [String] {
+        let extensionRoots = [
+            "\(homeDirectory)/.cursor/extensions",
+            "\(homeDirectory)/.vscode/extensions",
+            "\(homeDirectory)/.windsurf/extensions",
+        ]
+
+        var directories: [String] = []
+
+        for extensionRoot in extensionRoots {
+            let binDirectories = contentsOfDirectory(
+                atPath: extensionRoot,
+                appending: "/bin",
+                fileManager: fileManager
+            )
+            directories.append(contentsOf: binDirectories)
+
+            for binDirectory in binDirectories {
+                directories.append(contentsOf:
+                    contentsOfDirectory(
+                        atPath: binDirectory,
+                        appending: "",
+                        fileManager: fileManager
+                    )
+                )
+            }
+        }
+
+        return directories
+    }
+
+    private static func isTrustedResolvedExecutable(
+        _ path: String,
+        for cliType: SwitcherCLIProfileType,
+        environment: [String: String],
+        homeDirectory: String,
+        fileManager: FileManager = .default
+    ) -> Bool {
+        guard fileManager.isExecutableFile(atPath: path) else {
+            return false
+        }
+
+        let standardizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
+        let trustedPaths = cliType.trustedExecutablePaths.map {
+            URL(fileURLWithPath: expandPath($0, homeDirectory: homeDirectory)).standardizedFileURL.path
+        }
+        if trustedPaths.contains(standardizedPath) {
+            return true
+        }
+
+        let parentDirectory = URL(fileURLWithPath: standardizedPath)
+            .deletingLastPathComponent()
+            .standardizedFileURL
+            .path
+
+        return trustedExecutableSearchDirectories(
+            for: cliType,
+            environment: environment,
+            homeDirectory: homeDirectory,
+            fileManager: fileManager
+        ).contains(parentDirectory)
+    }
+
+    private static func resolveExecutableFromLoginShell(
+        named name: String,
+        environment: [String: String],
+        fileManager: FileManager = .default
+    ) -> String? {
+        let shellPath = environment["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
+        guard fileManager.isExecutableFile(atPath: shellPath) else {
+            return nil
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: shellPath)
+        process.arguments = ["-lic", "command -v -- \(shellQuoted(name)) 2>/dev/null"]
+        process.environment = environment
+        process.standardInput = FileHandle.nullDevice
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return nil
+        }
+
+        guard process.terminationStatus == 0 else {
+            return nil
+        }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+
+        return output
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .reversed()
+            .first(where: { $0.hasPrefix("/") })
+    }
+
+    private static func contentsOfDirectory(
+        atPath path: String,
+        appending suffix: String,
+        fileManager: FileManager = .default
+    ) -> [String] {
+        guard let entries = try? fileManager.contentsOfDirectory(atPath: path) else {
+            return []
+        }
+
+        return entries
+            .sorted(by: >)
+            .map { "\(path)/\($0)\(suffix)" }
+    }
+
+    private static func deduplicatedDirectories(_ directories: [String]) -> [String] {
+        var seen = Set<String>()
+
+        return directories.compactMap { directory in
+            let expanded = expandPath(directory)
+            guard !expanded.isEmpty else {
+                return nil
+            }
+
+            let standardized = URL(fileURLWithPath: expanded).standardizedFileURL.path
+            guard seen.insert(standardized).inserted else {
+                return nil
+            }
+
+            return standardized
+        }
+    }
+
+    private static func shellQuoted(_ string: String) -> String {
+        "'" + string.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
     }
 
     /// Checks if a CLI executable is installed and available for launching.

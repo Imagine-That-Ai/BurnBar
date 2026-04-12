@@ -40,6 +40,7 @@ struct DashboardView: View {
     @State private var sessionLogJumpTarget: ConversationJumpTarget?
     @State private var sessionLogJumpLookup: [String: ConversationRecord] = [:]
     @State private var dashboardCanvasSize: CGSize = .zero
+    @State private var didAutoExpandEmptyTimeRange = false
     var chatController: ChatSessionController
     @State private var quotaService = ProviderQuotaService.shared
 
@@ -143,6 +144,12 @@ struct DashboardView: View {
                     }
             }
             .allowsHitTesting(false)
+        }
+        .onAppear {
+            autoExpandTimeRangeIfNeeded()
+        }
+        .onChange(of: dataStore.usages.count) { _, _ in
+            autoExpandTimeRangeIfNeeded()
         }
         .overlay(alignment: .bottomTrailing) {
             VStack(spacing: 12) {
@@ -312,12 +319,36 @@ struct DashboardView: View {
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
-            Picker("", selection: $viewMode) {
-                ForEach(DashboardViewMode.allCases) { mode in
-                    Label(mode.displayName, systemImage: mode.icon).tag(mode)
+            GlassSegmentedPicker(
+                selection: $viewMode,
+                iconViews: { mode in
+                    switch mode {
+                    case .agents:
+                        return AnyView(
+                            CyclingProviderIconView(
+                                providers: [
+                                    .claudeCode, .cursor, .codex, .copilot,
+                                    .cline, .geminiCLI, .factory, .augment, .hermes
+                                ],
+                                size: 11,
+                                interval: 2.2,
+                                startOffset: 0
+                            )
+                        )
+                    case .models:
+                        return AnyView(
+                            CyclingProviderIconView(
+                                providers: [
+                                    .claudeCode, .codex, .geminiCLI, .copilot, .cursor
+                                ],
+                                size: 11,
+                                interval: 2.5,
+                                startOffset: 2
+                            )
+                        )
+                    }
                 }
-            }
-            .pickerStyle(.segmented)
+            )
             .frame(width: 160)
             .onChange(of: viewMode) { _, _ in
                 withAnimation(DesignSystem.Animation.standard) {
@@ -342,8 +373,9 @@ struct DashboardView: View {
             Button(action: runScan) {
                 Group {
                     if isScanning {
-                        ProgressView()
-                            .controlSize(.mini)
+                        AnimatedMiningPickView()
+                            .frame(width: 17, height: 17)
+                            .clipShape(.circle)
                     } else {
                         DashboardActionGlyph(kind: .importFromLogs, size: 15)
                     }
@@ -586,6 +618,15 @@ struct DashboardView: View {
         return routes
     }
 
+    private func autoExpandTimeRangeIfNeeded() {
+        guard didAutoExpandEmptyTimeRange == false else { return }
+        guard selectedTimeRange != .allTime else { return }
+        guard dataStore.usages.isEmpty == false else { return }
+        guard dataStore.usages(in: dashboardDateRange).isEmpty else { return }
+        selectedTimeRange = .allTime
+        didAutoExpandEmptyTimeRange = true
+    }
+
     private var workspaceProjectCount: Int {
         Set(filteredUsages.map(\.projectName)).count
     }
@@ -677,13 +718,15 @@ struct DashboardView: View {
                     ProviderDashboardView(
                         provider: provider,
                         dataStore: dataStore,
-                        timeRange: selectedTimeRange
+                        timeRange: selectedTimeRange,
+                        onOpenSessionLog: openSessionLogs
                     )
                 case .model(let modelName):
                     ModelDashboardView(
                         modelName: modelName,
                         dataStore: dataStore,
-                        timeRange: selectedTimeRange
+                        timeRange: selectedTimeRange,
+                        onOpenSessionLog: openSessionLogs
                     )
                 }
             }
@@ -731,7 +774,11 @@ struct DashboardView: View {
                             }
                         }
                     }
-                    OpenBurnBarDashboardOperatingSection(layer: operatingLayer)
+                    OpenBurnBarDashboardOperatingSection(
+                        layer: operatingLayer,
+                        onOpenProjectSummary: openLatestProjectSessionLog,
+                        onOpenEvidenceEntry: openEvidenceSessionLog
+                    )
                     DashboardQuickSwitchView(
                         dataStore: dataStore,
                         onOpenSettings: { showingSettings = true }
@@ -993,6 +1040,91 @@ struct DashboardView: View {
         return trimmed
     }
 
+    private func openSessionLogs(_ target: ConversationJumpTarget) {
+        sessionLogJumpTarget = target
+        if mainRoute != .sessionLogs {
+            navigate(to: .sessionLogs)
+        }
+    }
+
+    private func openLatestProjectSessionLog(_ projectName: String, summary: String) {
+        guard let conversation = latestConversation(for: projectName) else { return }
+        let snippet = summary.nonEmpty
+            ?? conversation.summary?.nonEmpty
+            ?? conversation.summaryTitle?.nonEmpty
+            ?? conversation.lastAssistantMessage
+        openSessionLogs(
+            ConversationJumpTarget(
+                conversation: conversation,
+                snippet: snippet,
+                startOffset: 0,
+                endOffset: snippet.count,
+                source: .retrieval
+            )
+        )
+    }
+
+    private func openEvidenceSessionLog(_ entry: OpenBurnBarEvidenceEntry) {
+        guard let conversation = conversationForEvidenceEntry(entry) else { return }
+        openSessionLogs(
+            ConversationJumpTarget(
+                conversation: conversation,
+                snippet: entry.summary,
+                startOffset: 0,
+                endOffset: entry.summary.count,
+                source: .retrieval
+            )
+        )
+    }
+
+    private func conversationForEvidenceEntry(_ entry: OpenBurnBarEvidenceEntry) -> ConversationRecord? {
+        if let conversation = sessionLogJumpLookup.values.first(where: { $0.id == entry.id }) {
+            return conversation
+        }
+        guard let conversation = try? dataStore.fetchConversation(id: entry.id) else {
+            return nil
+        }
+        return conversation
+    }
+
+    private func latestConversation(for projectName: String) -> ConversationRecord? {
+        let trimmedProjectName = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedProjectName.isEmpty == false else { return nil }
+        let targetKey = normalizedProjectKey(trimmedProjectName)
+
+        return sessionLogJumpLookup.values
+            .filter { conversation in
+                let conversationKey = normalizedProjectKey(conversation.projectName)
+                guard conversationKey.isEmpty == false else { return false }
+                return conversationKey == targetKey
+                    || conversationKey.contains(targetKey)
+                    || targetKey.contains(conversationKey)
+            }
+            .sorted { lhs, rhs in
+                let lhsDate = lhs.endTime ?? lhs.startTime ?? lhs.fileModifiedAt ?? lhs.indexedAt
+                let rhsDate = rhs.endTime ?? rhs.startTime ?? rhs.fileModifiedAt ?? rhs.indexedAt
+                return lhsDate > rhsDate
+            }
+            .first
+    }
+
+    private func normalizedProjectKey(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return "" }
+
+        let candidate: String
+        if trimmed.contains("/") {
+            candidate = URL(fileURLWithPath: trimmed).lastPathComponent
+        } else {
+            candidate = trimmed
+        }
+
+        return candidate
+            .lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .joined()
+    }
+
     private func sessionLogJumpTarget(for question: OpenBurnBarControllerQuestion) -> ConversationJumpTarget? {
         let sessionID = question.deepLink?.targetID ?? question.sessionID
         guard let sessionID else { return nil }
@@ -1027,11 +1159,37 @@ struct DashboardView: View {
                 .font(DesignSystem.Typography.title)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-            Text("OpenBurnBar will automatically import sessions from your configured agent logs.\nClick Scan to import now.")
+            Text("OpenBurnBar will automatically import sessions from your configured agent logs.")
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, DesignSystem.Spacing.xxl)
+
+            if isScanning {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    AnimatedMiningPickView()
+                        .frame(width: 18, height: 18)
+                        .clipShape(.circle)
+                    Text("Initial scan in progress \u{2014} sessions will appear here as they're discovered. This may take a moment on the first run.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, DesignSystem.Spacing.xxl)
+            } else {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    Text("If this is your first launch, click Scan to parse your log history. Depending on log size, the initial import may take a moment and the dashboard will populate progressively.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, DesignSystem.Spacing.xxl)
+            }
 
             GlassButton(
                 title: "Scan Now",

@@ -28,6 +28,13 @@ final class AccountManager {
 
     /// Stable device identifier stored in Keychain.
     let deviceId: String
+    var currentUser: User? {
+        guard isFirebaseAvailable, Self.hasConfiguredFirebaseApp else { return nil }
+        return Auth.auth().currentUser
+    }
+    var isAnonymousUser: Bool {
+        currentUser?.isAnonymous ?? true
+    }
 
     // MARK: - Private
 
@@ -109,7 +116,8 @@ final class AccountManager {
             rawNonce: rawNonce,
             fullName: appleIDCredential.fullName
         )
-        try await Auth.auth().signIn(with: credential)
+        currentNonce = nil
+        try await authenticate(with: credential)
     }
 
     /// Presents Sign in with Apple from a window (Settings sheet, etc.).
@@ -170,7 +178,7 @@ final class AccountManager {
                             withIDToken: idToken,
                             accessToken: accessToken
                         )
-                        try await Auth.auth().signIn(with: credential)
+                        try await self.authenticate(with: credential)
                         continuation.resume()
                     } catch {
                         continuation.resume(throwing: error)
@@ -178,6 +186,38 @@ final class AccountManager {
                 }
             }
         }
+    }
+
+    func signInWithEmail(email: String, password: String) async throws {
+        guard isFirebaseAvailable, Self.hasConfiguredFirebaseApp else {
+            throw AccountError.firebaseNotConfigured
+        }
+        let credential = EmailAuthProvider.credential(withEmail: email, password: password)
+        if let user = currentUser, user.isAnonymous {
+            try await user.link(with: credential)
+            return
+        }
+        try await Auth.auth().signIn(withEmail: email, password: password)
+    }
+
+    func signUpWithEmail(email: String, password: String) async throws {
+        guard isFirebaseAvailable, Self.hasConfiguredFirebaseApp else {
+            throw AccountError.firebaseNotConfigured
+        }
+        if let user = currentUser, user.isAnonymous {
+            let credential = EmailAuthProvider.credential(withEmail: email, password: password)
+            try await user.link(with: credential)
+            return
+        }
+        try await Auth.auth().createUser(withEmail: email, password: password)
+    }
+
+    func deleteCurrentUser() async throws {
+        guard isFirebaseAvailable, Self.hasConfiguredFirebaseApp,
+              let user = Auth.auth().currentUser else {
+            throw AccountError.firebaseNotConfigured
+        }
+        try await user.delete()
     }
 
     // MARK: - Sign Out
@@ -229,6 +269,14 @@ final class AccountManager {
         let inputData = Data(input.utf8)
         let hashed = SHA256.hash(data: inputData)
         return hashed.compactMap { String(format: "%02x", $0) }.joined()
+    }
+
+    private func authenticate(with credential: AuthCredential) async throws {
+        if let user = currentUser, user.isAnonymous {
+            try await user.link(with: credential)
+            return
+        }
+        try await Auth.auth().signIn(with: credential)
     }
 }
 

@@ -52,6 +52,12 @@ protocol AccountManagerProtocol: AnyObject {
     /// - Parameter window: The window to present the sign-in sheet on.
     func signInWithGoogle(presentingWindow window: NSWindow) async throws
 
+    /// Signs in with an existing email/password account.
+    func signInWithEmail(email: String, password: String) async throws
+
+    /// Creates a new email/password account, or upgrades the current anonymous account.
+    func signUpWithEmail(email: String, password: String) async throws
+
     /// Signs out the current user.
     func signOut() throws
 

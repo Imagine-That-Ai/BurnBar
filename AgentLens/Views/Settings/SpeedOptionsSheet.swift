@@ -155,14 +155,14 @@ struct SpeedOptionsSheet: View {
                                 provider: .minimax,
                                 name: "MiniMax",
                                 description: "High-speed, low-cost cloud API",
-                                icon: AnyView(ModelProviderLogoView(modelKey: "minimax-m2.7-highspeed", size: 34))
+                                icon: AnyView(ProviderLogoView(provider: .minimax, size: 34, useFallbackColor: true))
                             )
                             Divider().background(DesignSystem.Colors.border)
                             cloudOptionRow(
                                 provider: .zai,
                                 name: "Z.ai",
                                 description: "Sub-second cloud summaries",
-                                icon: AnyView(ModelProviderLogoView(modelKey: "glm-4", size: 34))
+                                icon: AnyView(ProviderLogoView(provider: .zai, size: 34, useFallbackColor: true))
                             )
                         }
                         .background(DesignSystem.Colors.surface)

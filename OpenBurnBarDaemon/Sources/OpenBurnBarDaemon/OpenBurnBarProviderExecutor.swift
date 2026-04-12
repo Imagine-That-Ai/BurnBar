@@ -3,30 +3,6 @@ import Foundation
 import LocalAuthentication
 import Security
 
-#if os(macOS)
-// Legacy macOS keychain items can still present ACL prompts even when a query uses
-// a non-interactive LAContext, so disable keychain UI at the process level too.
-private func withKeychainInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
-    var previousAllowed = DarwinBoolean(true)
-    let readStatus = SecKeychainGetUserInteractionAllowed(&previousAllowed)
-    let disableStatus = SecKeychainSetUserInteractionAllowed(false)
-    defer {
-        if disableStatus == errSecSuccess {
-            if readStatus == errSecSuccess {
-                _ = SecKeychainSetUserInteractionAllowed(previousAllowed.boolValue)
-            } else {
-                _ = SecKeychainSetUserInteractionAllowed(true)
-            }
-        }
-    }
-    return try operation()
-}
-#else
-private func withKeychainInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
-    try operation()
-}
-#endif
-
 public struct BurnBarProviderExecutionResult: Sendable {
     public let outputText: String
     public let inputTokens: Int
@@ -252,7 +228,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
         }
         var item: CFTypeRef?
-        let status = withKeychainInteractionDisabled {
+        let status = withKeychainUserInteractionDisabled {
             SecItemCopyMatching(query as CFDictionary, &item)
         }
         if status == errSecItemNotFound

@@ -17,6 +17,21 @@ struct OnboardingScanView: View {
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: "hourglass")
+                        .font(.system(size: 10))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    Text("The first scan parses your entire log history and may take a moment depending on how much data you have. Your dashboard will fill in as sessions are discovered.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(DesignSystem.Spacing.sm)
+                .background {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(DesignSystem.Colors.surfaceElevated.opacity(0.5))
+                }
             }
 
             ScrollView {
@@ -25,10 +40,7 @@ struct OnboardingScanView: View {
                         HStack(spacing: DesignSystem.Spacing.sm) {
                             parserHealthIcon(for: provider)
 
-                            Image(systemName: provider.iconName)
-                                .font(.system(size: 12))
-                                .foregroundStyle(DesignSystem.Colors.primary(for: provider))
-                                .frame(width: 16)
+                            ProviderLogoView(provider: provider, size: 16, useFallbackColor: true)
 
                             Text(provider.displayName)
                                 .font(DesignSystem.Typography.caption)
@@ -50,8 +62,9 @@ struct OnboardingScanView: View {
 
             if aggregator?.isRefreshing == true {
                 HStack(spacing: DesignSystem.Spacing.sm) {
-                    ProgressView()
-                        .controlSize(.small)
+                    AnimatedMiningPickView()
+                        .frame(width: 22, height: 22)
+                        .clipShape(.circle)
                     Text("Parsing session data\u{2026}")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)

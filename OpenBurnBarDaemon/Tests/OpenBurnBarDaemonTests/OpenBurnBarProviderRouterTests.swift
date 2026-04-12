@@ -83,6 +83,64 @@ final class BurnBarProviderRouterTests: XCTestCase {
         }
     }
 
+    func testRouterPrefersManualSlotThenFallsBackToRoundRobin() async throws {
+        let harness = try makeHarness(name: "slots")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-a",
+            label: "Plan A",
+            apiKey: "zai-key-a"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-b",
+            label: "Plan B",
+            apiKey: "zai-key-b"
+        )
+        try await harness.configStore.recordCredentialSelection(providerID: "zai", slotID: "slot-a")
+        try await harness.configStore.setPreferredCredentialSlot(providerID: "zai", slotID: nil)
+
+        let roundRobinRoute = try await harness.router.route(modelName: "glm-5")
+        XCTAssertEqual(roundRobinRoute.credentialSlotID, "slot-b")
+
+        try await harness.configStore.setPreferredCredentialSlot(providerID: "zai", slotID: "slot-a")
+        let preferredRoute = try await harness.router.route(modelName: "glm-5")
+        XCTAssertEqual(preferredRoute.credentialSlotID, "slot-a")
+    }
+
+    func testRouterMarksQuotaFailureAsExhaustedSlot() async throws {
+        let harness = try makeHarness(name: "failure-status")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-a",
+            label: "Plan A",
+            apiKey: "zai-key-a"
+        )
+
+        let route = try await harness.router.route(modelName: "glm-5")
+        await harness.router.markRouteFailure(route, error: BurnBarProviderExecutorError.upstreamError(402, "quota exceeded"))
+
+        let snapshot = try await harness.configStore.snapshot()
+        let slotStatus = snapshot.providerSettings(id: "zai")?.credentialSlots.first(where: { $0.slotID == "slot-a" })?.status
+        XCTAssertEqual(slotStatus, .exhausted)
+    }
+
     private func makeHarness(name: String) throws -> BurnBarProviderRouterHarness {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-provider-router-\(name)-\(UUID().uuidString)", isDirectory: true)

@@ -269,19 +269,32 @@ struct DashboardQuickSwitchView: View {
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-            Text("Create profiles in Settings to enable quick switching.")
+            Text("Set up profiles to enable quick switching between accounts.")
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .multilineTextAlignment(.center)
 
             GlassButton(
-                title: "Open Settings",
-                icon: "plus.circle",
+                title: "Set Up Profiles",
+                icon: "arrow.triangle.2.circlepath",
                 style: .prominent
+            ) {
+                WindowManager.shared.openSwitcherOnboardingWizard(
+                    dataStore: dataStore,
+                    settingsManager: SettingsManager.shared,
+                    onOpenSettings: onOpenSettings
+                )
+            }
+            .accessibilityLabel("Open profile setup wizard")
+
+            GlassButton(
+                title: "Open Settings",
+                icon: "gearshape",
+                style: .regular
             ) {
                 onOpenSettings()
             }
-            .accessibilityLabel("Open Settings to create profiles")
+            .accessibilityLabel("Open Settings for profile management")
         }
         .frame(maxWidth: .infinity)
         .padding(DesignSystem.Spacing.lg)

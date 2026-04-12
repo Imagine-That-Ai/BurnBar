@@ -134,6 +134,15 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     
+    /// Bundled asset catalog image name for providers with local logos.
+    var bundledLogoName: String? {
+        switch self {
+        case .factory: return "FactoryLogo"
+        case .hermes: return "HermesLogo"
+        default: return nil
+        }
+    }
+
     /// Colorful logo URLs from lobehub (https://lobehub.com/icons)
     var logoURL: URL? {
         switch self {

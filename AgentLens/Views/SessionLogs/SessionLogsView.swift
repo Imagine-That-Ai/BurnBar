@@ -50,6 +50,7 @@ private struct SessionLogGroup: Identifiable {
     let title: String
     let systemImage: String
     let accentColor: Color
+    let provider: AgentProvider?
     let logs: [ConversationRecord]
 }
 
@@ -193,7 +194,7 @@ struct SessionLogsView: View {
         ]
         return defs.compactMap { d in
             guard let logs = buckets[d.id], !logs.isEmpty else { return nil }
-            return SessionLogGroup(id: d.id, title: d.title, systemImage: d.icon, accentColor: d.color, logs: logs)
+            return SessionLogGroup(id: d.id, title: d.title, systemImage: d.icon, accentColor: d.color, provider: nil, logs: logs)
         }
     }
 
@@ -205,6 +206,7 @@ struct SessionLogsView: View {
                     title: provider.displayName,
                     systemImage: provider.iconName,
                     accentColor: DesignSystem.Colors.primary(for: provider),
+                    provider: provider,
                     logs: logs
                 )
             }
@@ -219,6 +221,7 @@ struct SessionLogsView: View {
                     title: project.isEmpty ? "Unknown" : project,
                     systemImage: "folder.fill",
                     accentColor: DesignSystem.Colors.amber,
+                    provider: nil,
                     logs: logs
                 )
             }
@@ -228,75 +231,71 @@ struct SessionLogsView: View {
     // MARK: - Body
 
     var body: some View {
+        mainLayout
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.clear)
+            .task {
+                knownDevices = (try? dataStore.fetchDevices()) ?? []
+                await loadLogs()
+                applyJumpTargetIfNeeded(jumpTarget)
+            }
+            .onChange(of: searchText) { _, _ in
+                Task { await runLocalRetrievalSearchIfNeeded() }
+            }
+            .onChange(of: sourceFilter) { _, _ in
+                sectionDisplayLimits = [:]
+                let groups = logGroups
+                expandedSections = Set(groups.prefix(1).map(\.id))
+                selectedId = nil
+                cloudBodyCache = [:]
+                Task {
+                    await runLocalRetrievalSearchIfNeeded()
+                    reconcileSelectionWithFilteredLogs()
+                    await loadLogs()
+                }
+            }
+            .onChange(of: groupMode) { _, _ in
+                sectionDisplayLimits = [:]
+                expandedSections = Set(logGroups.prefix(1).map(\.id))
+            }
+            .onChange(of: dataSource) { _, _ in
+                selectedId = nil
+                cloudBodyCache = [:]
+                Task { await loadLogs() }
+            }
+            .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in
+                refreshRetrievalHealth()
+                Task { await runLocalRetrievalSearchIfNeeded() }
+            }
+            .onChange(of: settingsManager.preferredIndexEmbeddingVersionID) { _, _ in
+                retrievalSearchService = SearchService.makeConversationSearchService(
+                    dataStore: dataStore,
+                    settingsManager: settingsManager
+                )
+                refreshRetrievalHealth()
+                Task { await runLocalRetrievalSearchIfNeeded() }
+            }
+            .onChange(of: accountManager.isSignedIn) { _, _ in
+                refreshRetrievalHealth()
+            }
+            .onChange(of: selectedId) { _, newId in
+                handleSelectedIdChange(newId)
+            }
+            .onChange(of: jumpTarget?.id) { _, _ in
+                applyJumpTargetIfNeeded(jumpTarget)
+            }
+    }
+
+    private var mainLayout: some View {
         HStack(spacing: 0) {
             commandCenter
                 .frame(width: 340)
+                .frame(minHeight: 0, maxHeight: .infinity)
 
             Divider().background(DesignSystem.Colors.border)
 
             detailPane
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.clear)
-        .task {
-            // Eager load devices so filter bar appears immediately
-            knownDevices = (try? dataStore.fetchDevices()) ?? []
-            await loadLogs()
-            applyJumpTargetIfNeeded(jumpTarget)
-        }
-        .onChange(of: searchText) { _, _ in
-            Task { await runLocalRetrievalSearchIfNeeded() }
-        }
-        .onChange(of: sourceFilter) { _, _ in
-            Task {
-                await runLocalRetrievalSearchIfNeeded()
-                reconcileSelectionWithFilteredLogs()
-            }
-        }
-        .onChange(of: groupMode) { _, _ in
-            sectionDisplayLimits = [:]
-            let groups = logGroups
-            expandedSections = Set(groups.prefix(1).map(\.id))
-        }
-        .onChange(of: dataSource) { _, _ in
-            selectedId = nil
-            cloudBodyCache = [:]
-            Task { await loadLogs() }
-        }
-        .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in
-            refreshRetrievalHealth()
-            Task { await runLocalRetrievalSearchIfNeeded() }
-        }
-        .onChange(of: settingsManager.preferredIndexEmbeddingVersionID) { _, _ in
-            retrievalSearchService = SearchService.makeConversationSearchService(
-                dataStore: dataStore,
-                settingsManager: settingsManager
-            )
-            refreshRetrievalHealth()
-            Task { await runLocalRetrievalSearchIfNeeded() }
-        }
-        .onChange(of: accountManager.isSignedIn) { _, _ in
-            refreshRetrievalHealth()
-        }
-        .onChange(of: selectedId) { _, newId in
-            if dataSource == .local {
-                Task { await loadSelectedLogDetailIfNeeded(for: newId) }
-                return
-            }
-
-            guard dataSource == .cloud,
-                  let id = newId,
-                  let record = allLogs.first(where: { $0.id == id }),
-                  cloudBodyCache[record.sessionId] == nil else { return }
-            Task {
-                if let body = try? await cloudSyncService?.fetchCloudSessionLogBody(docId: record.sessionId) {
-                    cloudBodyCache[record.sessionId] = body
-                }
-            }
-        }
-        .onChange(of: jumpTarget?.id) { _, _ in
-            applyJumpTargetIfNeeded(jumpTarget)
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         }
     }
 
@@ -657,21 +656,30 @@ struct SessionLogsView: View {
     // MARK: - Grouped List
 
     private var groupedList: some View {
-        ScrollView {
-            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                ForEach(logGroups) { group in
-                    Section {
-                        if expandedSections.contains(group.id) {
-                            sectionContent(for: group)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    ForEach(logGroups) { group in
+                        Section {
+                            if expandedSections.contains(group.id) {
+                                sectionContent(for: group)
+                            }
+                        } header: {
+                            sectionHeader(for: group)
                         }
-                    } header: {
-                        sectionHeader(for: group)
                     }
                 }
+                .padding(.vertical, DesignSystem.Spacing.xs)
             }
-            .padding(.vertical, DesignSystem.Spacing.xs)
+            .defaultScrollAnchor(.top)
+            .scrollContentBackground(.hidden)
+            .onChange(of: logGroups.first?.id) { _, _ in
+                if let firstId = logGroups.first?.id {
+                    withAnimation { proxy.scrollTo(firstId, anchor: .top) }
+                }
+            }
         }
-        .scrollContentBackground(.hidden)
+        .frame(minHeight: 0, maxHeight: .infinity)
     }
 
     private func sectionHeader(for group: SessionLogGroup) -> some View {
@@ -691,9 +699,13 @@ struct SessionLogsView: View {
                     .foregroundStyle(group.accentColor)
                     .frame(width: 12, alignment: .center)
 
-                Image(systemName: group.systemImage)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(group.accentColor)
+                if let provider = group.provider {
+                    ProviderLogoView(provider: provider, size: 16, useFallbackColor: true)
+                } else {
+                    Image(systemName: group.systemImage)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(group.accentColor)
+                }
 
                 Text(group.title)
                     .font(DesignSystem.Typography.caption)
@@ -717,6 +729,7 @@ struct SessionLogsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .id(group.id)
     }
 
     @ViewBuilder
@@ -912,6 +925,23 @@ struct SessionLogsView: View {
             return [.providerLog]
         case .assistant:
             return [.cliAssistant]
+        }
+    }
+
+    private func handleSelectedIdChange(_ newId: String?) {
+        if dataSource == .local {
+            Task { await loadSelectedLogDetailIfNeeded(for: newId) }
+            return
+        }
+
+        guard dataSource == .cloud,
+              let id = newId,
+              let record = allLogs.first(where: { $0.id == id }),
+              cloudBodyCache[record.sessionId] == nil else { return }
+        Task {
+            if let body = try? await cloudSyncService?.fetchCloudSessionLogBody(docId: record.sessionId) {
+                cloudBodyCache[record.sessionId] = body
+            }
         }
     }
 

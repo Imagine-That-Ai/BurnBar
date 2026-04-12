@@ -84,9 +84,13 @@ struct OpenBurnBarOperatingFreshnessStrip: View {
 
 struct OpenBurnBarMissionSummaryCard: View {
     let summary: OpenBurnBarMissionSummary
+    var onOpenSummary: ((String, String) -> Void)? = nil
 
     var body: some View {
-        GlassCard {
+        Button {
+            onOpenSummary?(summary.projectName, summary.subtitle)
+        } label: {
+            GlassCard {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 HStack(alignment: .top) {
                     OperatingViewHelpers.sectionHeader(title: "Mission")
@@ -129,6 +133,9 @@ struct OpenBurnBarMissionSummaryCard: View {
             }
             .padding(DesignSystem.Spacing.lg)
         }
+        }
+        .buttonStyle(.plain)
+        .disabled(onOpenSummary == nil)
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }
@@ -137,9 +144,13 @@ struct OpenBurnBarMissionSummaryCard: View {
 
 struct OpenBurnBarDirectionSummaryCard: View {
     let summary: OpenBurnBarDirectionSummary
+    var onOpenSummary: ((String, String) -> Void)? = nil
 
     var body: some View {
-        GlassCard {
+        Button {
+            onOpenSummary?(summary.projectName, summary.summary)
+        } label: {
+            GlassCard {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 HStack(alignment: .top) {
                     OperatingViewHelpers.sectionHeader(title: "Direction")
@@ -186,6 +197,9 @@ struct OpenBurnBarDirectionSummaryCard: View {
             }
             .padding(DesignSystem.Spacing.lg)
         }
+        }
+        .buttonStyle(.plain)
+        .disabled(onOpenSummary == nil)
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
@@ -202,9 +216,13 @@ struct OpenBurnBarDirectionSummaryCard: View {
 
 struct OpenBurnBarBurnSummaryCard: View {
     let summary: OpenBurnBarBurnSummary
+    var onOpenSummary: ((String, String) -> Void)? = nil
 
     var body: some View {
-        GlassCard {
+        Button {
+            onOpenSummary?(summary.projectName, summary.windowLabel)
+        } label: {
+            GlassCard {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 OperatingViewHelpers.sectionHeader(title: "Burn")
 
@@ -235,6 +253,9 @@ struct OpenBurnBarBurnSummaryCard: View {
             }
             .padding(DesignSystem.Spacing.lg)
         }
+        }
+        .buttonStyle(.plain)
+        .disabled(onOpenSummary == nil)
         .frame(width: 250, alignment: .topLeading)
     }
 }
@@ -243,6 +264,7 @@ struct OpenBurnBarBurnSummaryCard: View {
 
 struct OpenBurnBarEvidencePanel: View {
     let summary: OpenBurnBarEvidenceSummary
+    var onOpenEntry: ((OpenBurnBarEvidenceEntry) -> Void)? = nil
 
     var body: some View {
         GlassCard {
@@ -267,7 +289,7 @@ struct OpenBurnBarEvidencePanel: View {
                 if summary.entries.isEmpty == false {
                     VStack(spacing: DesignSystem.Spacing.sm) {
                         ForEach(summary.entries) { entry in
-                            OpenBurnBarEvidenceEntryRow(entry: entry)
+                            OpenBurnBarEvidenceEntryRow(entry: entry, onOpen: onOpenEntry)
                         }
                     }
                 }
@@ -319,34 +341,41 @@ struct OpenBurnBarEvidencePanel: View {
 
 struct OpenBurnBarEvidenceEntryRow: View {
     let entry: OpenBurnBarEvidenceEntry
+    var onOpen: ((OpenBurnBarEvidenceEntry) -> Void)? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
-                    Text(entry.sourceLabel)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text(entry.summary)
-                        .font(DesignSystem.Typography.body)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        .lineLimit(2)
+        Button {
+            onOpen?(entry)
+        } label: {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
+                        Text(entry.sourceLabel)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text(entry.summary)
+                            .font(DesignSystem.Typography.body)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer()
+
+                    OpenBurnBarStatusBadge(title: entry.freshness.label, color: entry.freshness.color)
                 }
 
-                Spacer()
+                Text(entry.detail)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                OpenBurnBarStatusBadge(title: entry.freshness.label, color: entry.freshness.color)
+                Text(entry.includedReason)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
             }
-
-            Text(entry.detail)
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text(entry.includedReason)
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
         }
+        .buttonStyle(.plain)
+        .disabled(onOpen == nil)
         .padding(DesignSystem.Spacing.md)
         .background(DesignSystem.Colors.surface.opacity(0.65))
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))

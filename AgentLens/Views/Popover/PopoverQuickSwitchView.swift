@@ -164,23 +164,43 @@ struct PopoverQuickSwitchView: View {
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
 
-            Button {
-                onOpenSettings()
-            } label: {
-                HStack(spacing: DesignSystem.Spacing.xxs) {
-                    Image(systemName: "plus.circle")
-                        .font(.system(size: 10))
-                    Text("Add in Settings")
-                        .font(DesignSystem.Typography.tiny)
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Button {
+                    WindowManager.shared.openSwitcherOnboardingWizard(
+                        dataStore: dataStore,
+                        settingsManager: SettingsManager.shared,
+                        onOpenSettings: onOpenSettings
+                    )
+                } label: {
+                    HStack(spacing: DesignSystem.Spacing.xxs) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 10))
+                        Text("Set Up Profiles")
+                            .font(DesignSystem.Typography.tiny)
+                    }
+                    .foregroundStyle(DesignSystem.Colors.amber)
                 }
-                .foregroundStyle(DesignSystem.Colors.amber)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open profile setup wizard")
+
+                Button {
+                    onOpenSettings()
+                } label: {
+                    HStack(spacing: DesignSystem.Spacing.xxs) {
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 10))
+                        Text("Add in Settings")
+                            .font(DesignSystem.Typography.tiny)
+                    }
+                    .foregroundStyle(DesignSystem.Colors.amber)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open Settings to create profiles")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open Settings to create profiles")
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("No profiles. Open Settings to create profiles.")
+        .accessibilityLabel("No profiles. Set up profiles or open Settings to create them.")
     }
 
     // MARK: - Error State

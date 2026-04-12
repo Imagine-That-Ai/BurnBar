@@ -55,27 +55,6 @@ struct OnboardingProviderPill: View {
 
     @ViewBuilder
     private var providerLogo: some View {
-        if let url = provider.logoURL {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 24, height: 24)
-                default:
-                    fallbackIcon
-                }
-            }
-        } else {
-            fallbackIcon
-        }
-    }
-
-    private var fallbackIcon: some View {
-        Image(systemName: provider.iconName)
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(providerColor)
-            .frame(width: 24, height: 24)
+        ProviderLogoView(provider: provider, size: 24, useFallbackColor: true)
     }
 }

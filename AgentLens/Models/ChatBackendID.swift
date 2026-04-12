@@ -28,6 +28,16 @@ enum ChatBackendID: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    /// The agent provider whose logo represents this backend in UI.
+    var agentProvider: AgentProvider? {
+        switch self {
+        case .codex: return .codex
+        case .claude: return .claudeCode
+        case .hermes: return .hermes
+        case .openclaw: return .openClaw
+        }
+    }
+
     /// Whether this backend uses the local Codex/Claude CLIs (privacy-gated).
     var requiresCLIAssistantConsent: Bool {
         switch self {

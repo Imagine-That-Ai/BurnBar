@@ -577,7 +577,14 @@ struct DatabaseWorkspaceView: View {
                 ) {
                     Button("All Providers") { filter.providerFilter = nil }
                     ForEach(snapshot.activeProviders, id: \.self) { provider in
-                        Button(provider.displayName) { filter.providerFilter = provider }
+                        Button {
+                            filter.providerFilter = provider
+                        } label: {
+                            HStack {
+                                ProviderLogoView(provider: provider, size: 16, useFallbackColor: true)
+                                Text(provider.displayName)
+                            }
+                        }
                     }
                 }
 

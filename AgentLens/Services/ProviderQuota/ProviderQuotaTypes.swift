@@ -162,6 +162,11 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
 
     var primaryBucket: ProviderQuotaBucket? {
         buckets.sorted {
+            let lhsPriority = primaryBucketPriority(for: $0)
+            let rhsPriority = primaryBucketPriority(for: $1)
+            if lhsPriority != rhsPriority {
+                return lhsPriority < rhsPriority
+            }
             let lhsRemaining = $0.remainingPercent ?? .infinity
             let rhsRemaining = $1.remainingPercent ?? .infinity
             if lhsRemaining == rhsRemaining {
@@ -171,6 +176,21 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
         }.first
     }
 
+    private func primaryBucketPriority(for bucket: ProviderQuotaBucket) -> Int {
+        guard provider == .zai else { return 0 }
+        let lowercased = bucket.label.lowercased()
+        if lowercased.contains("token") || lowercased.contains("api") {
+            return 0
+        }
+        if lowercased.contains("mcp") || lowercased.contains("tool") || lowercased.contains("time_limit") || lowercased.contains("time limit") {
+            return 2
+        }
+        if lowercased == "limits" || lowercased == "limit" {
+            return 3
+        }
+        return 1
+    }
+
     var summaryText: String {
         guard let primaryBucket else { return statusMessage }
         return "\(primaryBucket.label): \(primaryBucket.remainingText) left"
@@ -178,6 +198,16 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
 
     func isStale(relativeTo now: Date = Date()) -> Bool {
         now.timeIntervalSince(fetchedAt) > 12 * 60 * 60
+    }
+
+    /// Returns the bucket representing the hourly/5h window (windowKind == .rollingHours)
+    var hourlyBucket: ProviderQuotaBucket? {
+        buckets.first { $0.windowKind == .rollingHours }
+    }
+
+    /// Returns the bucket representing the weekly window (windowKind == .weekly or .rollingDays)
+    var weeklyBucket: ProviderQuotaBucket? {
+        buckets.first { $0.windowKind == .weekly || $0.windowKind == .rollingDays }
     }
 }
 

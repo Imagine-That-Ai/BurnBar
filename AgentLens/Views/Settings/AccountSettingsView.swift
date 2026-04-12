@@ -7,18 +7,23 @@ import FirebaseAuth
 struct AccountSettingsView: View {
     let currentUser: User?
     let isAnonymous: Bool
-    let onLinkGoogle: () -> Void
-    let onLinkEmail: (String, String) -> Void
-    let onLinkApple: () -> Void
+    let isFirebaseAvailable: Bool
+    let onLinkGoogle: () async throws -> Void
+    let onEmailSignIn: (String, String) async throws -> Void
+    let onEmailSignUp: (String, String) async throws -> Void
+    let onLinkApple: () async throws -> Void
     let onUpgradeToPremium: () -> Void
     let onDeleteAccount: () -> Void
     let onSignOut: () -> Void
 
     @State private var showDeleteConfirmation = false
     @State private var showEmailLinkSheet = false
+    @State private var emailMode: EmailAuthMode = .signIn
     @State private var emailLinkEmail = ""
     @State private var emailLinkPassword = ""
     @State private var emailLinkError: String?
+    @State private var authError: String?
+    @State private var activeAuthProvider: AuthProviderAction?
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
@@ -150,12 +155,33 @@ struct AccountSettingsView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
 
+            if !isFirebaseAvailable {
+                Text("Cloud auth is unavailable in this build. Add a local `GoogleService-Info.plist` to enable Google, Apple, and email authentication.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                    .padding(DesignSystem.Spacing.md)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(DesignSystem.Colors.warning.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+            }
+
+            if let authError {
+                Text(authError)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.error)
+                    .padding(DesignSystem.Spacing.md)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(DesignSystem.Colors.error.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+            }
+
             VStack(spacing: 0) {
                 signInMethodRow(
                     icon: "apple.logo",
                     title: "Sign in with Apple",
                     subtitle: "Recommended for macOS",
                     color: .black,
+                    provider: .apple,
                     action: onLinkApple
                 )
                 Divider().background(DesignSystem.Colors.border)
@@ -164,15 +190,21 @@ struct AccountSettingsView: View {
                     title: "Sign in with Google",
                     subtitle: "Use your Google account",
                     color: Color(hex: "4285F4"),
+                    provider: .google,
                     action: onLinkGoogle
                 )
                 Divider().background(DesignSystem.Colors.border)
                 signInMethodRow(
                     icon: "envelope.fill",
-                    title: "Sign in with Email",
-                    subtitle: "Email and password",
+                    title: "Continue with Email",
+                    subtitle: "Sign in or create an account",
                     color: DesignSystem.Colors.blaze,
-                    action: { showEmailLinkSheet = true }
+                    provider: .email,
+                    action: {
+                        authError = nil
+                        emailLinkError = nil
+                        showEmailLinkSheet = true
+                    }
                 )
             }
             .background(DesignSystem.Colors.surface)
@@ -183,8 +215,27 @@ struct AccountSettingsView: View {
     }
 
     @ViewBuilder
-    private func signInMethodRow(icon: String, title: String, subtitle: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+    private func signInMethodRow(
+        icon: String,
+        title: String,
+        subtitle: String,
+        color: Color,
+        provider: AuthProviderAction,
+        action: @escaping () async throws -> Void
+    ) -> some View {
+        Button {
+            guard isFirebaseAvailable else { return }
+            authError = nil
+            activeAuthProvider = provider
+            Task {
+                do {
+                    try await action()
+                } catch {
+                    authError = error.localizedDescription
+                }
+                activeAuthProvider = nil
+            }
+        } label: {
             HStack(spacing: DesignSystem.Spacing.md) {
                 Image(systemName: icon)
                     .font(.system(size: 20))
@@ -202,13 +253,19 @@ struct AccountSettingsView: View {
 
                 Spacer()
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                if activeAuthProvider == provider {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
             }
             .padding(DesignSystem.Spacing.md)
         }
         .buttonStyle(.plain)
+        .disabled(!isFirebaseAvailable || activeAuthProvider != nil)
     }
 
     @ViewBuilder
@@ -351,16 +408,38 @@ struct AccountSettingsView: View {
                     .textFieldStyle(.roundedBorder)
                     .textContentType(.password)
 
-                Button("Sign In") {
+                Picker("Mode", selection: $emailMode) {
+                    ForEach(EmailAuthMode.allCases, id: \.self) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Button(emailMode.submitTitle) {
                     emailLinkError = nil
-                    onLinkEmail(emailLinkEmail, emailLinkPassword)
+                    authError = nil
+                    activeAuthProvider = .email
+                    Task {
+                        do {
+                            switch emailMode {
+                            case .signIn:
+                                try await onEmailSignIn(emailLinkEmail, emailLinkPassword)
+                            case .signUp:
+                                try await onEmailSignUp(emailLinkEmail, emailLinkPassword)
+                            }
+                            showEmailLinkSheet = false
+                        } catch {
+                            emailLinkError = error.localizedDescription
+                        }
+                        activeAuthProvider = nil
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(DesignSystem.Colors.blaze)
                 .disabled(emailLinkEmail.isEmpty || emailLinkPassword.isEmpty)
             }
             .padding()
-            .navigationTitle("Email Sign In")
+            .navigationTitle(emailMode.navigationTitle)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { showEmailLinkSheet = false }
@@ -526,4 +605,36 @@ enum ICloudBackupOption {
     case merge
     case replace
     case localOnly
+}
+
+private enum AuthProviderAction {
+    case apple
+    case google
+    case email
+}
+
+private enum EmailAuthMode: CaseIterable {
+    case signIn
+    case signUp
+
+    var title: String {
+        switch self {
+        case .signIn: return "Sign In"
+        case .signUp: return "Create Account"
+        }
+    }
+
+    var submitTitle: String {
+        switch self {
+        case .signIn: return "Sign In"
+        case .signUp: return "Create Account"
+        }
+    }
+
+    var navigationTitle: String {
+        switch self {
+        case .signIn: return "Email Sign In"
+        case .signUp: return "Create Account"
+        }
+    }
 }

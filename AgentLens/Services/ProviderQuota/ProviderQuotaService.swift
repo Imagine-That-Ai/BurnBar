@@ -94,6 +94,15 @@ final class ProviderQuotaService {
     }
 
     func refreshIfNeeded(dataStore: DataStore, maxAge: TimeInterval = 5 * 60) async {
+        // Always refresh if we have no useful snapshots for any supported provider
+        let hasUsefulSnapshot = ProviderQuotaService.supportedProviders.contains { provider in
+            let snap = snapshotsByProvider[provider]
+            return snap != nil && !(snap?.buckets.isEmpty ?? true)
+        }
+        if !hasUsefulSnapshot {
+            await refreshAll(dataStore: dataStore)
+            return
+        }
         if let lastFetch, Date().timeIntervalSince(lastFetch) < maxAge {
             return
         }
@@ -141,6 +150,24 @@ final class ProviderQuotaService {
                     message: error.localizedDescription
                 )
             }
+        }
+    }
+
+    func fetchSnapshot(
+        for provider: AgentProvider,
+        apiKeyOverride: String
+    ) async throws -> ProviderQuotaSnapshot {
+        switch provider {
+        case .minimax:
+            return try await fetchMiniMaxSnapshot(apiKeyOverride: apiKeyOverride)
+        case .zai:
+            return try await fetchZaiSnapshot(apiKeyOverride: apiKeyOverride)
+        default:
+            return unavailableSnapshot(
+                for: provider,
+                source: .unavailable,
+                message: "Per-plan quota refresh is currently available for MiniMax and Z.ai."
+            )
         }
     }
 
@@ -515,7 +542,7 @@ private extension ProviderQuotaService {
         return buckets
     }
 
-    func fetchMiniMaxSnapshot() async throws -> ProviderQuotaSnapshot {
+    func fetchMiniMaxSnapshot(apiKeyOverride: String? = nil) async throws -> ProviderQuotaSnapshot {
         guard miniMaxModeProvider() == .tokenPlan else {
             return unavailableSnapshot(
                 for: .minimax,
@@ -524,7 +551,7 @@ private extension ProviderQuotaService {
             )
         }
 
-        guard let apiKey = resolveMiniMaxAPIKey() else {
+        guard let apiKey = nonEmpty(apiKeyOverride) ?? resolveMiniMaxAPIKey() else {
             return unavailableSnapshot(
                 for: .minimax,
                 source: .unavailable,
@@ -595,8 +622,8 @@ private extension ProviderQuotaService {
         )
     }
 
-    func fetchZaiSnapshot() async throws -> ProviderQuotaSnapshot {
-        guard let apiKey = resolveZaiAPIKey() else {
+    func fetchZaiSnapshot(apiKeyOverride: String? = nil) async throws -> ProviderQuotaSnapshot {
+        guard let apiKey = nonEmpty(apiKeyOverride) ?? resolveZaiAPIKey() else {
             return unavailableSnapshot(
                 for: .zai,
                 source: .unavailable,
@@ -1151,7 +1178,17 @@ private extension ProviderQuotaService {
         let unwrapped = unwrapDataEnvelope(object)
         var buckets = recurseBuckets(in: unwrapped, provider: provider, path: [endpointLabel])
         buckets.sort {
-            ($0.remainingPercent ?? -1) > ($1.remainingPercent ?? -1)
+            let lhsPriority = bucketSortPriority(for: provider, bucket: $0)
+            let rhsPriority = bucketSortPriority(for: provider, bucket: $1)
+            if lhsPriority != rhsPriority {
+                return lhsPriority < rhsPriority
+            }
+            let lhsRemaining = $0.remainingPercent ?? -1
+            let rhsRemaining = $1.remainingPercent ?? -1
+            if lhsRemaining == rhsRemaining {
+                return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+            }
+            return lhsRemaining > rhsRemaining
         }
 
         var seen = Set<String>()
@@ -1249,12 +1286,15 @@ private extension ProviderQuotaService {
             "resource", "resource_name", "resourceName",
             "quota_name", "quotaName"
         ])
-            ?? bestPathLabel(from: path)
             ?? string(in: dictionary, keys: ["window", "type"])
+            ?? bestPathLabel(from: path)
             ?? "quota"
-        let label = normalizedBucketLabel(rawLabel, provider: provider)
+        // Z.ai uses unit+number fields to distinguish quota windows
+        let zaiUnit = provider == .zai ? number(in: dictionary, keys: ["unit"]) : nil
+        let zaiNumber = provider == .zai ? number(in: dictionary, keys: ["number"]) : nil
+        let label = normalizedBucketLabel(rawLabel, provider: provider, unit: zaiUnit, number: zaiNumber)
         let windowKind = inferWindowKind(
-            from: intervalHint ?? rawLabel,
+            from: intervalHint ?? label,
             intervalStart: intervalStart,
             resetsAt: resetsAt
         )
@@ -2210,10 +2250,22 @@ private extension ProviderQuotaService {
         }
     }
 
-    func normalizedBucketLabel(_ label: String, provider: AgentProvider) -> String {
+    func normalizedBucketLabel(_ label: String, provider: AgentProvider, unit: Double? = nil, number: Double? = nil) -> String {
         let lowercased = label.lowercased()
         if provider == .zai {
             if lowercased.contains("tokens_limit") {
+                // Z.ai API uses unit+number to distinguish windows:
+                //   unit=3, number=5 → 5-hour rolling token quota
+                //   unit=6, number=1 → weekly token quota
+                if let unit, let number {
+                    if Int(unit) == 6 && Int(number) == 1 {
+                        return "Token usage (Weekly)"
+                    }
+                    if Int(unit) == 3 && Int(number) == 5 {
+                        return "Token usage (5-hour)"
+                    }
+                }
+                // Fallback if unit/number not available
                 return "Token usage (5-hour)"
             }
             if lowercased.contains("time_limit") {
@@ -2236,6 +2288,26 @@ private extension ProviderQuotaService {
             .replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: "-", with: " ")
             .capitalized
+    }
+
+    func bucketSortPriority(for provider: AgentProvider, bucket: ProviderQuotaBucket) -> Int {
+        guard provider == .zai else { return 0 }
+        let lowercased = bucket.label.lowercased()
+        if lowercased.contains("5-hour") || lowercased.contains("5hour") {
+            // 5h token window is the most urgent
+            return 0
+        }
+        if lowercased.contains("token") || lowercased.contains("api") {
+            // Weekly or other token windows
+            return 1
+        }
+        if lowercased.contains("mcp") || lowercased.contains("tool") || lowercased.contains("time_limit") || lowercased.contains("time limit") {
+            return 2
+        }
+        if lowercased == "limits" || lowercased == "limit" {
+            return 3
+        }
+        return 1
     }
 
     nonisolated(unsafe) static let isoFormatter: ISO8601DateFormatter = {
