@@ -2924,6 +2924,8 @@ extension SwitcherCrossFlowTests {
         // VAL-CROSS-009: Create CLI launch service to verify invocation traces
         let adapter = SpySwitcherProfileStoreAdapter(store: localStore)
         let cliService = SwitcherCLILAunchService(profileStore: adapter)
+        CLILaunchAdapter.executableResolver = { _ in nil }
+        defer { CLILaunchAdapter.executableResolver = nil }
 
         // VAL-CROSS-009: Execute launch path and assert concrete invocation trace
         // Claude is not installed via seam, so we get executableNotFound error

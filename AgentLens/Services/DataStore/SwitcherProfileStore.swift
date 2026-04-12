@@ -325,6 +325,47 @@ public final class SwitcherProfileStore {
         }
     }
 
+    public enum MoveDirection {
+        case up
+        case down
+    }
+
+    /// Moves a profile one slot up or down in deterministic priority order.
+    /// Reassigns contiguous sort keys so ordering stays explicit and user-visible.
+    public func moveProfile(id: String, direction: MoveDirection) throws {
+        let orderedProfiles = try fetchAllProfiles()
+        guard let currentIndex = orderedProfiles.firstIndex(where: { $0.id == id }) else {
+            throw SwitcherProfileStoreError.profileNotFound(id)
+        }
+
+        let targetIndex: Int
+        switch direction {
+        case .up:
+            targetIndex = currentIndex - 1
+        case .down:
+            targetIndex = currentIndex + 1
+        }
+
+        guard orderedProfiles.indices.contains(targetIndex) else { return }
+
+        var reordered = orderedProfiles
+        reordered.swapAt(currentIndex, targetIndex)
+
+        try dbQueue.write { db in
+            let now = Date()
+            for (index, profile) in reordered.enumerated() {
+                try db.execute(
+                    sql: """
+                    UPDATE switcher_profiles
+                    SET sortKey = ?, updatedAt = ?
+                    WHERE id = ?
+                    """,
+                    arguments: [index + 1, now, profile.id]
+                )
+            }
+        }
+    }
+
     /// Deletes a profile by ID.
     /// If the deleted profile was active, selects a deterministic fallback (lowest sortKey).
     public func deleteProfile(id: String) throws {

@@ -287,12 +287,21 @@ struct AccountSwitcherSettingsView: View {
                 .keyboardShortcut("n", modifiers: .command)
             }
 
+            Text("Priority order controls CLI fallback. BurnBar launches the selected profile first, then walks down the same-tool list if quota is already exhausted, the CLI immediately reports quota exhaustion, or launch setup fails.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
             // Profile rows (VAL-SETTINGS-014: deterministic ordering)
-            ForEach(profiles) { profile in
+            ForEach(Array(profiles.enumerated()), id: \.element.id) { index, profile in
                 ProfileRowView(
                     profile: profile,
+                    priorityIndex: index + 1,
                     isActive: profile.id == activeProfileID,
+                    canMoveUp: index > 0,
+                    canMoveDown: index < profiles.count - 1,
                     onSetActive: { setActiveProfile(profile) },
+                    onMoveUp: { moveProfile(profile, direction: .up) },
+                    onMoveDown: { moveProfile(profile, direction: .down) },
                     onEdit: { editProfile(profile) },
                     onDelete: { confirmDeleteProfile(profile) }
                 )
@@ -378,6 +387,15 @@ struct AccountSwitcherSettingsView: View {
             activeProfileState = try dataStore.switcherStore.fetchActiveProfileState()
         } catch {
             self.error = "Failed to set active profile: \(error.localizedDescription)"
+        }
+    }
+
+    private func moveProfile(_ profile: SwitcherProfileRecord, direction: SwitcherProfileStore.MoveDirection) {
+        do {
+            try dataStore.switcherStore.moveProfile(id: profile.id, direction: direction)
+            loadProfiles()
+        } catch {
+            self.error = "Failed to reorder profile: \(error.localizedDescription)"
         }
     }
 
@@ -562,8 +580,13 @@ struct AccountSwitcherSettingsView: View {
 /// Individual profile row with active indicator and actions.
 struct ProfileRowView: View {
     let profile: SwitcherProfileRecord
+    let priorityIndex: Int
     let isActive: Bool
+    let canMoveUp: Bool
+    let canMoveDown: Bool
     let onSetActive: () -> Void
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
 
@@ -587,6 +610,14 @@ struct ProfileRowView: View {
                         Text(profile.displayName)
                             .font(DesignSystem.Typography.body)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                        Text("#\(priorityIndex)")
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .padding(.horizontal, DesignSystem.Spacing.xs)
+                            .padding(.vertical, 2)
+                            .background(DesignSystem.Colors.surfaceElevated)
+                            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm))
 
                         if isActive {
                             Text("Active")
@@ -614,6 +645,28 @@ struct ProfileRowView: View {
 
                 // Actions
                 HStack(spacing: DesignSystem.Spacing.sm) {
+                    Button {
+                        onMoveUp()
+                    } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(canMoveUp ? DesignSystem.Colors.textMuted : DesignSystem.Colors.textMuted.opacity(0.35))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canMoveUp)
+                    .accessibilityLabel("Move \(profile.displayName) up in priority")
+
+                    Button {
+                        onMoveDown()
+                    } label: {
+                        Image(systemName: "arrow.down")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(canMoveDown ? DesignSystem.Colors.textMuted : DesignSystem.Colors.textMuted.opacity(0.35))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canMoveDown)
+                    .accessibilityLabel("Move \(profile.displayName) down in priority")
+
                     if !isActive {
                         Button("Set Active") {
                             onSetActive()

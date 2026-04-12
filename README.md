@@ -5,7 +5,7 @@
 
   > A native macOS app that watches your AI coding agents so you don't have to wonder where all your money went.
 
-  **Status:** Experimental source release (`0.1.0-beta`) — best-effort support, feedback welcome.
+  **Status:** Experimental beta (`0.1.0-beta`) — best-effort support, feedback welcome.
 
 </div>
 
@@ -13,9 +13,9 @@ If you're the kind of person who has three AI agents running in parallel tabs an
 
 For the paranoid-and-proud crowd: analytics stay **local-first**. No API keys, no account, no cloud — unless you *want* cloud. OpenBurnBar also ships a **Cursor / VS Code extension** that talks to a small **local daemon** so your editor and your meter can be friends.
 
-This repository is meant to be **built from source today**. Treat it as an **experimental** source release rather than a polished 1.0 or packaged distribution. Optional cloud sync, tunnels, and editor integration are provided on a best-effort basis.
+OpenBurnBar is still an **experimental** release, but the install path is straightforward: grab the latest macOS DMG from GitHub Releases, drag `OpenBurnBar.app` into `/Applications`, and launch it from your menu bar. If you want the latest tree or prefer local builds, `make install` remains the source fallback.
 
-Tagged GitHub releases are **source-release milestones only** in the current public model. The release workflow verifies the tree and drafts a release page, but it intentionally does **not** attach a notarized app bundle, daemon tarball, Homebrew formula, or signed VSIX.
+The macOS app ships as a packaged release artifact. The editor extension remains source-only for now; there is no public VS Marketplace / Open VSX listing or signed VSIX attached to releases yet.
 
 ## Architecture stance
 
@@ -270,16 +270,23 @@ The Mac app sources live under **`AgentLens/`** because renaming folders is a pe
 
 ## Install
 
+### Download the latest macOS release (recommended)
+
+1. Open [GitHub Releases](https://github.com/Ajnunezg/BurnBar/releases)
+2. Download the latest `OpenBurnBar-<version>-macOS.dmg`
+3. Open the DMG and drag `OpenBurnBar.app` into `Applications`
+4. Launch `OpenBurnBar`
+
+### Build from source (fallback)
+
 ```bash
 git clone https://github.com/Ajnunezg/BurnBar.git
 cd BurnBar
 make install    # builds Release .app → /Applications
-open -a BurnBar
+open -a OpenBurnBar
 ```
 
-Or grab the `.dmg` from [GitHub Releases](https://github.com/Ajnunezg/BurnBar/releases) and drag to Applications.
-
-See [QUICKSTART.md](QUICKSTART.md) for all options (Homebrew Cask, DMG, build from source, Xcode).
+See [QUICKSTART.md](QUICKSTART.md) for the install matrix (DMG, source build, Xcode, and Homebrew tap status).
 
 ---
 

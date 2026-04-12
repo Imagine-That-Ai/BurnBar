@@ -200,6 +200,10 @@ private struct IdentityCard: View {
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                         .lineLimit(1)
                         .truncationMode(.middle)
+
+                    if let quotaSummary = identity.quotaSummary {
+                        quotaSummaryView(quotaSummary)
+                    }
                 }
 
                 Spacer()
@@ -290,6 +294,36 @@ private struct IdentityCard: View {
     }
 
     // MARK: - Action Button
+
+    private func quotaSummaryView(_ summary: IdentityQuotaSummary) -> some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            quotaPill(label: "5h", value: summary.fiveHourRemaining ?? "--")
+            quotaPill(label: "Weekly", value: summary.weeklyRemaining ?? "--")
+        }
+        .padding(.top, DesignSystem.Spacing.xxs)
+    }
+
+    private func quotaPill(label: String, value: String) -> some View {
+        HStack(spacing: DesignSystem.Spacing.xxs) {
+            Text(label)
+                .font(DesignSystem.Typography.monoTiny)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Text(value)
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.success)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.xs)
+        .padding(.vertical, 4)
+        .background(
+            Capsule(style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.78))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(DesignSystem.Colors.borderSubtle, lineWidth: 1)
+        )
+    }
 
     @ViewBuilder
     private var actionButton: some View {

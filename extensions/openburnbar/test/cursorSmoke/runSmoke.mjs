@@ -15,13 +15,14 @@ const daemonBinary = join(
 const cursorBinary = "/Applications/Cursor.app/Contents/MacOS/Cursor";
 
 const tempRoot = mkdtempSync(join(tmpdir(), "openburnbar-cursor-smoke-"));
+const smokeID = tempRoot.slice(-6);
 const userDataDir = join(tempRoot, "user-data");
 const extensionsDir = join(tempRoot, "extensions");
 const workspaceDir = join(tempRoot, "workspace");
 const supportDir = join(tempRoot, "openburnbar-support");
 const smokeOutput = join(tempRoot, "smoke-output.json");
-const socketPath = join(tempRoot, "openburnbar-daemon.sock");
-const logPath = join(tempRoot, "openburnbar-daemon.log");
+const socketPath = join("/tmp", `obbcs-${smokeID}.sock`);
+const logPath = join("/tmp", `obbcs-${smokeID}.log`);
 const fakeProviderOutputsPath = join(tempRoot, "fake-provider-outputs.json");
 
 mkdirSync(userDataDir, { recursive: true });

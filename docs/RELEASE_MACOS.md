@@ -1,6 +1,6 @@
 # macOS Release
 
-BurnBar's release pipeline is automated via `.github/workflows/release.yml`. Pushing a `v*` tag triggers a build that produces a DMG and ZIP, attaches them to a draft GitHub Release, and optionally signs + notarizes when Apple Developer secrets are configured.
+OpenBurnBar's release pipeline is automated via `.github/workflows/release.yml`. Pushing a `v*` tag triggers a build that produces an `OpenBurnBar` DMG and ZIP, attaches them to a draft GitHub Release, and signs + notarizes when Apple Developer secrets are configured.
 
 ## How to cut a release
 
@@ -11,7 +11,7 @@ git push origin v0.1.0-beta
 
 The workflow will:
 1. Run all tests (Swift, app, TypeScript)
-2. Build a Release .app via `xcodebuild`
+2. Build `OpenBurnBar.app` via `xcodebuild`
 3. Package a DMG (with drag-to-Applications symlink) and ZIP
 4. Sign and notarize if secrets are present (see below)
 5. Create a draft GitHub Release with artifacts attached
@@ -20,7 +20,7 @@ Review the draft release on GitHub, edit notes if needed, then publish.
 
 ## CI secrets for signing & notarization
 
-Without these secrets, the workflow still produces **unsigned** DMG/ZIP artifacts. Users will need to right-click → Open to bypass Gatekeeper.
+Without these secrets, the workflow still produces **unsigned** DMG/ZIP artifacts. Users will need to right-click → Open to bypass Gatekeeper. The workflow now fails fast if the signing or notarization secrets are only partially configured.
 
 To enable full notarized distribution, add these GitHub Actions secrets:
 
@@ -49,9 +49,9 @@ base64 -i Certificates.p12 | pbcopy
 A Cask formula is at `homebrew/burnbar.rb`. To publish:
 
 1. Create a repo: `Ajnunezg/homebrew-tap`
-2. Copy `homebrew/burnbar.rb` → `Casks/burnbar.rb`
+2. Copy `homebrew/burnbar.rb` → `Casks/openburnbar.rb`
 3. Update the `version` and `sha256` to match the latest release DMG
-4. Users install with: `brew install --cask Ajnunezg/tap/burnbar`
+4. Users install with: `brew install --cask Ajnunezg/tap/openburnbar`
 
 Consider automating the Cask update as a step in `release.yml` once the tap repo exists.
 
@@ -61,15 +61,15 @@ For users who don't need Gatekeeper approval:
 
 ```bash
 make install   # builds Release .app → /Applications
-open -a BurnBar
+open -a OpenBurnBar
 ```
 
 ## Smoke tests after install
 
 1. Launch from `/Applications` after drag-install or `make install`
-2. Confirm BurnBar appears in the menu bar
+2. Confirm OpenBurnBar appears in the menu bar
 3. Open Settings → Chat Backends and verify gateway URLs/tokens if using Hermes/OpenClaw
-4. Check the daemon resolves from `Contents/Helpers/BurnBarDaemon`
+4. Check the daemon resolves from `Contents/Helpers/OpenBurnBarDaemon`
 
 ## References
 

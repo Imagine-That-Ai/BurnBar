@@ -313,6 +313,9 @@ async function maybeRunCursorSmoke(
         });
         return result.runID;
       },
+      approveRun: async (runID) => {
+        await controller.respondToApproval(runID, 'approve', 'Approved by OpenBurnBar Cursor smoke test.');
+      },
       getRunPhase: async (runID) => {
         const detail = await controller.getRunDetail(runID);
         return detail?.run?.phase;
@@ -372,6 +375,17 @@ async function maybeRunCursorSmokeWithoutUI(
         });
         return result.runID;
       },
+      approveRun: async (_runID, approvalID) => {
+        await daemonClient.respondToApproval({
+          response: {
+            approvalID,
+            clientID,
+            decision: 'approve',
+            note: 'Approved by OpenBurnBar Cursor smoke test.',
+            respondedAt: toBurnBarTimestamp()
+          }
+        });
+      },
       getRunPhase: async (runID) => {
         const detail = await daemonClient.getRun({ runID, clientID });
         return detail.run?.phase;
@@ -396,6 +410,7 @@ async function runCursorSmoke({
   daemonClient,
   getRunDetail,
   createRun,
+  approveRun,
   getRunPhase
 }: {
   outputPath: string;
@@ -409,6 +424,7 @@ async function runCursorSmoke({
     prompt: string,
     metadata: Record<string, BurnBarJSONValue>
   ) => Promise<string>;
+  approveRun?: (runID: string, approvalID: string) => Promise<void>;
   getRunPhase: (runID: string) => Promise<string | undefined>;
 }): Promise<void> {
   const fs = await import('node:fs/promises');
@@ -450,8 +466,18 @@ async function runCursorSmoke({
     );
 
     let phase = 'unknown';
+    const autoApprovedApprovalIDs = new Set<string>();
     for (let attempt = 0; attempt < 240; attempt += 1) {
       phase = (await getRunPhase(runID)) ?? phase;
+      if (phase === 'awaiting_approval' && getRunDetail && approveRun) {
+        const runDetail = await getRunDetail(runID);
+        const approvalID = runDetail?.approvalRequest?.approvalID;
+        if (approvalID && !autoApprovedApprovalIDs.has(approvalID)) {
+          autoApprovedApprovalIDs.add(approvalID);
+          await approveRun(runID, approvalID);
+          continue;
+        }
+      }
       if (phase === 'completed' || phase === 'failed' || phase === 'cancelled') {
         break;
       }
@@ -587,6 +613,10 @@ function buildSmokeReplacement(content: string): { from: string; to: string } {
     from,
     to: `${from} (edited)`
   };
+}
+
+function toBurnBarTimestamp(date = new Date()): number {
+  return date.getTime() / 1000 - 978_307_200;
 }
 
 function inferWorkflowMetadataFromPrompt(prompt: string): Record<string, BurnBarJSONValue> | undefined {

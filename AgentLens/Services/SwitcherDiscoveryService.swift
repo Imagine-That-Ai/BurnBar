@@ -7,8 +7,8 @@ import OpenBurnBarCore
 enum DiscoverySource: Equatable {
     case chromeProfile(folderKey: String, email: String?, gaiaName: String?)
     case safari
-    case codex(executablePath: String, hasAPIKey: Bool, lastRefresh: Date?)
-    case claudeCode(executablePath: String, isAuthenticated: Bool)
+    case codex(executablePath: String, hasAPIKey: Bool, lastRefresh: Date?, accountDescription: String?)
+    case claudeCode(executablePath: String, isAuthenticated: Bool, accountDescription: String?)
     case opencode(executablePath: String?)
 }
 
@@ -20,12 +20,18 @@ enum IdentityAuthState: Equatable {
     case notInstalled
 }
 
+struct IdentityQuotaSummary: Equatable {
+    let fiveHourRemaining: String?
+    let weeklyRemaining: String?
+}
+
 /// A discovered identity that can be one-click added as a profile.
 struct DiscoveredIdentity: Identifiable, Equatable {
     let id: String
     let source: DiscoverySource
     let displayTitle: String
     let subtitle: String
+    let quotaSummary: IdentityQuotaSummary?
     let authState: IdentityAuthState
     var isAlreadyAdded: Bool
     var isAdded: Bool = false
@@ -85,6 +91,7 @@ final class SwitcherDiscoveryService: ObservableObject {
                 ),
                 displayTitle: profile.displayName,
                 subtitle: profile.email ?? "Profile: \(profile.folderKey)",
+                quotaSummary: nil,
                 authState: profile.email != nil ? .authenticated : .notAuthenticated,
                 isAlreadyAdded: isDuplicate
             )
@@ -107,6 +114,7 @@ final class SwitcherDiscoveryService: ObservableObject {
                 source: .safari,
                 displayTitle: "Safari",
                 subtitle: "System default browser",
+                quotaSummary: nil,
                 authState: .authenticated,
                 isAlreadyAdded: isDuplicate
             ))
@@ -115,6 +123,7 @@ final class SwitcherDiscoveryService: ObservableObject {
         // Scan CLI tools
         scanProgress.append("Scanning CLI tools...")
         let cliAuthInfos = CLIAuthDiscovery.discoverAuthStates()
+        let quotaSummaries = await loadCLIQuotaSummaries(for: cliAuthInfos, dataStore: dataStore)
 
         for cliInfo in cliAuthInfos {
             let source: DiscoverySource
@@ -123,7 +132,8 @@ final class SwitcherDiscoveryService: ObservableObject {
                 source = .codex(
                     executablePath: cliInfo.executablePath ?? "",
                     hasAPIKey: cliInfo.authState == .apiKeyPresent,
-                    lastRefresh: nil
+                    lastRefresh: nil,
+                    accountDescription: cliInfo.accountDescription
                 )
             case .claude:
                 source = .claudeCode(
@@ -131,7 +141,8 @@ final class SwitcherDiscoveryService: ObservableObject {
                     isAuthenticated: {
                         if case .authenticated = cliInfo.authState { return true }
                         return false
-                    }()
+                    }(),
+                    accountDescription: cliInfo.accountDescription
                 )
             case .opencode:
                 source = .opencode(executablePath: cliInfo.executablePath)
@@ -143,6 +154,7 @@ final class SwitcherDiscoveryService: ObservableObject {
                     source: source,
                     displayTitle: cliInfo.cliType.displayName,
                     subtitle: "Not installed",
+                    quotaSummary: nil,
                     authState: .notInstalled,
                     isAlreadyAdded: false
                 ))
@@ -170,7 +182,8 @@ final class SwitcherDiscoveryService: ObservableObject {
                 id: "cli.\(cliInfo.cliType.rawValue)",
                 source: source,
                 displayTitle: cliInfo.cliType.displayName,
-                subtitle: cliInfo.executablePath ?? "Installed",
+                subtitle: cliInfo.accountDescription ?? cliInfo.executablePath ?? "Installed",
+                quotaSummary: quotaSummaries[cliInfo.cliType],
                 authState: identityAuthState,
                 isAlreadyAdded: isDuplicate
             ))
@@ -211,7 +224,7 @@ final class SwitcherDiscoveryService: ObservableObject {
                 sortKey: 0
             )
 
-        case .codex(let execPath, _, _):
+        case .codex:
             record = SwitcherProfileRecord(
                 targetKind: .cli,
                 cliType: .codex,
@@ -222,7 +235,7 @@ final class SwitcherDiscoveryService: ObservableObject {
                 sortKey: 0
             )
 
-        case .claudeCode(let execPath, _):
+        case .claudeCode:
             record = SwitcherProfileRecord(
                 targetKind: .cli,
                 cliType: .claude,
@@ -308,6 +321,68 @@ final class SwitcherDiscoveryService: ObservableObject {
         }
 
         return success
+    }
+
+    private func loadCLIQuotaSummaries(
+        for cliAuthInfos: [CLIAuthInfo],
+        dataStore: DataStore
+    ) async -> [SwitcherCLIProfileType: IdentityQuotaSummary] {
+        let quotaService = ProviderQuotaService.shared
+        var summaries: [SwitcherCLIProfileType: IdentityQuotaSummary] = [:]
+
+        for cliInfo in cliAuthInfos where cliInfo.isInstalled {
+            guard let provider = quotaProvider(for: cliInfo.cliType) else { continue }
+
+            let existingSnapshot = quotaService.snapshot(for: provider)
+            if shouldRefreshQuotaSnapshot(existingSnapshot) {
+                scanProgress.append("Refreshing \(cliInfo.cliType.displayName) quota…")
+                await quotaService.refresh(provider: provider, dataStore: dataStore)
+            }
+
+            guard let snapshot = quotaService.snapshot(for: provider),
+                  let summary = quotaSummary(from: snapshot) else {
+                continue
+            }
+
+            summaries[cliInfo.cliType] = summary
+
+            let fiveHour = summary.fiveHourRemaining ?? "--"
+            let weekly = summary.weeklyRemaining ?? "--"
+            scanProgress.append("\(cliInfo.cliType.displayName) quota — 5h \(fiveHour), weekly \(weekly)")
+        }
+
+        return summaries
+    }
+
+    private func shouldRefreshQuotaSnapshot(_ snapshot: ProviderQuotaSnapshot?) -> Bool {
+        guard let snapshot else { return true }
+        if snapshot.buckets.isEmpty { return true }
+        return snapshot.isStale()
+    }
+
+    private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider? {
+        switch cliType {
+        case .codex:
+            return .codex
+        case .claude:
+            return .claudeCode
+        case .opencode:
+            return nil
+        }
+    }
+
+    private func quotaSummary(from snapshot: ProviderQuotaSnapshot) -> IdentityQuotaSummary? {
+        let fiveHourRemaining = snapshot.hourlyBucket?.remainingText
+        let weeklyRemaining = snapshot.weeklyBucket?.remainingText
+
+        guard fiveHourRemaining != nil || weeklyRemaining != nil else {
+            return nil
+        }
+
+        return IdentityQuotaSummary(
+            fiveHourRemaining: fiveHourRemaining,
+            weeklyRemaining: weeklyRemaining
+        )
     }
 }
 

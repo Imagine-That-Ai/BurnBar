@@ -27,7 +27,7 @@ What this means in practice:
 - The API and data model may change without notice.
 - Features documented as "experimental" may be removed or redesigned.
 - The project does not promise backwards compatibility across commits.
-- Build-from-source is the only supported install path today.
+- Tagged GitHub Release DMGs are the primary install path; build-from-source remains supported for contributors and anyone who wants the latest tree.
 
 ## How to Help
 

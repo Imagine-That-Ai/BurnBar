@@ -744,8 +744,32 @@ struct DashboardQuickSwitchView: View {
 
             // Initialize launch services
             let adapter = DashboardSwitcherProfileAdapter(store: dataStore.switcherStore)
+            let fallbackPlanner = SwitcherCLIFallbackPlanner { cliType in
+                await MainActor.run {
+                    let provider: AgentProvider?
+                    switch cliType {
+                    case .codex:
+                        provider = .codex
+                    case .claude:
+                        provider = .claudeCode
+                    case .opencode:
+                        provider = nil
+                    }
+
+                    guard let provider else { return nil }
+                    let snapshot = ProviderQuotaService.shared.snapshot(for: provider)
+                    return CLIFallbackQuotaStatus(
+                        fiveHourRemainingPercent: snapshot?.hourlyBucket?.remainingPercent,
+                        weeklyRemainingPercent: snapshot?.weeklyBucket?.remainingPercent,
+                        statusMessage: snapshot?.statusMessage
+                    )
+                }
+            }
             browserLaunchService = SwitcherBrowserLaunchService(profileStore: adapter)
-            cliLaunchService = SwitcherCLILAunchService(profileStore: adapter)
+            cliLaunchService = SwitcherCLILAunchService(
+                profileStore: adapter,
+                fallbackPlanner: fallbackPlanner
+            )
 
             // Announce loaded state
             if profiles.isEmpty {
@@ -845,10 +869,18 @@ struct DashboardQuickSwitchView: View {
     private func handleCLILaunchOutcome(_ outcome: CLILaunchOutcome?, profile: SwitcherProfileRecord) {
         DispatchQueue.main.async {
             if let outcome, outcome.success {
+                if let launchedProfileID = outcome.launchedProfileID,
+                   launchedProfileID != profile.id,
+                   let launchedProfile = profiles.first(where: { $0.id == launchedProfileID }) {
+                    activeProfileID = launchedProfileID
+                    selectedProfileID = launchedProfileID
+                    announceForAccessibility("Launched \(launchedProfile.displayName) after falling back in priority order")
+                } else {
+                    announceForAccessibility("\(profile.displayName) launched successfully")
+                }
                 withAnimation(DesignSystem.Animation.snappy) {
                     launchState = .success
                 }
-                announceForAccessibility("\(profile.displayName) launched successfully")
             } else {
                 let errorMessage = outcome?.error?.errorDescription ?? "Launch failed"
                 withAnimation(DesignSystem.Animation.snappy) {

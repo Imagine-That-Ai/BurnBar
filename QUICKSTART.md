@@ -9,20 +9,14 @@ Get up and running with OpenBurnBar in under 2 minutes.
 
 ## Installation
 
-### Option 1: Homebrew Cask (recommended, once notarized builds are available)
-
-```bash
-brew install --cask Ajnunezg/tap/burnbar
-```
-
-### Option 2: Download from GitHub Releases
+### Option 1: Download from GitHub Releases (recommended)
 
 1. Go to [Releases](https://github.com/Ajnunezg/BurnBar/releases)
 2. Download the latest `.dmg`
-3. Open the DMG and drag **BurnBar** to **Applications**
-4. Launch BurnBar — look for it in your menu bar
+3. Open the DMG and drag **OpenBurnBar** to **Applications**
+4. Launch OpenBurnBar — look for it in your menu bar
 
-### Option 3: Build from Source (one command)
+### Option 2: Build from Source (one command)
 
 ```bash
 git clone https://github.com/Ajnunezg/BurnBar.git
@@ -33,20 +27,26 @@ make install
 This builds a Release .app and copies it to `/Applications`. Then run:
 
 ```bash
-open -a BurnBar
+open -a OpenBurnBar
 ```
 
 To uninstall: `make uninstall`
 
-### Option 4: Open in Xcode (for development)
+### Option 3: Open in Xcode (for development)
 
 ```bash
 git clone https://github.com/Ajnunezg/BurnBar.git
 cd BurnBar
-open BurnBar.xcodeproj
+open OpenBurnBar.xcodeproj
 ```
 
-Select the **BurnBar** scheme, press **⌘R** to build and run.
+Select the **OpenBurnBar** scheme, press **⌘R** to build and run.
+
+### Option 4: Homebrew Cask (once the tap is published)
+
+```bash
+brew install --cask Ajnunezg/tap/openburnbar
+```
 
 ### Building the Daemon Separately
 

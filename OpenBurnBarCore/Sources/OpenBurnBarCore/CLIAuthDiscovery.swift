@@ -23,6 +23,7 @@ public struct CLIAuthInfo: Identifiable, Equatable, Sendable {
     public let executablePath: String?
     public let authState: CLIAuthState
     public let configDirectory: String?
+    public let accountDescription: String?
 
     public var id: String { cliType.rawValue }
 
@@ -31,13 +32,15 @@ public struct CLIAuthInfo: Identifiable, Equatable, Sendable {
         isInstalled: Bool,
         executablePath: String?,
         authState: CLIAuthState,
-        configDirectory: String? = nil
+        configDirectory: String? = nil,
+        accountDescription: String? = nil
     ) {
         self.cliType = cliType
         self.isInstalled = isInstalled
         self.executablePath = executablePath
         self.authState = authState
         self.configDirectory = configDirectory
+        self.accountDescription = accountDescription
     }
 }
 
@@ -45,9 +48,10 @@ public struct CLIAuthInfo: Identifiable, Equatable, Sendable {
 
 /// Discovers CLI installation and authentication states.
 ///
-/// Security: Only checks for the PRESENCE of auth files and tokens.
-/// No API keys, OAuth tokens, or credentials are read or stored.
-/// Key values are checked for non-emptiness only (boolean result).
+/// Security: Only reads non-sensitive local auth metadata needed for display.
+/// Raw API keys, OAuth tokens, and credentials are never stored or surfaced.
+/// When token-backed auth is present, only safe identity claims like name/email
+/// are extracted in-memory for UI labels.
 public enum CLIAuthDiscovery {
 
     /// Scans all CLI types and returns their auth states.
@@ -71,7 +75,8 @@ public enum CLIAuthDiscovery {
                 isInstalled: executablePath != nil,
                 executablePath: executablePath,
                 authState: authState,
-                configDirectory: FileManager.default.fileExists(atPath: configDir) ? configDir : nil
+                configDirectory: FileManager.default.fileExists(atPath: configDir) ? configDir : nil,
+                accountDescription: codexAccountDescription(home: home, authState: authState)
             )
 
         case .claude:
@@ -82,7 +87,11 @@ public enum CLIAuthDiscovery {
                 isInstalled: executablePath != nil,
                 executablePath: executablePath,
                 authState: authState,
-                configDirectory: FileManager.default.fileExists(atPath: configDir) ? configDir : nil
+                configDirectory: FileManager.default.fileExists(atPath: configDir) ? configDir : nil,
+                accountDescription: claudeAccountDescription(
+                    executablePath: executablePath,
+                    authState: authState
+                )
             )
 
         case .opencode:
@@ -155,6 +164,161 @@ public enum CLIAuthDiscovery {
         }
 
         return .notAuthenticated
+    }
+
+    // MARK: - Account Identity Helpers
+
+    static func codexAccountDescription(home: String, authState: CLIAuthState) -> String? {
+        guard case .authenticated = authState else { return nil }
+
+        let authPath = "\(home)/.codex/auth.json"
+        guard let data = FileManager.default.contents(atPath: authPath) else {
+            return nil
+        }
+
+        return extractCodexAccountDescription(fromAuthJSONData: data)
+    }
+
+    static func extractCodexAccountDescription(fromAuthJSONData data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tokens = json["tokens"] as? [String: Any] else {
+            return nil
+        }
+
+        if let idToken = tokens["id_token"] as? String,
+           let claims = parseJWTClaims(from: idToken) {
+            let name = claims["name"] as? String
+            let email = claims["email"] as? String
+            if let formatted = formattedAccountDescription(name: name, email: email) {
+                return formatted
+            }
+        }
+
+        if let accessToken = tokens["access_token"] as? String,
+           let claims = parseJWTClaims(from: accessToken),
+           let profile = claims["https://api.openai.com/profile"] as? [String: Any] {
+            let email = profile["email"] as? String
+            return formattedAccountDescription(name: nil, email: email)
+        }
+
+        return nil
+    }
+
+    static func claudeAccountDescription(
+        executablePath: String?,
+        authState: CLIAuthState
+    ) -> String? {
+        guard case .authenticated = authState,
+              let executablePath else {
+            return nil
+        }
+
+        guard let data = runCommand(
+            executablePath: executablePath,
+            arguments: ["auth", "status", "--json"],
+            timeout: 1.5
+        ) else {
+            return nil
+        }
+
+        return extractClaudeAccountDescription(fromStatusJSONData: data)
+    }
+
+    static func extractClaudeAccountDescription(fromStatusJSONData data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        let email = json["email"] as? String
+        let orgName = json["orgName"] as? String
+
+        if let email, !email.isEmpty {
+            return email
+        }
+
+        if let orgName, !orgName.isEmpty {
+            return orgName
+        }
+
+        return nil
+    }
+
+    static func formattedAccountDescription(name: String?, email: String?) -> String? {
+        let trimmedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEmail = email?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let trimmedName, !trimmedName.isEmpty,
+           let trimmedEmail, !trimmedEmail.isEmpty {
+            return "\(trimmedName) • \(trimmedEmail)"
+        }
+
+        if let trimmedName, !trimmedName.isEmpty {
+            return trimmedName
+        }
+
+        if let trimmedEmail, !trimmedEmail.isEmpty {
+            return trimmedEmail
+        }
+
+        return nil
+    }
+
+    static func parseJWTClaims(from token: String) -> [String: Any]? {
+        let segments = token.split(separator: ".")
+        guard segments.count >= 2 else { return nil }
+
+        var payload = String(segments[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+
+        let remainder = payload.count % 4
+        if remainder != 0 {
+            payload += String(repeating: "=", count: 4 - remainder)
+        }
+
+        guard let data = Data(base64Encoded: payload),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        return json
+    }
+
+    private static func runCommand(
+        executablePath: String,
+        arguments: [String],
+        timeout: TimeInterval
+    ) -> Data? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
+        process.standardInput = FileHandle.nullDevice
+
+        let stdout = Pipe()
+        process.standardOutput = stdout
+        process.standardError = Pipe()
+
+        let semaphore = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in
+            semaphore.signal()
+        }
+
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+
+        if semaphore.wait(timeout: .now() + timeout) == .timedOut {
+            process.terminate()
+            return nil
+        }
+
+        guard process.terminationStatus == 0 else {
+            return nil
+        }
+
+        return stdout.fileHandleForReading.readDataToEndOfFile()
     }
 
     // MARK: - Date Parsing

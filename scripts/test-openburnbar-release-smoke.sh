@@ -10,15 +10,33 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 "$repo_root/scripts/test-openburnbar-ts.sh"
 "$repo_root/scripts/test-openburnbar-replay-evals.sh"
 "$repo_root/scripts/test-openburnbar-extension-host.sh"
-bash -lc "cd \"$repo_root/extensions/openburnbar\" && npm run test:cursor-smoke"
+npm --prefix "$repo_root/extensions/openburnbar" run test:cursor-smoke
 
 uid="$(id -u)"
-daemon_bin_dir="$(swift build --package-path "$repo_root/OpenBurnBarDaemon" --show-bin-path)"
-daemon_bin="$daemon_bin_dir/OpenBurnBarDaemon"
+app_path="$repo_root/.derived-data/Build/Products/Release/OpenBurnBar.app"
+daemon_bin="$app_path/Contents/Helpers/OpenBurnBarDaemon"
+daemon_core_dylib="$app_path/Contents/Helpers/libOpenBurnBarCore.dylib"
 socket_path="/tmp/openburnbar-release-smoke-$uid.sock"
 launch_plist="/tmp/openburnbar-release-smoke-$uid.plist"
 launch_label="com.openburnbar.daemon.release-smoke"
 log_path="/tmp/openburnbar-release-smoke-$uid.log"
+
+make -C "$repo_root" build
+
+if [[ ! -d "$app_path" ]]; then
+  echo "Release app bundle not found at $app_path" >&2
+  exit 1
+fi
+
+if [[ ! -x "$daemon_bin" ]]; then
+  echo "Embedded daemon helper not found at $daemon_bin" >&2
+  exit 1
+fi
+
+if [[ ! -f "$daemon_core_dylib" ]]; then
+  echo "Embedded daemon support library not found at $daemon_core_dylib" >&2
+  exit 1
+fi
 
 python3 - <<PY
 from pathlib import Path

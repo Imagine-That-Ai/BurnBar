@@ -124,6 +124,25 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertEqual(all[2].id, p2.id)
     }
 
+    func test_moveProfile_reassignsPriorityOrder() throws {
+        let metadata = SwitcherBrowserProfileMetadata(profileIdentifier: "Profile")
+        let p1 = try store.create(SwitcherProfileRecord(
+            targetKind: .browser, browserType: .chrome, browserMetadata: metadata, sortKey: 1
+        ))
+        let p2 = try store.create(SwitcherProfileRecord(
+            targetKind: .browser, browserType: .chrome, browserMetadata: metadata, sortKey: 2
+        ))
+        let p3 = try store.create(SwitcherProfileRecord(
+            targetKind: .browser, browserType: .chrome, browserMetadata: metadata, sortKey: 3
+        ))
+
+        try store.moveProfile(id: p3.id, direction: .up)
+
+        let reordered = try store.fetchAllProfiles()
+        XCTAssertEqual(reordered.map(\.id), [p1.id, p3.id, p2.id])
+        XCTAssertEqual(reordered.map(\.sortKey), [1, 2, 3])
+    }
+
     func test_updateProfile_preservesSortKeyAndCreatedAt() throws {
         let original = try store.create(SwitcherProfileRecord(
             targetKind: .browser,

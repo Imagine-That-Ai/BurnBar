@@ -1,4 +1,4 @@
-name: BurnBar Release
+name: OpenBurnBar Release
 
 permissions:
   contents: write
@@ -9,8 +9,8 @@ on:
       - "v*"
 
 env:
-  SCHEME: BurnBar
-  PROJECT: BurnBar.xcodeproj
+  SCHEME: OpenBurnBar
+  PROJECT: OpenBurnBar.xcodeproj
   CONFIG: Release
   DESTINATION: "platform=macOS"
   CACHE_DIR: .spm-cache
@@ -30,25 +30,25 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: extensions/burnbar/package-lock.json
+          cache-dependency-path: extensions/openburnbar/package-lock.json
 
       - name: Install extension dependencies
-        run: npm ci --prefix extensions/burnbar
+        run: npm ci --prefix extensions/openburnbar
 
       - name: Run Swift tests
-        run: ./scripts/test-burnbar-swift.sh
+        run: ./scripts/test-openburnbar-swift.sh
 
-      - name: Run BurnBar app tests
-        run: ./scripts/test-burnbar-app.sh
+      - name: Run OpenBurnBar app tests
+        run: ./scripts/test-openburnbar-app.sh
 
       - name: Run TypeScript tests
-        run: ./scripts/test-burnbar-ts.sh
+        run: ./scripts/test-openburnbar-ts.sh
 
       - name: Build extension
-        run: npm run --prefix extensions/burnbar build
+        run: npm run --prefix extensions/openburnbar build
 
       - name: Build daemon (SPM release binary)
-        run: swift build --package-path BurnBarDaemon -c release
+        run: swift build --package-path OpenBurnBarDaemon -c release
 
       - name: Extract version from tag
         id: version
@@ -60,6 +60,52 @@ jobs:
             exit 1
           fi
           echo "version=${TAG_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate Apple release secrets
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_NOTARIZATION_APPLE_ID: ${{ secrets.APPLE_NOTARIZATION_APPLE_ID }}
+          APPLE_NOTARIZATION_PASSWORD: ${{ secrets.APPLE_NOTARIZATION_PASSWORD }}
+        run: |
+          require_all_or_none() {
+            local label="$1"
+            shift
+
+            local present=0
+            local missing=()
+
+            for var in "$@"; do
+              if [[ -n "${!var}" ]]; then
+                present=1
+              else
+                missing+=("$var")
+              fi
+            done
+
+            if [[ $present -eq 1 && ${#missing[@]} -gt 0 ]]; then
+              echo "::error::$label secrets are partially configured. Missing: ${missing[*]}"
+              exit 1
+            fi
+          }
+
+          require_all_or_none "Code signing" \
+            APPLE_CERTIFICATE_P12 \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_SIGNING_IDENTITY \
+            APPLE_TEAM_ID
+
+          require_all_or_none "Notarization" \
+            APPLE_NOTARIZATION_APPLE_ID \
+            APPLE_NOTARIZATION_PASSWORD \
+            APPLE_TEAM_ID
+
+          if [[ -n "$APPLE_NOTARIZATION_APPLE_ID" && -z "$APPLE_SIGNING_IDENTITY" ]]; then
+            echo "::error::Notarization requires code signing secrets to be configured too."
+            exit 1
+          fi
 
       # ── Code signing setup (before build — must exist when xcodebuild signs) ──
       - name: Import signing certificate
@@ -77,7 +123,15 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
           # Import certificate
-          echo "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          Path(os.environ["RUNNER_TEMP"], "certificate.p12").write_bytes(
+              base64.b64decode(os.environ["CERTIFICATE_P12"])
+          )
+          PY
           security import "$RUNNER_TEMP/certificate.p12" \
             -P "$CERTIFICATE_PASSWORD" \
             -A \
@@ -120,20 +174,27 @@ jobs:
       # ── Embed daemon helper into .app bundle ────────────────────────
       - name: Embed daemon binary in app bundle
         run: |
-          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/BurnBar.app"
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
           HELPERS_DIR="$APP_PATH/Contents/Helpers"
           mkdir -p "$HELPERS_DIR"
 
           # The SPM release binary from the earlier build step
-          DAEMON_BIN="BurnBarDaemon/.build/release/BurnBarDaemon"
+          DAEMON_BIN="OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon"
+          DAEMON_CORE_DYLIB="OpenBurnBarDaemon/.build/release/libOpenBurnBarCore.dylib"
           if [ ! -f "$DAEMON_BIN" ]; then
             echo "::error::Daemon binary not found at $DAEMON_BIN"
             exit 1
           fi
+          if [ ! -f "$DAEMON_CORE_DYLIB" ]; then
+            echo "::error::Daemon support library not found at $DAEMON_CORE_DYLIB"
+            exit 1
+          fi
 
-          cp "$DAEMON_BIN" "$HELPERS_DIR/BurnBarDaemon"
-          chmod +x "$HELPERS_DIR/BurnBarDaemon"
-          echo "Embedded daemon: $(ls -la "$HELPERS_DIR/BurnBarDaemon")"
+          cp "$DAEMON_BIN" "$HELPERS_DIR/OpenBurnBarDaemon"
+          cp "$DAEMON_CORE_DYLIB" "$HELPERS_DIR/libOpenBurnBarCore.dylib"
+          chmod +x "$HELPERS_DIR/OpenBurnBarDaemon"
+          echo "Embedded daemon: $(ls -la "$HELPERS_DIR/OpenBurnBarDaemon")"
+          echo "Embedded daemon support library: $(ls -la "$HELPERS_DIR/libOpenBurnBarCore.dylib")"
 
       # ── Post-build code signing (optional) ──────────────────────────
       - name: Codesign .app bundle
@@ -141,13 +202,17 @@ jobs:
         env:
           SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
-          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/BurnBar.app"
-          ENTITLEMENTS="AgentLens/Resources/BurnBar.entitlements"
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
+          ENTITLEMENTS="AgentLens/Resources/OpenBurnBar.entitlements"
+
+          codesign --force --options runtime \
+            --sign "$SIGNING_IDENTITY" \
+            "$APP_PATH/Contents/Helpers/libOpenBurnBarCore.dylib"
 
           # Sign the embedded daemon helper first
           codesign --force --options runtime \
             --sign "$SIGNING_IDENTITY" \
-            "$APP_PATH/Contents/Helpers/BurnBarDaemon"
+            "$APP_PATH/Contents/Helpers/OpenBurnBarDaemon"
 
           # Sign the main app bundle with entitlements preserved
           codesign --force --deep --options runtime \
@@ -163,8 +228,8 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/BurnBar.app"
-          DMG_NAME="BurnBar-${VERSION}-macOS.dmg"
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
+          DMG_NAME="OpenBurnBar-${VERSION}-macOS.dmg"
           DMG_PATH="$RUNNER_TEMP/$DMG_NAME"
 
           # Create a DMG with Applications symlink for drag-to-install
@@ -173,7 +238,7 @@ jobs:
           cp -R "$APP_PATH" "$STAGING/"
           ln -s /Applications "$STAGING/Applications"
 
-          hdiutil create -volname "BurnBar" \
+          hdiutil create -volname "OpenBurnBar" \
             -srcfolder "$STAGING" \
             -ov -format UDZO \
             "$DMG_PATH"
@@ -213,8 +278,8 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/BurnBar.app"
-          ZIP_NAME="BurnBar-${VERSION}-macOS.zip"
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
+          ZIP_NAME="OpenBurnBar-${VERSION}-macOS.zip"
           ZIP_PATH="$RUNNER_TEMP/$ZIP_NAME"
 
           cd "$(dirname "$APP_PATH")"
@@ -236,24 +301,20 @@ jobs:
           gh release create "$TAG_NAME" \
             "$DMG_PATH" \
             "$ZIP_PATH" \
-            --title "BurnBar $VERSION" \
+            --title "OpenBurnBar $VERSION" \
             --notes "$(cat <<'RELEASE_NOTES'
           ## Installation
 
-          ### Homebrew (once tap is configured)
-          ```bash
-          brew install --cask Ajnunezg/tap/burnbar
-          ```
-
           ### Direct download
           1. Download the `.dmg` below
-          2. Open the DMG and drag BurnBar to Applications
-          3. Launch BurnBar — look for it in your menu bar
+          2. Open the DMG and drag OpenBurnBar to Applications
+          3. Launch OpenBurnBar — look for it in your menu bar
 
           ### Build from source
           ```bash
           git clone https://github.com/Ajnunezg/BurnBar.git
-          cd BurnBar && make install
+          cd BurnBar
+          make install
           ```
           RELEASE_NOTES
           )" \

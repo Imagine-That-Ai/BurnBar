@@ -13,6 +13,39 @@ private func makeTempExecutable(at path: String, content: String = "#!/bin/sh\ne
     }
 }
 
+private struct TestCLIFallbackPlanner: CLIFallbackPlanning {
+    let ineligibleProfileIDs: Set<String>
+
+    func orderedCandidates(
+        for requestedProfile: SwitcherProfileRecord,
+        allProfiles: [SwitcherProfileRecord]
+    ) async -> [SwitcherProfileRecord] {
+        guard let cliType = requestedProfile.cliType else {
+            return [requestedProfile]
+        }
+
+        let matchingProfiles = allProfiles.filter { profile in
+            profile.targetKind == .cli && profile.cliType == cliType
+        }
+
+        guard let requestedIndex = matchingProfiles.firstIndex(where: { $0.id == requestedProfile.id }) else {
+            return matchingProfiles
+        }
+
+        return [matchingProfiles[requestedIndex]]
+            + matchingProfiles.enumerated()
+                .filter { $0.offset != requestedIndex }
+                .map(\.element)
+    }
+
+    func eligibility(for profile: SwitcherProfileRecord) async -> CLIFallbackEligibility {
+        if ineligibleProfileIDs.contains(profile.id) {
+            return .ineligible(reason: "\(profile.displayName) has no remaining quota.")
+        }
+        return .eligible
+    }
+}
+
 // MARK: - Switcher CLI Launch Tests
 
 @MainActor
@@ -314,8 +347,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
             "HOME": "/Users/test",
             "PATH": "/usr/bin",
             "USER": "testuser",
-            "ANTHROPIC_API_KEY": "sk-ant-12345secret",
-            "OPENAI_API_KEY": "sk-12345secret",
+            "ANTHROPIC_API_KEY": "anthropic_test_placeholder",
+            "OPENAI_API_KEY": "openai_test_placeholder",
             "SECRET_TOKEN": "super-secret-value",
             "GITHUB_TOKEN": "ghp_secret",
         ]
@@ -723,6 +756,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             .launchConfigurationFailed("reason"),
             .launchSpawnFailed("detail"),
             .launchTimeout,
+            .quotaExhausted("5-hour window spent"),
             .launchFailed("detail"),
             .noActiveProfile,
         ]
@@ -740,6 +774,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             .profileTypeMismatch(expected: .claude, actual: .codex),
             .disallowedArgument("--test"),
             .invalidWorkingDirectory("reason"),
+            .quotaExhausted("weekly window spent"),
             .launchTimeout,
             .noActiveProfile,
         ]
@@ -976,6 +1011,168 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         }
     }
 
+    func test_launchCLI_fallsBackWhenRequestedProfileIsExhausted() async {
+        let executableURL = URL(fileURLWithPath: "/tmp/test-fallback-codex")
+        let cleanup = makeTempExecutable(at: executableURL.path)
+        defer { cleanup() }
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .codex ? executableURL : nil
+        }
+        CLILaunchInvoker.launchHandler = { _, _, _, _, _ in .success(()) }
+
+        let primary = SwitcherProfileRecord(
+            id: "codex-primary",
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex Primary"),
+            sortKey: 1
+        )
+        let fallback = SwitcherProfileRecord(
+            id: "codex-fallback",
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex Fallback"),
+            sortKey: 2
+        )
+        store.addProfile(primary)
+        store.addProfile(fallback)
+        store.setActiveProfileID(primary.id)
+
+        service = SwitcherCLILAunchService(
+            profileStore: store,
+            fallbackPlanner: TestCLIFallbackPlanner(ineligibleProfileIDs: [primary.id])
+        )
+
+        let outcome = await service.launchCLI(for: primary.id)
+
+        XCTAssertTrue(outcome.success)
+        XCTAssertEqual(outcome.launchedProfileID, fallback.id)
+        XCTAssertEqual(outcome.attemptedProfileIDs, [primary.id, fallback.id])
+        XCTAssertTrue(outcome.didUseFallback)
+        XCTAssertEqual(store.fetchActiveProfileID(), fallback.id)
+        let attemptedProfileID = await service.getLastAttemptedProfileID()
+        XCTAssertEqual(attemptedProfileID, fallback.id)
+    }
+
+    func test_launchCLI_fallsBackAfterImmediateLaunchFailure() async throws {
+        let executableURL = URL(fileURLWithPath: "/tmp/test-fallback-claude")
+        let cleanup = makeTempExecutable(at: executableURL.path)
+        defer { cleanup() }
+
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let workA = tempRoot.appendingPathComponent("A", isDirectory: true)
+        let workB = tempRoot.appendingPathComponent("B", isDirectory: true)
+        try FileManager.default.createDirectory(at: workA, withIntermediateDirectories: true, attributes: nil)
+        try FileManager.default.createDirectory(at: workB, withIntermediateDirectories: true, attributes: nil)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .claude ? executableURL : nil
+        }
+        CLILaunchInvoker.launchHandler = { _, _, _, _, workingDirectory in
+            if workingDirectory == workA.path {
+                return .failure(.launchSpawnFailed("primary launch failed"))
+            }
+            return .success(())
+        }
+
+        let primary = SwitcherProfileRecord(
+            id: "claude-primary",
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                workingDirectory: workA.path,
+                displayLabel: "Claude Primary"
+            ),
+            sortKey: 1
+        )
+        let fallback = SwitcherProfileRecord(
+            id: "claude-fallback",
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                workingDirectory: workB.path,
+                displayLabel: "Claude Fallback"
+            ),
+            sortKey: 2
+        )
+        store.addProfile(primary)
+        store.addProfile(fallback)
+        store.setActiveProfileID(primary.id)
+
+        service = SwitcherCLILAunchService(
+            profileStore: store,
+            fallbackPlanner: TestCLIFallbackPlanner(ineligibleProfileIDs: [])
+        )
+
+        let outcome = await service.launchCLI(for: primary.id)
+
+        XCTAssertTrue(outcome.success)
+        XCTAssertEqual(outcome.launchedProfileID, fallback.id)
+        XCTAssertEqual(store.fetchActiveProfileID(), fallback.id)
+        XCTAssertEqual(outcome.attemptedProfileIDs, [primary.id, fallback.id])
+    }
+
+    func test_launchCLI_fallsBackAfterQuotaExhaustionSignal() async {
+        let executableURL = URL(fileURLWithPath: "/tmp/test-fallback-post-launch-codex")
+        let cleanup = makeTempExecutable(at: executableURL.path)
+        defer { cleanup() }
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let primaryWorkingDirectory = tempRoot.appendingPathComponent("codex-primary", isDirectory: true)
+        let fallbackWorkingDirectory = tempRoot.appendingPathComponent("codex-fallback", isDirectory: true)
+        try? FileManager.default.createDirectory(at: primaryWorkingDirectory, withIntermediateDirectories: true, attributes: nil)
+        try? FileManager.default.createDirectory(at: fallbackWorkingDirectory, withIntermediateDirectories: true, attributes: nil)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .codex ? executableURL : nil
+        }
+        CLILaunchInvoker.launchHandler = { _, _, _, _, workingDirectory in
+            if workingDirectory == primaryWorkingDirectory.path {
+                return .failure(.quotaExhausted("quota exhausted in 5-hour window"))
+            }
+            return .success(())
+        }
+
+        let primary = SwitcherProfileRecord(
+            id: "codex-primary-post-launch",
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                workingDirectory: primaryWorkingDirectory.path,
+                displayLabel: "Codex Primary"
+            ),
+            sortKey: 1
+        )
+        let fallback = SwitcherProfileRecord(
+            id: "codex-fallback-post-launch",
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                workingDirectory: fallbackWorkingDirectory.path,
+                displayLabel: "Codex Fallback"
+            ),
+            sortKey: 2
+        )
+        store.addProfile(primary)
+        store.addProfile(fallback)
+        store.setActiveProfileID(primary.id)
+
+        service = SwitcherCLILAunchService(
+            profileStore: store,
+            fallbackPlanner: TestCLIFallbackPlanner(ineligibleProfileIDs: [])
+        )
+
+        let outcome = await service.launchCLI(for: primary.id)
+
+        XCTAssertTrue(outcome.success)
+        XCTAssertEqual(outcome.launchedProfileID, fallback.id)
+        XCTAssertEqual(outcome.attemptedProfileIDs, [primary.id, fallback.id])
+        XCTAssertTrue(outcome.didUseFallback)
+        XCTAssertEqual(store.fetchActiveProfileID(), fallback.id)
+    }
+
     // MARK: - Executable Not Found (Deterministic via Seam)
 
     func test_launchCLI_reportsExecutableNotFound_whenNotInstalled() async {
@@ -1080,7 +1277,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
             cliType == .claude ? claudeURL : nil
         }
         // Simulate a launch that never completes (stays in-progress)
-        CLILaunchInvoker.launchHandler = { _, _, _, _ in
+        CLILaunchInvoker.launchHandler = { _, _, _, _, _ in
             // Never return — simulates an in-progress launch
             try? await Task.sleep(nanoseconds: 10_000_000_000)
             return .success(())
@@ -1134,7 +1331,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
 
         // Use seams: claude is NOT installed (deterministic), launch handler records the call
         CLILaunchAdapter.executableResolver = { _ in nil }
-        CLILaunchInvoker.launchHandler = { _, _, _, _ in .success(()) }
+        CLILaunchInvoker.launchHandler = { _, _, _, _, _ in .success(()) }
 
         try? await Task.sleep(nanoseconds: 1_000)
         try? await Task.sleep(nanoseconds: 1_000)
@@ -1254,7 +1451,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
 
         // Use seam: both executables NOT installed + simulated handler
         CLILaunchAdapter.executableResolver = { _ in nil }
-        CLILaunchInvoker.launchHandler = { _, _, _, _ in .success(()) }
+        CLILaunchInvoker.launchHandler = { _, _, _, _, _ in .success(()) }
 
         // Launch both profiles concurrently
         async let launch1 = service.launchCLI(for: codexProfile.id)

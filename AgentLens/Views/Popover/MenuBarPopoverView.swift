@@ -98,6 +98,7 @@ struct MenuBarPopoverView: View {
 
                     QuotaPopoverBar(
                         quotaService: quotaService ?? ProviderQuotaService.shared,
+                        settingsManager: settingsManager,
                         dataStore: dataStore
                     )
                     Divider().background(DesignSystem.Colors.border)

@@ -72,7 +72,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
-    preBuildScripts:
+    postBuildScripts:
       - name: Configure Firebase Auth Resources
         script: |
           set -euo pipefail
@@ -160,6 +160,8 @@ targets:
         TEST_HOST: "$(BUNDLE_LOADER)"
     dependencies:
       - target: OpenBurnBar
+      - package: OpenBurnBarCore
+        product: OpenBurnBarCore
       - package: ViewInspector
         product: ViewInspector
 
