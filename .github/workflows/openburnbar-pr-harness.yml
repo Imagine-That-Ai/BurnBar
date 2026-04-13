@@ -35,6 +35,7 @@ jobs:
     timeout-minutes: 30
     env:
       INTERNAL_RUN: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+      HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
 
     steps:
       - name: Check out repository
@@ -47,26 +48,8 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
 
-      - name: Validate Firebase CI secrets
-        if: env.INTERNAL_RUN == 'true'
-        env:
-          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
-          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
-        run: |
-          missing=()
-          for var in FIREBASE_PLIST_BASE64 FIREBASE_APP_CHECK_DEBUG_TOKEN; do
-            if [[ -z "${!var}" ]]; then
-              missing+=("$var")
-            fi
-          done
-
-          if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "::error::Missing required Firebase CI secrets: ${missing[*]}"
-            exit 1
-          fi
-
       - name: Inject Firebase config
-        if: env.INTERNAL_RUN == 'true'
+        if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
         env:
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
@@ -75,6 +58,10 @@ jobs:
       - name: Skip Firebase config injection for fork PRs
         if: env.INTERNAL_RUN != 'true'
         run: echo "Skipping Firebase config injection for fork PR; auth remains disabled in CI."
+
+      - name: Skip Firebase config injection when secrets are unavailable
+        if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS != 'true'
+        run: echo "Firebase CI secrets are unavailable; running tests without injected auth config."
 
       - name: Install OpenBurnBar extension dependencies
         run: npm ci --prefix extensions/openburnbar
@@ -112,5 +99,5 @@ jobs:
           done
 
       - name: Clean up Firebase config
-        if: always() && env.INTERNAL_RUN == 'true'
+        if: always() && env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
         run: bash ./scripts/ci/cleanup-firebase-config.sh
