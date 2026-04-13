@@ -92,7 +92,7 @@ struct ProvidersSettingsView: View {
             wizardProviderID = ProviderWizardTarget(providerID: config.providerID)
         } label: {
             HStack(spacing: DesignSystem.Spacing.md) {
-                ProviderLogoView(provider: config.provider, size: 28, useFallbackColor: false)
+                CatalogProviderLogoView(brand: config.brand, size: 28)
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: DesignSystem.Spacing.xs) {

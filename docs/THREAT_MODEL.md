@@ -59,7 +59,8 @@ A local JSON-RPC server listening on a UNIX domain socket at `~/Library/Applicat
 
 ### What it cannot do
 
-- It does not listen on TCP — no network-accessible port. Only the local UNIX socket.
+- By default it serves only the local UNIX socket (no network-accessible TCP listener).
+- Optional HTTP gateway mode can bind on TCP (`127.0.0.1:8317` by default); non-loopback binds require a bearer token.
 - It does not execute shell commands or spawn subprocesses on behalf of RPC callers.
 - It does not modify files outside its own support directory.
 - It does not require root or elevated privileges.

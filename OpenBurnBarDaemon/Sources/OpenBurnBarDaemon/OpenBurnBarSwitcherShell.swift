@@ -1,0 +1,650 @@
+import Foundation
+import GRDB
+import OpenBurnBarCore
+#if os(macOS)
+import LocalAuthentication
+import Security
+#endif
+
+public enum BurnBarSwitcherShellError: LocalizedError, Equatable {
+    case unsupportedCLI(String)
+    case missingRequestedProfile(String)
+    case requestedProfileMismatch(expected: SwitcherCLIProfileType, actual: SwitcherCLIProfileType?)
+    case noProfilesConfigured(SwitcherCLIProfileType)
+    case terminalSpawnFailed(String)
+    case terminalExited(Int32, detail: String?)
+    case quotaExhausted(String)
+    case shimInstallFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unsupportedCLI(let name):
+            return "Unsupported CLI '\(name)'."
+        case .missingRequestedProfile(let profileID):
+            return "Switcher profile '\(profileID)' was not found."
+        case .requestedProfileMismatch(let expected, let actual):
+            return "Requested profile does not match \(expected.displayName). Found \(actual?.displayName ?? "unknown")."
+        case .noProfilesConfigured(let cliType):
+            return "No \(cliType.displayName) switcher profiles are configured yet."
+        case .terminalSpawnFailed(let detail):
+            return "Failed to start supervised terminal session: \(detail)"
+        case .terminalExited(let status, let detail):
+            if let detail, !detail.isEmpty {
+                return detail
+            }
+            return "CLI exited with status \(status)."
+        case .quotaExhausted(let detail):
+            return detail
+        case .shimInstallFailed(let detail):
+            return "Failed to install shell shims: \(detail)"
+        }
+    }
+}
+
+public struct BurnBarCLIShellExecutionResult: Equatable, Sendable {
+    public let exitCode: Int32
+    public let launchedProfileID: String?
+    public let attemptedProfileIDs: [String]
+    public let fallbackTriggered: Bool
+
+    public init(
+        exitCode: Int32,
+        launchedProfileID: String?,
+        attemptedProfileIDs: [String],
+        fallbackTriggered: Bool
+    ) {
+        self.exitCode = exitCode
+        self.launchedProfileID = launchedProfileID
+        self.attemptedProfileIDs = attemptedProfileIDs
+        self.fallbackTriggered = fallbackTriggered
+    }
+}
+
+public struct BurnBarCLIShellLaunchRequest: Equatable, Sendable {
+    public let cliType: SwitcherCLIProfileType
+    public let forwardedArguments: [String]
+    public let requestedProfileID: String?
+
+    public init(
+        cliType: SwitcherCLIProfileType,
+        forwardedArguments: [String],
+        requestedProfileID: String? = nil
+    ) {
+        self.cliType = cliType
+        self.forwardedArguments = forwardedArguments
+        self.requestedProfileID = requestedProfileID
+    }
+}
+
+public protocol BurnBarCLIShellExecuting: Sendable {
+    func execute(_ request: BurnBarCLIShellLaunchRequest) async throws -> BurnBarCLIShellExecutionResult
+}
+
+public protocol BurnBarSwitcherProfileStoreProviding: SwitcherProfileStoreAdapter {}
+
+public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStoreProviding, @unchecked Sendable {
+    private let dbQueue: DatabaseQueue
+
+    public init(databaseURL: URL = BurnBarDaemonPaths.supportDirectoryURL.appendingPathComponent("openburnbar.sqlite")) throws {
+        self.dbQueue = try DatabaseQueue(path: databaseURL.path, configuration: Self.databaseConfiguration())
+    }
+
+    public init(dbQueue: DatabaseQueue) {
+        self.dbQueue = dbQueue
+    }
+
+    public func fetchProfile(id: String) -> SwitcherProfileRecord? {
+        try? dbQueue.read { db in
+            let row = try Row.fetchOne(db, sql: "SELECT * FROM switcher_profiles WHERE id = ?", arguments: [id])
+            return row.flatMap(Self.profileRecord(from:))
+        }
+    }
+
+    public func fetchAllProfiles() -> [SwitcherProfileRecord] {
+        (try? dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM switcher_profiles ORDER BY sortKey ASC, createdAt ASC"
+            )
+            return rows.compactMap(Self.profileRecord(from:))
+        }) ?? []
+    }
+
+    public func fetchActiveProfileID() -> String? {
+        try? dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT activeProfileID FROM switcher_active_profile
+                    ORDER BY activeProfileID IS NOT NULL DESC,
+                             COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
+                    LIMIT 1
+                """
+            )
+            let activeProfileID: String? = row?["activeProfileID"]
+            return activeProfileID
+        }
+    }
+
+    public func setActiveProfileID(_ profileID: String?) {
+        try? dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM switcher_active_profile")
+            try db.execute(
+                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                arguments: [profileID, Date()]
+            )
+        }
+    }
+
+    public func updateProfile(_ profile: SwitcherProfileRecord) {
+        try? dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE switcher_profiles
+                SET targetKind = ?,
+                    browserType = ?,
+                    browserMetadataJSON = ?,
+                    cliType = ?,
+                    cliMetadataJSON = ?,
+                    updatedAt = ?
+                WHERE id = ?
+                """,
+                arguments: [
+                    profile.targetKind.rawValue,
+                    profile.browserType?.rawValue,
+                    profile.browserMetadata.flatMap { try? Self.encode($0) },
+                    profile.cliType?.rawValue,
+                    profile.cliMetadata.flatMap { try? Self.encode($0) },
+                    Date(),
+                    profile.id
+                ]
+            )
+        }
+    }
+
+    private static func databaseConfiguration() -> Configuration {
+        var configuration = Configuration()
+        configuration.readonly = false
+        return configuration
+    }
+
+    private static func profileRecord(from row: Row) -> SwitcherProfileRecord? {
+        guard
+            let id: String = row["id"],
+            let targetKindRaw: String = row["targetKind"],
+            let targetKind = SwitcherProfileTargetKind(rawValue: targetKindRaw)
+        else {
+            return nil
+        }
+
+        let browserTypeRaw: String? = row["browserType"]
+        let browserType = browserTypeRaw.flatMap(SwitcherBrowserProfileType.init(rawValue:))
+        let browserMetadataJSON: String? = row["browserMetadataJSON"]
+        let browserMetadata = decode(browserMetadataJSON, as: SwitcherBrowserProfileMetadata.self)
+        let cliTypeRaw: String? = row["cliType"]
+        let cliType = cliTypeRaw.flatMap(SwitcherCLIProfileType.init(rawValue:))
+        let cliMetadataJSON: String? = row["cliMetadataJSON"]
+        let cliMetadata = decode(cliMetadataJSON, as: SwitcherCLIProfileMetadata.self)
+        let sortKey: Int = row["sortKey"] ?? 0
+        let createdAt = parseDate(row["createdAt"]) ?? Date()
+        let updatedAt = parseDate(row["updatedAt"]) ?? Date()
+
+        return SwitcherProfileRecord(
+            id: id,
+            targetKind: targetKind,
+            browserType: browserType,
+            browserMetadata: browserMetadata,
+            cliType: cliType,
+            cliMetadata: cliMetadata,
+            sortKey: sortKey,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+
+    private static func decode<T: Decodable>(_ string: String?, as type: T.Type) -> T? {
+        guard let string,
+              let data = string.data(using: .utf8) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(type, from: data)
+    }
+
+    private static func encode<T: Encodable>(_ value: T) throws -> String {
+        let data = try JSONEncoder().encode(value)
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    private static func parseDate(_ value: Any?) -> Date? {
+        if let date = value as? Date { return date }
+        if let timeInterval = value as? TimeInterval {
+            return Date(timeIntervalSince1970: timeInterval)
+        }
+        if let intValue = value as? Int {
+            return Date(timeIntervalSince1970: TimeInterval(intValue))
+        }
+        if let int64Value = value as? Int64 {
+            return Date(timeIntervalSince1970: TimeInterval(int64Value))
+        }
+        if let number = value as? NSNumber {
+            return Date(timeIntervalSince1970: number.doubleValue)
+        }
+        if let string = value as? String {
+            return ISO8601DateFormatter().date(from: string)
+        }
+        return nil
+    }
+}
+
+public protocol BurnBarSwitcherCredentialProviding: Sendable {
+    func apiKey(forProfileID profileID: String, cliType: SwitcherCLIProfileType) -> String?
+}
+
+public struct BurnBarSwitcherKeychainCredentialStore: BurnBarSwitcherCredentialProviding {
+    public static let service = "com.openburnbar.switcher-auth"
+
+    public init() {}
+
+    public func apiKey(forProfileID profileID: String, cliType: SwitcherCLIProfileType) -> String? {
+        let account = "switcher.\(profileID).\(cliType.rawValue).apiKey"
+        return try? keychainString(service: Self.service, account: account)
+    }
+
+    private func keychainString(service: String, account: String) throws -> String? {
+        #if os(macOS)
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        query[kSecUseAuthenticationContext as String] = context
+
+        var item: CFTypeRef?
+        let status = withKeychainUserInteractionDisabled {
+            SecItemCopyMatching(query as CFDictionary, &item)
+        }
+
+        if status == errSecItemNotFound
+            || status == errSecInteractionNotAllowed
+            || status == errSecUserCanceled
+            || status == errSecAuthFailed {
+            return nil
+        }
+
+        guard status == errSecSuccess else {
+            return nil
+        }
+
+        guard let data = item as? Data else {
+            return nil
+        }
+
+        return String(data: data, encoding: .utf8)
+        #else
+        return nil
+        #endif
+    }
+}
+
+public struct BurnBarCLITerminalRunResult: Equatable, Sendable {
+    public let terminationStatus: Int32
+    public let quotaExhaustedDetail: String?
+    public let capturedOutput: String
+
+    public init(
+        terminationStatus: Int32,
+        quotaExhaustedDetail: String?,
+        capturedOutput: String
+    ) {
+        self.terminationStatus = terminationStatus
+        self.quotaExhaustedDetail = quotaExhaustedDetail
+        self.capturedOutput = capturedOutput
+    }
+}
+
+public protocol BurnBarCLITerminalRunning: Sendable {
+    func run(
+        cliType: SwitcherCLIProfileType,
+        executable: URL,
+        arguments: [String],
+        environment: [String: String],
+        workingDirectory: String?
+    ) async throws -> BurnBarCLITerminalRunResult
+}
+
+public struct BurnBarScriptTerminalRunner: BurnBarCLITerminalRunning {
+    public static let scriptExecutableURL = URL(fileURLWithPath: "/usr/bin/script")
+
+    public init() {}
+
+    public func run(
+        cliType: SwitcherCLIProfileType,
+        executable: URL,
+        arguments: [String],
+        environment: [String: String],
+        workingDirectory: String?
+    ) async throws -> BurnBarCLITerminalRunResult {
+        let fileManager = FileManager.default
+        let tempDirectory = fileManager.temporaryDirectory
+            .appendingPathComponent("openburnbar-shell-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+
+        let transcriptURL = tempDirectory.appendingPathComponent("session.log")
+        let transcriptPath = transcriptURL.path
+        let mkfifoStatus = Darwin.mkfifo(transcriptPath, 0o600)
+        guard mkfifoStatus == 0 else {
+            throw BurnBarSwitcherShellError.terminalSpawnFailed(String(cString: strerror(errno)))
+        }
+
+        let process = Process()
+        process.executableURL = Self.scriptExecutableURL
+        process.arguments = ["-q", "-F", transcriptPath, executable.path] + arguments
+        process.environment = environment
+        if let workingDirectory {
+            process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory)
+        }
+
+        let quotaRecorder = BurnBarThreadSafeQuotaRecorder()
+        let supervisor = CLITerminalSessionSupervisor(cliType: cliType) { event in
+            guard case .quotaExhausted(let detail, _) = event else { return }
+            quotaRecorder.record(detail)
+            if process.isRunning {
+                process.terminate()
+            }
+        }
+
+        let readHandle = try FileHandle(forReadingFrom: transcriptURL)
+        let transcriptTask = Task.detached(priority: .utility) {
+            while !Task.isCancelled {
+                let data = readHandle.availableData
+                guard !data.isEmpty,
+                      let text = String(data: data, encoding: .utf8),
+                      !text.isEmpty else {
+                    return
+                }
+                supervisor.ingest(text, source: .stdout)
+            }
+        }
+
+        defer {
+            transcriptTask.cancel()
+            try? readHandle.close()
+            try? fileManager.removeItem(at: tempDirectory)
+        }
+
+        do {
+            try process.run()
+        } catch {
+            throw BurnBarSwitcherShellError.terminalSpawnFailed(error.localizedDescription)
+        }
+
+        process.waitUntilExit()
+
+        transcriptTask.cancel()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        let combinedOutput = supervisor.snapshot()
+        let quotaDetail = quotaRecorder.snapshot()
+            ?? CLIQuotaExhaustionClassifier.classify(for: cliType, in: combinedOutput)
+
+        return BurnBarCLITerminalRunResult(
+            terminationStatus: process.terminationStatus,
+            quotaExhaustedDetail: quotaDetail,
+            capturedOutput: combinedOutput
+        )
+    }
+}
+
+public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, @unchecked Sendable {
+    private let profileStore: any BurnBarSwitcherProfileStoreProviding
+    private let credentialStore: any BurnBarSwitcherCredentialProviding
+    private let terminalRunner: any BurnBarCLITerminalRunning
+    private let environmentProvider: @Sendable () -> [String: String]
+    private let statusWriter: @Sendable (String) -> Void
+
+    public init(
+        profileStore: any BurnBarSwitcherProfileStoreProviding,
+        credentialStore: any BurnBarSwitcherCredentialProviding = BurnBarSwitcherKeychainCredentialStore(),
+        terminalRunner: any BurnBarCLITerminalRunning = BurnBarScriptTerminalRunner(),
+        environmentProvider: @escaping @Sendable () -> [String: String] = { ProcessInfo.processInfo.environment },
+        statusWriter: @escaping @Sendable (String) -> Void = { message in
+            BurnBarCLIShellExecutor.defaultStatusWriter(message)
+        }
+    ) {
+        self.profileStore = profileStore
+        self.credentialStore = credentialStore
+        self.terminalRunner = terminalRunner
+        self.environmentProvider = environmentProvider
+        self.statusWriter = statusWriter
+    }
+
+    public func execute(_ request: BurnBarCLIShellLaunchRequest) async throws -> BurnBarCLIShellExecutionResult {
+        let forwardedArguments = try sanitizeForwardedArguments(request.forwardedArguments)
+        let candidates = try candidates(for: request)
+
+        var attemptedProfileIDs: [String] = []
+        var didFallback = false
+        var lastError: BurnBarSwitcherShellError?
+
+        for (index, profile) in candidates.enumerated() {
+            attemptedProfileIDs.append(profile.id)
+            let configuration = try shellConfiguration(for: profile, forwardedArguments: forwardedArguments)
+            let result = try await terminalRunner.run(
+                cliType: request.cliType,
+                executable: configuration.executable,
+                arguments: configuration.arguments,
+                environment: configuration.environment,
+                workingDirectory: configuration.workingDirectory
+            )
+
+            if let quotaDetail = result.quotaExhaustedDetail {
+                lastError = .quotaExhausted(quotaDetail)
+                let remaining = candidates.count - index - 1
+                guard remaining > 0 else {
+                    break
+                }
+
+                didFallback = true
+                let profileName = profile.cliMetadata?.displayLabel ?? profile.displayName
+                let nextProfileName = candidates[index + 1].cliMetadata?.displayLabel ?? candidates[index + 1].displayName
+                statusWriter("BurnBar: \(request.cliType.displayName) hit quota on \(profileName). Trying \(nextProfileName)...\n")
+                continue
+            }
+
+            if result.terminationStatus == 0 {
+                return BurnBarCLIShellExecutionResult(
+                    exitCode: 0,
+                    launchedProfileID: profile.id,
+                    attemptedProfileIDs: attemptedProfileIDs,
+                    fallbackTriggered: didFallback
+                )
+            }
+
+            let detail = result.capturedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+            lastError = .terminalExited(result.terminationStatus, detail: detail.isEmpty ? nil : detail)
+            return BurnBarCLIShellExecutionResult(
+                exitCode: result.terminationStatus,
+                launchedProfileID: profile.id,
+                attemptedProfileIDs: attemptedProfileIDs,
+                fallbackTriggered: didFallback
+            )
+        }
+
+        if let lastError {
+            statusWriter("BurnBar: \(lastError.localizedDescription)\n")
+        }
+        return BurnBarCLIShellExecutionResult(
+            exitCode: EXIT_FAILURE,
+            launchedProfileID: attemptedProfileIDs.last,
+            attemptedProfileIDs: attemptedProfileIDs,
+            fallbackTriggered: didFallback
+        )
+    }
+
+    private func candidates(for request: BurnBarCLIShellLaunchRequest) throws -> [SwitcherProfileRecord] {
+        let sameToolProfiles = profileStore.fetchAllProfiles()
+            .filter { $0.targetKind == .cli && $0.cliType == request.cliType && !$0.isDisabled }
+            .sorted { lhs, rhs in
+                if lhs.sortKey == rhs.sortKey {
+                    return lhs.createdAt < rhs.createdAt
+                }
+                return lhs.sortKey < rhs.sortKey
+            }
+
+        guard !sameToolProfiles.isEmpty else {
+            throw BurnBarSwitcherShellError.noProfilesConfigured(request.cliType)
+        }
+
+        if let requestedProfileID = request.requestedProfileID {
+            guard let requestedProfile = profileStore.fetchProfile(id: requestedProfileID) else {
+                throw BurnBarSwitcherShellError.missingRequestedProfile(requestedProfileID)
+            }
+            guard requestedProfile.cliType == request.cliType else {
+                throw BurnBarSwitcherShellError.requestedProfileMismatch(
+                    expected: request.cliType,
+                    actual: requestedProfile.cliType
+                )
+            }
+            guard !requestedProfile.isDisabled else {
+                throw BurnBarSwitcherShellError.terminalSpawnFailed("Requested \(request.cliType.displayName) account is disabled.")
+            }
+
+            return [requestedProfile] + sameToolProfiles.filter { $0.id != requestedProfile.id }
+        }
+
+        guard let activeProfileID = profileStore.fetchActiveProfileID(),
+              let activeProfile = profileStore.fetchProfile(id: activeProfileID),
+              activeProfile.cliType == request.cliType,
+              !activeProfile.isDisabled else {
+            return sameToolProfiles
+        }
+
+        return [activeProfile] + sameToolProfiles.filter { $0.id != activeProfile.id }
+    }
+
+    private func shellConfiguration(
+        for profile: SwitcherProfileRecord,
+        forwardedArguments: [String]
+    ) throws -> (executable: URL, arguments: [String], environment: [String: String], workingDirectory: String?) {
+        switch CLILaunchAdapter.buildCLILaunch(profile: profile) {
+        case .failure(let error):
+            throw BurnBarSwitcherShellError.terminalSpawnFailed(error.localizedDescription)
+        case .success(let configuration):
+            var environment = environmentProvider()
+            for (key, value) in configuration.env {
+                environment[key] = value
+            }
+
+            if let cliType = profile.cliType,
+               let apiKey = credentialStore.apiKey(forProfileID: profile.id, cliType: cliType),
+               let envKey = authEnvironmentKey(for: cliType) {
+                environment[envKey] = apiKey
+            }
+
+            return (
+                executable: configuration.executable,
+                arguments: configuration.args + forwardedArguments,
+                environment: environment,
+                workingDirectory: configuration.workingDirectory
+            )
+        }
+    }
+
+    private func sanitizeForwardedArguments(_ arguments: [String]) throws -> [String] {
+        try arguments.map { argument in
+            guard argument.unicodeScalars.allSatisfy({ $0.value >= 0x20 || $0.value == 0x09 }) else {
+                throw BurnBarSwitcherShellError.terminalSpawnFailed("Shell argument contains control characters.")
+            }
+            return argument
+        }
+    }
+
+    private func authEnvironmentKey(for cliType: SwitcherCLIProfileType) -> String? {
+        switch cliType {
+        case .codex:
+            return "OPENAI_API_KEY"
+        case .claude:
+            return "ANTHROPIC_API_KEY"
+        case .opencode:
+            return nil
+        }
+    }
+
+    public static func defaultStatusWriter(_ message: String) {
+        guard let data = message.data(using: .utf8) else { return }
+        FileHandle.standardError.write(data)
+    }
+}
+
+public struct BurnBarCLIShellShimInstallResult: Equatable, Sendable {
+    public let installDirectory: URL
+    public let installedCommands: [String]
+}
+
+public protocol BurnBarCLIShellShimInstalling: Sendable {
+    func installShims(invokedExecutablePath: String) throws -> BurnBarCLIShellShimInstallResult
+}
+
+public struct BurnBarCLIShellShimInstaller: BurnBarCLIShellShimInstalling, @unchecked Sendable {
+    public static let defaultInstallDirectory = BurnBarDaemonPaths.supportDirectoryURL
+        .appendingPathComponent("bin", isDirectory: true)
+
+    private let fileManager: FileManager
+    private let installDirectory: URL
+
+    public init(
+        fileManager: FileManager = .default,
+        installDirectory: URL = Self.defaultInstallDirectory
+    ) {
+        self.fileManager = fileManager
+        self.installDirectory = installDirectory
+    }
+
+    public func installShims(invokedExecutablePath: String) throws -> BurnBarCLIShellShimInstallResult {
+        guard !invokedExecutablePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw BurnBarSwitcherShellError.shimInstallFailed("Could not resolve the OpenBurnBarCLI executable path.")
+        }
+
+        try fileManager.createDirectory(at: installDirectory, withIntermediateDirectories: true)
+
+        let commands = SwitcherCLIProfileType.allCases.map(\.executableName)
+        for command in commands {
+            let shimURL = installDirectory.appendingPathComponent(command)
+            let script = """
+            #!/bin/sh
+            exec "\(invokedExecutablePath)" exec \(command) "$@"
+            """
+            try script.write(to: shimURL, atomically: true, encoding: .utf8)
+            try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shimURL.path)
+        }
+
+        return BurnBarCLIShellShimInstallResult(
+            installDirectory: installDirectory,
+            installedCommands: commands
+        )
+    }
+}
+
+private final class BurnBarThreadSafeQuotaRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var detail: String?
+
+    func record(_ detail: String) {
+        lock.lock()
+        if self.detail == nil {
+            self.detail = detail
+        }
+        lock.unlock()
+    }
+
+    func snapshot() -> String? {
+        lock.lock()
+        let value = detail
+        lock.unlock()
+        return value
+    }
+}

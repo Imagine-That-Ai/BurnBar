@@ -6,7 +6,7 @@ OpenBurnBar is a local-first sidebar companion for Cursor and VS Code. The exten
 
 This extension is part of OpenBurnBar's current **experimental source release**. It is intended for local development and early adopters rather than a polished marketplace install. There is no public VS Marketplace / Open VSX release or signed VSIX shipped from this repository today.
 
-The repository already includes the annotated experimental source-release tag `v0.1.0-beta`.
+The latest annotated experimental source-release tag is `v0.1.2-beta`.
 
 ## Build
 

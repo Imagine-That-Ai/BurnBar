@@ -2,18 +2,22 @@
 
 OpenBurnBar includes or references a small amount of third-party material.
 
-## Runtime-fetched provider logos
+## Bundled provider and vendor logos
 
-- `AgentLens/Models/AgentProvider.swift` — ~10 coding tool logos (Claude Code, Copilot, Cursor, Codex, Z.ai, MiniMax, Kimi, Cline, Gemini, Augment)
-- `AgentLens/Theme/LLMModelBrand.swift` — ~13 LLM vendor logos (Anthropic, OpenAI, Gemini, DeepSeek, Kimi, MiniMax, Meta, Mistral, Qwen, Grok, Cohere, Perplexity, Apple)
+- `AgentLens/Resources/Assets.xcassets/*Logo.imageset/` — bundled provider and model logos used by:
+- `AgentLens/Models/AgentProvider.swift` (agent/provider branding)
+- `AgentLens/Theme/LLMModelBrand.swift` (model vendor branding)
+- `AgentLens/Models/ProviderBrand.swift` (catalog/provider branding)
 
-These files reference brand logos hosted by the [Lobehub icon set](https://github.com/lobehub/lobe-icons) on GitHub's raw content CDN (`raw.githubusercontent.com/lobehub/lobe-icons/...`). The logos are fetched at runtime via SwiftUI `AsyncImage` and are not distributed as part of the repository's tracked assets or extension tarball.
+These images are distributed in-repo and rendered as static bundled assets.
 
-**Offline behavior:** If the CDN is unreachable, `AsyncImage` falls back to the SF Symbol placeholder defined in each provider's `iconName`. The app remains fully functional without the remote logos.
+Provider names, logos, and service marks are the property of their respective owners and are used strictly for descriptive identification/compatibility. Use of OpenBurnBar does not imply sponsorship, endorsement, or affiliation by those providers.
 
-**Privacy note:** Fetching these images sends an HTTP request to GitHub's CDN, which logs standard request metadata (IP address, user agent). No OpenBurnBar-specific identifiers are sent.
+If you redistribute a modified build, you are responsible for reviewing any applicable brand/trademark usage requirements of the referenced providers.
 
-Provider names, logos, and service marks remain the property of their respective owners and are used here only for descriptive identification.
+## Runtime fallback behavior
+
+When a bundled logo is unavailable, UI components fall back to SF Symbols so the app remains functional without blocking on branding assets.
 
 ## Generated SVG assets
 

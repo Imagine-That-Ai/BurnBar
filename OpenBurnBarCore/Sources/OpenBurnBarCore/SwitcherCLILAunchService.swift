@@ -67,6 +67,7 @@ public enum CLILaunchAdapter {
         // Claude-specific safe variables
         "CLAUDE_CONFIG_PATH",
         // Codex-specific safe variables
+        "CODEX_HOME",
         "CODEX_CONFIG_PATH",
         // OpenCode-specific safe variables
         "OPENCODE_CONFIG_PATH",
@@ -642,9 +643,26 @@ public enum CLILaunchAdapter {
         }
 
         // Build environment - only allowlisted keys
-        let env = filterAllowlistedEnvironment(keys: metadata.envKeysToPass)
+        var env = filterAllowlistedEnvironment(keys: metadata.envKeysToPass)
+        if let configDirectory = metadata.configDirectory?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !configDirectory.isEmpty {
+            for configEnvKey in configEnvironmentKeys(for: cliType) {
+                env[configEnvKey] = configDirectory
+            }
+        }
 
         return .success((executableURL, args, env, workingDirectory))
+    }
+
+    private static func configEnvironmentKeys(for cliType: SwitcherCLIProfileType) -> [String] {
+        switch cliType {
+        case .codex:
+            return ["CODEX_HOME", "CODEX_CONFIG_PATH"]
+        case .claude:
+            return ["CLAUDE_CONFIG_PATH"]
+        case .opencode:
+            return ["OPENCODE_CONFIG_PATH"]
+        }
     }
 }
 
@@ -801,7 +819,7 @@ public struct CLILaunchInvoker {
     /// Injectable launch handler for deterministic testing.
     /// When set, replaces the real Process-based launch with the provided handler.
     /// Receives the launch parameters and returns a Result.
-    public static var launchHandler: ((SwitcherCLIProfileType, URL, [String], [String: String], String?) async -> Result<Void, CLILaunchError>)?
+    public static var launchHandler: ((SwitcherCLIProfileType, URL, [String], [String: String], String?, (@Sendable (String) -> Void)?) async -> Result<Void, CLILaunchError>)?
     static var startupObservationTimeout: TimeInterval = 1.5
 
     /// Launches a CLI process with the given configuration.
@@ -814,11 +832,12 @@ public struct CLILaunchInvoker {
         executable: URL,
         args: [String] = [],
         env: [String: String] = [:],
-        workingDirectory: String? = nil
+        workingDirectory: String? = nil,
+        postLaunchQuotaObserver: (@Sendable (String) -> Void)? = nil
     ) async -> Result<Void, CLILaunchError> {
         // Use injected handler if available (for deterministic testing)
         if let handler = launchHandler {
-            return await handler(cliType, executable, args, env, workingDirectory)
+            return await handler(cliType, executable, args, env, workingDirectory, postLaunchQuotaObserver)
         }
 
         let process = Process()
@@ -844,36 +863,30 @@ public struct CLILaunchInvoker {
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
 
-        let outputBuffer = LaunchOutputBuffer()
-        let monitorQueue = DispatchQueue(label: "com.openburnbar.cli-launch-output")
-        let stdoutSource = DispatchSource.makeReadSource(
-            fileDescriptor: stdoutPipe.fileHandleForReading.fileDescriptor,
-            queue: monitorQueue
-        )
-        stdoutSource.setEventHandler {
-            let data = stdoutPipe.fileHandleForReading.availableData
-            guard !data.isEmpty else { return }
-            outputBuffer.append(data)
+        let quotaRecorder = QuotaSignalRecorder()
+        let supervisor = CLITerminalSessionSupervisor(cliType: cliType) { event in
+            guard case .quotaExhausted(let detail, _) = event else { return }
+            quotaRecorder.record(detail)
+            if process.isRunning {
+                process.terminate()
+            }
         }
-        stdoutSource.resume()
-
-        let stderrSource = DispatchSource.makeReadSource(
-            fileDescriptor: stderrPipe.fileHandleForReading.fileDescriptor,
-            queue: monitorQueue
-        )
-        stderrSource.setEventHandler {
-            let data = stderrPipe.fileHandleForReading.availableData
-            guard !data.isEmpty else { return }
-            outputBuffer.append(data)
+        let stdoutTask = Task.detached(priority: .utility) {
+            await drainPipe(stdoutPipe, into: supervisor, source: .stdout)
         }
-        stderrSource.resume()
+        let stderrTask = Task.detached(priority: .utility) {
+            await drainPipe(stderrPipe, into: supervisor, source: .stderr)
+        }
 
-        func finish(_ result: Result<Void, CLILaunchError>) -> Result<Void, CLILaunchError> {
-            monitorQueue.sync {}
-            stdoutSource.cancel()
-            stderrSource.cancel()
+        let cleanup = LaunchObservationCleanup {
+            stdoutTask.cancel()
+            stderrTask.cancel()
             try? stdoutPipe.fileHandleForReading.close()
             try? stderrPipe.fileHandleForReading.close()
+        }
+
+        func finish(_ result: Result<Void, CLILaunchError>) -> Result<Void, CLILaunchError> {
+            cleanup.perform()
             return result
         }
 
@@ -888,9 +901,7 @@ public struct CLILaunchInvoker {
 
         let deadline = Date().addingTimeInterval(startupObservationTimeout)
         while true {
-            monitorQueue.sync {}
-
-            if let detail = classifyQuotaExhaustion(for: cliType, in: outputBuffer.snapshot()) {
+            if let detail = quotaRecorder.snapshot() {
                 if process.isRunning {
                     process.terminate()
                     process.waitUntilExit()
@@ -899,8 +910,9 @@ public struct CLILaunchInvoker {
             }
 
             if !process.isRunning {
-                let combinedOutput = outputBuffer.snapshot()
-                if let detail = classifyQuotaExhaustion(for: cliType, in: combinedOutput) {
+                let combinedOutput = supervisor.snapshot()
+                if let detail = quotaRecorder.snapshot()
+                    ?? CLIQuotaExhaustionClassifier.classify(for: cliType, in: combinedOutput) {
                     return finish(.failure(.quotaExhausted(CLILaunchRedactor.redactSensitiveData(detail))))
                 }
                 if process.terminationStatus == 0 {
@@ -915,7 +927,32 @@ public struct CLILaunchInvoker {
             }
 
             if Date() >= deadline {
-                return finish(.success(()))
+                Task.detached(priority: .utility) {
+                    while true {
+                        if let detail = quotaRecorder.snapshot() {
+                            if process.isRunning {
+                                process.terminate()
+                                process.waitUntilExit()
+                            }
+                            cleanup.perform()
+                            postLaunchQuotaObserver?(CLILaunchRedactor.redactSensitiveData(detail))
+                            return
+                        }
+
+                        if !process.isRunning {
+                            let combinedOutput = supervisor.snapshot()
+                            if let detail = quotaRecorder.snapshot()
+                                ?? CLIQuotaExhaustionClassifier.classify(for: cliType, in: combinedOutput) {
+                                postLaunchQuotaObserver?(CLILaunchRedactor.redactSensitiveData(detail))
+                            }
+                            cleanup.perform()
+                            return
+                        }
+
+                        try? await Task.sleep(nanoseconds: 100_000_000)
+                    }
+                }
+                return .success(())
             }
 
             try? await Task.sleep(nanoseconds: 50_000_000)
@@ -923,91 +960,64 @@ public struct CLILaunchInvoker {
     }
 
     static func classifyQuotaExhaustion(for cliType: SwitcherCLIProfileType, in output: String) -> String? {
-        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
+        CLIQuotaExhaustionClassifier.classify(for: cliType, in: output)
+    }
 
-        let normalized = trimmed.lowercased()
-        let genericPatterns = [
-            "quota exhausted",
-            "quota exceeded",
-            "usage limit reached",
-            "exceeded your current quota",
-            "insufficient_quota",
-            "insufficient quota",
-            "credit balance is too low",
-            "billing quota exceeded",
-        ]
-
-        let rateLimitPatterns = [
-            "rate limit exceeded",
-            "rate-limit exceeded",
-            "rate limit reached",
-            "rate-limit reached",
-            "you've reached your limit",
-            "you have reached your limit",
-            "5-hour limit reached",
-            "weekly limit reached",
-            "5 hour limit reached",
-        ]
-
-        let cliSpecificPatterns: [String]
-        switch cliType {
-        case .codex:
-            cliSpecificPatterns = [
-                "codex quota",
-                "chatgpt plan limit",
-                "run codex and use /status to refresh local quota data",
-            ]
-        case .claude:
-            cliSpecificPatterns = [
-                "claude code usage limit",
-                "anthropic quota",
-                "rate-limit payload",
-            ]
-        case .opencode:
-            cliSpecificPatterns = [
-                "opencode quota",
-            ]
+    private static func drainPipe(
+        _ pipe: Pipe,
+        into supervisor: CLITerminalSessionSupervisor,
+        source: CLITerminalSessionOutputSource
+    ) async {
+        let readHandle = pipe.fileHandleForReading
+        while true {
+            let data = readHandle.availableData
+            guard !data.isEmpty,
+                  let text = String(data: data, encoding: .utf8),
+                  !text.isEmpty else {
+                return
+            }
+            supervisor.ingest(text, source: source)
         }
-
-        if genericPatterns.contains(where: normalized.contains) {
-            return trimmed
-        }
-        if rateLimitPatterns.contains(where: normalized.contains) {
-            return trimmed
-        }
-        if normalized.contains("too many requests")
-            && (normalized.contains("quota") || normalized.contains("rate limit") || normalized.contains("limit reached")) {
-            return trimmed
-        }
-        if cliSpecificPatterns.contains(where: normalized.contains)
-            && (normalized.contains("limit") || normalized.contains("quota") || normalized.contains("exhaust")) {
-            return trimmed
-        }
-
-        return nil
     }
 }
 
-private final class LaunchOutputBuffer: @unchecked Sendable {
+private final class QuotaSignalRecorder: @unchecked Sendable {
     private let lock = NSLock()
-    private var chunks: [String] = []
+    private var detail: String?
 
-    func append(_ data: Data) {
-        guard let string = String(data: data, encoding: .utf8), !string.isEmpty else { return }
+    func record(_ detail: String) {
         lock.lock()
-        chunks.append(string)
-        if chunks.count > 128 {
-            chunks.removeFirst(chunks.count - 128)
+        if self.detail == nil {
+            self.detail = detail
         }
         lock.unlock()
     }
 
-    func snapshot() -> String {
+    func snapshot() -> String? {
         lock.lock()
-        let value = chunks.joined()
+        let value = detail
         lock.unlock()
         return value
+    }
+}
+
+private final class LaunchObservationCleanup: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didCleanup = false
+    private let action: () -> Void
+
+    init(action: @escaping () -> Void) {
+        self.action = action
+    }
+
+    func perform() {
+        lock.lock()
+        let shouldRun = !didCleanup
+        didCleanup = true
+        lock.unlock()
+
+        guard shouldRun else { return }
+        action()
     }
 }
 
@@ -1015,6 +1025,7 @@ private final class LaunchOutputBuffer: @unchecked Sendable {
 
 public enum CLIFallbackEligibility: Equatable, Sendable {
     case eligible
+    case quotaExhausted(reason: String)
     case ineligible(reason: String)
 }
 
@@ -1042,6 +1053,20 @@ public struct DefaultCLIFallbackPlanner: CLIFallbackPlanning {
     }
 }
 
+public enum CLILaunchServiceEvent: Equatable, Sendable {
+    case postLaunchFallbackSucceeded(
+        exhaustedProfileID: String,
+        recoveredProfileID: String,
+        detail: String,
+        attemptedProfileIDs: [String]
+    )
+    case postLaunchFallbackFailed(
+        exhaustedProfileID: String,
+        detail: String,
+        attemptedProfileIDs: [String]
+    )
+}
+
 // MARK: - Switcher CLI Launch Service
 
 /// High-level service for CLI launch orchestration.
@@ -1057,15 +1082,18 @@ public final class SwitcherCLILAunchService: @unchecked Sendable {
     private let profileStore: SwitcherProfileStoreAdapter
     private let coordinator: CLILaunchCoordinator
     private let fallbackPlanner: any CLIFallbackPlanning
+    private let eventHandler: (@MainActor (CLILaunchServiceEvent) -> Void)?
 
     /// Creates a new CLI launch service.
     public init(
         profileStore: SwitcherProfileStoreAdapter,
-        fallbackPlanner: any CLIFallbackPlanning = DefaultCLIFallbackPlanner()
+        fallbackPlanner: any CLIFallbackPlanning = DefaultCLIFallbackPlanner(),
+        eventHandler: (@MainActor (CLILaunchServiceEvent) -> Void)? = nil
     ) {
         self.profileStore = profileStore
         self.coordinator = CLILaunchCoordinator()
         self.fallbackPlanner = fallbackPlanner
+        self.eventHandler = eventHandler
     }
 
     // MARK: - Launch Methods
@@ -1104,41 +1132,10 @@ public final class SwitcherCLILAunchService: @unchecked Sendable {
             plannerCandidates: plannerCandidates
         )
 
-        var attemptedProfileIDs: [String] = []
-        var lastError: CLILaunchError?
-
-        for candidate in candidates {
-            attemptedProfileIDs.append(candidate.id)
-            let eligibility = await fallbackPlanner.eligibility(for: candidate)
-            switch eligibility {
-            case .eligible:
-                break
-            case .ineligible(let reason):
-                lastError = .launchFailed(reason)
-                continue
-            }
-
-            let outcome = await attemptLaunch(profile: candidate)
-            if outcome.success {
-                if candidate.id != profile.id {
-                    profileStore.setActiveProfileID(candidate.id)
-                }
-                return CLILaunchOutcome(
-                    success: true,
-                    error: nil,
-                    launchedProfileID: candidate.id,
-                    attemptedProfileIDs: attemptedProfileIDs
-                )
-            }
-
-            lastError = outcome.error
-        }
-
-        return CLILaunchOutcome(
-            success: false,
-            error: lastError ?? .launchFailed("No eligible CLI profiles are available in the current priority order."),
-            launchedProfileID: nil,
-            attemptedProfileIDs: attemptedProfileIDs
+        return await launchCandidates(
+            requestedProfile: profile,
+            candidates: candidates,
+            attemptedProfileIDs: []
         )
     }
 
@@ -1223,7 +1220,94 @@ public final class SwitcherCLILAunchService: @unchecked Sendable {
         return ordered
     }
 
-    private func attemptLaunch(profile: SwitcherProfileRecord) async -> CLILaunchOutcome {
+    private func launchCandidates(
+        requestedProfile: SwitcherProfileRecord,
+        candidates: [SwitcherProfileRecord],
+        attemptedProfileIDs initialAttemptedProfileIDs: [String]
+    ) async -> CLILaunchOutcome {
+        var attemptedProfileIDs = initialAttemptedProfileIDs
+        var lastError: CLILaunchError?
+
+        for (index, candidate) in candidates.enumerated() {
+            attemptedProfileIDs.append(candidate.id)
+            let eligibility = await fallbackPlanner.eligibility(for: candidate)
+            switch eligibility {
+            case .eligible:
+                break
+            case .quotaExhausted(let reason):
+                lastError = .quotaExhausted(reason)
+                continue
+            case .ineligible(let reason):
+                lastError = .launchFailed(reason)
+                if candidate.id == requestedProfile.id && index == 0 {
+                    return CLILaunchOutcome(
+                        success: false,
+                        error: lastError,
+                        launchedProfileID: nil,
+                        attemptedProfileIDs: attemptedProfileIDs
+                    )
+                }
+                continue
+            }
+
+            let attemptedSnapshot = attemptedProfileIDs
+            let remainingCandidates = index + 1 < candidates.count
+                ? Array(candidates[(index + 1)...])
+                : []
+
+            let outcome = await attemptLaunch(
+                profile: candidate,
+                postLaunchQuotaObserver: { [weak self] detail in
+                    guard let self else { return }
+                    Task {
+                        await self.handlePostLaunchQuotaExhaustion(
+                            exhaustedProfile: candidate,
+                            remainingCandidates: remainingCandidates,
+                            attemptedProfileIDs: attemptedSnapshot,
+                            detail: detail
+                        )
+                    }
+                }
+            )
+            if outcome.success {
+                clearQuotaExhaustion(for: candidate)
+                if candidate.id != requestedProfile.id {
+                    profileStore.setActiveProfileID(candidate.id)
+                }
+                return CLILaunchOutcome(
+                    success: true,
+                    error: nil,
+                    launchedProfileID: candidate.id,
+                    attemptedProfileIDs: attemptedProfileIDs
+                )
+            }
+
+            if case .quotaExhausted(let detail) = outcome.error {
+                persistQuotaExhaustion(for: candidate, detail: detail)
+                lastError = outcome.error
+                continue
+            }
+
+            return CLILaunchOutcome(
+                success: false,
+                error: outcome.error,
+                launchedProfileID: nil,
+                attemptedProfileIDs: attemptedProfileIDs
+            )
+        }
+
+        return CLILaunchOutcome(
+            success: false,
+            error: lastError ?? .launchFailed("No eligible CLI profiles are available in the current priority order."),
+            launchedProfileID: nil,
+            attemptedProfileIDs: attemptedProfileIDs
+        )
+    }
+
+    private func attemptLaunch(
+        profile: SwitcherProfileRecord,
+        postLaunchQuotaObserver: (@Sendable (String) -> Void)? = nil
+    ) async -> CLILaunchOutcome {
         let profileID = profile.id
         guard let cliType = profile.cliType else {
             return CLILaunchOutcome(
@@ -1275,7 +1359,8 @@ public final class SwitcherCLILAunchService: @unchecked Sendable {
                 executable: executable,
                 args: args,
                 env: env,
-                workingDirectory: workingDirectory
+                workingDirectory: workingDirectory,
+                postLaunchQuotaObserver: postLaunchQuotaObserver
             )
 
             switch launchResult {
@@ -1295,6 +1380,118 @@ public final class SwitcherCLILAunchService: @unchecked Sendable {
                     attemptedProfileIDs: [profileID]
                 )
             }
+        }
+    }
+
+    private func handlePostLaunchQuotaExhaustion(
+        exhaustedProfile: SwitcherProfileRecord,
+        remainingCandidates: [SwitcherProfileRecord],
+        attemptedProfileIDs: [String],
+        detail: String
+    ) async {
+        persistQuotaExhaustion(for: exhaustedProfile, detail: detail)
+        let outcome = await launchCandidates(
+            requestedProfile: exhaustedProfile,
+            candidates: remainingCandidates,
+            attemptedProfileIDs: attemptedProfileIDs
+        )
+
+        if outcome.success, let recoveredProfileID = outcome.launchedProfileID {
+            profileStore.setActiveProfileID(recoveredProfileID)
+            notifyEvent(.postLaunchFallbackSucceeded(
+                exhaustedProfileID: exhaustedProfile.id,
+                recoveredProfileID: recoveredProfileID,
+                detail: detail,
+                attemptedProfileIDs: outcome.attemptedProfileIDs
+            ))
+        } else {
+            notifyEvent(.postLaunchFallbackFailed(
+                exhaustedProfileID: exhaustedProfile.id,
+                detail: outcome.error?.errorDescription ?? detail,
+                attemptedProfileIDs: outcome.attemptedProfileIDs.isEmpty ? attemptedProfileIDs : outcome.attemptedProfileIDs
+            ))
+        }
+    }
+
+    private func persistQuotaExhaustion(for profile: SwitcherProfileRecord, detail: String) {
+        guard profile.targetKind == .cli,
+              let cliType = profile.cliType else {
+            return
+        }
+
+        let safeDetail = CLILaunchRedactor.redactSensitiveData(detail)
+        let now = Date()
+        let exhaustedUntil = exhaustionWindowEnd(from: safeDetail, now: now)
+        let existingMetadata = profile.cliMetadata ?? SwitcherCLIProfileMetadata()
+        let updatedProfile = SwitcherProfileRecord(
+            id: profile.id,
+            targetKind: .cli,
+            cliType: cliType,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                workingDirectory: existingMetadata.workingDirectory,
+                additionalArgs: existingMetadata.additionalArgs,
+                envKeysToPass: existingMetadata.envKeysToPass,
+                displayLabel: existingMetadata.displayLabel,
+                configDirectory: existingMetadata.configDirectory,
+                accountDescription: existingMetadata.accountDescription,
+                lastQuotaExhaustedAt: now,
+                exhaustedUntil: exhaustedUntil,
+                lastQuotaExhaustionDetail: safeDetail
+            ),
+            sortKey: profile.sortKey,
+            createdAt: profile.createdAt
+        )
+
+        profileStore.updateProfile(updatedProfile)
+    }
+
+    private func clearQuotaExhaustion(for profile: SwitcherProfileRecord) {
+        guard profile.targetKind == .cli,
+              let cliType = profile.cliType,
+              let existingMetadata = profile.cliMetadata,
+              existingMetadata.lastQuotaExhaustedAt != nil
+                || existingMetadata.exhaustedUntil != nil
+                || existingMetadata.lastQuotaExhaustionDetail != nil else {
+            return
+        }
+
+        let updatedProfile = SwitcherProfileRecord(
+            id: profile.id,
+            targetKind: .cli,
+            cliType: cliType,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                workingDirectory: existingMetadata.workingDirectory,
+                additionalArgs: existingMetadata.additionalArgs,
+                envKeysToPass: existingMetadata.envKeysToPass,
+                displayLabel: existingMetadata.displayLabel,
+                configDirectory: existingMetadata.configDirectory,
+                accountDescription: existingMetadata.accountDescription
+            ),
+            sortKey: profile.sortKey,
+            createdAt: profile.createdAt
+        )
+
+        profileStore.updateProfile(updatedProfile)
+    }
+
+    private func exhaustionWindowEnd(from detail: String, now: Date) -> Date? {
+        let normalized = detail.lowercased()
+        if normalized.contains("weekly") || normalized.contains("week") {
+            return now.addingTimeInterval(7 * 24 * 60 * 60)
+        }
+        if normalized.contains("5-hour")
+            || normalized.contains("5 hour")
+            || normalized.contains("5h")
+            || normalized.contains("hour window") {
+            return now.addingTimeInterval(5 * 60 * 60)
+        }
+        return nil
+    }
+
+    private func notifyEvent(_ event: CLILaunchServiceEvent) {
+        guard let eventHandler else { return }
+        Task { @MainActor in
+            eventHandler(event)
         }
     }
 }

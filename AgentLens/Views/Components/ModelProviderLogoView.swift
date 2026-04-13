@@ -1,10 +1,11 @@
 import SwiftUI
 
 /// Brand mark for the LLM vendor behind a model id (Anthropic, OpenAI, etc.).
+/// Uses bundled logo assets — no remote URL loading.
 struct ModelProviderLogoView: View {
     let modelKey: String
     let size: CGFloat
-    /// Tint for the SF Symbol when there is no remote logo; `nil` uses `LLMModelBrand.emblemColor`.
+    /// Tint for the SF Symbol when there is no bundled logo; `nil` uses `LLMModelBrand.emblemColor`.
     var fallbackSymbolColor: Color?
 
     init(modelKey: String, size: CGFloat = 22, fallbackSymbolColor: Color? = nil) {
@@ -21,35 +22,18 @@ struct ModelProviderLogoView: View {
 
     var body: some View {
         Group {
-            if let url = brand.logoURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        Image(systemName: brand.sfSymbolFallback)
-                            .font(.system(size: size * 0.52, weight: .medium))
-                            .foregroundStyle(symbolTint.opacity(0.35))
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                    case .failure:
-                        fallbackSymbol
-                    @unknown default:
-                        fallbackSymbol
-                    }
-                }
+            if brand.hasBundledLogo {
+                Image(brand.bundledLogoName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
             } else {
-                fallbackSymbol
+                Image(systemName: brand.sfSymbolFallback)
+                    .font(.system(size: size * 0.52, weight: .medium))
+                    .foregroundStyle(symbolTint)
             }
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous))
-    }
-
-    private var fallbackSymbol: some View {
-        Image(systemName: brand.sfSymbolFallback)
-            .font(.system(size: size * 0.52, weight: .medium))
-            .foregroundStyle(symbolTint)
     }
 }
 

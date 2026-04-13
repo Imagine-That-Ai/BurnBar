@@ -117,14 +117,9 @@ struct ProviderPlanWizardView: View {
     // MARK: - Computed
 
     private var eligibleProviders: [OpenBurnBarDaemonProviderConfiguration] {
-        daemonManager.providerConfigurations.filter { configuration in
-            switch configuration.provider {
-            case .zai, .minimax:
-                return true
-            default:
-                return false
-            }
-        }
+        // All providers with at least accounting capability are eligible for plan management.
+        // Routing-capable providers can also proxy requests.
+        daemonManager.providerConfigurations
     }
 
     /// The provider whose plans are being managed on the dashboard.
@@ -337,7 +332,7 @@ struct ProviderPlanWizardView: View {
             if let provider = activeProvider {
                 // Provider header
                 HStack(spacing: DesignSystem.Spacing.md) {
-                    ProviderLogoView(provider: provider.provider, size: 36, useFallbackColor: false)
+                    CatalogProviderLogoView(brand: provider.brand, size: 36)
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(provider.displayName)
@@ -415,7 +410,7 @@ struct ProviderPlanWizardView: View {
                 HStack(spacing: DesignSystem.Spacing.md) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(DesignSystem.Colors.warning)
-                    Text("No multi-plan providers found. Make sure the daemon is running and Z.ai or MiniMax is configured.")
+                    Text("No providers found. Make sure the daemon is running and at least one provider is configured.")
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
@@ -586,7 +581,7 @@ struct ProviderPlanWizardView: View {
                 HStack(spacing: DesignSystem.Spacing.md) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(DesignSystem.Colors.warning)
-                    Text("No multi-plan providers found. Make sure the daemon is running and at least one of Z.ai or MiniMax is configured.")
+                    Text("No providers found. Make sure the daemon is running and at least one provider is configured.")
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
@@ -611,7 +606,7 @@ struct ProviderPlanWizardView: View {
             selectedProviderID = config.providerID
         } label: {
             HStack(spacing: DesignSystem.Spacing.md) {
-                ProviderLogoView(provider: config.provider, size: 32, useFallbackColor: false)
+                CatalogProviderLogoView(brand: config.brand, size: 32)
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: DesignSystem.Spacing.xs) {
@@ -649,14 +644,21 @@ struct ProviderPlanWizardView: View {
         .buttonStyle(.plain)
     }
 
-    private func providerDescription(for provider: AgentProvider) -> String {
+    private func providerDescription(for provider: AgentProvider?) -> String {
         switch provider {
         case .zai:
             return "GLM coding plan via Z.ai API"
         case .minimax:
             return "Token Plan or OpenAPI key via MiniMax"
+        case .codex:
+            return "OpenAI API key for Codex models"
+        case .claudeCode:
+            return "Anthropic API key for Claude models"
+        case .geminiCLI:
+            return "Google API key for Gemini models"
         default:
-            return ""
+            // Catalog providers that don't map to an AgentProvider get a generic description
+            return "API key for this provider"
         }
     }
 
@@ -667,7 +669,7 @@ struct ProviderPlanWizardView: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 if let provider = selectedProvider {
-                    ProviderLogoView(provider: provider.provider, size: 20, useFallbackColor: false)
+                    CatalogProviderLogoView(brand: provider.brand, size: 20)
                     Text(provider.displayName)
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
@@ -932,7 +934,7 @@ struct ProviderPlanWizardView: View {
                     // Provider header
                     HStack(spacing: DesignSystem.Spacing.md) {
                         if let provider = selectedProvider {
-                            ProviderLogoView(provider: provider.provider, size: 28, useFallbackColor: false)
+                            CatalogProviderLogoView(brand: provider.brand, size: 28)
                             Text(provider.displayName)
                                 .font(DesignSystem.Typography.headline)
                                 .foregroundStyle(DesignSystem.Colors.textPrimary)

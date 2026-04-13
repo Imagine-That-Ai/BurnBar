@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// A view that displays a provider's logo from lobehub or falls back to SF Symbol
+/// A view that displays a provider's bundled logo with SF Symbol fallback.
+/// All providers now ship with bundled assets — no remote URL loading.
 struct ProviderLogoView: View {
     let provider: AgentProvider
     let size: CGFloat
@@ -14,32 +15,26 @@ struct ProviderLogoView: View {
 
     var body: some View {
         Group {
-            if let assetName = provider.bundledLogoName {
-                Image(assetName)
+            if let bundledImage {
+                bundledImage
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-            } else if let logoURL = provider.logoURL {
-                AsyncImage(url: logoURL) { phase in
-                    switch phase {
-                    case .empty:
-                        fallbackView
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                    case .failure:
-                        fallbackView
-                    @unknown default:
-                        fallbackView
-                    }
-                }
             } else {
                 fallbackView
             }
         }
         .frame(width: size, height: size)
-        // iOS-style squircle (continuous corner) — avoids harsh square logos (e.g. Factory) in circular wells.
         .clipShape(RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var bundledImage: Image? {
+        let name = provider.bundledLogoName
+        // Verify the asset exists at runtime; fall back gracefully if missing
+        if NSImage(named: name) != nil {
+            return Image(name)
+        }
+        return nil
     }
 
     @ViewBuilder
@@ -62,13 +57,8 @@ struct ProviderLogoView: View {
                 ProviderLogoView(provider: provider, size: 32)
                 Text(provider.displayName)
                 Spacer()
-                if provider.logoURL != nil {
-                    Text("Logo")
-                        .foregroundStyle(.green)
-                } else {
-                    Text("SF Symbol")
-                        .foregroundStyle(.orange)
-                }
+                Text("Bundled")
+                    .foregroundStyle(.green)
             }
             .padding()
         }

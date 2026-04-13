@@ -15,14 +15,23 @@ public struct ChromeProfileInfo: Identifiable, Equatable, Sendable {
     public let email: String?
     /// The hosted domain (work accounts), if applicable.
     public let hostedDomain: String?
+    /// Best-effort detected web services currently signed into within this browser profile.
+    public let serviceIdentities: [BrowserServiceIdentity]
 
     public var id: String { folderKey }
 
-    public init(folderKey: String, displayName: String, email: String? = nil, hostedDomain: String? = nil) {
+    public init(
+        folderKey: String,
+        displayName: String,
+        email: String? = nil,
+        hostedDomain: String? = nil,
+        serviceIdentities: [BrowserServiceIdentity] = []
+    ) {
         self.folderKey = folderKey
         self.displayName = displayName
         self.email = email
         self.hostedDomain = hostedDomain
+        self.serviceIdentities = serviceIdentities
     }
 }
 
@@ -82,7 +91,8 @@ public enum ChromeProfileDiscovery {
                 folderKey: folderKey,
                 displayName: displayName,
                 email: email,
-                hostedDomain: hostedDomain == "NO_HOSTED_DOMAIN" ? nil : hostedDomain
+                hostedDomain: hostedDomain == "NO_HOSTED_DOMAIN" ? nil : hostedDomain,
+                serviceIdentities: detectServiceIdentities(profileFolderKey: folderKey)
             )
             profiles.append(profileInfo)
         }
@@ -104,5 +114,178 @@ public enum ChromeProfileDiscovery {
         #else
         return FileManager.default.fileExists(atPath: "/Applications/Google Chrome.app")
         #endif
+    }
+
+    static func detectServiceIdentities(profileFolderKey: String) -> [BrowserServiceIdentity] {
+        let profileDir = "\(chromeSupportDir)/\(profileFolderKey)"
+        return detectServiceIdentities(profileDirectoryPath: profileDir)
+    }
+
+    static func detectServiceIdentities(profileDirectoryPath: String) -> [BrowserServiceIdentity] {
+        let fm = FileManager.default
+        let storagePaths = [
+            "\(profileDirectoryPath)/Local Storage/leveldb",
+            "\(profileDirectoryPath)/IndexedDB",
+        ]
+
+        let candidateFiles = storagePaths.flatMap { storagePath in
+            candidateStorageFiles(atPath: storagePath, fileManager: fm)
+        }
+
+        return BrowserServiceProvider.allCases.compactMap { provider in
+            detectServiceIdentity(provider: provider, candidateFiles: candidateFiles, fileManager: fm)
+        }
+    }
+
+    static func detectServiceIdentity(
+        provider: BrowserServiceProvider,
+        candidateFiles: [String],
+        fileManager: FileManager = .default
+    ) -> BrowserServiceIdentity? {
+        var matched = false
+        var candidateScores: [String: Int] = [:]
+
+        for file in candidateFiles {
+            guard let data = fileManager.contents(atPath: file) else { continue }
+
+            let fileName = URL(fileURLWithPath: file).lastPathComponent.lowercased()
+            let hasMarker = fileName.contains(provider.storageMarker)
+                || dataContainsProviderMarker(data, provider: provider)
+            guard hasMarker else { continue }
+
+            matched = true
+
+            for candidate in likelyAccountLabels(for: provider, in: data) {
+                candidateScores[candidate, default: 0] += 1
+            }
+        }
+
+        guard matched else { return nil }
+
+        let bestLabel = candidateScores
+            .sorted { lhs, rhs in
+                if lhs.value == rhs.value {
+                    return lhs.key < rhs.key
+                }
+                return lhs.value > rhs.value
+            }
+            .first?
+            .key
+
+        return BrowserServiceIdentity(provider: provider, accountLabel: bestLabel)
+    }
+
+    static func likelyAccountLabels(for _: BrowserServiceProvider, in data: Data) -> [String] {
+        let text = String(decoding: data, as: UTF8.self)
+        var scores: [String: Int] = [:]
+
+        guard let regex = try? NSRegularExpression(pattern: emailRegex, options: [.caseInsensitive]) else {
+            return []
+        }
+
+        let fullRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        for match in regex.matches(in: text, options: [], range: fullRange) {
+            guard let swiftRange = Range(match.range, in: text) else { continue }
+            let candidate = normalizeAccountLabel(String(text[swiftRange]))
+            guard isLikelyUserFacingAccountLabel(candidate) else { continue }
+
+            var score = 1
+            let contextLocation = max(0, match.range.location - 48)
+            let contextLength = min(text.utf16.count - contextLocation, match.range.length + 96)
+            let contextRange = NSRange(location: contextLocation, length: contextLength)
+            if let swiftContextRange = Range(contextRange, in: text) {
+                let context = text[swiftContextRange].lowercased()
+                if context.contains("email") || context.contains("identifier") {
+                    score += 3
+                }
+                if context.contains("account") || context.contains("user") {
+                    score += 2
+                }
+            }
+            scores[candidate, default: 0] += score
+        }
+
+        return scores
+            .filter { $0.value >= 1 }
+            .sorted {
+                if $0.value == $1.value {
+                    return $0.key < $1.key
+                }
+                return $0.value > $1.value
+            }
+            .map(\.key)
+    }
+
+    private static func candidateStorageFiles(atPath path: String, fileManager: FileManager) -> [String] {
+        guard fileManager.fileExists(atPath: path) else { return [] }
+        guard let enumerator = fileManager.enumerator(atPath: path) else { return [] }
+
+        var files: [String] = []
+        while let next = enumerator.nextObject() as? String {
+            let fullPath = "\(path)/\(next)"
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: fullPath, isDirectory: &isDirectory), !isDirectory.boolValue else {
+                continue
+            }
+
+            let lowercased = next.lowercased()
+            if lowercased.hasSuffix(".ldb")
+                || lowercased.hasSuffix(".log")
+                || lowercased.contains("manifest") {
+                files.append(fullPath)
+            }
+        }
+        return files
+    }
+
+    private static func dataContainsProviderMarker(_ data: Data, provider: BrowserServiceProvider) -> Bool {
+        let text = String(decoding: data, as: UTF8.self).lowercased()
+        return provider.storageMarkers.contains { text.contains($0) }
+    }
+
+    private static func normalizeAccountLabel(_ rawValue: String) -> String {
+        rawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+    }
+
+    private static func isLikelyUserFacingAccountLabel(_ value: String) -> Bool {
+        guard !value.isEmpty, value.count <= 120 else { return false }
+
+        if value.contains("@") {
+            guard value.range(of: #"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,24}$"#, options: [.regularExpression, .caseInsensitive]) != nil else {
+                return false
+            }
+
+            let parts = value.split(separator: "@", maxSplits: 1).map(String.init)
+            guard parts.count == 2, parts[0].count >= 3 else { return false }
+
+            let lowercased = value.lowercased()
+            let excludedDomains = [
+                "amazonaws.com",
+                "example.com",
+                "example.org",
+                "example.net",
+            ]
+            return !excludedDomains.contains { lowercased.hasSuffix($0) }
+        }
+
+        return value.range(of: #"[A-Za-z]"#, options: .regularExpression) != nil
+    }
+
+    private static let emailRegex = #"[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,24}"#
+}
+
+private extension BrowserServiceProvider {
+    var storageMarkers: [String] {
+        switch self {
+        case .openAI:
+            return ["auth.openai.com", "chatgpt.com", "chat.openai.com", "openai"]
+        case .claude:
+            return ["claude.ai", "claude"]
+        }
+    }
+
+    var storageMarker: String {
+        storageMarkers[0]
     }
 }

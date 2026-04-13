@@ -103,6 +103,7 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
     public let baseURL: String
     public let visibility: BurnBarCatalogVisibility
     public let capabilities: [BurnBarProviderCapability]
+    public let logoKey: String?
     public let models: [BurnBarCatalogModel]
 
     public init(
@@ -111,6 +112,7 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
         baseURL: String,
         visibility: BurnBarCatalogVisibility,
         capabilities: [BurnBarProviderCapability],
+        logoKey: String? = nil,
         models: [BurnBarCatalogModel]
     ) {
         self.id = id
@@ -118,7 +120,14 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
         self.baseURL = baseURL
         self.visibility = visibility
         self.capabilities = capabilities
+        self.logoKey = logoKey
         self.models = models
+    }
+
+    /// Asset catalog image name for this provider's bundled logo.
+    /// Falls back to a convention-based name ("{id}Logo") if not explicitly set.
+    public var bundledLogoName: String {
+        logoKey ?? "\(id.capitalized)Logo"
     }
 }
 

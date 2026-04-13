@@ -24,6 +24,27 @@ Re-check every item immediately before changing repository visibility.
 - Branch deletions: disabled
 - SECURITY policy recognized by GitHub: yes
 
+## Local release-prep verification on 2026-04-13 (branch `release/oss-prep-2026-04-13`)
+
+- `./scripts/test-openburnbar-swift.sh` passed
+- `./scripts/test-openburnbar-app.sh` passed (781 tests, 1 skipped, 0 failed)
+- `./scripts/test-openburnbar-retrieval-evals.sh` passed (replay golden suites)
+- `./scripts/test-openburnbar-ts.sh` passed (287 tests, 0 failed)
+- `./scripts/test-openburnbar-replay-evals.sh` passed
+- `./scripts/test-openburnbar-extension-host.sh` passed
+- `make build` passed (Release app bundle + embedded daemon helper artifacts)
+- Embedded helper daemon health probe against the built app responded `ok: true`
+- `npm --prefix extensions/openburnbar audit --json` reports 0 vulnerabilities after pinning transitive `vite` via overrides
+- Release hygiene cleanup applied:
+  - updated `THIRD_PARTY.md` to match bundled logo asset usage
+  - removed tracked generated validation `.log` artifacts
+  - removed tracked local Cursor planning artifact under `.cursor/plans/`
+  - added ignore rules to prevent those local/generated artifacts from being re-committed
+
+### Follow-up required before tagging
+
+- `npm --prefix extensions/openburnbar run test:cursor-smoke` timed out in this local environment and still needs a successful run on a known-good Cursor automation host before final sign-off.
+
 ## Confirmed from working tree on 2026-04-02
 
 ### Community files (.github/)

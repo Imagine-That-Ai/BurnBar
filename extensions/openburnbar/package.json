@@ -2,7 +2,7 @@
   "name": "openburnbar",
   "displayName": "OpenBurnBar",
   "description": "OpenBurnBar sidebar shell for Cursor and VS Code.",
-  "version": "0.1.0-beta",
+  "version": "0.1.2-beta",
   "publisher": "openburnbar",
   "icon": "media/app-icon-128.png",
   "license": "MIT",
@@ -247,6 +247,7 @@
   },
   "overrides": {
     "serialize-javascript": "^7.0.0",
-    "diff": "^8.0.4"
+    "diff": "^8.0.4",
+    "vite": "^7.3.2"
   }
 }

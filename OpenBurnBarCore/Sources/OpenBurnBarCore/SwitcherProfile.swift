@@ -30,6 +30,14 @@ public enum SwitcherBrowserProfileType: String, Codable, CaseIterable, Sendable 
         case .safari: return "com.apple.Safari"
         }
     }
+
+    /// Bundled asset catalog image name for this browser.
+    public var bundledLogoName: String? {
+        switch self {
+        case .chrome: return "ChromeLogo"
+        case .safari: return "SafariLogo"
+        }
+    }
 }
 
 // MARK: - CLI Profile Type
@@ -45,6 +53,15 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .codex: return "Codex"
         case .claude: return "Claude Code"
         case .opencode: return "OpenCode"
+        }
+    }
+
+    /// Bundled asset catalog image name for this CLI tool.
+    public var bundledLogoName: String? {
+        switch self {
+        case .codex: return "CodexLogo"
+        case .claude: return "ClaudeCodeLogo"
+        case .opencode: return nil
         }
     }
 
@@ -83,6 +100,37 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
     }
 }
 
+// MARK: - Browser Service Identity
+
+public enum BrowserServiceProvider: String, Codable, CaseIterable, Sendable {
+    case openAI = "openai"
+    case claude = "claude"
+
+    public var displayName: String {
+        switch self {
+        case .openAI: return "OpenAI"
+        case .claude: return "Claude"
+        }
+    }
+}
+
+public struct BrowserServiceIdentity: Codable, Equatable, Sendable {
+    public let provider: BrowserServiceProvider
+    public let accountLabel: String?
+
+    public init(provider: BrowserServiceProvider, accountLabel: String? = nil) {
+        self.provider = provider
+        self.accountLabel = accountLabel
+    }
+
+    public var displaySummary: String {
+        if let accountLabel, !accountLabel.isEmpty {
+            return "\(provider.displayName): \(accountLabel)"
+        }
+        return "\(provider.displayName): signed in"
+    }
+}
+
 // MARK: - Browser Profile Metadata
 
 /// Metadata specific to a browser profile launch target.
@@ -97,9 +145,51 @@ public struct SwitcherBrowserProfileMetadata: Codable, Equatable, Sendable {
     /// If nil, defaults to the profileIdentifier.
     public let displayLabel: String?
 
-    public init(profileIdentifier: String, displayLabel: String? = nil) {
+    /// Optional signed-in account email for this profile.
+    public let accountEmail: String?
+
+    /// Optional provider identifier for auth-aware reconnect flows (for example, "google" or "apple").
+    public let providerIdentifier: String?
+
+    /// Detected web services currently signed in within this browser profile.
+    public let serviceIdentities: [BrowserServiceIdentity]
+
+    /// Whether this profile is excluded from default switching and launching.
+    public let isDisabled: Bool
+
+    public init(
+        profileIdentifier: String,
+        displayLabel: String? = nil,
+        accountEmail: String? = nil,
+        providerIdentifier: String? = nil,
+        serviceIdentities: [BrowserServiceIdentity] = [],
+        isDisabled: Bool = false
+    ) {
         self.profileIdentifier = profileIdentifier
         self.displayLabel = displayLabel
+        self.accountEmail = accountEmail
+        self.providerIdentifier = providerIdentifier
+        self.serviceIdentities = serviceIdentities
+        self.isDisabled = isDisabled
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case profileIdentifier
+        case displayLabel
+        case accountEmail
+        case providerIdentifier
+        case serviceIdentities
+        case isDisabled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.profileIdentifier = try container.decode(String.self, forKey: .profileIdentifier)
+        self.displayLabel = try container.decodeIfPresent(String.self, forKey: .displayLabel)
+        self.accountEmail = try container.decodeIfPresent(String.self, forKey: .accountEmail)
+        self.providerIdentifier = try container.decodeIfPresent(String.self, forKey: .providerIdentifier)
+        self.serviceIdentities = try container.decodeIfPresent([BrowserServiceIdentity].self, forKey: .serviceIdentities) ?? []
+        self.isDisabled = try container.decodeIfPresent(Bool.self, forKey: .isDisabled) ?? false
     }
 }
 
@@ -121,16 +211,73 @@ public struct SwitcherCLIProfileMetadata: Codable, Equatable, Sendable {
     /// Optional label for this CLI configuration (e.g., "Work", "Personal").
     public let displayLabel: String?
 
+    /// Optional per-profile CLI config directory used to isolate account sessions.
+    public let configDirectory: String?
+
+    /// Verified account identity for this CLI profile (for example, "name • email").
+    public let accountDescription: String?
+
+    /// Most recent time this profile hit quota exhaustion.
+    public let lastQuotaExhaustedAt: Date?
+
+    /// If known, the time until this profile should be considered quota-exhausted.
+    public let exhaustedUntil: Date?
+
+    /// Safe, redacted detail describing the last quota exhaustion event.
+    public let lastQuotaExhaustionDetail: String?
+
+    /// Whether this profile is excluded from default switching and launching.
+    public let isDisabled: Bool
+
     public init(
         workingDirectory: String? = nil,
         additionalArgs: [String] = [],
         envKeysToPass: [String] = [],
-        displayLabel: String? = nil
+        displayLabel: String? = nil,
+        configDirectory: String? = nil,
+        accountDescription: String? = nil,
+        lastQuotaExhaustedAt: Date? = nil,
+        exhaustedUntil: Date? = nil,
+        lastQuotaExhaustionDetail: String? = nil,
+        isDisabled: Bool = false
     ) {
         self.workingDirectory = workingDirectory
         self.additionalArgs = additionalArgs
         self.envKeysToPass = envKeysToPass
         self.displayLabel = displayLabel
+        self.configDirectory = configDirectory
+        self.accountDescription = accountDescription
+        self.lastQuotaExhaustedAt = lastQuotaExhaustedAt
+        self.exhaustedUntil = exhaustedUntil
+        self.lastQuotaExhaustionDetail = lastQuotaExhaustionDetail
+        self.isDisabled = isDisabled
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case workingDirectory
+        case additionalArgs
+        case envKeysToPass
+        case displayLabel
+        case configDirectory
+        case accountDescription
+        case lastQuotaExhaustedAt
+        case exhaustedUntil
+        case lastQuotaExhaustionDetail
+        case isDisabled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.workingDirectory = try container.decodeIfPresent(String.self, forKey: .workingDirectory)
+        self.additionalArgs = try container.decodeIfPresent([String].self, forKey: .additionalArgs) ?? []
+        self.envKeysToPass = try container.decodeIfPresent([String].self, forKey: .envKeysToPass) ?? []
+        self.displayLabel = try container.decodeIfPresent(String.self, forKey: .displayLabel)
+        self.configDirectory = try container.decodeIfPresent(String.self, forKey: .configDirectory)
+        self.accountDescription = try container.decodeIfPresent(String.self, forKey: .accountDescription)
+        self.lastQuotaExhaustedAt = try container.decodeIfPresent(Date.self, forKey: .lastQuotaExhaustedAt)
+        self.exhaustedUntil = try container.decodeIfPresent(Date.self, forKey: .exhaustedUntil)
+        self.lastQuotaExhaustionDetail = try container.decodeIfPresent(String.self, forKey: .lastQuotaExhaustionDetail)
+        self.isDisabled = try container.decodeIfPresent(Bool.self, forKey: .isDisabled) ?? false
     }
 }
 
@@ -212,6 +359,15 @@ public struct SwitcherProfileRecord: Identifiable, Equatable, Sendable {
             return cliType.rawValue
         }
         return "unknown"
+    }
+
+    public var isDisabled: Bool {
+        switch targetKind {
+        case .browser:
+            return browserMetadata?.isDisabled ?? false
+        case .cli:
+            return cliMetadata?.isDisabled ?? false
+        }
     }
 }
 
