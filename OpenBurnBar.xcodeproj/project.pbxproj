@@ -1373,6 +1373,7 @@
 			buildConfigurationList = 1F4C2BB5184C2AE3719E5563 /* Build configuration list for PBXNativeTarget "OpenBurnBarDaemon" */;
 			buildPhases = (
 				137235B3719724E24A2C431E /* Sources */,
+				521470C163F4349FD4306702 /* Dedupe GRDB Link File Entries (Xcode 16) */,
 				A9E0A628A99EA48CA01A3B0C /* Copy Swift Objective-C Interface Header */,
 				BD45083637A28303B26318D5 /* Frameworks */,
 			);
@@ -1526,6 +1527,24 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		521470C163F4349FD4306702 /* Dedupe GRDB Link File Entries (Xcode 16) */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Dedupe GRDB Link File Entries (Xcode 16)";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Xcode 16.4 can pass GRDB.o twice to libtool for this static target:\n# once via LinkFileList and once as an explicit linker argument.\n# Keep GRDB in the explicit arg path on 16.x by removing it from the\n# per-target LinkFileList only for 16.x toolchains.\nif [[ -n \"${XCODE_VERSION_MAJOR:-}\" && \"${XCODE_VERSION_MAJOR}\" -lt 1700 ]]; then\n  link_file=\"${OBJECT_FILE_DIR_normal}/${PRODUCT_NAME}.LinkFileList\"\n  if [[ -f \"${link_file}\" ]]; then\n    tmp_file=\"${link_file}.tmp\"\n    grep -v '/GRDB.o$' \"${link_file}\" > \"${tmp_file}\" || true\n    mv \"${tmp_file}\" \"${link_file}\"\n  fi\nfi\n";
+		};
 		A9E0A628A99EA48CA01A3B0C /* Copy Swift Objective-C Interface Header */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
