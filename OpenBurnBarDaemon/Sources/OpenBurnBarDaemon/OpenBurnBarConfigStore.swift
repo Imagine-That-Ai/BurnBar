@@ -73,7 +73,7 @@ public enum BurnBarConfigStoreError: Error, LocalizedError {
 public actor BurnBarConfigStore {
     private let fileURL: URL
     private let secretStore: any BurnBarProviderSecretStoring
-    private let catalogSupport: BurnBarProviderCatalogSupport
+    let catalogSupport: BurnBarProviderCatalogSupport
     private let logger: BurnBarDaemonLogger
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
@@ -169,7 +169,7 @@ public actor BurnBarConfigStore {
     }
 
     public func setSecret(_ secret: String?, for providerID: String) async throws {
-        guard BurnBarSupportedProvider.isSupported(providerID: providerID) else {
+        guard catalogSupport.isSupported(providerID: providerID) else {
             throw BurnBarConfigStoreError.unsupportedProvider(providerID)
         }
 
@@ -192,7 +192,7 @@ public actor BurnBarConfigStore {
         isEnabled: Bool = true
     ) async throws -> BurnBarProviderCredentialSlot {
         let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard BurnBarSupportedProvider.isSupported(providerID: normalizedProviderID) else {
+        guard catalogSupport.isSupported(providerID: normalizedProviderID) else {
             throw BurnBarConfigStoreError.unsupportedProvider(normalizedProviderID)
         }
 
@@ -441,7 +441,7 @@ public actor BurnBarConfigStore {
         providerID: String,
         mutate: (BurnBarProviderSettings) -> BurnBarProviderSettings
     ) throws -> BurnBarProviderSettings {
-        guard BurnBarSupportedProvider.isSupported(providerID: providerID) else {
+        guard catalogSupport.isSupported(providerID: providerID) else {
             throw BurnBarConfigStoreError.unsupportedProvider(providerID)
         }
 
@@ -499,8 +499,7 @@ public actor BurnBarConfigStore {
         _ snapshot: BurnBarProviderConfigurationSnapshot,
         defaults defaultSnapshot: BurnBarProviderConfigurationSnapshot
     ) throws -> BurnBarProviderConfigurationSnapshot {
-        let providers = try BurnBarSupportedProvider.allCases.map { supportedProvider in
-            let providerID = supportedProvider.rawValue
+        let providers = try catalogSupport.supportedProviderIDs.map { providerID in
             let loadedSettings = snapshot.providerSettings(id: providerID)
             let defaultSettings = defaultSnapshot.providerSettings(id: providerID)!
             return try normalize(loadedSettings ?? defaultSettings, defaults: defaultSnapshot)
@@ -513,12 +512,16 @@ public actor BurnBarConfigStore {
         _ settings: BurnBarProviderSettings,
         defaults defaultSnapshot: BurnBarProviderConfigurationSnapshot
     ) throws -> BurnBarProviderSettings {
-        guard BurnBarSupportedProvider.isSupported(providerID: settings.providerID) else {
+        guard catalogSupport.isSupported(providerID: settings.providerID) else {
             throw BurnBarConfigStoreError.unsupportedProvider(settings.providerID)
         }
 
-        guard !settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw BurnBarConfigStoreError.invalidBaseURL(settings.providerID)
+        // Only routing-capable providers require a non-empty base URL.
+        // Accounting-only providers (like "misc") may have an empty base URL.
+        if catalogSupport.supportsRouting(providerID: settings.providerID) {
+            guard !settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw BurnBarConfigStoreError.invalidBaseURL(settings.providerID)
+            }
         }
 
         for modelID in settings.preferredModelIDs {
@@ -564,8 +567,8 @@ public actor BurnBarConfigStore {
     }
 
     private func makeDefaultSnapshot() throws -> BurnBarProviderConfigurationSnapshot {
-        let providers = try BurnBarSupportedProvider.allCases.map { providerID in
-            let provider = try catalogSupport.requiredProvider(id: providerID.rawValue)
+        let providers = try catalogSupport.supportedProviderIDs.map { providerID in
+            let provider = try catalogSupport.requiredProvider(id: providerID)
             return BurnBarProviderSettings(
                 providerID: provider.id,
                 isEnabled: false,

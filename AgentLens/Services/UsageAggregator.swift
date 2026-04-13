@@ -155,6 +155,7 @@ final class UsageAggregator {
             .hermes: HermesParser(),
             .geminiCLI: GeminiCLIParser(),
             .goose: GooseParser(),
+            .windsurf: WindsurfParser(),
         ]
     }
 

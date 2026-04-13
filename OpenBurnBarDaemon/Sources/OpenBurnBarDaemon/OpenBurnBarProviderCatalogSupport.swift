@@ -1,17 +1,12 @@
 import OpenBurnBarCore
 import Foundation
 
-public enum BurnBarSupportedProvider: String, CaseIterable, Codable, Hashable, Sendable {
+/// Supported providers are now derived from the catalog — any provider present in catalog.json
+/// is eligible for account management and (if it has the `routing` capability) for API routing.
+/// The old hardcoded enum is preserved only for migration ordering priority.
+public enum BurnBarLegacyProviderRank: String, CaseIterable, Codable, Hashable, Sendable {
     case zai
     case minimax
-
-    public static var ids: [String] {
-        allCases.map(\.rawValue)
-    }
-
-    public static func isSupported(providerID: String) -> Bool {
-        allCases.contains { $0.rawValue == providerID }
-    }
 }
 
 public enum BurnBarProviderCatalogSupportError: Error, LocalizedError {
@@ -28,19 +23,33 @@ public enum BurnBarProviderCatalogSupportError: Error, LocalizedError {
 public struct BurnBarProviderCatalogSupport: Sendable {
     public let catalog: BurnBarCatalog
 
+    /// Ordered provider IDs from the catalog (all providers, not just routing-capable).
+    public let supportedProviderIDs: [String]
+
     public init(catalog: BurnBarCatalog) {
         self.catalog = catalog
+        // Derive supported providers from catalog — all providers are eligible for accounts.
+        self.supportedProviderIDs = catalog.providers.map(\.id)
     }
 
+    /// Whether a provider ID is present in the catalog (eligible for account management).
+    public func isSupported(providerID: String) -> Bool {
+        supportedProviderIDs.contains(providerID)
+    }
+
+    /// Whether a provider supports API routing (has `routing` capability).
+    public func supportsRouting(providerID: String) -> Bool {
+        guard let provider = catalog.provider(id: providerID) else { return false }
+        return provider.capabilities.contains(.routing)
+    }
+
+    /// All catalog providers eligible for account management.
     public var supportedProviders: [BurnBarCatalogProvider] {
-        BurnBarSupportedProvider.allCases.compactMap { provider(id: $0.rawValue) }
+        catalog.providers
     }
 
     public func provider(id: String) -> BurnBarCatalogProvider? {
-        guard BurnBarSupportedProvider.isSupported(providerID: id) else {
-            return nil
-        }
-        return catalog.provider(id: id)
+        catalog.provider(id: id)
     }
 
     public func requiredProvider(id: String) throws -> BurnBarCatalogProvider {
@@ -85,7 +94,17 @@ public struct BurnBarProviderCatalogSupport: Sendable {
         return provider.models.filter { $0.visibility == .public }
     }
 
+    /// Sort rank for a provider ID. Legacy providers (zai, minimax) come first,
+    /// then remaining catalog providers in catalog order.
     public func providerSortRank(providerID: String) -> Int {
-        BurnBarSupportedProvider.allCases.firstIndex(where: { $0.rawValue == providerID }) ?? .max
+        // Legacy providers get priority
+        if let legacyRank = BurnBarLegacyProviderRank.allCases.firstIndex(where: { $0.rawValue == providerID }) {
+            return legacyRank
+        }
+        // Other catalog providers come after, in catalog order
+        if let catalogRank = catalog.providers.firstIndex(where: { $0.id == providerID }) {
+            return BurnBarLegacyProviderRank.allCases.count + catalogRank
+        }
+        return .max
     }
 }

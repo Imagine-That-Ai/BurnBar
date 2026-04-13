@@ -1,5 +1,39 @@
+import AppKit
 import SwiftUI
 import OpenBurnBarCore
+
+#if DEBUG
+private final class PopoverQuickSwitchTransitionProbe {
+    private(set) var recentChange: (from: String, to: String)?
+    private(set) var animationToken = 0
+
+    func recordChange(from previousProfileID: String?, to newProfileID: String?) {
+        guard let previousProfileID,
+              let newProfileID,
+              previousProfileID != newProfileID else {
+            return
+        }
+
+        recentChange = (previousProfileID, newProfileID)
+        animationToken += 1
+    }
+
+    func swapTargetID(currentActiveProfileID: String?) -> String? {
+        guard let currentActiveProfileID,
+              let recentChange else {
+            return nil
+        }
+
+        if currentActiveProfileID == recentChange.from {
+            return recentChange.to
+        }
+        if currentActiveProfileID == recentChange.to {
+            return recentChange.from
+        }
+        return nil
+    }
+}
+#endif
 
 // MARK: - Popover Quick Switch View
 
@@ -28,6 +62,10 @@ struct PopoverQuickSwitchView: View {
     @State private var error: String?
     @State private var showingLaunchMenu = false
     @State private var accessibilityAnnouncement: String?
+    @State private var recentDefaultChange: RecentDefaultChange?
+    @State private var isHighlightingDefaultChange = false
+    @State private var defaultChangeAnimationToken = 0
+    @State private var quotaService = ProviderQuotaService.shared
 
     // Launch services
     @State private var browserLaunchService: SwitcherBrowserLaunchService?
@@ -59,6 +97,7 @@ struct PopoverQuickSwitchView: View {
 
     /// When true, loadData() is skipped in onAppear - for testing error/empty states.
     private let skipLoadData: Bool
+    private let testTransitionProbe = PopoverQuickSwitchTransitionProbe()
     #endif
 
     private enum SwitchState: Equatable {
@@ -73,6 +112,21 @@ struct PopoverQuickSwitchView: View {
         case launching
         case success
         case error(String)
+    }
+
+    private struct RecentDefaultChange: Equatable {
+        let firstProfileID: String
+        let secondProfileID: String
+
+        func otherProfileID(current activeProfileID: String) -> String? {
+            if activeProfileID == firstProfileID {
+                return secondProfileID
+            }
+            if activeProfileID == secondProfileID {
+                return firstProfileID
+            }
+            return nil
+        }
     }
 
     var body: some View {
@@ -100,8 +154,14 @@ struct PopoverQuickSwitchView: View {
                 loadData()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            loadData()
+        }
         #else
         .onAppear(perform: loadData)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            loadData()
+        }
         #endif
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Account Switcher")
@@ -163,6 +223,11 @@ struct PopoverQuickSwitchView: View {
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
+
+            Text("Connect provider accounts to keep a reserve ready before you need it.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .multilineTextAlignment(.center)
 
             HStack(spacing: DesignSystem.Spacing.sm) {
                 Button {
@@ -290,11 +355,91 @@ struct PopoverQuickSwitchView: View {
             // Active profile indicator (VAL-POPOVER-002)
             activeIndicator
 
+            providerPulseStrip
+
+            // All accounts roster — grouped by provider, cycleable
+            accountRoster
+
             // Quick switch row (VAL-POPOVER-001)
             quickSwitchRow
 
             // State feedback (VAL-POPOVER-003)
             stateFeedbackView
+        }
+    }
+
+    @ViewBuilder
+    private var providerPulseStrip: some View {
+        let groups = Dictionary(grouping: profiles, by: providerDisplayName(for:))
+            .map { (provider, items) in
+                (
+                    provider: provider,
+                    count: items.count,
+                    connected: items.filter { !$0.isDisabled }.count
+                )
+            }
+            .sorted { $0.provider < $1.provider }
+
+        if !groups.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                        Text(group.count > 1 ? "\(group.provider) • \(group.connected) ready" : "\(group.provider) • live")
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .padding(.horizontal, DesignSystem.Spacing.xs)
+                            .padding(.vertical, 3)
+                            .background(DesignSystem.Colors.surfaceElevated)
+                            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Account Roster
+
+    /// Grouped roster of all accounts by provider, showing connectivity and quota at a glance.
+    @ViewBuilder
+    private var accountRoster: some View {
+        let groups = Dictionary(grouping: profiles, by: providerDisplayName(for:))
+            .map { (provider, items) in
+                (
+                    provider: provider,
+                    profiles: items.sorted { !$0.isDisabled && $1.isDisabled },
+                    connected: items.filter { !$0.isDisabled }.count
+                )
+            }
+            .sorted { $0.provider < $1.provider }
+
+        if !groups.isEmpty {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                ForEach(groups, id: \.provider) { group in
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Circle()
+                            .fill(group.connected > 0 ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted.opacity(0.4))
+                            .frame(width: 5, height: 5)
+
+                        Text(group.provider)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                        Text(group.profiles.count == 1 ? "1 account" : "\(group.profiles.count) accounts")
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                        Spacer()
+
+                        if group.connected > 1 {
+                            Text("\(group.connected) ready")
+                                .font(.system(size: 9, weight: .medium, design: .rounded))
+                                .foregroundStyle(DesignSystem.Colors.success)
+                        }
+                    }
+                    .padding(.horizontal, DesignSystem.Spacing.xs)
+                    .padding(.vertical, 2)
+                }
+            }
         }
     }
 
@@ -327,42 +472,78 @@ struct PopoverQuickSwitchView: View {
 
     // MARK: - Active Indicator
 
-    /// Shows the currently active profile with clear indicator (VAL-POPOVER-002)
+    /// Shows the current launch default with clear indicator (VAL-POPOVER-002)
     private var activeIndicator: some View {
         Group {
             if let activeProfile = profiles.first(where: { $0.id == activeProfileID }) {
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    // Active dot
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
                     Circle()
                         .fill(DesignSystem.Colors.success)
                         .frame(width: 6, height: 6)
+                        .padding(.top, 4)
 
-                    targetIcon(for: activeProfile)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: DesignSystem.Spacing.xs) {
+                            targetIcon(for: activeProfile)
 
-                    Text(activeProfile.displayName)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        .lineLimit(1)
+                            Text(activeProfile.displayName)
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                .lineLimit(1)
+                        }
+
+                        if let quotaStatus = cliQuotaStatusText(for: activeProfile, quotaLookup: { provider in
+                            quotaService.snapshot(for: provider)
+                        }) {
+                            Text(quotaStatus)
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                .lineLimit(1)
+                        }
+                    }
 
                     Spacer()
 
-                    Text("Active")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.success)
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        if let swapTarget = swapTargetProfile {
+                            swapButton(for: swapTarget)
+                        }
+
+                        Text("Default")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.success)
+                    }
                 }
                 .padding(.horizontal, DesignSystem.Spacing.sm)
                 .padding(.vertical, DesignSystem.Spacing.xs)
                 .background(DesignSystem.Colors.surfaceElevated)
                 .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .strokeBorder(
+                            isHighlightingDefaultChange
+                                ? DesignSystem.Colors.amber.opacity(0.8)
+                                : Color.clear,
+                            lineWidth: 1
+                        )
+                )
+                .scaleEffect(isHighlightingDefaultChange ? 1.02 : 1)
+                .shadow(
+                    color: isHighlightingDefaultChange
+                        ? DesignSystem.Colors.amber.opacity(0.22)
+                        : .clear,
+                    radius: isHighlightingDefaultChange ? 10 : 0
+                )
+                .animation(DesignSystem.Animation.gentle, value: isHighlightingDefaultChange)
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(activeProfile.displayName), active profile")
+                .accessibilityLabel("\(activeProfile.displayName), current launch default for \(providerDisplayName(for: activeProfile))")
             } else {
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     Circle()
                         .fill(DesignSystem.Colors.textMuted.opacity(0.3))
                         .frame(width: 6, height: 6)
 
-                    Text("No active profile")
+                    Text("No launch default")
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
 
@@ -372,9 +553,26 @@ struct PopoverQuickSwitchView: View {
                 .padding(.vertical, DesignSystem.Spacing.xs)
                 .background(DesignSystem.Colors.surfaceElevated)
                 .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
-                .accessibilityLabel("No active profile selected")
+                .accessibilityLabel("No launch default selected")
             }
         }
+    }
+
+    private func swapButton(for profile: SwitcherProfileRecord) -> some View {
+        Button {
+            performSwapRecentProfiles()
+        } label: {
+            HStack(spacing: DesignSystem.Spacing.xxs) {
+                Image(systemName: "arrow.left.arrow.right")
+                    .font(.system(size: 8, weight: .semibold))
+                Text("Swap")
+                    .font(DesignSystem.Typography.tiny)
+            }
+            .foregroundStyle(DesignSystem.Colors.amber)
+        }
+        .buttonStyle(.plain)
+        .disabled(switchState == .switching)
+        .accessibilityLabel("Swap launch default with \(profile.displayName)")
     }
 
     // MARK: - Quick Switch Row
@@ -393,7 +591,7 @@ struct PopoverQuickSwitchView: View {
                             Text(profile.displayName)
                                 .font(DesignSystem.Typography.caption)
                             if profile.id == activeProfileID {
-                                Text("✓")
+                                Text("Default")
                                     .foregroundStyle(DesignSystem.Colors.success)
                             }
                         }
@@ -443,7 +641,7 @@ struct PopoverQuickSwitchView: View {
                     Button {
                         selectAndSwitch(selected)
                     } label: {
-                        Label("Switch to This", systemImage: "arrow.triangle.2.circlepath")
+                        Label("Make Default", systemImage: "arrow.triangle.2.circlepath")
                     }
                     .disabled(switchState == .switching || selected.id == activeProfileID)
 
@@ -520,21 +718,21 @@ struct PopoverQuickSwitchView: View {
             HStack(spacing: DesignSystem.Spacing.xxs) {
                 ProgressView()
                     .scaleEffect(0.4)
-                Text("Switching...")
+                Text("Updating...")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
-            .accessibilityLabel("Switching profile in progress")
+            .accessibilityLabel("Updating launch default in progress")
         case .success:
             HStack(spacing: DesignSystem.Spacing.xxs) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 9))
                     .foregroundStyle(DesignSystem.Colors.success)
-                Text("Switched")
+                Text("Default updated")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.success)
             }
-            .accessibilityLabel("Profile switched successfully")
+            .accessibilityLabel("Launch default updated successfully")
             .onAppear {
                 // Auto-clear success state after delay
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -603,13 +801,25 @@ struct PopoverQuickSwitchView: View {
         Group {
             switch profile.targetKind {
             case .browser:
-                Image(systemName: profile.browserType == .safari ? "safari" : "globe")
-                    .font(.system(size: 9))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                if let browserType = profile.browserType, let logoName = browserType.bundledLogoName, NSImage(named: logoName) != nil {
+                    Image(logoName)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                } else {
+                    Image(systemName: profile.browserType == .safari ? "safari" : "globe")
+                        .font(.system(size: 9))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
             case .cli:
-                Image(systemName: "terminal.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                if let cliType = profile.cliType, let logoName = cliType.bundledLogoName, NSImage(named: logoName) != nil {
+                    Image(logoName)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                } else {
+                    Image(systemName: "terminal.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
             }
         }
     }
@@ -626,10 +836,11 @@ struct PopoverQuickSwitchView: View {
         announceForAccessibility("Loading profiles")
 
         do {
-            profiles = try dataStore.switcherStore.fetchAllProfiles()
+            let loadedProfiles = try dataStore.switcherStore.fetchAllProfiles().filter { !$0.isDisabled }
+            profiles = loadedProfiles
             let state = try dataStore.switcherStore.validateAndRecoverActiveProfile()
-            activeProfileID = state.activeProfileID
-            selectedProfileID = state.activeProfileID ?? profiles.first?.id
+            activeProfileID = loadedProfiles.contains(where: { $0.id == state.activeProfileID }) ? state.activeProfileID : loadedProfiles.first?.id
+            selectedProfileID = activeProfileID ?? loadedProfiles.first?.id
 
             // Initialize launch services
             let adapter = PopoverSwitcherProfileAdapter(store: dataStore.switcherStore)
@@ -657,7 +868,10 @@ struct PopoverQuickSwitchView: View {
             browserLaunchService = SwitcherBrowserLaunchService(profileStore: adapter)
             cliLaunchService = SwitcherCLILAunchService(
                 profileStore: adapter,
-                fallbackPlanner: fallbackPlanner
+                fallbackPlanner: fallbackPlanner,
+                eventHandler: { event in
+                    handleCLILaunchServiceEvent(event)
+                }
             )
 
             // Announce loaded state
@@ -666,6 +880,10 @@ struct PopoverQuickSwitchView: View {
             } else {
                 let count = profiles.count
                 announceForAccessibility("\(count) profile\(count == 1 ? "" : "s") loaded.")
+            }
+
+            Task { @MainActor in
+                await quotaService.refreshIfNeeded(dataStore: dataStore)
             }
         } catch {
             self.error = "Failed to load profiles: \(error.localizedDescription)"
@@ -688,21 +906,21 @@ struct PopoverQuickSwitchView: View {
         }
 
         do {
+            let previousActiveProfileID = activeProfileID
             try dataStore.switcherStore.setActiveProfile(profile.id)
             activeProfileID = profile.id
+            recordDefaultChange(from: previousActiveProfileID, to: profile.id)
 
             withAnimation(DesignSystem.Animation.snappy) {
                 switchState = .success
             }
 
-            // Announce state change for accessibility (VAL-POPOVER-004)
-            announceForAccessibility("Profile switched successfully")
+            announceForAccessibility("Launch default updated")
         } catch {
             withAnimation(DesignSystem.Animation.snappy) {
-                switchState = .error("Switch failed")
+                switchState = .error("Default update failed")
             }
-            // Announce error for accessibility (VAL-POPOVER-004)
-            announceForAccessibility("Failed to switch profile. \(error.localizedDescription)")
+            announceForAccessibility("Failed to update launch default. \(error.localizedDescription)")
         }
     }
 
@@ -749,6 +967,7 @@ struct PopoverQuickSwitchView: View {
                 if let launchedProfileID = outcome.launchedProfileID,
                    launchedProfileID != profile.id,
                    let launchedProfile = profiles.first(where: { $0.id == launchedProfileID }) {
+                    recordDefaultChange(from: profile.id, to: launchedProfileID)
                     activeProfileID = launchedProfileID
                     selectedProfileID = launchedProfileID
                     announceForAccessibility("Launched \(launchedProfile.displayName) after falling back in priority order")
@@ -766,6 +985,144 @@ struct PopoverQuickSwitchView: View {
                 announceForAccessibility("Launch error: \(errorMessage)")
             }
         }
+    }
+
+    @MainActor
+    private func handleCLILaunchServiceEvent(_ event: CLILaunchServiceEvent) {
+        switch event {
+        case .postLaunchFallbackSucceeded(let exhaustedProfileID, let recoveredProfileID, _, _):
+            recordDefaultChange(from: exhaustedProfileID, to: recoveredProfileID)
+            activeProfileID = recoveredProfileID
+            selectedProfileID = recoveredProfileID
+
+            let exhaustedName = profiles.first(where: { $0.id == exhaustedProfileID })?.displayName ?? "Previous account"
+            let recoveredName = profiles.first(where: { $0.id == recoveredProfileID })?.displayName ?? "next account"
+            announceForAccessibility("\(exhaustedName) hit quota after launch. Switched to \(recoveredName).")
+
+        case .postLaunchFallbackFailed(let exhaustedProfileID, let detail, _):
+            let exhaustedName = profiles.first(where: { $0.id == exhaustedProfileID })?.displayName ?? "Current account"
+            withAnimation(DesignSystem.Animation.snappy) {
+                launchState = .error(detail)
+            }
+            announceForAccessibility("\(exhaustedName) hit quota after launch. \(detail)")
+        }
+    }
+
+    private var swapTargetProfile: SwitcherProfileRecord? {
+        guard let activeProfile = activeProfileID.flatMap(profileRecord(for:)) else {
+            return nil
+        }
+
+        if let recentTargetID = recentDefaultChange?.otherProfileID(current: activeProfile.id),
+           let recentTarget = profileRecord(for: recentTargetID),
+           isSameProvider(activeProfile, recentTarget) {
+            return recentTarget
+        }
+
+        return sameProviderProfiles(for: activeProfile)
+            .first(where: { $0.id != activeProfile.id })
+    }
+
+    private func performSwapRecentProfiles() {
+        guard let targetProfile = swapTargetProfile,
+              switchState != .switching else {
+            return
+        }
+
+        let previousActiveProfileID = activeProfileID
+        selectedProfileID = previousActiveProfileID
+
+        withAnimation(DesignSystem.Animation.snappy) {
+            switchState = .switching
+        }
+
+        do {
+            try dataStore.switcherStore.setActiveProfile(targetProfile.id)
+            activeProfileID = targetProfile.id
+            recordDefaultChange(from: previousActiveProfileID, to: targetProfile.id)
+
+            withAnimation(DesignSystem.Animation.snappy) {
+                switchState = .success
+            }
+
+            announceForAccessibility("Launch default swapped to \(targetProfile.displayName)")
+        } catch {
+            withAnimation(DesignSystem.Animation.snappy) {
+                switchState = .error("Default update failed")
+            }
+            announceForAccessibility("Failed to update launch default. \(error.localizedDescription)")
+        }
+    }
+
+    private func recordDefaultChange(from previousProfileID: String?, to newProfileID: String?) {
+        guard let previousProfileID,
+              let newProfileID,
+              previousProfileID != newProfileID else {
+            return
+        }
+
+        recentDefaultChange = RecentDefaultChange(
+            firstProfileID: previousProfileID,
+            secondProfileID: newProfileID
+        )
+        defaultChangeAnimationToken += 1
+        #if DEBUG
+        testTransitionProbe.recordChange(from: previousProfileID, to: newProfileID)
+        #endif
+
+        withAnimation(DesignSystem.Animation.gentle) {
+            isHighlightingDefaultChange = true
+        }
+
+        let token = defaultChangeAnimationToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            guard token == defaultChangeAnimationToken else { return }
+            withAnimation(DesignSystem.Animation.gentle) {
+                isHighlightingDefaultChange = false
+            }
+        }
+    }
+
+    private func profileRecord(for profileID: String) -> SwitcherProfileRecord? {
+        if let profile = profiles.first(where: { $0.id == profileID }) {
+            return profile
+        }
+        return try? dataStore.switcherStore.fetchProfile(id: profileID)
+    }
+
+    private func sameProviderProfiles(for profile: SwitcherProfileRecord) -> [SwitcherProfileRecord] {
+        availableProfiles().filter { candidate in
+            isSameProvider(profile, candidate)
+        }
+    }
+
+    private func availableProfiles() -> [SwitcherProfileRecord] {
+        if !profiles.isEmpty {
+            return profiles.filter { !$0.isDisabled }
+        }
+        return ((try? dataStore.switcherStore.fetchAllProfiles()) ?? []).filter { !$0.isDisabled }
+    }
+
+    private func isSameProvider(_ lhs: SwitcherProfileRecord, _ rhs: SwitcherProfileRecord) -> Bool {
+        guard lhs.id != rhs.id else { return true }
+        guard lhs.targetKind == rhs.targetKind else { return false }
+
+        switch lhs.targetKind {
+        case .cli:
+            return lhs.cliType == rhs.cliType
+        case .browser:
+            return lhs.browserType == rhs.browserType
+        }
+    }
+
+    private func providerDisplayName(for profile: SwitcherProfileRecord) -> String {
+        if let cliType = profile.cliType {
+            return cliType.displayName
+        }
+        if let browserType = profile.browserType {
+            return browserType.displayName
+        }
+        return "this provider"
     }
 
     // MARK: - Accessibility
@@ -835,15 +1192,61 @@ struct PopoverQuickSwitchView: View {
             let targetProfileID = loadedProfiles.first(where: { $0.id != state.activeProfileID })?.id ?? state.activeProfileID
 
             guard let targetProfileID else {
-                announceForAccessibility("Failed to switch profile. No profile selected")
+                announceForAccessibility("Failed to update launch default. No profile selected")
                 return
             }
 
             try dataStore.switcherStore.setActiveProfile(targetProfileID)
-            announceForAccessibility("Profile switched successfully")
+            announceForAccessibility("Launch default updated")
         } catch {
-            announceForAccessibility("Failed to switch profile. \(error.localizedDescription)")
+            announceForAccessibility("Failed to update launch default. \(error.localizedDescription)")
         }
+    }
+
+    /// DEBUG-only: Switches to a specific loaded profile using the real UI path.
+    func testTriggerSwitchToProfile(profileID: String) {
+        let previousActiveProfileID = activeProfileID ?? (try? dataStore.switcherStore.fetchActiveProfileState().activeProfileID)
+        selectedProfileID = profileID
+        try? dataStore.switcherStore.setActiveProfile(profileID)
+        activeProfileID = profileID
+        recordDefaultChange(from: previousActiveProfileID, to: profileID)
+    }
+
+    /// DEBUG-only: Triggers the recent-profile swap button action.
+    func testTriggerSwapRecentProfiles() {
+        let currentActiveProfileID = activeProfileID ?? (try? dataStore.switcherStore.fetchActiveProfileState().activeProfileID)
+        guard let targetProfileID = testTransitionProbe.swapTargetID(currentActiveProfileID: currentActiveProfileID),
+              let targetProfile = try? dataStore.switcherStore.fetchProfile(id: targetProfileID) else {
+            return
+        }
+
+        try? dataStore.switcherStore.setActiveProfile(targetProfileID)
+        activeProfileID = targetProfileID
+        selectedProfileID = currentActiveProfileID
+        announceForAccessibility("Launch default swapped to \(targetProfile.displayName)")
+    }
+
+    /// DEBUG-only: Whether the swap button should currently render.
+    var testCanSwapRecentProfiles: Bool {
+        let activeID = activeProfileID ?? (try? dataStore.switcherStore.fetchActiveProfileState().activeProfileID)
+        guard let activeID,
+              let activeProfile = try? dataStore.switcherStore.fetchProfile(id: activeID) else {
+            return false
+        }
+
+        if testTransitionProbe.swapTargetID(currentActiveProfileID: activeID) != nil {
+            return true
+        }
+
+        let allProfiles = (try? dataStore.switcherStore.fetchAllProfiles()) ?? []
+        return allProfiles.contains { candidate in
+            candidate.id != activeProfile.id && isSameProvider(activeProfile, candidate)
+        }
+    }
+
+    /// DEBUG-only: Number of launch-default change animations triggered.
+    var testDefaultChangeAnimationToken: Int {
+        testTransitionProbe.animationToken
     }
 
     /// DEBUG-only: Triggers performLaunch for the given profile.
@@ -876,12 +1279,12 @@ struct PopoverQuickSwitchView: View {
     var testActiveProfileAccessibilityLabel: String? {
         // First try in-memory list
         if let activeProfile = profiles.first(where: { $0.id == activeProfileID }) {
-            return "\(activeProfile.displayName), active profile"
+            return "\(activeProfile.displayName), current launch default for \(providerDisplayName(for: activeProfile))"
         }
         // Fallback: query store directly when in-memory list is stale/empty
         if let profileID = activeProfileID ?? (try? dataStore.switcherStore.fetchActiveProfileState())?.activeProfileID {
             if let record = try? dataStore.switcherStore.fetchProfile(id: profileID) {
-                return "\(record.displayName), active profile"
+                return "\(record.displayName), current launch default for \(providerDisplayName(for: record))"
             }
         }
         return nil
@@ -935,5 +1338,9 @@ private final class PopoverSwitcherProfileAdapter: SwitcherProfileStoreAdapter {
 
     func setActiveProfileID(_ profileID: String?) {
         try? store.setActiveProfile(profileID)
+    }
+
+    func updateProfile(_ profile: SwitcherProfileRecord) {
+        try? store.update(profile)
     }
 }

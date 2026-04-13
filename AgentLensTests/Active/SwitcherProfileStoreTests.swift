@@ -101,6 +101,65 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertEqual(fetched?.browserMetadata?.profileIdentifier, "Default")
     }
 
+    func test_fetchProfile_decodesLegacyBrowserMetadataWithoutServiceIdentities() throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO switcher_profiles (
+                    id, targetKind, browserType, browserMetadataJSON,
+                    cliType, cliMetadataJSON, sortKey, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    "legacy-browser",
+                    "browser",
+                    "chrome",
+                    #"{"profileIdentifier":"Default","displayLabel":"Legacy Chrome"}"#,
+                    nil,
+                    nil,
+                    1,
+                    Date(),
+                    Date()
+                ]
+            )
+        }
+
+        let fetched = try XCTUnwrap(store.fetchProfile(id: "legacy-browser"))
+        XCTAssertEqual(fetched.displayName, "Legacy Chrome")
+        XCTAssertEqual(fetched.browserMetadata?.profileIdentifier, "Default")
+        XCTAssertEqual(fetched.browserMetadata?.serviceIdentities, [])
+    }
+
+    func test_fetchProfile_decodesLegacyCLIMetadataWithoutArrayFields() throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO switcher_profiles (
+                    id, targetKind, browserType, browserMetadataJSON,
+                    cliType, cliMetadataJSON, sortKey, createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    "legacy-cli",
+                    "cli",
+                    nil,
+                    nil,
+                    "codex",
+                    #"{"displayLabel":"Legacy Codex","configDirectory":"/tmp/codex-legacy"}"#,
+                    2,
+                    Date(),
+                    Date()
+                ]
+            )
+        }
+
+        let fetched = try XCTUnwrap(store.fetchProfile(id: "legacy-cli"))
+        XCTAssertEqual(fetched.displayName, "Legacy Codex")
+        XCTAssertEqual(fetched.cliMetadata?.configDirectory, "/tmp/codex-legacy")
+        XCTAssertEqual(fetched.cliMetadata?.additionalArgs, [])
+        XCTAssertEqual(fetched.cliMetadata?.envKeysToPass, [])
+    }
+
     func test_fetchAllProfiles_returnsDeterministicOrder() throws {
         // Create profiles in non-sorted order
         let metadata = SwitcherBrowserProfileMetadata(profileIdentifier: "P3")

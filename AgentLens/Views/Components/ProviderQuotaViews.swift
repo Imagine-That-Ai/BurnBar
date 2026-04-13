@@ -1535,6 +1535,7 @@ struct QuotaDualWindowStrip: View {
                 .lineLimit(1)
                 .frame(width: 36, alignment: .trailing)
         }
+        .popoverTooltip(windowTooltipText(for: bucket, label: label))
     }
 
     @ViewBuilder
@@ -1569,6 +1570,7 @@ struct QuotaDualWindowStrip: View {
                 .foregroundStyle(DesignSystem.Colors.textMuted)
                 .frame(width: 36, alignment: .trailing)
         }
+        .popoverTooltip("\(label): No quota signal yet\nReset time unavailable")
     }
 
     // MARK: - Color Helpers
@@ -1612,6 +1614,16 @@ struct QuotaDualWindowStrip: View {
                 startPoint: .leading, endPoint: .trailing
             )
         }
+    }
+
+    private func windowTooltipText(for bucket: ProviderQuotaBucket, label: String) -> String {
+        let resetText: String
+        if let resetsAt = bucket.resetsAt {
+            resetText = "Resets \(resetsAt.formatted(date: .abbreviated, time: .shortened))"
+        } else {
+            resetText = "Reset time unavailable"
+        }
+        return "\(label): \(bucket.remainingText) remaining\n\(resetText)"
     }
 }
 

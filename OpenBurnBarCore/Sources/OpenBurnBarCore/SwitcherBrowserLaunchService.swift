@@ -96,7 +96,7 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
 
     /// Launches the browser for the given profile.
     /// Returns immediately if a launch is already in progress for this profile.
-    public func launchBrowser(for profileID: String) async -> LaunchOutcome {
+    public func launchBrowser(for profileID: String, opening urls: [URL] = []) async -> LaunchOutcome {
         // Begin launch coordination
         let sequence = await coordinator.beginLaunch(profileID: profileID)
         guard sequence != nil else {
@@ -128,9 +128,9 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
         // Handle by browser type
         switch profile.browserType {
         case .chrome:
-            return await launchChrome(profile: profile)
+            return await launchChrome(profile: profile, urls: urls)
         case .safari:
-            return await launchSafari(profile: profile)
+            return await launchSafari(profile: profile, urls: urls)
         case .none:
             await coordinator.endLaunch(profileID: profileID, success: false)
             return LaunchOutcome(
@@ -162,7 +162,7 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
     }
 
     /// Launches Chrome for the given profile.
-    private func launchChrome(profile: SwitcherProfileRecord) async -> LaunchOutcome {
+    private func launchChrome(profile: SwitcherProfileRecord, urls: [URL]) async -> LaunchOutcome {
         // First check browser availability using our injectable provider
         let urlResult = browserProvider.resolveBrowserURL(.chrome)
 
@@ -192,7 +192,8 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
                 let launchResult = await BrowserLaunchInvoker.launchChrome(
                     appURL: appURL,
                     profileDirectory: profileDir,
-                    args: launchArgs.filter { !$0.hasPrefix("--profile-directory=") }
+                    args: launchArgs.filter { !$0.hasPrefix("--profile-directory=") },
+                    urls: urls
                 )
 
                 switch launchResult {
@@ -208,7 +209,7 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
     }
 
     /// Launches Safari for the given profile.
-    private func launchSafari(profile: SwitcherProfileRecord) async -> LaunchOutcome {
+    private func launchSafari(profile: SwitcherProfileRecord, urls: [URL]) async -> LaunchOutcome {
         // First check browser availability using our injectable provider
         let urlResult = browserProvider.resolveBrowserURL(.safari)
 
@@ -232,7 +233,8 @@ public final class SwitcherBrowserLaunchService: @unchecked Sendable {
             case .success(let (_, launchArgs)):
                 let launchResult = await BrowserLaunchInvoker.launchSafari(
                     appURL: appURL,
-                    args: launchArgs
+                    args: launchArgs,
+                    urls: urls
                 )
 
                 switch launchResult {
@@ -295,6 +297,8 @@ public protocol SwitcherProfileStoreAdapter: Sendable {
     func fetchActiveProfileID() -> String?
     /// Sets the active profile ID. Pass nil to clear.
     func setActiveProfileID(_ profileID: String?)
+    /// Persists an updated profile record.
+    func updateProfile(_ profile: SwitcherProfileRecord)
 }
 
 // MARK: - In-Memory Adapter for Testing
@@ -335,5 +339,11 @@ public final class InMemorySwitcherProfileStoreAdapter: SwitcherProfileStoreAdap
         lock.lock()
         defer { lock.unlock() }
         activeProfileID = profileID
+    }
+
+    public func updateProfile(_ profile: SwitcherProfileRecord) {
+        lock.lock()
+        defer { lock.unlock() }
+        profiles[profile.id] = profile
     }
 }

@@ -757,13 +757,26 @@ final class OpenBurnBarDaemonManager {
 
     private func writeLaunchAgentPlist() throws {
         let indexDbPath = OpenBurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
+        var programArguments = [
+            paths.installedBinaryURL.path,
+            "--socket-path", paths.socketURL.path,
+            "--index-database-path", indexDbPath
+        ]
+
+        let settings = SettingsManager.shared
+        if settings.gatewayEnabled {
+            programArguments.append(contentsOf: ["--gateway-enable"])
+            programArguments.append(contentsOf: ["--gateway-host", settings.gatewayHost.isEmpty ? "127.0.0.1" : settings.gatewayHost])
+            programArguments.append(contentsOf: ["--gateway-port", "\(settings.gatewayPort > 0 ? settings.gatewayPort : 8317)"])
+            let gatewayAuthToken = settings.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !gatewayAuthToken.isEmpty {
+                programArguments.append(contentsOf: ["--gateway-auth-token", gatewayAuthToken])
+            }
+        }
+
         let plist: [String: Any] = [
             "Label": OpenBurnBarDaemonRuntimePaths.launchAgentLabel,
-            "ProgramArguments": [
-                paths.installedBinaryURL.path,
-                "--socket-path", paths.socketURL.path,
-                "--index-database-path", indexDbPath
-            ],
+            "ProgramArguments": programArguments,
             "RunAtLoad": true,
             "KeepAlive": true,
             "WorkingDirectory": paths.daemonDirectory.path,
@@ -1352,7 +1365,8 @@ struct OpenBurnBarDaemonProviderConfiguration: Equatable, Identifiable {
     }
 
     let providerID: String
-    let provider: AgentProvider
+    let provider: AgentProvider?
+    let displayName: String
     let isEnabled: Bool
     let baseURL: String
     let preferredModelIDs: [String]
@@ -1360,7 +1374,14 @@ struct OpenBurnBarDaemonProviderConfiguration: Equatable, Identifiable {
     let credentialSlots: [CredentialSlot]
 
     var id: String { providerID }
-    var displayName: String { provider.displayName }
+
+    /// Brand metadata for rendering logos — works for all catalog providers.
+    var brand: ProviderBrand {
+        if let provider {
+            return ProviderBrand(from: provider)
+        }
+        return ProviderBrand(providerID: providerID)
+    }
 }
 
 struct OpenBurnBarDaemonRecentUsage: Equatable, Identifiable {
@@ -1482,17 +1503,19 @@ final class OpenBurnBarDaemonUsageSyncService {
     private func providerConfigurations(
         from snapshot: BurnBarProviderConfigurationSnapshot
     ) -> [OpenBurnBarDaemonProviderConfiguration] {
-        snapshot.providers
-            .compactMap { settings in
-                guard let provider = agentProvider(for: settings.providerID) else { return nil }
-                return OpenBurnBarDaemonProviderConfiguration(
-                    providerID: settings.providerID,
-                    provider: provider,
-                    isEnabled: settings.isEnabled,
-                    baseURL: settings.baseURL,
-                    preferredModelIDs: settings.preferredModelIDs,
-                    preferredCredentialSlotID: settings.preferredCredentialSlotID,
-                    credentialSlots: settings.credentialSlots.map { slot in
+        snapshot.providers.map { settings in
+            let provider = agentProvider(for: settings.providerID)
+            let catalogName = BurnBarCatalogLoader.bundledCatalog.provider(id: settings.providerID)?.displayName
+                ?? settings.providerID.capitalized
+            return OpenBurnBarDaemonProviderConfiguration(
+                providerID: settings.providerID,
+                provider: provider,
+                displayName: catalogName,
+                isEnabled: settings.isEnabled,
+                baseURL: settings.baseURL,
+                preferredModelIDs: settings.preferredModelIDs,
+                preferredCredentialSlotID: settings.preferredCredentialSlotID,
+                credentialSlots: settings.credentialSlots.map { slot in
                         OpenBurnBarDaemonProviderConfiguration.CredentialSlot(
                             slotID: slot.slotID,
                             label: slot.label,
@@ -1621,23 +1644,32 @@ final class OpenBurnBarDaemonUsageSyncService {
 
     private func agentProvider(for providerID: String) -> AgentProvider? {
         switch providerID.lowercased() {
-        case "zai":
-            return .zai
-        case "minimax":
-            return .minimax
-        default:
-            return nil
+        case "zai":       return .zai
+        case "minimax":   return .minimax
+        case "openai":    return .codex
+        case "anthropic": return .claudeCode
+        case "google":    return .geminiCLI
+        case "deepseek":  return .kimi
+        case "mistral":   return .cline
+        case "meta":      return .forgeDev
+        case "cohere":    return .augment
+        case "xai":       return .kiloCode
+        case "amazon":    return .rooCode
+        case "alibaba":   return .rooCode
+        case "moonshot":  return .kimi
+        case "misc":      return nil
+        default:          return nil
         }
     }
 
-    private func providerSortOrder(_ provider: AgentProvider) -> Int {
+    private func providerSortOrder(_ provider: AgentProvider?) -> Int {
         switch provider {
         case .zai:
             return 0
         case .minimax:
             return 1
         default:
-            return Int.max
+            return 2
         }
     }
 }

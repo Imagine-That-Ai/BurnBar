@@ -1,11 +1,50 @@
 import SwiftUI
 import OpenBurnBarCore
 
+// MARK: - Onboarding Provider
+
+/// A provider entry that users can reorder during onboarding.
+/// Session-scoped — not persisted to Settings.
+struct OnboardingProvider: Identifiable, Equatable {
+    let id: String
+    let label: String
+    let icon: String
+    let bundledLogoName: String?
+    let color: Color
+    let kind: Kind
+
+    /// Whether this provider has a real bundled logo asset.
+    var hasBundledLogo: Bool {
+        guard let name = bundledLogoName else { return false }
+        return NSImage(named: name) != nil
+    }
+
+    enum Kind: Equatable {
+        case chrome
+        case safari
+        case openAI
+        case claude
+        case codexCLI
+        case claudeCLI
+        case openCodeCLI
+    }
+
+    static let defaultOrder: [OnboardingProvider] = [
+        OnboardingProvider(id: "chrome",    label: "Google Chrome",   icon: "globe",         bundledLogoName: "ChromeLogo",    color: Color(hex: "4285F4"), kind: .chrome),
+        OnboardingProvider(id: "safari",    label: "Safari",          icon: "safari",        bundledLogoName: "SafariLogo",    color: Color(hex: "0071E3"), kind: .safari),
+        OnboardingProvider(id: "openai",    label: "OpenAI / Codex",  icon: "bubble.left",   bundledLogoName: "OpenAILogo",    color: Color(hex: "00A67E"), kind: .openAI),
+        OnboardingProvider(id: "claude",    label: "Claude",          icon: "bubble.right",  bundledLogoName: "ClaudeCodeLogo", color: Color(hex: "CC785C"), kind: .claude),
+        OnboardingProvider(id: "codexcli",  label: "Codex CLI",       icon: "terminal.fill", bundledLogoName: "CodexLogo",    color: Color(hex: "00A67E"), kind: .codexCLI),
+        OnboardingProvider(id: "claudecli", label: "Claude Code CLI", icon: "terminal.fill", bundledLogoName: "ClaudeCodeLogo", color: Color(hex: "CC785C"), kind: .claudeCLI),
+        OnboardingProvider(id: "opencode",  label: "OpenCode",        icon: "terminal.fill", bundledLogoName: nil,             color: DesignSystem.Colors.whimsy, kind: .openCodeCLI),
+    ]
+}
+
 // MARK: - Wizard Step
 
 enum SwitcherOnboardingStep: Int, CaseIterable {
-    case welcome   // Welcome + background scan
-    case scanAdd   // Identity cards with one-click add
+    case welcome   // Welcome + background scan + provider order
+    case scanAdd   // Provider-guided identity cards with one-click add
     case done      // Success with verification
 
     var progressFraction: Double {
@@ -34,6 +73,7 @@ struct SwitcherOnboardingWizardView: View {
     @State private var currentStep: SwitcherOnboardingStep = .welcome
     @State private var navigationDirection: Edge = .trailing
     @StateObject private var discoveryService = SwitcherDiscoveryService()
+    @State private var providerOrder: [OnboardingProvider] = OnboardingProvider.defaultOrder
 
     var body: some View {
         VStack(spacing: 0) {
@@ -138,12 +178,14 @@ struct SwitcherOnboardingWizardView: View {
             switch currentStep {
             case .welcome:
                 SwitcherOnboardingWelcomeStep(
-                    discoveryService: discoveryService
+                    discoveryService: discoveryService,
+                    providerOrder: $providerOrder
                 )
             case .scanAdd:
                 SwitcherOnboardingScanAddStep(
                     discoveryService: discoveryService,
-                    dataStore: dataStore
+                    dataStore: dataStore,
+                    providerOrder: providerOrder
                 )
             case .done:
                 SwitcherOnboardingDoneStep(

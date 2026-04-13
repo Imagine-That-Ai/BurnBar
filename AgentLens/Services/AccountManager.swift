@@ -23,6 +23,10 @@ final class AccountManager {
     private(set) var userID: String?
     private(set) var userEmail: String?
     private(set) var userDisplayName: String?
+    private(set) var lastOAuthProviderID: String?
+    private(set) var lastOAuthToken: String?
+    private(set) var lastOAuthEmail: String?
+    private(set) var lastOAuthDisplayName: String?
     private(set) var isCloudSyncEnabled = true
     private(set) var isFirebaseAvailable = false
 
@@ -117,7 +121,22 @@ final class AccountManager {
             fullName: appleIDCredential.fullName
         )
         currentNonce = nil
+        lastOAuthProviderID = "apple"
+        lastOAuthToken = idTokenString
+        lastOAuthEmail = appleIDCredential.email
+        if let fullName = appleIDCredential.fullName {
+            let formattedName = PersonNameComponentsFormatter().string(from: fullName)
+            lastOAuthDisplayName = formattedName.isEmpty ? nil : formattedName
+        } else {
+            lastOAuthDisplayName = nil
+        }
         try await authenticate(with: credential)
+        if lastOAuthEmail == nil {
+            lastOAuthEmail = currentUser?.email ?? userEmail
+        }
+        if lastOAuthDisplayName == nil {
+            lastOAuthDisplayName = currentUser?.displayName ?? userDisplayName ?? lastOAuthEmail
+        }
     }
 
     /// Presents Sign in with Apple from a window (Settings sheet, etc.).
@@ -174,11 +193,21 @@ final class AccountManager {
                 let accessToken = signInResult.user.accessToken.tokenString
                 Task { @MainActor in
                     do {
+                        self.lastOAuthProviderID = "google"
+                        self.lastOAuthToken = accessToken
+                        self.lastOAuthEmail = signInResult.user.profile?.email
+                        self.lastOAuthDisplayName = signInResult.user.profile?.name
                         let credential = GoogleAuthProvider.credential(
                             withIDToken: idToken,
                             accessToken: accessToken
                         )
                         try await self.authenticate(with: credential)
+                        if self.lastOAuthEmail == nil {
+                            self.lastOAuthEmail = self.currentUser?.email ?? self.userEmail
+                        }
+                        if self.lastOAuthDisplayName == nil {
+                            self.lastOAuthDisplayName = self.currentUser?.displayName ?? self.userDisplayName ?? self.lastOAuthEmail
+                        }
                         continuation.resume()
                     } catch {
                         continuation.resume(throwing: error)
@@ -227,6 +256,10 @@ final class AccountManager {
             try Auth.auth().signOut()
         }
         GIDSignIn.sharedInstance.signOut()
+        lastOAuthProviderID = nil
+        lastOAuthToken = nil
+        lastOAuthEmail = nil
+        lastOAuthDisplayName = nil
     }
 
     // MARK: - Cloud Sync Toggle

@@ -426,22 +426,35 @@ public struct BrowserLaunchInvoker {
     public static func launchChrome(
         appURL: URL,
         profileDirectory: String,
-        args: [String] = []
+        args: [String] = [],
+        urls: [URL] = []
     ) async -> Result<Void, BrowserLaunchError> {
         await withCheckedContinuation { continuation in
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.arguments = [ "--profile-directory=\(profileDirectory)" ] + args
             configuration.activates = true
 
-            NSWorkspace.shared.openApplication(
-                at: appURL,
-                configuration: configuration
-            ) { app, error in
+            let completion: @Sendable (NSRunningApplication?, Error?) -> Void = { _, error in
                 if let error = error {
                     continuation.resume(returning: .failure(.launchFailed(error.localizedDescription)))
                 } else {
                     continuation.resume(returning: .success(()))
                 }
+            }
+
+            if urls.isEmpty {
+                NSWorkspace.shared.openApplication(
+                    at: appURL,
+                    configuration: configuration,
+                    completionHandler: completion
+                )
+            } else {
+                NSWorkspace.shared.open(
+                    urls,
+                    withApplicationAt: appURL,
+                    configuration: configuration,
+                    completionHandler: completion
+                )
             }
         }
     }
@@ -449,22 +462,35 @@ public struct BrowserLaunchInvoker {
     /// Launches Safari with the given arguments.
     public static func launchSafari(
         appURL: URL,
-        args: [String] = []
+        args: [String] = [],
+        urls: [URL] = []
     ) async -> Result<Void, BrowserLaunchError> {
         await withCheckedContinuation { continuation in
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.arguments = args
             configuration.activates = true
 
-            NSWorkspace.shared.openApplication(
-                at: appURL,
-                configuration: configuration
-            ) { app, error in
+            let completion: @Sendable (NSRunningApplication?, Error?) -> Void = { _, error in
                 if let error = error {
                     continuation.resume(returning: .failure(.launchFailed(error.localizedDescription)))
                 } else {
                     continuation.resume(returning: .success(()))
                 }
+            }
+
+            if urls.isEmpty {
+                NSWorkspace.shared.openApplication(
+                    at: appURL,
+                    configuration: configuration,
+                    completionHandler: completion
+                )
+            } else {
+                NSWorkspace.shared.open(
+                    urls,
+                    withApplicationAt: appURL,
+                    configuration: configuration,
+                    completionHandler: completion
+                )
             }
         }
     }

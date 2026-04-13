@@ -39,7 +39,7 @@ final class BurnBarCLITests: XCTestCase {
     }
 }
 
-private struct FakeCLIClient: BurnBarCLIClient {
+struct FakeCLIClient: BurnBarCLIClient {
     func health() throws -> BurnBarHealthResponse {
         BurnBarHealthResponse(ok: true, daemonVersion: "0.1.0", protocolVersion: 1, socketPath: "/tmp/openburnbar.sock")
     }

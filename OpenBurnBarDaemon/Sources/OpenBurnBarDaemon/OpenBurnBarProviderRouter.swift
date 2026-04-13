@@ -99,7 +99,7 @@ public struct BurnBarProviderRouter: Sendable {
             throw BurnBarProviderRouterError.unsupportedModel(modelName)
         }
 
-        if let preferredProviderID, !BurnBarSupportedProvider.isSupported(providerID: preferredProviderID) {
+        if let preferredProviderID, !configStore.catalogSupport.isSupported(providerID: preferredProviderID) {
             throw BurnBarProviderRouterError.unsupportedProvider(preferredProviderID)
         }
 

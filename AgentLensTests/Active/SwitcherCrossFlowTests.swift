@@ -2448,7 +2448,7 @@ extension SwitcherCrossFlowTests {
         )
         XCTAssertEqual(
             dashboardView.testActiveProfileAccessibilityLabel,
-            "Chrome Rendered Profile, active profile",
+            "Chrome Rendered Profile, current launch default for Google Chrome",
             "Dashboard should render the active profile accessibility label"
         )
     }
@@ -2498,7 +2498,7 @@ extension SwitcherCrossFlowTests {
         )
         XCTAssertEqual(
             popoverView.testActiveProfileAccessibilityLabel,
-            "Claude Rendered Profile, active profile",
+            "Claude Rendered Profile, current launch default for Claude Code",
             "Popover should render the active profile accessibility label"
         )
     }
@@ -2974,6 +2974,10 @@ private final class SpySwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter 
 
     func setActiveProfileID(_ profileID: String?) {
         try? store.setActiveProfile(profileID)
+    }
+
+    func updateProfile(_ profile: SwitcherProfileRecord) {
+        try? store.update(profile)
     }
 }
 

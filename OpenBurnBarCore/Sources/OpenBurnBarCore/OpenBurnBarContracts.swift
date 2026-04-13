@@ -497,12 +497,18 @@ public struct BurnBarHealthResponse: Codable, Hashable, Sendable {
     public let daemonVersion: String
     public let protocolVersion: Int
     public let socketPath: String?
+    public let gatewayEnabled: Bool
+    public let gatewayHost: String?
+    public let gatewayPort: Int?
 
-    public init(ok: Bool, daemonVersion: String, protocolVersion: Int, socketPath: String? = nil) {
+    public init(ok: Bool, daemonVersion: String, protocolVersion: Int, socketPath: String? = nil, gatewayEnabled: Bool = false, gatewayHost: String? = nil, gatewayPort: Int? = nil) {
         self.ok = ok
         self.daemonVersion = daemonVersion
         self.protocolVersion = protocolVersion
         self.socketPath = socketPath
+        self.gatewayEnabled = gatewayEnabled
+        self.gatewayHost = gatewayHost
+        self.gatewayPort = gatewayPort
     }
 }
 

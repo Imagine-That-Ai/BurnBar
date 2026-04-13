@@ -42,6 +42,16 @@ private enum BurnBarDaemonCommandLine {
             ?? BurnBarDaemonVersion.current
         var indexDatabasePath = environment["OPENBURNBAR_INDEX_DATABASE_PATH"]
             ?? environment["BURNBAR_INDEX_DATABASE_PATH"]
+        var gatewayEnabled = environment["OPENBURNBAR_GATEWAY_ENABLED"] == "1"
+            || environment["BURNBAR_GATEWAY_ENABLED"] == "1"
+        var gatewayHost = environment["OPENBURNBAR_GATEWAY_HOST"]
+            ?? environment["BURNBAR_GATEWAY_HOST"]
+            ?? "127.0.0.1"
+        var gatewayPort = Int(environment["OPENBURNBAR_GATEWAY_PORT"]
+            ?? environment["BURNBAR_GATEWAY_PORT"]
+            ?? "8317") ?? 8317
+        var gatewayAuthToken = environment["OPENBURNBAR_GATEWAY_AUTH_TOKEN"]
+            ?? environment["BURNBAR_GATEWAY_AUTH_TOKEN"]
 
         var index = 0
         while index < arguments.count {
@@ -65,18 +75,48 @@ private enum BurnBarDaemonCommandLine {
                     throw BurnBarDaemonCommandLineError.missingValue(argument)
                 }
                 daemonVersion = arguments[index]
+            case "--gateway-enable":
+                gatewayEnabled = true
+            case "--gateway-host":
+                index += 1
+                guard index < arguments.count else {
+                    throw BurnBarDaemonCommandLineError.missingValue(argument)
+                }
+                gatewayHost = arguments[index]
+            case "--gateway-port":
+                index += 1
+                guard index < arguments.count else {
+                    throw BurnBarDaemonCommandLineError.missingValue(argument)
+                }
+                gatewayPort = Int(arguments[index]) ?? 8317
+            case "--gateway-auth-token":
+                index += 1
+                guard index < arguments.count else {
+                    throw BurnBarDaemonCommandLineError.missingValue(argument)
+                }
+                gatewayAuthToken = arguments[index]
             case "--help":
                 print(
                     """
-                    Usage: OpenBurnBarDaemon [--socket-path PATH] [--index-database-path PATH] [--version VERSION]
+                    Usage: OpenBurnBarDaemon [OPTIONS]
+
+                    Options:
+                      --socket-path PATH          Unix socket path for RPC
+                      --index-database-path PATH  SQLite database path for search
+                      --version VERSION            Daemon version string
+                      --gateway-enable             Enable the HTTP gateway
+                      --gateway-host HOST          Gateway bind host (default 127.0.0.1)
+                      --gateway-port PORT          Gateway port (default 8317)
+                      --gateway-auth-token TOKEN   Bearer token for gateway auth
 
                     Environment overrides:
                       OPENBURNBAR_DAEMON_SOCKET_PATH
                       OPENBURNBAR_DAEMON_VERSION
                       OPENBURNBAR_INDEX_DATABASE_PATH
-                      BURNBAR_DAEMON_SOCKET_PATH
-                      BURNBAR_DAEMON_VERSION
-                      BURNBAR_INDEX_DATABASE_PATH
+                      OPENBURNBAR_GATEWAY_ENABLED=1
+                      OPENBURNBAR_GATEWAY_HOST
+                      OPENBURNBAR_GATEWAY_PORT
+                      OPENBURNBAR_GATEWAY_AUTH_TOKEN
                     """
                 )
                 Darwin.exit(EXIT_SUCCESS)
@@ -87,10 +127,17 @@ private enum BurnBarDaemonCommandLine {
         }
 
         let trimmedIndexPath = indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let gateway = BurnBarGatewayConfiguration(
+            isEnabled: gatewayEnabled,
+            host: gatewayHost,
+            port: gatewayPort,
+            authToken: gatewayAuthToken
+        )
         return BurnBarDaemonConfiguration(
             socketPath: socketPath,
             daemonVersion: daemonVersion,
-            indexDatabasePath: (trimmedIndexPath?.isEmpty == false) ? trimmedIndexPath : nil
+            indexDatabasePath: (trimmedIndexPath?.isEmpty == false) ? trimmedIndexPath : nil,
+            gateway: gateway
         )
     }
 }

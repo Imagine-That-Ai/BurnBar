@@ -245,17 +245,13 @@ struct SummarizingStatusStrip: View {
             }
         }()
 
-        if let url = brand.logoURL {
-            AsyncImage(url: url) { phase in
-                if let img = phase.image {
-                    img.resizable().aspectRatio(contentMode: .fit)
-                } else {
-                    Circle().fill(.white.opacity(0.15))
-                }
-            }
-            .frame(width: 20, height: 20)
-            .clipShape(Circle())
-            .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: 0.5))
+        if brand.hasBundledLogo {
+            Image(brand.bundledLogoName)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 20, height: 20)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: 0.5))
         }
     }
 }

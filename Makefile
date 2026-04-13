@@ -58,6 +58,15 @@ build: preflight
 	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_BIN)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
 	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CORE_DYLIB)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CORE_DYLIB)"
 	chmod +x "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
+	@echo "==> Embedding OpenBurnBarCore framework…"
+	mkdir -p "$(APP_BUNDLE)/Contents/Frameworks"
+	OPENBURNBAR_CORE_FRAMEWORK="$(DERIVED_DATA)/Build/Products/$(CONFIG)/PackageFrameworks/OpenBurnBarCore.framework"; \
+	if [ ! -d "$$OPENBURNBAR_CORE_FRAMEWORK" ]; then \
+		echo "ERROR: Missing OpenBurnBarCore framework at $$OPENBURNBAR_CORE_FRAMEWORK"; \
+		exit 1; \
+	fi; \
+	rm -rf "$(APP_BUNDLE)/Contents/Frameworks/OpenBurnBarCore.framework"; \
+	cp -R "$$OPENBURNBAR_CORE_FRAMEWORK" "$(APP_BUNDLE)/Contents/Frameworks/"
 	@echo "==> Built: $(APP_BUNDLE)"
 
 install: build

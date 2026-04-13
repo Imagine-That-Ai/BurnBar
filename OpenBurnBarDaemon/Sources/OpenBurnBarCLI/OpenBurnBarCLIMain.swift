@@ -5,13 +5,28 @@ import Foundation
 struct BurnBarCLIExecutable {
     static func main() {
         let runner = BurnBarCLIRunner(client: BurnBarCLISocketClient())
-        do {
-            let output = try runner.run(arguments: Array(CommandLine.arguments.dropFirst()))
-            fputs(output + "\n", stdout)
-            exit(EXIT_SUCCESS)
-        } catch {
-            fputs((error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription) + "\n", stderr)
-            exit(EXIT_FAILURE)
+        let semaphore = DispatchSemaphore(value: 0)
+        var exitCode = Int32(EXIT_FAILURE)
+
+        Task {
+            defer { semaphore.signal() }
+
+            do {
+                let result = try await runner.invoke(
+                    arguments: Array(CommandLine.arguments.dropFirst()),
+                    invokedExecutablePath: CommandLine.arguments.first
+                )
+                if let output = result.output, !output.isEmpty {
+                    fputs(output + "\n", stdout)
+                }
+                exitCode = result.exitCode
+            } catch {
+                fputs((error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription) + "\n", stderr)
+                exitCode = EXIT_FAILURE
+            }
         }
+
+        semaphore.wait()
+        exit(exitCode)
     }
 }

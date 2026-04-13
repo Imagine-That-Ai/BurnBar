@@ -14,6 +14,7 @@ public actor BurnBarDaemonServer {
     private let runService: BurnBarRunService
     private let missionControlService: BurnBarMissionControlService
     private let indexedSearch: BurnBarIndexedSearchService?
+    private let gatewayServer: BurnBarHTTPGatewayServer?
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
 
@@ -89,9 +90,20 @@ public actor BurnBarDaemonServer {
         } else {
             self.indexedSearch = nil
         }
+
+        // HTTP gateway (Vibe Proxy style) — only initialized if enabled
+        if configuration.gateway.isEnabled {
+            self.gatewayServer = BurnBarHTTPGatewayServer(
+                configuration: configuration.gateway,
+                configStore: resolvedConfigStore,
+                logger: BurnBarDaemonLogger(category: "http-gateway")
+            )
+        } else {
+            self.gatewayServer = nil
+        }
     }
 
-    public func start() throws {
+    public func start() async throws {
         guard listenerFileDescriptor == nil else {
             logger.debug(
                 "bootstrap_start_skipped",
@@ -138,6 +150,18 @@ public actor BurnBarDaemonServer {
             "bootstrap_ready",
             metadata: ["socket_path": configuration.socketPath]
         )
+
+        // Start HTTP gateway if configured
+        if let gatewayServer {
+            do {
+                try await gatewayServer.start()
+            } catch {
+                logger.error(
+                    "gateway_start_failed",
+                    metadata: ["error": "\(error)"]
+                )
+            }
+        }
     }
 
     public func stop() {
@@ -172,6 +196,13 @@ public actor BurnBarDaemonServer {
             await missionControlService.stopBackgroundLoops()
         }
 
+        // Stop HTTP gateway
+        if let gatewayServer {
+            Task.detached(priority: .background) {
+                await gatewayServer.stop()
+            }
+        }
+
         logger.notice(
             "shutdown_complete",
             metadata: ["socket_path": configuration.socketPath]
@@ -183,7 +214,10 @@ public actor BurnBarDaemonServer {
             ok: true,
             daemonVersion: configuration.daemonVersion,
             protocolVersion: BurnBarProtocolVersion.current,
-            socketPath: configuration.socketPath
+            socketPath: configuration.socketPath,
+            gatewayEnabled: configuration.gateway.isEnabled,
+            gatewayHost: configuration.gateway.isEnabled ? configuration.gateway.host : nil,
+            gatewayPort: configuration.gateway.isEnabled ? configuration.gateway.port : nil
         )
     }
 
