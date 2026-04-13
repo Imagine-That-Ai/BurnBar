@@ -133,8 +133,17 @@ targets:
           # Keep GRDB in the explicit arg path on 16.x by removing it from the
           # per-target LinkFileList only for 16.x toolchains.
           if [[ -n "${XCODE_VERSION_MAJOR:-}" && "${XCODE_VERSION_MAJOR}" -lt 1700 ]]; then
-            link_file="${OBJECT_FILE_DIR_normal}/${PRODUCT_NAME}.LinkFileList"
-            if [[ -f "${link_file}" ]]; then
+            link_file=""
+            for candidate in \
+              "${OBJECT_FILE_DIR_normal}/${CURRENT_ARCH}/${PRODUCT_NAME}.LinkFileList" \
+              "${OBJECT_FILE_DIR_normal}/${PRODUCT_NAME}.LinkFileList"
+            do
+              if [[ -f "${candidate}" ]]; then
+                link_file="${candidate}"
+                break
+              fi
+            done
+            if [[ -n "${link_file}" ]]; then
               tmp_file="${link_file}.tmp"
               grep -v '/GRDB.o$' "${link_file}" > "${tmp_file}" || true
               mv "${tmp_file}" "${link_file}"
