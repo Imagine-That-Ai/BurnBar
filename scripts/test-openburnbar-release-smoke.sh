@@ -16,6 +16,7 @@ uid="$(id -u)"
 app_path="$repo_root/.derived-data/Build/Products/Release/OpenBurnBar.app"
 daemon_bin="$app_path/Contents/Helpers/OpenBurnBarDaemon"
 daemon_core_dylib="$app_path/Contents/Helpers/libOpenBurnBarCore.dylib"
+app_core_framework="$app_path/Contents/Frameworks/OpenBurnBarCore.framework"
 socket_path="/tmp/openburnbar-release-smoke-$uid.sock"
 launch_plist="/tmp/openburnbar-release-smoke-$uid.plist"
 launch_label="com.openburnbar.daemon.release-smoke"
@@ -35,6 +36,11 @@ fi
 
 if [[ ! -f "$daemon_core_dylib" ]]; then
   echo "Embedded daemon support library not found at $daemon_core_dylib" >&2
+  exit 1
+fi
+
+if [[ ! -d "$app_core_framework" ]]; then
+  echo "Embedded app framework not found at $app_core_framework" >&2
   exit 1
 fi
 

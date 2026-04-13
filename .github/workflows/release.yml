@@ -219,6 +219,22 @@ jobs:
           echo "Embedded daemon: $(ls -la "$HELPERS_DIR/OpenBurnBarDaemon")"
           echo "Embedded daemon support library: $(ls -la "$HELPERS_DIR/libOpenBurnBarCore.dylib")"
 
+      - name: Embed OpenBurnBarCore framework in app bundle
+        run: |
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
+          FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
+          CORE_FRAMEWORK_PATH="$DERIVED_DATA/Build/Products/$CONFIG/PackageFrameworks/OpenBurnBarCore.framework"
+
+          if [ ! -d "$CORE_FRAMEWORK_PATH" ]; then
+            echo "::error::OpenBurnBarCore framework not found at $CORE_FRAMEWORK_PATH"
+            exit 1
+          fi
+
+          mkdir -p "$FRAMEWORKS_DIR"
+          rm -rf "$FRAMEWORKS_DIR/OpenBurnBarCore.framework"
+          cp -R "$CORE_FRAMEWORK_PATH" "$FRAMEWORKS_DIR/"
+          echo "Embedded framework: $(ls -la "$FRAMEWORKS_DIR/OpenBurnBarCore.framework")"
+
       # ── Post-build code signing (optional) ──────────────────────────
       - name: Codesign .app bundle
         if: ${{ secrets.APPLE_SIGNING_IDENTITY != '' }}
@@ -227,6 +243,10 @@ jobs:
         run: |
           APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
           ENTITLEMENTS="AgentLens/Resources/OpenBurnBar.entitlements"
+
+          codesign --force --options runtime \
+            --sign "$SIGNING_IDENTITY" \
+            "$APP_PATH/Contents/Frameworks/OpenBurnBarCore.framework"
 
           codesign --force --options runtime \
             --sign "$SIGNING_IDENTITY" \
