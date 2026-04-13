@@ -58,6 +58,7 @@ xcuserdata/
 # IDEs
 *.idea/
 *.vscode/
+.cursor/plans/
 
 # Secrets
 *.env
@@ -78,6 +79,9 @@ tools/burnbar-mcp/.venv/
 # Internal AI agent memory (not for public consumption)
 .claude/agent-memory/
 .claude/settings.local.json
+
+# Generated validation logs (keep JSON reports, skip raw test logs)
+.factory/validation/**/user-testing/*.log
 
 # Local Xcode/SwiftPM caches used by scripts/build.sh
 .spm-cache/

@@ -15,31 +15,35 @@ enum LLMModelBrand: Hashable {
     case cohere
     case perplexity
     case apple      // Apple MLX models (mlx-community/)
+    case amazon
+    case alibaba
     case unknown
 
-    private static let lobeBase =
-        "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light"
-
-    /// Remote brand mark (nil for `unknown`).
-    var logoURL: URL? {
-        let name: String
+    /// Bundled asset catalog image name for every brand.
+    var bundledLogoName: String {
         switch self {
-        case .anthropic: name = "anthropic.png"
-        case .openAI: name = "openai.png"
-        case .google: name = "gemini-color.png"
-        case .deepSeek: name = "deepseek-color.png"
-        case .kimi: name = "kimi-color.png"
-        case .miniMax: name = "minimax-color.png"
-        case .meta: name = "meta-color.png"
-        case .mistral: name = "mistral-color.png"
-        case .qwen: name = "qwen-color.png"
-        case .xAI: name = "grok.png"
-        case .cohere: name = "cohere-color.png"
-        case .perplexity: name = "perplexity-color.png"
-        case .apple: name = "apple.png"
-        case .unknown: return nil
+        case .anthropic:  return "AnthropicLogo"
+        case .openAI:     return "OpenAILogo"
+        case .google:     return "GeminiCLILogo"
+        case .deepSeek:   return "DeepSeekLogo"
+        case .kimi:       return "KimiLogo"
+        case .miniMax:    return "MiniMaxLogo"
+        case .meta:       return "MetaLogo"
+        case .mistral:    return "MistralLogo"
+        case .qwen:       return "QwenLogo"
+        case .xAI:        return "GrokLogo"
+        case .cohere:     return "CohereLogo"
+        case .perplexity: return "PerplexityLogo"
+        case .apple:      return "AppleLogo"
+        case .amazon:     return "AmazonLogo"
+        case .alibaba:    return "AlibabaLogo"
+        case .unknown:    return ""
         }
-        return URL(string: "\(Self.lobeBase)/\(name)")
+    }
+
+    /// Whether this brand has a real bundled logo asset.
+    var hasBundledLogo: Bool {
+        self != .unknown && NSImage(named: bundledLogoName) != nil
     }
 
     /// Matches dashboard tints in `DesignSystem.Colors.colorForModel`.
@@ -57,6 +61,8 @@ enum LLMModelBrand: Hashable {
         case .cohere: return Color(hex: "39594D")
         case .perplexity: return Color(hex: "20808D")
         case .apple: return Color(hex: "A2AAAD")   // Apple Silver
+        case .amazon: return Color(hex: "FF9900")
+        case .alibaba: return Color(hex: "FF6A00")
         case .unknown: return DesignSystem.Colors.textSecondary
         }
     }
@@ -86,6 +92,8 @@ enum LLMModelBrand: Hashable {
         if key.contains("grok") || key.contains("xai") { return .xAI }
         if key.contains("cohere") { return .cohere }
         if key.contains("perplexity") || key.contains("sonar") { return .perplexity }
+        if key.contains("nova") || key.contains("amazon") { return .amazon }
+        if key.contains("dashscope") || key.contains("alibaba") || key.contains("qwq") { return .alibaba }
         if key.contains("mlx-community") || key.contains("mlx_community") || key.hasPrefix("mlx") { return .apple }
         return .unknown
     }

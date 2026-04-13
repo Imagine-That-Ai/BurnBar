@@ -107,6 +107,29 @@ jobs:
             exit 1
           fi
 
+      - name: Validate Firebase CI secrets
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+        run: |
+          missing=()
+          for var in FIREBASE_PLIST_BASE64 FIREBASE_APP_CHECK_DEBUG_TOKEN; do
+            if [[ -z "${!var}" ]]; then
+              missing+=("$var")
+            fi
+          done
+
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required Firebase CI secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Inject Firebase config
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+        run: bash ./scripts/ci/inject-firebase-config.sh
+
       # ── Code signing setup (before build — must exist when xcodebuild signs) ──
       - name: Import signing certificate
         if: ${{ secrets.APPLE_CERTIFICATE_P12 != '' }}
@@ -319,3 +342,7 @@ jobs:
           RELEASE_NOTES
           )" \
             --draft
+
+      - name: Clean up Firebase config
+        if: always()
+        run: bash ./scripts/ci/cleanup-firebase-config.sh

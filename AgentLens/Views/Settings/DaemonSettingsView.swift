@@ -73,6 +73,92 @@ struct DaemonSettingsView: View {
                     .padding(DesignSystem.Spacing.lg)
                 }
 
+                SettingsSectionHeader(title: "HTTP Gateway")
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                        SettingsToggle(
+                            title: "Enable HTTP gateway",
+                            subtitle: "Expose an OpenAI-compatible API on a local port for external tools (like Vibe Proxy on 8317).",
+                            icon: "network",
+                            isOn: $settingsManager.gatewayEnabled
+                        )
+
+                        if settingsManager.gatewayEnabled {
+                            Divider().background(DesignSystem.Colors.border)
+
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Host")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                    Text("Bind address for the gateway server")
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                }
+                                Spacer()
+                                TextField("127.0.0.1", text: $settingsManager.gatewayHost)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(DesignSystem.Typography.monoSmall)
+                                    .frame(width: 140)
+                            }
+
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Port")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                    Text("Port number for the gateway")
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                }
+                                Spacer()
+                                TextField("8317", value: $settingsManager.gatewayPort, format: .number)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(DesignSystem.Typography.monoSmall)
+                                    .frame(width: 80)
+                            }
+
+                            let isLoopback = settingsManager.gatewayHost == "127.0.0.1"
+                                || settingsManager.gatewayHost == "localhost"
+                                || settingsManager.gatewayHost == "::1"
+
+                            if !isLoopback {
+                                Divider().background(DesignSystem.Colors.border)
+
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Auth token")
+                                            .font(DesignSystem.Typography.caption)
+                                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                        Text("Required for non-loopback bindings")
+                                            .font(DesignSystem.Typography.tiny)
+                                            .foregroundStyle(DesignSystem.Colors.warning)
+                                    }
+                                    Spacer()
+                                    SecureField("Bearer token", text: $settingsManager.gatewayAuthToken)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(DesignSystem.Typography.monoSmall)
+                                        .frame(width: 180)
+                                }
+                            }
+
+                            if settingsManager.gatewayEnabled {
+                                Divider().background(DesignSystem.Colors.border)
+
+                                HStack(spacing: DesignSystem.Spacing.sm) {
+                                    Image(systemName: "info.circle.fill")
+                                        .foregroundStyle(DesignSystem.Colors.amber)
+                                    Text("Gateway changes require daemon restart to take effect.")
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                }
+                            }
+                        }
+                    }
+                    .padding(DesignSystem.Spacing.lg)
+                }
+
                 SettingsSectionHeader(title: "Controller Runtime")
 
                 GlassCard {

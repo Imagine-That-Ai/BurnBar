@@ -20,13 +20,12 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
         for requestedProfile: SwitcherProfileRecord,
         allProfiles: [SwitcherProfileRecord]
     ) async -> [SwitcherProfileRecord] {
-        guard requestedProfile.targetKind == .cli,
-              let cliType = requestedProfile.cliType else {
+        guard let requestedGroup = fallbackGroup(for: requestedProfile) else {
             return [requestedProfile]
         }
 
         let matchingProfiles = allProfiles.filter { profile in
-            profile.targetKind == .cli && profile.cliType == cliType
+            fallbackGroup(for: profile) == requestedGroup
         }
 
         guard let requestedIndex = matchingProfiles.firstIndex(where: { $0.id == requestedProfile.id }) else {
@@ -40,19 +39,45 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
     }
 
     func eligibility(for profile: SwitcherProfileRecord) async -> CLIFallbackEligibility {
-        guard let cliType = profile.cliType,
-              let quotaStatus = await quotaLookup(cliType) else {
-            return .eligible
+        if let metadata = profile.cliMetadata,
+           let exhaustedUntil = metadata.exhaustedUntil,
+           exhaustedUntil > Date() {
+            let reason = metadata.lastQuotaExhaustionDetail
+                ?? "\(profile.displayName) is held in reserve until quota resets."
+            return .quotaExhausted(reason: reason)
         }
 
-        let hasFiveHourQuota = quotaStatus.fiveHourRemainingPercent.map { $0 <= 0 } ?? false
-        let hasWeeklyQuota = quotaStatus.weeklyRemainingPercent.map { $0 <= 0 } ?? false
-
-        guard hasFiveHourQuota || hasWeeklyQuota else {
-            return .eligible
-        }
-
-        let reason = quotaStatus.statusMessage ?? "\(profile.displayName) has no remaining quota."
-        return .ineligible(reason: reason)
+        return .eligible
     }
+
+    /// Profiles only round-robin when they share a quota provider pool.
+    /// Codex and Claude use different pools, so they do not preempt each other.
+    private func fallbackGroup(for profile: SwitcherProfileRecord) -> CLIFallbackGroup? {
+        guard profile.targetKind == .cli,
+              let cliType = profile.cliType else {
+            return nil
+        }
+
+        if let provider = sharedQuotaProvider(for: cliType) {
+            return .provider(provider)
+        }
+
+        return .isolatedCLI(cliType)
+    }
+
+    private func sharedQuotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider? {
+        switch cliType {
+        case .codex:
+            return .codex
+        case .claude:
+            return .claudeCode
+        case .opencode:
+            return nil
+        }
+    }
+}
+
+private enum CLIFallbackGroup: Equatable {
+    case provider(AgentProvider)
+    case isolatedCLI(SwitcherCLIProfileType)
 }

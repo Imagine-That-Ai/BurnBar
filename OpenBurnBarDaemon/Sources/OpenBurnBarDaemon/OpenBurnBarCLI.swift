@@ -215,6 +215,7 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
 public enum BurnBarCLIError: LocalizedError {
     case invalidCommand(String)
     case missingArgument(String)
+    case missingExecutablePath
 
     public var errorDescription: String? {
         switch self {
@@ -222,15 +223,41 @@ public enum BurnBarCLIError: LocalizedError {
             return "Unsupported OpenBurnBar CLI command '\(command)'."
         case .missingArgument(let usage):
             return usage
+        case .missingExecutablePath:
+            return "Could not resolve the currently running OpenBurnBarCLI executable."
         }
+    }
+}
+
+public struct BurnBarCLIInvocationResult: Equatable, Sendable {
+    public let output: String?
+    public let exitCode: Int32
+
+    public init(output: String?, exitCode: Int32) {
+        self.output = output
+        self.exitCode = exitCode
     }
 }
 
 public struct BurnBarCLIRunner {
     public let client: any BurnBarCLIClient
+    public let shellExecutor: any BurnBarCLIShellExecuting
+    public let shellShimInstaller: any BurnBarCLIShellShimInstalling
 
-    public init(client: any BurnBarCLIClient) {
+    public init(
+        client: any BurnBarCLIClient,
+        shellExecutor: (any BurnBarCLIShellExecuting)? = nil,
+        shellShimInstaller: (any BurnBarCLIShellShimInstalling)? = nil
+    ) {
         self.client = client
+        let profileStore: any BurnBarSwitcherProfileStoreProviding
+        if let sqliteStore = try? BurnBarSwitcherSQLiteProfileStore() {
+            profileStore = sqliteStore
+        } else {
+            profileStore = BurnBarEmptySwitcherProfileStore()
+        }
+        self.shellExecutor = shellExecutor ?? BurnBarCLIShellExecutor(profileStore: profileStore)
+        self.shellShimInstaller = shellShimInstaller ?? BurnBarCLIShellShimInstaller()
     }
 
     public func run(arguments: [String]) throws -> String {
@@ -274,6 +301,33 @@ public struct BurnBarCLIRunner {
         }
     }
 
+    public func invoke(
+        arguments: [String],
+        invokedExecutablePath: String?
+    ) async throws -> BurnBarCLIInvocationResult {
+        if let wrappedCLIRequest = wrappedCLIRequest(arguments: arguments, invokedExecutablePath: invokedExecutablePath) {
+            let execution = try await shellExecutor.execute(wrappedCLIRequest)
+            return BurnBarCLIInvocationResult(output: nil, exitCode: execution.exitCode)
+        }
+
+        let effectiveArguments = arguments.first == "--" ? Array(arguments.dropFirst()) : arguments
+        if effectiveArguments.first == "install-shell-shims" {
+            guard let invokedExecutablePath else {
+                throw BurnBarCLIError.missingExecutablePath
+            }
+            let result = try shellShimInstaller.installShims(invokedExecutablePath: invokedExecutablePath)
+            let pathHint = result.installDirectory.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")
+            let output = """
+            Installed BurnBar shell shims: \(result.installedCommands.joined(separator: ", "))
+            Add this directory to your PATH:
+              export PATH="\(pathHint):$PATH"
+            """
+            return BurnBarCLIInvocationResult(output: output, exitCode: EXIT_SUCCESS)
+        }
+
+        return BurnBarCLIInvocationResult(output: try run(arguments: arguments), exitCode: EXIT_SUCCESS)
+    }
+
     public static let usageText = """
     openburnbar-cli <command> [args]
 
@@ -286,6 +340,8 @@ public struct BurnBarCLIRunner {
       mission-approve <missionID> [note]
       simulator-runs [projectSlug]
       simulator-replay <runID>
+      exec <codex|claude|opencode> [--profile-id <id>] [args...]
+      install-shell-shims
     """
 
     private func formatHealth(_ response: BurnBarHealthResponse) -> String {
@@ -333,4 +389,71 @@ public struct BurnBarCLIRunner {
             "\(run.id.rawValue) [\(run.status.rawValue)] \(run.scenarioName)"
         }.joined(separator: "\n")
     }
+
+    private func wrappedCLIRequest(
+        arguments: [String],
+        invokedExecutablePath: String?
+    ) -> BurnBarCLIShellLaunchRequest? {
+        let effectiveArguments = arguments.first == "--" ? Array(arguments.dropFirst()) : arguments
+
+        if effectiveArguments.first == "exec" {
+            guard effectiveArguments.count >= 2,
+                  let cliType = SwitcherCLIProfileType(rawValue: effectiveArguments[1]) else {
+                return nil
+            }
+            let parsed = parseShellExecArguments(Array(effectiveArguments.dropFirst(2)))
+            return BurnBarCLIShellLaunchRequest(
+                cliType: cliType,
+                forwardedArguments: parsed.forwardedArguments,
+                requestedProfileID: parsed.profileID
+            )
+        }
+
+        guard let invokedExecutablePath else {
+            return nil
+        }
+
+        let commandName = URL(fileURLWithPath: invokedExecutablePath).lastPathComponent
+        guard let cliType = SwitcherCLIProfileType.allCases.first(where: { $0.executableName == commandName }) else {
+            return nil
+        }
+
+        let parsed = parseShellExecArguments(effectiveArguments)
+        return BurnBarCLIShellLaunchRequest(
+            cliType: cliType,
+            forwardedArguments: parsed.forwardedArguments,
+            requestedProfileID: parsed.profileID
+        )
+    }
+
+    private func parseShellExecArguments(_ arguments: [String]) -> (profileID: String?, forwardedArguments: [String]) {
+        var forwardedArguments: [String] = []
+        var profileID: String?
+        var index = 0
+
+        while index < arguments.count {
+            let argument = arguments[index]
+            if argument == "--profile-id", index + 1 < arguments.count {
+                profileID = arguments[index + 1]
+                index += 2
+                continue
+            }
+            if argument == "--" {
+                forwardedArguments.append(contentsOf: arguments.dropFirst(index + 1))
+                break
+            }
+            forwardedArguments.append(argument)
+            index += 1
+        }
+
+        return (profileID, forwardedArguments)
+    }
+}
+
+private struct BurnBarEmptySwitcherProfileStore: BurnBarSwitcherProfileStoreProviding {
+    func fetchProfile(id: String) -> SwitcherProfileRecord? { nil }
+    func fetchAllProfiles() -> [SwitcherProfileRecord] { [] }
+    func fetchActiveProfileID() -> String? { nil }
+    func setActiveProfileID(_ profileID: String?) {}
+    func updateProfile(_ profile: SwitcherProfileRecord) {}
 }

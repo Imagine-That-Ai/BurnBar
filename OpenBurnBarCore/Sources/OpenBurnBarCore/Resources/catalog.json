@@ -6,6 +6,7 @@
       "displayName": "Anthropic",
       "baseURL": "https://api.anthropic.com/v1",
       "visibility": "hidden",
+      "logoKey": "AnthropicLogo",
       "capabilities": ["accounting"],
       "models": [
         {
@@ -227,6 +228,7 @@
       "displayName": "OpenAI",
       "baseURL": "https://api.openai.com/v1",
       "visibility": "hidden",
+      "logoKey": "OpenAILogo",
       "capabilities": ["accounting"],
       "models": [
         {
@@ -673,6 +675,7 @@
       "displayName": "Google",
       "baseURL": "https://generativelanguage.googleapis.com/v1beta",
       "visibility": "hidden",
+      "logoKey": "GeminiCLILogo",
       "capabilities": ["accounting"],
       "models": [
         {
@@ -808,6 +811,7 @@
       "displayName": "xAI",
       "baseURL": "https://api.x.ai/v1",
       "visibility": "hidden",
+      "logoKey": "GrokLogo",
       "capabilities": ["accounting"],
       "models": [
         {
@@ -902,6 +906,7 @@
       "displayName": "DeepSeek",
       "baseURL": "https://api.deepseek.com/v1",
       "visibility": "hidden",
+      "logoKey": "DeepSeekLogo",
       "capabilities": ["accounting"],
       "models": [
         {
@@ -1644,6 +1649,7 @@
       "displayName": "MiniMax",
       "baseURL": "https://api.minimax.io/v1",
       "visibility": "public",
+      "logoKey": "MiniMaxLogo",
       "capabilities": ["routing", "accounting", "cursor_connector"],
       "models": [
         {

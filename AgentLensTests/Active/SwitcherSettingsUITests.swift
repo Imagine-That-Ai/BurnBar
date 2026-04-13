@@ -565,6 +565,108 @@ final class SwitcherSettingsUITests: XCTestCase {
         XCTAssertEqual(profiles[2].id, p2.id) // Created third
     }
 
+    func test_reorderProfiles_updatesDeterministicOrdering() throws {
+        let p1 = try store.create(SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex A"),
+            sortKey: 1
+        ))
+        let p2 = try store.create(SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Claude A"),
+            sortKey: 2
+        ))
+        let p3 = try store.create(SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex B"),
+            sortKey: 3
+        ))
+
+        try store.reorderProfiles(idsInOrder: [p3.id, p2.id, p1.id])
+
+        let reordered = try store.fetchAllProfiles()
+        XCTAssertEqual(reordered.map(\.id), [p3.id, p2.id, p1.id])
+    }
+
+    func test_reorderProfiles_promotesReserveAccountToPrimaryWithinProvider() throws {
+        let chromePrimary = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(
+                profileIdentifier: "ChromePrimary",
+                displayLabel: "Chrome Primary"
+            ),
+            sortKey: 1
+        ))
+        let codex = try store.create(SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex"),
+            sortKey: 2
+        ))
+        let chromeReserve = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(
+                profileIdentifier: "ChromeReserve",
+                displayLabel: "Chrome Reserve"
+            ),
+            sortKey: 3
+        ))
+
+        try store.reorderProfiles(idsInOrder: [chromeReserve.id, codex.id, chromePrimary.id])
+
+        let reordered = try store.fetchAllProfiles()
+        XCTAssertEqual(reordered.map(\.id), [chromeReserve.id, codex.id, chromePrimary.id])
+    }
+
+    func test_reorderProfiles_supportsSettingsSwapForSameProviderAccounts() throws {
+        let chromeA = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(
+                profileIdentifier: "ChromeA",
+                displayLabel: "Chrome A"
+            ),
+            sortKey: 1
+        ))
+        let chromeB = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(
+                profileIdentifier: "ChromeB",
+                displayLabel: "Chrome B"
+            ),
+            sortKey: 2
+        ))
+
+        try store.reorderProfiles(idsInOrder: [chromeB.id, chromeA.id])
+
+        let reordered = try store.fetchAllProfiles()
+        XCTAssertEqual(reordered.map(\.id), [chromeB.id, chromeA.id])
+    }
+
+    func test_browserAccountChangePlanner_includesWebProvidersForChromeProfiles() {
+        let destinations = BrowserAccountChangePlanner.destinations(
+            providerIdentifier: "google",
+            serviceIdentities: []
+        )
+
+        XCTAssertEqual(destinations, [.googleAccount, .openAI, .claude])
+    }
+
+    func test_browserAccountChangePlanner_includesWebProvidersForSafariProfiles() {
+        let destinations = BrowserAccountChangePlanner.destinations(
+            providerIdentifier: "apple",
+            serviceIdentities: [BrowserServiceIdentity(provider: .claude)]
+        )
+
+        XCTAssertEqual(destinations, [.appleID, .claude, .openAI])
+    }
+
     func test_onlyOneActiveBadge_rendered() throws {
         // Create profiles
         let p1 = try store.create(SwitcherProfileRecord(
@@ -684,5 +786,184 @@ final class SwitcherSettingsUITests: XCTestCase {
 
         let dupError = SwitcherProfileStoreError.duplicateProfileName("Test")
         XCTAssertEqual(dupError.errorDescription, "A profile with name 'Test' already exists.")
+    }
+
+    // MARK: - Onboarding Provider Cap Tests
+
+    func test_onboardingProviderCap_isThree() {
+        XCTAssertEqual(onboardingProviderCap, 3, "Onboarding cap should be 3 per provider")
+    }
+
+    func test_onboardingProvider_defaultOrder_containsAllProviders() {
+        let order = OnboardingProvider.defaultOrder
+        XCTAssertGreaterThanOrEqual(order.count, 7, "Default provider order should have at least 7 entries")
+        let ids = Set(order.map(\.id))
+        XCTAssertTrue(ids.contains("chrome"))
+        XCTAssertTrue(ids.contains("safari"))
+        XCTAssertTrue(ids.contains("openai"))
+        XCTAssertTrue(ids.contains("claude"))
+        XCTAssertTrue(ids.contains("codexcli"))
+        XCTAssertTrue(ids.contains("claudecli"))
+        XCTAssertTrue(ids.contains("opencode"))
+    }
+
+    func test_onboardingProvider_allKindsAreUnique() {
+        let kinds = OnboardingProvider.defaultOrder.map(\.kind)
+        let uniqueKinds = Set(kinds.map { "\($0)" })
+        XCTAssertEqual(kinds.count, uniqueKinds.count, "Each provider should have a unique kind")
+    }
+
+    func test_browserAccountChangePlanner_includesAllDestinationsForUnknownProvider() {
+        let destinations = BrowserAccountChangePlanner.destinations(
+            providerIdentifier: nil,
+            serviceIdentities: []
+        )
+        XCTAssertTrue(destinations.contains(.openAI))
+        XCTAssertTrue(destinations.contains(.claude))
+    }
+
+    func test_accountChangeDestination_requiresInteractiveAuth_onlyForGoogleAndApple() {
+        XCTAssertTrue(AccountChangeDestination.googleAccount.requiresInteractiveAuth)
+        XCTAssertTrue(AccountChangeDestination.appleID.requiresInteractiveAuth)
+        XCTAssertFalse(AccountChangeDestination.openAI.requiresInteractiveAuth)
+        XCTAssertFalse(AccountChangeDestination.claude.requiresInteractiveAuth)
+    }
+
+    func test_browserServiceStatusDisplays_showsAccountAnd5h7dQuota() {
+        let serviceIdentities = [
+            BrowserServiceIdentity(provider: .openAI, accountLabel: "alice@example.com")
+        ]
+
+        let snapshot = ProviderQuotaSnapshot(
+            provider: .codex,
+            fetchedAt: Date(),
+            source: .localCLI,
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "5h",
+                    label: "5h",
+                    windowKind: .rollingHours,
+                    usedValue: nil,
+                    limitValue: nil,
+                    remainingValue: 82,
+                    usedPercent: nil,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                ),
+                ProviderQuotaBucket(
+                    key: "7d",
+                    label: "7d",
+                    windowKind: .weekly,
+                    usedValue: nil,
+                    limitValue: nil,
+                    remainingValue: 61,
+                    usedPercent: nil,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+
+        let displays = browserServiceStatusDisplays(for: serviceIdentities) { provider in
+            provider == .openAI ? snapshot : nil
+        }
+
+        XCTAssertEqual(displays.first?.displayText, "OpenAI: alice@example.com · 5h 82% · 7d 61%")
+    }
+
+    func test_browserServiceStatusDisplays_fallsBackWhenQuotaUnavailable() {
+        let displays = browserServiceStatusDisplays(
+            for: [BrowserServiceIdentity(provider: .claude)]
+        ) { _ in nil }
+
+        XCTAssertEqual(displays.first?.displayText, "Claude: signed in · 5h -- · 7d --")
+    }
+
+    func test_cliQuotaStatusText_formatsConnectedCLIQuota() {
+        let profile = SwitcherProfileRecord(
+            id: "codex-1",
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                workingDirectory: "/tmp",
+                displayLabel: "Codex",
+                accountDescription: "alice@example.com"
+            ),
+            sortKey: 1
+        )
+        let snapshot = ProviderQuotaSnapshot(
+            provider: .codex,
+            fetchedAt: Date(),
+            source: .localCLI,
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "5h",
+                    label: "5h",
+                    windowKind: .rollingHours,
+                    usedValue: nil,
+                    limitValue: nil,
+                    remainingValue: 74,
+                    usedPercent: nil,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                ),
+                ProviderQuotaBucket(
+                    key: "7d",
+                    label: "7d",
+                    windowKind: .weekly,
+                    usedValue: nil,
+                    limitValue: nil,
+                    remainingValue: 58,
+                    usedPercent: nil,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+
+        let text = cliQuotaStatusText(for: profile) { provider in
+            provider == .codex ? snapshot : nil
+        }
+
+        XCTAssertEqual(text, "Quota left · 5h 74% · 7d 58%")
+    }
+
+    func test_refreshedBrowserProfileRecord_appliesDetectedChromeSessionDetails() {
+        let original = SwitcherProfileRecord(
+            id: "chrome-1",
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(
+                profileIdentifier: "Profile 2",
+                displayLabel: "Old Label",
+                accountEmail: "old@example.com",
+                providerIdentifier: "google",
+                serviceIdentities: []
+            ),
+            sortKey: 2
+        )
+
+        let discovered = ChromeProfileInfo(
+            folderKey: "Profile 2",
+            displayName: "Work Chrome",
+            email: "new@example.com",
+            serviceIdentities: [BrowserServiceIdentity(provider: .openAI, accountLabel: "new@example.com")]
+        )
+
+        let refreshed = refreshedBrowserProfileRecord(profile: original, discoveredChromeProfile: discovered)
+
+        XCTAssertEqual(refreshed.browserMetadata?.displayLabel, "Work Chrome")
+        XCTAssertEqual(refreshed.browserMetadata?.accountEmail, "new@example.com")
+        XCTAssertEqual(refreshed.browserMetadata?.serviceIdentities, discovered.serviceIdentities)
     }
 }
