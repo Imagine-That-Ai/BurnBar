@@ -1372,8 +1372,8 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 1F4C2BB5184C2AE3719E5563 /* Build configuration list for PBXNativeTarget "OpenBurnBarDaemon" */;
 			buildPhases = (
-				137235B3719724E24A2C431E /* Sources */,
 				521470C163F4349FD4306702 /* Dedupe GRDB Link File Entries (Xcode 16) */,
+				137235B3719724E24A2C431E /* Sources */,
 				A9E0A628A99EA48CA01A3B0C /* Copy Swift Objective-C Interface Header */,
 				BD45083637A28303B26318D5 /* Frameworks */,
 			);

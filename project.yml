@@ -125,7 +125,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarDaemon
-    postCompileScripts:
+    preBuildScripts:
       - name: Dedupe GRDB Link File Entries (Xcode 16)
         script: |
           # Xcode 16.4 can pass GRDB.o twice to libtool for this static target:
