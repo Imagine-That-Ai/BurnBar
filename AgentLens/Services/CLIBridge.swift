@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Stream events
 
@@ -703,11 +704,18 @@ final class CLIBridge: ObservableObject {
         process.environment = Self.enrichedProcessEnvironment(executablePath: executable)
         process.currentDirectoryURL = workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        // Must not leave stderr on an unread Pipe(): verbose CLI output can fill the buffer and deadlock the child.
-        process.standardError = FileHandle.nullDevice
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
         process.standardInput = FileHandle.nullDevice
+
+        let quotaRecorder = CLIBridgeQuotaSignalRecorder()
+        let supervisor = Self.makeTerminalSessionSupervisor(
+            cliType: .claude,
+            process: process,
+            quotaRecorder: quotaRecorder
+        )
 
         await MainActor.run {
             self.runningProcess = process
@@ -721,17 +729,33 @@ final class CLIBridge: ObservableObject {
             return
         }
 
-        let readHandle = pipe.fileHandleForReading
+        let stderrTask = Task.detached(priority: .utility) {
+            await Self.drainPipe(stderrPipe, into: supervisor, source: .stderr)
+        }
+
+        let readHandle = stdoutPipe.fileHandleForReading
         while let line = readHandle.readLine() {
+            supervisor.ingest(line + "\n", source: .stdout)
+            if let detail = quotaRecorder.snapshot() {
+                if process.isRunning {
+                    process.terminate()
+                }
+                break
+            }
             for event in Self.events(fromStreamJSONLine: line) {
                 continuation.yield(event)
             }
         }
 
         process.waitUntilExit()
+        await stderrTask.value
 
         await MainActor.run { self.runningProcess = nil }
 
+        if let detail = quotaRecorder.snapshot() {
+            continuation.finish(throwing: CLIBridgeError.quotaExhausted(detail))
+            return
+        }
         if process.terminationStatus != 0, process.terminationStatus != 15 {
             continuation.finish(throwing: CLIBridgeError.processExit(code: Int(process.terminationStatus)))
             return
@@ -753,10 +777,18 @@ final class CLIBridge: ObservableObject {
         process.environment = Self.enrichedProcessEnvironment(executablePath: executable)
         process.currentDirectoryURL = workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
         process.standardInput = FileHandle.nullDevice
+
+        let quotaRecorder = CLIBridgeQuotaSignalRecorder()
+        let supervisor = Self.makeTerminalSessionSupervisor(
+            cliType: .codex,
+            process: process,
+            quotaRecorder: quotaRecorder
+        )
 
         await MainActor.run {
             self.runningProcess = process
@@ -770,11 +802,22 @@ final class CLIBridge: ObservableObject {
             return
         }
 
-        let readHandle = pipe.fileHandleForReading
+        let stderrTask = Task.detached(priority: .utility) {
+            await Self.drainPipe(stderrPipe, into: supervisor, source: .stderr)
+        }
+
+        let readHandle = stdoutPipe.fileHandleForReading
         var lastAgentMessagePrefixLength = 0
         var lastAgentMessageItemId: String?
 
         while let line = readHandle.readLine() {
+            supervisor.ingest(line + "\n", source: .stdout)
+            if let detail = quotaRecorder.snapshot() {
+                if process.isRunning {
+                    process.terminate()
+                }
+                break
+            }
             guard let data = line.data(using: .utf8),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 continue
@@ -792,8 +835,12 @@ final class CLIBridge: ObservableObject {
                     let msg = (obj["message"] as? String)
                         ?? (obj["error"] as? String)
                         ?? "Codex reported an error"
-                    continuation.finish(throwing: CLIBridgeError.codexEvent(msg))
+                    continuation.finish(throwing: Self.codexEventError(from: msg))
+                    if process.isRunning {
+                        process.terminate()
+                    }
                     await MainActor.run { self.runningProcess = nil }
+                    await stderrTask.value
                     return
                 }
             }
@@ -842,9 +889,14 @@ final class CLIBridge: ObservableObject {
         }
 
         process.waitUntilExit()
+        await stderrTask.value
 
         await MainActor.run { self.runningProcess = nil }
 
+        if let detail = quotaRecorder.snapshot() {
+            continuation.finish(throwing: CLIBridgeError.quotaExhausted(detail))
+            return
+        }
         if process.terminationStatus != 0, process.terminationStatus != 15 {
             continuation.finish(throwing: CLIBridgeError.processExit(code: Int(process.terminationStatus)))
             return
@@ -899,6 +951,38 @@ final class CLIBridge: ObservableObject {
             return .toolUse(name: "Bash", detail: nil)
         }
         return .toolUse(name: "Bash", detail: String(command.prefix(180)))
+    }
+
+    nonisolated static func codexEventError(from message: String) -> CLIBridgeError {
+        if let detail = CLIQuotaExhaustionClassifier.classify(for: .codex, in: message) {
+            return .quotaExhausted(detail)
+        }
+        return .codexEvent(message)
+    }
+
+    nonisolated private static func makeTerminalSessionSupervisor(
+        cliType: SwitcherCLIProfileType,
+        process: Process,
+        quotaRecorder: CLIBridgeQuotaSignalRecorder
+    ) -> CLITerminalSessionSupervisor {
+        CLITerminalSessionSupervisor(cliType: cliType) { event in
+            guard case .quotaExhausted(let detail, _) = event else { return }
+            quotaRecorder.record(detail)
+            if process.isRunning {
+                process.terminate()
+            }
+        }
+    }
+
+    nonisolated private static func drainPipe(
+        _ pipe: Pipe,
+        into supervisor: CLITerminalSessionSupervisor,
+        source: CLITerminalSessionOutputSource
+    ) async {
+        let readHandle = pipe.fileHandleForReading
+        while let line = readHandle.readLine() {
+            supervisor.ingest(line + "\n", source: source)
+        }
     }
 
     nonisolated private static func chunkedCodexText(_ text: String, maxChunkLength: Int = 44) -> [String] {
@@ -1306,6 +1390,7 @@ enum CLIBridgeError: LocalizedError {
     case noCLI
     case processExit(code: Int)
     case codexEvent(String)
+    case quotaExhausted(String)
     case hermesUnavailable
     case openClawUnavailable
     case hermesSSEError(String)
@@ -1322,6 +1407,8 @@ enum CLIBridgeError: LocalizedError {
             return "CLI exited with status \(code)."
         case .codexEvent(let message):
             return message
+        case .quotaExhausted(let detail):
+            return detail
         case .hermesUnavailable:
             return "Hermes isn’t running. Enable API_SERVER_ENABLED in ~/.hermes/.env, run hermes gateway run. Token in Settings only if you use API_SERVER_KEY there."
         case .openClawUnavailable:
@@ -1331,5 +1418,25 @@ enum CLIBridgeError: LocalizedError {
         case .emptyResponse:
             return "CLI returned an empty response."
         }
+    }
+}
+
+private final class CLIBridgeQuotaSignalRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var detail: String?
+
+    func record(_ detail: String) {
+        lock.lock()
+        if self.detail == nil {
+            self.detail = detail
+        }
+        lock.unlock()
+    }
+
+    func snapshot() -> String? {
+        lock.lock()
+        let value = detail
+        lock.unlock()
+        return value
     }
 }

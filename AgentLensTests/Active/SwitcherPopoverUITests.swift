@@ -1165,8 +1165,8 @@ final class SwitcherPopoverUITests: XCTestCase {
             "Should announce empty state, got: \(capturedAnnouncements)")
     }
 
-    /// Regression test: Verify switch success announces "Profile switched successfully".
-    /// VAL-POPOVER-004: Success transitions should announce "Profile switched successfully".
+    /// Regression test: Verify switch success announces "Launch default updated".
+    /// VAL-POPOVER-004: Success transitions should announce "Launch default updated".
     @MainActor
     func test_viewLevel_switchSuccessAnnounces() throws {
         // Create DataStore for view testing
@@ -1225,8 +1225,119 @@ final class SwitcherPopoverUITests: XCTestCase {
         view.testTriggerSwitch()
 
         // Verify switch success announcement was made
-        XCTAssertTrue(capturedAnnouncements.contains("Profile switched successfully"),
-            "Should announce 'Profile switched successfully', got: \(capturedAnnouncements)")
+        XCTAssertTrue(capturedAnnouncements.contains("Launch default updated"),
+            "Should announce 'Launch default updated', got: \(capturedAnnouncements)")
+    }
+
+    @MainActor
+    func test_recentDefaultChange_enablesSwapAndAnimationInPopover() throws {
+        let dataStore = try DataStore(
+            databaseQueue: dbQueue,
+            runMigrations: false,
+            refreshOnInit: false
+        )
+
+        let first = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "P1", displayLabel: "First"),
+            sortKey: 1
+        ))
+        let second = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "P2", displayLabel: "Second"),
+            sortKey: 2
+        ))
+        try store.setActiveProfile(first.id)
+
+        let view = PopoverQuickSwitchView(
+            dataStore: dataStore,
+            onOpenSettings: {},
+            testInjectedError: nil,
+            skipLoadData: true
+        )
+
+        view.testTriggerReload()
+        let baselineToken = view.testDefaultChangeAnimationToken
+        view.testTriggerSwitchToProfile(profileID: second.id)
+
+        XCTAssertTrue(view.testCanSwapRecentProfiles)
+        XCTAssertGreaterThan(view.testDefaultChangeAnimationToken, baselineToken)
+    }
+
+    @MainActor
+    func test_swapRecentProfiles_restoresPreviousDefaultInPopover() throws {
+        let dataStore = try DataStore(
+            databaseQueue: dbQueue,
+            runMigrations: false,
+            refreshOnInit: false
+        )
+
+        let first = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "P1", displayLabel: "First"),
+            sortKey: 1
+        ))
+        let second = try store.create(SwitcherProfileRecord(
+            targetKind: .browser,
+            browserType: .chrome,
+            browserMetadata: SwitcherBrowserProfileMetadata(profileIdentifier: "P2", displayLabel: "Second"),
+            sortKey: 2
+        ))
+        try store.setActiveProfile(first.id)
+
+        var capturedAnnouncements: [String] = []
+        let view = PopoverQuickSwitchView(
+            dataStore: dataStore,
+            onOpenSettings: {},
+            testInjectedError: nil,
+            skipLoadData: true,
+            testAnnouncementHandler: { capturedAnnouncements.append($0) }
+        )
+
+        view.testTriggerReload()
+        view.testTriggerSwitchToProfile(profileID: second.id)
+        capturedAnnouncements.removeAll()
+
+        view.testTriggerSwapRecentProfiles()
+
+        XCTAssertEqual(try store.fetchActiveProfileState().activeProfileID, first.id)
+        XCTAssertTrue(capturedAnnouncements.contains("Launch default swapped to First"))
+    }
+
+    @MainActor
+    func test_swapButton_availableForSameProviderAlternatesWithoutRecentSwitchInPopover() throws {
+        let dataStore = try DataStore(
+            databaseQueue: dbQueue,
+            runMigrations: false,
+            refreshOnInit: false
+        )
+
+        let first = try store.create(SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex A"),
+            sortKey: 1
+        ))
+        _ = try store.create(SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex B"),
+            sortKey: 2
+        ))
+        try store.setActiveProfile(first.id)
+
+        let view = PopoverQuickSwitchView(
+            dataStore: dataStore,
+            onOpenSettings: {},
+            testInjectedError: nil,
+            skipLoadData: true
+        )
+
+        view.testTriggerReload()
+        XCTAssertTrue(view.testCanSwapRecentProfiles)
     }
 
     /// Regression test: Verify launch success announces profile name.
@@ -1344,6 +1455,10 @@ private final class PopoverTestSwitcherProfileAdapter: SwitcherProfileStoreAdapt
 
     func setActiveProfileID(_ profileID: String?) {
         try? store.setActiveProfile(profileID)
+    }
+
+    func updateProfile(_ profile: SwitcherProfileRecord) {
+        try? store.update(profile)
     }
 }
 

@@ -366,6 +366,32 @@ public final class SwitcherProfileStore {
         }
     }
 
+    /// Reassigns deterministic sort keys to match the provided full profile ordering.
+    /// All existing profile IDs must be present exactly once.
+    public func reorderProfiles(idsInOrder: [String]) throws {
+        let existingProfiles = try fetchAllProfiles()
+        let existingIDs = existingProfiles.map(\.id)
+
+        guard idsInOrder.count == existingIDs.count,
+              Set(idsInOrder) == Set(existingIDs) else {
+            throw SwitcherProfileStoreError.invalidProfileOrdering
+        }
+
+        try dbQueue.write { db in
+            let now = Date()
+            for (index, profileID) in idsInOrder.enumerated() {
+                try db.execute(
+                    sql: """
+                    UPDATE switcher_profiles
+                    SET sortKey = ?, updatedAt = ?
+                    WHERE id = ?
+                    """,
+                    arguments: [index + 1, now, profileID]
+                )
+            }
+        }
+    }
+
     /// Deletes a profile by ID.
     /// If the deleted profile was active, selects a deterministic fallback (lowest sortKey).
     public func deleteProfile(id: String) throws {
@@ -544,6 +570,7 @@ public enum SwitcherProfileStoreError: Error, LocalizedError {
     case profileNotFound(String)
     case duplicateProfileName(String)
     case migrationFailed(String)
+    case invalidProfileOrdering
 
     public var errorDescription: String? {
         switch self {
@@ -553,6 +580,8 @@ public enum SwitcherProfileStoreError: Error, LocalizedError {
             return "A profile with name '\(name)' already exists."
         case .migrationFailed(let reason):
             return "Switcher profile migration failed: \(reason)"
+        case .invalidProfileOrdering:
+            return "Switcher profile ordering is invalid."
         }
     }
 }

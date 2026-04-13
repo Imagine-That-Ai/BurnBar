@@ -3,6 +3,7 @@ import OpenBurnBarCore
 
 struct SwitcherOnboardingWelcomeStep: View {
     @ObservedObject var discoveryService: SwitcherDiscoveryService
+    @Binding var providerOrder: [OnboardingProvider]
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -33,7 +34,7 @@ struct SwitcherOnboardingWelcomeStep: View {
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
                         .multilineTextAlignment(.center)
 
-                    Text("Switch between browser profiles and CLI identities with one click. BurnBar discovers what\u{2019}s on your Mac and sets everything up automatically.")
+                    Text("Connect providers the fast way, keep multiple accounts on deck, and let BurnBar stay ready when one account hits its limit.")
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                         .multilineTextAlignment(.center)
@@ -41,11 +42,42 @@ struct SwitcherOnboardingWelcomeStep: View {
                         .frame(maxWidth: 380)
                 }
 
+                // Provider reorder section
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    HStack {
+                        Text("Setup Order")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                        Spacer()
+
+                        Text("Drag to reorder")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                    .padding(.horizontal, DesignSystem.Spacing.xs)
+
+                    GlassCard {
+                        VStack(spacing: 0) {
+                            ForEach(providerOrder) { provider in
+                                providerRow(provider)
+                                if provider.id != providerOrder.last?.id {
+                                    Divider()
+                                        .background(DesignSystem.Colors.borderSubtle)
+                                        .padding(.horizontal, DesignSystem.Spacing.md)
+                                }
+                            }
+                        }
+                        .padding(.vertical, DesignSystem.Spacing.xs)
+                    }
+                }
+
                 // Feature highlights
                 VStack(spacing: DesignSystem.Spacing.sm) {
-                    featureRow(icon: "globe", text: "Launch Chrome or Safari with different accounts")
-                    featureRow(icon: "terminal.fill", text: "Run Codex, Claude Code, or OpenCode with separate configs")
-                    featureRow(icon: "lock.shield", text: "No credentials stored \u{2014} BurnBar only holds profile references")
+                    featureRow(icon: "link.badge.plus", text: "Launch provider login flows directly from BurnBar")
+                    featureRow(icon: "person.2.fill", text: "Keep multiple accounts per provider ready for same-provider handoff")
+                    featureRow(icon: "lock.shield", text: "No raw credentials stored in BurnBar — only safe account references")
                 }
                 .padding(.vertical, DesignSystem.Spacing.md)
 
@@ -86,6 +118,40 @@ struct SwitcherOnboardingWelcomeStep: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, DesignSystem.Spacing.lg)
         }
+    }
+
+    // MARK: - Provider Row
+
+    private func providerRow(_ provider: OnboardingProvider) -> some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .frame(width: 12)
+
+            Group {
+                if provider.hasBundledLogo {
+                    Image(provider.bundledLogoName!)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                } else {
+                    Image(systemName: provider.icon)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(provider.color)
+                }
+            }
+            .frame(width: 18, height: 18)
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+
+            Text(provider.label)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+            Spacer()
+        }
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .contentShape(Rectangle())
     }
 
     private func featureRow(icon: String, text: String) -> some View {

@@ -33,6 +33,8 @@ jobs:
   openburnbar-pr:
     runs-on: macos-15
     timeout-minutes: 30
+    env:
+      INTERNAL_RUN: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
 
     steps:
       - name: Check out repository
@@ -44,6 +46,35 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
+
+      - name: Validate Firebase CI secrets
+        if: env.INTERNAL_RUN == 'true'
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+        run: |
+          missing=()
+          for var in FIREBASE_PLIST_BASE64 FIREBASE_APP_CHECK_DEBUG_TOKEN; do
+            if [[ -z "${!var}" ]]; then
+              missing+=("$var")
+            fi
+          done
+
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required Firebase CI secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Inject Firebase config
+        if: env.INTERNAL_RUN == 'true'
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+        run: bash ./scripts/ci/inject-firebase-config.sh
+
+      - name: Skip Firebase config injection for fork PRs
+        if: env.INTERNAL_RUN != 'true'
+        run: echo "Skipping Firebase config injection for fork PR; auth remains disabled in CI."
 
       - name: Install OpenBurnBar extension dependencies
         run: npm ci --prefix extensions/openburnbar
@@ -79,3 +110,7 @@ jobs:
           for step in "Swift tests" "App tests" "SwiftPM lockfile" "Retrieval evals" "TypeScript tests" "Replay evals" "Extension-host tests"; do
             echo "| $step | ran |" >> "$GITHUB_STEP_SUMMARY"
           done
+
+      - name: Clean up Firebase config
+        if: always() && env.INTERNAL_RUN == 'true'
+        run: bash ./scripts/ci/cleanup-firebase-config.sh

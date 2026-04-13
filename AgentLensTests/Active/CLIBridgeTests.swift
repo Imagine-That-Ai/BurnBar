@@ -163,4 +163,13 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(usage?.outputTokens, 11)
         XCTAssertEqual(usage?.cacheReadTokens, 9)
     }
+
+    func test_cliBridge_codexEventError_mapsQuotaEventsToQuotaExhausted() {
+        let error = CLIBridge.codexEventError(from: "Error: quota exhausted for the weekly limit.")
+
+        guard case .quotaExhausted(let detail) = error else {
+            return XCTFail("Expected quota exhaustion error, got \(error)")
+        }
+        XCTAssertTrue(detail.localizedCaseInsensitiveContains("weekly limit"))
+    }
 }

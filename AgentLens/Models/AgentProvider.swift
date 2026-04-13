@@ -131,49 +131,39 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
     case geminiCLI = "Gemini CLI"
     case goose = "Goose"
     case openClaw = "OpenClaw"
+    case windsurf = "Windsurf"
 
     var id: String { rawValue }
     
-    /// Bundled asset catalog image name for providers with local logos.
-    var bundledLogoName: String? {
+    /// Bundled asset catalog image name for every provider.
+    var bundledLogoName: String {
         switch self {
-        case .factory: return "FactoryLogo"
-        case .hermes: return "HermesLogo"
-        default: return nil
+        case .factory:    return "FactoryLogo"
+        case .claudeCode: return "ClaudeCodeLogo"
+        case .copilot:    return "CopilotLogo"
+        case .aider:      return "AiderLogo"
+        case .cursor:     return "CursorLogo"
+        case .codex:      return "CodexLogo"
+        case .zai:        return "ZaiLogo"
+        case .minimax:    return "MiniMaxLogo"
+        case .kimi:       return "KimiLogo"
+        case .cline:      return "ClineLogo"
+        case .kiloCode:   return "KiloCodeLogo"
+        case .rooCode:    return "RooCodeLogo"
+        case .forgeDev:   return "ForgeLogo"
+        case .augment:    return "AugmentLogo"
+        case .hermes:     return "HermesLogo"
+        case .geminiCLI:  return "GeminiCLILogo"
+        case .goose:      return "GooseLogo"
+        case .openClaw:   return "OpenClawLogo"
+        case .windsurf:   return "WindsurfLogo"
         }
     }
 
-    /// Colorful logo URLs from lobehub (https://lobehub.com/icons)
-    var logoURL: URL? {
-        switch self {
-        case .factory:
-            return nil
-        case .claudeCode:
-            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/claudecode-color.png")
-        case .copilot:
-            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/copilot-color.png")
-        case .aider:
-            return nil
-        case .cursor:
-            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/cursor.png")
-        case .codex:
-            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/codex-color.png")
-        case .zai:
-            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/zai.png")
-        case .minimax:
-            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/minimax-color.png")
-        case .kimi:
-            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/kimi-color.png")
-        case .cline:
-            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/cline-color.png")
-        case .kiloCode, .rooCode, .forgeDev, .hermes, .goose, .openClaw:
-            return nil
-        case .geminiCLI:
-            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/gemini-color.png")
-        case .augment:
-            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/augment-color.png")
-        }
-    }
+    /// Remote logo URLs are deprecated in favor of bundled assets.
+    /// Kept for backward compatibility but no longer used by ProviderLogoView.
+    @available(*, deprecated, message: "Use bundledLogoName instead")
+    var logoURL: URL? { nil }
 
     var iconName: String {
         switch self {
@@ -195,6 +185,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .geminiCLI: return "diamond.fill"
         case .goose: return "bird.fill"
         case .openClaw: return "point.3.connected.trianglepath.dotted"
+        case .windsurf: return "sailboat.fill"
         }
     }
     
@@ -220,6 +211,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .geminiCLI: return "~/.gemini/tmp"
         case .goose: return "~/.local/share/goose/sessions"
         case .openClaw: return "~/.openclaw/sessions"
+        case .windsurf: return "~/Library/Application Support/Windsurf - Next/User/globalStorage"
         }
     }
 
@@ -240,6 +232,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .geminiCLI: return "*.json"
         case .goose: return "sessions.db"
         case .openClaw: return "*.jsonl"
+        case .windsurf: return "state.vscdb"
         }
     }
 
@@ -247,7 +240,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .factory, .claudeCode, .codex, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose:
             return .supported
-        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor:
+        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf:
             return .partial
         case .augment:
             return .unsupported
@@ -258,7 +251,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose, .openClaw:
             return .exact
-        case .zai, .minimax, .copilot, .cursor:
+        case .zai, .minimax, .copilot, .cursor, .windsurf:
             return .estimated
         case .augment:
             return .unavailable

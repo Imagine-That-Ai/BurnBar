@@ -11,21 +11,19 @@ struct SwitcherOnboardingDoneStep: View {
     @State private var checkmarkScale: CGFloat = 0.3
     @State private var checkmarkOpacity: Double = 0
 
-    private var browserCount: Int {
-        identities.filter {
-            if case .chromeProfile = $0.source { return true }
-            if case .safari = $0.source { return true }
-            return false
-        }.count
-    }
-
-    private var cliCount: Int {
-        identities.filter {
-            if case .codex = $0.source { return true }
-            if case .claudeCode = $0.source { return true }
-            if case .opencode = $0.source { return true }
-            return false
-        }.count
+    private var providerSummaries: [(label: String, icon: String, count: Int, color: Color)] {
+        var summaries: [(String, String, Int, Color)] = []
+        let chromeCount = identities.filter { if case .chromeProfile = $0.source { return true }; return false }.count
+        if chromeCount > 0 { summaries.append(("Chrome", "globe", chromeCount, Color(hex: "4285F4"))) }
+        let safariCount = identities.filter { if case .safari = $0.source { return true }; return false }.count
+        if safariCount > 0 { summaries.append(("Safari", "safari", safariCount, Color(hex: "0071E3"))) }
+        let codexCount = identities.filter { if case .codex = $0.source { return true }; return false }.count
+        if codexCount > 0 { summaries.append(("Codex", "terminal.fill", codexCount, Color(hex: "00A67E"))) }
+        let claudeCount = identities.filter { if case .claudeCode = $0.source { return true }; return false }.count
+        if claudeCount > 0 { summaries.append(("Claude Code", "terminal.fill", claudeCount, Color(hex: "CC785C"))) }
+        let opencodeCount = identities.filter { if case .opencode = $0.source { return true }; return false }.count
+        if opencodeCount > 0 { summaries.append(("OpenCode", "terminal.fill", opencodeCount, DesignSystem.Colors.whimsy)) }
+        return summaries
     }
 
     var body: some View {
@@ -44,10 +42,37 @@ struct SwitcherOnboardingDoneStep: View {
                     .font(DesignSystem.Typography.headline)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                Text("\(addedCount) profile\(addedCount == 1 ? "" : "s") ready \u{2014} \(browserCount) browser\(browserCount == 1 ? "" : "s"), \(cliCount) CLI\(cliCount == 1 ? "" : "s")")
-                    .font(DesignSystem.Typography.caption)
+                Text("\(addedCount) account\(addedCount == 1 ? "" : "s") ready across \(providerSummaries.count) provider\(providerSummaries.count == 1 ? "" : "s")")
+                Text("\(addedCount) account\(addedCount == 1 ? "" : "s") ready across \(providerSummaries.count) provider\(providerSummaries.count == 1 ? "" : "s"). BurnBar can now keep provider reserves ready instead of making you reconnect from scratch.")
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .multilineTextAlignment(.center)
+            }
+
+            // Provider-by-provider summary
+            if !providerSummaries.isEmpty {
+                GlassCard {
+                    VStack(spacing: DesignSystem.Spacing.xs) {
+                        ForEach(providerSummaries, id: \.label) { summary in
+                            HStack(spacing: DesignSystem.Spacing.sm) {
+                                Image(systemName: summary.icon)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(summary.color)
+                                    .frame(width: 16)
+
+                                Text(summary.label)
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                                Spacer()
+
+                                Text("\(summary.count) account\(summary.count == 1 ? "" : "s")")
+                                    .font(DesignSystem.Typography.tiny)
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            }
+                        }
+                    }
+                    .padding(DesignSystem.Spacing.md)
+                }
             }
 
             // Verification results
@@ -75,9 +100,9 @@ struct SwitcherOnboardingDoneStep: View {
 
             // Tips
             VStack(spacing: DesignSystem.Spacing.sm) {
-                tipRow(text: "Switch profiles instantly from the menu bar popover")
-                tipRow(text: "Launch your active profile with one click from the Dashboard")
-                tipRow(text: "Manage profiles anytime in Settings \u{2192} Account Switcher")
+                tipRow(text: "Use Settings to reorder primary and reserve accounts within each provider")
+                tipRow(text: "Keep extra Codex or Claude accounts connected before you need them")
+                tipRow(text: "Review or reconnect accounts anytime in Settings → Account Switcher")
             }
             .padding(.vertical, DesignSystem.Spacing.md)
 
@@ -87,7 +112,7 @@ struct SwitcherOnboardingDoneStep: View {
                 Button {
                     onOpenSettings()
                 } label: {
-                    Text("Open Settings")
+                    Text("Open Settings Review")
                         .font(DesignSystem.Typography.body)
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)

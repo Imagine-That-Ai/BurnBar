@@ -14,7 +14,7 @@ private func makeTempExecutable(at path: String, content: String = "#!/bin/sh\ne
 }
 
 private struct TestCLIFallbackPlanner: CLIFallbackPlanning {
-    let ineligibleProfileIDs: Set<String>
+    let exhaustedProfileIDs: Set<String>
 
     func orderedCandidates(
         for requestedProfile: SwitcherProfileRecord,
@@ -39,8 +39,8 @@ private struct TestCLIFallbackPlanner: CLIFallbackPlanning {
     }
 
     func eligibility(for profile: SwitcherProfileRecord) async -> CLIFallbackEligibility {
-        if ineligibleProfileIDs.contains(profile.id) {
-            return .ineligible(reason: "\(profile.displayName) has no remaining quota.")
+        if exhaustedProfileIDs.contains(profile.id) {
+            return .quotaExhausted(reason: "\(profile.displayName) has no remaining quota.")
         }
         return .eligible
     }
@@ -58,6 +58,272 @@ final class SwitcherCLILaunchTests: XCTestCase {
         CLILaunchAdapter.homeDirectoryProvider = { FileManager.default.homeDirectoryForCurrentUser.path }
         CLILaunchInvoker.launchHandler = nil
         super.tearDown()
+    }
+
+    func test_cliAuthCoordinator_persistsDetectedAccountIntoProfileConfig() async throws {
+        let executableURL = URL(fileURLWithPath: "/tmp/test-codex-auth")
+        let cleanup = makeTempExecutable(at: executableURL.path)
+        defer { cleanup() }
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .codex ? executableURL : nil
+        }
+
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let configDirectory = tempRoot.appendingPathComponent("codex-config", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let coordinator = SwitcherCLIAuthCoordinator(
+            dependencies: .init(
+                openScriptInTerminal: { scriptURL in
+                    let markerURL = scriptURL.deletingLastPathComponent().appendingPathComponent("exit.status")
+                    try "0".write(to: markerURL, atomically: true, encoding: .utf8)
+                },
+                discoverAuthState: { cliType, configDirectory in
+                    CLIAuthInfo(
+                        cliType: cliType,
+                        isInstalled: true,
+                        executablePath: executableURL.path,
+                        authState: .authenticated(lastRefresh: nil),
+                        configDirectory: configDirectory,
+                        accountDescription: "reserve@example.com"
+                    )
+                }
+            )
+        )
+
+        let profile = SwitcherProfileRecord(
+            id: "codex-reserve",
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: "Codex Reserve",
+                configDirectory: configDirectory.path
+            ),
+            sortKey: 1
+        )
+
+        let result = await coordinator.reconnect(profile: profile)
+        guard case .readyToPersist(let updatedProfile) = result else {
+            return XCTFail("Expected readyToPersist result")
+        }
+
+        XCTAssertEqual(updatedProfile.cliMetadata?.configDirectory, configDirectory.path)
+        XCTAssertEqual(updatedProfile.cliMetadata?.accountDescription, "reserve@example.com")
+    }
+
+    func test_cliAuthCoordinator_exportsCodexHomeForReconnect() async throws {
+        let executableURL = URL(fileURLWithPath: "/tmp/test-codex-auth-env")
+        let cleanup = makeTempExecutable(at: executableURL.path)
+        defer { cleanup() }
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .codex ? executableURL : nil
+        }
+
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let configDirectory = tempRoot.appendingPathComponent("codex-config", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        var capturedScriptContents: String?
+        let coordinator = SwitcherCLIAuthCoordinator(
+            dependencies: .init(
+                openScriptInTerminal: { scriptURL in
+                    capturedScriptContents = try String(contentsOf: scriptURL, encoding: .utf8)
+                    let markerURL = scriptURL.deletingLastPathComponent().appendingPathComponent("exit.status")
+                    try "0".write(to: markerURL, atomically: true, encoding: .utf8)
+                },
+                discoverAuthState: { cliType, configDirectory in
+                    CLIAuthInfo(
+                        cliType: cliType,
+                        isInstalled: true,
+                        executablePath: executableURL.path,
+                        authState: .authenticated(lastRefresh: nil),
+                        configDirectory: configDirectory,
+                        accountDescription: "reserve@example.com"
+                    )
+                }
+            )
+        )
+
+        let profile = SwitcherProfileRecord(
+            id: "codex-env",
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: "Codex Env",
+                configDirectory: configDirectory.path
+            ),
+            sortKey: 1
+        )
+
+        let result = await coordinator.reconnect(profile: profile)
+        guard case .readyToPersist = result else {
+            return XCTFail("Expected readyToPersist result")
+        }
+
+        XCTAssertTrue(capturedScriptContents?.contains("export CODEX_HOME=") == true)
+        XCTAssertTrue(capturedScriptContents?.contains("export CODEX_CONFIG_PATH=") == true)
+    }
+
+    func test_cliAuthCoordinator_requestsConfirmationWhenDetectedAccountChanges() async throws {
+        let executableURL = URL(fileURLWithPath: "/tmp/test-claude-auth")
+        let cleanup = makeTempExecutable(at: executableURL.path)
+        defer { cleanup() }
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .claude ? executableURL : nil
+        }
+
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let configDirectory = tempRoot.appendingPathComponent("claude-config", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let coordinator = SwitcherCLIAuthCoordinator(
+            dependencies: .init(
+                openScriptInTerminal: { scriptURL in
+                    let markerURL = scriptURL.deletingLastPathComponent().appendingPathComponent("exit.status")
+                    try "0".write(to: markerURL, atomically: true, encoding: .utf8)
+                },
+                discoverAuthState: { cliType, configDirectory in
+                    CLIAuthInfo(
+                        cliType: cliType,
+                        isInstalled: true,
+                        executablePath: executableURL.path,
+                        authState: .authenticated(lastRefresh: nil),
+                        configDirectory: configDirectory,
+                        accountDescription: "new@example.com"
+                    )
+                }
+            )
+        )
+
+        let profile = SwitcherProfileRecord(
+            id: "claude-primary",
+            targetKind: .cli,
+            cliType: .claude,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: "Claude Primary",
+                configDirectory: configDirectory.path,
+                accountDescription: "old@example.com"
+            ),
+            sortKey: 1
+        )
+
+        let result = await coordinator.reconnect(profile: profile)
+        guard case .requiresConfirmation(let updatedProfile, let previousAccount, let detectedAccount) = result else {
+            return XCTFail("Expected requiresConfirmation result")
+        }
+
+        XCTAssertEqual(previousAccount, "old@example.com")
+        XCTAssertEqual(detectedAccount, "new@example.com")
+        XCTAssertEqual(updatedProfile.cliMetadata?.accountDescription, "new@example.com")
+    }
+
+    func test_cliAuthCoordinator_usesFreshConfigDirectoryWhenPreservingExistingAccount() async throws {
+        let executableURL = URL(fileURLWithPath: "/tmp/test-codex-preserve-auth")
+        let cleanup = makeTempExecutable(at: executableURL.path)
+        defer { cleanup() }
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .codex ? executableURL : nil
+        }
+
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let existingConfigDirectory = tempRoot.appendingPathComponent("existing-codex", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        var discoveredConfigDirectory: String?
+        let coordinator = SwitcherCLIAuthCoordinator(
+            dependencies: .init(
+                openScriptInTerminal: { scriptURL in
+                    let markerURL = scriptURL.deletingLastPathComponent().appendingPathComponent("exit.status")
+                    try "0".write(to: markerURL, atomically: true, encoding: .utf8)
+                },
+                discoverAuthState: { cliType, configDirectory in
+                    discoveredConfigDirectory = configDirectory
+                    return CLIAuthInfo(
+                        cliType: cliType,
+                        isInstalled: true,
+                        executablePath: executableURL.path,
+                        authState: .authenticated(lastRefresh: nil),
+                        configDirectory: configDirectory,
+                        accountDescription: "new@example.com"
+                    )
+                }
+            )
+        )
+
+        let profile = SwitcherProfileRecord(
+            id: "codex-primary",
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: "Codex",
+                configDirectory: existingConfigDirectory.path,
+                accountDescription: "old@example.com"
+            ),
+            sortKey: 1
+        )
+
+        let result = await coordinator.reconnect(profile: profile)
+        guard case .requiresConfirmation(let updatedProfile, let previousAccount, let detectedAccount) = result else {
+            return XCTFail("Expected requiresConfirmation result")
+        }
+
+        XCTAssertEqual(previousAccount, "old@example.com")
+        XCTAssertEqual(detectedAccount, "new@example.com")
+        XCTAssertEqual(discoveredConfigDirectory, updatedProfile.cliMetadata?.configDirectory)
+        XCTAssertNotEqual(updatedProfile.cliMetadata?.configDirectory, existingConfigDirectory.path)
+    }
+
+    func test_cliAuthCoordinator_returnsCancelledWhenTerminalLoginIsCancelled() async throws {
+        let executableURL = URL(fileURLWithPath: "/tmp/test-cancelled-auth")
+        let cleanup = makeTempExecutable(at: executableURL.path)
+        defer { cleanup() }
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .codex ? executableURL : nil
+        }
+
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let configDirectory = tempRoot.appendingPathComponent("cancelled-config", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let coordinator = SwitcherCLIAuthCoordinator(
+            dependencies: .init(
+                openScriptInTerminal: { scriptURL in
+                    let markerURL = scriptURL.deletingLastPathComponent().appendingPathComponent("exit.status")
+                    try "130".write(to: markerURL, atomically: true, encoding: .utf8)
+                },
+                discoverAuthState: { cliType, configDirectory in
+                    CLIAuthInfo(
+                        cliType: cliType,
+                        isInstalled: true,
+                        executablePath: executableURL.path,
+                        authState: .notAuthenticated,
+                        configDirectory: configDirectory,
+                        accountDescription: nil
+                    )
+                }
+            )
+        )
+
+        let profile = SwitcherProfileRecord(
+            id: "codex-cancelled",
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: "Codex Cancelled",
+                configDirectory: configDirectory.path
+            ),
+            sortKey: 1
+        )
+
+        let result = await coordinator.reconnect(profile: profile)
+        guard case .cancelled = result else {
+            return XCTFail("Expected cancelled result")
+        }
     }
 
     // MARK: - Executable Resolution (Deterministic via Seam)
@@ -387,6 +653,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
             "GIT_EDITOR": "vim",
             "HG_EDITOR": "vim",
             "CLAUDE_CONFIG_PATH": "/Users/test/.claude",
+            "CODEX_HOME": "/Users/test/.codex",
             "CODEX_CONFIG_PATH": "/Users/test/.codex",
             "OPENCODE_CONFIG_PATH": "/Users/test/.opencode",
         ]
@@ -405,8 +672,36 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertEqual(result["LANG"], "en_US.UTF-8")
         XCTAssertEqual(result["LC_ALL"], "en_US.UTF-8")
         XCTAssertEqual(result["CLAUDE_CONFIG_PATH"], "/Users/test/.claude")
+        XCTAssertEqual(result["CODEX_HOME"], "/Users/test/.codex")
         XCTAssertEqual(result["CODEX_CONFIG_PATH"], "/Users/test/.codex")
         XCTAssertEqual(result["OPENCODE_CONFIG_PATH"], "/Users/test/.opencode")
+    }
+
+    func test_buildCLILaunch_setsBothCodexConfigEnvironmentKeys() {
+        let codexURL = URL(fileURLWithPath: "/tmp/test-codex-env-build")
+        let cleanup = makeTempExecutable(at: codexURL.path)
+        defer { cleanup() }
+
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .codex ? codexURL : nil
+        }
+
+        let profile = SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                configDirectory: "/Users/test/.codex-reserve"
+            ),
+            sortKey: 1
+        )
+
+        let result = CLILaunchAdapter.buildCLILaunch(profile: profile)
+        guard case .success(let config) = result else {
+            return XCTFail("Expected launch config")
+        }
+
+        XCTAssertEqual(config.env["CODEX_HOME"], "/Users/test/.codex-reserve")
+        XCTAssertEqual(config.env["CODEX_CONFIG_PATH"], "/Users/test/.codex-reserve")
     }
 
     func test_buildAllowlistedBaselineEnvironment_excludesKeysNotInBaseEnv() {
@@ -1019,7 +1314,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         CLILaunchAdapter.executableResolver = { cliType in
             cliType == .codex ? executableURL : nil
         }
-        CLILaunchInvoker.launchHandler = { _, _, _, _, _ in .success(()) }
+        CLILaunchInvoker.launchHandler = { _, _, _, _, _, _ in .success(()) }
 
         let primary = SwitcherProfileRecord(
             id: "codex-primary",
@@ -1041,7 +1336,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
 
         service = SwitcherCLILAunchService(
             profileStore: store,
-            fallbackPlanner: TestCLIFallbackPlanner(ineligibleProfileIDs: [primary.id])
+            fallbackPlanner: TestCLIFallbackPlanner(exhaustedProfileIDs: [primary.id])
         )
 
         let outcome = await service.launchCLI(for: primary.id)
@@ -1055,7 +1350,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         XCTAssertEqual(attemptedProfileID, fallback.id)
     }
 
-    func test_launchCLI_fallsBackAfterImmediateLaunchFailure() async throws {
+    func test_launchCLI_doesNotFallBackAfterImmediateLaunchFailure() async throws {
         let executableURL = URL(fileURLWithPath: "/tmp/test-fallback-claude")
         let cleanup = makeTempExecutable(at: executableURL.path)
         defer { cleanup() }
@@ -1070,7 +1365,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         CLILaunchAdapter.executableResolver = { cliType in
             cliType == .claude ? executableURL : nil
         }
-        CLILaunchInvoker.launchHandler = { _, _, _, _, workingDirectory in
+        CLILaunchInvoker.launchHandler = { _, _, _, _, workingDirectory, _ in
             if workingDirectory == workA.path {
                 return .failure(.launchSpawnFailed("primary launch failed"))
             }
@@ -1103,15 +1398,16 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
 
         service = SwitcherCLILAunchService(
             profileStore: store,
-            fallbackPlanner: TestCLIFallbackPlanner(ineligibleProfileIDs: [])
+            fallbackPlanner: TestCLIFallbackPlanner(exhaustedProfileIDs: [])
         )
 
         let outcome = await service.launchCLI(for: primary.id)
 
-        XCTAssertTrue(outcome.success)
-        XCTAssertEqual(outcome.launchedProfileID, fallback.id)
-        XCTAssertEqual(store.fetchActiveProfileID(), fallback.id)
-        XCTAssertEqual(outcome.attemptedProfileIDs, [primary.id, fallback.id])
+        XCTAssertFalse(outcome.success)
+        XCTAssertEqual(outcome.launchedProfileID, nil)
+        XCTAssertEqual(store.fetchActiveProfileID(), primary.id)
+        XCTAssertEqual(outcome.attemptedProfileIDs, [primary.id])
+        XCTAssertEqual(outcome.error, .launchSpawnFailed("primary launch failed"))
     }
 
     func test_launchCLI_fallsBackAfterQuotaExhaustionSignal() async {
@@ -1128,7 +1424,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         CLILaunchAdapter.executableResolver = { cliType in
             cliType == .codex ? executableURL : nil
         }
-        CLILaunchInvoker.launchHandler = { _, _, _, _, workingDirectory in
+        CLILaunchInvoker.launchHandler = { _, _, _, _, workingDirectory, _ in
             if workingDirectory == primaryWorkingDirectory.path {
                 return .failure(.quotaExhausted("quota exhausted in 5-hour window"))
             }
@@ -1161,7 +1457,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
 
         service = SwitcherCLILAunchService(
             profileStore: store,
-            fallbackPlanner: TestCLIFallbackPlanner(ineligibleProfileIDs: [])
+            fallbackPlanner: TestCLIFallbackPlanner(exhaustedProfileIDs: [])
         )
 
         let outcome = await service.launchCLI(for: primary.id)
@@ -1277,7 +1573,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
             cliType == .claude ? claudeURL : nil
         }
         // Simulate a launch that never completes (stays in-progress)
-        CLILaunchInvoker.launchHandler = { _, _, _, _, _ in
+        CLILaunchInvoker.launchHandler = { _, _, _, _, _, _ in
             // Never return — simulates an in-progress launch
             try? await Task.sleep(nanoseconds: 10_000_000_000)
             return .success(())
@@ -1331,7 +1627,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
 
         // Use seams: claude is NOT installed (deterministic), launch handler records the call
         CLILaunchAdapter.executableResolver = { _ in nil }
-        CLILaunchInvoker.launchHandler = { _, _, _, _, _ in .success(()) }
+        CLILaunchInvoker.launchHandler = { _, _, _, _, _, _ in .success(()) }
 
         try? await Task.sleep(nanoseconds: 1_000)
         try? await Task.sleep(nanoseconds: 1_000)
@@ -1451,7 +1747,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
 
         // Use seam: both executables NOT installed + simulated handler
         CLILaunchAdapter.executableResolver = { _ in nil }
-        CLILaunchInvoker.launchHandler = { _, _, _, _, _ in .success(()) }
+        CLILaunchInvoker.launchHandler = { _, _, _, _, _, _ in .success(()) }
 
         // Launch both profiles concurrently
         async let launch1 = service.launchCLI(for: codexProfile.id)

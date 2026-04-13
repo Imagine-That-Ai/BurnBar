@@ -62,34 +62,50 @@ public enum CLIAuthDiscovery {
     }
 
     /// Discovers auth state for a single CLI type.
-    public static func discoverAuthState(for cliType: SwitcherCLIProfileType) -> CLIAuthInfo {
+    public static func discoverAuthState(
+        for cliType: SwitcherCLIProfileType,
+        configDirectoryOverride: String? = nil
+    ) -> CLIAuthInfo {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let executablePath = CLILaunchAdapter.executablePath(for: cliType)
 
         switch cliType {
         case .codex:
-            let configDir = "\(home)/.codex"
-            let authState = discoverCodexAuthState(home: home)
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.codex"
+            )
+            let authState = discoverCodexAuthState(configDirectory: configDir)
             return CLIAuthInfo(
                 cliType: cliType,
                 isInstalled: executablePath != nil,
                 executablePath: executablePath,
                 authState: authState,
-                configDirectory: FileManager.default.fileExists(atPath: configDir) ? configDir : nil,
-                accountDescription: codexAccountDescription(home: home, authState: authState)
+                configDirectory: FileManager.default.fileExists(atPath: configDir) ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: codexAccountDescription(configDirectory: configDir, authState: authState)
             )
 
         case .claude:
-            let configDir = "\(home)/.claude"
-            let authState = discoverClaudeAuthState(home: home)
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.claude"
+            )
+            let statusJSONData = claudeAuthStatusJSON(
+                executablePath: executablePath,
+                configDirectory: configDir
+            )
+            let authState = claudeAuthState(
+                configDirectory: configDir,
+                statusJSONData: statusJSONData
+            )
             return CLIAuthInfo(
                 cliType: cliType,
                 isInstalled: executablePath != nil,
                 executablePath: executablePath,
                 authState: authState,
-                configDirectory: FileManager.default.fileExists(atPath: configDir) ? configDir : nil,
+                configDirectory: FileManager.default.fileExists(atPath: configDir) ? configDir : normalizedNonEmpty(configDir),
                 accountDescription: claudeAccountDescription(
-                    executablePath: executablePath,
+                    statusJSONData: statusJSONData,
                     authState: authState
                 )
             )
@@ -107,15 +123,15 @@ public enum CLIAuthDiscovery {
     // MARK: - Codex Auth Detection
 
     /// Checks Codex auth.json for key presence (value not read).
-    private static func discoverCodexAuthState(home: String) -> CLIAuthState {
-        let authPath = "\(home)/.codex/auth.json"
+    private static func discoverCodexAuthState(configDirectory: String) -> CLIAuthState {
+        let authPath = "\(configDirectory)/auth.json"
         let fm = FileManager.default
 
         guard fm.fileExists(atPath: authPath),
               let data = fm.contents(atPath: authPath),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             // No auth file — check if installed
-            return fm.fileExists(atPath: "\(home)/.codex") ? .notAuthenticated : .notInstalled
+            return fm.fileExists(atPath: configDirectory) ? .notAuthenticated : .notInstalled
         }
 
         // Check for OPENAI_API_KEY presence (boolean only — never read the value)
@@ -135,9 +151,9 @@ public enum CLIAuthDiscovery {
     // MARK: - Claude Code Auth Detection
 
     /// Checks Claude Code directory for session/auth state.
-    private static func discoverClaudeAuthState(home: String) -> CLIAuthState {
+    private static func discoverClaudeAuthState(configDirectory: String) -> CLIAuthState {
         let fm = FileManager.default
-        let claudeDir = "\(home)/.claude"
+        let claudeDir = configDirectory
 
         guard fm.fileExists(atPath: claudeDir) else {
             return .notInstalled
@@ -166,12 +182,40 @@ public enum CLIAuthDiscovery {
         return .notAuthenticated
     }
 
+    /// Returns the parsed auth status JSON from `claude auth status --json`, if available.
+    private static func claudeAuthStatusJSON(executablePath: String?, configDirectory: String) -> Data? {
+        guard let executablePath else { return nil }
+
+        return runCommand(
+            executablePath: executablePath,
+            arguments: ["auth", "status", "--json"],
+            environment: ["CLAUDE_CONFIG_PATH": configDirectory],
+            timeout: 3.5
+        )
+    }
+
+    /// Prefers explicit CLI-reported auth state, then falls back to filesystem heuristics.
+    private static func claudeAuthState(configDirectory: String, statusJSONData: Data?) -> CLIAuthState {
+        if let statusJSONData,
+           let statusPayload = parseClaudeStatusJSON(statusJSONData) {
+            if let loggedIn = statusPayload.loggedIn {
+                return loggedIn ? .authenticated(lastRefresh: nil) : .notAuthenticated
+            }
+
+            if statusPayload.email != nil || statusPayload.name != nil || statusPayload.orgName != nil {
+                return .authenticated(lastRefresh: nil)
+            }
+        }
+
+        return discoverClaudeAuthState(configDirectory: configDirectory)
+    }
+
     // MARK: - Account Identity Helpers
 
-    static func codexAccountDescription(home: String, authState: CLIAuthState) -> String? {
+    static func codexAccountDescription(configDirectory: String, authState: CLIAuthState) -> String? {
         guard case .authenticated = authState else { return nil }
 
-        let authPath = "\(home)/.codex/auth.json"
+        let authPath = "\(configDirectory)/auth.json"
         guard let data = FileManager.default.contents(atPath: authPath) else {
             return nil
         }
@@ -204,43 +248,85 @@ public enum CLIAuthDiscovery {
         return nil
     }
 
-    static func claudeAccountDescription(
-        executablePath: String?,
-        authState: CLIAuthState
-    ) -> String? {
-        guard case .authenticated = authState,
-              let executablePath else {
-            return nil
-        }
-
-        guard let data = runCommand(
-            executablePath: executablePath,
-            arguments: ["auth", "status", "--json"],
-            timeout: 1.5
-        ) else {
-            return nil
-        }
-
-        return extractClaudeAccountDescription(fromStatusJSONData: data)
+    private struct ClaudeStatusPayload {
+        let loggedIn: Bool?
+        let email: String?
+        let name: String?
+        let orgName: String?
     }
 
-    static func extractClaudeAccountDescription(fromStatusJSONData data: Data) -> String? {
+    private static func parseClaudeStatusJSON(_ data: Data) -> ClaudeStatusPayload? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }
 
-        let email = json["email"] as? String
-        let orgName = json["orgName"] as? String
+        let account = json["account"] as? [String: Any]
+        let user = json["user"] as? [String: Any]
 
-        if let email, !email.isEmpty {
+        let loggedIn = (json["loggedIn"] as? Bool)
+            ?? (json["isLoggedIn"] as? Bool)
+            ?? (account?["loggedIn"] as? Bool)
+            ?? (user?["loggedIn"] as? Bool)
+
+        let email = normalizedNonEmpty(
+            (json["email"] as? String)
+                ?? (account?["email"] as? String)
+                ?? (user?["email"] as? String)
+        )
+
+        let name = normalizedNonEmpty(
+            (json["name"] as? String)
+                ?? (json["displayName"] as? String)
+                ?? (account?["name"] as? String)
+                ?? (account?["displayName"] as? String)
+                ?? (user?["name"] as? String)
+                ?? (user?["displayName"] as? String)
+        )
+
+        let orgName = normalizedNonEmpty(
+            (json["orgName"] as? String)
+                ?? (account?["orgName"] as? String)
+                ?? (user?["orgName"] as? String)
+                ?? (json["organization"] as? String)
+        )
+
+        return ClaudeStatusPayload(
+            loggedIn: loggedIn,
+            email: email,
+            name: name,
+            orgName: orgName
+        )
+    }
+
+    static func claudeAccountDescription(
+        statusJSONData: Data?,
+        authState: CLIAuthState
+    ) -> String? {
+        guard case .authenticated = authState,
+              let statusJSONData else {
+            return nil
+        }
+
+        return extractClaudeAccountDescription(fromStatusJSONData: statusJSONData)
+    }
+
+    static func extractClaudeAccountDescription(fromStatusJSONData data: Data) -> String? {
+        guard let statusPayload = parseClaudeStatusJSON(data) else {
+            return nil
+        }
+
+        if let email = normalizedNonEmpty(statusPayload.email) {
+            if let name = normalizedNonEmpty(statusPayload.name) {
+                return formattedAccountDescription(name: name, email: email)
+            }
             return email
         }
 
-        if let orgName, !orgName.isEmpty {
-            return orgName
+        if let name = normalizedNonEmpty(statusPayload.name) {
+            return name
         }
 
-        return nil
+        return normalizedNonEmpty(statusPayload.orgName)
     }
 
     static func formattedAccountDescription(name: String?, email: String?) -> String? {
@@ -261,6 +347,16 @@ public enum CLIAuthDiscovery {
         }
 
         return nil
+    }
+
+    private static func normalizedNonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func normalizedConfigDirectory(_ override: String?, fallback: String) -> String {
+        normalizedNonEmpty(override) ?? fallback
     }
 
     static func parseJWTClaims(from token: String) -> [String: Any]? {
@@ -287,11 +383,15 @@ public enum CLIAuthDiscovery {
     private static func runCommand(
         executablePath: String,
         arguments: [String],
+        environment: [String: String] = [:],
         timeout: TimeInterval
     ) -> Data? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executablePath)
         process.arguments = arguments
+        if !environment.isEmpty {
+            process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+        }
         process.standardInput = FileHandle.nullDevice
 
         let stdout = Pipe()

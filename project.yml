@@ -129,6 +129,8 @@ targets:
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
         link: false
+      - package: GRDB
+        product: GRDB
       - sdk: UserNotifications.framework
 
   OpenBurnBarDaemonExecutable:
