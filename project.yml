@@ -12,7 +12,7 @@ settings:
     SWIFT_VERSION: "5.10"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_PREVIEWS: YES
-    MARKETING_VERSION: "0.1.0-beta"
+    MARKETING_VERSION: "0.1.2-beta"
     CURRENT_PROJECT_VERSION: 1
     CODE_SIGN_STYLE: Automatic
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"

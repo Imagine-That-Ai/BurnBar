@@ -32,6 +32,7 @@ private enum SettingsSecretDefaultsKey {
     static let controllerTelegramBotToken = "controllerTelegramBotToken"
     static let openClawBearerToken = "openClawBearerToken"
     static let hermesBearerToken = "hermesBearerToken"
+    static let gatewayAuthToken = "gatewayAuthToken"
 }
 
 struct SettingsSecretPersistence {
@@ -180,6 +181,39 @@ final class SettingsManager {
     /// Show simulator / replay tooling in operator-facing surfaces.
     var controllerSimulatorToolsEnabled: Bool {
         didSet { save() }
+    }
+
+    // MARK: - HTTP Gateway Settings
+
+    /// Whether the HTTP gateway is enabled.
+    var gatewayEnabled: Bool {
+        didSet { save() }
+    }
+
+    /// Host to bind the HTTP gateway (default 127.0.0.1).
+    var gatewayHost: String {
+        didSet { save() }
+    }
+
+    /// Port for the HTTP gateway (default 8317).
+    var gatewayPort: Int {
+        didSet { save() }
+    }
+
+    /// Bearer token for gateway auth (required for non-loopback).
+    var gatewayAuthToken: String {
+        didSet { save() }
+    }
+
+    /// Build gateway settings as a simple dictionary for daemon launch args.
+    /// The actual BurnBarGatewayConfiguration type lives in the daemon module;
+    /// the daemon CLI parses these args from the launch agent plist.
+    var gatewayConfigurationDict: [String: Any] {
+        [
+            "enabled": gatewayEnabled,
+            "host": gatewayHost.isEmpty ? "127.0.0.1" : gatewayHost,
+            "port": gatewayPort > 0 ? gatewayPort : 8317
+        ]
     }
 
     /// User opted in to local indexing of conversation text for search and chat context.
@@ -586,6 +620,14 @@ final class SettingsManager {
         }
         self.controllerSimulatorToolsEnabled = defaults.bool(forKey: "controllerSimulatorToolsEnabled")
 
+        self.gatewayEnabled = defaults.bool(forKey: "gatewayEnabled")
+        self.gatewayHost = defaults.string(forKey: "gatewayHost") ?? "127.0.0.1"
+        self.gatewayPort = defaults.object(forKey: "gatewayPort") as? Int ?? 8317
+        self.gatewayAuthToken = chatGatewaySecretPersistence.load(
+            account: OpenBurnBarIdentity.gatewayAuthTokenAccount,
+            legacyDefaultsKey: SettingsSecretDefaultsKey.gatewayAuthToken
+        )
+
         self.conversationIndexingConsentShown = defaults.bool(forKey: "conversationIndexingConsentShown")
         if defaults.object(forKey: "conversationIndexingEnabled") != nil {
             self.conversationIndexingEnabled = defaults.bool(forKey: "conversationIndexingEnabled")
@@ -800,6 +842,9 @@ final class SettingsManager {
         defaults.set(controllerCalendarDefaultMinutes, forKey: "controllerCalendarDefaultMinutes")
         defaults.set(controllerDefaultSnoozeMinutes, forKey: "controllerDefaultSnoozeMinutes")
         defaults.set(controllerSimulatorToolsEnabled, forKey: "controllerSimulatorToolsEnabled")
+        defaults.set(gatewayEnabled, forKey: "gatewayEnabled")
+        defaults.set(gatewayHost, forKey: "gatewayHost")
+        defaults.set(gatewayPort, forKey: "gatewayPort")
         defaults.set(conversationIndexingEnabled, forKey: "conversationIndexingEnabled")
         defaults.set(preferredIndexEmbeddingVersionID, forKey: "preferredIndexEmbeddingVersionID")
         defaults.set(indexEmbeddingProvider.rawValue, forKey: "indexEmbeddingProvider")
@@ -836,6 +881,11 @@ final class SettingsManager {
             hermesBearerToken,
             account: OpenBurnBarIdentity.hermesBearerTokenAccount,
             legacyDefaultsKey: SettingsSecretDefaultsKey.hermesBearerToken
+        )
+        chatGatewaySecretPersistence.persist(
+            gatewayAuthToken,
+            account: OpenBurnBarIdentity.gatewayAuthTokenAccount,
+            legacyDefaultsKey: SettingsSecretDefaultsKey.gatewayAuthToken
         )
 
         defaults.set(autoSessionSummariesEnabled, forKey: "autoSessionSummariesEnabled")
