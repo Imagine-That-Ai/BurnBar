@@ -1380,7 +1380,6 @@
 			);
 			dependencies = (
 				443FF277670BA948D441326F /* PBXTargetDependency */,
-				3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */,
 			);
 			name = OpenBurnBarDaemon;
 			packageProductDependencies = (
@@ -1910,10 +1909,6 @@
 			isa = PBXTargetDependency;
 			target = 2550C7945EDECE95DC6CEEB4 /* OpenBurnBarDaemon */;
 			targetProxy = 915F20E9E542620613C03C01 /* PBXContainerItemProxy */;
-		};
-		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			productRef = D15A9A82A7B55AEE21F5D4C7 /* GRDB */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
