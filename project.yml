@@ -135,10 +135,12 @@ targets:
           if [[ -n "${XCODE_VERSION_MAJOR:-}" && "${XCODE_VERSION_MAJOR}" -lt 1700 ]]; then
             link_file=""
             for candidate in \
+              "${LINK_FILE_LIST_normal_arm64:-}" \
+              "${OBJECT_FILE_DIR_normal}/arm64/${PRODUCT_NAME}.LinkFileList" \
               "${OBJECT_FILE_DIR_normal}/${CURRENT_ARCH}/${PRODUCT_NAME}.LinkFileList" \
               "${OBJECT_FILE_DIR_normal}/${PRODUCT_NAME}.LinkFileList"
             do
-              if [[ -f "${candidate}" ]]; then
+              if [[ -n "${candidate}" && -f "${candidate}" ]]; then
                 link_file="${candidate}"
                 break
               fi
