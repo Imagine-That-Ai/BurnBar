@@ -226,4 +226,20 @@ extension DataStore {
         try upsertConversation(record)
         try enqueueConversationProjectionJob(conversationID: record.id, jobType: .reproject)
     }
+
+    /// Fetches conversations suitable for transcript scan / context pack assembly.
+    /// Filters by optional provider, project name, date range, and source types.
+    func fetchConversationsForTranscriptScan(
+        provider: AgentProvider?,
+        projectName: String?,
+        dateRange: ClosedRange<Date>?,
+        conversationSources: Set<ConversationSourceType>?
+    ) throws -> [ConversationRecord] {
+        try conversationStore.fetchConversationsForTranscriptScan(
+            provider: provider,
+            projectName: projectName,
+            dateRange: dateRange,
+            conversationSources: conversationSources
+        )
+    }
 }

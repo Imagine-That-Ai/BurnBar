@@ -14,6 +14,9 @@ struct SessionDetailView: View {
     @State private var summarizing = false
     @State private var summarizeError: String?
     @StateObject private var cliBridge = CLIBridge()
+    @State private var showContextPackSheet = false
+    @State private var contextPackAnchorId: String?
+    @State private var contextPackAnchorProject: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,6 +38,19 @@ struct SessionDetailView: View {
                     Divider().background(DesignSystem.Colors.border)
                     viewSessionLogButton(conversation: conv, onOpen: onOpenSessionLog)
                 }
+
+                if conversation != nil {
+                    Divider().background(DesignSystem.Colors.border)
+                    SessionDetailContextPackRow(
+                        session: session,
+                        conversation: conversation,
+                        dataStore: dataStore
+                    ) { anchorId, anchorProject in
+                        contextPackAnchorId = anchorId
+                        contextPackAnchorProject = anchorProject
+                        showContextPackSheet = true
+                    }
+                }
             }
 
             Divider().background(DesignSystem.Colors.border)
@@ -49,6 +65,14 @@ struct SessionDetailView: View {
             let id = ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
             conversation = try? dataStore.fetchConversation(id: id)
             summaryText = conversation?.summary
+        }
+        .sheet(isPresented: $showContextPackSheet) {
+            ContextPackSheet(
+                dataStore: dataStore,
+                anchorSessionId: contextPackAnchorId,
+                anchorProject: contextPackAnchorProject,
+                dateRange: nil
+            )
         }
     }
 

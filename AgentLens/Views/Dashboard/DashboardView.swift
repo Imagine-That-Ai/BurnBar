@@ -41,6 +41,7 @@ struct DashboardView: View {
     @State private var sessionLogJumpLookup: [String: ConversationRecord] = [:]
     @State private var dashboardCanvasSize: CGSize = .zero
     @State private var didAutoExpandEmptyTimeRange = false
+    @State private var showContextPackSheet = false
     var chatController: ChatSessionController
     @State private var quotaService = ProviderQuotaService.shared
 
@@ -753,6 +754,14 @@ struct DashboardView: View {
                 SummaryProgressPanel(aggregator: agg)
             }
         }
+        .sheet(isPresented: $showContextPackSheet) {
+            ContextPackSheet(
+                dataStore: dataStore,
+                anchorSessionId: nil,
+                anchorProject: nil,
+                dateRange: selectedTimeRange.dateRange()
+            )
+        }
     }
 
     // MARK: - Overview
@@ -784,6 +793,12 @@ struct DashboardView: View {
                         onOpenSettings: { showingSettings = true }
                     )
                     NarrativeCardView(dataStore: dataStore)
+                    ContextPackDashboardCard(
+                        dataStore: dataStore,
+                        selectedTimeRange: selectedTimeRange
+                    ) {
+                        showContextPackSheet = true
+                    }
                     overviewHero
                     databaseCTA
 
