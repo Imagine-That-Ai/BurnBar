@@ -1,0 +1,34 @@
+{
+  "featureId": "misc-harden-context-pack-real-ui-harness-coverage",
+  "reviewedAt": "2026-04-14T11:54:13Z",
+  "commitId": "51f57d6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The change strengthens service-level parity assertions, but it does not satisfy the requested ViewInspector-driven Dashboard→SessionDetail→ContextPackSheet harness hardening. The new test still compares `ContextPackService.assemble` outputs directly and never exercises the real entry surfaces, and the added parity checks stop short of full ordered session-id equality across entrypoints.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/ContextPackCrossFlowTests.swift",
+        "line": 324,
+        "severity": "blocking",
+        "description": "This new test still uses `assembleAnchored`/`assembleUnanchored` helpers, which call `ContextPackService.assemble` directly, so it never instantiates `DashboardView`, `SessionDetailView`, or `ContextPackSheet`. That means the feature's required real ViewInspector-driven harness for CTXDETAIL/CTXCROSS is still missing."
+      },
+      {
+        "file": "AgentLensTests/Active/ContextPackCrossFlowTests.swift",
+        "line": 324,
+        "severity": "blocking",
+        "description": "The \"explicit ordered parity\" coverage only checks set equality, per-path stability, first-position parity, and same-project adjacency; it never asserts full ordered `sessionIds` equality between the two entrypoints. Mid-array ordering drift would still pass these tests, so the requested ordered parity coverage remains incomplete."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `context-pack-ui-worker` procedure already says cross-flow assertions must drive Dashboard → SessionDetail → ContextPackSheet (or an equivalent real view harness) and that service-only tests do not satisfy CTXDETAIL/CTXCROSS coverage, but this feature still implemented only `ContextPackService`-level parity checks.",
+      "evidence": "`/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/skills/context-pack-ui-worker/SKILL.md:29-30` vs `AgentLensTests/Active/ContextPackCrossFlowTests.swift:199-206, 324-377`"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed: the commit strengthens service-level parity assertions, but it does not add the requested real UI harness coverage or full ordered cross-entry parity. No guidance/documentation change was made in the repo; the existing skill guidance already requires the real view-surface harness."
+}

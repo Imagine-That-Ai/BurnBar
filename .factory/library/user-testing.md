@@ -17,7 +17,7 @@
 - No app services or seeded runtime data are required for this surface; tests should rely on deterministic fixtures only.
 - Do not touch or probe unrelated busy ports/processes; this milestone is test-only.
 - If a fixture gap is discovered (for example, a missing exact equal-score/equal-timestamp survivor case), record it in the synthesis report instead of altering product code.
-- The flow-report finalization script has no milestone default for `m1-context-pack-core`; pass the four report filenames explicitly: `cp1-service-ranking.json`, `cp1-service-cap.json`, `cp1-service-dedupe.json`, `cp1-export-envelopes.json`.
+- The flow-report finalization script now resolves the `m1-context-pack-core` default report set automatically; pass explicit filenames only when you need to override the built-in mapping (`cp1-service-ranking.json`, `cp1-service-cap.json`, `cp1-service-dedupe.json`, `cp1-export-envelopes.json`).
 
 ### Surface CP2: Dashboard Context Pack UI
 - Scope: card placement, sheet presentation, target pill behavior, copy flow, budget threshold states, empty-state safeguards, modal collision behavior.

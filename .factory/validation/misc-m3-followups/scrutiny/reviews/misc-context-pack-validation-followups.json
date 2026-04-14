@@ -1,0 +1,26 @@
+{
+  "featureId": "misc-context-pack-validation-followups",
+  "reviewedAt": "2026-04-14T11:54:51Z",
+  "commitId": "7b541d5",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The follow-up is implemented correctly: VAL-CTXEXP-006 now points at the XML-sensitive export test, and m1-context-pack-core finalization now has a built-in default report set.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The XML-safety naming guidance is still split across docs: the current test file uses `test_xmlSensitiveKeyFilesAndCommandsPreserveEnvelopeIntegrity`, but validation-contract.md still names `test_xmlSensitiveBodyPreservesEnvelopeIntegrity`. A doc refresh would reduce future annotation drift.",
+      "evidence": "validation-contract.md:232 vs .factory/library/user-testing.md:11 and AgentLensTests/Active/ContextPackExportTests.swift:471"
+    },
+    {
+      "area": "knowledge",
+      "observation": "The flow-report guidance for m1-context-pack-core is now stale in user-testing.md; it still says no milestone default exists and instructs passing the four filenames explicitly, even though the script now resolves them by default.",
+      "evidence": ".factory/library/user-testing.md:20 vs .factory/library/verify-flow-report-finalization.sh:77 and :118"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The feature's functional changes are correct and verified; only guidance/docs drift remains for follow-up cleanup."
+}
