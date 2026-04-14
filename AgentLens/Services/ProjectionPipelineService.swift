@@ -1232,14 +1232,14 @@ private struct ProjectionSweepPerformanceDetails: Codable {
     let throughputJobsPerSecond: Double
 }
 
-private struct ProjectionJobLatencySummary: Codable {
+struct ProjectionJobLatencySummary: Codable {
     let sampledCompletedJobs: Int
     let queueWaitMs: ProjectionLatencyDistribution?
     let processingMs: ProjectionLatencyDistribution?
     let endToEndMs: ProjectionLatencyDistribution?
 }
 
-private struct ProjectionLatencyDistribution: Codable {
+struct ProjectionLatencyDistribution: Codable {
     let count: Int
     let p50Ms: Double
     let p95Ms: Double
