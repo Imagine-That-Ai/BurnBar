@@ -235,7 +235,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
     /// This test verifies exact ordered session-id sequences for same-anchor parity
     /// by comparing anchored vs unanchored assembly results with same project scope.
     func test_dashboardAndSessionDetailProduceEquivalentPackForSameAnchor() {
-        // Create a set of candidate sessions in the database
+        // Create a set of candidate sessions
         let candidates = [
             CrossFlowFixtures.makeConversation(
                 id: "s1", sessionId: "session-1",
