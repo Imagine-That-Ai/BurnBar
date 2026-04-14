@@ -355,4 +355,3 @@ struct ProfileRowView: View {
         cliQuotaStatusText(for: profile, quotaLookup: quotaLookup)
     }
 }
-
