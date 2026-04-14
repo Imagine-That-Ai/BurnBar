@@ -129,10 +129,20 @@ enum ContextPackService {
         }
 
         // Step 3: Sort by score descending, then deterministic tie-break
-        // (larger tiebreakKey = more recent = higher rank)
+        // Priority: endTime desc → startTime desc → indexedAt desc → ID asc
         let ranked = scored.sorted { a, b in
-            if a.1 != b.1 { return a.1 > b.1 }
-            return tieBreakKey(a.0) > tieBreakKey(b.0)
+            if a.1 != b.1 { return a.1 > b.1 }  // score descending
+            // Tie-break: more recent timestamps first, then ascending ID
+            let endA = a.0.endTime?.timeIntervalSince1970 ?? 0
+            let endB = b.0.endTime?.timeIntervalSince1970 ?? 0
+            if endA != endB { return endA > endB }  // endTime descending
+            let startA = a.0.startTime?.timeIntervalSince1970 ?? 0
+            let startB = b.0.startTime?.timeIntervalSince1970 ?? 0
+            if startA != startB { return startA > startB }  // startTime descending
+            let indexedA = a.0.indexedAt.timeIntervalSince1970
+            let indexedB = b.0.indexedAt.timeIntervalSince1970
+            if indexedA != indexedB { return indexedA > indexedB }  // indexedAt descending
+            return a.0.id < b.0.id  // ID ascending (lower first)
         }
 
         // Step 4: Cap to max sessions
@@ -391,6 +401,7 @@ enum ContextPackService {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeZone = TimeZone(secondsFromGMT: 0)  // UTC for determinism
+        formatter.locale = Locale(identifier: "en_US_POSIX")  // Fixed locale for cross-host determinism
 
         var parts: [String] = []
 
