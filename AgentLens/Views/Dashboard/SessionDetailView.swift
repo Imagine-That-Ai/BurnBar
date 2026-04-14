@@ -60,6 +60,16 @@ struct SessionDetailView: View {
         .padding(DesignSystem.Spacing.lg)
         .background(DesignSystem.Colors.background)
         .frame(width: 480, height: SettingsManager.shared.conversationIndexingEnabled && conversation != nil ? 560 : 460)
+        // Reset conversation-dependent UI state before async reload to prevent stale state
+        // from leaking across rapid session switches (VAL-CTXDETAIL-007, VAL-CTXDETAIL-010)
+        .onChange(of: session.sessionId) { _, _ in
+            conversation = nil
+            summaryText = nil
+            summarizeError = nil
+            summarizing = false
+            contextPackAnchorId = nil
+            contextPackAnchorProject = nil
+        }
         .task(id: ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)) {
             await cliBridge.detect()
             let id = ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
