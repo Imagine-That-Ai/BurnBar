@@ -12,6 +12,9 @@ commands:
     scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh
   test_app: scripts/test-openburnbar-app.sh
   test_swift: scripts/test-openburnbar-swift.sh
+  test_context_pack_service: xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/ContextPackServiceTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''
+  test_context_pack_export: xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/ContextPackExportTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''
+  test_context_pack_ui: xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/ContextPackDashboardSurfaceTests,OpenBurnBarTests/ContextPackSessionDetailSurfaceTests,OpenBurnBarTests/ContextPackCrossFlowTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''
   browser_smoke: open -Ra "Safari" && open -Ra "Google Chrome"
   test_retrieval: scripts/test-openburnbar-retrieval-evals.sh
   build: scripts/build.sh --build --configuration Debug --cache-dir .spm-cache --derived-data .derived-data/ci-build
