@@ -132,11 +132,18 @@ enum FlexibleQuotaBucketNormalizer {
         // Z.ai uses unit+number fields to distinguish quota windows
         let zaiUnit = provider == .zai ? number(in: dictionary, keys: ["unit"]) : nil
         let zaiNumber = provider == .zai ? number(in: dictionary, keys: ["number"]) : nil
-        let label = normalizedBucketLabel(rawLabel, provider: provider, unit: zaiUnit, number: zaiNumber)
         let windowKind = inferWindowKind(
             from: intervalHint ?? rawLabel,
+            provider: provider,
             intervalStart: intervalStart,
             resetsAt: resetsAt
+        )
+        let label = normalizedBucketLabel(
+            rawLabel,
+            provider: provider,
+            inferredWindowKind: windowKind,
+            unit: zaiUnit,
+            number: zaiNumber
         )
         let unit = inferUnit(provider: provider, label: rawLabel, dictionary: dictionary, usedPercent: usedPercent, limitValue: limitValue)
         var normalizedRemaining: Double?
@@ -176,6 +183,7 @@ enum FlexibleQuotaBucketNormalizer {
 
     static func inferWindowKind(
         from label: String,
+        provider: AgentProvider,
         intervalStart: Date? = nil,
         resetsAt: Date? = nil
     ) -> ProviderQuotaWindowKind {
@@ -197,6 +205,16 @@ enum FlexibleQuotaBucketNormalizer {
         }
         if let intervalStart, let resetsAt {
             let duration = resetsAt.timeIntervalSince(intervalStart)
+            if provider == .minimax {
+                switch duration {
+                case 0..<(18 * 60 * 60):
+                    return .rollingHours
+                case 6 * 24 * 60 * 60...(8 * 24 * 60 * 60):
+                    return .rollingDays
+                default:
+                    break
+                }
+            }
             switch duration {
             case 0..<(18 * 60 * 60):
                 return .rollingHours
@@ -268,7 +286,13 @@ enum FlexibleQuotaBucketNormalizer {
         return now.addingTimeInterval(seconds)
     }
 
-    static func normalizedBucketLabel(_ label: String, provider: AgentProvider, unit: Double? = nil, number: Double? = nil) -> String {
+    static func normalizedBucketLabel(
+        _ label: String,
+        provider: AgentProvider,
+        inferredWindowKind: ProviderQuotaWindowKind? = nil,
+        unit: Double? = nil,
+        number: Double? = nil
+    ) -> String {
         let lowercased = label.lowercased()
         if provider == .zai {
             if lowercased.contains("tokens_limit") {
@@ -301,6 +325,20 @@ enum FlexibleQuotaBucketNormalizer {
         }
         if lowercased.contains("month") {
             return "Monthly quota"
+        }
+        if provider == .minimax, let inferredWindowKind {
+            switch inferredWindowKind {
+            case .rollingHours:
+                return "5-hour window"
+            case .rollingDays, .weekly:
+                return "7-day window"
+            case .daily:
+                return "Daily quota"
+            case .monthly:
+                return "Monthly quota"
+            case .custom:
+                break
+            }
         }
         return label
             .replacingOccurrences(of: "_", with: " ")

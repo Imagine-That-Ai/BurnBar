@@ -59,10 +59,13 @@ struct MiniMaxQuotaAdapter: ProviderQuotaAdapter {
                 message: inlineError
             )
         }
-        let buckets = FlexibleQuotaBucketNormalizer.extractFlexibleBuckets(
+        let buckets = normalizeModelRemainsBucketLabels(
+            FlexibleQuotaBucketNormalizer.extractFlexibleBuckets(
+                from: object,
+                provider: .minimax,
+                endpointLabel: "minimax"
+            ),
             from: object,
-            provider: .minimax,
-            endpointLabel: "minimax"
         )
 
         guard !buckets.isEmpty else {
@@ -122,6 +125,41 @@ struct MiniMaxQuotaAdapter: ProviderQuotaAdapter {
         }
 
         return nil
+    }
+
+    private func normalizeModelRemainsBucketLabels(
+        _ buckets: [ProviderQuotaBucket],
+        from object: Any
+    ) -> [ProviderQuotaBucket] {
+        guard buckets.count == 1,
+              let dictionary = FlexibleQuotaBucketNormalizer.unwrapDataEnvelope(object) as? [String: Any],
+              let modelRemains = dictionary["model_remains"] as? [[String: Any]],
+              let first = modelRemains.first,
+              let modelName = FlexibleQuotaBucketNormalizer.string(in: first, keys: ["model_name", "modelName"]),
+              !modelName.isEmpty else {
+            return buckets
+        }
+
+        let normalizedLabel = FlexibleQuotaBucketNormalizer.normalizedBucketLabel(
+            modelName,
+            provider: .minimax
+        )
+        let bucket = buckets[0]
+
+        return [
+            ProviderQuotaBucket(
+                key: bucket.key,
+                label: normalizedLabel,
+                windowKind: bucket.windowKind,
+                usedValue: bucket.usedValue,
+                limitValue: bucket.limitValue,
+                remainingValue: bucket.remainingValue,
+                usedPercent: bucket.usedPercent,
+                resetsAt: bucket.resetsAt,
+                unit: bucket.unit,
+                isEstimated: bucket.isEstimated
+            )
+        ]
     }
 
     private func cursorConnectorKey(for account: String) -> String? {
