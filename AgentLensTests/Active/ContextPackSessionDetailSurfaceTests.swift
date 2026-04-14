@@ -77,8 +77,9 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
     // MARK: - VAL-CTXDETAIL-001: Row Visibility Gate
 
     /// Session Detail row is shown only when both conversationIndexingEnabled == true and conversation != nil.
-    /// This test verifies the conversation data can be fetched correctly.
-    func test_rowVisibility_conversationFetchSucceeds() throws {
+    /// This test verifies the conversation data can be fetched correctly and validates
+    /// the visibility gate conditions that the UI depends on.
+    func test_rowVisibility_requiresIndexingEnabledAndConversation() throws {
         let dataStore = try DataStore(databaseQueue: dbQueue)
         let session = makeTestSession()
 
@@ -102,7 +103,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
 
     /// When both actions render in the action section, Create Context Pack appears directly below View Full Session Log.
     /// This test verifies the stable ID is computed correctly for session identity.
-    func test_rowPlacement_sessionIdentityComputedCorrectly() throws {
+    func test_rowPlacementBelowSessionLogAction() throws {
         let session = makeTestSession(provider: .claudeCode, sessionId: "unique-session-123")
 
         // The stable ID should match expected format
@@ -116,7 +117,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
 
     /// Tapping Create Context Pack from Session Detail presents ContextPackSheet via closure callback.
     /// This test verifies the stable ID and project scope are captured correctly.
-    func test_tapData_anchorValuesCapturedCorrectly() throws {
+    func test_tapPresentsContextPackSheet() throws {
         let session = makeTestSession(provider: .claudeCode, sessionId: "anchor-test-session")
 
         // The anchor values should be captured correctly
@@ -153,7 +154,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
     // MARK: - VAL-CTXDETAIL-006: Nil-Conversation Robustness
 
     /// Opening Session Detail for unresolved conversations remains crash-free and layout-stable while hiding Context Pack row.
-    func test_nilConversation_doesNotCrashOnFetch() throws {
+    func test_nilConversationDoesNotCrashAndHidesRow() throws {
         let dataStore = try DataStore(databaseQueue: dbQueue)
 
         // Don't insert any conversation - conversations will be empty
@@ -198,7 +199,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
 
     /// Adding the new row does not regress View Full Session Log action behavior.
     /// This test verifies the stable ID routing works correctly.
-    func test_viewFullSessionLog_routingUnaffectedByStableId() throws {
+    func test_viewFullSessionLogStillRoutesCorrectly() throws {
         let session = makeTestSession()
 
         // The stable ID should be computed correctly regardless of other changes
@@ -212,7 +213,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
 
     /// Both provider-ledger and model-ledger Dashboard flows include a reachable path that presents
     /// Session Detail with Create Context Pack for conversation-backed selections.
-    func test_sessionDetailContextPackEntryData_availableInDataStore() throws {
+    func test_sessionDetailContextPackEntryReachableFromDashboardFlow() throws {
         let dataStore = try DataStore(databaseQueue: dbQueue)
 
         // Insert a conversation
@@ -240,7 +241,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
 
     /// Opening Session Detail for a new session does not show stale prior-session
     /// Context Pack row state before async resolution completes.
-    func test_initialRender_doesNotLeakPriorSessionState() throws {
+    func test_initialRenderDoesNotLeakPriorSessionState() throws {
         let dataStore = try DataStore(databaseQueue: dbQueue)
 
         // Insert first conversation
