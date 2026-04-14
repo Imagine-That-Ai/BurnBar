@@ -1,0 +1,70 @@
+{
+  "milestone": "m2-context-pack-ui",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "MILESTONE=\"m2-context-pack-ui\" bash -lc 'if [ -n \"${MILESTONE:-}\" ]; then ./.factory/library/verify-flow-report-finalization.sh \"$MILESTONE\" || exit 1; fi; scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh'",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project \"/Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBar.xcodeproj\" -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath \"/Users/albertonunez/Documents/Windsurf/BurnBar/.spm-cache\" -derivedDataPath \"/Users/albertonunez/Documents/Windsurf/BurnBar/.derived-data/ci-typecheck\" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix \"/Users/albertonunez/Documents/Windsurf/BurnBar/extensions/openburnbar\" run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 0,
+    "failed": 3,
+    "failedFeatures": [
+      "m2-context-pack-dashboard-sheet-ui",
+      "m2-context-pack-session-detail-entry",
+      "m2-context-pack-cross-entry-consistency"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "m2-context-pack-dashboard-sheet-ui",
+      "severity": "blocking",
+      "description": "`AgentLens/Views/Dashboard/ContextPackSheet.swift` still treats `anchorSessionId` as a single-conversation fetch and ignores `anchorProject`, so Session Detail launches produce a one-session export instead of the required project-scoped pack (VAL-CTXDETAIL-005 / VAL-CTXCROSS-007)."
+    },
+    {
+      "featureId": "m2-context-pack-dashboard-sheet-ui",
+      "severity": "blocking",
+      "description": "`AgentLens/Views/Dashboard/SessionDetailView.swift` overwrites `conversation` and `summaryText` after the async lookup without clearing prior state first, which can leak stale prior-session data during rapid switches/reanchor and violates the no-stale-state requirement (VAL-CTXDETAIL-010 / VAL-CTXDETAIL-007)."
+    },
+    {
+      "featureId": "m2-context-pack-session-detail-entry",
+      "severity": "blocking",
+      "description": "`AgentLensTests/Active/ContextPackSessionDetailSurfaceTests.swift` renamed the contract validator methods and remains data-layer-only, so the required `xcodebuild -only-testing` entry points will miss the intended SwiftUI visibility/order/tap-routing assertions."
+    },
+    {
+      "featureId": "m2-context-pack-cross-entry-consistency",
+      "severity": "blocking",
+      "description": "`AgentLensTests/Active/ContextPackCrossFlowTests.swift` exercises `ContextPackService.assemble` directly instead of launching `ContextPackSheet` through `DashboardView` and `SessionDetailView`, so the actual cross-entry wiring is still unverified."
+    },
+    {
+      "featureId": "m2-context-pack-cross-entry-consistency",
+      "severity": "blocking",
+      "description": "The cross-flow parity assertions are too weak: they only check counts/presence/markers and do not enforce ordered session-id equality or normalized shared-body equality, leaving same-anchor and envelope-only regressions possible."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": ".factory/skills/context-pack-ui-worker/SKILL.md",
+      "suggestion": "Require Context Pack UI workers to keep the validation-contract validator names verbatim and to assert the actual Dashboard/Session Detail/CrossFlow SwiftUI entrypoints instead of accepting renamed or service-layer-only tests.",
+      "evidence": "The session-detail suite renamed contract methods and stayed data-layer only, while the cross-flow suite called `ContextPackService.assemble` directly and never instantiated `DashboardView`, `SessionDetailView`, or `ContextPackSheet`.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}
