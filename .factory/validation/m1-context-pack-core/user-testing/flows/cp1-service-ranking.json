@@ -1,0 +1,174 @@
+{
+  "groupId": "cp1-service-ranking",
+  "testedAt": "2026-04-14T06:45:46Z",
+  "isolation": {
+    "repoRoot": "/Users/albertonunez/Documents/Windsurf/BurnBar",
+    "missionDir": "/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea",
+    "derivedDataPath": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m1-context-pack-core/user-testing/derived-data/cp1-service-ranking",
+    "scheme": "OpenBurnBar",
+    "destination": "platform=macOS,arch=arm64",
+    "codeSigning": "disabled",
+    "seedData": "none"
+  },
+  "toolsUsed": [
+    "xcodebuild"
+  ],
+  "commandsRun": [
+    {
+      "command": "mkdir -p \"/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m1-context-pack-core/user-testing/derived-data/cp1-service-ranking\" \"/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea/evidence/m1-context-pack-core/cp1-service-ranking\"",
+      "exitCode": 0
+    },
+    {
+      "command": "xcodebuild test -project \"/Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBar.xcodeproj\" -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -only-testing:OpenBurnBarTests/ContextPackServiceTests/test_rankingOrdersByScoreDescending -only-testing:OpenBurnBarTests/ContextPackServiceTests/test_tieBreakDeterministicAcrossRuns -only-testing:OpenBurnBarTests/ContextPackServiceTests/test_sameProjectSessionsAreBoosted -only-testing:OpenBurnBarTests/ContextPackServiceTests/test_recentSessionsWeightedOverOlder -only-testing:OpenBurnBarTests/ContextPackServiceTests/test_summaryPresenceBoostAffectsRanking -only-testing:OpenBurnBarTests/ContextPackServiceTests/test_keyFilesAndCommandsSignalAffectsRanking CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' -derivedDataPath \"/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m1-context-pack-core/user-testing/derived-data/cp1-service-ranking\" > \"/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea/evidence/m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.log\" 2>&1; code=$?; printf '%s\\n' \"$code\" > \"/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea/evidence/m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.exitcode\"; exit $code",
+      "exitCode": 0
+    },
+    {
+      "command": "date -u +\"%Y-%m-%dT%H:%M:%SZ\"",
+      "exitCode": 0
+    }
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CTXSRV-001",
+      "title": "Ranking score ordering",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran targeted xcodebuild test method `test_rankingOrdersByScoreDescending`",
+          "expected": "Sessions are ordered by computed rank descending",
+          "observed": "Passed"
+        }
+      ],
+      "evidence": {
+        "logs": [
+          "m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.log"
+        ],
+        "exitCodes": [
+          "m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.exitcode"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXSRV-002",
+      "title": "Deterministic tie-breaks",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran targeted xcodebuild test method `test_tieBreakDeterministicAcrossRuns`",
+          "expected": "Equal-rank sessions produce stable output across repeated runs",
+          "observed": "Passed"
+        }
+      ],
+      "evidence": {
+        "logs": [
+          "m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.log"
+        ],
+        "exitCodes": [
+          "m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.exitcode"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXSRV-003",
+      "title": "Same-project boost",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran targeted xcodebuild test method `test_sameProjectSessionsAreBoosted`",
+          "expected": "Same-project sessions rank above otherwise-equal other-project sessions",
+          "observed": "Passed"
+        }
+      ],
+      "evidence": {
+        "logs": [
+          "m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.log"
+        ],
+        "exitCodes": [
+          "m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.exitcode"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXSRV-004",
+      "title": "Recency weighting and decay",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran targeted xcodebuild test method `test_recentSessionsWeightedOverOlder`",
+          "expected": "Recent sessions outrank older sessions under controlled fixtures",
+          "observed": "Passed"
+        }
+      ],
+      "evidence": {
+        "logs": [
+          "m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.log"
+        ],
+        "exitCodes": [
+          "m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.exitcode"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXSRV-005",
+      "title": "Summary-presence rank contribution",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran targeted xcodebuild test method `test_summaryPresenceBoostAffectsRanking`",
+          "expected": "Sessions with summaries receive a higher rank than equivalent sessions without summaries",
+          "observed": "Passed"
+        }
+      ],
+      "evidence": {
+        "logs": [
+          "m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.log"
+        ],
+        "exitCodes": [
+          "m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.exitcode"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXSRV-006",
+      "title": "Signal-size rank contribution",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran targeted xcodebuild test method `test_keyFilesAndCommandsSignalAffectsRanking`",
+          "expected": "Higher combined keyFiles+keyCommands signal ranks above lower-signal session",
+          "observed": "Passed"
+        }
+      ],
+      "evidence": {
+        "logs": [
+          "m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.log"
+        ],
+        "exitCodes": [
+          "m1-context-pack-core/cp1-service-ranking/xcodebuild-contextpack-service-ranking.exitcode"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Initial report-write attempt failed because the Python payload used `null` instead of `None` and exited 1.",
+      "resolved": true,
+      "resolution": "Corrected the payload and rewrote the report JSON successfully.",
+      "affectedAssertions": []
+    }
+  ],
+  "blockers": [],
+  "summary": "Ran 6 targeted xcodebuild unit tests for ContextPack service ranking heuristics; all passed with 0 failures."
+}

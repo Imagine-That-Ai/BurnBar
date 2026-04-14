@@ -8,6 +8,16 @@
   - `OpenBurnBarTests/ContextPackServiceTests`
   - `OpenBurnBarTests/ContextPackExportTests`
 - Coverage note: current service tests prove deterministic ordering and cap trimming separately, but they do not yet include an exact equal-score/equal-timestamp fixture that forces final ID-ascending survivor selection under cap pressure.
+- Export contract note: `VAL-CTXEXP-006` is exercised by `test_xmlSensitiveKeyFilesAndCommandsPreserveEnvelopeIntegrity`; the older XML-safety annotation in the repo is stale.
+
+## Flow Validator Guidance: Surface CP1
+
+- Treat CP1 as a serialized heavy surface: run only one `xcodebuild` validator at a time.
+- Use a unique derived-data path per subagent under `.factory/validation/m1-context-pack-core/user-testing/derived-data/<group-id>` to avoid build-product collisions.
+- No app services or seeded runtime data are required for this surface; tests should rely on deterministic fixtures only.
+- Do not touch or probe unrelated busy ports/processes; this milestone is test-only.
+- If a fixture gap is discovered (for example, a missing exact equal-score/equal-timestamp survivor case), record it in the synthesis report instead of altering product code.
+- The flow-report finalization script has no milestone default for `m1-context-pack-core`; pass the four report filenames explicitly: `cp1-service-ranking.json`, `cp1-service-cap.json`, `cp1-service-dedupe.json`, `cp1-export-envelopes.json`.
 
 ### Surface CP2: Dashboard Context Pack UI
 - Scope: card placement, sheet presentation, target pill behavior, copy flow, budget threshold states, empty-state safeguards, modal collision behavior.

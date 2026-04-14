@@ -1,0 +1,125 @@
+{
+  "groupId": "cp1-service-cap",
+  "testedAt": "2026-04-14T06:52:28.692063Z",
+  "isolation": {
+    "repoRoot": "/Users/albertonunez/Documents/Windsurf/BurnBar",
+    "missionDir": "/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea",
+    "derivedDataPath": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m1-context-pack-core/user-testing/derived-data/cp1-service-cap",
+    "evidenceDir": "/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea/evidence/m1-context-pack-core/cp1-service-cap",
+    "scheme": "OpenBurnBar",
+    "destination": "platform=macOS,arch=arm64",
+    "codeSigning": "disabled"
+  },
+  "toolsUsed": [
+    "xcodebuild"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CTXSRV-007",
+      "title": "Session cap maximum five",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran xcodebuild test with only-testing selector for test_sessionCapMaximumFive",
+          "expected": "The selected ContextPackService test should execute and pass",
+          "observed": "Test Case for test_sessionCapMaximumFive passed in the combined xcodebuild run"
+        },
+        {
+          "action": "Checked the combined xcodebuild summary",
+          "expected": "No failures reported for the selected tests",
+          "observed": "Executed 4 tests, with 0 failures (0 unexpected)"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "m1-context-pack-core/cp1-service-cap/run-summary.txt",
+          "m1-context-pack-core/cp1-service-cap/VAL-CTXSRV-007.txt",
+          "m1-context-pack-core/cp1-service-cap/xcodebuild-contextpack-service-cap.log"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXSRV-007B",
+      "title": "Under-cap retention correctness",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran xcodebuild test with only-testing selector for test_underCapRetainsAllEligibleSessions",
+          "expected": "The selected ContextPackService test should execute and pass",
+          "observed": "Test Case for test_underCapRetainsAllEligibleSessions passed in the combined xcodebuild run"
+        },
+        {
+          "action": "Checked the combined xcodebuild summary",
+          "expected": "No failures reported for the selected tests",
+          "observed": "Executed 4 tests, with 0 failures (0 unexpected)"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "m1-context-pack-core/cp1-service-cap/run-summary.txt",
+          "m1-context-pack-core/cp1-service-cap/VAL-CTXSRV-007B.txt",
+          "m1-context-pack-core/cp1-service-cap/xcodebuild-contextpack-service-cap.log"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXSRV-008",
+      "title": "Character cap boundary handling",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran xcodebuild test with only-testing selector for test_characterCapBoundaryAndOverflow",
+          "expected": "The selected ContextPackService test should execute and pass",
+          "observed": "Test Case for test_characterCapBoundaryAndOverflow passed in the combined xcodebuild run"
+        },
+        {
+          "action": "Checked the combined xcodebuild summary",
+          "expected": "No failures reported for the selected tests",
+          "observed": "Executed 4 tests, with 0 failures (0 unexpected)"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "m1-context-pack-core/cp1-service-cap/run-summary.txt",
+          "m1-context-pack-core/cp1-service-cap/VAL-CTXSRV-008.txt",
+          "m1-context-pack-core/cp1-service-cap/xcodebuild-contextpack-service-cap.log"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXSRV-009",
+      "title": "Overflow trim policy",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran xcodebuild test with only-testing selector for test_overflowTrimsOldestIncludedFirst",
+          "expected": "The selected ContextPackService test should execute and pass",
+          "observed": "Test Case for test_overflowTrimsOldestIncludedFirst passed in the combined xcodebuild run"
+        },
+        {
+          "action": "Checked the combined xcodebuild summary",
+          "expected": "No failures reported for the selected tests",
+          "observed": "Executed 4 tests, with 0 failures (0 unexpected)"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "m1-context-pack-core/cp1-service-cap/run-summary.txt",
+          "m1-context-pack-core/cp1-service-cap/VAL-CTXSRV-009.txt",
+          "m1-context-pack-core/cp1-service-cap/xcodebuild-contextpack-service-cap.log"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "All 4 assigned ContextPack service cap/trim assertions passed in a single scoped xcodebuild run."
+}

@@ -1,0 +1,196 @@
+{
+  "groupId": "cp1-export-envelopes",
+  "testedAt": "2026-04-14T07:01:11Z",
+  "isolation": {
+    "repoRoot": "/Users/albertonunez/Documents/Windsurf/BurnBar",
+    "missionDir": "/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea",
+    "derivedDataPath": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m1-context-pack-core/user-testing/derived-data/cp1-export-envelopes",
+    "evidenceDir": "/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea/evidence/m1-context-pack-core/cp1-export-envelopes",
+    "scheme": "OpenBurnBar",
+    "destination": "platform=macOS,arch=arm64",
+    "codeSigning": "disabled",
+    "seedData": "none",
+    "services": "none"
+  },
+  "toolsUsed": [
+    "xcodebuild"
+  ],
+  "commandsRun": [
+    {
+      "command": "mkdir -p \"/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m1-context-pack-core/user-testing/derived-data/cp1-export-envelopes\" \"/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea/evidence/m1-context-pack-core/cp1-export-envelopes\" && xcodebuild test -project \"/Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBar.xcodeproj\" -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -derivedDataPath \"/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m1-context-pack-core/user-testing/derived-data/cp1-export-envelopes\" -only-testing:OpenBurnBarTests/ContextPackExportTests/test_allTargetsContainSameSessionBodyContent -only-testing:OpenBurnBarTests/ContextPackExportTests/test_claudeExportsUseCLAUDEStyleWithXMLEnvelope -only-testing:OpenBurnBarTests/ContextPackExportTests/test_hermesExportsUseCLAUDEStyleWithXMLEnvelope -only-testing:OpenBurnBarTests/ContextPackExportTests/test_codexExportsUseMinimalContextFraming -only-testing:OpenBurnBarTests/ContextPackExportTests/test_cursorExportsUseCursorrulesStyleFraming -only-testing:OpenBurnBarTests/ContextPackExportTests/test_markdownExportsUseCanonicalBriefStructure -only-testing:OpenBurnBarTests/ContextPackExportTests/test_xmlSensitiveKeyFilesAndCommandsPreserveEnvelopeIntegrity -only-testing:OpenBurnBarTests/ContextPackExportTests/test_exportOutputDeterministicAcrossRuns CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' > \"/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea/evidence/m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.log\" 2>&1; code=$?; printf '%s\\n' \"$code\" > \"/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea/evidence/m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.exitcode\"; exit $code",
+      "exitCode": 0
+    },
+    {
+      "command": "date -u +\"%Y-%m-%dT%H:%M:%SZ\"",
+      "exitCode": 0
+    }
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CTXEXP-001",
+      "title": "Shared body parity across targets",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran targeted xcodebuild test method `test_allTargetsContainSameSessionBodyContent`",
+          "expected": "All export targets embed identical shared session body content bytes",
+          "observed": "Passed"
+        }
+      ],
+      "evidence": {
+        "logs": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.log"
+        ],
+        "exitCodes": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.exitcode"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXEXP-002",
+      "title": "Claude and Hermes envelope correctness",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran targeted xcodebuild test methods `test_claudeExportsUseCLAUDEStyleWithXMLEnvelope` and `test_hermesExportsUseCLAUDEStyleWithXMLEnvelope`",
+          "expected": "Claude/Hermes exports include the CLAUDE-style header and balanced <context_pack> XML envelope without mutating shared body content",
+          "observed": "Passed"
+        }
+      ],
+      "evidence": {
+        "logs": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.log"
+        ],
+        "exitCodes": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.exitcode"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXEXP-003",
+      "title": "Codex envelope correctness",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran targeted xcodebuild test method `test_codexExportsUseMinimalContextFraming`",
+          "expected": "Codex export emits the minimal `## Context` framing with unchanged shared body",
+          "observed": "Passed"
+        }
+      ],
+      "evidence": {
+        "logs": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.log"
+        ],
+        "exitCodes": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.exitcode"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXEXP-004",
+      "title": "Cursor envelope correctness",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran targeted xcodebuild test method `test_cursorExportsUseCursorrulesStyleFraming`",
+          "expected": "Cursor export emits `.cursorrules`-style framing and session summaries while preserving shared-body semantics",
+          "observed": "Passed"
+        }
+      ],
+      "evidence": {
+        "logs": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.log"
+        ],
+        "exitCodes": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.exitcode"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXEXP-005",
+      "title": "Markdown envelope correctness",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran targeted xcodebuild test method `test_markdownExportsUseCanonicalBriefStructure`",
+          "expected": "Markdown export emits the canonical brief structure with title, metadata, sessions, key files, and key commands sections",
+          "observed": "Passed"
+        }
+      ],
+      "evidence": {
+        "logs": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.log"
+        ],
+        "exitCodes": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.exitcode"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXEXP-006",
+      "title": "XML-sensitive body safety for claude/hermes envelopes",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran targeted xcodebuild test method `test_xmlSensitiveKeyFilesAndCommandsPreserveEnvelopeIntegrity`",
+          "expected": "XML-sensitive content inside claude/hermes exports does not break `<context_pack>` envelope integrity",
+          "observed": "Passed"
+        }
+      ],
+      "evidence": {
+        "logs": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.log"
+        ],
+        "exitCodes": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.exitcode"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXEXP-007",
+      "title": "Locale/timezone-stable export determinism",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Ran targeted xcodebuild test method `test_exportOutputDeterministicAcrossRuns`",
+          "expected": "Repeated export runs remain byte-stable under fixed locale/timezone behavior",
+          "observed": "Passed"
+        }
+      ],
+      "evidence": {
+        "logs": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.log"
+        ],
+        "exitCodes": [
+          "m1-context-pack-core/cp1-export-envelopes/xcodebuild-contextpack-export-envelopes.exitcode"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The repo-level VAL-CTXEXP-006 annotation in `AgentLensTests/Active/ContextPackExportTests.swift` is out of sync with the validation-contract; the contract-required XML-sensitive envelope integrity check now lives in the later XML-sensitive test method.",
+      "resolved": true,
+      "resolution": "Validated the contract requirement via `test_xmlSensitiveKeyFilesAndCommandsPreserveEnvelopeIntegrity` and recorded that mapping here.",
+      "affectedAssertions": [
+        "VAL-CTXEXP-006"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Ran one scoped xcodebuild command for 8 export-envelope tests; all passed with 0 failures and exit code 0."
+}
