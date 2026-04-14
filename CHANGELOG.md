@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2-beta.2] - 2026-04-14
+
+### Changed
+- decomposed `AccountSwitcherSettingsView` into focused rendering, data-operation, row, form, destination-picker, and support files so the settings surface is easier to reason about and maintain
+- split `ProviderQuotaViews` into smaller bucket, popover, command-center, and strip view files to reduce SwiftUI complexity and tighten presentation boundaries
+- refactored `ProviderQuotaService` into a slimmer facade/coordinator while keeping provider-specific parsing and view-facing API behavior intact
+
+### Fixed
+- MiniMax token-plan refresh now preserves model labels for single `model_remains` payloads instead of collapsing them into a generic window label
+- provider quota API-key resolution now accepts the stable provider identifier variants used by the app and adapters, preventing missing-key refresh failures for MiniMax and Z.ai
+
+### Added
+- active app-test coverage for the provider quota service refactor path
+
 ## [0.1.2-beta] - 2026-04-13
 
 ### Security
