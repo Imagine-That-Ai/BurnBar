@@ -1,21 +1,21 @@
 {
   "milestone": "m2-context-pack-ui",
-  "round": 3,
+  "round": 4,
   "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
-      "command": "MILESTONE=\"m2-context-pack-ui\" ./.factory/library/verify-flow-report-finalization.sh \"m2-context-pack-ui\" && scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh",
+      "command": "cd \"/Users/albertonunez/Documents/Windsurf/BurnBar\" && MILESTONE=\"m2-context-pack-ui\" ./.factory/library/verify-flow-report-finalization.sh \"m2-context-pack-ui\" && scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh",
       "exitCode": 0
     },
     "typecheck": {
       "passed": true,
-      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "command": "cd \"/Users/albertonunez/Documents/Windsurf/BurnBar\" && xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
       "exitCode": 0
     },
     "lint": {
       "passed": true,
-      "command": "npm --prefix extensions/openburnbar run lint",
+      "command": "cd \"/Users/albertonunez/Documents/Windsurf/BurnBar\" && npm --prefix extensions/openburnbar run lint",
       "exitCode": 0
     }
   },
@@ -32,25 +32,31 @@
     {
       "featureId": "m2-fix-session-anchor-project-scope-and-stale-state",
       "severity": "blocking",
-      "description": "SessionDetailView still does not clear prior conversation/summary state before the async refresh completes, so the rapid-switch stale-state leak remains possible despite the .task(id:) cancellation change."
+      "description": "SessionDetailView still clears state too narrowly: the reset watches only session.sessionId, but the reload identity is provider + sessionId, so provider swaps can still leak prior conversation/summary/anchor state before the async refresh finishes."
     },
     {
       "featureId": "m2-fix-crossflow-contract-grade-test-rigor",
       "severity": "blocking",
-      "description": "Session Detail tests remain data-layer-only and still do not instantiate SessionDetailView or ContextPackSheet, so the contract's UI visibility/order/presentation wiring is not actually exercised."
+      "description": "ContextPackSessionDetailSurfaceTests still remain data-layer-only and never instantiate SessionDetailView or ContextPackSheet, so the contract's UI visibility/order/presentation wiring is not actually exercised."
     },
     {
       "featureId": "m2-fix-crossflow-contract-grade-test-rigor",
       "severity": "blocking",
-      "description": "CrossFlow tests still bypass the real Dashboard/SessionDetail/ContextPackSheet path and do not assert exact ordered session-id equality plus normalized shared-body equality, leaving same-anchor parity regressions unverified."
+      "description": "ContextPackCrossFlowTests still bypass the real Dashboard -> SessionDetail -> ContextPackSheet path and do not assert exact ordered session-id equality, leaving same-anchor parity regressions unverified."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": ".factory/skills/context-pack-ui-worker/SKILL.md",
-      "suggestion": "Strengthen the UI-worker procedure to require explicit stale-state clearing (or equivalent view-identity scoping) for reused SessionDetail content; `.task(id:)` cancellation alone is not sufficient. Also require cross-flow reviewers/tests to instantiate the real DashboardView -> SessionDetailView -> ContextPackSheet launch path and to assert ordered session-id equality plus normalized shared-body parity.",
-      "evidence": "The fix-session review still found stale conversation/summary leakage after the async refresh change, and the crossflow review found the tests still bypass real SwiftUI entrypoints and only approximate same-anchor parity.",
+      "suggestion": "Require SessionDetail stale-state clearing to key off the full reload identity (`provider + sessionId`, or an equivalent view identity scope) instead of `sessionId` alone; `.task(id:)` cancellation by itself is not enough.",
+      "evidence": "The fix-session review found that provider swaps can still leak prior conversation/summary/anchor state because the reset only watches `session.sessionId`.",
+      "isSystemic": true
+    },
+    {
+      "target": ".factory/skills/context-pack-ui-worker/SKILL.md",
+      "suggestion": "Require cross-flow and Session Detail validation to instantiate the real DashboardView -> SessionDetailView -> ContextPackSheet path and assert exact ordered session-id parity, rejecting service-only helper coverage for contract-grade checks.",
+      "evidence": "The crossflow review found the tests still bypass real SwiftUI entrypoints and only approximate same-anchor parity with service-only helpers.",
       "isSystemic": true
     }
   ],

@@ -1,34 +1,34 @@
 {
   "featureId": "m2-fix-crossflow-contract-grade-test-rigor",
-  "reviewedAt": "2026-04-14T10:14:32Z",
-  "commitId": "106c2fd",
+  "reviewedAt": "2026-04-14T10:46:30Z",
+  "commitId": "efd3b64",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "fail",
   "codeReview": {
-    "summary": "The contract-referenced selector names are restored exactly, but the fix still leaves both original blockers unresolved: Session Detail remains data-layer-only, and CrossFlow still bypasses the real SwiftUI entrypoints while missing the required ordered session-id parity check.",
+    "summary": "The fix still does not exercise the real SwiftUI entrypoints or enforce strict same-anchor ordered parity, so the original cross-flow and Session Detail blockers remain unresolved.",
     "issues": [
       {
         "file": "/Users/albertonunez/Documents/Windsurf/BurnBar/AgentLensTests/Active/ContextPackSessionDetailSurfaceTests.swift",
-        "line": 82,
+        "line": 141,
         "severity": "blocking",
-        "description": "These renamed tests still only exercise `DataStore` and stable-ID helpers. `test_rowVisibility_requiresIndexingEnabledAndConversation`, `test_rowPlacementBelowSessionLogAction`, `test_tapPresentsContextPackSheet`, and the rest never instantiate `SessionDetailView` or `ContextPackSheet`, so the contract's required UI visibility/order/presentation wiring is still not proven."
+        "description": "These tests still only validate SettingsManager, DataStore.fetchConversation, and stable-ID helpers. Despite the ViewInspector import, they never instantiate SessionDetailView, inspect the rendered hierarchy, or present ContextPackSheet, so VAL-CTXDETAIL-001/002/003/006/007/008/010 remain model-level rather than contract-grade view-surface coverage."
       },
       {
         "file": "/Users/albertonunez/Documents/Windsurf/BurnBar/AgentLensTests/Active/ContextPackCrossFlowTests.swift",
-        "line": 179,
+        "line": 237,
         "severity": "blocking",
-        "description": "`test_dashboardAndSessionDetailProduceEquivalentPackForSameAnchor` still drives `ContextPackService.assemble` through `assembleAnchored`/`assembleUnanchored` instead of the real Dashboard/SessionDetail/ContextPackSheet flow, and it never asserts exact ordered `sessionIds` equality between entrypoints. The same-anchor case also compares an anchored pack to `assembleUnanchored(candidates:)`, so the parity requirement is still only being approximated."
+        "description": "The same-anchor tests still call ContextPackService.assemble through assembleAnchored/assembleUnanchored instead of driving Dashboard \u2192 SessionDetail \u2192 ContextPackSheet, and the assertions remain too weak: they check count/presence and normalized concatenated bodies but never exact ordered sessionIds equality between entrypoints. Same-anchor and envelope-only regressions can still slip through."
       }
     ]
   },
   "sharedStateObservations": [
     {
       "area": "skills",
-      "observation": "The `context-pack-ui-worker` procedure should explicitly require a real UI harness for Session Detail and CrossFlow checks instead of allowing `DataStore`/service helpers to stand in for entrypoint coverage.",
-      "evidence": "AgentLensTests/Active/ContextPackSessionDetailSurfaceTests.swift:82-238 and AgentLensTests/Active/ContextPackCrossFlowTests.swift:139-403 validate helper/service behavior without instantiating DashboardView, SessionDetailView, or ContextPackSheet."
+      "observation": "The context-pack-ui-worker procedure already says cross-flow checks must drive a real Dashboard \u2192 SessionDetail \u2192 ContextPackSheet harness and must not fall back to service-only helpers, but the current fix still does exactly that. A concrete harness example or stronger anti-pattern checklist in the skill docs would make the contract harder to bypass.",
+      "evidence": "AgentLensTests/Active/ContextPackSessionDetailSurfaceTests.swift:141-201 and AgentLensTests/Active/ContextPackCrossFlowTests.swift:199-445 only exercise DataStore/service helpers; no DashboardView, SessionDetailView, or ContextPackSheet instantiation appears in the test files."
     }
   ],
   "addressesFailureFrom": ".factory/validation/m2-context-pack-ui/scrutiny/reviews/m2-context-pack-cross-entry-consistency.json",
-  "summary": "Selectors are fixed, but the fix still does not exercise real entrypoint wiring or enforce ordered session-id parity, so the original scrutiny blockers remain unresolved."
+  "summary": "The fix still does not exercise the real SwiftUI entrypoints or enforce strict same-anchor ordered parity, so the original cross-flow and Session Detail blockers remain unresolved."
 }
