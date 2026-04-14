@@ -61,8 +61,9 @@ struct SessionDetailView: View {
         .background(DesignSystem.Colors.background)
         .frame(width: 480, height: SettingsManager.shared.conversationIndexingEnabled && conversation != nil ? 560 : 460)
         // Reset conversation-dependent UI state before async reload to prevent stale state
-        // from leaking across rapid session switches (VAL-CTXDETAIL-007, VAL-CTXDETAIL-010)
-        .onChange(of: session.sessionId) { _, _ in
+        // from leaking across rapid session switches (VAL-CTXDETAIL-007, VAL-CTXDETAIL-010).
+        // Key by full stableId (provider + sessionId) to handle provider swaps with same sessionId.
+        .onChange(of: ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)) { _, _ in
             conversation = nil
             summaryText = nil
             summarizeError = nil
