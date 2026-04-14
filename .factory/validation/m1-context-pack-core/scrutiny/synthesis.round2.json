@@ -1,7 +1,7 @@
 {
   "milestone": "m1-context-pack-core",
-  "round": 3,
-  "status": "pass",
+  "round": 2,
+  "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,19 +20,33 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
+    "total": 2,
     "passed": 1,
-    "failed": 0,
-    "failedFeatures": []
+    "failed": 1,
+    "failedFeatures": [
+      "m1-fix-export-shared-body-and-xml-safety"
+    ]
   },
-  "blockingIssues": [],
-  "appliedUpdates": [],
+  "blockingIssues": [
+    {
+      "featureId": "m1-fix-export-shared-body-and-xml-safety",
+      "severity": "blocking",
+      "description": "Only `session.bodyText` is XML-escaped inside `<context_pack>`; raw key-file and key-command sections are still inserted verbatim, so XML-sensitive filenames or commands can invalidate Claude/Hermes exports."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Documented the current ContextPack service test coverage gap for exact equal-score/equal-timestamp cap-pressure survivor selection in `user-testing.md`.",
+      "sourceFeature": "m1-fix-core-tiebreak-and-locale-determinism"
+    }
+  ],
   "suggestedGuidanceUpdates": [],
   "rejectedObservations": [
     {
-      "observation": "The new XML-sensitive key-files/key-commands regression is only present as a local test addition and is not reflected in the mission validation contract, so future validation guidance will not explicitly call it out.",
-      "reason": "out of scope; validation-contract.md is mission metadata rather than a repo guidance target in this worker session"
+      "observation": "The expected mission artifact set for this review was not present in the snapshot, so the worker handoff/transcript procedure could not be audited directly.",
+      "reason": "environmental / out-of-repo concern; not actionable as a repo guidance update"
     }
   ],
-  "previousRound": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m1-context-pack-core/scrutiny/synthesis.round2.json"
+  "previousRound": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m1-context-pack-core/scrutiny/synthesis.round1.json"
 }
