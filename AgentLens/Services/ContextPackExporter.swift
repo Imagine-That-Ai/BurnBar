@@ -172,6 +172,7 @@ enum ContextPackExporter {
         lines.append("")
 
         // Key files section (formatted for CLAUDE style)
+        // XML-escape file paths to prevent envelope breakage from sensitive characters
         if !components.keyFilesSection.isEmpty {
             lines.append("## Key Files")
             // Convert canonical "Key files:" format to bullet list
@@ -180,7 +181,9 @@ enum ContextPackExporter {
                 if line.hasPrefix("Key files:") {
                     lines.append(line)  // Keep header
                 } else if line.hasPrefix("  - ") {
-                    lines.append("- \(String(line.dropFirst(4)))")  // Convert indent to bullet
+                    let filePath = String(line.dropFirst(4))
+                    let escapedPath = xmlEscape(filePath)
+                    lines.append("- \(escapedPath)")  // Convert indent to bullet with XML-safe content
                 } else if !line.isEmpty {
                     lines.append(line)
                 }
@@ -189,6 +192,7 @@ enum ContextPackExporter {
         }
 
         // Key commands section (formatted for CLAUDE style)
+        // XML-escape commands to prevent envelope breakage from sensitive characters
         if !components.keyCommandsSection.isEmpty {
             lines.append("## Key Commands")
             let cmdLines = components.keyCommandsSection.components(separatedBy: "\n")
@@ -196,7 +200,9 @@ enum ContextPackExporter {
                 if line.hasPrefix("Key commands:") {
                     lines.append(line)
                 } else if line.hasPrefix("  - ") {
-                    lines.append("- \(String(line.dropFirst(4)))")
+                    let command = String(line.dropFirst(4))
+                    let escapedCommand = xmlEscape(command)
+                    lines.append("- \(escapedCommand)")
                 } else if !line.isEmpty {
                     lines.append(line)
                 }

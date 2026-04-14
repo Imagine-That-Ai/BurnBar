@@ -467,4 +467,105 @@ final class ContextPackExportTests: XCTestCase {
         XCTAssertEqual(ContextPackExportTarget.hermes.displayName, "Hermes")
         XCTAssertEqual(ContextPackExportTarget.markdown.displayName, "Markdown")
     }
+
+    // MARK: - VAL-CTXEXP-014: XML-sensitive key-files and key-commands preserve envelope integrity
+
+    func test_xmlSensitiveKeyFilesAndCommandsPreserveEnvelopeIntegrity() {
+        // Filenames and commands containing XML-sensitive characters
+        let xmlSensitiveFiles = [
+            "path/to/file<with>angles.swift",
+            "script<alert>('xss').js",
+            "module&module.ts",
+            "test\"quote\".py",
+            "array['key'].rb"
+        ]
+        let xmlSensitiveCommands = [
+            "echo 'hello & goodbye'",
+            "npm run build <file.txt",
+            "cat > output.txt",
+            "grep -E 'pattern|another' file",
+            "curl -X POST \"http://example.com\""
+        ]
+
+        let pack = ExportFixtures.makePack(
+            sessions: [ExportFixtures.makeSession()],
+            keyFiles: xmlSensitiveFiles,
+            keyCommands: xmlSensitiveCommands
+        )
+
+        for target in [ContextPackExportTarget.claude, ContextPackExportTarget.hermes] {
+            let output = ContextPackExporter.export(pack, target: target)
+
+            // Verify envelope tags are present and properly formed
+            let openTagCount = output.components(separatedBy: "<context_pack>").count - 1
+            let closeTagCount = output.components(separatedBy: "</context_pack>").count - 1
+            XCTAssertEqual(openTagCount, 1, "[\(target.rawValue)] Should have exactly one opening context_pack tag")
+            XCTAssertEqual(closeTagCount, 1, "[\(target.rawValue)] Should have exactly one closing context_pack tag")
+
+            // Verify the envelope is properly closed (opening tag comes before closing tag)
+            if let openRange = output.range(of: "<context_pack>"),
+               let closeRange = output.range(of: "</context_pack>") {
+                XCTAssertLessThan(openRange.lowerBound, closeRange.lowerBound,
+                    "[\(target.rawValue)] Opening tag should come before closing tag")
+            }
+
+            // Verify XML-escaped content appears in output
+            // < should become &lt;
+            XCTAssertTrue(output.contains("&lt;"),
+                "[\(target.rawValue)] Should contain escaped < character")
+            // > should become &gt;
+            XCTAssertTrue(output.contains("&gt;"),
+                "[\(target.rawValue)] Should contain escaped > character")
+            // & should become &amp;
+            XCTAssertTrue(output.contains("&amp;"),
+                "[\(target.rawValue)] Should contain escaped & character")
+
+            // Verify raw XML-sensitive characters do NOT appear inside the envelope
+            let envelopeContent: String
+            if let openRange = output.range(of: "<context_pack>"),
+               let closeRange = output.range(of: "</context_pack>") {
+                envelopeContent = String(output[openRange.upperBound..<closeRange.lowerBound])
+            } else {
+                envelopeContent = output
+            }
+
+            // These raw sequences should NOT appear inside the envelope
+            XCTAssertFalse(envelopeContent.contains("<context_pack>"),
+                "[\(target.rawValue)] No nested context_pack tags should exist inside envelope")
+            XCTAssertFalse(envelopeContent.contains("</context_pack>"),
+                "[\(target.rawValue)] No nested closing tags should exist inside envelope")
+        }
+    }
+
+    func test_xmlSensitiveFilenamesAreProperlyEscapedInExports() {
+        // Test that XML-sensitive filenames are escaped only in XML envelope targets
+        // (claude/hermes). Other targets (codex, cursor, markdown) don't use XML
+        let xmlSensitiveFiles = ["file<with>angles.swift", "test\"quote\".py"]
+
+        let pack = ExportFixtures.makePack(
+            sessions: [ExportFixtures.makeSession()],
+            keyFiles: xmlSensitiveFiles,
+            keyCommands: ["npm test"]
+        )
+
+        // Only XML-enveloped targets require escaping
+        let xmlTargets: [ContextPackExportTarget] = [.claude, .hermes]
+
+        for target in xmlTargets {
+            let output = ContextPackExporter.export(pack, target: target)
+
+            // The escaped version should appear
+            XCTAssertTrue(output.contains("file&lt;with&gt;angles.swift") ||
+                         output.contains("file&lt;with&gt;angles"),
+                "[\(target.rawValue)] Should contain escaped filename")
+            XCTAssertTrue(output.contains("test&quot;quote&quot;.py") ||
+                         output.contains("test&quot;quote&quot;"),
+                "[\(target.rawValue)] Should contain escaped quote in filename")
+        }
+
+        // Non-XML targets should still contain the raw filenames (no escaping needed)
+        let codexOutput = ContextPackExporter.export(pack, target: .codex)
+        XCTAssertTrue(codexOutput.contains("file<with>angles.swift"),
+            "[codex] Should contain raw filename (no XML escaping needed)")
+    }
 }
