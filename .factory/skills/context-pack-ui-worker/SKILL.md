@@ -23,6 +23,8 @@ Use for Context Pack UI/integration work:
 
 1. Read mission artifacts and target assertion IDs from `fulfills`.
 2. Add failing UI/state tests first for Dashboard, Session Detail, and cross-flow assertions.
+   - Keep validation-contract test method names verbatim when the contract references explicit `-only-testing` selectors.
+   - Do not replace entry-surface tests with service-only tests; assertions for Session Detail and CrossFlow must exercise real Dashboard/Session Detail/ContextPackSheet wiring.
 3. Implement UI with existing app primitives (`GlassCard`, design tokens, existing copy-confirm patterns); avoid introducing unrelated design systems.
 4. Invoke `frontend-design` skill and apply improvements that align with mission scope and current app style.
 5. Re-run scoped tests (`ContextPackDashboardSurfaceTests`, `ContextPackSessionDetailSurfaceTests`, `ContextPackCrossFlowTests`) until green.
