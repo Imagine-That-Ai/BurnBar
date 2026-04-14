@@ -234,6 +234,10 @@ final class ContextPackCrossFlowTests: XCTestCase {
     ///
     /// This test verifies exact ordered session-id sequences for same-anchor parity
     /// by comparing anchored vs unanchored assembly results with same project scope.
+    /// EXPANDED: Now includes explicit ordered parity assertions verifying:
+    /// 1. Same session set is included (set parity)
+    /// 2. Each entrypoint has deterministic ordering (stability parity)
+    /// 3. Same-project sessions are ranked higher in anchored mode (boost parity)
     func test_dashboardAndSessionDetailProduceEquivalentPackForSameAnchor() {
         // Create a set of candidate sessions
         let candidates = [
@@ -261,6 +265,13 @@ final class ContextPackCrossFlowTests: XCTestCase {
         let anchoredIds = sessionIds(anchoredPack)
         let unanchoredIds = sessionIds(unanchoredPack)
 
+        // EXPANDED: Explicit SET parity assertion - both should include the same sessions
+        let anchoredSet = Set(anchoredIds)
+        let unanchoredSet = Set(unanchoredIds)
+        XCTAssertEqual(anchoredSet, unanchoredSet,
+            "Anchored and unanchored entrypoints should include the same session set. " +
+            "Anchored: \(anchoredSet), Unanchored: \(unanchoredSet)")
+
         // Both should include s1 (same project, recent, has summary)
         XCTAssertTrue(anchoredIds.contains("s1"), "Anchored pack should include s1")
         XCTAssertTrue(unanchoredIds.contains("s1"), "Unanchored pack should include s1")
@@ -276,6 +287,112 @@ final class ContextPackCrossFlowTests: XCTestCase {
         // Both should have same session count
         XCTAssertEqual(anchoredPack.sessions.count, unanchoredPack.sessions.count,
             "Both entrypoints should produce packs of same size for same candidates")
+
+        // EXPANDED: Explicit same-project boost parity - anchored should rank same-project higher
+        // s1 and s2 are in AnchorProject, s3 is in OtherProject
+        // With same-project boost, anchored should have s1 and s2 ranked above s3
+        // Without boost (unanchored), s3 might rank differently due to recency
+        let anchoredSameProjectIds = anchoredIds.filter { id in
+            candidates.first { $0.id == id }?.projectName == "AnchorProject"
+        }
+        let unanchoredSameProjectIds = unanchoredIds.filter { id in
+            candidates.first { $0.id == id }?.projectName == "AnchorProject"
+        }
+
+        // In anchored mode, same-project sessions should be first
+        XCTAssertEqual(anchoredSameProjectIds.first, "s1",
+            "Anchored: Most recent same-project session should be first")
+
+        // In unanchored mode, ordering is based on recency/signal only
+        XCTAssertTrue(unanchoredIds.contains("s1"),
+            "Unanchored should still include same-project sessions")
+
+        // Verify that anchored ranking reflects same-project boost
+        // s2 (same project, older) should rank above s3 (other project, even older)
+        if let s2Index = anchoredIds.firstIndex(of: "s2"),
+           let s3Index = anchoredIds.firstIndex(of: "s3") {
+            XCTAssertLessThan(s2Index, s3Index,
+                "Anchored: s2 (same project) should rank above s3 (other project)")
+        }
+    }
+
+    // MARK: - VAL-CTXCROSS-001b: Explicit ordered session-id parity for same anchor
+
+    /// Additional test for explicit ordered parity - verifies that when anchoring to the
+    /// same project, both anchored and unanchored entrypoints include the same sessions
+    /// and each produces a deterministic ordered sequence.
+    func test_explicitOrderedSessionIdParityForSameAnchor() {
+        let candidates = [
+            CrossFlowFixtures.makeConversation(
+                id: "parity-a", sessionId: "parity-a-session",
+                projectName: "ParityProject", daysOld: 1,
+                summary: "First parity session"
+            ),
+            CrossFlowFixtures.makeConversation(
+                id: "parity-b", sessionId: "parity-b-session",
+                projectName: "ParityProject", daysOld: 2,
+                summary: "Second parity session"
+            ),
+            CrossFlowFixtures.makeConversation(
+                id: "parity-c", sessionId: "parity-c-session",
+                projectName: "ParityProject", daysOld: 3,
+                summary: "Third parity session"
+            ),
+            CrossFlowFixtures.makeConversation(
+                id: "parity-d", sessionId: "parity-d-session",
+                projectName: "OtherProject", daysOld: 1,
+                summary: "Other project session"
+            ),
+        ]
+
+        // Anchor to ParityProject
+        let anchoredPack = assembleAnchored(candidates: candidates, anchorProject: "ParityProject")
+        let unanchoredPack = assembleUnanchored(candidates: candidates)
+
+        let anchoredIds = sessionIds(anchoredPack)
+        let unanchoredIds = sessionIds(unanchoredPack)
+
+        // EXPANDED: Explicit SET parity - both should include same sessions
+        XCTAssertEqual(Set(anchoredIds), Set(unanchoredIds),
+            "Same-anchor parity requires same session set. " +
+            "Anchored: \(Set(anchoredIds)), Unanchored: \(Set(unanchoredIds))")
+
+        // Verify all sessions from ParityProject are included
+        let parityProjectIds = ["parity-a", "parity-b", "parity-c"]
+        for id in parityProjectIds {
+            XCTAssertTrue(anchoredIds.contains(id), "Anchored should contain \(id)")
+            XCTAssertTrue(unanchoredIds.contains(id), "Unanchored should contain \(id)")
+        }
+
+        // Verify OtherProject session is included
+        XCTAssertTrue(anchoredIds.contains("parity-d"), "Anchored should contain parity-d")
+        XCTAssertTrue(unanchoredIds.contains("parity-d"), "Unanchored should contain parity-d")
+
+        // EXPANDED: Explicit stability parity - both orderings are individually stable
+        for _ in 0..<3 {
+            let anchoredRepeat = sessionIds(assembleAnchored(candidates: candidates, anchorProject: "ParityProject"))
+            let unanchoredRepeat = sessionIds(assembleUnanchored(candidates: candidates))
+            XCTAssertEqual(anchoredIds, anchoredRepeat,
+                "Anchored ordering should be stable across runs")
+            XCTAssertEqual(unanchoredIds, unanchoredRepeat,
+                "Unanchored ordering should be stable across runs")
+        }
+
+        // EXPANDED: Explicit first-position parity - most recent session should be first in both
+        XCTAssertEqual(anchoredIds.first, "parity-a",
+            "Anchored: Most recent session should be first")
+        XCTAssertEqual(unanchoredIds.first, "parity-a",
+            "Unanchored: Most recent session should be first (recency weighting)")
+
+        // EXPANDED: ParityProject sessions should appear consecutively in anchored mode
+        // due to same-project boost
+        let parityProjectIndices = parityProjectIds.compactMap { anchoredIds.firstIndex(of: $0) }
+        if parityProjectIndices.count > 1 {
+            for i in 1..<parityProjectIndices.count {
+                XCTAssertEqual(parityProjectIndices[i] - parityProjectIndices[i-1], 1,
+                    "ParityProject sessions should be consecutive in anchored ordering")
+            }
+        }
     }
 
     // MARK: - VAL-CTXCROSS-002: Entry-point semantic parity for same anchor
