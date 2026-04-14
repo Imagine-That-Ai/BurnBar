@@ -1,0 +1,57 @@
+{
+  "milestone": "m1-context-pack-core",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "export MILESTONE=\"m1-context-pack-core\"; if [ -n \"${MILESTONE:-}\" ]; then \"/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/library/verify-flow-report-finalization.sh\" \"$MILESTONE\" || exit 1; fi; \"/Users/albertonunez/Documents/Windsurf/BurnBar/scripts/test-openburnbar-swift.sh\" && \"/Users/albertonunez/Documents/Windsurf/BurnBar/scripts/test-openburnbar-app.sh\"",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project \"/Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBar.xcodeproj\" -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath \"/Users/albertonunez/Documents/Windsurf/BurnBar/.spm-cache\" -derivedDataPath \"/Users/albertonunez/Documents/Windsurf/BurnBar/.derived-data/ci-typecheck\" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix \"/Users/albertonunez/Documents/Windsurf/BurnBar/extensions/openburnbar\" run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 0,
+    "failed": 2,
+    "failedFeatures": [
+      "m1-context-pack-core-model-and-ranking",
+      "m1-context-pack-export-envelopes"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "m1-context-pack-core-model-and-ranking",
+      "severity": "blocking",
+      "description": "Equal-score sessions are ordered with a descending final ID tie-break, which conflicts with the declared ID-ascending policy and can change which sessions survive the 5-session cap or char-budget trimming."
+    },
+    {
+      "featureId": "m1-context-pack-export-envelopes",
+      "severity": "blocking",
+      "description": "The exporter uses separate per-target renderers instead of a single shared body, so target outputs can drift and the cross-target byte-equivalence contract is not guaranteed."
+    },
+    {
+      "featureId": "m1-context-pack-export-envelopes",
+      "severity": "blocking",
+      "description": "Claude/Hermes envelopes inject raw content inside `<context_pack>` without XML escaping or CDATA handling, which can invalidate the envelope when session text contains XML-sensitive sequences."
+    },
+    {
+      "featureId": "m1-context-pack-export-envelopes",
+      "severity": "blocking",
+      "description": "Usage-summary formatting is locale-sensitive because the date formatter does not pin a stable locale/calendar, so exported summaries are not byte-deterministic across hosts."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [],
+  "previousRound": null
+}
