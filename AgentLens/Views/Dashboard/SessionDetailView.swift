@@ -60,7 +60,7 @@ struct SessionDetailView: View {
         .padding(DesignSystem.Spacing.lg)
         .background(DesignSystem.Colors.background)
         .frame(width: 480, height: SettingsManager.shared.conversationIndexingEnabled && conversation != nil ? 560 : 460)
-        .task {
+        .task(id: ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)) {
             await cliBridge.detect()
             let id = ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)
             conversation = try? dataStore.fetchConversation(id: id)

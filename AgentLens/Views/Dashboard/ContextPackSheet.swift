@@ -386,14 +386,18 @@ struct ContextPackSheet: View {
             let candidates: [ConversationRecord]
 
             if let anchorSessionId {
-                // Anchored launch: fetch specific session
-                if let record = try dataStore.fetchConversation(id: anchorSessionId) {
-                    candidates = [record]
-                } else {
-                    candidates = []
-                }
+                // Anchored launch (Session Detail): use project-scoped candidate assembly.
+                // anchorSessionId identifies the selected session, but the pack should include
+                // all eligible sessions from the same project (anchorProject) so that
+                // ranking can produce a project-scoped context pack, not a single-session export.
+                candidates = try dataStore.fetchConversationsForTranscriptScan(
+                    provider: nil,
+                    projectName: anchorProject,
+                    dateRange: dateRange,
+                    conversationSources: nil
+                )
             } else {
-                // Unanchored launch: fetch all eligible sessions within date range
+                // Unanchored launch (Dashboard): fetch all eligible sessions within date range
                 candidates = try dataStore.fetchConversationsForTranscriptScan(
                     provider: nil,
                     projectName: anchorProject,
