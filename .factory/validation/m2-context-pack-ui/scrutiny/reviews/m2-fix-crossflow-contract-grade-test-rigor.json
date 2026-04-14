@@ -1,6 +1,6 @@
 {
   "featureId": "m2-fix-crossflow-contract-grade-test-rigor",
-  "reviewedAt": "2026-04-14T09:34:00Z",
+  "reviewedAt": "2026-04-14T10:14:32Z",
   "commitId": "106c2fd",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
@@ -22,7 +22,13 @@
       }
     ]
   },
-  "sharedStateObservations": [],
-  "addressesFailureFrom": ".factory/validation/m2-context-pack-ui/scrutiny/reviews/m2-context-pack-session-detail-entry.json; .factory/validation/m2-context-pack-ui/scrutiny/reviews/m2-context-pack-cross-entry-consistency.json",
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `context-pack-ui-worker` procedure should explicitly require a real UI harness for Session Detail and CrossFlow checks instead of allowing `DataStore`/service helpers to stand in for entrypoint coverage.",
+      "evidence": "AgentLensTests/Active/ContextPackSessionDetailSurfaceTests.swift:82-238 and AgentLensTests/Active/ContextPackCrossFlowTests.swift:139-403 validate helper/service behavior without instantiating DashboardView, SessionDetailView, or ContextPackSheet."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/m2-context-pack-ui/scrutiny/reviews/m2-context-pack-cross-entry-consistency.json",
   "summary": "Selectors are fixed, but the fix still does not exercise real entrypoint wiring or enforce ordered session-id parity, so the original scrutiny blockers remain unresolved."
 }

@@ -1,28 +1,34 @@
 {
   "featureId": "m2-fix-session-anchor-project-scope-and-stale-state",
-  "reviewedAt": "2026-04-14T09:35:14Z",
+  "reviewedAt": "2026-04-14T10:14:59Z",
   "commitId": "870e79d",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "fail",
   "codeReview": {
-    "summary": "The ContextPackSheet anchorProject fix looks correct, but SessionDetailView still does not clear prior conversation/summary state before the async refresh completes. That means the rapid-switch stale-state blocker is not fully closed yet.",
+    "summary": "The project-scoped ContextPackSheet fix is correct, but the SessionDetail reload path still leaks stale conversation/summary state and the session-detail test selectors still do not match the validation contract.",
     "issues": [
       {
         "file": "AgentLens/Views/Dashboard/SessionDetailView.swift",
         "line": 63,
         "severity": "blocking",
-        "description": "Switching from `.task` to `.task(id:)` cancels the prior fetch, but this view still never resets `conversation` or `summaryText` before awaiting `cliBridge.detect()` and reloading. If the sheet content is reused for another session, the previous session's summary and Context Pack row can remain visible during the async gap, so the stale-state leak from VAL-CTXDETAIL-010 is still present."
+        "description": "Switching to `.task(id:)` cancels the prior fetch, but the view still never clears `conversation`, `summaryText`, or the anchor fields before the reload starts. Because the body keeps rendering `conversation != nil` sections, the previous session can remain visible and tappable during rapid switches, so the VAL-CTXDETAIL-010 stale-state leak is not fully fixed."
+      },
+      {
+        "file": "AgentLensTests/Active/ContextPackSessionDetailSurfaceTests.swift",
+        "line": 81,
+        "severity": "blocking",
+        "description": "The session-detail validation suite still uses renamed selectors like `test_rowVisibility_conversationFetchSucceeds` and `test_viewFullSessionLog_routingUnaffectedByStableId` instead of the contract's exact `-only-testing` entry points. The required validator commands will skip the intended assertions, and the test bodies remain data-layer probes rather than SwiftUI visibility/order/presentation checks."
       }
     ]
   },
   "sharedStateObservations": [
     {
       "area": "skills",
-      "observation": "The `context-pack-ui-worker` procedure seems to treat `.task(id:)` cancellation as sufficient for session-switch safety, but this bug also needs an explicit state reset or view-identity scoping for reused sheet content. Without that, `conversation`/`summaryText` can still render stale data during the async gap.",
-      "evidence": "The handoff's fix summary only adds `.task(id:)` in `AgentLens/Views/Dashboard/SessionDetailView.swift`, and the file still has no `conversation = nil` / `summaryText = nil` reset before `await cliBridge.detect()`."
+      "observation": "The context-pack-ui-worker procedure should explicitly require verbatim `validation-contract.md` selector names and real SwiftUI assertions for Session Detail. The branch still contains renamed, data-layer-only tests that look complete but won't satisfy the validator.",
+      "evidence": "Commit `870e79d` includes `AgentLensTests/Active/ContextPackSessionDetailSurfaceTests.swift:81-243`, while `validation-contract.md` requires selectors such as `test_rowVisibility_requiresIndexingEnabledAndConversation` and `test_tapPresentsContextPackSheet`."
     }
   ],
-  "addressesFailureFrom": ".factory/validation/m2-context-pack-ui/scrutiny/reviews/m2-context-pack-dashboard-sheet-ui.json",
-  "summary": "Fail: the project-scoped ContextPackSheet change is good, but SessionDetailView still needs an explicit stale-state reset to fully satisfy the rapid-switch contract."
+  "addressesFailureFrom": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m2-context-pack-ui/scrutiny/reviews/m2-context-pack-session-detail-entry.json",
+  "summary": "Fail: the project-scoped fetch fix lands, but rapid-switch stale state is still not fully cleared and the session-detail contract tests are still misaligned."
 }
