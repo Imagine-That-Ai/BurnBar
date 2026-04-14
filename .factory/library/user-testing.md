@@ -24,15 +24,39 @@
 - Tools: `xcodebuild test` scoped suite:
   - `OpenBurnBarTests/ContextPackDashboardSurfaceTests`
 
+## Flow Validator Guidance: Surface CP2
+
+- Treat CP2 as a serialized heavy surface: run only one `xcodebuild` validator at a time.
+- Use a unique derived-data path per subagent under `.factory/validation/m2-context-pack-ui/user-testing/derived-data/<group-id>` to avoid build-product collisions.
+- No app services or seeded runtime data are required; validate through deterministic `xcodebuild` fixtures only.
+- Keep the scope confined to `OpenBurnBarTests/ContextPackDashboardSurfaceTests`; do not rely on manual UI interaction or shared app runtime state.
+- Save the flow report under `.factory/validation/m2-context-pack-ui/user-testing/flows/<group-id>.json` and evidence under `.../evidence/<group-id>/`.
+
 ### Surface CP3: Session Detail Context Pack UI
 - Scope: row gating and ordering, anchored launch identity/project, rapid-switch stability, stale-state prevention, reachability from provider/model ledger flows.
 - Tools: `xcodebuild test` scoped suite:
   - `OpenBurnBarTests/ContextPackSessionDetailSurfaceTests`
 
+## Flow Validator Guidance: Surface CP3
+
+- Treat CP3 as a serialized heavy surface: run only one `xcodebuild` validator at a time.
+- Use a unique derived-data path per subagent under `.factory/validation/m2-context-pack-ui/user-testing/derived-data/<group-id>` to avoid build-product collisions.
+- The tests must exercise the real SwiftUI entry surfaces (`SessionDetailView` and the Context Pack launch path); helper-only assertions are insufficient for the UI selectors in this surface.
+- No app services or seeded runtime data are required; keep the surface deterministic and avoid touching unrelated local ports or processes.
+- Save the flow report under `.factory/validation/m2-context-pack-ui/user-testing/flows/<group-id>.json` and evidence under `.../evidence/<group-id>/`.
+
 ### Surface CP4: Cross-area consistency
 - Scope: same-anchor parity across entrypoints, target-switch envelope-only changes, lifecycle resilience, anchored-vs-unanchored policy, anchor precedence over ambient dashboard filters.
 - Tools: `xcodebuild test` scoped suite:
   - `OpenBurnBarTests/ContextPackCrossFlowTests`
+
+## Flow Validator Guidance: Surface CP4
+
+- Treat CP4 as a serialized heavy surface: run only one `xcodebuild` validator at a time.
+- Use a unique derived-data path per subagent under `.factory/validation/m2-context-pack-ui/user-testing/derived-data/<group-id>` to avoid build-product collisions.
+- Keep cross-flow assertions scoped to the Context Pack dashboard/session-detail entry surfaces; do not mutate shared app state outside the tested harness.
+- No services or external seeding are needed. Validate semantic parity and navigation resilience through the deterministic `xcodebuild` suites only.
+- Save the flow report under `.factory/validation/m2-context-pack-ui/user-testing/flows/<group-id>.json` and evidence under `.../evidence/<group-id>/`.
 
 ## Validation Concurrency
 

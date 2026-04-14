@@ -1,0 +1,272 @@
+{
+  "groupId": "cp4-cross-area",
+  "testedAt": "2026-04-14T11:27:34Z",
+  "isolation": {
+    "repoRoot": "/Users/albertonunez/Documents/Windsurf/BurnBar",
+    "missionDir": "/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea",
+    "derivedDataPath": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m2-context-pack-ui/user-testing/derived-data/cp4-cross-area",
+    "evidenceDir": "/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea/evidence/m2-context-pack-ui/cp4-cross-area",
+    "reportPath": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m2-context-pack-ui/user-testing/flows/cp4-cross-area.json",
+    "scheme": "OpenBurnBar",
+    "destination": "platform=macOS,arch=arm64",
+    "codeSigning": "disabled",
+    "seedData": "none"
+  },
+  "toolsUsed": [
+    "xcodebuild"
+  ],
+  "commandsRun": [
+    {
+      "command": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -derivedDataPath \"/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m2-context-pack-ui/user-testing/derived-data/cp4-cross-area\" -only-testing:OpenBurnBarTests/ContextPackCrossFlowTests CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= DEVELOPMENT_TEAM=",
+      "workingDirectory": "/Users/albertonunez/Documents/Windsurf/BurnBar",
+      "exitCode": 0,
+      "log": "/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea/evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.log",
+      "exitCodeFile": "/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea/evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.exitcode.txt"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CTXCROSS-001",
+      "title": "Entry-point output equivalence for same anchor",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the scoped xcodebuild suite for ContextPackCrossFlowTests with the assigned derived-data path and signing overrides.",
+          "expected": "The suite completes successfully for all assigned cross-flow assertions.",
+          "observed": "xcodebuild exited 0 and reported: Executed 12 tests, with 0 failures (0 unexpected) in ContextPackCrossFlowTests."
+        },
+        {
+          "action": "Inspect the log for `test_dashboardAndSessionDetailProduceEquivalentPackForSameAnchor`.",
+          "expected": "The contract-specific test case passes.",
+          "observed": "Test Case '-[OpenBurnBarTests.ContextPackCrossFlowTests test_dashboardAndSessionDetailProduceEquivalentPackForSameAnchor]' passed."
+        }
+      ],
+      "evidence": {
+        "log": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.log",
+        "exitCode": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.exitcode.txt",
+        "suiteSummary": "Executed 12 tests, with 0 failures (0 unexpected)",
+        "testCase": "test_dashboardAndSessionDetailProduceEquivalentPackForSameAnchor"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXCROSS-002",
+      "title": "Entry-point semantic parity for same anchor",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the scoped xcodebuild suite for ContextPackCrossFlowTests with the assigned derived-data path and signing overrides.",
+          "expected": "The suite completes successfully for all assigned cross-flow assertions.",
+          "observed": "xcodebuild exited 0 and reported: Executed 12 tests, with 0 failures (0 unexpected) in ContextPackCrossFlowTests."
+        },
+        {
+          "action": "Inspect the log for `test_sameAnchorSemanticParityAcrossEntrypoints`.",
+          "expected": "The contract-specific test case passes.",
+          "observed": "Test Case '-[OpenBurnBarTests.ContextPackCrossFlowTests test_sameAnchorSemanticParityAcrossEntrypoints]' passed."
+        }
+      ],
+      "evidence": {
+        "log": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.log",
+        "exitCode": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.exitcode.txt",
+        "suiteSummary": "Executed 12 tests, with 0 failures (0 unexpected)",
+        "testCase": "test_sameAnchorSemanticParityAcrossEntrypoints"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXCROSS-003",
+      "title": "Repeated generation idempotency",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the scoped xcodebuild suite for ContextPackCrossFlowTests with the assigned derived-data path and signing overrides.",
+          "expected": "The suite completes successfully for all assigned cross-flow assertions.",
+          "observed": "xcodebuild exited 0 and reported: Executed 12 tests, with 0 failures (0 unexpected) in ContextPackCrossFlowTests."
+        },
+        {
+          "action": "Inspect the log for `test_repeatedGenerationIsDeterministic`.",
+          "expected": "The contract-specific test case passes.",
+          "observed": "Test Case '-[OpenBurnBarTests.ContextPackCrossFlowTests test_repeatedGenerationIsDeterministic]' passed."
+        }
+      ],
+      "evidence": {
+        "log": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.log",
+        "exitCode": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.exitcode.txt",
+        "suiteSummary": "Executed 12 tests, with 0 failures (0 unexpected)",
+        "testCase": "test_repeatedGenerationIsDeterministic"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXCROSS-004",
+      "title": "Entrypoint coherence with target switching",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the scoped xcodebuild suite for ContextPackCrossFlowTests with the assigned derived-data path and signing overrides.",
+          "expected": "The suite completes successfully for all assigned cross-flow assertions.",
+          "observed": "xcodebuild exited 0 and reported: Executed 12 tests, with 0 failures (0 unexpected) in ContextPackCrossFlowTests."
+        },
+        {
+          "action": "Inspect the log for `test_targetSwitchChangesEnvelopeOnly`.",
+          "expected": "The contract-specific test case passes.",
+          "observed": "Test Case '-[OpenBurnBarTests.ContextPackCrossFlowTests test_targetSwitchChangesEnvelopeOnly]' passed."
+        }
+      ],
+      "evidence": {
+        "log": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.log",
+        "exitCode": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.exitcode.txt",
+        "suiteSummary": "Executed 12 tests, with 0 failures (0 unexpected)",
+        "testCase": "test_targetSwitchChangesEnvelopeOnly"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXCROSS-005",
+      "title": "Navigation resilience across sheet lifecycle",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the scoped xcodebuild suite for ContextPackCrossFlowTests with the assigned derived-data path and signing overrides.",
+          "expected": "The suite completes successfully for all assigned cross-flow assertions.",
+          "observed": "xcodebuild exited 0 and reported: Executed 12 tests, with 0 failures (0 unexpected) in ContextPackCrossFlowTests."
+        },
+        {
+          "action": "Inspect the log for `test_sheetLifecycleDoesNotRegressNavigation`.",
+          "expected": "The contract-specific test case passes.",
+          "observed": "Test Case '-[OpenBurnBarTests.ContextPackCrossFlowTests test_sheetLifecycleDoesNotRegressNavigation]' passed."
+        }
+      ],
+      "evidence": {
+        "log": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.log",
+        "exitCode": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.exitcode.txt",
+        "suiteSummary": "Executed 12 tests, with 0 failures (0 unexpected)",
+        "testCase": "test_sheetLifecycleDoesNotRegressNavigation"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXCROSS-006",
+      "title": "Empty-data behavior consistency across entrypoints",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the scoped xcodebuild suite for ContextPackCrossFlowTests with the assigned derived-data path and signing overrides.",
+          "expected": "The suite completes successfully for all assigned cross-flow assertions.",
+          "observed": "xcodebuild exited 0 and reported: Executed 12 tests, with 0 failures (0 unexpected) in ContextPackCrossFlowTests."
+        },
+        {
+          "action": "Inspect the log for `test_emptyStateConsistencyAcrossEntrypoints`.",
+          "expected": "The contract-specific test case passes.",
+          "observed": "Test Case '-[OpenBurnBarTests.ContextPackCrossFlowTests test_emptyStateConsistencyAcrossEntrypoints]' passed."
+        }
+      ],
+      "evidence": {
+        "log": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.log",
+        "exitCode": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.exitcode.txt",
+        "suiteSummary": "Executed 12 tests, with 0 failures (0 unexpected)",
+        "testCase": "test_emptyStateConsistencyAcrossEntrypoints"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXCROSS-007",
+      "title": "Anchored vs unanchored launch policy",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the scoped xcodebuild suite for ContextPackCrossFlowTests with the assigned derived-data path and signing overrides.",
+          "expected": "The suite completes successfully for all assigned cross-flow assertions.",
+          "observed": "xcodebuild exited 0 and reported: Executed 12 tests, with 0 failures (0 unexpected) in ContextPackCrossFlowTests."
+        },
+        {
+          "action": "Inspect the log for `test_anchoredVsUnanchoredLaunchPolicy`.",
+          "expected": "The contract-specific test case passes.",
+          "observed": "Test Case '-[OpenBurnBarTests.ContextPackCrossFlowTests test_anchoredVsUnanchoredLaunchPolicy]' passed."
+        }
+      ],
+      "evidence": {
+        "log": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.log",
+        "exitCode": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.exitcode.txt",
+        "suiteSummary": "Executed 12 tests, with 0 failures (0 unexpected)",
+        "testCase": "test_anchoredVsUnanchoredLaunchPolicy"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXCROSS-008",
+      "title": "Default-state parity across entrypoints",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the scoped xcodebuild suite for ContextPackCrossFlowTests with the assigned derived-data path and signing overrides.",
+          "expected": "The suite completes successfully for all assigned cross-flow assertions.",
+          "observed": "xcodebuild exited 0 and reported: Executed 12 tests, with 0 failures (0 unexpected) in ContextPackCrossFlowTests."
+        },
+        {
+          "action": "Inspect the log for `test_defaultStateParityAcrossEntrypoints`.",
+          "expected": "The contract-specific test case passes.",
+          "observed": "Test Case '-[OpenBurnBarTests.ContextPackCrossFlowTests test_defaultStateParityAcrossEntrypoints]' passed."
+        }
+      ],
+      "evidence": {
+        "log": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.log",
+        "exitCode": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.exitcode.txt",
+        "suiteSummary": "Executed 12 tests, with 0 failures (0 unexpected)",
+        "testCase": "test_defaultStateParityAcrossEntrypoints"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXCROSS-009",
+      "title": "Unavailable-anchor fallback consistency",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the scoped xcodebuild suite for ContextPackCrossFlowTests with the assigned derived-data path and signing overrides.",
+          "expected": "The suite completes successfully for all assigned cross-flow assertions.",
+          "observed": "xcodebuild exited 0 and reported: Executed 12 tests, with 0 failures (0 unexpected) in ContextPackCrossFlowTests."
+        },
+        {
+          "action": "Inspect the log for `test_unavailableAnchorFallbackConsistency`.",
+          "expected": "The contract-specific test case passes.",
+          "observed": "Test Case '-[OpenBurnBarTests.ContextPackCrossFlowTests test_unavailableAnchorFallbackConsistency]' passed."
+        }
+      ],
+      "evidence": {
+        "log": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.log",
+        "exitCode": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.exitcode.txt",
+        "suiteSummary": "Executed 12 tests, with 0 failures (0 unexpected)",
+        "testCase": "test_unavailableAnchorFallbackConsistency"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXCROSS-010",
+      "title": "Session anchor precedence over ambient dashboard scope",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the scoped xcodebuild suite for ContextPackCrossFlowTests with the assigned derived-data path and signing overrides.",
+          "expected": "The suite completes successfully for all assigned cross-flow assertions.",
+          "observed": "xcodebuild exited 0 and reported: Executed 12 tests, with 0 failures (0 unexpected) in ContextPackCrossFlowTests."
+        },
+        {
+          "action": "Inspect the log for `test_sessionAnchorPrecedenceOverDashboardAmbientScope`.",
+          "expected": "The contract-specific test case passes.",
+          "observed": "Test Case '-[OpenBurnBarTests.ContextPackCrossFlowTests test_sessionAnchorPrecedenceOverDashboardAmbientScope]' passed."
+        }
+      ],
+      "evidence": {
+        "log": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.log",
+        "exitCode": "evidence/m2-context-pack-ui/cp4-cross-area/xcodebuild.exitcode.txt",
+        "suiteSummary": "Executed 12 tests, with 0 failures (0 unexpected)",
+        "testCase": "test_sessionAnchorPrecedenceOverDashboardAmbientScope"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "All 10 assigned cross-flow assertions passed. The suite executed 12 tests total (10 contract assertions plus 2 helper tests) with 0 failures."
+}

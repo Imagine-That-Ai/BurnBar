@@ -1,0 +1,286 @@
+{
+  "groupId": "cp2-dashboard",
+  "testedAt": "2026-04-14T11:19:48.601345Z",
+  "isolation": {
+    "repoRoot": "/Users/albertonunez/Documents/Windsurf/BurnBar",
+    "missionDir": "/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea",
+    "derivedDataPath": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m2-context-pack-ui/user-testing/derived-data/cp2-dashboard",
+    "evidenceDir": "/Users/albertonunez/.factory/missions/de6a0e32-70b2-477b-9bf9-0766d9e90bea/evidence/m2-context-pack-ui/cp2-dashboard",
+    "reportPath": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m2-context-pack-ui/user-testing/flows/cp2-dashboard.json",
+    "scheme": "OpenBurnBar",
+    "destination": "platform=macOS,arch=arm64",
+    "codeSigning": "disabled",
+    "seedData": "none"
+  },
+  "toolsUsed": [
+    "xcodebuild"
+  ],
+  "commandsRun": [
+    {
+      "command": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -only-testing:\"OpenBurnBarTests/ContextPackDashboardSurfaceTests\" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' -derivedDataPath \"/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m2-context-pack-ui/user-testing/derived-data/cp2-dashboard\"",
+      "exitCode": 0,
+      "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+      "exitCodeFile": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CTXDASH-001",
+      "title": "Overview entry card placement",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_dashboardCard_dataModel_canBeConstructed` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-001 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-002",
+      "title": "Overview entry opens Context Pack sheet",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_sheet_presentation_callbackConfiguration` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-002 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-003",
+      "title": "Export target selector completeness",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_sheet_displaysFiveTargetPills` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-003 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-004",
+      "title": "Target switching updates selected state and preview payload semantics",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_targetPillSelection_allTargetsHaveDisplayNames` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-004 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-005",
+      "title": "Copy action writes selected export payload",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_sheet_copyAction_exportsToAllTargets` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-005 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-006",
+      "title": "Copy confirmation lifecycle",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_copyConfirmation_exportIsIdempotent` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-006 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-007",
+      "title": "Char budget normal state at boundary",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_charBudget_indicatorGreenBelowThreshold` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-007 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-008",
+      "title": "Char budget warning above threshold",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_charBudget_indicatorWarningAboveThreshold` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-008 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-009",
+      "title": "Empty state rendering",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_emptyState_packIsEmpty` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-009 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-010",
+      "title": "Empty-state copy guard",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_defaultTarget_claudeExportWorks` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-010 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-011",
+      "title": "Sheet default target and metadata line",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_defaultMetadata_packHasCorrectMetadata` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-011 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-012",
+      "title": "Dashboard launch respects active time-range scope",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_sheet_timeRange_respectsDateRange` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-012 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-013",
+      "title": "Deterministic default anchor policy",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_sheet_noAnchor_fetchesAllSessions` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-013 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-014",
+      "title": "Deterministic modal collision behavior",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_sheet_presentationData_canBePrepared` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-014 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CTXDASH-015",
+      "title": "Reopen target-selection policy",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `test_sheet_reopen_exportsAreConsistent` in `OpenBurnBarTests/ContextPackDashboardSurfaceTests`.",
+          "expected": "VAL-CTXDASH-015 passes as defined by the contract.",
+          "observed": "Passed; the scoped suite finished with 15/15 tests passing and xcodebuild exit code 0."
+        }
+      ],
+      "evidence": {
+        "log": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-xcodebuild.log",
+        "exitCode": "m2-context-pack-ui/cp2-dashboard/ContextPackDashboardSurfaceTests-exit-code.txt"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Scoped xcodebuild suite completed successfully: 15 tests executed, 0 failures, exit code 0. No blockers or frictions."
+}
