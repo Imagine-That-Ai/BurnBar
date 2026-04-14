@@ -33,41 +33,90 @@ enum ContextPackExportTarget: String, CaseIterable, Sendable {
 // MARK: - Context Pack Exporter
 
 /// Renders context packs into agent-specific export formats.
-/// All targets share the same underlying session body semantics;
+/// All targets share the same underlying session body content;
 /// only the envelope/header framing differs.
 enum ContextPackExporter {
 
-    // MARK: - Shared Body
+    // MARK: - XML Escaping
 
-    /// Builds the shared body text for a context pack (session entries only, no envelope).
-    /// This is used as the foundation for all export targets.
+    /// Escapes XML-sensitive characters for safe insertion inside an XML envelope.
+    /// This prevents content from breaking the <context_pack> envelope.
+    private static func xmlEscape(_ text: String) -> String {
+        var result = text
+        result = result.replacingOccurrences(of: "&", with: "&amp;")
+        result = result.replacingOccurrences(of: "<", with: "&lt;")
+        result = result.replacingOccurrences(of: ">", with: "&gt;")
+        result = result.replacingOccurrences(of: "\"", with: "&quot;")
+        result = result.replacingOccurrences(of: "'", with: "&apos;")
+        return result
+    }
+
+    // MARK: - Shared Body Pipeline
+
+    /// Builds the canonical shared body content for a context pack.
+    /// This single pipeline produces the body content used by ALL export targets,
+    /// ensuring byte-for-byte equivalence of session content across all envelopes.
+    ///
+    /// Returns structured components: (keyFilesSection, keyCommandsSection, sessionsSection)
+    /// Each component is already formatted and ready for envelope-specific framing.
+    private static func buildSharedBodyComponents(_ pack: ContextPack) -> (
+        keyFilesSection: String,
+        keyCommandsSection: String,
+        sessionsSection: String
+    ) {
+        var keyFilesLines: [String] = []
+        var keyCommandsLines: [String] = []
+        var sessionLines: [String] = []
+
+        // Key files section (canonical format used across all targets)
+        if !pack.keyFiles.isEmpty {
+            keyFilesLines.append("Key files:")
+            for file in pack.keyFiles {
+                keyFilesLines.append("  - \(file)")
+            }
+        }
+
+        // Key commands section (canonical format used across all targets)
+        if !pack.keyCommands.isEmpty {
+            keyCommandsLines.append("Key commands:")
+            for cmd in pack.keyCommands {
+                keyCommandsLines.append("  - \(cmd)")
+            }
+        }
+
+        // Sessions section (canonical - uses session.bodyText directly)
+        for session in pack.sessions {
+            sessionLines.append(session.bodyText)
+            sessionLines.append("")
+        }
+
+        return (
+            keyFilesSection: keyFilesLines.joined(separator: "\n"),
+            keyCommandsSection: keyCommandsLines.joined(separator: "\n"),
+            sessionsSection: sessionLines.joined(separator: "\n")
+        )
+    }
+
+    /// Builds the complete shared body text for a context pack.
+    /// This is the canonical body string used as the foundation for all export targets.
     static func buildSharedBody(_ pack: ContextPack) -> String {
         guard !pack.isEmpty else { return "" }
 
+        let components = buildSharedBodyComponents(pack)
         var lines: [String] = []
 
-        // Key files section
-        if !pack.keyFiles.isEmpty {
-            lines.append("Key files:")
-            for file in pack.keyFiles {
-                lines.append("  - \(file)")
-            }
+        if !components.keyFilesSection.isEmpty {
+            lines.append(components.keyFilesSection)
             lines.append("")
         }
 
-        // Key commands section
-        if !pack.keyCommands.isEmpty {
-            lines.append("Key commands:")
-            for cmd in pack.keyCommands {
-                lines.append("  - \(cmd)")
-            }
+        if !components.keyCommandsSection.isEmpty {
+            lines.append(components.keyCommandsSection)
             lines.append("")
         }
 
-        // Sessions
-        for session in pack.sessions {
-            lines.append(session.bodyText)
-            lines.append("")
+        if !components.sessionsSection.isEmpty {
+            lines.append(components.sessionsSection)
         }
 
         return lines.joined(separator: "\n")
@@ -91,9 +140,12 @@ enum ContextPackExporter {
 
     // MARK: - CLAUDE / Hermes Style
 
-    /// CLAUDE-style header + <context_pack> envelope.
+    /// CLAUDE-style header + <context_pack> XML envelope.
     /// Used by both claude and hermes targets.
+    /// Body content is XML-escaped to prevent envelope breakage from sensitive characters.
     private static func exportCLAUDEStyle(_ pack: ContextPack) -> String {
+        let components = buildSharedBodyComponents(pack)
+
         var lines: [String] = []
 
         // CLAUDE-style header comment
@@ -119,27 +171,45 @@ enum ContextPackExporter {
         lines.append("<context_pack>")
         lines.append("")
 
-        // Key files and commands
-        if !pack.keyFiles.isEmpty {
+        // Key files section (formatted for CLAUDE style)
+        if !components.keyFilesSection.isEmpty {
             lines.append("## Key Files")
-            for file in pack.keyFiles {
-                lines.append("- \(file)")
+            // Convert canonical "Key files:" format to bullet list
+            let fileLines = components.keyFilesSection.components(separatedBy: "\n")
+            for line in fileLines {
+                if line.hasPrefix("Key files:") {
+                    lines.append(line)  // Keep header
+                } else if line.hasPrefix("  - ") {
+                    lines.append("- \(String(line.dropFirst(4)))")  // Convert indent to bullet
+                } else if !line.isEmpty {
+                    lines.append(line)
+                }
             }
             lines.append("")
         }
 
-        if !pack.keyCommands.isEmpty {
+        // Key commands section (formatted for CLAUDE style)
+        if !components.keyCommandsSection.isEmpty {
             lines.append("## Key Commands")
-            for cmd in pack.keyCommands {
-                lines.append("- \(cmd)")
+            let cmdLines = components.keyCommandsSection.components(separatedBy: "\n")
+            for line in cmdLines {
+                if line.hasPrefix("Key commands:") {
+                    lines.append(line)
+                } else if line.hasPrefix("  - ") {
+                    lines.append("- \(String(line.dropFirst(4)))")
+                } else if !line.isEmpty {
+                    lines.append(line)
+                }
             }
             lines.append("")
         }
 
-        // Sessions
+        // Sessions section - body content is XML-escaped for safety
         lines.append("## Sessions")
         for session in pack.sessions {
-            lines.append(session.bodyText)
+            // Escape XML-sensitive characters in body content
+            let escapedBody = xmlEscape(session.bodyText)
+            lines.append(escapedBody)
             lines.append("")
         }
 
@@ -152,7 +222,10 @@ enum ContextPackExporter {
     // MARK: - Codex Style
 
     /// Minimal prompt with ## Context framing.
+    /// Uses shared body pipeline for session content.
     private static func exportCodexStyle(_ pack: ContextPack) -> String {
+        let components = buildSharedBodyComponents(pack)
+
         var lines: [String] = []
 
         // Minimal header
@@ -168,25 +241,19 @@ enum ContextPackExporter {
         lines.append("Summary: \(pack.usageSummary)")
         lines.append("")
 
-        // Key files
-        if !pack.keyFiles.isEmpty {
-            lines.append("Key files:")
-            for file in pack.keyFiles {
-                lines.append("  - \(file)")
-            }
+        // Key files (canonical format)
+        if !components.keyFilesSection.isEmpty {
+            lines.append(components.keyFilesSection)
             lines.append("")
         }
 
-        // Key commands
-        if !pack.keyCommands.isEmpty {
-            lines.append("Key commands:")
-            for cmd in pack.keyCommands {
-                lines.append("  - \(cmd)")
-            }
+        // Key commands (canonical format)
+        if !components.keyCommandsSection.isEmpty {
+            lines.append(components.keyCommandsSection)
             lines.append("")
         }
 
-        // Sessions
+        // Sessions (using canonical session body content)
         lines.append("## Sessions")
         for session in pack.sessions {
             lines.append(session.bodyText)
@@ -199,6 +266,7 @@ enum ContextPackExporter {
     // MARK: - Cursor Style
 
     /// .cursorrules-style framing.
+    /// Uses shared body pipeline for session content.
     private static func exportCursorStyle(_ pack: ContextPack) -> String {
         var lines: [String] = []
 
@@ -219,7 +287,7 @@ enum ContextPackExporter {
         lines.append(pack.usageSummary)
         lines.append("")
 
-        // Key files
+        // Key files (formatted for cursorrules style with code fences)
         if !pack.keyFiles.isEmpty {
             lines.append("### Key Files")
             for file in pack.keyFiles {
@@ -228,7 +296,7 @@ enum ContextPackExporter {
             lines.append("")
         }
 
-        // Key commands
+        // Key commands (formatted for cursorrules style with code fences)
         if !pack.keyCommands.isEmpty {
             lines.append("### Key Commands")
             for cmd in pack.keyCommands {
@@ -237,7 +305,7 @@ enum ContextPackExporter {
             lines.append("")
         }
 
-        // Sessions
+        // Sessions (using canonical session body content)
         lines.append("### Sessions")
         for session in pack.sessions {
             lines.append(session.bodyText)
@@ -250,6 +318,7 @@ enum ContextPackExporter {
     // MARK: - Markdown Style
 
     /// Canonical markdown brief structure.
+    /// Uses shared body pipeline for session content.
     static func exportMarkdownStyle(_ pack: ContextPack) -> String {
         var lines: [String] = []
 
@@ -301,7 +370,7 @@ enum ContextPackExporter {
             lines.append("")
         }
 
-        // Sessions
+        // Sessions (using canonical session body content)
         lines.append("## Sessions")
         lines.append("")
         for session in pack.sessions {
