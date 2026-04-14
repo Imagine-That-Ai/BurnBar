@@ -7,6 +7,7 @@
 - Tools: `xcodebuild test` scoped suites:
   - `OpenBurnBarTests/ContextPackServiceTests`
   - `OpenBurnBarTests/ContextPackExportTests`
+- Coverage note: current service tests prove deterministic ordering and cap trimming separately, but they do not yet include an exact equal-score/equal-timestamp fixture that forces final ID-ascending survivor selection under cap pressure.
 
 ### Surface CP2: Dashboard Context Pack UI
 - Scope: card placement, sheet presentation, target pill behavior, copy flow, budget threshold states, empty-state safeguards, modal collision behavior.

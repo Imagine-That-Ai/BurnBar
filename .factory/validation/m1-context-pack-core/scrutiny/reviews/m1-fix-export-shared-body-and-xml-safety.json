@@ -1,0 +1,28 @@
+{
+  "featureId": "m1-fix-export-shared-body-and-xml-safety",
+  "reviewedAt": "2026-04-14T06:00:54Z",
+  "commitId": "f7bb4d43994d337f93f449de07e766e12698b308",
+  "transcriptSkeletonReviewed": false,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The prior locale-determinism blocker is fixed, but the XML-safety repair is incomplete: Claude/Hermes still emit raw key-file and key-command text inside `<context_pack>`, so XML-sensitive content can still break the envelope.",
+    "issues": [
+      {
+        "file": "AgentLens/Services/ContextPackExporter.swift",
+        "line": 175,
+        "severity": "blocking",
+        "description": "Only `session.bodyText` is XML-escaped here, but the Key Files/Key Commands sections are still inserted raw inside `<context_pack>`. Any `&`, `<`, `>`, `\"`, or `'` in a filename or command (for example `build && test` or `foo<bar>`) can still invalidate Claude/Hermes exports, so the XML-safety blocker is not fully resolved."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The expected mission artifact set for this review was not present in the snapshot, so the worker handoff/transcript procedure could not be audited directly.",
+      "evidence": "`/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m1-context-pack-core` only contains `scrutiny/`; searches for `features.json`, `worker-transcripts.jsonl`, and `handoffs/` under `.factory/validation` returned no results for this mission."
+    }
+  ],
+  "addressesFailureFrom": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m1-context-pack-core/scrutiny/reviews/m1-context-pack-core-export-envelopes.json",
+  "summary": "Fail: the locale blocker is gone, but Claude/Hermes envelopes still aren't safe for XML-sensitive key files/commands."
+}

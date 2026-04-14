@@ -1,0 +1,21 @@
+{
+  "featureId": "m1-fix-core-tiebreak-and-locale-determinism",
+  "reviewedAt": "2026-04-14T06:01:32Z",
+  "commitId": "f8d306bc6331f094d77b995dac068309261501c4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass: the fix flips the final exact-tie fallback to ID-ascending order and pins usage-summary date formatting to UTC plus en_US_POSIX, without regressing the existing ranking or cap/trim behavior.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The current service tests prove deterministic ordering and cap trimming separately, but they still do not directly exercise the exact equal-score/equal-timestamp case that the fix relies on for final ID-ascending survivor selection under cap pressure.",
+      "evidence": "AgentLensTests/Active/ContextPackServiceTests.swift:113-126 uses different timestamps for the tie-break test, and lines 346-371 cover overflow trimming with age-separated sessions rather than an exact tie fixture."
+    }
+  ],
+  "addressesFailureFrom": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m1-context-pack-core/scrutiny/reviews/m1-context-pack-core-model-and-ranking.json",
+  "summary": "Pass: the original tie-break and locale-stability blockers are fixed."
+}
