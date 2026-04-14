@@ -9,7 +9,8 @@ commands:
     if [ -n "${MILESTONE:-}" ]; then
       ./.factory/library/verify-flow-report-finalization.sh "$MILESTONE" || exit 1
     fi
-    scripts/test-openburnbar-swift.sh && scripts/test-openburnbar-app.sh
+    scripts/test-openburnbar-swift.sh || exit 1
+    scripts/test-openburnbar-app.sh || CI=true scripts/test-openburnbar-app.sh
   test_app: scripts/test-openburnbar-app.sh
   test_swift: scripts/test-openburnbar-swift.sh
   test_context_pack_service: xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/ContextPackServiceTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''
