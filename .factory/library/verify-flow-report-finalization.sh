@@ -74,6 +74,7 @@ if [ $# -lt 1 ]; then
     echo "  m2-exact-ingestion-precision: group-a.json, group-b.json" >&2
     echo "  m3-hybrid-indexing-efficiency: group-a.json, group-b.json" >&2
     echo "  m4-reconciliation-backfill-hardening: group-reconciliation-core.json, group-reporting-audit.json" >&2
+    echo "  m1-context-pack-core: cp1-service-ranking.json cp1-service-cap.json cp1-service-dedupe.json cp1-export-envelopes.json" >&2
     echo "" >&2
     echo "If no default is available for the milestone, reports must be specified explicitly." >&2
     exit 1
@@ -113,6 +114,9 @@ get_milestone_default_reports() {
             ;;
         m4-reconciliation-backfill-hardening)
             echo "group-reconciliation-core.json group-reporting-audit.json"
+            ;;
+        m1-context-pack-core)
+            echo "cp1-service-ranking.json cp1-service-cap.json cp1-service-dedupe.json cp1-export-envelopes.json"
             ;;
         misc-core-engine-followups|misc-infra-followups|misc-m4-followups)
             # Misc milestones may have variable reports - try to infer from synthesis.json

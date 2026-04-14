@@ -217,7 +217,7 @@ final class ContextPackExportTests: XCTestCase {
         XCTAssertFalse(output.contains("<context_pack>"), "Markdown export should not have XML envelope")
     }
 
-    // MARK: - VAL-CTXEXP-006: Empty pack produces valid empty export for all targets
+    // MARK: - VAL-CTXEXP-014: Empty pack produces valid empty export for all targets
 
     func test_emptyPackProducesValidEmptyExport() {
         let emptyPack = ExportFixtures.makePack(sessions: [], keyFiles: [], keyCommands: [])
@@ -468,7 +468,7 @@ final class ContextPackExportTests: XCTestCase {
         XCTAssertEqual(ContextPackExportTarget.markdown.displayName, "Markdown")
     }
 
-    // MARK: - VAL-CTXEXP-014: XML-sensitive key-files and key-commands preserve envelope integrity
+    // MARK: - VAL-CTXEXP-006: XML-sensitive key-files and key-commands preserve envelope integrity
 
     func test_xmlSensitiveKeyFilesAndCommandsPreserveEnvelopeIntegrity() {
         // Filenames and commands containing XML-sensitive characters
