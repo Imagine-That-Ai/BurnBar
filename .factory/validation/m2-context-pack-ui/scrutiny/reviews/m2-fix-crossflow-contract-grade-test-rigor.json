@@ -1,0 +1,28 @@
+{
+  "featureId": "m2-fix-crossflow-contract-grade-test-rigor",
+  "reviewedAt": "2026-04-14T09:34:00Z",
+  "commitId": "106c2fd",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The contract-referenced selector names are restored exactly, but the fix still leaves both original blockers unresolved: Session Detail remains data-layer-only, and CrossFlow still bypasses the real SwiftUI entrypoints while missing the required ordered session-id parity check.",
+    "issues": [
+      {
+        "file": "/Users/albertonunez/Documents/Windsurf/BurnBar/AgentLensTests/Active/ContextPackSessionDetailSurfaceTests.swift",
+        "line": 82,
+        "severity": "blocking",
+        "description": "These renamed tests still only exercise `DataStore` and stable-ID helpers. `test_rowVisibility_requiresIndexingEnabledAndConversation`, `test_rowPlacementBelowSessionLogAction`, `test_tapPresentsContextPackSheet`, and the rest never instantiate `SessionDetailView` or `ContextPackSheet`, so the contract's required UI visibility/order/presentation wiring is still not proven."
+      },
+      {
+        "file": "/Users/albertonunez/Documents/Windsurf/BurnBar/AgentLensTests/Active/ContextPackCrossFlowTests.swift",
+        "line": 179,
+        "severity": "blocking",
+        "description": "`test_dashboardAndSessionDetailProduceEquivalentPackForSameAnchor` still drives `ContextPackService.assemble` through `assembleAnchored`/`assembleUnanchored` instead of the real Dashboard/SessionDetail/ContextPackSheet flow, and it never asserts exact ordered `sessionIds` equality between entrypoints. The same-anchor case also compares an anchored pack to `assembleUnanchored(candidates:)`, so the parity requirement is still only being approximated."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": ".factory/validation/m2-context-pack-ui/scrutiny/reviews/m2-context-pack-session-detail-entry.json; .factory/validation/m2-context-pack-ui/scrutiny/reviews/m2-context-pack-cross-entry-consistency.json",
+  "summary": "Selectors are fixed, but the fix still does not exercise real entrypoint wiring or enforce ordered session-id parity, so the original scrutiny blockers remain unresolved."
+}

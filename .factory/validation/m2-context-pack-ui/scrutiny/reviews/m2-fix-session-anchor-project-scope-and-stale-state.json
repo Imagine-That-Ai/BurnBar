@@ -1,0 +1,28 @@
+{
+  "featureId": "m2-fix-session-anchor-project-scope-and-stale-state",
+  "reviewedAt": "2026-04-14T09:35:14Z",
+  "commitId": "870e79d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The ContextPackSheet anchorProject fix looks correct, but SessionDetailView still does not clear prior conversation/summary state before the async refresh completes. That means the rapid-switch stale-state blocker is not fully closed yet.",
+    "issues": [
+      {
+        "file": "AgentLens/Views/Dashboard/SessionDetailView.swift",
+        "line": 63,
+        "severity": "blocking",
+        "description": "Switching from `.task` to `.task(id:)` cancels the prior fetch, but this view still never resets `conversation` or `summaryText` before awaiting `cliBridge.detect()` and reloading. If the sheet content is reused for another session, the previous session's summary and Context Pack row can remain visible during the async gap, so the stale-state leak from VAL-CTXDETAIL-010 is still present."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `context-pack-ui-worker` procedure seems to treat `.task(id:)` cancellation as sufficient for session-switch safety, but this bug also needs an explicit state reset or view-identity scoping for reused sheet content. Without that, `conversation`/`summaryText` can still render stale data during the async gap.",
+      "evidence": "The handoff's fix summary only adds `.task(id:)` in `AgentLens/Views/Dashboard/SessionDetailView.swift`, and the file still has no `conversation = nil` / `summaryText = nil` reset before `await cliBridge.detect()`."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/m2-context-pack-ui/scrutiny/reviews/m2-context-pack-dashboard-sheet-ui.json",
+  "summary": "Fail: the project-scoped ContextPackSheet change is good, but SessionDetailView still needs an explicit stale-state reset to fully satisfy the rapid-switch contract."
+}
