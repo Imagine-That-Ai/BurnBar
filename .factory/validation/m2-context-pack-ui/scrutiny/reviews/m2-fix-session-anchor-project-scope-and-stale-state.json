@@ -1,28 +1,34 @@
 {
   "featureId": "m2-fix-session-anchor-project-scope-and-stale-state",
-  "reviewedAt": "2026-04-14T10:47:28Z",
-  "commitId": "a66731dac13c406f5107df5be463e183b2987048",
+  "reviewedAt": "2026-04-14T11:11:45Z",
+  "commitId": "ee0cef1fc8b42e0295bd43c7f2bcbcab0191e116",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "fail",
   "codeReview": {
-    "summary": "The project-scoped Context Pack path remains correct, but the new stale-state reset only watches `session.sessionId`. Because the real reload identity is `provider + sessionId`, a provider swap that reuses the same sessionId can still leak the prior session’s conversation/summary/anchor state until the new fetch completes.",
+    "summary": "The stableId reset change in SessionDetailView is the right idea, but this fix does not fully close the original failure. The submitted validation still does not exercise the actual same-sessionId/provider-swap regression, and the original Session Detail test diff still uses off-contract selector names, so the milestone's required proof is incomplete.",
     "issues": [
       {
-        "file": "AgentLens/Views/Dashboard/SessionDetailView.swift",
-        "line": 65,
+        "file": "AgentLensTests/Active/ContextPackSessionDetailSurfaceTests.swift",
+        "line": 432,
         "severity": "blocking",
-        "description": ".onChange only tracks `session.sessionId`, but the reload task is keyed by `ConversationRecord.stableId(provider: session.provider, sessionId: session.sessionId)`. If the detail view is reused for a different provider with the same sessionId, the old conversation/summary/context-pack anchor state is not cleared before the async reload, so stale UI can still leak across rapid switches."
+        "description": "The verification only covers `session-A`/`session-B` and `session-1`/`session-2`, so it never exercises the actual bug described by the feature: two providers sharing the same `sessionId`. `test_reopenReanchorsToCurrentSession` and `test_initialRenderDoesNotLeakPriorSessionState` can both pass while the same-sessionId provider-swap stale-state leak still exists, so VAL-CTXDETAIL-007/010 are not actually proven."
+      },
+      {
+        "file": "AgentLensTests/Active/ContextPackSessionDetailSurfaceTests.swift",
+        "line": 101,
+        "severity": "blocking",
+        "description": "The original feature diff still uses renamed test methods (`test_rowVisibility_conversationFetchSucceeds`, `test_viewFullSessionLog_routingUnaffectedByStableId`, `test_sessionDetailContextPackEntryData_availableInDataStore`, `test_initialRender_doesNotLeakPriorSessionState`) instead of the exact validator selectors from `validation-contract.md`. The fix commit does not touch this file, so the required `-only-testing` commands still miss the intended assertions."
       }
     ]
   },
   "sharedStateObservations": [
     {
       "area": "skills",
-      "observation": "The `context-pack-ui-worker` procedure says Session Detail assertions must instantiate `SessionDetailView` and assert visibility/order/presentation through the rendered view path, but `AgentLensTests/Active/ContextPackSessionDetailSurfaceTests.swift` still contains only database/state assertions and comments. `SessionDetailView(` and `inspect()` do not appear in that file, so the contract can still appear satisfied without exercising the real view surface.",
-      "evidence": "Grep over `AgentLensTests/Active/ContextPackSessionDetailSurfaceTests.swift` found no `SessionDetailView(` or `inspect()` matches; the `test_initialRenderDoesNotLeakPriorSessionState` body only checks fetched conversations and comments on the expected behavior."
+      "observation": "The context-pack-ui-worker procedure should explicitly require a fixture that keeps `sessionId` constant while swapping providers for VAL-CTXDETAIL-007. The current verification uses different session IDs, which can green the suite without proving the real stale-state regression is gone.",
+      "evidence": "Validation contract lines 110-127 require rapid-switch/provider-swap coverage, but the worker's tests use `session-A`/`session-B` and `session-1`/`session-2`."
     }
   ],
   "addressesFailureFrom": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m2-context-pack-ui/scrutiny/reviews/m2-context-pack-session-detail-entry.json",
-  "summary": "Fail: the project-scoped assembly fix holds, but the stale-state reset is still keyed too narrowly and can miss provider swaps that reuse the same sessionId."
+  "summary": "Fail: the code change is sound, but the fix does not fully address the original failure because the actual provider-swap regression is not directly tested and the original Session Detail test selectors remain off-contract in the reviewed diff."
 }

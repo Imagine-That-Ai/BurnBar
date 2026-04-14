@@ -1,6 +1,6 @@
 {
   "milestone": "m2-context-pack-ui",
-  "round": 4,
+  "round": 5,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -32,31 +32,36 @@
     {
       "featureId": "m2-fix-session-anchor-project-scope-and-stale-state",
       "severity": "blocking",
-      "description": "SessionDetailView still clears state too narrowly: the reset watches only session.sessionId, but the reload identity is provider + sessionId, so provider swaps can still leak prior conversation/summary/anchor state before the async refresh finishes."
+      "description": "The validation still does not exercise the actual same-sessionId / different-provider rapid-swap regression, so the Session Detail stale-state leak remains unproven even though the stableId reset change is directionally correct."
+    },
+    {
+      "featureId": "m2-fix-session-anchor-project-scope-and-stale-state",
+      "severity": "blocking",
+      "description": "The original Session Detail test diff still uses off-contract selector names, so the required `-only-testing` selectors from validation-contract.md do not target the intended assertions."
     },
     {
       "featureId": "m2-fix-crossflow-contract-grade-test-rigor",
       "severity": "blocking",
-      "description": "ContextPackSessionDetailSurfaceTests still remain data-layer-only and never instantiate SessionDetailView or ContextPackSheet, so the contract's UI visibility/order/presentation wiring is not actually exercised."
+      "description": "ContextPackSessionDetailSurfaceTests still validate helper/state behavior rather than real `SessionDetailView` presentation, leaving the required UI visibility, ordering, and sheet presentation wiring unproven."
     },
     {
       "featureId": "m2-fix-crossflow-contract-grade-test-rigor",
       "severity": "blocking",
-      "description": "ContextPackCrossFlowTests still bypass the real Dashboard -> SessionDetail -> ContextPackSheet path and do not assert exact ordered session-id equality, leaving same-anchor parity regressions unverified."
+      "description": "ContextPackCrossFlowTests still call `ContextPackService.assemble` directly and do not assert exact ordered session-id parity between entrypoints, so the real Dashboard -> SessionDetail -> ContextPackSheet flow remains unverified."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": ".factory/skills/context-pack-ui-worker/SKILL.md",
-      "suggestion": "Require SessionDetail stale-state clearing to key off the full reload identity (`provider + sessionId`, or an equivalent view identity scope) instead of `sessionId` alone; `.task(id:)` cancellation by itself is not enough.",
-      "evidence": "The fix-session review found that provider swaps can still leak prior conversation/summary/anchor state because the reset only watches `session.sessionId`.",
+      "suggestion": "Require Session Detail regression coverage to keep `sessionId` constant while swapping providers, so VAL-CTXDETAIL-007/010 prove the actual stale-state bug path instead of only different-session fixtures.",
+      "evidence": "The session-anchor review found the validation used `session-A`/`session-B` and `session-1`/`session-2`, which can pass without exercising the real provider-swap regression.",
       "isSystemic": true
     },
     {
       "target": ".factory/skills/context-pack-ui-worker/SKILL.md",
-      "suggestion": "Require cross-flow and Session Detail validation to instantiate the real DashboardView -> SessionDetailView -> ContextPackSheet path and assert exact ordered session-id parity, rejecting service-only helper coverage for contract-grade checks.",
-      "evidence": "The crossflow review found the tests still bypass real SwiftUI entrypoints and only approximate same-anchor parity with service-only helpers.",
+      "suggestion": "Require contract-grade validation to instantiate the real `DashboardView -> SessionDetailView -> ContextPackSheet` path and reject helper-only row/service assertions for CTXDETAIL/CTXCROSS selectors.",
+      "evidence": "The crossflow review found the tests still rely on helper-only state and direct service calls, leaving the intended SwiftUI entry surfaces unexercised.",
       "isSystemic": true
     }
   ],
