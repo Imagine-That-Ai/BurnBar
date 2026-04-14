@@ -94,14 +94,7 @@
 		3E39CD499B97BE368849A575 /* ControlPlaneStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 087B142B81E108B93B097682 /* ControlPlaneStore.swift */; };
 		3EB4F281C68D777D744331A3 /* MissionControlError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6670711854A2CBD675BCFD8B /* MissionControlError.swift */; };
 		3EBB92712995EFBC154A8558 /* ProjectionPipelineService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6456285BFCA6A6CD0029380F /* ProjectionPipelineService.swift */; };
-		E8F0A1B2C3D4E5F678901238 /* ProjectionPipelineCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F0A1B2C3D4E5F678901234 /* ProjectionPipelineCore.swift */; };
-		E8F0A1B2C3D4E5F678901239 /* ProjectionPipelineHealthModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F0A1B2C3D4E5F678901235 /* ProjectionPipelineHealthModels.swift */; };
 		E8F0A1B2C3D4E5F67890123A /* ProjectionJobLatencyAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F0A1B2C3D4E5F678901236 /* ProjectionJobLatencyAnalytics.swift */; };
-		E8F0A1B2C3D4E5F67890123B /* ProjectionChunker.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F0A1B2C3D4E5F678901237 /* ProjectionChunker.swift */; };
-		F1E2D3C4B5A6978890AABBD2 /* ParserHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C4B5A6978890AABBCC /* ParserHealth.swift */; };
-		F1E2D3C4B5A6978890AABBD3 /* SummaryQueueItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C4B5A6978890AABBCD /* SummaryQueueItem.swift */; };
-		F1E2D3C4B5A6978890AABBD4 /* UsageAggregationPolicies.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C4B5A6978890AABBCF /* UsageAggregationPolicies.swift */; };
-		F1E2D3C4B5A6978890AABBD5 /* BillingUsageReconciliation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C4B5A6978890AABBD0 /* BillingUsageReconciliation.swift */; };
 		3FA90D367D3EC6959A01E6EE /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DD15864A9CB9F3B8A09F6D5 /* KeychainStore.swift */; };
 		40257D76A778DAA92B279494 /* DataStore+ProjectionAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACD8530F74B484137FA164D0 /* DataStore+ProjectionAccess.swift */; };
 		40B250FDC5C83440748F324D /* OpenBurnBarProviderRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4E51BA7AC00B68739441E09 /* OpenBurnBarProviderRouterTests.swift */; };
@@ -162,11 +155,6 @@
 		716B9E06F0FF4E48CE68555B /* UsageAggregator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 503B65BAD1DF31E7D8973427 /* UsageAggregator.swift */; };
 		756A45E44F021700A4944DEA /* ProviderLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D605BBD57E70E52343F263 /* ProviderLogoView.swift */; };
 		7625F68C42D7ACC7BFFF355B /* MissionControlStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 473278E5682FDF24F8DD7F11 /* MissionControlStore.swift */; };
-		EA4E633E1B9E0139784CCD59 /* MissionControlJournalRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F591D36994AEF81134622F8 /* MissionControlJournalRepository.swift */; };
-		1D0154BF63DFD5246135D3CB /* MissionControlMissionStateMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F4D69F8D6424BB0E83CC8F1 /* MissionControlMissionStateMerger.swift */; };
-		99887197BD7C37AD6A931643 /* MissionControlNotificationEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFD197C08089F641EF558EFD /* MissionControlNotificationEvaluator.swift */; };
-		CB969C12DFFB05242C3204A4 /* MissionControlProjectionReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEC212C0D308EC3B8B0C75DE /* MissionControlProjectionReducer.swift */; };
-		350F422E93EFFA0A34F38F2E /* MissionControlSummaryEnricher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62785290F6EDC05900C77969 /* MissionControlSummaryEnricher.swift */; };
 		77D1172CA1A8A3048E3B8C02 /* CheckpointTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 922DC848CE4B5FEAAA64D503 /* CheckpointTests.swift */; };
 		799C5D24D4164C211B857FE3 /* SessionLogDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0356B4FEFFCB190D93D0A82B /* SessionLogDetailPane.swift */; };
 		79AB043A3F4B67C2918B8F58 /* CloudSyncServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96AB2AA3BC3E638DC69E0696 /* CloudSyncServiceTests.swift */; };
@@ -463,11 +451,6 @@
 		44C0AD0CE2F28F0025752B15 /* OpenBurnBarPlannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarPlannerService.swift; sourceTree = "<group>"; };
 		45801A099E26CADD7A4AC551 /* MissionControlTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlTransport.swift; sourceTree = "<group>"; };
 		473278E5682FDF24F8DD7F11 /* MissionControlStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlStore.swift; sourceTree = "<group>"; };
-		2F591D36994AEF81134622F8 /* MissionControlJournalRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlJournalRepository.swift; sourceTree = "<group>"; };
-		6F4D69F8D6424BB0E83CC8F1 /* MissionControlMissionStateMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlMissionStateMerger.swift; sourceTree = "<group>"; };
-		CFD197C08089F641EF558EFD /* MissionControlNotificationEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlNotificationEvaluator.swift; sourceTree = "<group>"; };
-		BEC212C0D308EC3B8B0C75DE /* MissionControlProjectionReducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlProjectionReducer.swift; sourceTree = "<group>"; };
-		62785290F6EDC05900C77969 /* MissionControlSummaryEnricher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlSummaryEnricher.swift; sourceTree = "<group>"; };
 		4977ADA12C32CCD6AD8D4249 /* ProvidersSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProvidersSettingsView.swift; sourceTree = "<group>"; };
 		4AC386BF733896888BDD1F01 /* SettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTab.swift; sourceTree = "<group>"; };
 		4BD031B278AC43BCDD83F108 /* OpenBurnBarPolicyEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarPolicyEngine.swift; sourceTree = "<group>"; };
@@ -509,14 +492,7 @@
 		63C9B8BD8A78996154DBA4AE /* SearchIndexStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndexStore.swift; sourceTree = "<group>"; };
 		6414EE49FC62988ADCED0063 /* AnthropicUsageAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicUsageAPI.swift; sourceTree = "<group>"; };
 		6456285BFCA6A6CD0029380F /* ProjectionPipelineService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionPipelineService.swift; sourceTree = "<group>"; };
-		E8F0A1B2C3D4E5F678901234 /* ProjectionPipelineCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionPipelineCore.swift; sourceTree = "<group>"; };
-		E8F0A1B2C3D4E5F678901235 /* ProjectionPipelineHealthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionPipelineHealthModels.swift; sourceTree = "<group>"; };
 		E8F0A1B2C3D4E5F678901236 /* ProjectionJobLatencyAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionJobLatencyAnalytics.swift; sourceTree = "<group>"; };
-		E8F0A1B2C3D4E5F678901237 /* ProjectionChunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionChunker.swift; sourceTree = "<group>"; };
-		F1E2D3C4B5A6978890AABBCC /* ParserHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserHealth.swift; sourceTree = "<group>"; };
-		F1E2D3C4B5A6978890AABBCD /* SummaryQueueItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryQueueItem.swift; sourceTree = "<group>"; };
-		F1E2D3C4B5A6978890AABBCF /* UsageAggregationPolicies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAggregationPolicies.swift; sourceTree = "<group>"; };
-		F1E2D3C4B5A6978890AABBD0 /* BillingUsageReconciliation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BillingUsageReconciliation.swift; sourceTree = "<group>"; };
 		6482B2A0AD06363EDB38A182 /* ModelDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDashboardView.swift; sourceTree = "<group>"; };
 		65766371545F27CCFAC03478 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		6670711854A2CBD675BCFD8B /* MissionControlError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlError.swift; sourceTree = "<group>"; };
@@ -1022,14 +998,9 @@
 				0AC800918DF1372DC6761D47 /* Bridges */,
 				6670711854A2CBD675BCFD8B /* MissionControlError.swift */,
 				9199470B751F7CAC1DE89887 /* MissionControlHelpers.swift */,
-				2F591D36994AEF81134622F8 /* MissionControlJournalRepository.swift */,
-				6F4D69F8D6424BB0E83CC8F1 /* MissionControlMissionStateMerger.swift */,
-				CFD197C08089F641EF558EFD /* MissionControlNotificationEvaluator.swift */,
-				BEC212C0D308EC3B8B0C75DE /* MissionControlProjectionReducer.swift */,
 				858A9751C02D25B0B5DBDDA9 /* MissionControlProjectionFile.swift */,
 				3AE90C38154A75C882C0479C /* MissionControlService.swift */,
 				473278E5682FDF24F8DD7F11 /* MissionControlStore.swift */,
-				62785290F6EDC05900C77969 /* MissionControlSummaryEnricher.swift */,
 				45801A099E26CADD7A4AC551 /* MissionControlTransport.swift */,
 			);
 			path = MissionControl;
@@ -1238,10 +1209,7 @@
 		E8F0A1B2C3D4E5F67890123D /* ProjectionPipeline */ = {
 			isa = PBXGroup;
 			children = (
-				E8F0A1B2C3D4E5F678901234 /* ProjectionPipelineCore.swift */,
-				E8F0A1B2C3D4E5F678901235 /* ProjectionPipelineHealthModels.swift */,
 				E8F0A1B2C3D4E5F678901236 /* ProjectionJobLatencyAnalytics.swift */,
-				E8F0A1B2C3D4E5F678901237 /* ProjectionChunker.swift */,
 			);
 			path = ProjectionPipeline;
 			sourceTree = "<group>";
@@ -1249,10 +1217,6 @@
 		F1E2D3C4B5A6978890AABBD7 /* UsageAggregation */ = {
 			isa = PBXGroup;
 			children = (
-				F1E2D3C4B5A6978890AABBCC /* ParserHealth.swift */,
-				F1E2D3C4B5A6978890AABBCD /* SummaryQueueItem.swift */,
-				F1E2D3C4B5A6978890AABBCF /* UsageAggregationPolicies.swift */,
-				F1E2D3C4B5A6978890AABBD0 /* BillingUsageReconciliation.swift */,
 			);
 			path = UsageAggregation;
 			sourceTree = "<group>";
@@ -1685,12 +1649,7 @@
 				95AA8B8DA35B0F861CCFB879 /* MissionControlHelpers.swift in Sources */,
 				2D1038333F424BABE3BDBD81 /* MissionControlProjectionFile.swift in Sources */,
 				6B773B406B19E37E527117D7 /* MissionControlService.swift in Sources */,
-				EA4E633E1B9E0139784CCD59 /* MissionControlJournalRepository.swift in Sources */,
-				1D0154BF63DFD5246135D3CB /* MissionControlMissionStateMerger.swift in Sources */,
-				99887197BD7C37AD6A931643 /* MissionControlNotificationEvaluator.swift in Sources */,
-				CB969C12DFFB05242C3204A4 /* MissionControlProjectionReducer.swift in Sources */,
 				7625F68C42D7ACC7BFFF355B /* MissionControlStore.swift in Sources */,
-				350F422E93EFFA0A34F38F2E /* MissionControlSummaryEnricher.swift in Sources */,
 				2B016DD8332CEDC77400C395 /* MissionControlTransport.swift in Sources */,
 				477063C85990CC409C253526 /* OpenBurnBarAgentLoopService.swift in Sources */,
 				AB899FFFFB211D0C50AA7B1D /* OpenBurnBarBrowserToolService.swift in Sources */,
@@ -1952,14 +1911,7 @@
 				E6F4AB5B102E3A0AC0C7BBC2 /* PopoverTooltip.swift in Sources */,
 				7ADC9B979EB5FB9ABEB3E9FD /* PrivacyIndexingSettingsView.swift in Sources */,
 				3EBB92712995EFBC154A8558 /* ProjectionPipelineService.swift in Sources */,
-				E8F0A1B2C3D4E5F678901238 /* ProjectionPipelineCore.swift in Sources */,
-				E8F0A1B2C3D4E5F678901239 /* ProjectionPipelineHealthModels.swift in Sources */,
 				E8F0A1B2C3D4E5F67890123A /* ProjectionJobLatencyAnalytics.swift in Sources */,
-				E8F0A1B2C3D4E5F67890123B /* ProjectionChunker.swift in Sources */,
-				F1E2D3C4B5A6978890AABBD2 /* ParserHealth.swift in Sources */,
-				F1E2D3C4B5A6978890AABBD3 /* SummaryQueueItem.swift in Sources */,
-				F1E2D3C4B5A6978890AABBD4 /* UsageAggregationPolicies.swift in Sources */,
-				F1E2D3C4B5A6978890AABBD5 /* BillingUsageReconciliation.swift in Sources */,
 				41B2C17A62BE394E594BA9E2 /* ProjectionStore.swift in Sources */,
 				D0384BB6E199C0A083A732FD /* ProjectsView.swift in Sources */,
 				48E4F0D5DF2330054BCFE838 /* ProviderBrand.swift in Sources */,
