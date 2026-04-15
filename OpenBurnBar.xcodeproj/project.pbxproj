@@ -66,7 +66,6 @@
 		2C3A15990F091F454C6627B5 /* AccountManagerProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 789CC1D61CA1F8B0442F6BEB /* AccountManagerProtocol.swift */; };
 		2D07B73D80D3870A59D8A11A /* HermesPopoverStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 829B818D9E89E2B78A6B0B16 /* HermesPopoverStrip.swift */; };
 		2D1038333F424BABE3BDBD81 /* MissionControlProjectionFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 858A9751C02D25B0B5DBDDA9 /* MissionControlProjectionFile.swift */; };
-		2DDD8B3F6990C3FCE58C343C /* ProviderQuotaCodexModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42AED3A80247CC1544D18B9 /* ProviderQuotaCodexModels.swift */; };
 		2E7ECEB2C934E52ED0822C9F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84CCFBECFAFA744C7E64FCC1 /* AppDelegate.swift */; };
 		2EA8300923D54A683EE8E947 /* ClaudeCodeParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E955F9A39FDDAA9DBCAD8E1 /* ClaudeCodeParser.swift */; };
 		2F13CB3BB3DAEFB3D6ACE742 /* CrossEncoderConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1597C5A76F003D0179ECED1 /* CrossEncoderConfiguration.swift */; };
@@ -154,8 +153,16 @@
 		6C91E691DBAC08107A960049 /* AppearanceCorkboardSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0500AD8EAC28B3F3EC72BC39 /* AppearanceCorkboardSection.swift */; };
 		6FCCE64D6938846B095529C8 /* AlertsAndNotificationsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 340B74D7A132D7590AAA8EBA /* AlertsAndNotificationsViews.swift */; };
 		716B9E06F0FF4E48CE68555B /* UsageAggregator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 503B65BAD1DF31E7D8973427 /* UsageAggregator.swift */; };
+		A20000010000000000000001 /* BillingUsageReconciliation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000020000000000000001 /* BillingUsageReconciliation.swift */; };
+		A20000010000000000000002 /* ParserHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000020000000000000002 /* ParserHealth.swift */; };
+		A20000010000000000000003 /* SummaryQueueItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000020000000000000003 /* SummaryQueueItem.swift */; };
+		A20000010000000000000004 /* UsageAggregationPolicies.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000020000000000000004 /* UsageAggregationPolicies.swift */; };
 		756A45E44F021700A4944DEA /* ProviderLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D605BBD57E70E52343F263 /* ProviderLogoView.swift */; };
 		7625F68C42D7ACC7BFFF355B /* MissionControlStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 473278E5682FDF24F8DD7F11 /* MissionControlStore.swift */; };
+		A30000010000000000000001 /* ProjectionChunker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000020000000000000001 /* ProjectionChunker.swift */; };
+		A30000010000000000000002 /* ProjectionJobLatencyAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000020000000000000002 /* ProjectionJobLatencyAnalytics.swift */; };
+		A30000010000000000000003 /* ProjectionPipelineCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000020000000000000003 /* ProjectionPipelineCore.swift */; };
+		A30000010000000000000004 /* ProjectionPipelineHealthModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000020000000000000004 /* ProjectionPipelineHealthModels.swift */; };
 		77D1172CA1A8A3048E3B8C02 /* CheckpointTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 922DC848CE4B5FEAAA64D503 /* CheckpointTests.swift */; };
 		799C5D24D4164C211B857FE3 /* SessionLogDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0356B4FEFFCB190D93D0A82B /* SessionLogDetailPane.swift */; };
 		79AB043A3F4B67C2918B8F58 /* CloudSyncServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96AB2AA3BC3E638DC69E0696 /* CloudSyncServiceTests.swift */; };
@@ -214,6 +221,12 @@
 		9F6B4D4A706DCBC7C0D44CF4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ADB09D71338A6D9E24C0D315 /* Assets.xcassets */; };
 		A050142D1B4EC67B5D9806F2 /* DataStore+UsageAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073C28D960BA61E9F41F39D1 /* DataStore+UsageAccess.swift */; };
 		A2CEB1EC1BAB4B2ED2CBD44B /* AccountSwitcherSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C8382B65A4C8877DD44101E /* AccountSwitcherSettingsView.swift */; };
+		A50000010000000000000001 /* AccountSwitcherSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000020000000000000001 /* AccountSwitcherSupport.swift */; };
+		A50000010000000000000002 /* AccountSwitcherSettingsView+DataOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000020000000000000002 /* AccountSwitcherSettingsView+DataOperations.swift */; };
+		A50000010000000000000003 /* AccountSwitcherSettingsView+Rendering.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000020000000000000003 /* AccountSwitcherSettingsView+Rendering.swift */; };
+		A50000010000000000000004 /* AccountSwitcherDestinationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000020000000000000004 /* AccountSwitcherDestinationPickerSheet.swift */; };
+		A50000010000000000000005 /* AccountSwitcherProfileFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000020000000000000005 /* AccountSwitcherProfileFormView.swift */; };
+		A50000010000000000000006 /* AccountSwitcherProfileRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000020000000000000006 /* AccountSwitcherProfileRowView.swift */; };
 		A3678C6E8FFB2E7CB03B4175 /* ArtifactAuthoringService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA4B9C6930C83E8E19B0CBC0 /* ArtifactAuthoringService.swift */; };
 		A549D098BED003EB6EA187D9 /* OpenBurnBarCLITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C59D6C2F54CD2E27F99ED467 /* OpenBurnBarCLITests.swift */; };
 		A60F440B0E397629E6C764B4 /* LocalSearchSchemaStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CED4FC1890BB2D226DB1B6B /* LocalSearchSchemaStoreTests.swift */; };
@@ -284,6 +297,10 @@
 		D98520353C85057045317498 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5FAE8324406B547366B9745 /* DashboardView.swift */; };
 		D9DC85A49676FDDDC3715454 /* OpenBurnBarDaemonSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 765FAAE2F72F5852A7A457C0 /* OpenBurnBarDaemonSocketClient.swift */; };
 		DBBE768D5F0D97B4E43F07B1 /* ProviderQuotaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EF70AEFFB294C2284F74824 /* ProviderQuotaViews.swift */; };
+		A40000010000000000000001 /* ProviderQuotaBucketViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000020000000000000001 /* ProviderQuotaBucketViews.swift */; };
+		A40000010000000000000002 /* ProviderQuotaStripViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000020000000000000002 /* ProviderQuotaStripViews.swift */; };
+		A40000010000000000000003 /* ProviderQuotaPopoverViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000020000000000000003 /* ProviderQuotaPopoverViews.swift */; };
+		A40000010000000000000004 /* ProviderQuotaCommandCenterViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000020000000000000004 /* ProviderQuotaCommandCenterViews.swift */; };
 		DC5B5C19652A676F99176C09 /* OpenRouterUsageAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1030DC560B5FB6BCCAAC76F /* OpenRouterUsageAPI.swift */; };
 		DD7E8C57C9453C3B7B57722D /* CLIBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79987AAE7522D880244BCFB2 /* CLIBridge.swift */; };
 		DD9DAE5BF3CCDE8FFB72237E /* TestableClaudeCodeParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE8198EF607520462A4FC463 /* TestableClaudeCodeParser.swift */; };
@@ -411,6 +428,10 @@
 		1DFC664D6073F13A9D9C65CD /* OpenBurnBarRunServiceTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarRunServiceTypes.swift; sourceTree = "<group>"; };
 		1EB82E20E417E4217AE59836 /* SwitcherDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherDiscoveryService.swift; sourceTree = "<group>"; };
 		1EF70AEFFB294C2284F74824 /* ProviderQuotaViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaViews.swift; sourceTree = "<group>"; };
+		A40000020000000000000001 /* ProviderQuotaBucketViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuota/ProviderQuotaBucketViews.swift; sourceTree = "<group>"; };
+		A40000020000000000000002 /* ProviderQuotaStripViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuota/ProviderQuotaStripViews.swift; sourceTree = "<group>"; };
+		A40000020000000000000003 /* ProviderQuotaPopoverViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuota/ProviderQuotaPopoverViews.swift; sourceTree = "<group>"; };
+		A40000020000000000000004 /* ProviderQuotaCommandCenterViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuota/ProviderQuotaCommandCenterViews.swift; sourceTree = "<group>"; };
 		1EF7EBF9EBAE94C1308E7BF4 /* libOpenBurnBarDaemon.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libOpenBurnBarDaemon.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		217FC40F07BA5583CD430A29 /* ContextPackExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextPackExportTests.swift; sourceTree = "<group>"; };
 		2501A1803FDE64BCCC02240E /* OpenBurnBarUsageRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarUsageRecorder.swift; sourceTree = "<group>"; };
@@ -462,6 +483,10 @@
 		4EC4A8477382EBA52FC8A7F5 /* CursorConnectorManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorConnectorManager.swift; sourceTree = "<group>"; };
 		4F907EAB0DD37C399F3C2E46 /* OpenBurnBarCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = OpenBurnBarCore; path = OpenBurnBarCore; sourceTree = SOURCE_ROOT; };
 		503B65BAD1DF31E7D8973427 /* UsageAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAggregator.swift; sourceTree = "<group>"; };
+		A20000020000000000000001 /* BillingUsageReconciliation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAggregation/BillingUsageReconciliation.swift; sourceTree = "<group>"; };
+		A20000020000000000000002 /* ParserHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAggregation/ParserHealth.swift; sourceTree = "<group>"; };
+		A20000020000000000000003 /* SummaryQueueItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAggregation/SummaryQueueItem.swift; sourceTree = "<group>"; };
+		A20000020000000000000004 /* UsageAggregationPolicies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAggregation/UsageAggregationPolicies.swift; sourceTree = "<group>"; };
 		51F28E56250CF502142A5EB0 /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		521D3EDF375BE17E78C7EA60 /* AccountSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettingsView.swift; sourceTree = "<group>"; };
 		525CAF1052489DD05540F88C /* OpenBurnBarDaemonConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarDaemonConfiguration.swift; sourceTree = "<group>"; };
@@ -477,6 +502,12 @@
 		599157C7740ADB817DA37ACC /* ContextPackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextPackService.swift; sourceTree = "<group>"; };
 		5C62AB8F0E34A625BAADDC38 /* DashboardBracketSwarmBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardBracketSwarmBackground.swift; sourceTree = "<group>"; };
 		5C8382B65A4C8877DD44101E /* AccountSwitcherSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSwitcherSettingsView.swift; sourceTree = "<group>"; };
+		A50000020000000000000001 /* AccountSwitcherSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSwitcher/AccountSwitcherSupport.swift; sourceTree = "<group>"; };
+		A50000020000000000000002 /* AccountSwitcherSettingsView+DataOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AccountSwitcher/AccountSwitcherSettingsView+DataOperations.swift"; sourceTree = "<group>"; };
+		A50000020000000000000003 /* AccountSwitcherSettingsView+Rendering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AccountSwitcher/AccountSwitcherSettingsView+Rendering.swift"; sourceTree = "<group>"; };
+		A50000020000000000000004 /* AccountSwitcherDestinationPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSwitcher/AccountSwitcherDestinationPickerSheet.swift; sourceTree = "<group>"; };
+		A50000020000000000000005 /* AccountSwitcherProfileFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSwitcher/AccountSwitcherProfileFormView.swift; sourceTree = "<group>"; };
+		A50000020000000000000006 /* AccountSwitcherProfileRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSwitcher/AccountSwitcherProfileRowView.swift; sourceTree = "<group>"; };
 		5CB32DCAD61B1B0510FF11A2 /* ProviderUsageAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderUsageAPIService.swift; sourceTree = "<group>"; };
 		5D1F601074335E0C1F306736 /* CloudSyncSharedArtifactModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncSharedArtifactModels.swift; sourceTree = "<group>"; };
 		5DD51C996E2207EEC7902141 /* ChatMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageView.swift; sourceTree = "<group>"; };
@@ -488,6 +519,10 @@
 		63C9B8BD8A78996154DBA4AE /* SearchIndexStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchIndexStore.swift; sourceTree = "<group>"; };
 		6414EE49FC62988ADCED0063 /* AnthropicUsageAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicUsageAPI.swift; sourceTree = "<group>"; };
 		6456285BFCA6A6CD0029380F /* ProjectionPipelineService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionPipelineService.swift; sourceTree = "<group>"; };
+		A30000020000000000000001 /* ProjectionChunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionPipeline/ProjectionChunker.swift; sourceTree = "<group>"; };
+		A30000020000000000000002 /* ProjectionJobLatencyAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionPipeline/ProjectionJobLatencyAnalytics.swift; sourceTree = "<group>"; };
+		A30000020000000000000003 /* ProjectionPipelineCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionPipeline/ProjectionPipelineCore.swift; sourceTree = "<group>"; };
+		A30000020000000000000004 /* ProjectionPipelineHealthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionPipeline/ProjectionPipelineHealthModels.swift; sourceTree = "<group>"; };
 		6482B2A0AD06363EDB38A182 /* ModelDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDashboardView.swift; sourceTree = "<group>"; };
 		65766371545F27CCFAC03478 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		6670711854A2CBD675BCFD8B /* MissionControlError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlError.swift; sourceTree = "<group>"; };
@@ -678,7 +713,6 @@
 		F1B1656C5FEAC442C8697746 /* AgentProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentProvider.swift; sourceTree = "<group>"; };
 		F315B5BCF48139A390F54129 /* OpenBurnBarIndexedSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarIndexedSearchService.swift; sourceTree = "<group>"; };
 		F3BD1F33293277DA1CB611E3 /* OpenBurnBarConfigStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarConfigStoreTests.swift; sourceTree = "<group>"; };
-		F42AED3A80247CC1544D18B9 /* ProviderQuotaCodexModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaCodexModels.swift; sourceTree = "<group>"; };
 		F6DE60CC3B1FFE6A6C49F33B /* ProviderQuotaError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaError.swift; sourceTree = "<group>"; };
 		F91AB499EAAA5A7846667802 /* OpenBurnBarAgentStackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarAgentStackTests.swift; sourceTree = "<group>"; };
 		F981D7F0BC100CE850721136 /* ProjectionPipelineServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionPipelineServiceTests.swift; sourceTree = "<group>"; };
@@ -762,6 +796,12 @@
 			children = (
 				521D3EDF375BE17E78C7EA60 /* AccountSettingsView.swift */,
 				5C8382B65A4C8877DD44101E /* AccountSwitcherSettingsView.swift */,
+				A50000020000000000000001 /* AccountSwitcherSupport.swift */,
+				A50000020000000000000002 /* AccountSwitcherSettingsView+DataOperations.swift */,
+				A50000020000000000000003 /* AccountSwitcherSettingsView+Rendering.swift */,
+				A50000020000000000000004 /* AccountSwitcherDestinationPickerSheet.swift */,
+				A50000020000000000000005 /* AccountSwitcherProfileFormView.swift */,
+				A50000020000000000000006 /* AccountSwitcherProfileRowView.swift */,
 				340B74D7A132D7590AAA8EBA /* AlertsAndNotificationsViews.swift */,
 				0500AD8EAC28B3F3EC72BC39 /* AppearanceCorkboardSection.swift */,
 				0C6DF0552835A8915F863E07 /* AppearanceModePickerView.swift */,
@@ -884,7 +924,6 @@
 				4E7963318FCE99286AFB8FC3 /* FlexibleQuotaBucketNormalizer.swift */,
 				7B80AB32F2413980D403AFD2 /* MiniMaxQuotaAdapter.swift */,
 				6ED0C396BBC637B6A99F5DC7 /* ProviderQuotaAdapter.swift */,
-				F42AED3A80247CC1544D18B9 /* ProviderQuotaCodexModels.swift */,
 				F6DE60CC3B1FFE6A6C49F33B /* ProviderQuotaError.swift */,
 				6FD52465BEB1838C0D742DB9 /* ProviderQuotaModels.swift */,
 				440B5DB6483C144E3633C154 /* ProviderQuotaService.swift */,
@@ -1248,6 +1287,10 @@
 				874A44FF202854D1EC3838F8 /* OpenBurnBarChatWorkspaceConfigurator.swift */,
 				19DB6649FEAB8468DFB56B91 /* OpenBurnBarIdentity.swift */,
 				6456285BFCA6A6CD0029380F /* ProjectionPipelineService.swift */,
+				A30000020000000000000001 /* ProjectionChunker.swift */,
+				A30000020000000000000002 /* ProjectionJobLatencyAnalytics.swift */,
+				A30000020000000000000003 /* ProjectionPipelineCore.swift */,
+				A30000020000000000000004 /* ProjectionPipelineHealthModels.swift */,
 				FF0BC832DD4F6C22F0FC801C /* SearchService.swift */,
 				85BC762B488DDB41A77183EB /* SessionLogMarkdownFormatter.swift */,
 				51F28E56250CF502142A5EB0 /* SettingsManager.swift */,
@@ -1257,6 +1300,10 @@
 				1EB82E20E417E4217AE59836 /* SwitcherDiscoveryService.swift */,
 				924327A5B17F0833621D5AF2 /* TranscriptBlockParser.swift */,
 				503B65BAD1DF31E7D8973427 /* UsageAggregator.swift */,
+				A20000020000000000000001 /* BillingUsageReconciliation.swift */,
+				A20000020000000000000002 /* ParserHealth.swift */,
+				A20000020000000000000003 /* SummaryQueueItem.swift */,
+				A20000020000000000000004 /* UsageAggregationPolicies.swift */,
 				F03B5C82505C96568419EFD9 /* UsageAggregatorParsers.swift */,
 			);
 			path = Services;
@@ -1381,6 +1428,10 @@
 				70F0B694D88A73574141F7DF /* ProviderDashboardQuotaPanel.swift */,
 				73D605BBD57E70E52343F263 /* ProviderLogoView.swift */,
 				1EF70AEFFB294C2284F74824 /* ProviderQuotaViews.swift */,
+				A40000020000000000000001 /* ProviderQuotaBucketViews.swift */,
+				A40000020000000000000002 /* ProviderQuotaStripViews.swift */,
+				A40000020000000000000003 /* ProviderQuotaPopoverViews.swift */,
+				A40000020000000000000004 /* ProviderQuotaCommandCenterViews.swift */,
 				EB72E230CDEA3DC2F1EE1305 /* SessionLedgerSection.swift */,
 			);
 			path = Components;
@@ -1765,6 +1816,12 @@
 				2C3A15990F091F454C6627B5 /* AccountManagerProtocol.swift in Sources */,
 				30D8E605B5D9E8308C381505 /* AccountSettingsView.swift in Sources */,
 				A2CEB1EC1BAB4B2ED2CBD44B /* AccountSwitcherSettingsView.swift in Sources */,
+				A50000010000000000000001 /* AccountSwitcherSupport.swift in Sources */,
+				A50000010000000000000002 /* AccountSwitcherSettingsView+DataOperations.swift in Sources */,
+				A50000010000000000000003 /* AccountSwitcherSettingsView+Rendering.swift in Sources */,
+				A50000010000000000000004 /* AccountSwitcherDestinationPickerSheet.swift in Sources */,
+				A50000010000000000000005 /* AccountSwitcherProfileFormView.swift in Sources */,
+				A50000010000000000000006 /* AccountSwitcherProfileRowView.swift in Sources */,
 				50BC7CC89C1DB20EE5D6676A /* AgentLensApp.swift in Sources */,
 				5F77D587576F0415ACF95220 /* AgentProvider.swift in Sources */,
 				6FCCE64D6938846B095529C8 /* AlertsAndNotificationsViews.swift in Sources */,
@@ -1907,6 +1964,10 @@
 				E6F4AB5B102E3A0AC0C7BBC2 /* PopoverTooltip.swift in Sources */,
 				7ADC9B979EB5FB9ABEB3E9FD /* PrivacyIndexingSettingsView.swift in Sources */,
 				3EBB92712995EFBC154A8558 /* ProjectionPipelineService.swift in Sources */,
+				A30000010000000000000001 /* ProjectionChunker.swift in Sources */,
+				A30000010000000000000002 /* ProjectionJobLatencyAnalytics.swift in Sources */,
+				A30000010000000000000003 /* ProjectionPipelineCore.swift in Sources */,
+				A30000010000000000000004 /* ProjectionPipelineHealthModels.swift in Sources */,
 				41B2C17A62BE394E594BA9E2 /* ProjectionStore.swift in Sources */,
 				D0384BB6E199C0A083A732FD /* ProjectsView.swift in Sources */,
 				48E4F0D5DF2330054BCFE838 /* ProviderBrand.swift in Sources */,
@@ -1915,13 +1976,16 @@
 				756A45E44F021700A4944DEA /* ProviderLogoView.swift in Sources */,
 				2298627216BBFDEE0FBF68AE /* ProviderPlanWizardView.swift in Sources */,
 				265C23FE6E7326B2479AFCF5 /* ProviderQuotaAdapter.swift in Sources */,
-				2DDD8B3F6990C3FCE58C343C /* ProviderQuotaCodexModels.swift in Sources */,
 				C1AC74E8F7EAAF936CB54F99 /* ProviderQuotaError.swift in Sources */,
 				0A10A0581B2C6845808A8170 /* ProviderQuotaModels.swift in Sources */,
 				1388112A67967275B802857D /* ProviderQuotaService.swift in Sources */,
 				0E4FE311062AE136DC1C8F98 /* ProviderQuotaSnapshotStore.swift in Sources */,
 				4C603ED9038E7D95670BBFB4 /* ProviderQuotaTypes.swift in Sources */,
 				DBBE768D5F0D97B4E43F07B1 /* ProviderQuotaViews.swift in Sources */,
+				A40000010000000000000001 /* ProviderQuotaBucketViews.swift in Sources */,
+				A40000010000000000000002 /* ProviderQuotaStripViews.swift in Sources */,
+				A40000010000000000000003 /* ProviderQuotaPopoverViews.swift in Sources */,
+				A40000010000000000000004 /* ProviderQuotaCommandCenterViews.swift in Sources */,
 				C57DCA0F94E8860A4BD3AF88 /* ProviderTheme.swift in Sources */,
 				56DFC307AFBAC9DE248434ED /* ProviderUsageAPIService.swift in Sources */,
 				D5AB4DE338C4CC7EC01F5666 /* ProvidersSettingsView.swift in Sources */,
@@ -1956,6 +2020,10 @@
 				64E2203FCAA665836B911815 /* TokenExtractionUtility.swift in Sources */,
 				F1D2A1F195C6B486CA42BC4D /* TranscriptBlockParser.swift in Sources */,
 				716B9E06F0FF4E48CE68555B /* UsageAggregator.swift in Sources */,
+				A20000010000000000000001 /* BillingUsageReconciliation.swift in Sources */,
+				A20000010000000000000002 /* ParserHealth.swift in Sources */,
+				A20000010000000000000003 /* SummaryQueueItem.swift in Sources */,
+				A20000010000000000000004 /* UsageAggregationPolicies.swift in Sources */,
 				68C7ABCAF8618BD25F64EB39 /* UsageAggregatorParsers.swift in Sources */,
 				09D06F1C25E76826454ABF15 /* UsageStore.swift in Sources */,
 				CFD08B65E8E3EF5AE40E781C /* VectorCandidateBackend.swift in Sources */,
