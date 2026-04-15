@@ -315,7 +315,6 @@ jobs:
         env:
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
         run: |
           NOTARY_ARGS=(
@@ -323,29 +322,24 @@ jobs:
             --key-id "$APPLE_NOTARY_KEY_ID"
           )
 
-          # Support both App Store Connect team keys (issuer required) and
-          # individual keys (issuer must be omitted) while staying fail-hard.
+          # Avoid using `notarytool history` as an auth probe because it can
+          # trap on some runner/toolchain combinations. Probe by submit itself.
           if [[ -n "${APPLE_NOTARY_ISSUER_ID:-}" ]]; then
-            if xcrun notarytool history "${NOTARY_ARGS[@]}" --issuer "$APPLE_NOTARY_ISSUER_ID" >/dev/null 2>&1; then
+            set +e
+            xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait --timeout 30m
+            notary_status=$?
+            set -e
+            if [[ $notary_status -eq 0 ]]; then
               echo "Notary auth mode: team API key"
-              NOTARY_ARGS+=(--issuer "$APPLE_NOTARY_ISSUER_ID")
-            elif xcrun notarytool history "${NOTARY_ARGS[@]}" >/dev/null 2>&1; then
-              echo "::warning::Issuer auth failed; using individual API key mode."
-              echo "Notary auth mode: individual API key"
             else
-              echo "::error::Notary authentication failed with and without issuer. Verify APPLE_NOTARY_* secrets."
-              exit 1
+              echo "::warning::Issuer-mode notarization failed; retrying without issuer (individual key mode)."
+              xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --wait --timeout 30m
+              echo "Notary auth mode: individual API key"
             fi
           else
-            if xcrun notarytool history "${NOTARY_ARGS[@]}" >/dev/null 2>&1; then
-              echo "Notary auth mode: individual API key"
-            else
-              echo "::error::Notary authentication failed. Verify APPLE_NOTARY_* secrets."
-              exit 1
-            fi
+            xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --wait --timeout 30m
+            echo "Notary auth mode: individual API key"
           fi
-
-          xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --wait --timeout 30m
 
           xcrun stapler staple "$DMG_PATH"
           xcrun stapler validate "$DMG_PATH"
