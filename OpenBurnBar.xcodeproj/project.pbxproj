@@ -196,6 +196,11 @@
 		94B05D6D961268C1BEF53D44 /* MenuBarPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CC3C32451CCFA9E72801274 /* MenuBarPopoverView.swift */; };
 		954081EF2DC0AB239982AA65 /* OpenBurnBarHTTPGatewayServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B806C0B716771E4783E000 /* OpenBurnBarHTTPGatewayServer.swift */; };
 		95AA8B8DA35B0F861CCFB879 /* MissionControlHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9199470B751F7CAC1DE89887 /* MissionControlHelpers.swift */; };
+		A10000010000000000000001 /* MissionControlJournalRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000001 /* MissionControlJournalRepository.swift */; };
+		A10000010000000000000002 /* MissionControlMissionStateMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000002 /* MissionControlMissionStateMerger.swift */; };
+		A10000010000000000000003 /* MissionControlNotificationEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000003 /* MissionControlNotificationEvaluator.swift */; };
+		A10000010000000000000004 /* MissionControlProjectionReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000004 /* MissionControlProjectionReducer.swift */; };
+		A10000010000000000000005 /* MissionControlSummaryEnricher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000005 /* MissionControlSummaryEnricher.swift */; };
 		97FECF7878D0953B7D256FE7 /* OpenBurnBarOperatingLayer+ControllerActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 543F73304B70E79C61DE709F /* OpenBurnBarOperatingLayer+ControllerActions.swift */; };
 		98BE456867C7A784D18311FC /* OpenBurnBarOperatingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7BC25E489EFF99A740B8BC8 /* OpenBurnBarOperatingModels.swift */; };
 		99280FD7E6182E3D9415235D /* ProjectionPipelineServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F981D7F0BC100CE850721136 /* ProjectionPipelineServiceTests.swift */; };
@@ -546,6 +551,11 @@
 		8ED80E303C74EDCA578B2000 /* ChatFAB.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatFAB.swift; sourceTree = "<group>"; };
 		913C0DE91E4033D5A4F54843 /* SessionLogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLogsView.swift; sourceTree = "<group>"; };
 		9199470B751F7CAC1DE89887 /* MissionControlHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlHelpers.swift; sourceTree = "<group>"; };
+		A10000020000000000000001 /* MissionControlJournalRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlJournalRepository.swift; sourceTree = "<group>"; };
+		A10000020000000000000002 /* MissionControlMissionStateMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlMissionStateMerger.swift; sourceTree = "<group>"; };
+		A10000020000000000000003 /* MissionControlNotificationEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlNotificationEvaluator.swift; sourceTree = "<group>"; };
+		A10000020000000000000004 /* MissionControlProjectionReducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlProjectionReducer.swift; sourceTree = "<group>"; };
+		A10000020000000000000005 /* MissionControlSummaryEnricher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlSummaryEnricher.swift; sourceTree = "<group>"; };
 		922DC848CE4B5FEAAA64D503 /* CheckpointTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckpointTests.swift; sourceTree = "<group>"; };
 		924327A5B17F0833621D5AF2 /* TranscriptBlockParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptBlockParser.swift; sourceTree = "<group>"; };
 		92670B16F30BEBADD82D180D /* DataStore+ConversationAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DataStore+ConversationAccess.swift"; sourceTree = "<group>"; };
@@ -984,9 +994,14 @@
 				0AC800918DF1372DC6761D47 /* Bridges */,
 				6670711854A2CBD675BCFD8B /* MissionControlError.swift */,
 				9199470B751F7CAC1DE89887 /* MissionControlHelpers.swift */,
+				A10000020000000000000001 /* MissionControlJournalRepository.swift */,
+				A10000020000000000000002 /* MissionControlMissionStateMerger.swift */,
+				A10000020000000000000003 /* MissionControlNotificationEvaluator.swift */,
 				858A9751C02D25B0B5DBDDA9 /* MissionControlProjectionFile.swift */,
+				A10000020000000000000004 /* MissionControlProjectionReducer.swift */,
 				3AE90C38154A75C882C0479C /* MissionControlService.swift */,
 				473278E5682FDF24F8DD7F11 /* MissionControlStore.swift */,
+				A10000020000000000000005 /* MissionControlSummaryEnricher.swift */,
 				45801A099E26CADD7A4AC551 /* MissionControlTransport.swift */,
 			);
 			path = MissionControl;
@@ -1621,9 +1636,14 @@
 				7F7987C13468F347E073EF63 /* LocalNotificationBridge.swift in Sources */,
 				3EB4F281C68D777D744331A3 /* MissionControlError.swift in Sources */,
 				95AA8B8DA35B0F861CCFB879 /* MissionControlHelpers.swift in Sources */,
+				A10000010000000000000001 /* MissionControlJournalRepository.swift in Sources */,
+				A10000010000000000000002 /* MissionControlMissionStateMerger.swift in Sources */,
+				A10000010000000000000003 /* MissionControlNotificationEvaluator.swift in Sources */,
 				2D1038333F424BABE3BDBD81 /* MissionControlProjectionFile.swift in Sources */,
+				A10000010000000000000004 /* MissionControlProjectionReducer.swift in Sources */,
 				6B773B406B19E37E527117D7 /* MissionControlService.swift in Sources */,
 				7625F68C42D7ACC7BFFF355B /* MissionControlStore.swift in Sources */,
+				A10000010000000000000005 /* MissionControlSummaryEnricher.swift in Sources */,
 				2B016DD8332CEDC77400C395 /* MissionControlTransport.swift in Sources */,
 				477063C85990CC409C253526 /* OpenBurnBarAgentLoopService.swift in Sources */,
 				AB899FFFFB211D0C50AA7B1D /* OpenBurnBarBrowserToolService.swift in Sources */,
