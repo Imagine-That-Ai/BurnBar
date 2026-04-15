@@ -881,6 +881,8 @@ struct DashboardQuickSwitchView: View {
                 }
             }
         }
+        // Keep custom provider logos from stretching the quick-switch layout.
+        .frame(width: 14, height: 14)
     }
 
     // MARK: - Data Operations

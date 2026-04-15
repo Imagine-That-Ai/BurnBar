@@ -114,7 +114,7 @@ struct SettingsView: View {
             )
             .navigationTitle("Account")
         case .providers:
-            ProvidersSettingsView(settingsManager: settingsManager, daemonManager: .shared)
+            ProvidersSettingsView(settingsManager: settingsManager, daemonManager: .shared, dataStore: dataStore)
                 .navigationTitle("Providers")
         case .alerts:
             AlertsSettingsView(settingsManager: settingsManager)

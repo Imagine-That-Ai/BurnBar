@@ -1,6 +1,7 @@
 # macOS Release
 
-OpenBurnBar's release pipeline is automated via `.github/workflows/release.yml`. Pushing a `v*` tag triggers a build that produces an `OpenBurnBar` DMG and ZIP, attaches them to a draft GitHub Release, and signs + notarizes when Apple Developer secrets are configured.
+OpenBurnBar's release pipeline is automated via `.github/workflows/release.yml`.
+Pushing a `v*` tag builds, signs, notarizes, staples, and publishes a GitHub **prerelease** with DMG and ZIP artifacts.
 
 ## How to cut a release
 
@@ -10,66 +11,55 @@ git push origin v0.1.0-beta
 ```
 
 The workflow will:
-1. Run all tests (Swift, app, TypeScript)
-2. Build `OpenBurnBar.app` via `xcodebuild`
-3. Package a DMG (with drag-to-Applications symlink) and ZIP
-4. Sign and notarize if secrets are present (see below)
-5. Create a draft GitHub Release with artifacts attached
+1. Run Swift, app, and TypeScript tests
+2. Build `OpenBurnBar.app` unsigned
+3. Embed daemon/helper artifacts and `OpenBurnBarCore.framework`
+4. Sign app + DMG with Developer ID identity
+5. Notarize + staple DMG using `notarytool` with App Store Connect API key
+6. Publish a GitHub prerelease with DMG and ZIP assets
 
-Review the draft release on GitHub, edit notes if needed, then publish.
+## Manual rerun path
 
-## CI secrets for signing & notarization
+Use `workflow_dispatch` on `.github/workflows/release.yml` and provide an existing `v*` tag.
+This is intended for release recovery without creating a new tag.
 
-Without these secrets, the workflow still produces **unsigned** DMG/ZIP artifacts. Users will need to right-click → Open to bypass Gatekeeper. The workflow now fails fast if the signing or notarization secrets are only partially configured.
+## Required GitHub Actions secrets (strict mode)
 
-To enable full notarized distribution, add these GitHub Actions secrets:
+Tagged releases are **fail-hard**: if any secret below is missing, the workflow fails and no fallback unsigned release is produced.
 
 | Secret | Description |
 |--------|-------------|
-| `APPLE_TEAM_ID` | Your 10-character Apple Developer Team ID |
-| `APPLE_SIGNING_IDENTITY` | Code signing identity, e.g. `Developer ID Application: Your Name (TEAMID)` |
-| `APPLE_CERTIFICATE_P12` | Base64-encoded `.p12` export of your Developer ID certificate + private key |
-| `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` |
-| `APPLE_NOTARIZATION_APPLE_ID` | Apple ID email for `notarytool` |
-| `APPLE_NOTARIZATION_PASSWORD` | App-specific password (generate at appleid.apple.com → Sign-In and Security → App-Specific Passwords) |
+| `APPLE_TEAM_ID` | 10-character Apple Developer Team ID |
+| `APPLE_SIGNING_IDENTITY` | Developer ID identity, e.g. `Developer ID Application: Your Name (TEAMID)` |
+| `APPLE_CERTIFICATE_P12` | Base64-encoded `.p12` (Developer ID cert + private key) |
+| `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting `.p12` |
+| `APPLE_NOTARY_KEY_ID` | App Store Connect API key ID |
+| `APPLE_NOTARY_ISSUER_ID` | App Store Connect API issuer ID |
+| `APPLE_NOTARY_API_KEY_P8` | Base64-encoded contents of `AuthKey_<KEYID>.p8` |
+| `FIREBASE_PLIST_BASE64` | Base64-encoded Firebase plist for CI |
+| `FIREBASE_APP_CHECK_DEBUG_TOKEN` | Firebase App Check debug token for CI |
 
-### Generating the certificate secret
+### Generating secret payloads
 
 ```bash
-# Export from Keychain Access → My Certificates → "Developer ID Application: ..."
-# Choose .p12 format, set a password
-
-# Base64 encode it for GitHub:
+# Developer ID certificate export (from Keychain Access -> My Certificates)
+# Export as .p12, then encode:
 base64 -i Certificates.p12 | pbcopy
-# Paste into APPLE_CERTIFICATE_P12 secret
+
+# App Store Connect key file (AuthKey_<KEYID>.p8), then encode:
+base64 -i AuthKey_ABC123XYZ.p8 | pbcopy
 ```
 
-## Homebrew Cask
+## Workflow guardrail
 
-A Cask formula is at `homebrew/burnbar.rb`. To publish:
+`.github/workflows/workflow-lint.yml` runs `actionlint` on workflow-file changes so syntax/expression issues are caught before tag day.
 
-1. Create a repo: `Ajnunezg/homebrew-tap`
-2. Copy `homebrew/burnbar.rb` → `Casks/openburnbar.rb`
-3. Update the `version` and `sha256` to match the latest release DMG
-4. Users install with: `brew install --cask Ajnunezg/tap/openburnbar`
-
-Consider automating the Cask update as a step in `release.yml` once the tap repo exists.
-
-## Build from source (no signing)
-
-For users who don't need Gatekeeper approval:
+## Build from source (local dev)
 
 ```bash
-make install   # builds Release .app → /Applications
+make install
 open -a OpenBurnBar
 ```
-
-## Smoke tests after install
-
-1. Launch from `/Applications` after drag-install or `make install`
-2. Confirm OpenBurnBar appears in the menu bar
-3. Open Settings → Chat Backends and verify gateway URLs/tokens if using Hermes/OpenClaw
-4. Check the daemon resolves from `Contents/Helpers/OpenBurnBarDaemon`
 
 ## References
 

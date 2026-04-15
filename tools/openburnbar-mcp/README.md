@@ -1,4 +1,4 @@
-# OpenBurnBar local MCP (Codex, Claude, Cursor)
+# OpenBurnBar local MCP (Codex, Claude, Cursor, Hermes)
 
 Read-only access to your **OpenBurnBar SQLite** database (`conversations`, `token_usage`, `chat_messages`) so MCP-capable clients can search transcripts and usage without the in-app assistant’s trimmed system prompt.
 
@@ -9,7 +9,7 @@ cd tools/openburnbar-mcp
 ./setup.sh
 ```
 
-This helper is an optional developer tool, not part of OpenBurnBar's core runtime or release-critical surface. Its Python dependency is intentionally pinned in `requirements.txt` so the install is reviewable and reproducible.
+This creates the Python venv, installs deps, and symlinks the `burnbar-operator` Hermes skill into `~/.hermes/skills/` (if `~/.hermes` exists).
 
 Optional: `export BURNBAR_DB_PATH="/path/to/openburnbar.sqlite"` if the DB is not under `~/Library/Application Support/OpenBurnBar/`.
 
@@ -31,6 +31,21 @@ Optional: `export BURNBAR_DB_PATH="/path/to/openburnbar.sqlite"` if the DB is no
 
 Restart Cursor. Enable **openburnbar-local** for the chat that should use it.
 
+## Hermes Agent
+
+`setup.sh` automatically symlinks the `burnbar-operator` skill into `~/.hermes/skills/software-development/burnbar-operator/SKILL.md`. Add the MCP server to `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  openburnbar_local:
+    command: "/absolute/path/to/OpenBurnBar/tools/openburnbar-mcp/.venv/bin/python"
+    args: ["/absolute/path/to/OpenBurnBar/tools/openburnbar-mcp/server.py"]
+    timeout: 30
+    connect_timeout: 20
+```
+
+Restart Hermes. The skill activates on questions about spend, sessions, or workflow. If you used the OpenBurnBar setup wizard, this is configured automatically.
+
 ## Claude Desktop
 
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add the same `mcpServers.openburnbar-local` block under `mcpServers`, then restart Claude Desktop.
@@ -44,6 +59,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_search_conversations` | FTS search over titles + transcripts |
 | `burnbar_get_conversation` | Full row + `fullText` for one id |
 | `burnbar_recent_usage` | Recent `token_usage` rows |
+| `burnbar_project_summary` | Per-project cost + session aggregation over a rolling window |
 | `burnbar_chat_messages` | In-app `chat_messages` tail |
 
 ## Security

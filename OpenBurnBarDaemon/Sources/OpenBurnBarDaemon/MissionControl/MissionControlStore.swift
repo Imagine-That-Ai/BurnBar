@@ -5,12 +5,17 @@ public actor BurnBarMissionControlStore {
     private let eventsFileURL: URL
     private let projectionFileURL: URL
     private let logger: BurnBarDaemonLogger
+    private let journal: MissionControlJournalRepository
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
     private var projection: BurnBarMissionControlProjectionFile?
     private var cachedEvents: [BurnBarControllerEvent]?
     private var seenEventIDs: Set<String> = []
+
+    private var summaryEnricher: MissionControlSummaryEnricher {
+        MissionControlSummaryEnricher(projection: projection, cachedEvents: cachedEvents)
+    }
 
     public init(
         eventsFileURL: URL = BurnBarDaemonPaths.defaultControllerEventJournalURL,
@@ -20,23 +25,28 @@ public actor BurnBarMissionControlStore {
         self.eventsFileURL = eventsFileURL
         self.projectionFileURL = projectionFileURL
         self.logger = logger
+        self.journal = MissionControlJournalRepository(
+            eventsFileURL: eventsFileURL,
+            projectionFileURL: projectionFileURL,
+            logger: logger
+        )
         encoder.outputFormatting = [.sortedKeys]
     }
 
     public func controllerSummary(_ request: BurnBarControllerSummaryRequest) throws -> BurnBarControllerSummaryResponse {
         try ensureLoaded()
-        return BurnBarControllerSummaryResponse(summary: makeSummary(for: request))
+        return BurnBarControllerSummaryResponse(summary: summaryEnricher.makeSummary(for: request))
     }
 
     public func project(slug: String) throws -> BurnBarReviewProjectSnapshot? {
         try ensureLoaded()
-        return enrichedProjects()
+        return summaryEnricher.enrichedProjects()
             .first(where: { $0.projectSlug == slug })
     }
 
     public func projects(_ request: BurnBarControllerProjectsListRequest) throws -> [BurnBarReviewProjectSnapshot] {
         try ensureLoaded()
-        return enrichedProjects()
+        return summaryEnricher.enrichedProjects()
             .filter { request.includePaused || $0.status != .paused }
             .prefix(request.limit)
             .map { $0 }
@@ -505,7 +515,7 @@ public actor BurnBarMissionControlStore {
             completedAt: request.packet.completedAt,
             metadata: request.packet.metadata.merging(["actor": .string(request.actor)]) { _, new in new }
         )
-        let packets = mergePackets(existing.packets, packet)
+        let packets = MissionControlMissionStateMerger.mergePackets(existing.packets, packet)
         let updated = BurnBarMissionSnapshot(
             id: existing.id,
             projectSlug: existing.projectSlug,
@@ -563,8 +573,8 @@ public actor BurnBarMissionControlStore {
             unit: "points",
             recordedAt: result.createdAt
         )
-        let mergedResults = mergeResults(existing.results, result)
-        let mergedBurnRecords = mergeBurnRecords(existing.burnRecords, burnRecord)
+        let mergedResults = MissionControlMissionStateMerger.mergeResults(existing.results, result)
+        let mergedBurnRecords = MissionControlMissionStateMerger.mergeBurnRecords(existing.burnRecords, burnRecord)
         var metadata = existing.metadata
         let totalTokens = mergedResults.reduce(0) { partial, result in
             partial
@@ -580,7 +590,7 @@ public actor BurnBarMissionControlStore {
             projectSlug: existing.projectSlug,
             title: existing.title,
             summary: existing.summary,
-            status: missionStatus(for: result.status),
+            status: MissionControlMissionStateMerger.missionStatus(for: result.status),
             recommendation: existing.recommendation,
             createdAt: existing.createdAt,
             updatedAt: result.createdAt,
@@ -690,15 +700,15 @@ public actor BurnBarMissionControlStore {
 
     public func notificationHealth() throws -> BurnBarNotificationHealthResponse {
         try ensureLoaded()
-        return BurnBarNotificationHealthResponse(health: makeNotificationHealth())
+        return BurnBarNotificationHealthResponse(health: summaryEnricher.makeNotificationHealth())
     }
 
     public func recordSimulatorRun(_ request: BurnBarSimulatorRunRequest) throws -> BurnBarSimulatorRunResponse {
         let now = Date()
         let emittedEvents = request.injectedEvents.isEmpty
-            ? try defaultSimulatorEvents(for: request, now: now)
+            ? try MissionControlSummaryEnricher.defaultSimulatorEvents(for: request, now: now)
             : request.injectedEvents
-        let status = projectionStatusArray(sortedBySequence: projection?.lastSequence ?? 0, recordedAt: now)
+        let status = summaryEnricher.projectionStatusArray(sortedBySequence: projection?.lastSequence ?? 0, recordedAt: now)
         let run = BurnBarSimulatorRunSnapshot(
             id: BurnBarSimulatorRunID(rawValue: "simulator-\(UUID().uuidString)"),
             projectSlug: request.projectSlug,
@@ -762,7 +772,7 @@ public actor BurnBarMissionControlStore {
             startedAt: existing.startedAt,
             completedAt: completedAt,
             emittedEvents: request.includeEvents ? existing.emittedEvents : [],
-            projectionStatus: projectionStatusArray(sortedBySequence: projection?.lastSequence ?? 0, recordedAt: completedAt),
+            projectionStatus: summaryEnricher.projectionStatusArray(sortedBySequence: projection?.lastSequence ?? 0, recordedAt: completedAt),
             summary: "Replayed \(existing.emittedEvents.count) controller event\(existing.emittedEvents.count == 1 ? "" : "s")."
         )
 
@@ -782,8 +792,8 @@ public actor BurnBarMissionControlStore {
         let events = try loadEvents()
         projection = BurnBarMissionControlProjectionFile.empty(now: Date())
         seenEventIDs = []
-        for event in events.sorted(by: eventSort) {
-            try apply(event)
+        for event in events.sorted(by: MissionControlMissionStateMerger.eventSort) {
+            try MissionControlProjectionReducer.apply(event: event, projection: &projection, seenEventIDs: &seenEventIDs)
         }
         try writeProjection()
 
@@ -797,8 +807,8 @@ public actor BurnBarMissionControlStore {
         )
 
         let names = request.projectionNames.isEmpty
-            ? projectionStatusArray(sortedBySequence: projection?.lastSequence ?? 0, recordedAt: Date())
-            : projectionStatusArray(sortedBySequence: projection?.lastSequence ?? 0, recordedAt: Date())
+            ? summaryEnricher.projectionStatusArray(sortedBySequence: projection?.lastSequence ?? 0, recordedAt: Date())
+            : summaryEnricher.projectionStatusArray(sortedBySequence: projection?.lastSequence ?? 0, recordedAt: Date())
                 .filter { request.projectionNames.contains($0.projectionName) }
         return BurnBarProjectionRebuildResponse(status: names)
     }
@@ -810,21 +820,9 @@ public actor BurnBarMissionControlStore {
         let open = try followups(BurnBarFollowupsListRequest(statuses: [.open, .snoozed], limit: 500))
         for followup in open {
             if followup.status == .snoozed, let snoozeUntil = followup.snoozeUntil, snoozeUntil <= now {
-                let reopened = BurnBarFollowupSnapshot(
-                    id: followup.id,
-                    projectSlug: followup.projectSlug,
-                    questionID: followup.questionID,
-                    title: followup.title,
-                    summary: followup.summary,
-                    stageLabel: followup.stageLabel,
-                    status: .open,
-                    kind: followup.kind,
-                    createdAt: followup.createdAt,
-                    nextNudgeAt: snoozeUntil,
-                    snoozeUntil: nil,
-                    calendarEntry: followup.calendarEntry,
-                    deepLink: followup.deepLink,
-                    metadata: followup.metadata
+                let reopened = MissionControlNotificationEvaluator.reopenedFollowupAfterSnoozeExpired(
+                    followup: followup,
+                    snoozeUntil: snoozeUntil
                 )
                 _ = try appendEvent(
                     family: .followup,
@@ -847,21 +845,10 @@ public actor BurnBarMissionControlStore {
                 continue
             }
 
-            let rescheduled = BurnBarFollowupSnapshot(
-                id: followup.id,
-                projectSlug: followup.projectSlug,
-                questionID: followup.questionID,
-                title: followup.title,
-                summary: followup.summary,
-                stageLabel: followup.stageLabel,
-                status: .open,
-                kind: followup.kind,
-                createdAt: followup.createdAt,
-                nextNudgeAt: now.addingTimeInterval(Double(config.defaultSnoozeMinutes * 60)),
-                snoozeUntil: followup.snoozeUntil,
-                calendarEntry: followup.calendarEntry,
-                deepLink: followup.deepLink,
-                metadata: followup.metadata
+            let rescheduled = MissionControlNotificationEvaluator.nudgedFollowupRescheduled(
+                followup: followup,
+                config: config,
+                now: now
             )
             _ = try appendEvent(
                 family: .followup,
@@ -890,9 +877,7 @@ public actor BurnBarMissionControlStore {
             return
         }
 
-        if FileManager.default.fileExists(atPath: projectionFileURL.path),
-           let data = try? Data(contentsOf: projectionFileURL),
-           let decoded = try? decoder.decode(BurnBarMissionControlProjectionFile.self, from: data) {
+        if let decoded = try journal.loadProjectionFromDiskIfPresent(decoder: decoder) {
             projection = decoded
         } else {
             projection = BurnBarMissionControlProjectionFile.empty()
@@ -901,8 +886,8 @@ public actor BurnBarMissionControlStore {
         let events = try loadEvents()
         projection = BurnBarMissionControlProjectionFile.empty(now: projection?.rebuiltAt ?? Date())
         seenEventIDs = []
-        for event in events.sorted(by: eventSort) {
-            try apply(event)
+        for event in events.sorted(by: MissionControlMissionStateMerger.eventSort) {
+            try MissionControlProjectionReducer.apply(event: event, projection: &projection, seenEventIDs: &seenEventIDs)
         }
         try writeProjection()
     }
@@ -911,26 +896,7 @@ public actor BurnBarMissionControlStore {
         if let cachedEvents {
             return cachedEvents
         }
-        guard FileManager.default.fileExists(atPath: eventsFileURL.path) else {
-            cachedEvents = []
-            return []
-        }
-
-        let content = try String(contentsOf: eventsFileURL, encoding: .utf8)
-        let events = content
-            .split(whereSeparator: \.isNewline)
-            .compactMap { line -> BurnBarControllerEvent? in
-                guard line.isEmpty == false else { return nil }
-                do {
-                    return try decoder.decode(BurnBarControllerEvent.self, from: Data(line.utf8))
-                } catch {
-                    logger.error(
-                        "controller_event_skipped",
-                        metadata: ["error": error.localizedDescription]
-                    )
-                    return nil
-                }
-            }
+        let events = try journal.readEventsFromDisk(decoder: decoder)
         cachedEvents = events
         return events
     }
@@ -1024,18 +990,8 @@ public actor BurnBarMissionControlStore {
     }
 
     private func append(_ event: BurnBarControllerEvent) throws {
-        try ensureParentDirectory(for: eventsFileURL)
-        let data = try encoder.encode(event) + Data([0x0A])
-        if FileManager.default.fileExists(atPath: eventsFileURL.path) {
-            let handle = try FileHandle(forWritingTo: eventsFileURL)
-            defer { try? handle.close() }
-            try handle.seekToEnd()
-            try handle.write(contentsOf: data)
-        } else {
-            try data.write(to: eventsFileURL, options: .atomic)
-        }
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: eventsFileURL.path)
-        try apply(event)
+        try journal.appendEventToDisk(event, encoder: encoder)
+        try MissionControlProjectionReducer.apply(event: event, projection: &projection, seenEventIDs: &seenEventIDs)
         if cachedEvents == nil {
             cachedEvents = [event]
         } else {
@@ -1044,474 +1000,8 @@ public actor BurnBarMissionControlStore {
         try writeProjection()
     }
 
-    private func apply(_ event: BurnBarControllerEvent) throws {
-        guard seenEventIDs.insert(event.id.rawValue).inserted else {
-            return
-        }
-        var state = projection ?? BurnBarMissionControlProjectionFile.empty(now: event.recordedAt)
-        state.lastSequence = max(state.lastSequence, event.sequence)
-        state.rebuiltAt = max(state.rebuiltAt, event.recordedAt)
-        touchProjectionStatus(for: event, projection: &state)
-
-        switch (event.family, event.eventType) {
-        case (.controller, "project_upserted"):
-            let project = try decodePayload(BurnBarReviewProjectSnapshot.self, from: event)
-            state.projects[project.projectSlug] = project
-        case (.controller, "review_run_recorded"):
-            let run = try decodePayload(BurnBarReviewRunSnapshot.self, from: event)
-            state.reviewRuns[run.id] = run
-        case (.question, "question_created"),
-             (.question, "question_answered"),
-             (.question, "question_notified"):
-            let question = try decodePayload(BurnBarPendingQuestionSnapshot.self, from: event)
-            state.questions[question.id.rawValue] = question
-        case (.followup, "followup_created"),
-             (.followup, "followup_done"),
-             (.followup, "followup_snoozed"),
-             (.followup, "followup_reopened"),
-             (.followup, "followup_nudged"),
-             (.followup, "followup_calendar_create"),
-             (.followup, "followup_calendar_update"),
-             (.followup, "followup_calendar_remove"):
-            let followup = try decodePayload(BurnBarFollowupSnapshot.self, from: event)
-            state.followups[followup.id.rawValue] = followup
-        case (.mission, _):
-            let mission = try decodePayload(BurnBarMissionSnapshot.self, from: event)
-            state.missions[mission.id.rawValue] = mission
-        case (.notification, "notification_config_updated"):
-            let config = try decodePayload(BurnBarNotificationConfig.self, from: event)
-            state.notificationConfig = config
-        case (.simulator, "simulator_run_recorded"), (.simulator, "simulator_replayed"):
-            let run = try decodePayload(BurnBarSimulatorRunSnapshot.self, from: event)
-            state.simulatorRuns[run.id.rawValue] = run
-        case (.projection, "projection_rebuilt"):
-            break
-        default:
-            break
-        }
-        projection = state
-    }
-
     private func writeProjection() throws {
-        try ensureParentDirectory(for: projectionFileURL)
         guard let projection else { return }
-        let data = try encoder.encode(projection)
-        try data.write(to: projectionFileURL, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: projectionFileURL.path)
-    }
-
-    private func decodePayload<Value: Decodable>(_ type: Value.Type, from event: BurnBarControllerEvent) throws -> Value {
-        guard let payload = event.metadata["payload"] else {
-            throw BurnBarMissionControlError.missingPayload(event.eventType)
-        }
-        let data = try JSONEncoder().encode(payload)
-        return try JSONDecoder().decode(Value.self, from: data)
-    }
-
-    private func ensureParentDirectory(for fileURL: URL) throws {
-        try FileManager.default.createDirectory(
-            at: fileURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
-    }
-
-    private func touchProjectionStatus(
-        for event: BurnBarControllerEvent,
-        projection: inout BurnBarMissionControlProjectionFile
-    ) {
-        let names = projectionNames(for: event)
-        for name in names {
-            let checkpoint = BurnBarReplayCheckpoint(
-                id: BurnBarProjectionCheckpointID(rawValue: "checkpoint-\(name)-\(event.sequence)"),
-                projectionName: name,
-                eventSequence: event.sequence,
-                recordedAt: event.recordedAt
-            )
-            projection.projectionStatus[name] = BurnBarProjectionStatusSnapshot(
-                projectionName: name,
-                status: .upToDate,
-                freshness: event.isReplay ? .provisional : .fresh,
-                lastMaterializedAt: event.recordedAt,
-                lastEventSequence: event.sequence,
-                checkpoint: checkpoint
-            )
-        }
-    }
-
-    private func projectionNames(for event: BurnBarControllerEvent) -> [String] {
-        switch event.family {
-        case .controller:
-            return ["controller_summary", "conversation_home", "governance_history"]
-        case .question:
-            return ["pending_questions", "controller_summary", "conversation_home"]
-        case .followup:
-            return ["followups", "controller_summary", "conversation_home"]
-        case .mission:
-            return ["missions", "controller_summary", "conversation_home"]
-        case .notification:
-            return ["controller_summary", "governance_history"]
-        case .simulator:
-            return ["controller_summary", "governance_history"]
-        case .projection:
-            return ["controller_summary", "conversation_home", "followups", "pending_questions", "missions", "governance_history"]
-        case .governance:
-            return ["governance_history", "controller_summary"]
-        }
-    }
-
-    private func enrichedProjects() -> [BurnBarReviewProjectSnapshot] {
-        let baseProjects = projection.map { Array($0.projects.values) } ?? []
-        return baseProjects
-            .map { base in
-                let pendingQuestions = projection?.questions.values.filter {
-                    $0.projectSlug == base.projectSlug && $0.status == .pending
-                }.count ?? 0
-                let openFollowups = projection?.followups.values.filter {
-                    $0.projectSlug == base.projectSlug && $0.status == .open
-                }.count ?? 0
-                let activeMissions = projection?.missions.values.filter {
-                    $0.projectSlug == base.projectSlug
-                        && ![BurnBarMissionStatus.completed, .failed, .cancelled].contains($0.status)
-                } ?? []
-                let latestDaily = projection?.reviewRuns.values
-                    .filter { $0.projectSlug == base.projectSlug && $0.cadence == .daily }
-                    .sorted { $0.recordedAt > $1.recordedAt }
-                    .first?.recordedAt
-                let latestWeekly = projection?.reviewRuns.values
-                    .filter { $0.projectSlug == base.projectSlug && $0.cadence == .weekly }
-                    .sorted { $0.recordedAt > $1.recordedAt }
-                    .first?.recordedAt
-                let freshness = freshnessState(latestReviewAt: [latestDaily, latestWeekly].compactMap { $0 }.max())
-                let nextScheduledReviewAt = nextScheduledReviewAt(
-                    for: base,
-                    latestDailyReviewAt: latestDaily,
-                    latestWeeklyReviewAt: latestWeekly
-                )
-                let status: BurnBarReviewProjectStatus
-                if base.status == .paused {
-                    status = .paused
-                } else if freshness == .stale {
-                    status = .stale
-                } else if pendingQuestions > 0 || openFollowups > 0 || activeMissions.count > 0 {
-                    status = .needsAttention
-                } else {
-                    status = base.status == .onboarding ? .onboarding : .healthy
-                }
-                return BurnBarReviewProjectSnapshot(
-                    id: base.id,
-                    projectSlug: base.projectSlug,
-                    displayName: base.displayName,
-                    summary: base.summary,
-                    status: status,
-                    preferredCadence: base.preferredCadence,
-                    aliases: base.aliases,
-                    automationMode: base.automationMode,
-                    reviewModelID: base.reviewModelID,
-                    scheduleHourLocal: base.scheduleHourLocal,
-                    scheduleWeekdayLocal: base.scheduleWeekdayLocal,
-                    freshness: freshness,
-                    latestDailyReviewAt: latestDaily,
-                    latestWeeklyReviewAt: latestWeekly,
-                    nextScheduledReviewAt: nextScheduledReviewAt,
-                    pendingQuestionCount: pendingQuestions,
-                    openFollowupCount: openFollowups,
-                    activeMissionCount: activeMissions.count,
-                    activeMissionID: activeMissions.sorted { $0.updatedAt > $1.updatedAt }.first?.id,
-                    needsOperatorAttention: pendingQuestions > 0 || openFollowups > 0 || activeMissions.count > 0,
-                    ingestionSource: base.ingestionSource,
-                    metadata: base.metadata
-                )
-            }
-            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-    }
-
-    private func makeSummary(for request: BurnBarControllerSummaryRequest) -> BurnBarControllerSummary {
-        let projects = enrichedProjects().filter { request.projectSlug == nil || $0.projectSlug == request.projectSlug }
-        let pendingQuestions = projection?.questions.values.filter {
-            (request.projectSlug == nil || $0.projectSlug == request.projectSlug) && $0.status == .pending
-        }.count ?? 0
-        let openFollowups = projection?.followups.values.filter {
-            (request.projectSlug == nil || $0.projectSlug == request.projectSlug) && $0.status == .open
-        }.count ?? 0
-        let activeMissions = projection?.missions.values.filter {
-            (request.projectSlug == nil || $0.projectSlug == request.projectSlug)
-                && ![BurnBarMissionStatus.completed, .failed, .cancelled].contains($0.status)
-        }.count ?? 0
-        let latestReviewAt = projects
-            .flatMap { [$0.latestDailyReviewAt, $0.latestWeeklyReviewAt] }
-            .compactMap { $0 }
-            .max()
-        let freshness = freshnessState(latestReviewAt: latestReviewAt)
-        let recentEvents = request.includeRecentEvents
-            ? (cachedEvents ?? [])
-                .filter { request.projectSlug == nil || $0.projectSlug == request.projectSlug }
-                .sorted(by: { lhs, rhs in
-                    if lhs.sequence == rhs.sequence {
-                        return lhs.recordedAt > rhs.recordedAt
-                    }
-                    return lhs.sequence > rhs.sequence
-                })
-                .prefix(20)
-                .map { $0 }
-            : []
-        let projectionStatus = request.includeProjectionStatus
-            ? projectionStatusArray(sortedBySequence: projection?.lastSequence ?? 0, recordedAt: projection?.rebuiltAt ?? Date())
-            : []
-
-        return BurnBarControllerSummary(
-            updatedAt: projection?.rebuiltAt ?? Date(),
-            activeProjectSlug: request.projectSlug ?? projects.first?.projectSlug,
-            counts: BurnBarControllerCounts(
-                projectCount: projects.count,
-                pendingQuestionCount: pendingQuestions,
-                openFollowupCount: openFollowups,
-                activeMissionCount: activeMissions,
-                staleProjectCount: projects.filter { $0.status == .stale }.count
-            ),
-            nextSuggestedCadence: nextSuggestedCadence(from: projects),
-            latestReviewAt: latestReviewAt,
-            freshness: freshness,
-            projectionStatus: projectionStatus,
-            recentEvents: recentEvents
-        )
-    }
-
-    private func makeNotificationHealth() -> BurnBarNotificationHealthSnapshot {
-        let config = projection?.notificationConfig ?? BurnBarMissionControlProjectionFile.defaultNotificationConfig()
-        let now = Date()
-        let localError = projection?.transportErrors[BurnBarNotificationChannel.local.rawValue]
-        let telegramError = projection?.transportErrors[BurnBarNotificationChannel.telegram.rawValue]
-        let calendarError = projection?.transportErrors[BurnBarNotificationChannel.calendar.rawValue]
-
-        let local = BurnBarNotificationChannelHealth(
-            channel: .local,
-            status: config.local.isEnabled ? (localError == nil ? .healthy : .degraded) : .disabled,
-            detail: config.local.isEnabled
-                ? (localError ?? "Local notifications can nudge due followups.")
-                : "Local notifications are turned off.",
-            checkedAt: now
-        )
-        let telegramConfigured = ((config.telegram.botToken?.isEmpty == false) || config.telegram.botTokenConfigured)
-            && config.telegram.chatID?.isEmpty == false
-        let telegram = BurnBarNotificationChannelHealth(
-            channel: .telegram,
-            status: config.telegram.isEnabled
-                ? (telegramConfigured ? (telegramError == nil ? .healthy : .degraded) : .unauthorized)
-                : .disabled,
-            detail: config.telegram.isEnabled
-                ? (telegramConfigured ? (telegramError ?? "Telegram bot is configured.") : "Telegram needs a bot token and chat ID.")
-                : "Telegram delivery is turned off.",
-            checkedAt: now
-        )
-        let calendar = BurnBarNotificationChannelHealth(
-            channel: .calendar,
-            status: config.calendar.isEnabled ? (calendarError == nil ? .healthy : .degraded) : .disabled,
-            detail: config.calendar.isEnabled
-                ? (calendarError ?? "Calendar holds can be created from followups.")
-                : "Calendar integration is off.",
-            checkedAt: now
-        )
-
-        return BurnBarNotificationHealthSnapshot(
-            checkedAt: now,
-            channels: [local, telegram, calendar]
-        )
-    }
-
-    private func projectionStatusArray(
-        sortedBySequence eventSequence: Int,
-        recordedAt: Date
-    ) -> [BurnBarProjectionStatusSnapshot] {
-        let statuses = projection?.projectionStatus.isEmpty == false
-            ? projection?.projectionStatus ?? [:]
-            : BurnBarMissionControlProjectionFile.defaultProjectionStatus(
-                eventSequence: eventSequence,
-                recordedAt: recordedAt
-            )
-        return statuses.values.sorted { $0.projectionName < $1.projectionName }
-    }
-
-    private func freshnessState(latestReviewAt: Date?) -> BurnBarControllerFreshnessState {
-        guard let latestReviewAt else {
-            return (projection?.projects.isEmpty ?? true) ? .missing : .provisional
-        }
-
-        let age = Date().timeIntervalSince(latestReviewAt)
-        if age < Double(12 * 60 * 60) {
-            return .fresh
-        }
-        if age < Double(48 * 60 * 60) {
-            return .aging
-        }
-        return .stale
-    }
-
-    private func nextSuggestedCadence(from projects: [BurnBarReviewProjectSnapshot]) -> BurnBarControllerReviewCadence? {
-        if projects.isEmpty {
-            return nil
-        }
-        if projects.contains(where: { $0.preferredCadence == .daily && ($0.latestDailyReviewAt ?? .distantPast) < Date().addingTimeInterval(-24 * 60 * 60) }) {
-            return .daily
-        }
-        if projects.contains(where: { $0.preferredCadence == .weekly && ($0.latestWeeklyReviewAt ?? .distantPast) < Date().addingTimeInterval(-7 * 24 * 60 * 60) }) {
-            return .weekly
-        }
-        return projects.first?.preferredCadence
-    }
-
-    private func nextScheduledReviewAt(
-        for project: BurnBarReviewProjectSnapshot,
-        latestDailyReviewAt: Date?,
-        latestWeeklyReviewAt: Date?
-    ) -> Date? {
-        guard project.automationMode == .scheduled else {
-            return nil
-        }
-
-        let calendar = Calendar.current
-        let hour = project.scheduleHourLocal ?? 9
-        let reference = project.preferredCadence == .daily ? latestDailyReviewAt : latestWeeklyReviewAt
-        let base = reference ?? Date()
-
-        switch project.preferredCadence {
-        case .daily, .adHoc:
-            let startOfDay = calendar.startOfDay(for: base)
-            let scheduledToday = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: startOfDay) ?? startOfDay
-            if reference == nil {
-                return scheduledToday
-            }
-            return calendar.date(byAdding: .day, value: 1, to: scheduledToday)
-        case .weekly:
-            let weekday = project.scheduleWeekdayLocal ?? 2
-            let nextDate = calendar.nextDate(
-                after: base.addingTimeInterval(60),
-                matching: DateComponents(hour: hour, minute: 0, weekday: weekday),
-                matchingPolicy: .nextTime,
-                direction: .forward
-            )
-            return nextDate
-        }
-    }
-
-    private func defaultSimulatorEvents(
-        for request: BurnBarSimulatorRunRequest,
-        now: Date
-    ) throws -> [BurnBarControllerEvent] {
-        let project = BurnBarReviewProjectSnapshot(
-            id: "project-\(request.projectSlug)",
-            projectSlug: request.projectSlug,
-            displayName: request.projectSlug.capitalized,
-            summary: "Simulated controller project for \(request.scenarioName).",
-            status: .needsAttention,
-            preferredCadence: .daily,
-            freshness: .provisional,
-            pendingQuestionCount: 1,
-            openFollowupCount: 1,
-            activeMissionCount: 1,
-            needsOperatorAttention: true,
-            metadata: request.metadata
-        )
-        let question = BurnBarPendingQuestionSnapshot(
-            id: BurnBarQuestionID(rawValue: "question-\(request.seed)"),
-            projectSlug: request.projectSlug,
-            title: "What should happen next?",
-            prompt: "Scenario \(request.scenarioName) generated a pending operator question.",
-            status: .pending,
-            priority: .medium,
-            askedAt: now,
-            dueAt: now.addingTimeInterval(3600),
-            contextSummary: "Generated from the deterministic simulator.",
-            metadata: request.metadata
-        )
-        let mission = BurnBarMissionSnapshot(
-            id: BurnBarMissionID(rawValue: "mission-\(request.seed)"),
-            projectSlug: request.projectSlug,
-            title: "Simulated mission",
-            summary: "Exercise replay, followups, and operator review state.",
-            status: .awaitingApproval,
-            recommendation: .review,
-            createdAt: now,
-            updatedAt: now,
-            approval: BurnBarMissionApprovalSnapshot(approved: false),
-            metadata: request.metadata
-        )
-
-        let payloads: [(BurnBarControllerEventFamily, String, String, String?, BurnBarJSONValue)] = [
-            (.controller, "project_upserted", project.displayName, project.summary, try BurnBarJSONValue.fromEncodable(project)),
-            (.question, "question_created", question.title, question.prompt, try BurnBarJSONValue.fromEncodable(question)),
-            (.mission, "mission_created", mission.title, mission.summary, try BurnBarJSONValue.fromEncodable(mission))
-        ]
-
-        return payloads.enumerated().map { index, item in
-            BurnBarControllerEvent(
-                id: BurnBarControllerEventID(rawValue: "sim-event-\(request.seed)-\(index)"),
-                family: item.0,
-                eventType: item.1,
-                projectSlug: request.projectSlug,
-                recordedAt: now.addingTimeInterval(Double(index)),
-                sequence: index + 1,
-                summary: item.2,
-                detail: item.3,
-                metadata: ["payload": item.4],
-                isReplay: false
-            )
-        }
-    }
-
-    private func missionStatus(for resultStatus: BurnBarMissionResultStatus) -> BurnBarMissionStatus {
-        switch resultStatus {
-        case .succeeded, .replayed:
-            return .completed
-        case .partial:
-            return .partiallyCompleted
-        case .failed:
-            return .failed
-        }
-    }
-
-    private func mergePackets(
-        _ existing: [BurnBarMissionPacketSnapshot],
-        _ appended: BurnBarMissionPacketSnapshot
-    ) -> [BurnBarMissionPacketSnapshot] {
-        var merged: [String: BurnBarMissionPacketSnapshot] = [:]
-        for packet in existing {
-            merged[packet.id.rawValue] = packet
-        }
-        merged[appended.id.rawValue] = appended
-        return merged.values.sorted {
-            ($0.dispatchedAt ?? .distantPast) < ($1.dispatchedAt ?? .distantPast)
-        }
-    }
-
-    private func mergeResults(
-        _ existing: [BurnBarMissionResultSnapshot],
-        _ appended: BurnBarMissionResultSnapshot
-    ) -> [BurnBarMissionResultSnapshot] {
-        var merged: [String: BurnBarMissionResultSnapshot] = [:]
-        for result in existing {
-            merged[result.id.rawValue] = result
-        }
-        merged[appended.id.rawValue] = appended
-        return merged.values.sorted { $0.createdAt < $1.createdAt }
-    }
-
-    private func mergeBurnRecords(
-        _ existing: [BurnBarMissionBurnRecord],
-        _ appended: BurnBarMissionBurnRecord
-    ) -> [BurnBarMissionBurnRecord] {
-        var merged: [String: BurnBarMissionBurnRecord] = [:]
-        for record in existing {
-            merged[record.id] = record
-        }
-        merged[appended.id] = appended
-        return merged.values.sorted { $0.recordedAt < $1.recordedAt }
-    }
-
-    private func eventSort(lhs: BurnBarControllerEvent, rhs: BurnBarControllerEvent) -> Bool {
-        if lhs.sequence == rhs.sequence {
-            return lhs.recordedAt < rhs.recordedAt
-        }
-        return lhs.sequence < rhs.sequence
+        try journal.writeProjectionFile(projection, encoder: encoder)
     }
 }

@@ -7,6 +7,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing v* tag to release (for manual reruns)"
+        required: true
+        type: string
 
 env:
   SCHEME: OpenBurnBar
@@ -18,12 +24,86 @@ env:
 
 jobs:
   build-and-release:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: macos-14
-    timeout-minutes: 45
+    timeout-minutes: 60
+    env:
+      HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
+      HAS_SIGNING_SECRETS: ${{ secrets.APPLE_TEAM_ID != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+      HAS_NOTARY_SECRETS: ${{ secrets.APPLE_NOTARY_KEY_ID != '' && secrets.APPLE_NOTARY_ISSUER_ID != '' && secrets.APPLE_NOTARY_API_KEY_P8 != '' && secrets.APPLE_TEAM_ID != '' }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Resolve release tag and version
+        id: version
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG_NAME="${INPUT_TAG}"
+          else
+            TAG_NAME="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "$TAG_NAME" =~ ^v[0-9a-zA-Z._-]+$ ]]; then
+            echo "::error::Invalid tag format: $TAG_NAME"
+            exit 1
+          fi
+
+          if ! git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
+            echo "::error::Tag does not exist in repository: $TAG_NAME"
+            exit 1
+          fi
+
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Release preflight summary
+        env:
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "Release tag: $TAG_NAME"
+          echo "Version: $VERSION"
+          echo "Strict notarized release mode: true"
+          echo "Firebase secrets available: ${HAS_FIREBASE_SECRETS}"
+          echo "Signing secrets available: ${HAS_SIGNING_SECRETS}"
+          echo "Notary API secrets available: ${HAS_NOTARY_SECRETS}"
+
+      - name: Validate strict release secrets
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+        run: |
+          missing=()
+          for var in \
+            APPLE_TEAM_ID \
+            APPLE_SIGNING_IDENTITY \
+            APPLE_CERTIFICATE_P12 \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_NOTARY_KEY_ID \
+            APPLE_NOTARY_ISSUER_ID \
+            APPLE_NOTARY_API_KEY_P8 \
+            FIREBASE_PLIST_BASE64 \
+            FIREBASE_APP_CHECK_DEBUG_TOKEN; do
+            if [[ -z "${!var}" ]]; then
+              missing+=("$var")
+            fi
+          done
+
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required release secrets: ${missing[*]}"
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -31,6 +111,12 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
+
+      - name: Inject Firebase config
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+        run: bash ./scripts/ci/inject-firebase-config.sh
 
       - name: Install extension dependencies
         run: npm ci --prefix extensions/openburnbar
@@ -50,89 +136,65 @@ jobs:
       - name: Build daemon (SPM release binary)
         run: swift build --package-path OpenBurnBarDaemon -c release
 
-      - name: Extract version from tag
-        id: version
+      - name: Resolve Xcode packages
         run: |
-          # Validate tag format: must be v followed by semver-like characters only
-          TAG_NAME="${GITHUB_REF_NAME}"
-          if [[ ! "$TAG_NAME" =~ ^v[0-9a-zA-Z._-]+$ ]]; then
-            echo "::error::Invalid tag format: $TAG_NAME"
+          xcodebuild -resolvePackageDependencies \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -clonedSourcePackagesDirPath "$CACHE_DIR" \
+            -derivedDataPath "$DERIVED_DATA"
+
+      - name: Build Release .app (unsigned)
+        run: |
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIG" \
+            -destination "$DESTINATION" \
+            -clonedSourcePackagesDirPath "$CACHE_DIR" \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Embed daemon binary in app bundle
+        run: |
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
+          HELPERS_DIR="$APP_PATH/Contents/Helpers"
+          mkdir -p "$HELPERS_DIR"
+
+          DAEMON_BIN="OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon"
+          DAEMON_CORE_DYLIB="OpenBurnBarDaemon/.build/release/libOpenBurnBarCore.dylib"
+          if [[ ! -f "$DAEMON_BIN" ]]; then
+            echo "::error::Daemon binary not found at $DAEMON_BIN"
             exit 1
           fi
-          echo "version=${TAG_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Validate Apple release secrets
-        env:
-          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_NOTARIZATION_APPLE_ID: ${{ secrets.APPLE_NOTARIZATION_APPLE_ID }}
-          APPLE_NOTARIZATION_PASSWORD: ${{ secrets.APPLE_NOTARIZATION_PASSWORD }}
-        run: |
-          require_all_or_none() {
-            local label="$1"
-            shift
-
-            local present=0
-            local missing=()
-
-            for var in "$@"; do
-              if [[ -n "${!var}" ]]; then
-                present=1
-              else
-                missing+=("$var")
-              fi
-            done
-
-            if [[ $present -eq 1 && ${#missing[@]} -gt 0 ]]; then
-              echo "::error::$label secrets are partially configured. Missing: ${missing[*]}"
-              exit 1
-            fi
-          }
-
-          require_all_or_none "Code signing" \
-            APPLE_CERTIFICATE_P12 \
-            APPLE_CERTIFICATE_PASSWORD \
-            APPLE_SIGNING_IDENTITY \
-            APPLE_TEAM_ID
-
-          require_all_or_none "Notarization" \
-            APPLE_NOTARIZATION_APPLE_ID \
-            APPLE_NOTARIZATION_PASSWORD \
-            APPLE_TEAM_ID
-
-          if [[ -n "$APPLE_NOTARIZATION_APPLE_ID" && -z "$APPLE_SIGNING_IDENTITY" ]]; then
-            echo "::error::Notarization requires code signing secrets to be configured too."
+          if [[ ! -f "$DAEMON_CORE_DYLIB" ]]; then
+            echo "::error::Daemon support library not found at $DAEMON_CORE_DYLIB"
             exit 1
           fi
 
-      - name: Validate Firebase CI secrets
-        env:
-          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
-          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
-        run: |
-          missing=()
-          for var in FIREBASE_PLIST_BASE64 FIREBASE_APP_CHECK_DEBUG_TOKEN; do
-            if [[ -z "${!var}" ]]; then
-              missing+=("$var")
-            fi
-          done
+          cp "$DAEMON_BIN" "$HELPERS_DIR/OpenBurnBarDaemon"
+          cp "$DAEMON_CORE_DYLIB" "$HELPERS_DIR/libOpenBurnBarCore.dylib"
+          chmod +x "$HELPERS_DIR/OpenBurnBarDaemon"
 
-          if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "::error::Missing required Firebase CI secrets: ${missing[*]}"
+      - name: Embed OpenBurnBarCore framework in app bundle
+        run: |
+          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
+          FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
+          CORE_FRAMEWORK_PATH="$DERIVED_DATA/Build/Products/$CONFIG/PackageFrameworks/OpenBurnBarCore.framework"
+
+          if [[ ! -d "$CORE_FRAMEWORK_PATH" ]]; then
+            echo "::error::OpenBurnBarCore framework not found at $CORE_FRAMEWORK_PATH"
             exit 1
           fi
 
-      - name: Inject Firebase config
-        env:
-          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
-          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
-        run: bash ./scripts/ci/inject-firebase-config.sh
+          mkdir -p "$FRAMEWORKS_DIR"
+          rm -rf "$FRAMEWORKS_DIR/OpenBurnBarCore.framework"
+          cp -R "$CORE_FRAMEWORK_PATH" "$FRAMEWORKS_DIR/"
 
-      # ── Code signing setup (before build — must exist when xcodebuild signs) ──
-      - name: Import signing certificate
-        if: ${{ secrets.APPLE_CERTIFICATE_P12 != '' }}
+      - name: Import Developer ID signing certificate
         env:
           CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -140,12 +202,13 @@ jobs:
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
-          # Create temporary keychain
+          echo "keychain_path=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "keychain_password=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
+
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          # Import certificate
           python3 - <<'PY'
           import base64
           import os
@@ -155,6 +218,7 @@ jobs:
               base64.b64decode(os.environ["CERTIFICATE_P12"])
           )
           PY
+
           security import "$RUNNER_TEMP/certificate.p12" \
             -P "$CERTIFICATE_PASSWORD" \
             -A \
@@ -164,108 +228,42 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH"
 
-      # ── Build the .app ──────────────────────────────────────────────
-      - name: Resolve Xcode packages
-        run: |
-          xcodebuild -resolvePackageDependencies \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -clonedSourcePackagesDirPath "$CACHE_DIR" \
-            -derivedDataPath "$DERIVED_DATA"
-
-      - name: Build Release .app
+      - name: Codesign app bundle (deterministic order)
         env:
           SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          if [ -n "$SIGNING_IDENTITY" ]; then
-            SIGN_ARGS=(CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES DEVELOPMENT_TEAM="$TEAM_ID")
-          else
-            SIGN_ARGS=(CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO)
-          fi
-
-          xcodebuild \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -configuration "$CONFIG" \
-            -destination "$DESTINATION" \
-            -clonedSourcePackagesDirPath "$CACHE_DIR" \
-            -derivedDataPath "$DERIVED_DATA" \
-            "${SIGN_ARGS[@]}" \
-            build
-
-      # ── Embed daemon helper into .app bundle ────────────────────────
-      - name: Embed daemon binary in app bundle
-        run: |
-          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
-          HELPERS_DIR="$APP_PATH/Contents/Helpers"
-          mkdir -p "$HELPERS_DIR"
-
-          # The SPM release binary from the earlier build step
-          DAEMON_BIN="OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon"
-          DAEMON_CORE_DYLIB="OpenBurnBarDaemon/.build/release/libOpenBurnBarCore.dylib"
-          if [ ! -f "$DAEMON_BIN" ]; then
-            echo "::error::Daemon binary not found at $DAEMON_BIN"
-            exit 1
-          fi
-          if [ ! -f "$DAEMON_CORE_DYLIB" ]; then
-            echo "::error::Daemon support library not found at $DAEMON_CORE_DYLIB"
-            exit 1
-          fi
-
-          cp "$DAEMON_BIN" "$HELPERS_DIR/OpenBurnBarDaemon"
-          cp "$DAEMON_CORE_DYLIB" "$HELPERS_DIR/libOpenBurnBarCore.dylib"
-          chmod +x "$HELPERS_DIR/OpenBurnBarDaemon"
-          echo "Embedded daemon: $(ls -la "$HELPERS_DIR/OpenBurnBarDaemon")"
-          echo "Embedded daemon support library: $(ls -la "$HELPERS_DIR/libOpenBurnBarCore.dylib")"
-
-      - name: Embed OpenBurnBarCore framework in app bundle
         run: |
           APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
           FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
-          CORE_FRAMEWORK_PATH="$DERIVED_DATA/Build/Products/$CONFIG/PackageFrameworks/OpenBurnBarCore.framework"
+          HELPERS_DIR="$APP_PATH/Contents/Helpers"
+          ENTITLEMENTS="AgentLens/Resources/OpenBurnBar.entitlements"
 
-          if [ ! -d "$CORE_FRAMEWORK_PATH" ]; then
-            echo "::error::OpenBurnBarCore framework not found at $CORE_FRAMEWORK_PATH"
+          if [[ ! -d "$APP_PATH" ]]; then
+            echo "::error::App bundle not found at $APP_PATH"
             exit 1
           fi
 
-          mkdir -p "$FRAMEWORKS_DIR"
-          rm -rf "$FRAMEWORKS_DIR/OpenBurnBarCore.framework"
-          cp -R "$CORE_FRAMEWORK_PATH" "$FRAMEWORKS_DIR/"
-          echo "Embedded framework: $(ls -la "$FRAMEWORKS_DIR/OpenBurnBarCore.framework")"
+          if [[ -d "$FRAMEWORKS_DIR" ]]; then
+            while IFS= read -r -d '' item; do
+              codesign --force --timestamp --options runtime --sign "$SIGNING_IDENTITY" "$item"
+            done < <(find "$FRAMEWORKS_DIR" -mindepth 1 \( -name '*.framework' -o -name '*.dylib' -o -name '*.bundle' \) -print0 | sort -z)
+          fi
 
-      # ── Post-build code signing (optional) ──────────────────────────
-      - name: Codesign .app bundle
-        if: ${{ secrets.APPLE_SIGNING_IDENTITY != '' }}
-        env:
-          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-        run: |
-          APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
-          ENTITLEMENTS="AgentLens/Resources/OpenBurnBar.entitlements"
+          if [[ -f "$HELPERS_DIR/libOpenBurnBarCore.dylib" ]]; then
+            codesign --force --timestamp --options runtime --sign "$SIGNING_IDENTITY" "$HELPERS_DIR/libOpenBurnBarCore.dylib"
+          fi
 
-          codesign --force --options runtime \
-            --sign "$SIGNING_IDENTITY" \
-            "$APP_PATH/Contents/Frameworks/OpenBurnBarCore.framework"
+          if [[ -f "$HELPERS_DIR/OpenBurnBarDaemon" ]]; then
+            codesign --force --timestamp --options runtime --sign "$SIGNING_IDENTITY" "$HELPERS_DIR/OpenBurnBarDaemon"
+          fi
 
-          codesign --force --options runtime \
-            --sign "$SIGNING_IDENTITY" \
-            "$APP_PATH/Contents/Helpers/libOpenBurnBarCore.dylib"
-
-          # Sign the embedded daemon helper first
-          codesign --force --options runtime \
-            --sign "$SIGNING_IDENTITY" \
-            "$APP_PATH/Contents/Helpers/OpenBurnBarDaemon"
-
-          # Sign the main app bundle with entitlements preserved
-          codesign --force --deep --options runtime \
+          codesign --force --timestamp --deep --options runtime \
             --entitlements "$ENTITLEMENTS" \
             --sign "$SIGNING_IDENTITY" \
             "$APP_PATH"
 
-          codesign --verify --verbose "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          spctl --assess --type execute -vv "$APP_PATH" || true
 
-      # ── Package DMG ─────────────────────────────────────────────────
       - name: Create DMG
         id: dmg
         env:
@@ -275,8 +273,8 @@ jobs:
           DMG_NAME="OpenBurnBar-${VERSION}-macOS.dmg"
           DMG_PATH="$RUNNER_TEMP/$DMG_NAME"
 
-          # Create a DMG with Applications symlink for drag-to-install
           STAGING="$RUNNER_TEMP/dmg-staging"
+          rm -rf "$STAGING"
           mkdir -p "$STAGING"
           cp -R "$APP_PATH" "$STAGING/"
           ln -s /Applications "$STAGING/Applications"
@@ -290,32 +288,47 @@ jobs:
           echo "dmg_name=$DMG_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Codesign DMG
-        if: ${{ secrets.APPLE_SIGNING_IDENTITY != '' }}
         env:
           SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
         run: |
-          codesign --force --sign "$SIGNING_IDENTITY" "$DMG_PATH"
+          codesign --force --timestamp --sign "$SIGNING_IDENTITY" "$DMG_PATH"
+          codesign --verify --verbose=2 "$DMG_PATH"
 
-      # ── Notarize (optional — requires Apple notarization secrets) ───
-      - name: Notarize DMG
-        if: ${{ secrets.APPLE_NOTARIZATION_APPLE_ID != '' }}
+      - name: Write notary API key
         env:
-          APPLE_ID: ${{ secrets.APPLE_NOTARIZATION_APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_NOTARIZATION_PASSWORD }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
+        run: |
+          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          key_id = os.environ["APPLE_NOTARY_KEY_ID"]
+          payload = os.environ["APPLE_NOTARY_API_KEY_P8"]
+          Path(os.environ["RUNNER_TEMP"], f"AuthKey_{key_id}.p8").write_bytes(base64.b64decode(payload))
+          PY
+          chmod 600 "$NOTARY_KEY_PATH"
+          echo "notary_key_path=$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Notarize and staple DMG
+        env:
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
         run: |
           xcrun notarytool submit "$DMG_PATH" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
+            --key "$notary_key_path" \
+            --key-id "$APPLE_NOTARY_KEY_ID" \
+            --issuer "$APPLE_NOTARY_ISSUER_ID" \
             --wait --timeout 30m
 
-          # Staple the notarization ticket to the DMG
           xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
 
-      # ── Also create a ZIP of the .app ───────────────────────────────
       - name: Create ZIP archive
         id: zip
         env:
@@ -331,38 +344,37 @@ jobs:
           echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
 
-      # ── Create GitHub Release with artifacts ────────────────────────
-      - name: Create GitHub Release
+      - name: Publish prerelease assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.ref_name }}
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
           VERSION: ${{ steps.version.outputs.version }}
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
-          DMG_NAME: ${{ steps.dmg.outputs.dmg_name }}
           ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
         run: |
-          gh release create "$TAG_NAME" \
-            "$DMG_PATH" \
-            "$ZIP_PATH" \
-            --title "OpenBurnBar $VERSION" \
-            --notes "$(cat <<'RELEASE_NOTES'
-          ## Installation
-
-          ### Direct download
-          1. Download the `.dmg` below
-          2. Open the DMG and drag OpenBurnBar to Applications
-          3. Launch OpenBurnBar — look for it in your menu bar
-
-          ### Build from source
-          ```bash
-          git clone https://github.com/Ajnunezg/BurnBar.git
-          cd BurnBar
-          make install
-          ```
-          RELEASE_NOTES
-          )" \
-            --draft
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" "$DMG_PATH" "$ZIP_PATH" --clobber
+            gh release edit "$TAG_NAME" --title "OpenBurnBar $VERSION" --prerelease --latest=false
+          else
+            gh release create "$TAG_NAME" \
+              "$DMG_PATH" \
+              "$ZIP_PATH" \
+              --title "OpenBurnBar $VERSION" \
+              --prerelease \
+              --notes-file CHANGELOG.md
+          fi
 
       - name: Clean up Firebase config
         if: always()
         run: bash ./scripts/ci/cleanup-firebase-config.sh
+
+      - name: Clean up signing and notary artifacts
+        if: always()
+        run: |
+          if [[ -n "${keychain_path:-}" && -n "${keychain_password:-}" ]]; then
+            security delete-keychain "$keychain_path" || true
+          fi
+          if [[ -n "${notary_key_path:-}" ]]; then
+            rm -f "$notary_key_path"
+          fi
+          rm -f "$RUNNER_TEMP/certificate.p12"

@@ -235,6 +235,39 @@ def burnbar_recent_usage(limit: int = 40) -> str:
 
 
 @mcp.tool()
+def burnbar_project_summary(project_name: str | None = None, days: int = 30) -> str:
+    """
+    Pre-aggregated cost and session summary per project over a rolling time window.
+    Pass project_name to narrow to one project, or omit for all projects ranked by total cost.
+    """
+    lim_days = max(1, min(int(days), 365))
+    path = _default_db_path()
+    with _connect_ro(path) as conn:
+        conn.row_factory = sqlite3.Row
+        sql = """
+            SELECT
+                projectName,
+                COUNT(DISTINCT sessionId) AS sessions,
+                SUM(totalTokens) AS totalTokens,
+                SUM(cost) AS totalCost,
+                MIN(startTime) AS firstSession,
+                MAX(startTime) AS lastSession,
+                COUNT(DISTINCT model) AS modelsUsed,
+                COUNT(DISTINCT provider) AS providersUsed
+            FROM token_usage
+            WHERE startTime >= datetime('now', ? || ' days')
+        """
+        args: list[Any] = [f"-{lim_days}"]
+        if project_name:
+            sql += " AND projectName = ?"
+            args.append(project_name)
+        sql += " GROUP BY projectName ORDER BY totalCost DESC"
+        cur = conn.execute(sql, args)
+        rows = [_row_to_dict(r) for r in cur.fetchall()]
+    return json.dumps({"days": lim_days, "projects": rows}, indent=2, default=str)
+
+
+@mcp.tool()
 def burnbar_chat_messages(limit: int = 80) -> str:
     """In-app assistant chat_messages rows (role + content), most recent last."""
     lim = max(1, min(int(limit), 500))

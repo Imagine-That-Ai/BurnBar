@@ -87,3 +87,6 @@ tools/burnbar-mcp/.venv/
 .spm-cache/
 .derived-data/
 .gstack/
+
+# Generated SwiftPM checkout/artifact mirrors from factory validations
+.factory/validation/**/derived-data/**/SourcePackages/

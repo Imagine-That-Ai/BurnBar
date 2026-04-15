@@ -55,6 +55,7 @@ enum OpenBurnBarOperatingComposer {
             projectConversations: projectConversations,
             projectUsages: activeUsages,
             insightBrief: insightBrief,
+            retrievalHealth: retrievalHealth,
             aggregator: aggregator,
             chatController: chatController,
             decisions: decisions
@@ -63,6 +64,7 @@ enum OpenBurnBarOperatingComposer {
             focus: focus,
             latestConversation: latestConversation,
             projectConversations: projectConversations,
+            projectUsages: activeUsages,
             insightBrief: insightBrief,
             rollupFreshness: insightBrief.rollupFreshness,
             rollupStatusMessage: insightBrief.rollupStatusMessage,
@@ -464,6 +466,7 @@ enum OpenBurnBarOperatingComposer {
         projectConversations: [ConversationRecord],
         projectUsages: [TokenUsage],
         insightBrief: InsightBriefSnapshot,
+        retrievalHealth: RetrievalSystemHealthSnapshot,
         aggregator: UsageAggregator?,
         chatController: ChatSessionController?,
         decisions: OpenBurnBarOperatingDecisionState
@@ -487,34 +490,40 @@ enum OpenBurnBarOperatingComposer {
             )
         }
 
-        let latestText = joinedMissionText(from: latestConversation, insightBrief: insightBrief)
         let title = latestConversation?.summaryTitle
             ?? latestConversation?.inferredTaskTitle
             ?? insightBrief.heaviestTaskTitle
             ?? "Recent work in \(focusProject)"
-        let subtitle = latestConversation?.summary
-            ?? insightBrief.whereLeftOff
-            ?? latestConversation?.lastAssistantMessage
-            ?? "OpenBurnBar is watching the most recent indexed checkpoint for \(focusProject)."
         let state = inferMissionState(
-            latestText: latestText,
+            latestConversation: latestConversation,
+            projectConversations: projectConversations,
+            projectUsages: projectUsages,
+            insightBrief: insightBrief,
+            retrievalHealth: retrievalHealth,
             isRefreshing: aggregator?.isRefreshing == true,
             isStreaming: chatController?.isStreaming == true,
-            conversationCount: projectConversations.count
         )
         let missionID = missionFingerprint(
             projectName: focusProject,
-            conversation: latestConversation,
-            conversationCount: projectConversations.count
+            conversation: latestConversation
         )
         let approvalRecord = decisions.missionApprovalsByProject[focusProject]
         let approval: OpenBurnBarMissionApprovalState = approvalRecord?.missionFingerprint == missionID ? .approved : .pending
+        let subtitle = missionSubtitle(
+            title: title,
+            latestConversation: latestConversation,
+            projectConversations: projectConversations,
+            projectUsages: projectUsages
+        )
         let recommendation = buildMissionRecommendation(
             state: state,
             latestConversation: latestConversation,
             insightBrief: insightBrief,
             focusProject: focusProject,
-            approval: approval
+            approval: approval,
+            projectConversations: projectConversations,
+            projectUsages: projectUsages,
+            retrievalHealth: retrievalHealth
         )
 
         return OpenBurnBarMissionSummary(
@@ -539,6 +548,7 @@ enum OpenBurnBarOperatingComposer {
         focus: ProjectFocus,
         latestConversation: ConversationRecord?,
         projectConversations: [ConversationRecord],
+        projectUsages: [TokenUsage],
         insightBrief: InsightBriefSnapshot,
         rollupFreshness: InsightRollupFreshness,
         rollupStatusMessage: String?,
@@ -568,44 +578,15 @@ enum OpenBurnBarOperatingComposer {
             latestConversation: latestConversation
         )
 
-        if settingsManager.conversationIndexingEnabled == false {
-            return OpenBurnBarDirectionSummary(
-                availability: .sparse,
-                projectName: focusProject,
-                title: "Direction is inferred from metadata",
-                status: .notEnoughSignal,
-                summary: "Direction is provisional because transcript indexing is off. OpenBurnBar can see project activity and burn, but not grounded evidence.",
-                scopeLabel: focus.scopeLabel,
-                freshness: freshness,
-                mode: .sparse,
-                sparseReason: "Turn on local indexing to let OpenBurnBar quote indexed sessions and explain drift with evidence.",
-                nextActions: ["Enable conversation indexing in Settings.", "Run another local scan once indexing is on."],
-                overrideSummary: overrideRecord?.summary
-            )
-        }
-
-        if projectConversations.count < 2 {
-            return OpenBurnBarDirectionSummary(
-                availability: .sparse,
-                projectName: focusProject,
-                title: "Direction signal is still sparse",
-                status: .notEnoughSignal,
-                summary: "OpenBurnBar can name the active project, but there are not enough indexed checkpoints to judge alignment with confidence.",
-                scopeLabel: focus.scopeLabel,
-                freshness: freshness,
-                mode: .sparse,
-                sparseReason: "Only \(projectConversations.count) indexed session\(projectConversations.count == 1 ? "" : "s") exists for \(focusProject).",
-                nextActions: ["Let OpenBurnBar ingest a couple more sessions.", "Add a note or direction override if you already know the call."],
-                overrideSummary: overrideRecord?.summary
-            )
-        }
-
         if let overrideRecord {
-            let forced = overrideRecord.forcedStatus ?? inferDirectionStatus(
+            let forced = overrideRecord.forcedStatus ?? inferredOverrideDirectionStatus(
                 focus: focus,
                 latestConversation: latestConversation,
+                projectConversations: projectConversations,
+                projectUsages: projectUsages,
                 insightBrief: insightBrief,
-                retrievalHealth: retrievalHealth
+                retrievalHealth: retrievalHealth,
+                indexingEnabled: settingsManager.conversationIndexingEnabled
             )
             let mode: OpenBurnBarDirectionMode = overrideRecord.mode == .annotate ? .overrideAnnotating : .overrideSuperseding
             return OpenBurnBarDirectionSummary(
@@ -623,23 +604,65 @@ enum OpenBurnBarOperatingComposer {
             )
         }
 
-        let status = inferDirectionStatus(
+        if settingsManager.conversationIndexingEnabled == false {
+            return OpenBurnBarDirectionSummary(
+                availability: .sparse,
+                projectName: focusProject,
+                title: "Direction is inferred from metadata",
+                status: .notEnoughSignal,
+                summary: "Direction is provisional because transcript indexing is off. OpenBurnBar can see project activity and burn, but not grounded evidence.",
+                scopeLabel: focus.scopeLabel,
+                freshness: freshness,
+                mode: .sparse,
+                sparseReason: "Turn on local indexing to let OpenBurnBar quote indexed sessions and explain drift with evidence.",
+                nextActions: ["Enable conversation indexing in Settings.", "Run another local scan once indexing is on."],
+                overrideSummary: overrideRecord?.summary
+            )
+        }
+
+        if projectConversations.count < 5 {
+            return OpenBurnBarDirectionSummary(
+                availability: .sparse,
+                projectName: focusProject,
+                title: "Direction signal is still sparse",
+                status: .notEnoughSignal,
+                summary: "OpenBurnBar can name the active project, but there are not enough indexed checkpoints to judge alignment with confidence.",
+                scopeLabel: focus.scopeLabel,
+                freshness: freshness,
+                mode: .sparse,
+                sparseReason: "Only \(projectConversations.count) indexed conversation\(projectConversations.count == 1 ? "" : "s") were available for \(focusProject).",
+                nextActions: [
+                    "Let OpenBurnBar ingest \(max(5 - projectConversations.count, 1)) more conversation checkpoint\(max(5 - projectConversations.count, 1) == 1 ? "" : "s") for \(focusProject).",
+                    "Add a direction override now if you already know the intended call."
+                ],
+                overrideSummary: overrideRecord?.summary
+            )
+        }
+
+        let assessment = assessDirection(
             focus: focus,
             latestConversation: latestConversation,
+            projectConversations: projectConversations,
+            projectUsages: projectUsages,
             insightBrief: insightBrief,
             retrievalHealth: retrievalHealth
         )
+        let status = assessment.status
         let summary = directionSummaryText(
-            status: status,
+            assessment: assessment,
             focusProject: focusProject,
             latestConversation: latestConversation,
+            projectConversations: projectConversations,
+            projectUsages: projectUsages,
             insightBrief: insightBrief,
             rollupStatusMessage: rollupStatusMessage,
             retrievalHealth: retrievalHealth
         )
         let nextActions = directionNextActions(
-            status: status,
+            assessment: assessment,
             latestConversation: latestConversation,
+            projectConversations: projectConversations,
+            projectUsages: projectUsages,
             insightBrief: insightBrief,
             retrievalHealth: retrievalHealth
         )
@@ -971,53 +994,78 @@ enum OpenBurnBarOperatingComposer {
     }
 
     private static func directionSummaryText(
-        status: OpenBurnBarDirectionAssessment,
+        assessment: DirectionAssessmentEvidence,
         focusProject: String,
         latestConversation: ConversationRecord?,
+        projectConversations: [ConversationRecord],
+        projectUsages: [TokenUsage],
         insightBrief: InsightBriefSnapshot,
         rollupStatusMessage: String?,
         retrievalHealth: RetrievalSystemHealthSnapshot
     ) -> String {
-        switch status {
+        let latestTitle = latestConversation?.summaryTitle?.nonEmpty
+            ?? latestConversation?.inferredTaskTitle.nonEmpty
+            ?? focusProject
+        let lastActivity = latestActivityDate(
+            latestConversation: latestConversation,
+            projectUsages: projectUsages
+        )
+        let sessionCount = Set(projectUsages.map { "\($0.provider.rawValue):\($0.sessionId)" }).count
+        let totalCost = projectUsages.reduce(0) { $0 + $1.cost }
+
+        switch assessment.status {
         case .aligned:
-            return latestConversation?.summary?.nonEmpty
-                ?? "Recent indexed checkpoints still cluster around \(focusProject), and OpenBurnBar does not see a strong contradiction yet."
+            let activityClause = lastActivity.map { "Last activity was \(relativeTimeString(since: $0))." }
+                ?? "Recent activity is concentrated on \(focusProject)."
+            return "\(assessment.leadingSignal) \(activityClause) \(sessionCount) session\(sessionCount == 1 ? "" : "s") account for \(totalCost.formatAsCost()) of recent burn around “\(latestTitle)”."
         case .drifting:
-            return insightBrief.incompleteHint?.nonEmpty
-                ?? "The latest checkpoint ends with open follow-ups, so OpenBurnBar thinks the work needs steering before it drifts further."
+            return "\(assessment.leadingSignal) Latest checkpoint “\(latestTitle)” is the current anchor, but the data still points to open work after \(sessionCount) session\(sessionCount == 1 ? "" : "s") and \(totalCost.formatAsCost())."
         case .ambiguous:
-            return rollupStatusMessage?.nonEmpty
+            return assessment.leadingSignal.nonEmpty
+                ?? rollupStatusMessage?.nonEmpty
                 ?? retrievalHealth.degradedModes.first?.message
                 ?? "OpenBurnBar can see activity in \(focusProject), but the signal is mixed across recency, evidence freshness, or burn."
         case .notEnoughSignal:
-            return "OpenBurnBar does not have enough grounded evidence yet to call alignment for \(focusProject)."
+            return "OpenBurnBar only has \(projectConversations.count) project conversation checkpoint\(projectConversations.count == 1 ? "" : "s") for \(focusProject), so the direction call is still provisional."
         }
     }
 
     private static func directionNextActions(
-        status: OpenBurnBarDirectionAssessment,
+        assessment: DirectionAssessmentEvidence,
         latestConversation: ConversationRecord?,
+        projectConversations: [ConversationRecord],
+        projectUsages: [TokenUsage],
         insightBrief: InsightBriefSnapshot,
         retrievalHealth: RetrievalSystemHealthSnapshot
     ) -> [String] {
-        switch status {
+        let latestTitle = latestConversation?.summaryTitle?.nonEmpty
+            ?? latestConversation?.inferredTaskTitle.nonEmpty
+            ?? "the latest checkpoint"
+        let lastActivity = latestActivityDate(
+            latestConversation: latestConversation,
+            projectUsages: projectUsages
+        )
+
+        switch assessment.status {
         case .aligned:
             return [
-                "Keep importing sessions so OpenBurnBar can catch the next inflection point.",
-                "Approve the mission when the current checkpoint looks right."
+                "Keep executing from “\(latestTitle)” while the signal stays concentrated here.",
+                "Approve the mission if this checkpoint should remain the carried-forward plan."
             ]
         case .drifting:
             return [
                 insightBrief.incompleteHint?.nonEmpty
-                    ?? "Write down the next step OpenBurnBar should optimize for.",
-                "Use a direction override if you want to force the call instead of waiting on more evidence."
+                    ?? "Resolve the open handoff in “\(latestTitle)”.",
+                lastActivity.map { "Refresh the project with a new summarized checkpoint; the last activity was \($0.formatted(date: .omitted, time: .shortened))." }
+                    ?? "Use a direction override if you already know the new call."
             ]
         case .ambiguous:
-            return retrievalHealth.degradedModes.prefix(2).map(\.message).nonEmptyArray
+            return assessment.nextActions.nonEmptyArray
+                ?? retrievalHealth.degradedModes.prefix(2).map(\.message).nonEmptyArray
                 ?? ["Let OpenBurnBar finish refreshing the local index before you trust the direction call."]
         case .notEnoughSignal:
             return [
-                latestConversation?.summaryTitle?.nonEmpty.map { "Summarize and continue \($0)." }
+                latestConversation?.summaryTitle?.nonEmpty.map { "Summarize and continue “\($0)”." }
                     ?? "Let OpenBurnBar ingest another checkpoint for this project.",
                 "Record an override if you already know the intended direction."
             ]
@@ -1029,24 +1077,37 @@ enum OpenBurnBarOperatingComposer {
         latestConversation: ConversationRecord?,
         insightBrief: InsightBriefSnapshot,
         focusProject: String,
-        approval: OpenBurnBarMissionApprovalState
+        approval: OpenBurnBarMissionApprovalState,
+        projectConversations: [ConversationRecord],
+        projectUsages: [TokenUsage],
+        retrievalHealth: RetrievalSystemHealthSnapshot
     ) -> String {
+        let latestTitle = latestConversation?.summaryTitle?.nonEmpty
+            ?? latestConversation?.inferredTaskTitle.nonEmpty
+            ?? focusProject
+        let sessionCount = Set(projectUsages.map { "\($0.provider.rawValue):\($0.sessionId)" }).count
+        let totalCost = projectUsages.reduce(0) { $0 + $1.cost }
+        let lastActivity = latestActivityDate(
+            latestConversation: latestConversation,
+            projectUsages: projectUsages
+        )
+
         if approval == .approved {
-            return "OpenBurnBar is carrying this checkpoint as the operator-approved mission for \(focusProject)."
+            return "Approved checkpoint “\(latestTitle)” is carrying \(sessionCount) recent session\(sessionCount == 1 ? "" : "s") and \(totalCost.formatAsCost()) for \(focusProject)."
         }
         switch state {
         case .blocked:
-            return "The latest checkpoint reads blocked. OpenBurnBar is waiting for an explicit unblock or a new plan."
+            return retrievalHealthFailureSummary(retrievalHealth)
+                ?? "A retrieval or indexing failure is blocking a confident mission read for \(focusProject)."
         case .partial:
             return insightBrief.incompleteHint?.nonEmpty
-                ?? "The mission still looks open-loop. OpenBurnBar expects a next-step decision."
+                ?? "Latest checkpoint “\(latestTitle)” still looks open after \(sessionCount) session\(sessionCount == 1 ? "" : "s")."
         case .completed:
-            return "The latest checkpoint looks finished. Approve it if this is the mission you want OpenBurnBar to carry forward."
+            return "Latest summarized checkpoint “\(latestTitle)” cooled \(lastActivity.map { relativeTimeString(since: $0) } ?? "recently") after \(sessionCount) session\(sessionCount == 1 ? "" : "s") and \(totalCost.formatAsCost())."
         case .running:
-            return latestConversation?.summary?.nonEmpty
-                ?? "OpenBurnBar sees active execution against the current mission."
+            return "Fresh activity \(lastActivity.map { relativeTimeString(since: $0) } ?? "just landed") keeps “\(latestTitle)” live across \(sessionCount) session\(sessionCount == 1 ? "" : "s")."
         case .planned:
-            return "OpenBurnBar can name the current work, but it still needs more concrete execution before the mission feels locked."
+            return "OpenBurnBar can name “\(latestTitle),” but \(projectConversations.count) conversation checkpoint\(projectConversations.count == 1 ? "" : "s") is still closer to plan than active execution."
         }
     }
 
@@ -1139,116 +1200,208 @@ enum OpenBurnBarOperatingComposer {
     }
 
     private static func inferMissionState(
-        latestText: String,
+        latestConversation: ConversationRecord?,
+        projectConversations: [ConversationRecord],
+        projectUsages: [TokenUsage],
+        insightBrief: InsightBriefSnapshot,
+        retrievalHealth: RetrievalSystemHealthSnapshot,
         isRefreshing: Bool,
-        isStreaming: Bool,
-        conversationCount: Int
+        isStreaming: Bool
     ) -> OpenBurnBarMissionLifecycle {
-        let lowered = latestText.lowercased()
         if isRefreshing || isStreaming {
             return .running
         }
-        if containsAny(lowered, needles: ["blocked", "stuck", "unable", "permission denied", "failed", "error"]) {
+        if missionReadIsBlockedByRetrievalFailure(retrievalHealth) {
             return .blocked
         }
-        if containsAny(lowered, needles: ["shipped", "done", "completed", "resolved", "finished", "merged"]) {
-            return .completed
-        }
-        if lowered.hasSuffix("?")
-            || containsAny(lowered, needles: ["next step", "next steps", "follow up", "todo", "to-do", "need to"]) {
+        if insightBrief.incompleteHint?.nonEmpty != nil {
             return .partial
         }
-        if conversationCount >= 2 {
+        let lastConversationAt = latestConversationActivityDate(latestConversation)
+        let lastUsageAt = projectUsages.map(\.endTime).max()
+        let lastActivity = maxDate([lastConversationAt, lastUsageAt])
+        if let lastActivity, Date().timeIntervalSince(lastActivity) <= 90 * 60 {
+            return .running
+        }
+        if latestConversation?.summary?.nonEmpty != nil
+            || latestConversation?.summaryTitle?.nonEmpty != nil {
+            if let lastActivity, Date().timeIntervalSince(lastActivity) >= 3 * 60 * 60 {
+                return .completed
+            }
+        }
+        if lastConversationAt == nil || Date().timeIntervalSince(lastConversationAt ?? .distantPast) >= 24 * 60 * 60 {
+            return .planned
+        }
+        if projectConversations.count >= 2 {
             return .running
         }
         return .planned
     }
 
-    private static func inferDirectionStatus(
+    private static func assessDirection(
         focus: ProjectFocus,
         latestConversation: ConversationRecord?,
+        projectConversations: [ConversationRecord],
+        projectUsages: [TokenUsage],
         insightBrief: InsightBriefSnapshot,
         retrievalHealth: RetrievalSystemHealthSnapshot
-    ) -> OpenBurnBarDirectionAssessment {
-        if focus.secondaryProject != nil {
-            return .ambiguous
+    ) -> DirectionAssessmentEvidence {
+        if projectConversations.count < 5 {
+            return DirectionAssessmentEvidence(
+                status: .notEnoughSignal,
+                leadingSignal: "Only \(projectConversations.count) indexed conversation\(projectConversations.count == 1 ? "" : "s") are available for \(focus.primaryProject ?? "this project") so far.",
+                nextActions: []
+            )
         }
-        if retrievalHealth.degradedModes.contains(where: { $0.mode == .indexStale || $0.mode == .rebuildInProgress }) {
-            return .ambiguous
+
+        var score = 0
+        var strongestSignal = ""
+        var strongestWeight = 0
+        var nextActions: [String] = []
+
+        func record(weight: Int, _ message: String) {
+            score += weight
+            guard abs(weight) > abs(strongestWeight) else { return }
+            strongestWeight = weight
+            strongestSignal = message
         }
+
+        let dominance = focus.dominanceRatio
+        if dominance >= 0.72 {
+            record(weight: 3, "\(focus.primaryProject ?? "This project") owns \(Int((dominance * 100).rounded()))% of the recent project signal.")
+        } else if dominance < 0.58 {
+            record(weight: -1, "Project dominance is weak at \(Int((dominance * 100).rounded()))%, so the lead is not decisive yet.")
+        }
+
+        if let latestConversation, (latestConversation.summary?.nonEmpty != nil || latestConversation.summaryTitle?.nonEmpty != nil) {
+            record(weight: 2, "Latest checkpoint “\(latestConversation.summaryTitle?.nonEmpty ?? latestConversation.inferredTaskTitle)” is summarized and grounded.")
+        } else {
+            record(weight: -1, "The latest checkpoint still lacks a structured summary.")
+        }
+
+        if let lastActivity = latestActivityDate(latestConversation: latestConversation, projectUsages: projectUsages) {
+            let age = Date().timeIntervalSince(lastActivity)
+            if age <= 90 * 60 {
+                record(weight: 1, "Fresh project activity landed \(relativeTimeString(since: lastActivity)).")
+            } else if age >= 24 * 60 * 60 {
+                record(weight: -2, "The project has been quiet since \(relativeTimeString(since: lastActivity)).")
+            }
+        }
+
+        if projectUsages.reduce(0) { $0 + $1.cost } >= 3 || Set(projectUsages.map(\.sessionId)).count >= 2 {
+            record(weight: 1, "Recent burn is concentrated in active sessions for the lead project.")
+        }
+
         if insightBrief.incompleteHint?.nonEmpty != nil {
-            return .drifting
+            record(weight: -3, insightBrief.incompleteHint ?? "The latest checkpoint still ends with an unfinished handoff.")
         }
-        let lowered = [
-            latestConversation?.summary,
-            latestConversation?.lastAssistantMessage,
-            insightBrief.whereLeftOff
-        ]
-        .compactMap { $0?.lowercased() }
-        .joined(separator: "\n")
-        if containsAny(lowered, needles: ["blocked", "stuck", "redo", "rethink", "unclear"]) {
-            return .drifting
+
+        var competitionSignal: String?
+        if focus.secondaryProject != nil {
+            let competitorCost = focus.secondaryMetrics?.recentBurnCost ?? 0
+            let competitorActivity = focus.secondaryMetrics?.lastActivityDate.map { relativeTimeString(since: $0) } ?? "recently"
+            let message = "\(focus.secondaryProject ?? "A second project") is still competing with \(competitorCost.formatAsCost()) of recent burn and activity \(competitorActivity)."
+            competitionSignal = message
+            record(weight: -2, message)
+            nextActions.append("Decide whether \(focus.primaryProject ?? "the primary project") or \(focus.secondaryProject ?? "the secondary project") is the current priority.")
         }
-        return .aligned
+
+        if retrievalHealth.degradedModes.contains(where: { $0.mode == .indexStale || $0.mode == .rebuildInProgress }) {
+            record(weight: -2, retrievalHealth.degradedModes.first?.message ?? "The local index is rebuilding, so the direction read is provisional.")
+            nextActions.append("Let the local index finish catching up before trusting the direction call.")
+        }
+
+        if focus.secondaryProject != nil || retrievalHealth.degradedModes.contains(where: { $0.mode == .indexStale || $0.mode == .rebuildInProgress }) {
+            return DirectionAssessmentEvidence(
+                status: score <= -3 && insightBrief.incompleteHint?.nonEmpty != nil ? .drifting : .ambiguous,
+                leadingSignal: competitionSignal ?? strongestSignal,
+                nextActions: nextActions
+            )
+        }
+
+        let status: OpenBurnBarDirectionAssessment
+        if score >= 4 {
+            status = .aligned
+        } else if score <= -2 {
+            status = .drifting
+        } else {
+            status = .ambiguous
+        }
+
+        return DirectionAssessmentEvidence(
+            status: status,
+            leadingSignal: strongestSignal,
+            nextActions: nextActions
+        )
     }
 
     private static func selectProjectFocus(
         conversations: [ConversationRecord],
         usages: [TokenUsage]
     ) -> ProjectFocus {
-        var scores: [String: Double] = [:]
-        for (index, conversation) in conversations.prefix(12).enumerated() {
+        var metricsByProject: [String: ProjectSignalMetrics] = [:]
+        for (index, conversation) in conversations.enumerated() {
             let project = normalizeProjectName(conversation.projectName)
             guard project.isEmpty == false else { continue }
-            scores[project, default: 0] += Double(max(12 - index, 1))
+            let activityDate = latestConversationActivityDate(conversation) ?? conversation.indexedAt
+            var metrics = metricsByProject[project] ?? ProjectSignalMetrics(projectName: project)
+            metrics.score += Double(max(18 - index, 2))
+            metrics.conversationCount += 1
+            metrics.lastConversationAt = maxDate([metrics.lastConversationAt, activityDate])
+            metrics.lastActivityDate = maxDate([metrics.lastActivityDate, activityDate])
+            if activityDate >= Date().addingTimeInterval(-24 * 60 * 60) {
+                metrics.recentConversationCount += 1
+            }
+            if conversation.summary?.nonEmpty != nil || conversation.summaryTitle?.nonEmpty != nil {
+                metrics.summarizedConversationCount += 1
+            }
+            metricsByProject[project] = metrics
         }
         let oneWeekAgo = Date().addingTimeInterval(-7 * 24 * 60 * 60)
         for usage in usages where usage.startTime >= oneWeekAgo {
             let project = normalizeProjectName(usage.projectName)
             guard project.isEmpty == false else { continue }
-            let weight = max(1, min(usage.cost * 8, Double(usage.totalTokens) / 50_000))
-            scores[project, default: 0] += weight
+            let weight = max(1, min(usage.cost * 6, Double(usage.totalTokens) / 100_000))
+            var metrics = metricsByProject[project] ?? ProjectSignalMetrics(projectName: project)
+            metrics.score += weight
+            metrics.recentBurnCost += usage.cost
+            metrics.lastUsageAt = maxDate([metrics.lastUsageAt, usage.endTime])
+            metrics.lastActivityDate = maxDate([metrics.lastActivityDate, usage.endTime])
+            metricsByProject[project] = metrics
         }
-        let sorted = scores.sorted { lhs, rhs in
+        let sorted = metricsByProject.values.sorted { lhs, rhs in
             if lhs.value == rhs.value { return lhs.key < rhs.key }
             return lhs.value > rhs.value
         }
-        let primary = sorted.first?.key
-        let secondary: String?
-        if sorted.count >= 2, let top = sorted.first, let next = sorted.dropFirst().first, next.value >= top.value * 0.8 {
-            secondary = next.key
-        } else {
-            secondary = nil
-        }
-        return ProjectFocus(primaryProject: primary, secondaryProject: secondary)
-    }
-
-    private static func joinedMissionText(
-        from latestConversation: ConversationRecord?,
-        insightBrief: InsightBriefSnapshot
-    ) -> String {
-        [
-            latestConversation?.summary,
-            latestConversation?.summaryTitle,
-            latestConversation?.lastAssistantMessage,
-            insightBrief.whereLeftOff,
-            insightBrief.incompleteHint,
-        ]
-        .compactMap { $0?.nonEmpty }
-        .joined(separator: "\n")
+        let primaryMetrics = sorted.first
+        let secondaryMetrics = sorted.dropFirst().first
+        let meaningfulCompetition = meaningfulSecondaryCompetition(
+            primary: primaryMetrics,
+            secondary: secondaryMetrics
+        )
+        return ProjectFocus(
+            primaryMetrics: primaryMetrics,
+            secondaryMetrics: meaningfulCompetition ? secondaryMetrics : nil,
+            totalConversationCount: conversations.count
+        )
     }
 
     private static func missionFingerprint(
         projectName: String,
-        conversation: ConversationRecord?,
-        conversationCount: Int
+        conversation: ConversationRecord?
     ) -> String {
+        let title = stableMissionComponent(
+            conversation?.summaryTitle?.nonEmpty
+                ?? conversation?.inferredTaskTitle.nonEmpty
+                ?? "untitled"
+        )
         let parts = [
-            projectName,
-            conversation?.id ?? "none",
-            conversation?.indexedAt.ISO8601Format() ?? "never",
-            "\(conversationCount)",
-            conversation?.summaryUpdatedAt?.ISO8601Format() ?? "",
+            stableMissionComponent(projectName),
+            title,
+            stableMissionSummarySignature(
+                conversation: conversation,
+                normalizedTitle: title
+            )
         ]
         return parts.joined(separator: "|")
     }
@@ -1293,8 +1446,148 @@ enum OpenBurnBarOperatingComposer {
         raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func containsAny(_ text: String, needles: [String]) -> Bool {
-        needles.contains(where: text.contains)
+    private static func latestConversationActivityDate(_ conversation: ConversationRecord?) -> Date? {
+        maxDate([
+            conversation?.endTime,
+            conversation?.startTime,
+            conversation?.indexedAt
+        ])
+    }
+
+    private static func latestActivityDate(
+        latestConversation: ConversationRecord?,
+        projectUsages: [TokenUsage]
+    ) -> Date? {
+        maxDate([
+            latestConversationActivityDate(latestConversation),
+            projectUsages.map(\.endTime).max()
+        ])
+    }
+
+    private static func relativeTimeString(since date: Date) -> String {
+        let seconds = max(Int(Date().timeIntervalSince(date)), 0)
+        if seconds < 60 {
+            return "just now"
+        }
+        if seconds < 60 * 60 {
+            let minutes = seconds / 60
+            return "\(minutes)m ago"
+        }
+        if seconds < 24 * 60 * 60 {
+            let hours = seconds / (60 * 60)
+            return "\(hours)h ago"
+        }
+        let days = seconds / (24 * 60 * 60)
+        return "\(days)d ago"
+    }
+
+    private static func inferredOverrideDirectionStatus(
+        focus: ProjectFocus,
+        latestConversation: ConversationRecord?,
+        projectConversations: [ConversationRecord],
+        projectUsages: [TokenUsage],
+        insightBrief: InsightBriefSnapshot,
+        retrievalHealth: RetrievalSystemHealthSnapshot,
+        indexingEnabled: Bool
+    ) -> OpenBurnBarDirectionAssessment {
+        guard indexingEnabled, projectConversations.count >= 5 else {
+            return .notEnoughSignal
+        }
+        return assessDirection(
+            focus: focus,
+            latestConversation: latestConversation,
+            projectConversations: projectConversations,
+            projectUsages: projectUsages,
+            insightBrief: insightBrief,
+            retrievalHealth: retrievalHealth
+        ).status
+    }
+
+    private static func missionReadIsBlockedByRetrievalFailure(_ retrievalHealth: RetrievalSystemHealthSnapshot) -> Bool {
+        retrievalHealth.parserImport.status == .failed
+            || retrievalHealth.projectionQueue.status == .failed
+    }
+
+    private static func retrievalHealthFailureSummary(_ retrievalHealth: RetrievalSystemHealthSnapshot) -> String? {
+        retrievalHealth.parserImport.errorMessage
+            ?? retrievalHealth.projectionQueue.errorMessage
+    }
+
+    private static func stableMissionComponent(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .lowercased()
+    }
+
+    private static func stableMissionSummarySignature(
+        conversation: ConversationRecord?,
+        normalizedTitle: String
+    ) -> String {
+        let source = conversation?.summary?.nonEmpty
+            ?? conversation?.lastAssistantMessage.nonEmpty
+            ?? conversation?.inferredTaskTitle.nonEmpty
+            ?? "no-summary"
+        let scrubbed = stableMissionComponent(source)
+            .replacingOccurrences(of: "\\b[0-9]+(?:[.:/-][0-9]+)*\\b", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\b[a-f0-9]{7,}\\b", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "[^a-z\\s]", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let titleTokens = Set(normalizedTitle.split(separator: " ").map(String.init))
+        let stopWords: Set<String> = [
+            "after", "and", "before", "from", "into", "only", "that", "the", "this",
+            "with", "while", "were", "when", "where", "which", "will", "still", "just",
+            "about", "have", "has", "had", "been", "being", "your", "their", "there",
+            "refresh", "refreshed", "timestamp", "timestamps"
+        ]
+
+        var tokens: [String] = []
+        var seen = Set<String>()
+        for word in scrubbed.split(separator: " ").map(String.init) {
+            guard word.count >= 4 else { continue }
+            guard stopWords.contains(word) == false else { continue }
+            guard titleTokens.contains(word) == false else { continue }
+            guard seen.insert(word).inserted else { continue }
+            tokens.append(word)
+            if tokens.count == 10 {
+                break
+            }
+        }
+
+        return tokens.isEmpty ? "no-summary" : tokens.joined(separator: " ")
+    }
+
+    private static func missionSubtitle(
+        title: String,
+        latestConversation: ConversationRecord?,
+        projectConversations: [ConversationRecord],
+        projectUsages: [TokenUsage]
+    ) -> String {
+        let lastActivity = latestActivityDate(
+            latestConversation: latestConversation,
+            projectUsages: projectUsages
+        )
+        let sessionCount = Set(projectUsages.map { "\($0.provider.rawValue):\($0.sessionId)" }).count
+        let totalCost = projectUsages.reduce(0) { $0 + $1.cost }
+        if let summary = latestConversation?.summary?.nonEmpty {
+            return "\(summary) Last activity \(lastActivity.map { relativeTimeString(since: $0) } ?? "recently"), \(sessionCount) session\(sessionCount == 1 ? "" : "s"), \(totalCost.formatAsCost())."
+        }
+        return "Latest checkpoint “\(title)” covers \(projectConversations.count) conversation\(projectConversations.count == 1 ? "" : "s") with \(sessionCount) billed session\(sessionCount == 1 ? "" : "s") and \(totalCost.formatAsCost())."
+    }
+
+    private static func meaningfulSecondaryCompetition(
+        primary: ProjectSignalMetrics?,
+        secondary: ProjectSignalMetrics?
+    ) -> Bool {
+        guard let primary, let secondary else { return false }
+        guard secondary.score >= primary.score * 0.75 else { return false }
+        guard secondary.recentBurnCost >= max(1.5, primary.recentBurnCost * 0.35) else { return false }
+        guard let secondaryActivity = secondary.lastActivityDate,
+              Date().timeIntervalSince(secondaryActivity) <= 24 * 60 * 60 else {
+            return false
+        }
+        return secondary.recentConversationCount >= 1 || secondary.recentBurnCost >= 3
     }
 
     private static func truncated(_ text: String, limit: Int) -> String {
@@ -1308,9 +1601,39 @@ enum OpenBurnBarOperatingComposer {
     }
 }
 
+private struct DirectionAssessmentEvidence {
+    let status: OpenBurnBarDirectionAssessment
+    let leadingSignal: String
+    let nextActions: [String]
+}
+
+private struct ProjectSignalMetrics: Equatable {
+    let projectName: String
+    var score: Double = 0
+    var conversationCount: Int = 0
+    var recentConversationCount: Int = 0
+    var summarizedConversationCount: Int = 0
+    var recentBurnCost: Double = 0
+    var lastConversationAt: Date?
+    var lastUsageAt: Date?
+    var lastActivityDate: Date?
+
+    var key: String { projectName }
+    var value: Double { score }
+}
+
 private struct ProjectFocus: Equatable {
-    let primaryProject: String?
-    let secondaryProject: String?
+    let primaryMetrics: ProjectSignalMetrics?
+    let secondaryMetrics: ProjectSignalMetrics?
+    let totalConversationCount: Int
+
+    var primaryProject: String? { primaryMetrics?.projectName }
+    var secondaryProject: String? { secondaryMetrics?.projectName }
+    var dominanceRatio: Double {
+        guard let primaryScore = primaryMetrics?.score, primaryScore > 0 else { return 0 }
+        let secondaryScore = secondaryMetrics?.score ?? 0
+        return primaryScore / max(primaryScore + secondaryScore, 1)
+    }
 
     var scopeLabel: String {
         if secondaryProject != nil {

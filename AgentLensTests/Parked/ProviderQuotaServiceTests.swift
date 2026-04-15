@@ -566,6 +566,52 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(bucket.windowKind, .rollingHours)
     }
 
+    func test_miniMaxRefresh_distinguishesFiveHourAndSevenDayBucketsFromDuration() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let keyStore = try makeKeyStore(provider: "minimax", value: "mm-token")
+        let session = makeStubSession { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://www.minimax.io/v1/api/openplatform/coding_plan/remains")
+
+            let body = """
+            {
+              "model_remains": [
+                {
+                  "model_name": "MiniMax-M2.7-HighSpeed",
+                  "start_time": 1774320000000,
+                  "end_time": 1774338000000,
+                  "current_interval_total_count": 1500,
+                  "current_interval_usage_count": 1437
+                },
+                {
+                  "model_name": "MiniMax-M2.7-HighSpeed",
+                  "start_time": 1774320000000,
+                  "end_time": 1774924800000,
+                  "current_interval_total_count": 10000,
+                  "current_interval_usage_count": 6400
+                }
+              ]
+            }
+            """
+            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            keyStore: keyStore,
+            session: session,
+            miniMaxModeProvider: { .tokenPlan }
+        )
+
+        await service.refresh(provider: .minimax, dataStore: try! DataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
+
+        XCTAssertEqual(snapshot.buckets.count, 2)
+        XCTAssertEqual(snapshot.buckets.first(where: { $0.windowKind == .rollingHours })?.label, "5-hour window")
+        XCTAssertEqual(snapshot.buckets.first(where: { $0.windowKind == .rollingDays })?.label, "7-day window")
+    }
+
     func test_zaiRefresh_usesOfficialMonitorEndpoints() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()

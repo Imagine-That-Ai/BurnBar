@@ -853,6 +853,9 @@ struct HermesSetupWizardView: View {
                 chatController?.setChatBackend(.hermes)
                 settingsManager.chatBackendOnboardingCompleted = true
 
+                // Install burnbar-operator Hermes skill (symlink from repo)
+                installHermesSkillIfNeeded()
+
                 onDismiss()
             } label: {
                 Text("Start Using Hermes")
@@ -1052,5 +1055,39 @@ struct HermesSetupWizardView: View {
                 }
             }
         }
+    }
+
+    /// Symlinks the burnbar-operator Hermes skill from the repo into ~/.hermes/skills/.
+    /// The repo copy at tools/openburnbar-mcp/hermes-skill/SKILL.md is the source of truth.
+    private func installHermesSkillIfNeeded() {
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser.path
+        let hermesDir = "\(home)/.hermes"
+        let skillDir = "\(hermesDir)/skills/software-development/burnbar-operator"
+        let target = "\(skillDir)/SKILL.md"
+
+        // Only install if ~/.hermes exists (Hermes has been set up)
+        guard fm.fileExists(atPath: hermesDir) else { return }
+
+        // Find the repo SKILL.md — check a few common locations relative to the app bundle
+        let candidates: [String] = [
+            // Development build: repo is next to the built app
+            "\(home)/Documents/Windsurf/BurnBar/tools/openburnbar-mcp/hermes-skill/SKILL.md",
+            // Check next to the running binary (for dev builds)
+            Bundle.main.bundleURL.deletingLastPathComponent()
+                .appendingPathComponent("tools/openburnbar-mcp/hermes-skill/SKILL.md")
+                .path,
+        ]
+
+        guard let repoSkill = candidates.first(where: { fm.fileExists(atPath: $0) }) else { return }
+
+        try? fm.createDirectory(atPath: skillDir, withIntermediateDirectories: true)
+
+        // Remove existing symlink or stale file
+        if fm.fileExists(atPath: target) || fm.fileExists(atPath: target) {
+            try? fm.removeItem(atPath: target)
+        }
+
+        try? fm.createSymbolicLink(atPath: target, withDestinationPath: repoSkill)
     }
 }

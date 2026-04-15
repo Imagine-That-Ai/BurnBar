@@ -1,98 +1,11 @@
 import Foundation
-import CryptoKit
 import GRDB
-
-// MARK: - Parser Health
-
-enum ParserHealth {
-    case healthy(sessionCount: Int)
-    case empty
-    case degraded(sessionCount: Int, error: String)
-    case failed(error: String)
-    case notConfigured
-}
-
-private extension ParserHealth {
-    var statusLabel: String {
-        switch self {
-        case .healthy:
-            return "healthy"
-        case .empty:
-            return "empty"
-        case .degraded:
-            return "degraded"
-        case .failed:
-            return "failed"
-        case .notConfigured:
-            return "not_configured"
-        }
-    }
-
-    var sessionCount: Int {
-        switch self {
-        case .healthy(let count), .degraded(let count, _):
-            return max(0, count)
-        case .empty, .failed, .notConfigured:
-            return 0
-        }
-    }
-
-    var errorMessage: String? {
-        switch self {
-        case .degraded(_, let error):
-            return error
-        case .failed(let error):
-            return error
-        case .healthy, .empty, .notConfigured:
-            return nil
-        }
-    }
-}
-
-// MARK: - Summary Queue Item
-
-struct SummaryQueueItem: Identifiable {
-    let id: String          // conversation ID
-    let title: String
-    enum Status { case pending, processing, done, failed }
-    var status: Status = .pending
-    var provider: String?   // set when done
-}
 
 // MARK: - Usage Aggregator
 
 @Observable
 @MainActor
 final class UsageAggregator {
-    private static let apiReconciliationSessionPrefix = "api-reconcile-"
-    private enum SummaryEndpointCooldownPolicy {
-        static let localEndpointFailureCooldown: TimeInterval = 5 * 60
-    }
-    private enum ProjectionWorkerPolicy {
-        /// Process indexing incrementally to keep UI work responsive.
-        static let maxJobsPerPass = 8
-        static let catchUpMaxJobsPerPass = 64
-        /// Small delay between backlog passes to reduce CPU pressure.
-        static let backlogDelayNanoseconds: UInt64 = 100_000_000
-        /// Coalesce rapid-fire queue requests.
-        static let coalesceDelayNanoseconds: UInt64 = 750_000_000
-        /// Avoid rebuilding workflow insights on every tiny pass.
-        static let insightRefreshCooldown: TimeInterval = 10
-        /// Trim redundant queued conversation jobs when backlog explodes.
-        static let backlogCompactionThreshold = 400
-    }
-    private enum AutoSummaryPolicy {
-        /// Keep automatic summaries lightweight so background refreshes do not
-        /// churn through entire historical backlogs or oversized prompts.
-        static let maxPromptChars = 18_000
-        static let maxOutputTokens = 220
-        static let maxBatchSize = 8
-        static let maxFirstLoadBatchSize = 16
-        static let maxConcurrency = 2
-        /// Pause summary churn while projection queue is already overloaded.
-        static let pauseWhenProjectionQueueExceeds = 300
-    }
-
     private let dataStore: DataStore
     private let parsers: [AgentProvider: any LogParser]
     private weak var cloudSync: CloudSyncService?
@@ -292,7 +205,9 @@ final class UsageAggregator {
         let postPersistencePhaseStartedAt = Date()
         var apiSupplementalUsages: [TokenUsage] = []
         do {
-            let refreshedRecords = try await deleteAndReloadUsageRows(sessionIDPrefix: Self.apiReconciliationSessionPrefix)
+            let refreshedRecords = try await deleteAndReloadUsageRows(
+                sessionIDPrefix: BillingUsageReconciliation.apiReconciliationSessionPrefix
+            )
             dataStore.replaceUsages(refreshedRecords)
         } catch {
             parserImportError = "Failed to clear prior API-reconciled usage rows: \(error.localizedDescription)"
@@ -318,7 +233,10 @@ final class UsageAggregator {
                     parserImportError = message
                 }
             }
-            apiSupplementalUsages = supplementalUsages(from: apiUsages, existingUsages: canonicalBaseline)
+            apiSupplementalUsages = BillingUsageReconciliation.supplementalUsages(
+                from: apiUsages,
+                existingUsages: canonicalBaseline
+            )
             if !apiSupplementalUsages.isEmpty {
                 do {
                     let refreshedRecords = try await persistAndReloadUsageRows(apiSupplementalUsages)
@@ -357,81 +275,6 @@ final class UsageAggregator {
                 "api_supplemental_rows": String(apiSupplementalUsages.count),
             ]
         )
-    }
-
-    fileprivate func supplementalUsages(
-        from records: [ProviderUsageRecord],
-        existingUsages: [TokenUsage]
-    ) -> [TokenUsage] {
-        let calendar = Calendar.current
-        return records.compactMap { record in
-            guard let fallbackProvider = record.mappedProvider else { return nil }
-
-            let windowStart = calendar.startOfDay(for: record.date)
-            let windowEnd = calendar.date(byAdding: .day, value: 1, to: windowStart) ?? windowStart
-            let window = windowStart...windowEnd
-            let matchingLocalUsages = existingUsages.filter { usage in
-                usage.intersects(dateRange: window) && usageMatches(record: record, usage: usage)
-            }
-
-            let localInput = matchingLocalUsages.reduce(0) { $0 + $1.inputTokens }
-            let localOutput = matchingLocalUsages.reduce(0) { $0 + $1.outputTokens }
-            let localCacheRead = matchingLocalUsages.reduce(0) { $0 + $1.cacheReadTokens }
-            let localCacheWrite = matchingLocalUsages.reduce(0) { $0 + $1.cacheCreationTokens }
-            let localCost = matchingLocalUsages.reduce(0.0) { $0 + $1.cost }
-
-            let missingInput = max(record.inputTokens - localInput, 0)
-            let missingOutput = max(record.outputTokens - localOutput, 0)
-            let missingCacheRead = max(record.cacheReadTokens - localCacheRead, 0)
-            let missingCacheWrite = max(record.cacheCreationTokens - localCacheWrite, 0)
-            let missingCost = max(record.costUSD - localCost, 0)
-
-            // VAL-PERSIST-012: Cost-only reconciliation deltas are preserved.
-            // When reconciliation detects cost drift without positive token deltas,
-            // correction behavior must still be deterministic and persist expected cost adjustments.
-            // We include missingCost > costEpsilon so cost-only corrections are not silently dropped,
-            // while avoiding phantom micro-corrections from floating-point residue.
-            // costEpsilon = 1e-9 is smaller than any meaningful cost delta ($0.000000001)
-            // but larger than typical floating-point residue (~1e-15 to 1e-16).
-            let costEpsilon = 1e-9
-            guard missingInput > 0 || missingOutput > 0 || missingCacheRead > 0 || missingCacheWrite > 0 || missingCost > costEpsilon else {
-                return nil
-            }
-
-            let candidateProviders = Set(matchingLocalUsages.map(\.provider))
-            let targetProvider: AgentProvider
-            if candidateProviders.count == 1, let only = candidateProviders.first {
-                targetProvider = only
-            } else {
-                targetProvider = fallbackProvider
-            }
-
-            let modelKey = sanitizedModelKey(record.model)
-            let providerKey = targetProvider.rawValue
-                .lowercased()
-                .replacingOccurrences(of: " ", with: "-")
-            let sessionId = "\(Self.apiReconciliationSessionPrefix)\(providerKey)-\(Int(windowStart.timeIntervalSince1970))-\(modelKey)"
-            let projectName = matchingLocalUsages.isEmpty
-                ? "\(record.providerName) API Reconciliation"
-                : "\(targetProvider.displayName) · \(record.providerName) API Reconciliation"
-
-            return TokenUsage(
-                provider: targetProvider,
-                sessionId: sessionId,
-                projectName: projectName,
-                model: record.model,
-                inputTokens: missingInput,
-                outputTokens: missingOutput,
-                cacheCreationTokens: missingCacheWrite,
-                cacheReadTokens: missingCacheRead,
-                costUSD: missingCost,
-                startTime: windowStart,
-                endTime: windowStart,
-                usageSource: .billingAPI,
-                provenanceMethod: .billingAPI,
-                provenanceConfidence: .exact
-            )
-        }
     }
 
     private func parseProviderOffMainActor(_ parser: any LogParser) async throws -> ParseResult {
@@ -482,7 +325,7 @@ final class UsageAggregator {
         from records: [ProviderUsageRecord],
         existingUsages: [TokenUsage]
     ) -> [TokenUsage] {
-        supplementalUsages(from: records, existingUsages: existingUsages)
+        BillingUsageReconciliation.supplementalUsages(from: records, existingUsages: existingUsages)
     }
 
     /// Test helper: checks if a cost delta exceeds the epsilon threshold used to avoid
@@ -495,45 +338,6 @@ final class UsageAggregator {
         let missingCost = max(apiCost - localCost, 0)
         let costEpsilon = 1e-9
         return missingCost > costEpsilon
-    }
-
-    private func usageMatches(record: ProviderUsageRecord, usage: TokenUsage) -> Bool {
-        switch record.mappedProvider {
-        case .some(.minimax):
-            let localKey = TokenExtractionUtility.normalizeModelKey(usage.model)
-            let apiKey = TokenExtractionUtility.normalizeModelKey(record.model)
-            if apiKey == "minimax" {
-                return localKey.contains("minimax")
-            }
-            return localKey == apiKey || localKey.contains(apiKey) || (apiKey.contains("minimax") && localKey.contains("minimax"))
-        case .some(.zai):
-            let localKey = TokenExtractionUtility.normalizeModelKey(usage.model)
-            let apiKey = TokenExtractionUtility.normalizeModelKey(record.model)
-            if apiKey == "glm" || apiKey == "zai" || apiKey == "z.ai" {
-                return localKey.contains("glm") || localKey.contains("zai")
-            }
-            return localKey == apiKey || localKey.contains(apiKey) || apiKey.contains(localKey)
-        case .some(.copilot):
-            return usage.provider == .copilot
-        case .none:
-            return false
-        default:
-            return false
-        }
-    }
-
-    private func sanitizedModelKey(_ model: String) -> String {
-        let raw = TokenExtractionUtility.normalizeModelKey(model)
-        let allowed = raw.map { character -> Character in
-            if character.isLetter || character.isNumber || character == "-" {
-                return character
-            }
-            return "-"
-        }
-        let sanitized = String(allowed)
-            .replacingOccurrences(of: "--", with: "-")
-            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-        return sanitized.isEmpty ? "model" : sanitized
     }
 
     /// Clears local usage rows so the dashboard resets immediately, then re-parses all providers.

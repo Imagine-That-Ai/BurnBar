@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>FormatVersion</key>
+	<integer>1</integer>
+	<key>Store</key>
+	<dict>
+		<key>OpenBurnBarTests</key>
+		<dict>
+			<key>ContextPackSessionDetailSurfaceTests</key>
+			<dict>
+				<key>test_anchorCarriesSelectedProjectScope</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.026150941848754883</real>
+				</dict>
+				<key>test_anchorCarriesSelectedSessionIdentity</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.028308987617492676</real>
+				</dict>
+				<key>test_initialRenderDoesNotLeakPriorSessionState</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.018901944160461426</real>
+				</dict>
+				<key>test_nilConversationDoesNotCrashAndHidesRow</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.017904996871948242</real>
+				</dict>
+				<key>test_reopenReanchorsToCurrentSession</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.01833808422088623</real>
+				</dict>
+				<key>test_rowPlacementBelowSessionLogAction</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.017483949661254883</real>
+				</dict>
+				<key>test_rowVisibility_requiresIndexingEnabledAndConversation</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.022373080253601074</real>
+				</dict>
+				<key>test_sessionDetailContextPackEntryReachableFromDashboardFlow</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.027726054191589355</real>
+				</dict>
+				<key>test_tapPresentsContextPackSheet</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.017872095108032227</real>
+				</dict>
+				<key>test_viewFullSessionLogStillRoutesCorrectly</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.013044953346252441</real>
+				</dict>
+			</dict>
+		</dict>
+	</dict>
+</dict>
+</plist>

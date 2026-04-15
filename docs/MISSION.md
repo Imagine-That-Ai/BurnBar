@@ -2,39 +2,33 @@
 
 ## Mission
 
-OpenBurnBar exists to make AI-assisted work legible, searchable, and reusable.
+OpenBurnBar exists to give developers a trustworthy local read on AI-agent work: what ran, what it cost, what changed, and what deserves follow-up.
 
-Developers are now doing real work with multiple agents across terminals, editors, and clouds, but the record of that work is fragmented, hard to search, and easy to lose. OpenBurnBar's job is to turn that sprawl into a system you can trust: what happened, what it cost, what was decided, what should be reused, and where to pick up next.
+Today the shipped product is a native macOS menu bar app with a local daemon, a local SQLite store, and a Cursor / VS Code extension. It watches local agent logs, estimates spend and quota, indexes conversations and source artifacts, and exposes that state back through dashboard, settings, chat, and daemon-backed control surfaces.
 
-## What We Believe
+## What the product must do well right now
 
-- The future of software work is human + many agents, not human + one chat box.
-- The memory layer for that work matters as much as the execution layer.
-- Local-first is a product advantage, not a compromise. Fast, private, offline-capable systems feel better and earn more trust.
-- Raw artifacts matter. Session logs, skills, agent docs, commands, files, and edits are more valuable than polished summaries alone.
-- Search is not a bolt-on utility. It is the retrieval engine that makes every other feature better.
-- Teams need shared memory, but they also need clear ownership, permissions, auditability, and conflict handling.
+- **Observe real agent activity** across providers such as Claude Code, Factory Droid, Codex, Kimi, Z.ai, MiniMax, and routed Cursor traffic when enabled.
+- **Keep local state authoritative** so the app stays useful offline and does not depend on cloud sync to answer core questions.
+- **Make operating state legible** through burn summaries, recent evidence, retrieval health, mission/direction snapshots, and controller runtime status.
+- **Let users recover context quickly** from indexed conversations, artifacts, and recent sessions instead of reopening raw logs by hand.
+- **Stay honest about confidence** by distinguishing exact vs estimated values, sparse vs grounded evidence, and healthy vs degraded indexing state.
 
-## What OpenBurnBar Must Become
+## Product beliefs
 
-OpenBurnBar should evolve from "cost tracker for AI agents" into the operating memory system for AI-assisted development.
+- Multi-agent work is normal now; the missing layer is visibility and continuity.
+- Local-first is a product requirement, not branding.
+- Raw artifacts and provenance matter more than polished-but-unverifiable summaries.
+- Search, retrieval, and operating snapshots should be grounded in the same local source of truth.
+- Optional cloud features should extend the product, not redefine it.
 
-That means OpenBurnBar must help users:
+## Current standard
 
-- observe work across all of their agents
-- search past work instantly
-- recover context without reopening old sessions
-- turn repeated good work into reusable skills and agent docs
-- improve workflows with concrete, actionable insight
-- share the right knowledge with a team without giving up local-first speed or trust
+When OpenBurnBar ships a feature, it should make one of these things better without weakening trust:
 
-## Product Standard
+1. knowing what happened
+2. knowing what it cost
+3. knowing what still needs attention
+4. finding the evidence fast
 
-OpenBurnBar should feel:
-
-- fast enough to use as a primary memory tool
-- trustworthy enough to hold sensitive local work
-- clear enough that users understand why a result appeared
-- strong enough that teams can rely on it, not just demo it
-
-If a feature makes OpenBurnBar noisier, slower, or less trustworthy, it is probably off mission.
+If a feature adds surface area without improving one of those outcomes, it is off mission.
