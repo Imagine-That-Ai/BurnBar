@@ -90,13 +90,15 @@ jobs:
       - name: Summarize test counts
         if: always()
         run: |
-          echo "### Test Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Surface | Status |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---------|--------|" >> "$GITHUB_STEP_SUMMARY"
-          for step in "Swift tests" "App tests" "SwiftPM lockfile" "Retrieval evals" "TypeScript tests" "Replay evals" "Extension-host tests"; do
-            echo "| $step | ran |" >> "$GITHUB_STEP_SUMMARY"
-          done
+          {
+            echo "### Test Summary"
+            echo ""
+            echo "| Surface | Status |"
+            echo "|---------|--------|"
+            for step in "Swift tests" "App tests" "SwiftPM lockfile" "Retrieval evals" "TypeScript tests" "Replay evals" "Extension-host tests"; do
+              echo "| $step | ran |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Clean up Firebase config
         if: always() && env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'

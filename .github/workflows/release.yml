@@ -30,7 +30,7 @@ jobs:
     env:
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
       HAS_SIGNING_SECRETS: ${{ secrets.APPLE_TEAM_ID != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
-      HAS_NOTARY_SECRETS: ${{ secrets.APPLE_NOTARY_KEY_ID != '' && secrets.APPLE_NOTARY_ISSUER_ID != '' && secrets.APPLE_NOTARY_API_KEY_P8 != '' && secrets.APPLE_TEAM_ID != '' }}
+      HAS_NOTARY_SECRETS: ${{ secrets.APPLE_NOTARY_KEY_ID != '' && secrets.APPLE_NOTARY_API_KEY_P8 != '' && secrets.APPLE_TEAM_ID != '' }}
 
     steps:
       - name: Check out repository
@@ -79,7 +79,6 @@ jobs:
           APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
           APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
           FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
@@ -91,7 +90,6 @@ jobs:
             APPLE_CERTIFICATE_P12 \
             APPLE_CERTIFICATE_PASSWORD \
             APPLE_NOTARY_KEY_ID \
-            APPLE_NOTARY_ISSUER_ID \
             APPLE_NOTARY_API_KEY_P8 \
             FIREBASE_PLIST_BASE64 \
             FIREBASE_APP_CHECK_DEBUG_TOKEN; do
@@ -320,11 +318,34 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
         run: |
-          xcrun notarytool submit "$DMG_PATH" \
-            --key "$notary_key_path" \
-            --key-id "$APPLE_NOTARY_KEY_ID" \
-            --issuer "$APPLE_NOTARY_ISSUER_ID" \
-            --wait --timeout 30m
+          NOTARY_ARGS=(
+            --key "$notary_key_path"
+            --key-id "$APPLE_NOTARY_KEY_ID"
+          )
+
+          # Support both App Store Connect team keys (issuer required) and
+          # individual keys (issuer must be omitted) while staying fail-hard.
+          if [[ -n "${APPLE_NOTARY_ISSUER_ID:-}" ]]; then
+            if xcrun notarytool history "${NOTARY_ARGS[@]}" --issuer "$APPLE_NOTARY_ISSUER_ID" >/dev/null 2>&1; then
+              echo "Notary auth mode: team API key"
+              NOTARY_ARGS+=(--issuer "$APPLE_NOTARY_ISSUER_ID")
+            elif xcrun notarytool history "${NOTARY_ARGS[@]}" >/dev/null 2>&1; then
+              echo "::warning::Issuer auth failed; using individual API key mode."
+              echo "Notary auth mode: individual API key"
+            else
+              echo "::error::Notary authentication failed with and without issuer. Verify APPLE_NOTARY_* secrets."
+              exit 1
+            fi
+          else
+            if xcrun notarytool history "${NOTARY_ARGS[@]}" >/dev/null 2>&1; then
+              echo "Notary auth mode: individual API key"
+            else
+              echo "::error::Notary authentication failed. Verify APPLE_NOTARY_* secrets."
+              exit 1
+            fi
+          fi
+
+          xcrun notarytool submit "$DMG_PATH" "${NOTARY_ARGS[@]}" --wait --timeout 30m
 
           xcrun stapler staple "$DMG_PATH"
           xcrun stapler validate "$DMG_PATH"

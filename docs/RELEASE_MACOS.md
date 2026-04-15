@@ -25,7 +25,7 @@ This is intended for release recovery without creating a new tag.
 
 ## Required GitHub Actions secrets (strict mode)
 
-Tagged releases are **fail-hard**: if any secret below is missing, the workflow fails and no fallback unsigned release is produced.
+Tagged releases are **fail-hard**: if any required secret below is missing, the workflow fails and no fallback unsigned release is produced.
 
 | Secret | Description |
 |--------|-------------|
@@ -34,7 +34,7 @@ Tagged releases are **fail-hard**: if any secret below is missing, the workflow 
 | `APPLE_CERTIFICATE_P12` | Base64-encoded `.p12` (Developer ID cert + private key) |
 | `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting `.p12` |
 | `APPLE_NOTARY_KEY_ID` | App Store Connect API key ID |
-| `APPLE_NOTARY_ISSUER_ID` | App Store Connect API issuer ID |
+| `APPLE_NOTARY_ISSUER_ID` | App Store Connect API issuer ID (required for team keys, optional for individual keys) |
 | `APPLE_NOTARY_API_KEY_P8` | Base64-encoded contents of `AuthKey_<KEYID>.p8` |
 | `FIREBASE_PLIST_BASE64` | Base64-encoded Firebase plist for CI |
 | `FIREBASE_APP_CHECK_DEBUG_TOKEN` | Firebase App Check debug token for CI |
