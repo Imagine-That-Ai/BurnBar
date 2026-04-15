@@ -233,7 +233,7 @@ jobs:
           APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
           FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
           HELPERS_DIR="$APP_PATH/Contents/Helpers"
-          ENTITLEMENTS="AgentLens/Resources/OpenBurnBar.entitlements"
+          ENTITLEMENTS="AgentLens/Resources/OpenBurnBarRelease.entitlements"
 
           if [[ ! -d "$APP_PATH" ]]; then
             echo "::error::App bundle not found at $APP_PATH"
