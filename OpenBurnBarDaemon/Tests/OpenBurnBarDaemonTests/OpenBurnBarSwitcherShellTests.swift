@@ -25,13 +25,13 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
             .init(terminationStatus: 0, quotaExhaustedDetail: nil, capturedOutput: "")
         ])
 
-        var statuses: [String] = []
+        let statusRecorder = TestStatusRecorder()
         let executor = BurnBarCLIShellExecutor(
             profileStore: store,
             credentialStore: credentials,
             terminalRunner: runner,
             environmentProvider: { ["TERM": "xterm-256color", "CUSTOM": "1"] },
-            statusWriter: { statuses.append($0) }
+            statusWriter: { statusRecorder.append($0) }
         )
 
         let result = try await executor.execute(
@@ -47,11 +47,12 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         XCTAssertEqual(result.attemptedProfileIDs, [primary.id, fallback.id])
         XCTAssertTrue(result.fallbackTriggered)
 
-        XCTAssertEqual(runner.invocations.count, 2)
-        XCTAssertEqual(runner.invocations[0].arguments, ["chat", "--model", "gpt-5"])
-        XCTAssertEqual(runner.invocations[0].environment["OPENAI_API_KEY"], "sk-work")
-        XCTAssertEqual(runner.invocations[1].environment["OPENAI_API_KEY"], "sk-personal")
-        XCTAssertTrue(statuses.joined().contains("Trying Personal"))
+        let invocations = await runner.invocationsSnapshot()
+        XCTAssertEqual(invocations.count, 2)
+        XCTAssertEqual(invocations[0].arguments, ["chat", "--model", "gpt-5"])
+        XCTAssertEqual(invocations[0].environment["OPENAI_API_KEY"], "sk-work")
+        XCTAssertEqual(invocations[1].environment["OPENAI_API_KEY"], "sk-personal")
+        XCTAssertTrue(statusRecorder.snapshot().joined().contains("Trying Personal"))
     }
 
     func testShellExecutorHonorsRequestedProfileOverride() async throws {
@@ -84,7 +85,8 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         XCTAssertEqual(result.exitCode, 0)
         XCTAssertEqual(result.launchedProfileID, second.id)
         XCTAssertEqual(result.attemptedProfileIDs, [second.id])
-        XCTAssertEqual(runner.invocations.first?.environment["ANTHROPIC_API_KEY"], nil)
+        let invocations = await runner.invocationsSnapshot()
+        XCTAssertEqual(invocations.first?.environment["ANTHROPIC_API_KEY"], nil)
     }
 
     func testRunnerInvokeRoutesExecCommandThroughShellExecutor() async throws {
@@ -101,7 +103,8 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         )
 
         XCTAssertEqual(result.exitCode, 0)
-        XCTAssertEqual(shellExecutor.requests, [
+        let requests = await shellExecutor.requestsSnapshot()
+        XCTAssertEqual(requests, [
             BurnBarCLIShellLaunchRequest(
                 cliType: .codex,
                 forwardedArguments: ["chat", "--model", "gpt-5"],
@@ -124,8 +127,9 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         )
 
         XCTAssertEqual(result.exitCode, 0)
-        XCTAssertEqual(shellExecutor.requests.first?.cliType, .codex)
-        XCTAssertEqual(shellExecutor.requests.first?.forwardedArguments, ["--verbose"])
+        let requests = await shellExecutor.requestsSnapshot()
+        XCTAssertEqual(requests.first?.cliType, .codex)
+        XCTAssertEqual(requests.first?.forwardedArguments, ["--verbose"])
     }
 
     func testShimInstallerWritesExecutableWrappers() throws {
@@ -203,6 +207,23 @@ private struct TestCredentialStore: BurnBarSwitcherCredentialProviding {
     }
 }
 
+private final class TestStatusRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String] = []
+
+    func append(_ value: String) {
+        lock.lock()
+        values.append(value)
+        lock.unlock()
+    }
+
+    func snapshot() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+}
+
 private final class TestTerminalRunner: BurnBarCLITerminalRunning, @unchecked Sendable {
     struct Invocation: Equatable {
         let cliType: SwitcherCLIProfileType
@@ -211,13 +232,10 @@ private final class TestTerminalRunner: BurnBarCLITerminalRunning, @unchecked Se
         let environment: [String: String]
         let workingDirectory: String?
     }
-
-    private let lock = NSLock()
-    private var results: [BurnBarCLITerminalRunResult]
-    private(set) var invocations: [Invocation] = []
+    private let state: State
 
     init(results: [BurnBarCLITerminalRunResult]) {
-        self.results = results
+        self.state = State(results: results)
     }
 
     func run(
@@ -227,34 +245,66 @@ private final class TestTerminalRunner: BurnBarCLITerminalRunning, @unchecked Se
         environment: [String: String],
         workingDirectory: String?
     ) async throws -> BurnBarCLITerminalRunResult {
-        lock.lock()
-        invocations.append(Invocation(
+        let invocation = Invocation(
             cliType: cliType,
             executable: executable,
             arguments: arguments,
             environment: environment,
             workingDirectory: workingDirectory
-        ))
-        let result = results.removeFirst()
-        lock.unlock()
-        return result
+        )
+        return await state.record(invocation)
+    }
+
+    func invocationsSnapshot() async -> [Invocation] {
+        await state.snapshotInvocations()
+    }
+
+    actor State {
+        private var results: [BurnBarCLITerminalRunResult]
+        private var invocations: [Invocation] = []
+
+        init(results: [BurnBarCLITerminalRunResult]) {
+            self.results = results
+        }
+
+        func record(_ invocation: Invocation) -> BurnBarCLITerminalRunResult {
+            invocations.append(invocation)
+            return results.removeFirst()
+        }
+
+        func snapshotInvocations() -> [Invocation] {
+            invocations
+        }
     }
 }
 
 private final class TestShellExecutor: BurnBarCLIShellExecuting, @unchecked Sendable {
-    private let lock = NSLock()
-    private(set) var requests: [BurnBarCLIShellLaunchRequest] = []
+    private let state = State()
 
     func execute(_ request: BurnBarCLIShellLaunchRequest) async throws -> BurnBarCLIShellExecutionResult {
-        lock.lock()
-        requests.append(request)
-        lock.unlock()
+        await state.append(request)
         return BurnBarCLIShellExecutionResult(
             exitCode: 0,
             launchedProfileID: request.requestedProfileID,
             attemptedProfileIDs: [],
             fallbackTriggered: false
         )
+    }
+
+    func requestsSnapshot() async -> [BurnBarCLIShellLaunchRequest] {
+        await state.snapshot()
+    }
+
+    actor State {
+        private var requests: [BurnBarCLIShellLaunchRequest] = []
+
+        func append(_ request: BurnBarCLIShellLaunchRequest) {
+            requests.append(request)
+        }
+
+        func snapshot() -> [BurnBarCLIShellLaunchRequest] {
+            requests
+        }
     }
 }
 
