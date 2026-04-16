@@ -88,5 +88,8 @@ tools/burnbar-mcp/.venv/
 .derived-data/
 .gstack/
 
+# Generated Xcode derived data emitted by factory validation runs
+.factory/validation/**/user-testing/derived-data/
+
 # Generated SwiftPM checkout/artifact mirrors from factory validations
 .factory/validation/**/derived-data/**/SourcePackages/

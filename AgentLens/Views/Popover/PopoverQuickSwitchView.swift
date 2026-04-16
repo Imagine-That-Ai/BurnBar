@@ -52,6 +52,7 @@ private final class PopoverQuickSwitchTransitionProbe {
 struct PopoverQuickSwitchView: View {
     let dataStore: DataStore
     let onOpenSettings: () -> Void
+    let settingsManager: SettingsManager
 
     @State private var profiles: [SwitcherProfileRecord] = []
     @State private var activeProfileID: String?
@@ -87,9 +88,17 @@ struct PopoverQuickSwitchView: View {
     ///   - testInjectedError: Error message to pre-populate for testing error UI rendering.
     ///   - skipLoadData: When true, skips calling loadData() in onAppear (for testing error/empty states).
     ///   - testAnnouncementHandler: Optional callback to capture accessibility announcements.
-    init(dataStore: DataStore, onOpenSettings: @escaping () -> Void, testInjectedError: String? = nil, skipLoadData: Bool = false, testAnnouncementHandler: ((String) -> Void)? = nil) {
+    init(
+        dataStore: DataStore,
+        onOpenSettings: @escaping () -> Void,
+        settingsManager: SettingsManager = .shared,
+        testInjectedError: String? = nil,
+        skipLoadData: Bool = false,
+        testAnnouncementHandler: ((String) -> Void)? = nil
+    ) {
         self.dataStore = dataStore
         self.onOpenSettings = onOpenSettings
+        self.settingsManager = settingsManager
         self.testInjectedError = testInjectedError
         self.skipLoadData = skipLoadData
         self.testAnnouncementHandler = testAnnouncementHandler
@@ -98,6 +107,18 @@ struct PopoverQuickSwitchView: View {
     /// When true, loadData() is skipped in onAppear - for testing error/empty states.
     private let skipLoadData: Bool
     private let testTransitionProbe = PopoverQuickSwitchTransitionProbe()
+    #endif
+
+    #if !DEBUG
+    init(
+        dataStore: DataStore,
+        onOpenSettings: @escaping () -> Void,
+        settingsManager: SettingsManager = .shared
+    ) {
+        self.dataStore = dataStore
+        self.onOpenSettings = onOpenSettings
+        self.settingsManager = settingsManager
+    }
     #endif
 
     private enum SwitchState: Equatable {
@@ -233,7 +254,7 @@ struct PopoverQuickSwitchView: View {
                 Button {
                     WindowManager.shared.openSwitcherOnboardingWizard(
                         dataStore: dataStore,
-                        settingsManager: SettingsManager.shared,
+                        settingsManager: settingsManager,
                         onOpenSettings: onOpenSettings
                     )
                 } label: {

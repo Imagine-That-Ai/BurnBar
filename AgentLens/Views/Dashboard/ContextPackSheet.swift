@@ -497,10 +497,11 @@ struct SessionDetailContextPackRow: View {
     @Bindable var dataStore: DataStore
     var onPresentSheet: (String?, String?) -> Void
 
+    @Environment(SettingsManager.self) private var settingsManager
     @State private var isHovered = false
 
     private var isEnabled: Bool {
-        SettingsManager.shared.conversationIndexingEnabled && conversation != nil
+        settingsManager.conversationIndexingEnabled && conversation != nil
     }
 
     var body: some View {

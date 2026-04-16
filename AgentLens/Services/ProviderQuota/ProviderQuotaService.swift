@@ -18,6 +18,7 @@ final class ProviderQuotaService {
     ]
 
     private let keyStore: ProviderAPIKeyStore
+    private let providerRuntimeKeyStore: KeychainStore
     private let appPaths: OpenBurnBarAppPaths
     private let fileManager: FileManager
     private let session: URLSession
@@ -40,23 +41,29 @@ final class ProviderQuotaService {
     private var codexRolloutScanCache: CodexRolloutScanCache = .empty
 
     init(
+        settingsManager: SettingsManager = .shared,
         keyStore: ProviderAPIKeyStore = .shared,
+        providerRuntimeKeyStore: KeychainStore = KeychainStore(
+            service: OpenBurnBarIdentity.cursorConnectorKeychainService,
+            legacyServices: OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
+        ),
         appPaths: OpenBurnBarAppPaths = .live(),
         fileManager: FileManager = .default,
         session: URLSession = .shared,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser,
-        miniMaxModeProvider: @escaping () -> MiniMaxQuotaMode = { SettingsManager.shared.miniMaxQuotaMode },
-        factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier = { SettingsManager.shared.factoryQuotaPlanTier }
+        miniMaxModeProvider: (() -> MiniMaxQuotaMode)? = nil,
+        factoryPlanProvider: (() -> FactoryQuotaPlanTier)? = nil
     ) {
         self.keyStore = keyStore
+        self.providerRuntimeKeyStore = providerRuntimeKeyStore
         self.appPaths = appPaths
         self.fileManager = fileManager
         self.session = session
         self.environment = environment
         self.homeDirectoryURL = homeDirectoryURL
-        self.miniMaxModeProvider = miniMaxModeProvider
-        self.factoryPlanProvider = factoryPlanProvider
+        self.miniMaxModeProvider = miniMaxModeProvider ?? { settingsManager.miniMaxQuotaMode }
+        self.factoryPlanProvider = factoryPlanProvider ?? { settingsManager.factoryQuotaPlanTier }
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
         self.snapshotStore = store
@@ -279,11 +286,59 @@ final class ProviderQuotaService {
 
     private func providerQuotaAPIKey(for provider: AgentProvider) -> String? {
         for identifier in quotaKeyIdentifiers(for: provider) {
-            if let value = keyStore.apiKey(for: identifier) {
+            if let value = quotaNonEmpty(keyStore.apiKey(for: identifier)) {
                 return value
             }
         }
+        return daemonPlanAPIKey(for: provider)
+    }
+
+    private func daemonPlanAPIKey(for provider: AgentProvider) -> String? {
+        guard let providerID = daemonProviderID(for: provider) else { return nil }
+        guard let configuration = OpenBurnBarDaemonManager.shared.providerConfigurations.first(
+            where: { $0.providerID.caseInsensitiveCompare(providerID) == .orderedSame }
+        ) else {
+            return nil
+        }
+
+        let preferredSlot = configuration.preferredCredentialSlotID.flatMap { preferredID in
+            configuration.credentialSlots.first(where: { $0.slotID == preferredID })
+        }
+
+        var orderedSlots: [OpenBurnBarDaemonProviderConfiguration.CredentialSlot] = []
+        if let preferredSlot {
+            orderedSlots.append(preferredSlot)
+        }
+        orderedSlots.append(
+            contentsOf: configuration.credentialSlots.filter { slot in
+                slot.slotID != preferredSlot?.slotID && slot.isEnabled
+            }
+        )
+        orderedSlots.append(
+            contentsOf: configuration.credentialSlots.filter { slot in
+                slot.slotID != preferredSlot?.slotID && !slot.isEnabled
+            }
+        )
+
+        for slot in orderedSlots {
+            let account = "provider.\(providerID).slot.\(slot.slotID).apiKey"
+            if let key = try? providerRuntimeKeyStore.string(for: account, allowUserInteraction: false),
+               let normalized = quotaNonEmpty(key) {
+                return normalized
+            }
+        }
         return nil
+    }
+
+    private func daemonProviderID(for provider: AgentProvider) -> String? {
+        switch provider {
+        case .minimax:
+            return "minimax"
+        case .zai:
+            return "zai"
+        default:
+            return nil
+        }
     }
 
     private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {

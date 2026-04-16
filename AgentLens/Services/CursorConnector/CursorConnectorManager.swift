@@ -10,12 +10,13 @@ import OpenBurnBarCore
 @MainActor
 @Observable
 final class CursorConnectorManager {
-    static let shared = CursorConnectorManager()
+    static let shared = CursorConnectorManager(settingsManager: .shared)
 
     private let defaults = UserDefaults.standard
     private let keychain = KeychainStore()
-    private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
+    private let logStreamManager = CursorConnectorLogStreamManager()
+    private let settingsManager: SettingsManager
 
     var config: CursorConnectorConfig
     var health = ConnectorHealthSnapshot()
@@ -34,12 +35,11 @@ final class CursorConnectorManager {
     private var tunnelProcess: Process?
     private var usagePollTask: Task<Void, Never>?
     private var routePollTask: Task<Void, Never>?
-    private var usageReadOffset: UInt64 = 0
-    private var routeReadOffset: UInt64 = 0
     private var sessionToken: String = ""
     private weak var dataStore: DataStore?
 
-    private init() {
+    init(settingsManager: SettingsManager = .shared) {
+        self.settingsManager = settingsManager
         OpenBurnBarMigration.migrateUserDefaults()
         self.supportDirectory = (try? OpenBurnBarMigration.prepareSupportDirectory()) ?? OpenBurnBarAppPaths.live().supportDirectory
         self.proxyScriptURL = supportDirectory.appendingPathComponent("cursor_connector_proxy.py")
@@ -467,7 +467,13 @@ final class CursorConnectorManager {
         if usagePollTask == nil {
             usagePollTask = Task { [weak self] in
                 while let self {
-                    await self.pollUsageEvents()
+                    do {
+                        if let text = try await self.logStreamManager.readUsageDelta(from: self.usageLogURL) {
+                            await self.consumeUsageLogChunk(text)
+                        }
+                    } catch {
+                        self.lastError = "Could not read usage log: \(error.localizedDescription)"
+                    }
                     try? await Task.sleep(nanoseconds: 1_200_000_000)
                 }
             }
@@ -475,103 +481,84 @@ final class CursorConnectorManager {
         if routePollTask == nil {
             routePollTask = Task { [weak self] in
                 while let self {
-                    await self.pollRouteLogs()
+                    do {
+                        if let text = try await self.logStreamManager.readRouteDelta(from: self.proxyLogURL) {
+                            self.appendRouteLog(text)
+                        }
+                    } catch {
+                        self.lastError = "Could not read proxy log: \(error.localizedDescription)"
+                    }
                     try? await Task.sleep(nanoseconds: 1_200_000_000)
                 }
             }
         }
     }
 
-    private func pollRouteLogs() async {
-        guard FileManager.default.fileExists(atPath: proxyLogURL.path) else { return }
-        guard let handle = try? FileHandle(forReadingFrom: proxyLogURL) else { return }
-        defer { try? handle.close() }
-        do {
-            try handle.seek(toOffset: routeReadOffset)
-            let data = handle.readDataToEndOfFile()
-            routeReadOffset += UInt64(data.count)
-            guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return }
-            appendRouteLog(text)
-        } catch {
-            lastError = "Could not read proxy log: \(error.localizedDescription)"
-        }
-    }
+    private func consumeUsageLogChunk(_ text: String) async {
+        guard let dataStore else { return }
+        let lines = text.split(separator: "\n")
+        var insertedAny = false
+        for line in lines {
+            guard let payload = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+                  let requestID = json["request_id"] as? String,
+                  let providerRaw = json["provider"] as? String,
+                  let provider = ConnectorProvider(rawValue: providerRaw),
+                  let model = json["model"] as? String else { continue }
 
-    private func pollUsageEvents() async {
-        guard let dataStore, FileManager.default.fileExists(atPath: usageLogURL.path) else { return }
-        guard let handle = try? FileHandle(forReadingFrom: usageLogURL) else { return }
-        defer { try? handle.close() }
-        do {
-            try handle.seek(toOffset: usageReadOffset)
-            let data = handle.readDataToEndOfFile()
-            usageReadOffset += UInt64(data.count)
-            guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return }
-            let lines = text.split(separator: "\n")
-            var insertedAny = false
-            for line in lines {
-                guard let payload = line.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
-                      let requestID = json["request_id"] as? String,
-                      let providerRaw = json["provider"] as? String,
-                      let provider = ConnectorProvider(rawValue: providerRaw),
-                      let model = json["model"] as? String else { continue }
-
-                let normalizedUsage = Self.normalizeUsageEvent(json)
-                let promptTokens = normalizedUsage.promptTokens
-                let completionTokens = normalizedUsage.completionTokens
-                let cacheCreationTokens = normalizedUsage.cacheCreationTokens
-                let cacheReadTokens = normalizedUsage.cacheReadTokens
-                let reasoningTokens = normalizedUsage.reasoningTokens
-                let totalTokens = normalizedUsage.totalTokens
-                let timestamp = (json["timestamp"] as? String).flatMap(Self.isoDateFormatter.date(from:)) ?? Date()
-                let cost = ModelPricing.lookup(model: model).cost(
-                    inputTokens: promptTokens,
-                    outputTokens: completionTokens,
-                    cacheCreationTokens: cacheCreationTokens,
-                    cacheReadTokens: cacheReadTokens
-                )
-                recentUsageEvents.insert(
-                    RoutedUsageEvent(
-                        provider: provider,
-                        model: model,
-                        promptTokens: promptTokens,
-                        completionTokens: completionTokens,
-                        cacheCreationTokens: cacheCreationTokens,
-                        cacheReadTokens: cacheReadTokens,
-                        totalTokens: totalTokens,
-                        cost: cost,
-                        timestamp: timestamp
-                    ),
-                    at: 0
-                )
-                recentUsageEvents = Array(recentUsageEvents.prefix(12))
-
-                let usage = TokenUsage(
-                    id: Self.deterministicUUID(for: requestID),
-                    provider: provider.agentProvider,
-                    sessionId: requestID,
-                    projectName: "OpenBurnBar Cursor Connector",
+            let normalizedUsage = Self.normalizeUsageEvent(json)
+            let promptTokens = normalizedUsage.promptTokens
+            let completionTokens = normalizedUsage.completionTokens
+            let cacheCreationTokens = normalizedUsage.cacheCreationTokens
+            let cacheReadTokens = normalizedUsage.cacheReadTokens
+            let reasoningTokens = normalizedUsage.reasoningTokens
+            let totalTokens = normalizedUsage.totalTokens
+            let timestamp = (json["timestamp"] as? String).flatMap(Self.isoDateFormatter.date(from:)) ?? Date()
+            let cost = ModelPricing.lookup(model: model).cost(
+                inputTokens: promptTokens,
+                outputTokens: completionTokens,
+                cacheCreationTokens: cacheCreationTokens,
+                cacheReadTokens: cacheReadTokens
+            )
+            recentUsageEvents.insert(
+                RoutedUsageEvent(
+                    provider: provider,
                     model: model,
-                    inputTokens: promptTokens,
-                    outputTokens: completionTokens,
+                    promptTokens: promptTokens,
+                    completionTokens: completionTokens,
                     cacheCreationTokens: cacheCreationTokens,
                     cacheReadTokens: cacheReadTokens,
-                    reasoningTokens: reasoningTokens,
-                    costUSD: cost,
-                    startTime: timestamp,
-                    endTime: timestamp,
-                    usageSource: .cursorBridge,
-                    provenanceMethod: .connectorBridge,
-                    provenanceConfidence: .exact
-                )
-                try? dataStore.insert(usage)
-                insertedAny = true
-            }
-            if insertedAny {
-                dataStore.refresh()
-            }
-        } catch {
-            lastError = "Could not read usage log: \(error.localizedDescription)"
+                    totalTokens: totalTokens,
+                    cost: cost,
+                    timestamp: timestamp
+                ),
+                at: 0
+            )
+            recentUsageEvents = Array(recentUsageEvents.prefix(12))
+
+            let usage = TokenUsage(
+                id: Self.deterministicUUID(for: requestID),
+                provider: provider.agentProvider,
+                sessionId: requestID,
+                projectName: "OpenBurnBar Cursor Connector",
+                model: model,
+                inputTokens: promptTokens,
+                outputTokens: completionTokens,
+                cacheCreationTokens: cacheCreationTokens,
+                cacheReadTokens: cacheReadTokens,
+                reasoningTokens: reasoningTokens,
+                costUSD: cost,
+                startTime: timestamp,
+                endTime: timestamp,
+                usageSource: .cursorBridge,
+                provenanceMethod: .connectorBridge,
+                provenanceConfidence: .exact
+            )
+            try? dataStore.insert(usage)
+            insertedAny = true
+        }
+        if insertedAny {
+            dataStore.refresh()
         }
     }
 

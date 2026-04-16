@@ -30,6 +30,7 @@ protocol WindowManagerProtocol: AnyObject {
     ///   - chatController: The chat session controller.
     ///   - operatingLayer: The operating layer.
     ///   - navigationCoordinator: The navigation coordinator.
+    ///   - settingsManager: The settings manager injected into dashboard descendants.
     func openDashboard(
         dataStore: DataStore,
         aggregator: UsageAggregator?,
@@ -38,7 +39,8 @@ protocol WindowManagerProtocol: AnyObject {
         iCloudSessionMirrorService: ICloudSessionMirrorService?,
         chatController: ChatSessionController,
         operatingLayer: OpenBurnBarOperatingLayer,
-        navigationCoordinator: NavigationCoordinator
+        navigationCoordinator: NavigationCoordinator,
+        settingsManager: SettingsManager
     )
 
     // MARK: - Settings Window

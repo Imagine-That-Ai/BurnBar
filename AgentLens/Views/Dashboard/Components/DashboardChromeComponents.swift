@@ -295,12 +295,18 @@ struct GlassBadge<Content: View>: View {
     let store = (try? DataStore()) ?? {
         preconditionFailure("Preview requires a valid DataStore - ensure app support directory is writable")
     }()
-    let controller = ChatSessionController(dataStore: store)
+    let settingsManager = SettingsManager()
+    let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
     DashboardView(
         dataStore: store,
         aggregator: nil,
         chatController: controller,
-        operatingLayer: OpenBurnBarOperatingLayer(dataStore: store, chatController: controller)
+        operatingLayer: OpenBurnBarOperatingLayer(
+            dataStore: store,
+            settingsManager: settingsManager,
+            chatController: controller
+        ),
+        settingsManager: settingsManager
     )
 }
 

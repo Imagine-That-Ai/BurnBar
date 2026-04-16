@@ -3,6 +3,7 @@ import SwiftUI
 struct OnboardingChatEngineView: View {
     @Binding var enabledBackends: Set<ChatBackendID>
     @Binding var defaultEngine: ChatBackendID
+    let settingsManager: SettingsManager
     var chatController: ChatSessionController?
 
     private var orderedSelection: [ChatBackendID] {
@@ -51,7 +52,7 @@ struct OnboardingChatEngineView: View {
                                 Spacer()
                                 Button("Setup wizard") {
                                     WindowManager.shared.openHermesSetupWizard(
-                                        settingsManager: SettingsManager.shared,
+                                        settingsManager: settingsManager,
                                         chatController: chatController
                                     )
                                 }

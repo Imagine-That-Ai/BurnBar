@@ -5,29 +5,11 @@ permissions:
 
 on:
   pull_request:
-    paths:
-      - ".github/workflows/openburnbar-pr-harness.yml"
-      - "scripts/**"
-      - "AgentLens/**"
-      - "AgentLensTests/**"
-      - "OpenBurnBar.xcodeproj/**"
-      - "project.yml"
-      - "extensions/openburnbar/**"
-      - "OpenBurnBarCore/**"
-      - "OpenBurnBarDaemon/**"
+    branches:
+      - main
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/openburnbar-pr-harness.yml"
-      - "scripts/**"
-      - "AgentLens/**"
-      - "AgentLensTests/**"
-      - "OpenBurnBar.xcodeproj/**"
-      - "project.yml"
-      - "extensions/openburnbar/**"
-      - "OpenBurnBarCore/**"
-      - "OpenBurnBarDaemon/**"
 
 jobs:
   openburnbar-pr:

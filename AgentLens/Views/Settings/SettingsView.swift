@@ -64,6 +64,7 @@ struct SettingsView: View {
             idealHeight: 660
         )
         .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .environment(settingsManager)
     }
 
     @ViewBuilder
@@ -123,7 +124,10 @@ struct SettingsView: View {
             NotificationsSettingsView(settingsManager: settingsManager)
                 .navigationTitle("Notifications")
         case .switcher:
-            AccountSwitcherSettingsView(dataStore: dataStore)
+            AccountSwitcherSettingsView(
+                dataStore: dataStore,
+                settingsManager: settingsManager
+            )
                 .navigationTitle("Account Switcher")
         }
     }
@@ -144,5 +148,5 @@ private enum AccountActionError: LocalizedError {
     let store = (try? DataStore()) ?? {
         preconditionFailure("Preview requires a valid DataStore - ensure app support directory is writable")
     }()
-    return SettingsView(settingsManager: SettingsManager.shared, dataStore: store)
+    return SettingsView(settingsManager: SettingsManager(), dataStore: store)
 }

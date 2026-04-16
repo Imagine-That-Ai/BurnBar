@@ -197,6 +197,7 @@ final class OpenBurnBarDaemonManager {
     private let paths: OpenBurnBarDaemonRuntimePaths
     private let dependencies: OpenBurnBarDaemonDependencies
     private let usageSyncService: OpenBurnBarDaemonUsageSyncService
+    private let settingsManager: SettingsManager
     private weak var dataStore: DataStore?
 
     private(set) var status: OpenBurnBarDaemonStatus = .checking
@@ -212,10 +213,12 @@ final class OpenBurnBarDaemonManager {
     private(set) var browserToolingSnapshot: BurnBarBrowserToolingSnapshot?
 
     init(
+        settingsManager: SettingsManager = .shared,
         paths: OpenBurnBarDaemonRuntimePaths = .live(),
         dependencies: OpenBurnBarDaemonDependencies = .live(),
         usageSyncService: OpenBurnBarDaemonUsageSyncService? = nil
     ) {
+        self.settingsManager = settingsManager
         self.paths = paths
         self.dependencies = dependencies
         self.usageSyncService = usageSyncService ?? OpenBurnBarDaemonUsageSyncService(paths: paths)
@@ -763,7 +766,7 @@ final class OpenBurnBarDaemonManager {
             "--index-database-path", indexDbPath
         ]
 
-        let settings = SettingsManager.shared
+        let settings = settingsManager
         if settings.gatewayEnabled {
             programArguments.append(contentsOf: ["--gateway-enable"])
             programArguments.append(contentsOf: ["--gateway-host", settings.gatewayHost.isEmpty ? "127.0.0.1" : settings.gatewayHost])

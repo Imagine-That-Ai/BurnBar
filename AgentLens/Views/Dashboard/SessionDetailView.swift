@@ -9,6 +9,7 @@ struct SessionDetailView: View {
     var onOpenSessionLog: ((ConversationJumpTarget) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(SettingsManager.self) private var settingsManager
     @State private var conversation: ConversationRecord?
     @State private var summaryText: String?
     @State private var summarizing = false
@@ -30,7 +31,7 @@ struct SessionDetailView: View {
 
             bottomRow
 
-            if SettingsManager.shared.conversationIndexingEnabled, conversation != nil {
+            if settingsManager.conversationIndexingEnabled, conversation != nil {
                 Divider().background(DesignSystem.Colors.border)
                 summarizeSection
 
@@ -59,7 +60,7 @@ struct SessionDetailView: View {
         }
         .padding(DesignSystem.Spacing.lg)
         .background(DesignSystem.Colors.background)
-        .frame(width: 480, height: SettingsManager.shared.conversationIndexingEnabled && conversation != nil ? 560 : 460)
+        .frame(width: 480, height: settingsManager.conversationIndexingEnabled && conversation != nil ? 560 : 460)
         // Reset conversation-dependent UI state before async reload to prevent stale state
         // from leaking across rapid session switches (VAL-CTXDETAIL-007, VAL-CTXDETAIL-010).
         // Key by full stableId (provider + sessionId) to handle provider swaps with same sessionId.
@@ -395,4 +396,5 @@ private struct StatTile: View {
         theme: .theme(for: .factory),
         dataStore: store
     )
+    .environment(SettingsManager())
 }

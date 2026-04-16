@@ -190,6 +190,11 @@ private struct ProviderQuotaSettingsCard: View {
     let quotaSourceSummary: String?
 
     @State private var isWorking = false
+    @State private var localMiniMaxToken = ""
+    @State private var localZaiToken = ""
+    @State private var didLoadCredentialInputs = false
+    @State private var credentialSaveMessage: String?
+    @State private var credentialSaveIsError = false
 
     private var snapshot: ProviderQuotaSnapshot? {
         quotaService.snapshot(for: provider)
@@ -287,6 +292,9 @@ private struct ProviderQuotaSettingsCard: View {
             }
             .padding(DesignSystem.Spacing.lg)
         }
+        .task(id: provider) {
+            loadCredentialInputsIfNeeded()
+        }
     }
 
     @ViewBuilder
@@ -329,6 +337,40 @@ private struct ProviderQuotaSettingsCard: View {
                 }
                 .buttonStyle(.link)
 
+                Text("Token / API key")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                SecureField("sk-cp-…", text: $localMiniMaxToken)
+                    .font(DesignSystem.Typography.monoSmall)
+                    .textFieldStyle(.plain)
+                    .padding(DesignSystem.Spacing.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .fill(DesignSystem.Colors.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
+                    )
+
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Button("Save token") {
+                        Task { await saveCredentialToken(for: .minimax) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isWorking)
+
+                    if !localMiniMaxToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button("Clear") {
+                            localMiniMaxToken = ""
+                            Task { await saveCredentialToken(for: .minimax) }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isWorking)
+                    }
+                }
+
                 Text("Billing mode")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -344,6 +386,13 @@ private struct ProviderQuotaSettingsCard: View {
                         await quotaService.refresh(provider: .minimax, dataStore: dataStore)
                     }
                 }
+
+                if let credentialSaveMessage, !credentialSaveMessage.isEmpty {
+                    Text(credentialSaveMessage)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(credentialSaveIsError ? DesignSystem.Colors.warning : DesignSystem.Colors.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
         case .zai:
@@ -352,6 +401,47 @@ private struct ProviderQuotaSettingsCard: View {
                     onOpenProviderPlans(provider)
                 }
                 .buttonStyle(.link)
+
+                Text("Token / API key")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                SecureField("zai token…", text: $localZaiToken)
+                    .font(DesignSystem.Typography.monoSmall)
+                    .textFieldStyle(.plain)
+                    .padding(DesignSystem.Spacing.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .fill(DesignSystem.Colors.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
+                    )
+
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Button("Save token") {
+                        Task { await saveCredentialToken(for: .zai) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isWorking)
+
+                    if !localZaiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button("Clear") {
+                            localZaiToken = ""
+                            Task { await saveCredentialToken(for: .zai) }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isWorking)
+                    }
+                }
+
+                if let credentialSaveMessage, !credentialSaveMessage.isEmpty {
+                    Text(credentialSaveMessage)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(credentialSaveIsError ? DesignSystem.Colors.warning : DesignSystem.Colors.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
         case .factory:
@@ -446,6 +536,47 @@ private struct ProviderQuotaSettingsCard: View {
         #if canImport(AppKit)
         NSWorkspace.shared.open(url)
         #endif
+    }
+
+    private func loadCredentialInputsIfNeeded() {
+        guard !didLoadCredentialInputs else { return }
+        didLoadCredentialInputs = true
+
+        let keyStore = ProviderAPIKeyStore.shared
+        switch provider {
+        case .minimax:
+            localMiniMaxToken = keyStore.apiKey(for: "minimax") ?? ""
+        case .zai:
+            localZaiToken = keyStore.apiKey(for: "zai") ?? ""
+        default:
+            break
+        }
+    }
+
+    private func saveCredentialToken(for provider: AgentProvider) async {
+        guard provider == .minimax || provider == .zai else { return }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        let keyStore = ProviderAPIKeyStore.shared
+        let rawToken = provider == .minimax ? localMiniMaxToken : localZaiToken
+        let trimmed = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        do {
+            if trimmed.isEmpty {
+                try keyStore.removeAPIKey(for: provider == .minimax ? "minimax" : "zai")
+                credentialSaveMessage = "\(provider.displayName) token cleared."
+            } else {
+                try keyStore.setAPIKey(trimmed, for: provider == .minimax ? "minimax" : "zai")
+                credentialSaveMessage = "\(provider.displayName) token saved."
+            }
+            credentialSaveIsError = false
+            await quotaService.refresh(provider: provider, dataStore: dataStore)
+        } catch {
+            credentialSaveIsError = true
+            credentialSaveMessage = "Could not save \(provider.displayName) token: \(error.localizedDescription)"
+        }
     }
 }
 

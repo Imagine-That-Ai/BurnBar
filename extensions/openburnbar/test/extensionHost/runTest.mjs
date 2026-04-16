@@ -4,6 +4,17 @@ import { join, resolve } from "node:path";
 
 import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
 
+const DEFAULT_VSCODE_TEST_VERSION = "1.95.0";
+
+function resolveVSCodeVersion() {
+  const requested = process.env.VSCODE_TEST_VERSION?.trim();
+  if (!requested) {
+    return DEFAULT_VSCODE_TEST_VERSION;
+  }
+
+  return requested.startsWith("v") ? requested.slice(1) : requested;
+}
+
 async function main() {
   const extensionDevelopmentPath = resolve(new URL(".", import.meta.url).pathname, "..", "..");
   const extensionTestsPath = resolve(
@@ -22,7 +33,9 @@ async function main() {
   process.env.BURNBAR_TEST_WORKSPACE = tempWorkspacePath;
 
   try {
-    const downloadedExecutablePath = await downloadAndUnzipVSCode();
+    // Always pass an explicit version to avoid flaky "stable releases" API lookups in CI.
+    const vscodeVersion = resolveVSCodeVersion();
+    const downloadedExecutablePath = await downloadAndUnzipVSCode(vscodeVersion);
     const vscodeExecutablePath = process.platform === "darwin"
       ? resolve(downloadedExecutablePath, "..", "..", "Resources", "app", "bin", "code")
       : downloadedExecutablePath;

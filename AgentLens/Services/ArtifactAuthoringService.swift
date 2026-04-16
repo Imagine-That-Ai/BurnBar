@@ -133,7 +133,7 @@ final class ArtifactAuthoringService {
     init(
         dataStore: DataStore,
         retrievalService: SearchService? = nil,
-        settingsProvider: any ArtifactDiscoverySettingsProviding = SettingsManager.shared,
+        settingsProvider: any ArtifactDiscoverySettingsProviding,
         textGenerator: any ArtifactAuthoringTextGenerating = CLIArtifactAuthoringTextGenerator(),
         fileManager: FileManager = .default,
         nowProvider: @escaping () -> Date = Date.init

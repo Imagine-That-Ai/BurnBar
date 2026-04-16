@@ -92,6 +92,7 @@ final class DataStoreSwitcherDataLoading: SwitcherDataLoading {
 struct DashboardQuickSwitchView: View {
     let dataStore: DataStore
     let onOpenSettings: () -> Void
+    let settingsManager: SettingsManager
 
     // Injectable data source for testability
     // Production uses DataStoreSwitcherDataLoading wrapping dataStore.switcherStore
@@ -132,9 +133,17 @@ struct DashboardQuickSwitchView: View {
     ///   - testInjectedError: Error message to pre-populate for testing error UI rendering.
     ///   - skipLoadData: When true, skips calling loadData() in onAppear (for testing error/empty states).
     ///   - testAnnouncementHandler: Optional callback to capture accessibility announcements.
-    init(dataStore: DataStore, onOpenSettings: @escaping () -> Void, testInjectedError: String? = nil, skipLoadData: Bool = false, testAnnouncementHandler: ((String) -> Void)? = nil) {
+    init(
+        dataStore: DataStore,
+        onOpenSettings: @escaping () -> Void,
+        settingsManager: SettingsManager = .shared,
+        testInjectedError: String? = nil,
+        skipLoadData: Bool = false,
+        testAnnouncementHandler: ((String) -> Void)? = nil
+    ) {
         self.dataStore = dataStore
         self.onOpenSettings = onOpenSettings
+        self.settingsManager = settingsManager
         self.testInjectedError = testInjectedError
         self.skipLoadData = skipLoadData
         self.testAnnouncementHandler = testAnnouncementHandler
@@ -154,9 +163,18 @@ struct DashboardQuickSwitchView: View {
     ///   - testInjectedError: Error message to pre-populate for testing error UI rendering.
     ///   - skipLoadData: When true, skips calling loadData() in onAppear (for testing error/empty states).
     ///   - testAnnouncementHandler: Optional callback to capture accessibility announcements.
-    init(dataStore: DataStore, onOpenSettings: @escaping () -> Void, switcherDataLoading: any SwitcherDataLoading, testInjectedError: String? = nil, skipLoadData: Bool = false, testAnnouncementHandler: ((String) -> Void)? = nil) {
+    init(
+        dataStore: DataStore,
+        onOpenSettings: @escaping () -> Void,
+        settingsManager: SettingsManager = .shared,
+        switcherDataLoading: any SwitcherDataLoading,
+        testInjectedError: String? = nil,
+        skipLoadData: Bool = false,
+        testAnnouncementHandler: ((String) -> Void)? = nil
+    ) {
         self.dataStore = dataStore
         self.onOpenSettings = onOpenSettings
+        self.settingsManager = settingsManager
         self.switcherDataLoading = switcherDataLoading
         self.testInjectedError = testInjectedError
         self.skipLoadData = skipLoadData
@@ -164,9 +182,14 @@ struct DashboardQuickSwitchView: View {
     }
     #else
     /// Production initializer.
-    init(dataStore: DataStore, onOpenSettings: @escaping () -> Void) {
+    init(
+        dataStore: DataStore,
+        onOpenSettings: @escaping () -> Void,
+        settingsManager: SettingsManager = .shared
+    ) {
         self.dataStore = dataStore
         self.onOpenSettings = onOpenSettings
+        self.settingsManager = settingsManager
         self.switcherDataLoading = DataStoreSwitcherDataLoading(store: dataStore.switcherStore)
     }
     #endif
@@ -340,7 +363,7 @@ struct DashboardQuickSwitchView: View {
             ) {
                 WindowManager.shared.openSwitcherOnboardingWizard(
                     dataStore: dataStore,
-                    settingsManager: SettingsManager.shared,
+                    settingsManager: settingsManager,
                     onOpenSettings: onOpenSettings
                 )
             }

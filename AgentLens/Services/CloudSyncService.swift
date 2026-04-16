@@ -32,6 +32,7 @@ final class CloudSyncService {
 
     private let dataStore: DataStore
     private let accountManager: AccountManager
+    private let settingsManager: SettingsManager
 
     /// `Firestore.firestore()` is only read from sync methods that guard `accountManager.isFirebaseAvailable` first.
     private var db: Firestore { Firestore.firestore() }
@@ -48,9 +49,10 @@ final class CloudSyncService {
 
     // MARK: - Init
 
-    init(dataStore: DataStore, accountManager: AccountManager) {
+    init(dataStore: DataStore, accountManager: AccountManager, settingsManager: SettingsManager = .shared) {
         self.dataStore = dataStore
         self.accountManager = accountManager
+        self.settingsManager = settingsManager
     }
 
     static func currentMemorySyncBoundary(
@@ -74,7 +76,7 @@ final class CloudSyncService {
 
     func memorySyncBoundarySnapshot() -> OpenBurnBarMemorySyncBoundarySnapshot {
         Self.currentMemorySyncBoundary(
-            settingsManager: .shared,
+            settingsManager: settingsManager,
             accountManager: accountManager
         )
     }
@@ -159,7 +161,7 @@ final class CloudSyncService {
         guard accountManager.isFirebaseAvailable,
               accountManager.isSignedIn,
               accountManager.isCloudSyncEnabled,
-              SettingsManager.shared.conversationCloudBackupEnabled,
+              settingsManager.conversationCloudBackupEnabled,
               !syncIsSuppressed(),
               !isSyncing,
               let uid = Auth.auth().currentUser?.uid else { return }
@@ -1927,7 +1929,7 @@ final class CloudSyncService {
         guard accountManager.isFirebaseAvailable,
               accountManager.isSignedIn,
               accountManager.isCloudSyncEnabled,
-              SettingsManager.shared.sessionLogCloudBackupEnabled,
+              settingsManager.sessionLogCloudBackupEnabled,
               !syncIsSuppressed(),
               !isSyncing,
               let uid = Auth.auth().currentUser?.uid else { return }

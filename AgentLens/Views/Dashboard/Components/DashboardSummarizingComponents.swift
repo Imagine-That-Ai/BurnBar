@@ -261,7 +261,7 @@ struct SummarizingStatusStrip: View {
 struct SummaryProgressPanel: View {
     let aggregator: UsageAggregator
     @Environment(\.dismiss) private var dismiss
-    @Bindable private var settings = SettingsManager.shared
+    @Environment(SettingsManager.self) private var settings
 
     private static let oreGradient: [Color] = [
         Color(red: 0.820, green: 0.259, blue: 0),

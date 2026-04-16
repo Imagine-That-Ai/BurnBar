@@ -131,7 +131,7 @@ final class ArtifactDiscoveryService {
 
     init(
         dataStore: DataStore,
-        settingsProvider: any ArtifactDiscoverySettingsProviding = SettingsManager.shared,
+        settingsProvider: any ArtifactDiscoverySettingsProviding,
         fileManager: FileManager = .default,
         nowProvider: @escaping () -> Date = Date.init
     ) {
