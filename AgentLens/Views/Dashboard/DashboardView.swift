@@ -18,7 +18,7 @@ private enum DashboardMainRoute: Hashable {
 struct DashboardView: View {
     @Bindable var dataStore: DataStore
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
-    @Bindable private var settingsManager = SettingsManager.shared
+    @Bindable var settingsManager: SettingsManager
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     var aggregator: UsageAggregator?
     var accountManager: AccountManager
@@ -52,10 +52,12 @@ struct DashboardView: View {
         cloudSyncService: CloudSyncService? = nil,
         iCloudSessionMirrorService: ICloudSessionMirrorService? = nil,
         chatController: ChatSessionController,
-        operatingLayer: OpenBurnBarOperatingLayer
+        operatingLayer: OpenBurnBarOperatingLayer,
+        settingsManager: SettingsManager
     ) {
         self._dataStore = Bindable(dataStore)
         self._operatingLayer = Bindable(operatingLayer)
+        self._settingsManager = Bindable(settingsManager)
         self.aggregator = aggregator
         self.accountManager = accountManager
         self.cloudSyncService = cloudSyncService
@@ -199,7 +201,7 @@ struct DashboardView: View {
         .toolbar { toolbarContent }
         .sheet(isPresented: $showingSettings) {
             SettingsView(
-                settingsManager: SettingsManager.shared,
+                settingsManager: settingsManager,
                 accountManager: accountManager,
                 cloudSyncService: cloudSyncService,
                 iCloudSessionMirrorService: iCloudSessionMirrorService,
@@ -265,6 +267,7 @@ struct DashboardView: View {
             }
         }
         .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .environment(settingsManager)
     }
 
     private var hasNewInsightPulse: Bool {
@@ -702,7 +705,11 @@ struct DashboardView: View {
                         cloudSyncService: cloudSyncService
                     )
                 case .projects:
-                    ProjectsView(dataStore: dataStore, operatingLayer: operatingLayer)
+                    ProjectsView(
+                        dataStore: dataStore,
+                        settingsManager: settingsManager,
+                        operatingLayer: operatingLayer
+                    )
                 case .sessionLogs:
                     SessionLogsView(
                         dataStore: dataStore,
@@ -790,7 +797,8 @@ struct DashboardView: View {
                     )
                     DashboardQuickSwitchView(
                         dataStore: dataStore,
-                        onOpenSettings: { showingSettings = true }
+                        onOpenSettings: { showingSettings = true },
+                        settingsManager: settingsManager
                     )
                     NarrativeCardView(dataStore: dataStore)
                     ContextPackDashboardCard(

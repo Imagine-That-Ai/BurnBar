@@ -38,9 +38,7 @@ final class CLIBridge: ObservableObject {
     /// The model name currently loaded in Hermes (fetched from /v1/models).
     private(set) var hermesModelName: String?
 
-    private var runningProcess: Process?
-    /// Detached task for OpenAI-compatible SSE (Hermes / OpenClaw).
-    private var httpStreamTask: Task<Void, Never>?
+    nonisolated private let streamRuntime = CLIBridgeStreamRuntimeCoordinator()
 
     /// Whether a CLI binary exists on PATH (used to validate Codex vs Claude selection).
     func isExecutableAvailable(named name: String) async -> Bool {
@@ -134,10 +132,9 @@ final class CLIBridge: ObservableObject {
     }
 
     func cancel() {
-        runningProcess?.terminate()
-        runningProcess = nil
-        httpStreamTask?.cancel()
-        httpStreamTask = nil
+        Task {
+            await streamRuntime.cancelAll()
+        }
     }
 
     func generateTextWithClaude(
@@ -287,21 +284,29 @@ final class CLIBridge: ObservableObject {
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         let baseURL = URL(string: "http://localhost:8642")!
         let stream = AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
+            let streamIDTask = Task { [streamRuntime] in
+                await streamRuntime.nextHTTPStreamID()
+            }
             let task = Task.detached { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
                 }
+                let streamID = await streamIDTask.value
                 await self.runHermesStream(
                     baseURL: baseURL,
                     model: model,
                     systemPrompt: systemPrompt,
                     history: history,
                     bearerToken: bearerToken,
+                    httpStreamID: streamID,
                     continuation: continuation
                 )
             }
-            self.httpStreamTask = task
+            Task.detached { [streamRuntime] in
+                let streamID = await streamIDTask.value
+                await streamRuntime.installHTTPStreamTask(task, streamID: streamID)
+            }
         }
         return stream
     }
@@ -315,11 +320,15 @@ final class CLIBridge: ObservableObject {
         model: String = "gpt-4o-mini"
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
+            let streamIDTask = Task { [streamRuntime] in
+                await streamRuntime.nextHTTPStreamID()
+            }
             let task = Task.detached { [weak self] in
                 guard let self else {
                     continuation.finish()
                     return
                 }
+                let streamID = await streamIDTask.value
                 await self.runOpenClawStream(
                     baseURL: baseURL,
                     model: {
@@ -329,10 +338,14 @@ final class CLIBridge: ObservableObject {
                     systemPrompt: systemPrompt,
                     history: history,
                     bearerToken: bearerToken,
+                    httpStreamID: streamID,
                     continuation: continuation
                 )
             }
-            self.httpStreamTask = task
+            Task.detached { [streamRuntime] in
+                let streamID = await streamIDTask.value
+                await streamRuntime.installHTTPStreamTask(task, streamID: streamID)
+            }
         }
     }
 
@@ -400,6 +413,7 @@ final class CLIBridge: ObservableObject {
         systemPrompt: String,
         history: [ChatMessageRecord],
         bearerToken: String?,
+        httpStreamID: UInt64,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         await runOpenAICompatibleChatCompletionsStream(
@@ -409,6 +423,7 @@ final class CLIBridge: ObservableObject {
             history: history,
             bearerToken: bearerToken,
             unavailableError: .hermesUnavailable,
+            httpStreamID: httpStreamID,
             continuation: continuation
         )
     }
@@ -419,6 +434,7 @@ final class CLIBridge: ObservableObject {
         systemPrompt: String,
         history: [ChatMessageRecord],
         bearerToken: String?,
+        httpStreamID: UInt64,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         await runOpenAICompatibleChatCompletionsStream(
@@ -428,6 +444,7 @@ final class CLIBridge: ObservableObject {
             history: history,
             bearerToken: bearerToken,
             unavailableError: .openClawUnavailable,
+            httpStreamID: httpStreamID,
             continuation: continuation
         )
     }
@@ -440,11 +457,12 @@ final class CLIBridge: ObservableObject {
         history: [ChatMessageRecord],
         bearerToken: String?,
         unavailableError: CLIBridgeError,
+        httpStreamID: UInt64,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         defer {
-            Task { @MainActor [weak self] in
-                self?.httpStreamTask = nil
+            Task.detached { [streamRuntime] in
+                await streamRuntime.clearHTTPStreamTask(streamID: httpStreamID)
             }
         }
 
@@ -717,14 +735,12 @@ final class CLIBridge: ObservableObject {
             quotaRecorder: quotaRecorder
         )
 
-        await MainActor.run {
-            self.runningProcess = process
-        }
+        let processToken = await streamRuntime.registerRunningProcess(process)
 
         do {
             try process.run()
         } catch {
-            await MainActor.run { self.runningProcess = nil }
+            await streamRuntime.clearRunningProcess(token: processToken)
             continuation.finish(throwing: error)
             return
         }
@@ -750,7 +766,7 @@ final class CLIBridge: ObservableObject {
         process.waitUntilExit()
         await stderrTask.value
 
-        await MainActor.run { self.runningProcess = nil }
+        await streamRuntime.clearRunningProcess(token: processToken)
 
         if let detail = quotaRecorder.snapshot() {
             continuation.finish(throwing: CLIBridgeError.quotaExhausted(detail))
@@ -790,14 +806,12 @@ final class CLIBridge: ObservableObject {
             quotaRecorder: quotaRecorder
         )
 
-        await MainActor.run {
-            self.runningProcess = process
-        }
+        let processToken = await streamRuntime.registerRunningProcess(process)
 
         do {
             try process.run()
         } catch {
-            await MainActor.run { self.runningProcess = nil }
+            await streamRuntime.clearRunningProcess(token: processToken)
             continuation.finish(throwing: error)
             return
         }
@@ -839,7 +853,7 @@ final class CLIBridge: ObservableObject {
                     if process.isRunning {
                         process.terminate()
                     }
-                    await MainActor.run { self.runningProcess = nil }
+                    await streamRuntime.clearRunningProcess(token: processToken)
                     await stderrTask.value
                     return
                 }
@@ -891,7 +905,7 @@ final class CLIBridge: ObservableObject {
         process.waitUntilExit()
         await stderrTask.value
 
-        await MainActor.run { self.runningProcess = nil }
+        await streamRuntime.clearRunningProcess(token: processToken)
 
         if let detail = quotaRecorder.snapshot() {
             continuation.finish(throwing: CLIBridgeError.quotaExhausted(detail))

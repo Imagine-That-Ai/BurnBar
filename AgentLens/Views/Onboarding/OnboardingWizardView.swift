@@ -105,6 +105,7 @@ struct OnboardingWizardView: View {
                 OnboardingChatEngineView(
                     enabledBackends: $enabledBackends,
                     defaultEngine: $defaultEngine,
+                    settingsManager: settingsManager,
                     chatController: chatController
                 )
             case .complete:

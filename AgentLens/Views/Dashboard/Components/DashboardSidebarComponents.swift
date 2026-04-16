@@ -80,7 +80,7 @@ struct ModelSidebarItem: View {
     let isSelected: Bool
     let action: () -> Void
 
-    @Bindable private var settingsManager = SettingsManager.shared
+    @Environment(SettingsManager.self) private var settingsManager
 
     private var theme: ProviderTheme { ProviderTheme.theme(forModel: summary.modelName) }
 

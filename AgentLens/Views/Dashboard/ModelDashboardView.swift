@@ -8,7 +8,7 @@ struct ModelCard: View {
     let rank: Int
     let onTap: () -> Void
 
-    @Bindable private var settingsManager = SettingsManager.shared
+    @Environment(SettingsManager.self) private var settingsManager
 
     private var theme: ProviderTheme { ProviderTheme.theme(forModel: summary.modelName) }
 
@@ -135,7 +135,7 @@ struct ModelDashboardView: View {
     let timeRange: TimeRange
     var onOpenSessionLog: ((ConversationJumpTarget) -> Void)? = nil
 
-    @Bindable private var settingsManager = SettingsManager.shared
+    @Environment(SettingsManager.self) private var settingsManager
     @State private var selectedSession: TokenUsage?
 
     private var theme: ProviderTheme { ProviderTheme.theme(forModel: modelName) }
@@ -434,4 +434,3 @@ struct ModelDashboardView: View {
         )
     }
 }
-

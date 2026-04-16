@@ -13,6 +13,7 @@ import OpenBurnBarCore
 /// - OAuth boundary messaging is explicit
 struct AccountSwitcherSettingsView: View {
     let dataStore: DataStore
+    let settingsManager: SettingsManager
 
     @State var profiles: [SwitcherProfileRecord] = []
     @State var activeProfileID: String?
@@ -58,5 +59,10 @@ struct AccountSwitcherSettingsView: View {
         let previousAccount: String?
         let detectedAccount: String?
         let canSaveAsNew: Bool
+    }
+
+    init(dataStore: DataStore, settingsManager: SettingsManager = .shared) {
+        self.dataStore = dataStore
+        self.settingsManager = settingsManager
     }
 }

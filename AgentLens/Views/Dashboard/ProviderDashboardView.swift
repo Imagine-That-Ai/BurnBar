@@ -8,7 +8,7 @@ struct ProviderCard: View {
     let rank: Int
     let onTap: () -> Void
 
-    @Bindable private var settingsManager = SettingsManager.shared
+    @Environment(SettingsManager.self) private var settingsManager
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: summary.provider) }
 
@@ -158,7 +158,7 @@ struct ProviderDashboardView: View {
     let timeRange: TimeRange
     var onOpenSessionLog: ((ConversationJumpTarget) -> Void)? = nil
 
-    @Bindable private var settingsManager = SettingsManager.shared
+    @Environment(SettingsManager.self) private var settingsManager
     @State private var selectedSession: TokenUsage?
     @State private var quotaService = ProviderQuotaService.shared
 
@@ -723,4 +723,5 @@ struct DailyTrendChart: View {
         dataStore: store,
         timeRange: .today
     )
+    .environment(SettingsManager())
 }

@@ -80,7 +80,8 @@ final class WindowManager: ObservableObject {
         iCloudSessionMirrorService: ICloudSessionMirrorService?,
         chatController: ChatSessionController,
         operatingLayer: OpenBurnBarOperatingLayer,
-        navigationCoordinator: NavigationCoordinator
+        navigationCoordinator: NavigationCoordinator,
+        settingsManager: SettingsManager
     ) {
         NSApplication.shared.activate(ignoringOtherApps: true)
 
@@ -96,9 +97,11 @@ final class WindowManager: ObservableObject {
             cloudSyncService: cloudSyncService,
             iCloudSessionMirrorService: iCloudSessionMirrorService,
             chatController: chatController,
-            operatingLayer: operatingLayer
+            operatingLayer: operatingLayer,
+            settingsManager: settingsManager
         )
         .frame(minWidth: 900, minHeight: 600)
+        .environment(settingsManager)
         .environment(navigationCoordinator)
 
         let window = NSWindow(
@@ -307,6 +310,9 @@ struct OpenBurnBarApp: App {
     @State private var settingsManager: SettingsManager
     @State private var aggregator: UsageAggregator?
     @State private var accountManager: AccountManager
+    @State private var quotaService: ProviderQuotaService
+    @State private var daemonManager: OpenBurnBarDaemonManager
+    @State private var cursorConnectorManager: CursorConnectorManager
     @State private var cloudSyncService: CloudSyncService?
     @State private var iCloudSessionMirrorService: ICloudSessionMirrorService?
     @State private var periodicRefreshTask: Task<Void, Never>?
@@ -337,18 +343,28 @@ struct OpenBurnBarApp: App {
             )
         }
 
-        let controller = ChatSessionController(dataStore: initializedStore, settingsManager: SettingsManager.shared)
+        let settings = SettingsManager()
+        let accountManager = AccountManager.shared
+        let quotaService = ProviderQuotaService(settingsManager: settings)
+        let daemonManager = OpenBurnBarDaemonManager(settingsManager: settings)
+        let cursorConnectorManager = CursorConnectorManager(settingsManager: settings)
+
+        let controller = ChatSessionController(dataStore: initializedStore, settingsManager: settings)
         let layer = OpenBurnBarOperatingLayer(
             dataStore: initializedStore,
-            settingsManager: SettingsManager.shared,
-            accountManager: AccountManager.shared,
+            settingsManager: settings,
+            accountManager: accountManager,
+            daemonManager: daemonManager,
             chatController: controller
         )
 
         _dataStore = State(initialValue: initializedStore)
-        _settingsManager = State(initialValue: SettingsManager.shared)
+        _settingsManager = State(initialValue: settings)
         _aggregator = State(initialValue: nil)
-        _accountManager = State(initialValue: AccountManager.shared)
+        _accountManager = State(initialValue: accountManager)
+        _quotaService = State(initialValue: quotaService)
+        _daemonManager = State(initialValue: daemonManager)
+        _cursorConnectorManager = State(initialValue: cursorConnectorManager)
         _cloudSyncService = State(initialValue: nil)
         _iCloudSessionMirrorService = State(initialValue: nil)
         _chatController = State(initialValue: controller)
@@ -384,7 +400,8 @@ struct OpenBurnBarApp: App {
                 iCloudSessionMirrorService: iCloudSessionMirrorService,
                 chatController: chatController,
                 operatingLayer: operatingLayer,
-                navigationCoordinator: navigationCoordinator
+                navigationCoordinator: navigationCoordinator,
+                settingsManager: settingsManager
             )
         }
 
@@ -397,7 +414,8 @@ struct OpenBurnBarApp: App {
                 iCloudSessionMirrorService: iCloudSessionMirrorService,
                 chatController: chatController,
                 operatingLayer: operatingLayer,
-                navigationCoordinator: navigationCoordinator
+                navigationCoordinator: navigationCoordinator,
+                settingsManager: settingsManager
             )
 
             // Navigation now handled via NavigationCoordinator
@@ -415,7 +433,7 @@ struct OpenBurnBarApp: App {
                 MenuBarPopoverView(
                     dataStore: dataStore,
                     aggregator: aggregator,
-                    quotaService: ProviderQuotaService.shared,
+                    quotaService: quotaService,
                     settingsManager: settingsManager,
                     operatingLayer: operatingLayer,
                     onOpenDashboard: {
@@ -427,7 +445,8 @@ struct OpenBurnBarApp: App {
                             iCloudSessionMirrorService: iCloudSessionMirrorService,
                             chatController: chatController,
                             operatingLayer: operatingLayer,
-                            navigationCoordinator: navigationCoordinator
+                            navigationCoordinator: navigationCoordinator,
+                            settingsManager: settingsManager
                         )
                     },
                     onOpenSettings: {
@@ -449,7 +468,8 @@ struct OpenBurnBarApp: App {
                             iCloudSessionMirrorService: iCloudSessionMirrorService,
                             chatController: chatController,
                             operatingLayer: operatingLayer,
-                            navigationCoordinator: navigationCoordinator
+                            navigationCoordinator: navigationCoordinator,
+                            settingsManager: settingsManager
                         )
                         // Navigation now handled via NavigationCoordinator
                         navigationCoordinator.openChatPanel()
@@ -469,12 +489,14 @@ struct OpenBurnBarApp: App {
                                     iCloudSessionMirrorService: iCloudSessionMirrorService,
                                     chatController: chatController,
                                     operatingLayer: operatingLayer,
-                                    navigationCoordinator: navigationCoordinator
+                                    navigationCoordinator: navigationCoordinator,
+                                    settingsManager: settingsManager
                                 )
                             }
                         )
                     }
                 )
+                .environment(settingsManager)
             }
         } label: {
             if OpenBurnBarRuntime.isRunningTests {
@@ -491,16 +513,26 @@ struct OpenBurnBarApp: App {
                     await Task.yield()
                     guard !OpenBurnBarRuntime.isRunningTests else { return }
                     guard aggregator == nil else { return }
-                    let sync = CloudSyncService(dataStore: dataStore, accountManager: accountManager)
+                    let sync = CloudSyncService(
+                        dataStore: dataStore,
+                        accountManager: accountManager,
+                        settingsManager: settingsManager
+                    )
                     cloudSyncService = sync
                     let mirror = ICloudSessionMirrorService(settingsManager: settingsManager)
                     iCloudSessionMirrorService = mirror
-                    let newAggregator = UsageAggregator(dataStore: dataStore, cloudSync: sync, sessionMirror: mirror)
+                    let newAggregator = UsageAggregator(
+                        dataStore: dataStore,
+                        cloudSync: sync,
+                        sessionMirror: mirror,
+                        settingsManager: settingsManager,
+                        quotaService: quotaService
+                    )
                     aggregator = newAggregator
                     operatingLayer.aggregator = newAggregator
                     operatingLayer.chatController = chatController
-                    OpenBurnBarDaemonManager.shared.attach(dataStore: dataStore)
-                    CursorConnectorManager.shared.attach(dataStore: dataStore)
+                    daemonManager.attach(dataStore: dataStore)
+                    cursorConnectorManager.attach(dataStore: dataStore)
                     if !hasShownInitialDashboard {
                         hasShownInitialDashboard = true
                         windowManager.openDashboard(
@@ -511,7 +543,8 @@ struct OpenBurnBarApp: App {
                             iCloudSessionMirrorService: mirror,
                             chatController: chatController,
                             operatingLayer: operatingLayer,
-                            navigationCoordinator: navigationCoordinator
+                            navigationCoordinator: navigationCoordinator,
+                            settingsManager: settingsManager
                         )
                     }
                     // Probe Hermes availability in the background
@@ -527,7 +560,7 @@ struct OpenBurnBarApp: App {
                         } else {
                             chatController.openClawAvailable = false
                         }
-                        await OpenBurnBarDaemonManager.shared.refreshHealth()
+                        await daemonManager.refreshHealth()
                         await operatingLayer.refreshControllerRuntime()
                     }
                     // Don't block the first frame on a long disk scan; the menu bar can appear while refresh runs.
@@ -548,7 +581,7 @@ struct OpenBurnBarApp: App {
                             try? await Task.sleep(nanoseconds: nanos)
                             if Task.isCancelled { break }
                             await newAggregator.refreshAll()
-                            await OpenBurnBarDaemonManager.shared.refreshHealth()
+                            await daemonManager.refreshHealth()
                             await operatingLayer.refreshControllerRuntime()
                         }
                     }

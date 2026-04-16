@@ -146,7 +146,8 @@ struct MenuBarPopoverView: View {
                                 onOpenSettings: {
                                     dismiss()
                                     onOpenSettings()
-                                }
+                                },
+                                settingsManager: settingsManager
                             )
                             .padding(.horizontal, DesignSystem.Spacing.sm)
                             .padding(.vertical, DesignSystem.Spacing.xs)
@@ -191,6 +192,7 @@ struct MenuBarPopoverView: View {
             refreshInsightRollups()
         }
         .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .environment(settingsManager)
     }
 
     // MARK: - Header
@@ -486,7 +488,7 @@ private struct PeriodCost: View {
 private struct ProviderListRow: View {
     let summary: ProviderSummary
 
-    @Bindable private var settingsManager = SettingsManager.shared
+    @Environment(SettingsManager.self) private var settingsManager
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: summary.provider) }
 
@@ -793,11 +795,12 @@ struct GlassIconButton<Label: View>: View {
     let store = (try? DataStore()) ?? {
         preconditionFailure("Preview requires a valid DataStore - ensure app support directory is writable")
     }()
+    let settingsManager = SettingsManager()
     MenuBarPopoverView(
         dataStore: store,
         aggregator: nil,
         quotaService: ProviderQuotaService.shared,
-        settingsManager: .shared,
+        settingsManager: settingsManager,
         operatingLayer: OpenBurnBarOperatingLayer(dataStore: store),
         onOpenDashboard: {},
         onOpenSettings: {}

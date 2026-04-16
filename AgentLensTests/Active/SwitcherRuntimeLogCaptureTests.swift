@@ -803,12 +803,12 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
 
         // These are the kinds of strings that might appear if secrets leak
         let rawSecretStrings: [(String, String)] = [
-            ("Bearer abc123xyz sk-ant-api03-xxxxx", "sk-ant- API key"),
-            ("api_key=sk-1234567890abcdefghij", "sk- API key"),
-            ("token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "JWT token"),
-            ("password=superSecret123!", "password pattern"),
-            ("ANTHROPIC_API_KEY=sk-ant-1234567890abcdef", "Anthropic key"),
-            ("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...", "Authorization header"),
+            ("Bearer TEST_BEARER_TOKEN_PLACEHOLDER", "Bearer token"),
+            ("api_key=TEST_API_KEY_PLACEHOLDER", "api_key pattern"),
+            ("token=TEST_TOKEN_PLACEHOLDER", "token pattern"),
+            ("password=TEST_PASSWORD_PLACEHOLDER", "password pattern"),
+            ("ANTHROPIC_API_KEY=TEST_ANTHROPIC_KEY_PLACEHOLDER", "Anthropic key pattern"),
+            ("Authorization: Bearer TEST_AUTH_HEADER_TOKEN", "Authorization header"),
         ]
 
         var allRedactedLogs: [String] = []

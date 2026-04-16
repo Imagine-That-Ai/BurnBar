@@ -120,7 +120,8 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
         let store = try! DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let boundary = CloudSyncService(
             dataStore: store,
-            accountManager: AccountManager.shared
+            accountManager: AccountManager.shared,
+            settingsManager: SettingsManager()
         ).memorySyncBoundarySnapshot()
 
         XCTAssertEqual(boundary.mode, .localFirstOptionalCloud)
@@ -155,4 +156,3 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
         XCTAssertTrue(snapshot.controllerRuntimeCached)
     }
 }
-

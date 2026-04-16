@@ -48,10 +48,10 @@ private struct MergedProject: Identifiable {
 
 struct ProjectsView: View {
     let dataStore: DataStore
+    let settingsManager: SettingsManager
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
 
     @State private var daemonManager: OpenBurnBarDaemonManager
-    @Bindable private var settingsManager = SettingsManager.shared
     @State private var openProject: MergedProject?
     @State private var draft: ControllerProjectDraft?
     @State private var feedback: String?
@@ -59,10 +59,12 @@ struct ProjectsView: View {
 
     init(
         dataStore: DataStore,
+        settingsManager: SettingsManager,
         operatingLayer: OpenBurnBarOperatingLayer,
         daemonManager: OpenBurnBarDaemonManager = .shared
     ) {
         self.dataStore = dataStore
+        self.settingsManager = settingsManager
         self._operatingLayer = Bindable(operatingLayer)
         _daemonManager = State(initialValue: daemonManager)
     }
