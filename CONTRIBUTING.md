@@ -15,6 +15,8 @@ OpenBurnBar is more than the macOS app:
 Canonical architecture: [docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md](docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md).  
 Support tiers (core vs experimental vs parked tests): [README.md](README.md) and [AgentLensTests/README.md](AgentLensTests/README.md).
 
+**AI coding agents** (Cursor, Claude Code, Codex, etc.): read **[AGENTS.md](AGENTS.md)** first — completion standard, testing and documentation expectations, and scope discipline. **[CLAUDE.md](CLAUDE.md)** mirrors the same bar for tools that prefer that filename.
+
 ## Project structure (app)
 
 ```

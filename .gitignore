@@ -79,6 +79,7 @@ tools/burnbar-mcp/.venv/
 # Internal AI agent memory (not for public consumption)
 .claude/agent-memory/
 .claude/settings.local.json
+.claude/*.lock
 
 # Generated validation logs (keep JSON reports, skip raw test logs)
 .factory/validation/**/user-testing/*.log

@@ -3,8 +3,8 @@ import SwiftUI
 // MARK: - Design System
 
 /// Unified design tokens for OpenBurnBar.
-/// Warm glassmorphic aesthetic: botanical cream (light) / bark (dark)
-/// with ember, amber, blaze, and whimsy accents.
+/// Light: warm botanical cream. Dark: cool slate blue (GitHub/Xcode dark lineage)
+/// — cool blue-tinted neutrals make ember, amber, blaze, and whimsy accents glow.
 enum DesignSystem {
 
     // MARK: - Colors
@@ -24,17 +24,18 @@ enum DesignSystem {
         static let teal   = whimsy
         static let gold   = amber
 
-        // Surfaces — light: coral + tangerine dust (ember / Spanish orange cast); dark: bark
-        static let background      = Color.adaptive(light: "F3E8E6", dark: "151210")
-        static let surface         = Color.adaptive(light: "FAF5F2", dark: "1D1914")
-        static let surfaceElevated = Color.adaptive(light: "FDF8F5", dark: "282220")
-        static let border          = Color.adaptive(light: "E8BFB5", dark: "3D342A")
-        static let borderSubtle    = Color.adaptive(light: "F2E0DA", dark: "2D261F")
+        // Surfaces — light: coral + tangerine dust (ember / Spanish orange cast);
+        // dark: cool slate blue ramp (GitHub/Xcode dark lineage) — warm accents pop on cool chrome.
+        static let background      = Color.adaptive(light: "F3E8E6", dark: "0D1117")
+        static let surface         = Color.adaptive(light: "FAF5F2", dark: "161B22")
+        static let surfaceElevated = Color.adaptive(light: "FDF8F5", dark: "1F2630")
+        static let border          = Color.adaptive(light: "E8BFB5", dark: "30363D")
+        static let borderSubtle    = Color.adaptive(light: "F2E0DA", dark: "21262D")
 
-        // Text — light: warm brown with coral undertone / dark: warm off-white
-        static let textPrimary   = Color.adaptive(light: "2A1816", dark: "F2EBE0")
-        static let textSecondary = Color.adaptive(light: "6E4E48", dark: "A89A8A")
-        static let textMuted     = Color.adaptive(light: "9A756D", dark: "7A6E62")
+        // Text — light: warm brown with coral undertone / dark: cool slate off-white
+        static let textPrimary   = Color.adaptive(light: "2A1816", dark: "E6EDF3")
+        static let textSecondary = Color.adaptive(light: "6E4E48", dark: "8B949E")
+        static let textMuted     = Color.adaptive(light: "9A756D", dark: "6E7681")
 
         // Semantic
         static let success = Color.adaptive(light: "3A7835", dark: "38D898")

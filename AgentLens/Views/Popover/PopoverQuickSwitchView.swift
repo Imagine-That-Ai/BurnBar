@@ -818,30 +818,19 @@ struct PopoverQuickSwitchView: View {
 
     // MARK: - Target Icon
 
+    @ViewBuilder
     private func targetIcon(for profile: SwitcherProfileRecord) -> some View {
-        Group {
-            switch profile.targetKind {
-            case .browser:
-                if let browserType = profile.browserType, let logoName = browserType.bundledLogoName, NSImage(named: logoName) != nil {
-                    Image(logoName)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                } else {
-                    Image(systemName: profile.browserType == .safari ? "safari" : "globe")
-                        .font(.system(size: 9))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
-            case .cli:
-                if let cliType = profile.cliType, let logoName = cliType.bundledLogoName, NSImage(named: logoName) != nil {
-                    Image(logoName)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                } else {
-                    Image(systemName: "terminal.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
-            }
+        switch profile.targetKind {
+        case .browser:
+            Image(systemName: profile.browserType == .safari ? "safari" : "globe")
+                .font(.system(size: 9))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .frame(width: 12, height: 12)
+        case .cli:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 9))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .frame(width: 12, height: 12)
         }
     }
 

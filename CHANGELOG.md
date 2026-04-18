@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2-beta.12] - 2026-04-18
+
+### Fixed
+- Keychain-backed provider secrets now verify non-interactive readability after write and rewrite interaction-locked entries so background quota refreshes keep working.
+- The dashboard Context Pack card now opens reliably when clicked and exposes button semantics for accessibility tooling.
+- CLI switcher startup errors now spell out missing-command (`exit 127`) failures instead of returning a generic launch error.
+
+### Changed
+- Dark-mode chrome now uses a cooler slate-blue surface ramp so warm accent colors read more cleanly against app backgrounds.
+- Dashboard and popover quick-switch target icons now use consistent system glyphs, preventing bundled logo stretching and layout drift.
+- Public contributor docs now link directly to repo-level `AGENTS.md` and `CLAUDE.md` guidance for AI coding tools.
+
 ## [0.1.2-beta.2] - 2026-04-14
 
 ### Changed

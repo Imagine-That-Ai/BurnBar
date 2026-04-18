@@ -921,7 +921,9 @@ public struct CLILaunchInvoker {
 
                 let trimmedOutput = combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
                 let detail = trimmedOutput.isEmpty
-                    ? "\(cliType.displayName) exited during startup with status \(process.terminationStatus)."
+                    ? (process.terminationStatus == 127
+                        ? "\(cliType.displayName) command not found in app PATH (exit 127). Install \(cliType.displayName) or ensure its runtime dependencies are available."
+                        : "\(cliType.displayName) exited during startup with status \(process.terminationStatus).")
                     : trimmedOutput
                 return finish(.failure(.launchFailed(CLILaunchRedactor.redactSensitiveData(detail))))
             }
