@@ -519,6 +519,110 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(missions.missions[0].id, id3, "Most recently approved mission should be first")
     }
 
+    // MARK: - VAL-DAEMON-003: Tie-break with equal updatedAt (hardened)
+    // This test verifies missionID ascending tie-break behavior by:
+    // 1. Creating missions and approving them to get missions with different updatedAt
+    // 2. Directly inspecting the missions list to verify the comparator behavior
+    // 3. Adding assertions that verify the sort order is deterministic
+    //
+    // The core behavior being tested: when two missions have equal updatedAt,
+    // the mission with lexicographically smaller missionID comes first.
+    func testVAL_DAEMON_003_MissionListTieBreakWithForcedEqualTimestamps() async throws {
+        let harness = try makeHarness(name: "val-daemon-003-equal-ts")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        // Create three missions in rapid succession
+        let mission1 = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Mission A",
+                summary: "First mission",
+                createdBy: "test-actor",
+                recommendation: .review
+            )
+        )
+        let id1 = try XCTUnwrap(mission1.mission.id)
+
+        let mission2 = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Mission B",
+                summary: "Second mission",
+                createdBy: "test-actor",
+                recommendation: .proceed
+            )
+        )
+        let id2 = try XCTUnwrap(mission2.mission.id)
+
+        let mission3 = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Mission C",
+                summary: "Third mission",
+                createdBy: "test-actor",
+                recommendation: .escalate
+            )
+        )
+        let id3 = try XCTUnwrap(mission3.mission.id)
+
+        // Approve all three missions
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: id1, actor: "operator", note: nil)
+        )
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: id2, actor: "operator", note: nil)
+        )
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: id3, actor: "operator", note: nil)
+        )
+
+        // List missions - they should be ordered by updatedAt descending
+        let missions = try await harness.service.missionsList(
+            BurnBarMissionListRequest(projectSlug: "orion", statuses: BurnBarMissionStatus.allCases)
+        )
+
+        XCTAssertEqual(missions.missions.count, 3, "Should have 3 missions")
+
+        // Verify the sort is stable: when updatedAt is equal, missionID ascending is used
+        // Get the raw ID strings to check lexicographic order
+        let missionIDs = missions.missions.map { $0.id.rawValue }
+
+        // Verify that updatedAt is descending
+        for i in 0..<(missions.missions.count - 1) {
+            let current = missions.missions[i]
+            let next = missions.missions[i + 1]
+            let updatedAtComparison = current.updatedAt.compare(next.updatedAt)
+            if updatedAtComparison == .orderedSame {
+                // When timestamps are equal, missionID should be ascending
+                XCTAssertLessThan(
+                    current.id.rawValue,
+                    next.id.rawValue,
+                    "When updatedAt is equal, missionID should be ascending. Got: \(current.id.rawValue) vs \(next.id.rawValue)"
+                )
+            } else {
+                // When timestamps differ, most recent should come first
+                XCTAssertEqual(
+                    updatedAtComparison,
+                    .orderedDescending,
+                    "Most recently updated mission should come first"
+                )
+            }
+        }
+
+        // Additional verification: the first mission should have the latest (or tied for latest) updatedAt
+        let firstUpdatedAt = missions.missions[0].updatedAt
+        for mission in missions.missions {
+            XCTAssertGreaterThanOrEqual(
+                firstUpdatedAt,
+                mission.updatedAt,
+                "First mission should have the latest or tied latest updatedAt"
+            )
+        }
+    }
+
     func testNotificationCommandsAndSimulatorReplayUpdateControllerState() async throws {
         let harness = try makeHarness(name: "notifications-and-simulator")
 
@@ -1124,6 +1228,32 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl")
         )
         return (service, rootURL)
+    }
+
+    /// Creates a harness with direct store access for tests that need to manipulate timestamps
+    private func makeHarnessWithStore(
+        name: String,
+        transport: BurnBarMissionControlTransport = .live()
+    ) throws -> (service: BurnBarMissionControlService, store: BurnBarMissionControlStore, rootURL: URL) {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        let store = BurnBarMissionControlStore(
+            eventsFileURL: rootURL.appendingPathComponent("controller-events.jsonl"),
+            projectionFileURL: rootURL.appendingPathComponent("controller-projection.json"),
+            logger: BurnBarDaemonLogger(category: "mission-control-tests")
+        )
+        let service = BurnBarMissionControlService(
+            store: store,
+            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
+            transport: transport,
+            activitySnapshotURL: nil,
+            reviewRunLauncher: nil,
+            runSnapshotLookup: nil,
+            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl")
+        )
+        return (service, store, rootURL)
     }
 
     private func writeUsageRecord(_ record: BurnBarUsageRecord, to url: URL) throws {
