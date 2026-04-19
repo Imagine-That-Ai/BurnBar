@@ -1,0 +1,177 @@
+{
+  "surface": "MC-DAEMON",
+  "groupId": "daemon-m3-typed-input-r2",
+  "milestone": "m3-typed-goal-to-plan-input",
+  "testedAt": "2026-04-19T17:45:52.838935Z",
+  "isolation": {
+    "surface": "MC-DAEMON only",
+    "repoRoot": "/Users/albertonunez/Documents/Windsurf/BurnBar",
+    "missionDir": "/Users/albertonunez/.factory/missions/d1d1287f-f2a9-4a34-8ba9-fce37df13493"
+  },
+  "assertionsTested": [
+    "VAL-DAEMON-007",
+    "VAL-DAEMON-008",
+    "VAL-DAEMON-014"
+  ],
+  "assertionsPassed": 3,
+  "assertionsFailed": 0,
+  "assertionsBlocked": 0,
+  "commands": [
+    {
+      "id": "cmd-01",
+      "command": "swift test --package-path OpenBurnBarDaemon --filter BurnBarAgentStackTests",
+      "transcript": "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/01-swift-test-daemon-agentstack.txt",
+      "exitCode": 0,
+      "result": "27 tests executed, 0 failures",
+      "relevantAssertions": [
+        "VAL-DAEMON-007",
+        "VAL-DAEMON-008"
+      ]
+    },
+    {
+      "id": "cmd-02",
+      "command": "swift test --package-path OpenBurnBarCore --filter BurnBarMissionControlContractsTests",
+      "transcript": "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/02-swift-test-core-contracts.txt",
+      "exitCode": 0,
+      "result": "13 tests executed, 0 failures",
+      "relevantAssertions": [
+        "VAL-DAEMON-014"
+      ]
+    },
+    {
+      "id": "cmd-03",
+      "command": "swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests",
+      "transcript": "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/03-swift-test-daemon-service.txt",
+      "exitCode": 0,
+      "result": "17 tests executed, 0 failures",
+      "relevantAssertions": [
+        "VAL-DAEMON-014"
+      ]
+    },
+    {
+      "id": "cmd-04",
+      "command": "swift test --package-path OpenBurnBarDaemon --filter VAL_DAEMON_007",
+      "transcript": "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/04-swift-test-daemon-filter-VAL_DAEMON_007.txt",
+      "exitCode": 0,
+      "result": "5 tests executed, 0 failures",
+      "relevantAssertions": [
+        "VAL-DAEMON-007"
+      ]
+    },
+    {
+      "id": "cmd-05",
+      "command": "swift test --package-path OpenBurnBarDaemon --filter VAL_DAEMON_008",
+      "transcript": "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/05-swift-test-daemon-filter-VAL_DAEMON_008.txt",
+      "exitCode": 0,
+      "result": "2 tests executed, 0 failures",
+      "relevantAssertions": [
+        "VAL-DAEMON-008"
+      ]
+    },
+    {
+      "id": "cmd-06",
+      "command": "swift test --package-path OpenBurnBarCore --filter VAL_DAEMON_014",
+      "transcript": "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/06-swift-test-core-filter-VAL_DAEMON_014.txt",
+      "exitCode": 0,
+      "result": "4 tests executed, 0 failures",
+      "relevantAssertions": [
+        "VAL-DAEMON-014"
+      ]
+    },
+    {
+      "id": "cmd-07",
+      "command": "swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests/testVAL_DAEMON_014",
+      "transcript": "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/07-swift-test-daemon-service-filter-VAL_DAEMON_014.txt",
+      "exitCode": 0,
+      "result": "4 tests executed, 0 failures",
+      "relevantAssertions": [
+        "VAL-DAEMON-014"
+      ]
+    }
+  ],
+  "evidence": {
+    "assertions": [
+      {
+        "id": "VAL-DAEMON-007",
+        "title": "Planner intent normalization precedence is stable",
+        "status": "pass",
+        "reason": "Assertion-ID filter VAL_DAEMON_007 executed non-zero tests (5) and all tagged checks passed on daemon agent stack.",
+        "assertionTaggedChecks": [
+          "testVAL_DAEMON_007_IntentNormalizationPrecedence_explicitIntentWinsOverWorkflow",
+          "testVAL_DAEMON_007_IntentNormalizationPrecedence_fullOrderingMatrix",
+          "testVAL_DAEMON_007_IntentNormalizationPrecedence_promptWinsOverGenericFallback",
+          "testVAL_DAEMON_007_IntentNormalizationPrecedence_toolWinsOverPrompt",
+          "testVAL_DAEMON_007_IntentNormalizationPrecedence_workflowWinsOverTool"
+        ],
+        "stateEvidence": [
+          "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/04-swift-test-daemon-filter-VAL_DAEMON_007.txt",
+          "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/08-assertion-state-snippets.json"
+        ]
+      },
+      {
+        "id": "VAL-DAEMON-008",
+        "title": "Unsupported workflow intent fails pre-execution",
+        "status": "pass",
+        "reason": "Assertion-ID filter VAL_DAEMON_008 executed non-zero tests (2) and all tagged checks passed on daemon agent stack.",
+        "assertionTaggedChecks": [
+          "testVAL_DAEMON_008_UnsupportedWorkflowFailsEvenWithValidToolMetadata",
+          "testVAL_DAEMON_008_UnsupportedWorkflowFailsPreExecution"
+        ],
+        "stateEvidence": [
+          "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/05-swift-test-daemon-filter-VAL_DAEMON_008.txt",
+          "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/08-assertion-state-snippets.json"
+        ]
+      },
+      {
+        "id": "VAL-DAEMON-014",
+        "title": "Planner input contract requires constraints, risk level, and desired outputs",
+        "status": "pass",
+        "reason": "Assertion-ID filter VAL_DAEMON_014 executed non-zero tests on both required surfaces (core=4, daemon mission service=4) and tagged checks passed.",
+        "assertionTaggedChecks": {
+          "core": [
+            "testVAL_DAEMON_014_PlannerInputPreservesConstraintsRiskAndOutputsThroughSerialization",
+            "testVAL_DAEMON_014_PlannerInputRejectsMissingRequiredFieldsAtSchemaLevel",
+            "testVAL_DAEMON_014_PlannerInputSchemaRequiresConstraintsRiskLevelAndDesiredOutputs",
+            "testVAL_DAEMON_014_PlannerInputSchemaVersionIsEncodedAndDecoded"
+          ],
+          "daemonMissionService": [
+            "testVAL_DAEMON_014_PlannerInputPreservesFieldsThroughPlanning",
+            "testVAL_DAEMON_014_PlannerInputValidationAcceptsValidInput",
+            "testVAL_DAEMON_014_PlannerInputValidationRejectsEmptyConstraints",
+            "testVAL_DAEMON_014_PlannerInputValidationRejectsEmptyDesiredOutputs"
+          ]
+        },
+        "stateEvidence": [
+          "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/06-swift-test-core-filter-VAL_DAEMON_014.txt",
+          "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/07-swift-test-daemon-service-filter-VAL_DAEMON_014.txt",
+          "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/08-assertion-state-snippets.json"
+        ]
+      }
+    ],
+    "artifactsRoot": "/Users/albertonunez/.factory/missions/d1d1287f-f2a9-4a34-8ba9-fce37df13493/evidence/m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2",
+    "stateSnapshots": [
+      "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/08-assertion-state-snippets.json",
+      "m3-typed-goal-to-plan-input/daemon-m3-typed-input-r2/09-command-results.json"
+    ]
+  },
+  "frictions": [
+    {
+      "description": "swift test output includes an additional Swift Testing summary line (\"0 tests in 0 suites\") after XCTest output, which can be misread as filter miss.",
+      "resolved": true,
+      "resolution": "Used XCTest \"Executed N tests\" lines and assertion-tagged test case entries in transcripts to confirm non-zero filter execution.",
+      "affectedAssertions": [
+        "VAL-DAEMON-007",
+        "VAL-DAEMON-008",
+        "VAL-DAEMON-014"
+      ]
+    }
+  ],
+  "blockers": [],
+  "toolsUsed": [
+    "swift test",
+    "python3",
+    "read",
+    "grep"
+  ],
+  "summary": "Validated 3 daemon assertions with assertion-ID-scoped non-zero filters. Required suite commands and assertion filters exited 0; VAL-DAEMON-007, VAL-DAEMON-008, and VAL-DAEMON-014 passed with tagged checks on required surfaces."
+}

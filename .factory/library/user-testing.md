@@ -55,6 +55,7 @@ Rule: when assertions combine surfaces, overall concurrency is constrained by th
 - If an external integration is unavailable, validation must fail with explicit reason and return to orchestrator; do not silently substitute mocks.
 
 ## Flow Validator Guidance: MC-DAEMON
+- Assertion-filter caveat: Swift test output may include a trailing Swift Testing footer (`0 tests in 0 suites`) even when XCTest executed matching tests. For contract evidence, classify non-zero execution using XCTest `Executed N tests` lines and assertion-tagged test-case names in the transcript.
 - Isolation boundary: test only daemon mission-control assertions assigned in your prompt.
 - Allowed commands: `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests` plus read-only artifact collection.
 - Do not modify app/extension code, global system settings, or unrelated test fixtures.

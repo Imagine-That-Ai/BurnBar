@@ -1,29 +1,26 @@
 {
   "milestone": "m3-typed-goal-to-plan-input",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "assertionsSummary": {
     "total": 3,
-    "passed": 0,
-    "failed": 3,
+    "passed": 3,
+    "failed": 0,
     "blocked": 0
   },
-  "passedAssertions": [],
-  "failedAssertions": [
+  "passedAssertions": [
+    "VAL-DAEMON-007",
+    "VAL-DAEMON-008",
+    "VAL-DAEMON-014"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
     {
-      "id": "VAL-DAEMON-007",
-      "reason": "Assertion-ID-tagged checks are unavailable: assertion-scoped filter `VAL_DAEMON_007` executed zero tests. Fallback named check passed, but it is not ID-tagged per contract execution rules."
-    },
-    {
-      "id": "VAL-DAEMON-008",
-      "reason": "Assertion-ID-tagged checks are unavailable: assertion-scoped filter `VAL_DAEMON_008` executed zero tests. Fallback named check passed, but it is not ID-tagged per contract execution rules."
-    },
-    {
-      "id": "VAL-DAEMON-014",
-      "reason": "Required command surfaces for this assertion did not provide assertion-ID-tagged checks: `VAL_DAEMON_014` filters on OpenBurnBarCore and BurnBarMissionControlServiceTests both executed zero tests. Fallback daemon planner-input test passed but does not satisfy ID-tagged contract evidence requirements for required surfaces."
+      "target": "user-testing.md",
+      "description": "Added MC-DAEMON guidance to ignore Swift Testing footer and use XCTest \"Executed N tests\" plus assertion-tagged case lines to confirm non-zero assertion-filter execution.",
+      "source": "flow-report"
     }
   ],
-  "blockedAssertions": [],
-  "appliedUpdates": [],
-  "previousRound": null
+  "previousRound": ".factory/validation/m3-typed-goal-to-plan-input/user-testing/synthesis.round1.json"
 }
