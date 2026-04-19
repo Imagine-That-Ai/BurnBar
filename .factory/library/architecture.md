@@ -17,30 +17,30 @@ Mission Control Fleet turns one-line operator intent into governed, replayable e
 ### Mission States
 | State | Meaning |
 |---|---|
+| `draft` | Mission is authored but not yet submitted for approval/execution. |
 | `awaiting_approval` | Mission exists but cannot execute until approved. |
-| `approved` | Approval captured; mission is eligible for planning/readiness. |
-| `planning` | Planner is producing/refreshing typed DAG artifacts. |
-| `ready` | DAG + readiness checks passed; packets can dispatch. |
-| `executing` | One or more packets/runs are active. |
-| `blocked_approval` | Execution paused on required operator approval. |
-| `reconciling` | Runtime is finalizing winner/result across outcomes. |
+| `approved` | Approval captured; mission is eligible for dispatch/readiness checks. |
+| `dispatching` | Mission packet dispatch has started and run linkage is being established. |
+| `in_progress` | One or more packets/runs are active. |
+| `partially_completed` | Mission has partial completion evidence and remaining work. |
 | `completed` | Mission reached terminal success. |
 | `failed` | Mission reached terminal failure (non-recoverable). |
 | `cancelled` | Mission was explicitly cancelled and is terminal. |
+
+> Canonical source: `BurnBarMissionStatus` in `OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarMissionControlContracts.swift`.
+> Labels like `planning`, `ready`, `blocked_approval`, and `reconciling` are runtime/journal phases and reason-code states, not persisted mission status enum values.
 
 ### Allowed Events and Transitions
 | Event | Allowed From | To | Notes |
 |---|---|---|---|
 | `mission.create` | — | `awaiting_approval` | Initial persisted state. |
 | `mission.approve` | `awaiting_approval` | `approved` | Records actor/note/timestamp. |
-| `plan.start` | `approved` | `planning` | Starts typed DAG generation. |
-| `plan.ready` | `planning` | `ready` | DAG + policy-valid output exists. |
-| `dispatch.start` | `ready` | `executing` | First packet/run dispatched. |
-| `approval.required` | `executing` | `blocked_approval` | High-risk/policy gate surfaced. |
-| `approval.resolved` | `blocked_approval` | `executing` | Resume after explicit decision. |
-| `execution.settle` | `executing` | `reconciling` | No more runnable work; reconcile outcomes. |
-| `reconcile.success` | `reconciling` | `completed` | Canonical winner/result committed. |
-| `reconcile.failure` | `reconciling` | `failed` | Canonical terminal failure committed. |
+| `dispatch.start` | `approved` | `dispatching` | First packet/run dispatch initiated. |
+| `run.started` | `dispatching` | `in_progress` | Run is actively executing. |
+| `run.partial` | `in_progress` | `partially_completed` | Partial result persisted with pending follow-on work. |
+| `run.resume` | `partially_completed` | `in_progress` | Subsequent dispatch/recovery resumes active execution. |
+| `run.complete` | `dispatching`, `in_progress`, `partially_completed` | `completed` | Canonical successful terminal mission state. |
+| `run.fail` | `dispatching`, `in_progress`, `partially_completed` | `failed` | Canonical failed terminal mission state. |
 | `mission.cancel` | non-terminal | `cancelled` | Legal from any non-terminal state. |
 
 ### Illegal Transition Rules (must reject)

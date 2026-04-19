@@ -1,7 +1,7 @@
 {
   "milestone": "m4-mission-board-baseline",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -21,33 +21,26 @@
   },
   "reviewsSummary": {
     "total": 1,
-    "passed": 0,
-    "failed": 1,
-    "failedFeatures": [
-      "m4-mission-board-cross-surface-baseline"
-    ]
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
+  "blockingIssues": [],
+  "appliedUpdates": [
     {
-      "featureId": "m4-mission-board-cross-surface-baseline",
-      "severity": "blocking",
-      "description": "Extension mission projection sorts by local status priority before updatedAt, which diverges from daemon canonical ordering (updatedAt DESC, missionID ASC tie-break) and breaks deterministic cross-surface parity expectations."
-    },
-    {
-      "featureId": "m4-mission-board-cross-surface-baseline",
-      "severity": "blocking",
-      "description": "Extension mission lifecycle enums cannot represent daemon lifecycle values (awaiting_approval, approved, dispatching, in_progress, partially_completed, failed, cancelled), preventing contract-level mission lifecycle parity."
+      "target": "library",
+      "description": "Updated `.factory/library/architecture.md` mission lifecycle section to reflect canonical daemon mission status enum values and clarify that planning/reconciling labels are runtime phases, not persisted mission statuses.",
+      "sourceFeature": "m4-extension-parity-ordering-and-lifecycle-enums"
     }
   ],
-  "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills",
-      "suggestion": "Update governance-worker handoff/verification procedure to require evidence for every listed feature verification step and all fulfilled validation-contract surfaces before completion.",
-      "evidence": "The reviewed m4 feature handoff recorded only app/projection unit checks while the feature and validation contract required daemon mission-control coverage and extension host/parity checks (VAL-EXT-008, VAL-CROSS-010).",
+      "suggestion": "Clarify extension-worker validation guidance for scrutiny-driven parity fixes so required command coverage distinguishes full milestone checks from focused fix-validation checks.",
+      "evidence": "Review for m4-extension-parity-ordering-and-lifecycle-enums observed command-scope ambiguity between SKILL.md's broad required unit-test command and the narrowly targeted parity-fix verification run set used by the worker.",
       "isSystemic": false
     }
   ],
   "rejectedObservations": [],
-  "previousRound": null
+  "previousRound": ".factory/validation/m4-mission-board-baseline/scrutiny/synthesis.round1.json"
 }
