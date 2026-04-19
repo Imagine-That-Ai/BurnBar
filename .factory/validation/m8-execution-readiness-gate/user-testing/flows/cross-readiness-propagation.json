@@ -1,0 +1,95 @@
+{
+  "groupId": "cross-readiness-propagation",
+  "milestone": "m8-execution-readiness-gate",
+  "testedAt": "2026-04-19T22:55:48Z",
+  "isolation": {
+    "surface": "MC-CROSS",
+    "missionDir": "/Users/albertonunez/.factory/missions/d1d1287f-f2a9-4a34-8ba9-fce37df13493",
+    "repoRoot": "/Users/albertonunez/Documents/Windsurf/BurnBar",
+    "constraints": [
+      "Validated only assigned assertion VAL-CROSS-009",
+      "Ran daemon/app/extension validators serially (app cap 1 respected)",
+      "No source-code modifications",
+      "Wrote artifacts only for cross-readiness-propagation"
+    ]
+  },
+  "toolsUsed": [
+    "swift test",
+    "xcodebuild",
+    "npm",
+    "rg"
+  ],
+  "commands": [
+    {
+      "surface": "daemon",
+      "command": "swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests",
+      "exitCode": 0,
+      "transcript": "m8-execution-readiness-gate/cross-readiness-propagation/VAL-CROSS-009-daemon-swift-test.txt"
+    },
+    {
+      "surface": "app",
+      "attempt": 1,
+      "command": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -only-testing:\"OpenBurnBarTests/OpenBurnBarOperatingComposerTests\" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''",
+      "exitCode": 74,
+      "transcript": "m8-execution-readiness-gate/cross-readiness-propagation/VAL-CROSS-009-app-xcodebuild-test.txt"
+    },
+    {
+      "surface": "app",
+      "attempt": 2,
+      "command": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -only-testing:\"OpenBurnBarTests/OpenBurnBarOperatingComposerTests\" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''",
+      "exitCode": 0,
+      "transcript": "m8-execution-readiness-gate/cross-readiness-propagation/VAL-CROSS-009-app-xcodebuild-test-retry1.txt"
+    },
+    {
+      "surface": "extension",
+      "command": "npm --prefix extensions/openburnbar run test:unit -- test/projections.test.ts",
+      "exitCode": 0,
+      "transcript": "m8-execution-readiness-gate/cross-readiness-propagation/VAL-CROSS-009-extension-projections-test.txt"
+    }
+  ],
+  "assertionResults": [
+    {
+      "id": "VAL-CROSS-009",
+      "title": "Execution-readiness failure reasons propagate consistently to all surfaces",
+      "status": "fail",
+      "assertionTaggedTests": {
+        "daemon": [
+          "testVAL_DAEMON_011_ReadinessGateFailsClosedWhenNil",
+          "testVAL_DAEMON_011_ReadinessGateInvalidRepoBranch",
+          "testVAL_DAEMON_011_ReadinessGateMissingCredential",
+          "testVAL_DAEMON_011_ReadinessGatePassesWhenReady",
+          "testVAL_DAEMON_011_ReadinessGateRuntimeUnavailable"
+        ],
+        "app": [],
+        "extension": []
+      },
+      "evidenceLines": [
+        "Daemon transcript lines 49-58 show readiness reason-path tests passed for missing credential, invalid repo/branch, and runtime unavailable.",
+        "Daemon transcript lines 68/70/72 show 30 tests executed with 0 failures.",
+        "App transcript lines 16426-16469 list VAL_APP_* and VAL_BRIEF_005 tests; no VAL_CROSS_009-tagged readiness propagation test line is present.",
+        "Extension transcript lines 8 and 11 show only file-level pass summary (74 tests passed) with no VAL_CROSS_009-tagged readiness propagation evidence line.",
+        "Source grep check found BurnBarExecutionReadinessCode defined in OpenBurnBarCore, while AgentLens and extensions/openburnbar had no missing_credential|invalid_repo_branch|runtime_unavailable match in this validation run."
+      ],
+      "artifacts": [
+        "m8-execution-readiness-gate/cross-readiness-propagation/VAL-CROSS-009-daemon-swift-test.txt",
+        "m8-execution-readiness-gate/cross-readiness-propagation/VAL-CROSS-009-app-xcodebuild-test.txt",
+        "m8-execution-readiness-gate/cross-readiness-propagation/VAL-CROSS-009-app-xcodebuild-test-retry1.txt",
+        "m8-execution-readiness-gate/cross-readiness-propagation/VAL-CROSS-009-extension-projections-test.txt",
+        "m8-execution-readiness-gate/cross-readiness-propagation/VAL-CROSS-009-evidence-lines.txt"
+      ],
+      "issues": "Required cross-surface parity evidence for readiness reason-code mapping (daemon → app → extension messaging) was not demonstrated by app/extension assertion-tagged output in the required command artifacts."
+    }
+  ],
+  "frictions": [
+    {
+      "description": "First app validator attempt failed during package dependency resolution (grpc binary artifact fetch).",
+      "resolved": true,
+      "resolution": "Retried the same xcodebuild command once; second attempt exited 0.",
+      "affectedAssertions": [
+        "VAL-CROSS-009"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "VAL-CROSS-009 failed validation: daemon readiness reason-code tests passed, but required app and extension parity evidence lines for mapped readiness reason codes were not present in the required validator outputs."
+}

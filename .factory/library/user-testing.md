@@ -78,4 +78,5 @@ Rule: when assertions combine surfaces, overall concurrency is constrained by th
 - Isolation boundary: test only assigned cross-surface assertions and collect artifacts from each required surface command listed in the validation contract.
 - Required discipline: run every listed command for the assigned assertion and record exit codes plus assertion-tagged evidence lines for each surface.
 - App-inclusive cross assertions must respect app concurrency cap (`max 1`) and should not overlap with other `xcodebuild` validators.
+- If app-inclusive cross runs hit transient `xcodebuild` package/binary artifact resolution failures (for example grpc artifact fetch), retry the same command once before classifying blocked.
 - Do not apply source-code changes while validating; create only flow/evidence artifacts under assigned milestone directories.
