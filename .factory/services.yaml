@@ -3,15 +3,15 @@ commands:
   typecheck: xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
   lint: npm --prefix extensions/openburnbar run lint
   test: scripts/test-openburnbar-swift.sh && CI=true scripts/test-openburnbar-app.sh && scripts/test-openburnbar-ts.sh
-  test_daemon_mission: swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarMissionControlServiceTests
-  test_daemon_runtime: swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarRunServiceTests
-  test_daemon_rpc: swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarDaemonServerTests
-  test_core_contracts: swift test --package-path OpenBurnBarCore --filter OpenBurnBarMissionControlContractsTests
-  test_router: swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarProviderRouterTests
+  test_daemon_mission: swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests
+  test_daemon_runtime: swift test --package-path OpenBurnBarDaemon --filter BurnBarRunServiceTests
+  test_daemon_rpc: swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests
+  test_core_contracts: swift test --package-path OpenBurnBarCore --filter BurnBarMissionControlContractsTests
+  test_router: swift test --package-path OpenBurnBarDaemon --filter BurnBarProviderRouterTests
   test_app_operating: xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''
   test_extension_unit: npm --prefix extensions/openburnbar run test:unit -- test/controller.test.ts test/projections.test.ts test/workspacePanel.test.ts test/extension.test.ts
   test_extension_host: ./scripts/test-openburnbar-extension-host.sh
-  test_real_integration_smoke: ./scripts/test-openburnbar-extension-host.sh && swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarDaemonServerTests
+  test_real_integration_smoke: ./scripts/test-openburnbar-extension-host.sh && swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests
   build: scripts/build.sh --build --configuration Debug --cache-dir .spm-cache --derived-data .derived-data/ci-build
 
 services: {}

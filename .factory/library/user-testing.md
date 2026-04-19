@@ -5,10 +5,11 @@
 ### Surface MC-DAEMON: Daemon API mission-control runtime
 - Scope: mission creation/approval/dispatch/result, planner input contracts, DAG/reconciliation, recovery/takeover, policy/connector governance.
 - Primary tools:
-  - `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarMissionControlServiceTests`
-  - `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarRunServiceTests`
-  - `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarDaemonServerTests`
-  - `swift test --package-path OpenBurnBarCore --filter OpenBurnBarMissionControlContractsTests`
+  - `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`
+  - `swift test --package-path OpenBurnBarDaemon --filter BurnBarRunServiceTests`
+  - `swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests`
+  - `swift test --package-path OpenBurnBarCore --filter BurnBarMissionControlContractsTests`
+  - For assertion-targeted reruns, prefer assertion-ID filter names (for example `--filter VAL_DAEMON_003`) when a suite-level filter yields 0 tests.
 
 ### Surface MC-APP: macOS app operator surfaces
 - Scope: mission authoring affordances, mission board, inbox triage, brief completeness, one-question top-level UX, re-entry controls, degraded runtime messaging.
@@ -52,3 +53,9 @@ Rule: when assertions combine surfaces, overall concurrency is constrained by th
 ## Accepted Constraints
 - Real integrations only for mission-critical paths (dispatch/recovery/reconciliation/PR lifecycle).
 - If an external integration is unavailable, validation must fail with explicit reason and return to orchestrator; do not silently substitute mocks.
+
+## Flow Validator Guidance: MC-DAEMON
+- Isolation boundary: test only daemon mission-control assertions assigned in your prompt.
+- Allowed commands: `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests` plus read-only artifact collection.
+- Do not modify app/extension code, global system settings, or unrelated test fixtures.
+- Keep evidence scoped to the assigned assertion IDs and write outputs only under the provided flow report/evidence directories.
