@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 public enum BurnBarAgentIntentKind: String, Codable, CaseIterable, Hashable, Sendable {
     case replaceStringInFile = "replace_string_in_file"
@@ -458,16 +459,14 @@ public struct BurnBarDAGNodeID: RawRepresentable, Codable, Hashable, Sendable {
         return BurnBarDAGNodeID(rawValue: deterministicIDHash(input))
     }
 
-    /// Generates a stable hash from input string.
+    /// Generates a stable hash from input string using SHA256.
+    /// This is deterministic across process launches unlike Swift's Hasher which is process-seeded.
     private static func deterministicIDHash(_ input: String) -> String {
-        var hasher = Hasher()
-        hasher.combine(input)
-        let result = hasher.finalize()
-        return String(result, radix: 16, uppercase: false)
+        let inputData = Data(input.utf8)
+        let hashed = SHA256.hash(data: inputData)
+        return hashed.compactMap { String(format: "%02x", $0) }.joined()
     }
 }
-
-/// Identifier for a DAG edge.
 public struct BurnBarDAGEdgeID: RawRepresentable, Codable, Hashable, Sendable {
     public let rawValue: String
 
@@ -485,12 +484,12 @@ public struct BurnBarDAGEdgeID: RawRepresentable, Codable, Hashable, Sendable {
         return BurnBarDAGEdgeID(rawValue: deterministicEdgeHash(input))
     }
 
-    /// Generates a stable hash from edge input.
+    /// Generates a stable hash from edge input using SHA256.
+    /// This is deterministic across process launches unlike Swift's Hasher which is process-seeded.
     private static func deterministicEdgeHash(_ input: String) -> String {
-        var hasher = Hasher()
-        hasher.combine(input)
-        let result = hasher.finalize()
-        return String(result, radix: 16, uppercase: false)
+        let inputData = Data(input.utf8)
+        let hashed = SHA256.hash(data: inputData)
+        return hashed.compactMap { String(format: "%02x", $0) }.joined()
     }
 }
 
@@ -587,6 +586,37 @@ public struct BurnBarDAGContract: Codable, Hashable, Sendable {
         self.nodes = nodes
         self.edges = edges
         self.metadata = metadata
+    }
+
+    /// Custom decoder that handles unknown schema versions explicitly.
+    /// Swift's default Codable throws DecodingError for unknown enum raw values,
+    /// but we want to surface explicit BurnBarDAGError.unsupportedSchemaVersion.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        // First, decode schema version as raw Int to check support before creating enum
+        let schemaVersionRaw = try container.decode(Int.self, forKey: .schemaVersion)
+
+        // Check if schema version is supported
+        guard let schemaVersion = BurnBarDAGSchemaVersion(rawValue: schemaVersionRaw),
+              BurnBarDAGSchemaVersion.isSupported(schemaVersion) else {
+            throw BurnBarDAGError.unsupportedSchemaVersion(schemaVersionRaw)
+        }
+
+        self.schemaVersion = schemaVersion
+        self.missionID = try container.decode(BurnBarMissionID.self, forKey: .missionID)
+        self.nodes = try container.decode([BurnBarDAGNode].self, forKey: .nodes)
+        self.edges = try container.decodeIfPresent([BurnBarDAGEdge].self, forKey: .edges) ?? []
+        self.metadata = try container.decodeIfPresent([String: BurnBarJSONValue].self, forKey: .metadata)
+    }
+
+    /// Coding keys for BurnBarDAGContract.
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case missionID
+        case nodes
+        case edges
+        case metadata
     }
 
     /// Validates the DAG contract for consistency.
@@ -719,14 +749,10 @@ public enum BurnBarDAGContractCodec {
     /// Throws BurnBarDAGError for unsupported schema versions.
     public static func decode(from data: Data) throws -> BurnBarDAGContract {
         let decoder = JSONDecoder()
+        // Custom init(from:) in BurnBarDAGContract handles unsupported schema versions explicitly
         let contract = try decoder.decode(BurnBarDAGContract.self, from: data)
 
-        // Validate schema version
-        guard BurnBarDAGSchemaVersion.isSupported(contract.schemaVersion) else {
-            throw BurnBarDAGError.unsupportedSchemaVersion(contract.schemaVersion.rawValue)
-        }
-
-        // Validate DAG structure
+        // Validate DAG structure (schema version already validated in init)
         try contract.validate()
 
         return contract

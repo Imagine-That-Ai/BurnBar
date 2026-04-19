@@ -1004,7 +1004,7 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
     }
 
     func testVAL_DAEMON_013_UnsupportedVersionThrowsExplicitError() throws {
-        // VAL-DAEMON-013: Unsupported schema version fails with explicit error
+        // VAL-DAEMON-013: Unsupported schema version fails with explicit BurnBarDAGError.unsupportedSchemaVersion
         let unsupportedJSON = """
         {
             "schemaVersion": 99,
@@ -1017,10 +1017,16 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
         do {
             _ = try BurnBarDAGContractCodec.decode(from: unsupportedJSON)
             XCTFail("Expected decoding to fail for invalid schema version 99 (not a valid enum case)")
+        } catch let error as BurnBarDAGError {
+            // Verify explicit unsupportedSchemaVersion error is thrown
+            switch error {
+            case .unsupportedSchemaVersion(let version):
+                XCTAssertEqual(version, 99, "Unsupported schema version should be 99")
+            default:
+                XCTFail("Expected unsupportedSchemaVersion error, got \(error)")
+            }
         } catch {
-            // Expected - schema version 99 is not a valid BurnBarDAGSchemaVersion case
-            // Swift Codable throws DecodingError for unknown enum raw values
-            // This demonstrates that invalid schema versions are properly rejected
+            XCTFail("Expected BurnBarDAGError, got \(error)")
         }
     }
 
@@ -1135,8 +1141,8 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
     }
 
     func testVAL_DAEMON_013_UnsupportedVersionViaRawJSONFails() throws {
-        // VAL-DAEMON-013: Unsupported schema version (raw value not in enum) fails explicitly
-        // Encode with a schema version value that doesn't exist in the enum
+        // VAL-DAEMON-013: Unsupported schema version (raw value not in enum) fails with explicit error
+        // Using JSONDecoder directly to verify custom init properly rejects unknown schema versions
         let jsonWithInvalidVersion = """
         {
             "schemaVersion": 999,
@@ -1149,10 +1155,16 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
         do {
             _ = try JSONDecoder().decode(BurnBarDAGContract.self, from: jsonWithInvalidVersion)
             XCTFail("Expected decoding to fail for invalid schema version")
+        } catch let error as BurnBarDAGError {
+            // Verify explicit unsupportedSchemaVersion error is thrown
+            switch error {
+            case .unsupportedSchemaVersion(let version):
+                XCTAssertEqual(version, 999, "Unsupported schema version should be 999")
+            default:
+                XCTFail("Expected unsupportedSchemaVersion error, got \(error)")
+            }
         } catch {
-            // Expected - invalid schema version values cannot be decoded
-            // The error type depends on whether Swift treats unknown enum values as failures
-            // or silently defaults - either way, the contract is invalid
+            XCTFail("Expected BurnBarDAGError, got \(error)")
         }
     }
 }
