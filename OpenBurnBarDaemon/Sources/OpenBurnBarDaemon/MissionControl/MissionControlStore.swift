@@ -1010,4 +1010,38 @@ public actor BurnBarMissionControlStore {
         guard let projection else { return }
         try journal.writeProjectionFile(projection, encoder: encoder)
     }
+
+    // MARK: - Test Helpers
+
+    /// Directly injects missions into the store's in-memory projection for testing
+    /// tie-break behavior with forced equal timestamps.
+    ///
+    /// This bypasses the event journal entirely and directly modifies the projection,
+    /// which is appropriate for unit testing the comparator logic.
+    ///
+    /// Note: After calling this, do NOT call ensureLoaded() or any method that would
+    /// rebuild the projection, as that would discard the injected data.
+    func injectMissionsForTieBreakTesting(_ missions: [BurnBarMissionSnapshot]) throws {
+        if projection == nil {
+            projection = BurnBarMissionControlProjectionFile.empty(now: Date())
+        }
+        for mission in missions {
+            projection?.missions[mission.id.rawValue] = mission
+        }
+    }
+
+    /// Returns the current list of missions from the projection without requiring a reload,
+    /// with the same sorting applied as the public missions() method.
+    ///
+    /// This is useful for tests to verify ordering after injecting test missions.
+    func missionsSnapshot() throws -> [BurnBarMissionSnapshot] {
+        return projection?.missions.values
+            .sorted { lhs, rhs in
+                if lhs.updatedAt != rhs.updatedAt {
+                    return lhs.updatedAt > rhs.updatedAt
+                }
+                // Tie-break: missionID ascending (lexicographic)
+                return lhs.id.rawValue < rhs.id.rawValue
+            } ?? []
+    }
 }

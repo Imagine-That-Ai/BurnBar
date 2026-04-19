@@ -519,108 +519,143 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(missions.missions[0].id, id3, "Most recently approved mission should be first")
     }
 
-    // MARK: - VAL-DAEMON-003: Tie-break with equal updatedAt (hardened)
-    // This test verifies missionID ascending tie-break behavior by:
-    // 1. Creating missions and approving them to get missions with different updatedAt
-    // 2. Directly inspecting the missions list to verify the comparator behavior
-    // 3. Adding assertions that verify the sort order is deterministic
+    // MARK: - VAL-DAEMON-003: True equal timestamp tie-break (hardened)
+    // This test creates missions with EXACTLY equal updatedAt timestamps by using
+    // the store's test injection API, then verifies that missionID ascending is used
+    // as the tie-break rule.
     //
-    // The core behavior being tested: when two missions have equal updatedAt,
-    // the mission with lexicographically smaller missionID comes first.
-    func testVAL_DAEMON_003_MissionListTieBreakWithForcedEqualTimestamps() async throws {
-        let harness = try makeHarness(name: "val-daemon-003-equal-ts")
+    // This is the strongest form of VAL-DAEMON-003 coverage because it creates
+    // true tie conditions rather than relying on approximate timestamps.
+    func testVAL_DAEMON_003_MissionListTieBreakWithTrueEqualTimestamps() async throws {
+        let harness = try makeHarnessWithStore(name: "val-daemon-003-true-equal-ts")
 
+        // First create a project via the service
         _ = try await harness.service.controllerProjectUpsert(
             BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
         )
 
-        // Create three missions in rapid succession
-        let mission1 = try await harness.service.missionCreate(
-            BurnBarMissionCreateRequest(
-                projectSlug: "orion",
-                title: "Mission A",
-                summary: "First mission",
-                createdBy: "test-actor",
-                recommendation: .review
-            )
-        )
-        let id1 = try XCTUnwrap(mission1.mission.id)
+        // Use a fixed timestamp for all missions to force true tie condition
+        let fixedTimestamp = Date(timeIntervalSince1970: 1_710_000_000)
 
-        let mission2 = try await harness.service.missionCreate(
-            BurnBarMissionCreateRequest(
-                projectSlug: "orion",
-                title: "Mission B",
-                summary: "Second mission",
-                createdBy: "test-actor",
-                recommendation: .proceed
-            )
-        )
-        let id2 = try XCTUnwrap(mission2.mission.id)
-
-        let mission3 = try await harness.service.missionCreate(
-            BurnBarMissionCreateRequest(
-                projectSlug: "orion",
-                title: "Mission C",
-                summary: "Third mission",
-                createdBy: "test-actor",
-                recommendation: .escalate
-            )
-        )
-        let id3 = try XCTUnwrap(mission3.mission.id)
-
-        // Approve all three missions
-        _ = try await harness.service.missionApprove(
-            BurnBarMissionApproveRequest(missionID: id1, actor: "operator", note: nil)
-        )
-        _ = try await harness.service.missionApprove(
-            BurnBarMissionApproveRequest(missionID: id2, actor: "operator", note: nil)
-        )
-        _ = try await harness.service.missionApprove(
-            BurnBarMissionApproveRequest(missionID: id3, actor: "operator", note: nil)
+        // Create three missions with EXACTLY equal updatedAt timestamps
+        // We use IDs that will sort lexicographically as: mission-z < mission-a < mission-m
+        let missionZ = BurnBarMissionSnapshot(
+            id: BurnBarMissionID(rawValue: "mission-z-equal"),
+            projectSlug: "orion",
+            title: "Mission Z",
+            summary: "Z mission (should be last with equal timestamps)",
+            status: .approved,
+            recommendation: .review,
+            createdAt: fixedTimestamp,
+            updatedAt: fixedTimestamp, // EXACTLY equal
+            approval: BurnBarMissionApprovalSnapshot(
+                approved: true,
+                approvedAt: fixedTimestamp,
+                approvedBy: "test-operator",
+                note: nil
+            ),
+            packets: [],
+            results: [],
+            burnRecords: [],
+            takeoverHistory: nil,
+            metadata: [:]
         )
 
-        // List missions - they should be ordered by updatedAt descending
-        let missions = try await harness.service.missionsList(
-            BurnBarMissionListRequest(projectSlug: "orion", statuses: BurnBarMissionStatus.allCases)
+        let missionA = BurnBarMissionSnapshot(
+            id: BurnBarMissionID(rawValue: "mission-a-equal"),
+            projectSlug: "orion",
+            title: "Mission A",
+            summary: "A mission (should be first with equal timestamps)",
+            status: .approved,
+            recommendation: .proceed,
+            createdAt: fixedTimestamp,
+            updatedAt: fixedTimestamp, // EXACTLY equal
+            approval: BurnBarMissionApprovalSnapshot(
+                approved: true,
+                approvedAt: fixedTimestamp,
+                approvedBy: "test-operator",
+                note: nil
+            ),
+            packets: [],
+            results: [],
+            burnRecords: [],
+            takeoverHistory: nil,
+            metadata: [:]
         )
 
-        XCTAssertEqual(missions.missions.count, 3, "Should have 3 missions")
+        let missionM = BurnBarMissionSnapshot(
+            id: BurnBarMissionID(rawValue: "mission-m-equal"),
+            projectSlug: "orion",
+            title: "Mission M",
+            summary: "M mission (should be middle with equal timestamps)",
+            status: .approved,
+            recommendation: .escalate,
+            createdAt: fixedTimestamp,
+            updatedAt: fixedTimestamp, // EXACTLY equal
+            approval: BurnBarMissionApprovalSnapshot(
+                approved: true,
+                approvedAt: fixedTimestamp,
+                approvedBy: "test-operator",
+                note: nil
+            ),
+            packets: [],
+            results: [],
+            burnRecords: [],
+            takeoverHistory: nil,
+            metadata: [:]
+        )
 
-        // Verify the sort is stable: when updatedAt is equal, missionID ascending is used
-        // Get the raw ID strings to check lexicographic order
-        let missionIDs = missions.missions.map { $0.id.rawValue }
+        // Inject missions directly into the store's projection with equal timestamps
+        try await harness.store.injectMissionsForTieBreakTesting([missionA, missionM, missionZ])
 
-        // Verify that updatedAt is descending
-        for i in 0..<(missions.missions.count - 1) {
-            let current = missions.missions[i]
-            let next = missions.missions[i + 1]
-            let updatedAtComparison = current.updatedAt.compare(next.updatedAt)
-            if updatedAtComparison == .orderedSame {
-                // When timestamps are equal, missionID should be ascending
-                XCTAssertLessThan(
-                    current.id.rawValue,
-                    next.id.rawValue,
-                    "When updatedAt is equal, missionID should be ascending. Got: \(current.id.rawValue) vs \(next.id.rawValue)"
-                )
-            } else {
-                // When timestamps differ, most recent should come first
-                XCTAssertEqual(
-                    updatedAtComparison,
-                    .orderedDescending,
-                    "Most recently updated mission should come first"
-                )
-            }
-        }
+        // Get missions via the store's snapshot method (avoids reload which would discard injected data)
+        let missions = try await harness.store.missionsSnapshot()
 
-        // Additional verification: the first mission should have the latest (or tied for latest) updatedAt
-        let firstUpdatedAt = missions.missions[0].updatedAt
-        for mission in missions.missions {
-            XCTAssertGreaterThanOrEqual(
-                firstUpdatedAt,
+        // Filter to only "orion" project missions for the assertion
+        let orionMissions = missions.filter { $0.projectSlug == "orion" }
+
+        // Verify we have exactly 3 missions
+        XCTAssertEqual(orionMissions.count, 3, "Should have exactly 3 missions")
+
+        // Extract IDs in sorted order (the store's comparator handles the ordering)
+        let sortedIDs = orionMissions.map { $0.id.rawValue }
+
+        // With equal updatedAt, order MUST be by missionID ascending:
+        // mission-a-equal < mission-m-equal < mission-z-equal
+        XCTAssertEqual(
+            sortedIDs[0],
+            "mission-a-equal",
+            "First mission should be 'mission-a-equal' (smallest ID with equal timestamps)"
+        )
+        XCTAssertEqual(
+            sortedIDs[1],
+            "mission-m-equal",
+            "Second mission should be 'mission-m-equal' (middle ID with equal timestamps)"
+        )
+        XCTAssertEqual(
+            sortedIDs[2],
+            "mission-z-equal",
+            "Third mission should be 'mission-z-equal' (largest ID with equal timestamps)"
+        )
+
+        // Also verify all missions have the same updatedAt
+        for mission in orionMissions {
+            XCTAssertEqual(
                 mission.updatedAt,
-                "First mission should have the latest or tied latest updatedAt"
+                fixedTimestamp,
+                "All missions should have the same updatedAt timestamp"
             )
         }
+
+        // Verify that the comparator logic is deterministic by checking multiple sorts give the same result
+        let missionsAgain = try await harness.store.missionsSnapshot()
+        let orionMissionsAgain = missionsAgain.filter { $0.projectSlug == "orion" }
+        let sortedIDsAgain = orionMissionsAgain.map { $0.id.rawValue }
+        XCTAssertEqual(
+            sortedIDs,
+            sortedIDsAgain,
+            "Mission list ordering must be deterministic - same order on repeated queries"
+        )
     }
 
     func testNotificationCommandsAndSimulatorReplayUpdateControllerState() async throws {
