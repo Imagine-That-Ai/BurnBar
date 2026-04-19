@@ -121,7 +121,7 @@ public struct BurnBarContextSelector {
             }
             return nil
         case .generic:
-            guard !state.toolAlreadyCompleted, let firstTool = intent.requestedTools.first else {
+            guard !state.toolAlreadyCompleted, let firstTool = intent.requestedToolsOrEmpty.first else {
                 return nil
             }
             switch firstTool {

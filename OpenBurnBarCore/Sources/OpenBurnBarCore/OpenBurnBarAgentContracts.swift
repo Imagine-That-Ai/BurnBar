@@ -7,6 +7,13 @@ public enum BurnBarAgentIntentKind: String, Codable, CaseIterable, Hashable, Sen
     case generic
 }
 
+/// Risk classification for agent tools and intents.
+public enum BurnBarToolRisk: String, Codable, CaseIterable, Hashable, Sendable {
+    case low
+    case medium
+    case high
+}
+
 public struct BurnBarTextReplacement: Codable, Hashable, Sendable {
     public let from: String
     public let to: String
@@ -39,7 +46,7 @@ public struct BurnBarAgentIntent: Codable, Hashable, Sendable {
     public let searchQuery: String?
     public let replacement: BurnBarTextReplacement?
     public let terminalCommand: BurnBarTerminalCommandIntent?
-    public let requestedTools: [BurnBarToolKind]
+    public let requestedTools: [BurnBarToolKind]?
     public let toolArguments: BurnBarJSONValue?
 
     public init(
@@ -50,7 +57,7 @@ public struct BurnBarAgentIntent: Codable, Hashable, Sendable {
         searchQuery: String? = nil,
         replacement: BurnBarTextReplacement? = nil,
         terminalCommand: BurnBarTerminalCommandIntent? = nil,
-        requestedTools: [BurnBarToolKind] = [],
+        requestedTools: [BurnBarToolKind]? = nil,
         toolArguments: BurnBarJSONValue? = nil
     ) {
         self.kind = kind
@@ -62,6 +69,70 @@ public struct BurnBarAgentIntent: Codable, Hashable, Sendable {
         self.terminalCommand = terminalCommand
         self.requestedTools = requestedTools
         self.toolArguments = toolArguments
+    }
+
+    public var requestedToolsOrEmpty: [BurnBarToolKind] {
+        requestedTools ?? []
+    }
+}
+
+/// Typed planner input contract with required constraints, risk level, and desired outputs.
+/// This is the canonical input to the BurnBarPlannerService.plan() method.
+public struct BurnBarPlannerInput: Codable, Hashable, Sendable {
+    public let schemaVersion: Int
+    public let missionID: BurnBarMissionID
+    public let normalizedIntent: BurnBarAgentIntent
+    /// Explicit constraints that the plan must respect (e.g., file paths to avoid, tools not to use).
+    public let constraints: [String]
+    /// Risk classification derived from intent and tool set.
+    public let riskLevel: BurnBarToolRisk
+    /// Explicit desired outputs the plan should produce.
+    public let desiredOutputs: [String]
+    /// Optional workflow hints derived from workspace workflow metadata.
+    public let workflowHints: [String: BurnBarJSONValue]?
+    /// Optional tool hints derived from explicit tool metadata.
+    public let toolHints: [String: BurnBarJSONValue]?
+    /// Optional policy overrides.
+    public let policyOverrides: [String: BurnBarJSONValue]?
+
+    public init(
+        schemaVersion: Int = 1,
+        missionID: BurnBarMissionID,
+        normalizedIntent: BurnBarAgentIntent,
+        constraints: [String],
+        riskLevel: BurnBarToolRisk,
+        desiredOutputs: [String],
+        workflowHints: [String: BurnBarJSONValue]? = nil,
+        toolHints: [String: BurnBarJSONValue]? = nil,
+        policyOverrides: [String: BurnBarJSONValue]? = nil
+    ) {
+        self.schemaVersion = schemaVersion
+        self.missionID = missionID
+        self.normalizedIntent = normalizedIntent
+        self.constraints = constraints
+        self.riskLevel = riskLevel
+        self.desiredOutputs = desiredOutputs
+        self.workflowHints = workflowHints
+        self.toolHints = toolHints
+        self.policyOverrides = policyOverrides
+    }
+}
+
+/// Error thrown when planner input validation fails.
+public enum BurnBarPlannerInputError: Error, LocalizedError {
+    case missingRequiredField(String)
+    case unsupportedSchemaVersion(Int)
+    case invalidIntent(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingRequiredField(let field):
+            return "Planner input is missing required field: '\(field)'."
+        case .unsupportedSchemaVersion(let version):
+            return "Planner input has unsupported schema version \(version)."
+        case .invalidIntent(let message):
+            return "Planner input has invalid intent: \(message)"
+        }
     }
 }
 
@@ -328,6 +399,6 @@ public extension BurnBarJSONValue {
 
 public extension BurnBarAgentIntent {
     var requiresWorkspaceToolExecution: Bool {
-        !requestedTools.isEmpty
+        !(requestedTools ?? []).isEmpty
     }
 }

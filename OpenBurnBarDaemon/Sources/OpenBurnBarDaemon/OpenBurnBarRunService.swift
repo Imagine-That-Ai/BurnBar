@@ -482,7 +482,7 @@ public actor BurnBarRunService {
         if let approval = policyEngine.approvalDescriptor(
             explicitApprovalRequired: run.plan.requiresApproval && !run.approvalResolvedForAttempt && run.approvalRequest == nil,
             intent: run.intent,
-            tool: run.intent.requestedTools.last,
+            tool: run.intent.requestedToolsOrEmpty.last,
             customTitle: run.plan.approvalTitle,
             customMessage: run.plan.approvalMessage
         ) {
@@ -557,7 +557,7 @@ public actor BurnBarRunService {
                 return
             }
 
-            if run.intent.kind == .generic && run.intent.requestedTools.count == 1 && run.intent.toolArguments == nil {
+            if run.intent.kind == .generic && run.intent.requestedToolsOrEmpty.count == 1 && run.intent.toolArguments == nil {
                 try await completeRunAndRecordUsage(for: &run)
                 return
             }
@@ -624,7 +624,7 @@ public actor BurnBarRunService {
             }
             return nil
         case .generic:
-            if run.intent.requestedTools.count == 1 {
+            if run.intent.requestedToolsOrEmpty.count == 1 {
                 return try contextSelector.nextAction(for: run.intent, state: selectionState)
             }
             return nil
@@ -932,7 +932,7 @@ public actor BurnBarRunService {
             break
         }
 
-        if run.intent.kind == .runTerminal || (run.intent.kind == .generic && run.intent.requestedTools.count == 1) {
+        if run.intent.kind == .runTerminal || (run.intent.kind == .generic && run.intent.requestedToolsOrEmpty.count == 1) {
             run.companionToolCompleted = true
         }
 

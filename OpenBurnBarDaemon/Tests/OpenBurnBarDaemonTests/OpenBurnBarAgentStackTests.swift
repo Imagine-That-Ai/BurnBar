@@ -450,6 +450,415 @@ final class BurnBarAgentStackTests: XCTestCase {
         XCTAssertEqual(decision.action, .complete)
         XCTAssertEqual(decision.message, "Done.")
     }
+
+    // MARK: - VAL-DAEMON-007: Intent normalization precedence is deterministic
+
+    func testPlannerIntentNormalizationPrecedenceIsDeterministic_explicitIntentWinsOverWorkflow() throws {
+        let planner = BurnBarPlannerService()
+        // When both explicit agentIntent AND workspaceWorkflow are provided,
+        // explicit intent metadata must win (precedence: explicit > workflow > tool > prompt > generic)
+        let planned = try planner.plan(
+            for: BurnBarRunCreateRequest(
+                clientID: BurnBarClientID(rawValue: "client-a"),
+                sessionID: BurnBarSessionID(rawValue: "session-a"),
+                prompt: "replace old with new",
+                modelID: "glm-5",
+                metadata: [
+                    // Explicit intent (highest precedence)
+                    "agentIntent": .object([
+                        "kind": .string("inspect_workspace"),
+                        "objective": .string("explicit objective"),
+                        "summary": .string("explicit summary"),
+                        "searchQuery": .string("explicit query")
+                    ]),
+                    // Workflow metadata (should be ignored because explicit intent wins)
+                    "workspaceWorkflow": .object([
+                        "type": .string("replace_string_in_file"),
+                        "path": .string("ShouldBeIgnored.swift"),
+                        "from": .string("old"),
+                        "to": .string("new")
+                    ])
+                ]
+            )
+        )
+
+        // Precedence: explicit intent > workflow metadata
+        XCTAssertEqual(planned.intent.kind, .inspectWorkspace)
+        XCTAssertEqual(planned.intent.searchQuery, "explicit query")
+        XCTAssertEqual(planned.intent.requestedTools, [.searchWorkspace])
+        // Workflow fields should NOT be present
+        XCTAssertNil(planned.intent.targetPath)
+        XCTAssertNil(planned.intent.replacement)
+    }
+
+    func testPlannerIntentNormalizationPrecedenceIsDeterministic_workflowWinsOverTool() throws {
+        let planner = BurnBarPlannerService()
+        // When both workspaceWorkflow AND toolKind are provided, workflow wins
+        let planned = try planner.plan(
+            for: BurnBarRunCreateRequest(
+                clientID: BurnBarClientID(rawValue: "client-a"),
+                sessionID: BurnBarSessionID(rawValue: "session-a"),
+                prompt: "run tests",
+                modelID: "glm-5",
+                metadata: [
+                    // Workflow metadata (second highest precedence)
+                    "workspaceWorkflow": .object([
+                        "type": .string("replace_string_in_file"),
+                        "path": .string("File.swift"),
+                        "from": .string("a"),
+                        "to": .string("b")
+                    ]),
+                    // Tool metadata (should be ignored because workflow wins)
+                    "toolKind": .string("run_terminal"),
+                    "toolArguments": .object([
+                        "command": .string("npm test")
+                    ])
+                ]
+            )
+        )
+
+        // Precedence: workflow > tool
+        XCTAssertEqual(planned.intent.kind, .replaceStringInFile)
+        XCTAssertEqual(planned.intent.targetPath, "File.swift")
+        XCTAssertEqual(planned.intent.requestedTools, [.readFile, .applyPatch])
+    }
+
+    func testPlannerIntentNormalizationPrecedenceIsDeterministic_toolWinsOverPrompt() throws {
+        let planner = BurnBarPlannerService()
+        // When both toolKind and prompt heuristics are provided, tool wins
+        let planned = try planner.plan(
+            for: BurnBarRunCreateRequest(
+                clientID: BurnBarClientID(rawValue: "client-a"),
+                sessionID: BurnBarSessionID(rawValue: "session-a"),
+                prompt: "replace \"from\" with \"to\"", // This would trigger replace heuristic
+                modelID: "glm-5",
+                metadata: [
+                    // Tool metadata (second lowest precedence)
+                    "toolKind": .string("search_workspace"),
+                    "toolArguments": .object([
+                        "query": .string("specific query")
+                    ])
+                ]
+            )
+        )
+
+        // Precedence: tool > prompt
+        XCTAssertEqual(planned.intent.kind, .inspectWorkspace)
+        XCTAssertEqual(planned.intent.searchQuery, "specific query")
+        XCTAssertEqual(planned.intent.requestedTools, [.searchWorkspace])
+    }
+
+    func testPlannerIntentNormalizationPrecedenceIsDeterministic_promptWinsOverGenericFallback() throws {
+        let planner = BurnBarPlannerService()
+        // When prompt can be parsed, it wins over generic fallback
+        let planned = try planner.plan(
+            for: BurnBarRunCreateRequest(
+                clientID: BurnBarClientID(rawValue: "client-a"),
+                sessionID: BurnBarSessionID(rawValue: "session-a"),
+                prompt: "search for BurnBarRunService", // Matches search heuristic
+                modelID: "glm-5",
+                metadata: [:] // No explicit intent, workflow, or tool metadata
+            )
+        )
+
+        // Precedence: prompt > generic fallback
+        XCTAssertEqual(planned.intent.kind, .inspectWorkspace)
+        XCTAssertEqual(planned.intent.searchQuery, "BurnBarRunService")
+        XCTAssertEqual(planned.intent.requestedTools, [.searchWorkspace])
+    }
+
+    func testPlannerIntentNormalizationPrecedenceMatrix_fullOrderingIsStable() throws {
+        // VAL-DAEMON-007: Intent resolution precedence is deterministic:
+        // explicit intent metadata > workflow metadata > tool metadata > prompt heuristics > generic fallback
+        let planner = BurnBarPlannerService()
+
+        // Case 1: All sources present - explicit wins
+        let allSources = try planner.plan(for: BurnBarRunCreateRequest(
+            clientID: BurnBarClientID(rawValue: "client-a"),
+            sessionID: BurnBarSessionID(rawValue: "session-a"),
+            prompt: "search directive",
+            modelID: "glm-5",
+            metadata: [
+                "agentIntent": .object([
+                    "kind": .string("generic"),
+                    "objective": .string("from explicit"),
+                    "summary": .string("explicit wins")
+                ]),
+                "workspaceWorkflow": .object([
+                    "type": .string("replace_string_in_file"),
+                    "path": .string("workflow.swift"),
+                    "from": .string("a"),
+                    "to": .string("b")
+                ]),
+                "toolKind": .string("run_terminal"),
+                "activeFilePath": .string("prompt.swift")
+            ]
+        ))
+        XCTAssertEqual(allSources.intent.summary, "explicit wins")
+
+        // Case 2: No explicit, but workflow and tool - workflow wins
+        let workflowAndTool = try planner.plan(for: BurnBarRunCreateRequest(
+            clientID: BurnBarClientID(rawValue: "client-a"),
+            sessionID: BurnBarSessionID(rawValue: "session-a"),
+            prompt: "some prompt",
+            modelID: "glm-5",
+            metadata: [
+                "workspaceWorkflow": .object([
+                    "type": .string("replace_string_in_file"),
+                    "path": .string("workflow.swift"),
+                    "from": .string("a"),
+                    "to": .string("b")
+                ]),
+                "toolKind": .string("run_terminal")
+            ]
+        ))
+        XCTAssertEqual(workflowAndTool.intent.kind, .replaceStringInFile)
+
+        // Case 3: No explicit, no workflow, but tool - tool wins
+        let toolOnly = try planner.plan(for: BurnBarRunCreateRequest(
+            clientID: BurnBarClientID(rawValue: "client-a"),
+            sessionID: BurnBarSessionID(rawValue: "session-a"),
+            prompt: "some prompt",
+            modelID: "glm-5",
+            metadata: [
+                "toolKind": .string("run_terminal"),
+                "toolArguments": .object(["command": .string("echo test")])
+            ]
+        ))
+        XCTAssertEqual(toolOnly.intent.kind, .runTerminal)
+
+        // Case 4: No explicit, no workflow, no tool, but prompt parses - prompt wins
+        let promptOnly = try planner.plan(for: BurnBarRunCreateRequest(
+            clientID: BurnBarClientID(rawValue: "client-a"),
+            sessionID: BurnBarSessionID(rawValue: "session-a"),
+            prompt: "run echo hello",
+            modelID: "glm-5",
+            metadata: [:]
+        ))
+        XCTAssertEqual(promptOnly.intent.kind, .runTerminal)
+
+        // Case 5: Nothing parses - generic fallback
+        let genericFallback = try planner.plan(for: BurnBarRunCreateRequest(
+            clientID: BurnBarClientID(rawValue: "client-a"),
+            sessionID: BurnBarSessionID(rawValue: "session-a"),
+            prompt: "do something vague",
+            modelID: "glm-5",
+            metadata: [:]
+        ))
+        XCTAssertEqual(genericFallback.intent.kind, .generic)
+    }
+
+    // MARK: - VAL-DAEMON-008: Unsupported workflow intent fails pre-execution
+
+    func testPlannerUnsupportedWorkflowIntentFallsBackGracefully() throws {
+        let planner = BurnBarPlannerService()
+
+        // Unsupported workflow type should be skipped (returns nil) so fallback to generic
+        // Note: workflow payload still requires path/from/to fields for decoding, but type check fails
+        let planned = try planner.plan(
+            for: BurnBarRunCreateRequest(
+                clientID: BurnBarClientID(rawValue: "client-a"),
+                sessionID: BurnBarSessionID(rawValue: "session-a"),
+                prompt: "do something",
+                modelID: "glm-5",
+                metadata: [
+                    "workspaceWorkflow": .object([
+                        "type": .string("unsupported_workflow_type"),
+                        "path": .string("some/path.swift"),
+                        "from": .string("old"),
+                        "to": .string("new")
+                    ])
+                ]
+            )
+        )
+        // Should fall back to generic since unsupported workflow is skipped
+        XCTAssertEqual(planned.intent.kind, .generic)
+        XCTAssertEqual(planned.intent.objective, "do something")
+    }
+
+    func testPlannerUnsupportedWorkflowWithValidFallbackDoesNotThrow() throws {
+        // Even if one workflow type is unsupported, if another parsing path succeeds, it should work
+        let planner = BurnBarPlannerService()
+
+        // This has an unsupported workflow but tool metadata will be used instead
+        let planned = try planner.plan(
+            for: BurnBarRunCreateRequest(
+                clientID: BurnBarClientID(rawValue: "client-a"),
+                sessionID: BurnBarSessionID(rawValue: "session-a"),
+                prompt: "run tests",
+                modelID: "glm-5",
+                metadata: [
+                    "workspaceWorkflow": .object([
+                        "type": .string("unsupported_type"),
+                        "path": .string("some/path.swift"),
+                        "from": .string("old"),
+                        "to": .string("new")
+                    ]),
+                    "toolKind": .string("run_terminal"),
+                    "toolArguments": .object([
+                        "command": .string("npm test")
+                    ])
+                ]
+            )
+        )
+
+        // Tool metadata wins because workflow was unsupported
+        XCTAssertEqual(planned.intent.kind, .runTerminal)
+        XCTAssertEqual(planned.intent.terminalCommand?.command, "npm test")
+    }
+
+    // MARK: - VAL-DAEMON-014: Typed planner input requires constraints, risk level, and desired outputs
+
+    func testTypedPlannerInputRejectsMissingConstraints() throws {
+        let planner = BurnBarPlannerService()
+        let intent = BurnBarAgentIntent(
+            kind: .generic,
+            objective: "test",
+            summary: "test summary"
+        )
+        let input = BurnBarPlannerInput(
+            missionID: BurnBarMissionID(rawValue: "mission-1"),
+            normalizedIntent: intent,
+            constraints: [], // Empty constraints - should fail
+            riskLevel: .low,
+            desiredOutputs: ["output1"]
+        )
+
+        do {
+            _ = try planner.plan(for: input)
+            XCTFail("Expected planner to reject empty constraints")
+        } catch let error as BurnBarPlannerServiceError {
+            switch error {
+            case .invalidPlannerInput(let message):
+                XCTAssertTrue(message.contains("constraints"))
+                XCTAssertTrue(message.contains("cannot be empty"))
+            default:
+                XCTFail("Expected invalidPlannerInput error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarPlannerServiceError, got \(error)")
+        }
+    }
+
+    func testTypedPlannerInputRejectsMissingDesiredOutputs() throws {
+        let planner = BurnBarPlannerService()
+        let intent = BurnBarAgentIntent(
+            kind: .generic,
+            objective: "test",
+            summary: "test summary"
+        )
+        let input = BurnBarPlannerInput(
+            missionID: BurnBarMissionID(rawValue: "mission-1"),
+            normalizedIntent: intent,
+            constraints: ["constraint1"],
+            riskLevel: .low,
+            desiredOutputs: [] // Empty desired outputs - should fail
+        )
+
+        do {
+            _ = try planner.plan(for: input)
+            XCTFail("Expected planner to reject empty desiredOutputs")
+        } catch let error as BurnBarPlannerServiceError {
+            switch error {
+            case .invalidPlannerInput(let message):
+                XCTAssertTrue(message.contains("desiredOutputs"))
+                XCTAssertTrue(message.contains("cannot be empty"))
+            default:
+                XCTFail("Expected invalidPlannerInput error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarPlannerServiceError, got \(error)")
+        }
+    }
+
+    func testTypedPlannerInputAcceptsValidInputWithAllRequiredFields() throws {
+        let planner = BurnBarPlannerService()
+        let intent = BurnBarAgentIntent(
+            kind: .replaceStringInFile,
+            objective: "replace old with new",
+            summary: "replace operation",
+            targetPath: "test.swift",
+            replacement: BurnBarTextReplacement(from: "old", to: "new"),
+            requestedTools: [.readFile, .applyPatch]
+        )
+        let input = BurnBarPlannerInput(
+            missionID: BurnBarMissionID(rawValue: "mission-1"),
+            normalizedIntent: intent,
+            constraints: ["do not modify tests", "preserve imports"],
+            riskLevel: .medium,
+            desiredOutputs: ["file updated", "compilation succeeds"]
+        )
+
+        let planned = try planner.plan(for: input)
+
+        XCTAssertEqual(planned.intent.kind, .replaceStringInFile)
+        XCTAssertEqual(planned.constraints, ["do not modify tests", "preserve imports"])
+        XCTAssertEqual(planned.riskLevel, .medium)
+        XCTAssertEqual(planned.desiredOutputs, ["file updated", "compilation succeeds"])
+        XCTAssertEqual(planned.outline.steps.count, 3)
+    }
+
+    func testTypedPlannerInputPreservesFieldsThroughPlanAndOutline() throws {
+        let planner = BurnBarPlannerService()
+        let intent = BurnBarAgentIntent(
+            kind: .inspectWorkspace,
+            objective: "find relevant files",
+            summary: "workspace inspection",
+            searchQuery: "BurnBarRunService",
+            requestedTools: [.searchWorkspace]
+        )
+        let input = BurnBarPlannerInput(
+            missionID: BurnBarMissionID(rawValue: "mission-2"),
+            normalizedIntent: intent,
+            constraints: ["only search src/"],
+            riskLevel: .low,
+            desiredOutputs: ["files identified"],
+            workflowHints: ["scope": .string("src")]
+        )
+
+        let planned = try planner.plan(for: input)
+
+        // Fields preserved through planning
+        XCTAssertEqual(planned.intent.kind, .inspectWorkspace)
+        XCTAssertEqual(planned.intent.searchQuery, "BurnBarRunService")
+        XCTAssertEqual(planned.constraints, ["only search src/"])
+        XCTAssertEqual(planned.riskLevel, .low)
+        XCTAssertEqual(planned.desiredOutputs, ["files identified"])
+        // Outline generated correctly
+        XCTAssertEqual(planned.outline.objective, "find relevant files")
+        XCTAssertEqual(planned.outline.steps.count, 3) // search, inspect, summarize
+    }
+
+    func testTypedPlannerInputRejectsUnsupportedSchemaVersion() throws {
+        let planner = BurnBarPlannerService()
+        let intent = BurnBarAgentIntent(
+            kind: .generic,
+            objective: "test",
+            summary: "test"
+        )
+        let input = BurnBarPlannerInput(
+            schemaVersion: 99, // Unsupported version
+            missionID: BurnBarMissionID(rawValue: "mission-1"),
+            normalizedIntent: intent,
+            constraints: ["constraint"],
+            riskLevel: .low,
+            desiredOutputs: ["output"]
+        )
+
+        do {
+            _ = try planner.plan(for: input)
+            XCTFail("Expected planner to reject unsupported schema version")
+        } catch let error as BurnBarPlannerInputError {
+            switch error {
+            case .unsupportedSchemaVersion(let version):
+                XCTAssertEqual(version, 99)
+            default:
+                XCTFail("Expected unsupportedSchemaVersion error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarPlannerInputError, got \(error)")
+        }
+    }
 }
 
 private actor BurnBarQueuedLoopProviderExecutor: BurnBarProviderExecuting {

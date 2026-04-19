@@ -3,28 +3,48 @@ import Foundation
 
 public enum BurnBarPlannerServiceError: Error, LocalizedError {
     case invalidIntent(String)
+    case invalidPlannerInput(String)
 
     public var errorDescription: String? {
         switch self {
         case .invalidIntent(let message):
             return "OpenBurnBar planner could not normalize the requested intent: \(message)"
+        case .invalidPlannerInput(let message):
+            return "OpenBurnBar planner input is invalid: \(message)"
         }
     }
 }
 
+/// Extended planned run that preserves typed planner input fields through planning and dispatch.
 public struct BurnBarPlannedRun: Sendable {
     public let intent: BurnBarAgentIntent
     public let outline: BurnBarPlanOutline
+    /// Constraints from the typed planner input, preserved for dispatch snapshots.
+    public let constraints: [String]
+    /// Risk level from the typed planner input, preserved for dispatch snapshots.
+    public let riskLevel: BurnBarToolRisk
+    /// Desired outputs from the typed planner input, preserved for dispatch snapshots.
+    public let desiredOutputs: [String]
 
-    public init(intent: BurnBarAgentIntent, outline: BurnBarPlanOutline) {
+    public init(
+        intent: BurnBarAgentIntent,
+        outline: BurnBarPlanOutline,
+        constraints: [String] = [],
+        riskLevel: BurnBarToolRisk = .low,
+        desiredOutputs: [String] = []
+    ) {
         self.intent = intent
         self.outline = outline
+        self.constraints = constraints
+        self.riskLevel = riskLevel
+        self.desiredOutputs = desiredOutputs
     }
 }
 
 public struct BurnBarPlannerService {
     public init() {}
 
+    /// Plans from a raw run create request (backwards-compatible, no typed input validation).
     public func plan(for request: BurnBarRunCreateRequest) throws -> BurnBarPlannedRun {
         let intent = try normalizeIntent(from: request)
         return BurnBarPlannedRun(
@@ -33,9 +53,54 @@ public struct BurnBarPlannerService {
         )
     }
 
+    /// Plans from a typed planner input with required field validation.
+    /// - Throws: `BurnBarPlannerInputError.missingRequiredField` if constraints, riskLevel, or desiredOutputs are empty.
+    public func plan(for input: BurnBarPlannerInput) throws -> BurnBarPlannedRun {
+        // Validate required fields per VAL-DAEMON-014
+        if input.constraints.isEmpty {
+            throw BurnBarPlannerServiceError.invalidPlannerInput(
+                "constraints cannot be empty. At least one constraint must be specified."
+            )
+        }
+        if input.desiredOutputs.isEmpty {
+            throw BurnBarPlannerServiceError.invalidPlannerInput(
+                "desiredOutputs cannot be empty. At least one desired output must be specified."
+            )
+        }
+
+        // Validate schema version
+        guard input.schemaVersion == 1 else {
+            throw BurnBarPlannerInputError.unsupportedSchemaVersion(input.schemaVersion)
+        }
+
+        return BurnBarPlannedRun(
+            intent: input.normalizedIntent,
+            outline: makePlanOutline(for: input.normalizedIntent),
+            constraints: input.constraints,
+            riskLevel: input.riskLevel,
+            desiredOutputs: input.desiredOutputs
+        )
+    }
+
     public func normalizeIntent(from request: BurnBarRunCreateRequest) throws -> BurnBarAgentIntent {
         if let providedIntent = request.metadata["agentIntent"] {
-            return try providedIntent.decode(BurnBarAgentIntent.self)
+            var intent = try providedIntent.decode(BurnBarAgentIntent.self)
+            // Infer requestedTools from intent kind if not provided
+            if intent.requestedTools == nil {
+                let inferredTools = inferredRequestedTools(for: intent.kind)
+                intent = BurnBarAgentIntent(
+                    kind: intent.kind,
+                    objective: intent.objective,
+                    summary: intent.summary,
+                    targetPath: intent.targetPath,
+                    searchQuery: intent.searchQuery,
+                    replacement: intent.replacement,
+                    terminalCommand: intent.terminalCommand,
+                    requestedTools: inferredTools,
+                    toolArguments: intent.toolArguments
+                )
+            }
+            return intent
         }
 
         if let workflowIntent = try intentFromWorkflowMetadata(request) {
@@ -64,8 +129,10 @@ public struct BurnBarPlannerService {
         }
 
         let workflow = try workflowValue.decode(BurnBarReplaceStringWorkflowPayload.self)
+        // Only supported workflow type is replace_string_in_file
         guard workflow.type == "replace_string_in_file" else {
-            throw BurnBarPlannerServiceError.invalidIntent("Unsupported workflow type '\(workflow.type)'.")
+            // Return nil to allow fallback to tool metadata
+            return nil
         }
 
         return BurnBarAgentIntent(
@@ -253,6 +320,19 @@ public struct BurnBarPlannerService {
         }
 
         return nil
+    }
+
+    private func inferredRequestedTools(for kind: BurnBarAgentIntentKind) -> [BurnBarToolKind] {
+        switch kind {
+        case .inspectWorkspace:
+            return [.searchWorkspace]
+        case .replaceStringInFile:
+            return [.readFile, .applyPatch]
+        case .runTerminal:
+            return [.runTerminal]
+        case .generic:
+            return []
+        }
     }
 }
 
