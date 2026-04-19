@@ -1026,6 +1026,30 @@ final class OpenBurnBarDaemonManager {
         return saved
     }
 
+    func createMission(
+        projectSlug: String,
+        title: String,
+        summary: String,
+        createdBy: String,
+        recommendation: BurnBarMissionRecommendation
+    ) async throws -> BurnBarMissionMutationResponse {
+        guard case .healthy = status else {
+            throw OpenBurnBarDaemonManagerError.rpcError("OpenBurnBar daemon must be healthy before creating missions.")
+        }
+
+        let socketURL = paths.socketURL
+        let request = BurnBarMissionCreateRequest(
+            projectSlug: projectSlug,
+            title: title,
+            summary: summary,
+            createdBy: createdBy,
+            recommendation: recommendation
+        )
+        return try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.missionCreate(request, at: socketURL)
+        }
+    }
+
     func launchControllerReview(
         projectSlug: String,
         cadence: BurnBarControllerReviewCadence,

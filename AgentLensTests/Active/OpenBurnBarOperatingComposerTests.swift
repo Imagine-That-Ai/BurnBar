@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 @MainActor
@@ -374,5 +375,174 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
 
         let preserved = store.usages.filter { $0.projectName != project }
         store.replaceUsages(preserved + usages)
+    }
+}
+
+// MARK: - Mission Authoring Tests
+
+extension OpenBurnBarOperatingComposerTests {
+    @MainActor
+    func testMissionAuthoringValidationFailsWithEmptyProjectSlug() async throws {
+        let store = try makeInMemoryStore()
+        let layer = makeLayer(dataStore: store)
+
+        do {
+            _ = try await layer.createMission(
+                projectSlug: "",
+                title: "Ship the approval sheet",
+                summary: "OpenBurnBar should wrap up the approval sheet release.",
+                recommendation: .review
+            )
+            XCTFail("Expected validation error for empty projectSlug")
+        } catch {
+            XCTAssertTrue(error is MissionAuthoringError)
+            if case .validationFailed(let message) = error as? MissionAuthoringError {
+                XCTAssertTrue(message.contains("Project identifier"))
+            }
+        }
+
+        XCTAssertNotNil(layer.actionFeedback)
+        XCTAssertEqual(layer.actionFeedback?.kind, .missionCreation)
+        XCTAssertEqual(layer.actionFeedback?.tone, .error)
+    }
+
+    @MainActor
+    func testMissionAuthoringValidationFailsWithWhitespaceProjectSlug() async throws {
+        let store = try makeInMemoryStore()
+        let layer = makeLayer(dataStore: store)
+
+        do {
+            _ = try await layer.createMission(
+                projectSlug: "   ",
+                title: "Ship the approval sheet",
+                summary: "OpenBurnBar should wrap up the approval sheet release.",
+                recommendation: .review
+            )
+            XCTFail("Expected validation error for whitespace projectSlug")
+        } catch {
+            XCTAssertTrue(error is MissionAuthoringError)
+        }
+
+        XCTAssertNotNil(layer.actionFeedback)
+        XCTAssertEqual(layer.actionFeedback?.tone, .error)
+    }
+
+    @MainActor
+    func testMissionAuthoringValidationFailsWithEmptyTitle() async throws {
+        let store = try makeInMemoryStore()
+        let layer = makeLayer(dataStore: store)
+
+        do {
+            _ = try await layer.createMission(
+                projectSlug: "apollo",
+                title: "",
+                summary: "OpenBurnBar should wrap up the approval sheet release.",
+                recommendation: .review
+            )
+            XCTFail("Expected validation error for empty title")
+        } catch {
+            XCTAssertTrue(error is MissionAuthoringError)
+            if case .validationFailed(let message) = error as? MissionAuthoringError {
+                XCTAssertTrue(message.contains("title"))
+            }
+        }
+
+        XCTAssertNotNil(layer.actionFeedback)
+        XCTAssertEqual(layer.actionFeedback?.tone, .error)
+    }
+
+    @MainActor
+    func testMissionAuthoringValidationFailsWithEmptySummary() async throws {
+        let store = try makeInMemoryStore()
+        let layer = makeLayer(dataStore: store)
+
+        do {
+            _ = try await layer.createMission(
+                projectSlug: "apollo",
+                title: "Ship the approval sheet",
+                summary: "",
+                recommendation: .review
+            )
+            XCTFail("Expected validation error for empty summary")
+        } catch {
+            XCTAssertTrue(error is MissionAuthoringError)
+            if case .validationFailed(let message) = error as? MissionAuthoringError {
+                XCTAssertTrue(message.contains("summary"))
+            }
+        }
+
+        XCTAssertNotNil(layer.actionFeedback)
+        XCTAssertEqual(layer.actionFeedback?.tone, .error)
+    }
+
+    @MainActor
+    func testMissionAuthoringValidationFailsWithWhitespaceSummary() async throws {
+        let store = try makeInMemoryStore()
+        let layer = makeLayer(dataStore: store)
+
+        do {
+            _ = try await layer.createMission(
+                projectSlug: "apollo",
+                title: "Ship the approval sheet",
+                summary: "   ",
+                recommendation: .review
+            )
+            XCTFail("Expected validation error for whitespace summary")
+        } catch {
+            XCTAssertTrue(error is MissionAuthoringError)
+        }
+
+        XCTAssertNotNil(layer.actionFeedback)
+        XCTAssertEqual(layer.actionFeedback?.tone, .error)
+    }
+
+    @MainActor
+    func testMissionAuthoringValidationAcceptsAllRecommendationKinds() async throws {
+        let store = try makeInMemoryStore()
+        let layer = makeLayer(dataStore: store)
+
+        // Test that all recommendation kinds are accepted by validation (they don't cause validation failure)
+        // The daemon call would fail since there's no real daemon, but validation should pass
+        for recommendation in [BurnBarMissionRecommendation.proceed, .review, .pause] {
+            do {
+                _ = try await layer.createMission(
+                    projectSlug: "apollo-\(recommendation.rawValue)",
+                    title: "Mission with \(recommendation.rawValue) recommendation",
+                    summary: "Testing \(recommendation.rawValue) recommendation.",
+                    recommendation: recommendation
+                )
+                XCTFail("Expected daemon error (not validation error) for valid inputs with missing daemon")
+            } catch let error as MissionAuthoringError {
+                // Validation passed but daemon call failed
+                if case .daemonError = error {
+                    // Expected - daemon is not running in tests
+                } else {
+                    XCTFail("Expected daemonError, got \(error)")
+                }
+            } catch {
+                // Other errors are also acceptable since daemon is not running
+            }
+        }
+    }
+
+    @MainActor
+    func testMissionAuthoringActionKindIsAvailableInActionBar() throws {
+        let store = try makeInMemoryStore()
+        let layer = makeLayer(dataStore: store)
+
+        // Verify missionCreation action kind exists and has proper display properties
+        XCTAssertEqual(OpenBurnBarActionKind.missionCreation.label, "Create Mission")
+        XCTAssertEqual(OpenBurnBarActionKind.missionCreation.icon, "flag.badge.ellipsis")
+
+        // Verify history entry tint for missionCreation
+        let historyEntry = OpenBurnBarOperatingHistoryEntry(
+            id: "test-1",
+            kind: .missionCreation,
+            title: "Create Mission",
+            summary: "Mission created",
+            detail: nil,
+            createdAt: Date()
+        )
+        XCTAssertEqual(historyEntry.tint, DesignSystem.Colors.hermesAureate)
     }
 }

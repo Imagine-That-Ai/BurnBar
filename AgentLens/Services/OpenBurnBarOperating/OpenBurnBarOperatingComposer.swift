@@ -167,6 +167,9 @@ enum OpenBurnBarOperatingComposer {
                         createdAt: record.createdAt
                     )
                 }
+            case .missionCreation:
+                // Mission creation is recorded in history but doesn't affect decision state
+                break
             }
         }
 
@@ -1115,6 +1118,8 @@ enum OpenBurnBarOperatingComposer {
         switch record.actionKind {
         case .missionApproval:
             return "Mission approved"
+        case .missionCreation:
+            return "Mission created"
         case .directionOverride:
             if record.overrideMode == .supersedeStatus {
                 return "Direction overridden"

@@ -205,6 +205,19 @@ enum OpenBurnBarDaemonSocketClient {
         return response.project
     }
 
+    static func missionCreate(
+        _ request: BurnBarMissionCreateRequest,
+        at socketURL: URL
+    ) throws -> BurnBarMissionMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .missionCreate,
+                params: request
+            ),
+            socketURL: socketURL
+        ) as BurnBarMissionMutationResponse
+    }
+
     static func recordControllerReviewRun(
         _ run: BurnBarReviewRunSnapshot,
         at socketURL: URL

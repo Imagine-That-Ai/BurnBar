@@ -150,6 +150,7 @@ enum OpenBurnBarEvidenceFreshness: String, Equatable, Sendable {
 
 enum OpenBurnBarActionKind: String, CaseIterable, Identifiable, Codable, Sendable {
     case missionApproval = "mission_approval"
+    case missionCreation = "mission_creation"
     case directionOverride = "direction_override"
 
     var id: String { rawValue }
@@ -157,6 +158,7 @@ enum OpenBurnBarActionKind: String, CaseIterable, Identifiable, Codable, Sendabl
     var label: String {
         switch self {
         case .missionApproval: return "Approve Mission"
+        case .missionCreation: return "Create Mission"
         case .directionOverride: return "Override Direction"
         }
     }
@@ -164,6 +166,7 @@ enum OpenBurnBarActionKind: String, CaseIterable, Identifiable, Codable, Sendabl
     var icon: String {
         switch self {
         case .missionApproval: return "checkmark.seal.fill"
+        case .missionCreation: return "flag.badge.ellipsis"
         case .directionOverride: return "flag.fill"
         }
     }
@@ -308,6 +311,7 @@ struct OpenBurnBarOperatingHistoryEntry: Identifiable, Equatable, Sendable {
     var tint: Color {
         switch kind {
         case .missionApproval: return DesignSystem.Colors.success
+        case .missionCreation: return DesignSystem.Colors.hermesAureate
         case .directionOverride: return DesignSystem.Colors.whimsy
         }
     }
@@ -315,6 +319,7 @@ struct OpenBurnBarOperatingHistoryEntry: Identifiable, Equatable, Sendable {
     var icon: String {
         switch kind {
         case .missionApproval: return "checkmark.seal.fill"
+        case .missionCreation: return "flag.badge.ellipsis"
         case .directionOverride: return "flag.fill"
         }
     }
