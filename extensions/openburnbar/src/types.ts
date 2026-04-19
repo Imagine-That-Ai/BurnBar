@@ -398,7 +398,17 @@ export interface BurnBarRunProjection {
   source: 'projected' | 'daemon';
 }
 
-export type BurnBarMissionStatus = 'planned' | 'running' | 'partial' | 'blocked' | 'completed';
+// Daemon canonical statuses: matches BurnBarMissionStatus in OpenBurnBarCore
+export type BurnBarMissionStatus =
+  | 'draft'
+  | 'awaiting_approval'
+  | 'approved'
+  | 'dispatching'
+  | 'in_progress'
+  | 'partially_completed'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 export type BurnBarMissionRecommendation = 'proceed' | 'review' | 'pause';
 export type BurnBarMissionPacketStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
 export type BurnBarMissionResultStatus = 'pending' | 'success' | 'failed' | 'partial';

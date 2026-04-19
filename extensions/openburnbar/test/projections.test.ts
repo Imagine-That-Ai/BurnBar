@@ -781,7 +781,7 @@ function createMockMission(overrides: Partial<BurnBarMissionSnapshot> = {}): Bur
     projectSlug: 'apollo',
     title: 'Ship the approval sheet',
     summary: 'Approval sheet is stable, QA passed, and only launch coordination remains before release.',
-    status: 'planned',
+    status: 'awaiting_approval',
     recommendation: 'review',
     createdAt: '2024-01-15T12:00:00Z',
     updatedAt: '2024-01-15T12:00:00Z',
@@ -829,7 +829,7 @@ describe('buildMissionRows', () => {
 
   it('should project daemon missions when available', () => {
     const missions: BurnBarMissionSnapshot[] = [
-      createMockMission({ id: 'mission-1', status: 'running', title: 'Active mission' }),
+      createMockMission({ id: 'mission-1', status: 'in_progress', title: 'Active mission' }),
       createMockMission({ id: 'mission-2', status: 'completed', title: 'Done mission' })
     ];
     const state = createMockState({ daemonMissions: missions });
@@ -838,24 +838,43 @@ describe('buildMissionRows', () => {
     expect(result).toHaveLength(2);
     expect(result[0].id).toBe('mission-1');
     expect(result[0].source).toBe('daemon');
-    expect(result[0].status).toBe('running');
+    expect(result[0].status).toBe('in_progress');
     expect(result[1].id).toBe('mission-2');
     expect(result[1].status).toBe('completed');
   });
 
-  it('should sort missions by lifecycle status with running first', () => {
+  // VAL-EXT-008: matches daemon canonical ordering (updatedAt DESC, missionID ASC tie-break)
+  it('should sort missions by updatedAt DESC with missionID ASC tie-break', () => {
     const missions: BurnBarMissionSnapshot[] = [
-      createMockMission({ id: 'planned-1', status: 'planned', updatedAt: '2024-01-15T12:00:00Z' }),
-      createMockMission({ id: 'running-1', status: 'running', updatedAt: '2024-01-15T11:00:00Z' }),
-      createMockMission({ id: 'completed-1', status: 'completed', updatedAt: '2024-01-15T10:00:00Z' })
+      createMockMission({ id: 'mission-b', status: 'awaiting_approval', updatedAt: '2024-01-15T12:00:00Z' }),
+      createMockMission({ id: 'mission-c', status: 'in_progress', updatedAt: '2024-01-15T12:00:00Z' }),
+      createMockMission({ id: 'mission-a', status: 'approved', updatedAt: '2024-01-15T13:00:00Z' })
     ];
     const state = createMockState({ daemonMissions: missions });
     const result = buildMissionRows(state);
 
     expect(result).toHaveLength(3);
-    expect(result[0].status).toBe('running');
-    expect(result[1].status).toBe('planned');
-    expect(result[2].status).toBe('completed');
+    // Most recent first (updatedAt DESC)
+    expect(result[0].id).toBe('mission-a');
+    expect(result[1].id).toBe('mission-b');
+    expect(result[2].id).toBe('mission-c');
+  });
+
+  it('should use missionID ASC tie-break when updatedAt timestamps are equal', () => {
+    const sameTime = '2024-01-15T12:00:00Z';
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({ id: 'mission-c', status: 'completed', updatedAt: sameTime }),
+      createMockMission({ id: 'mission-a', status: 'in_progress', updatedAt: sameTime }),
+      createMockMission({ id: 'mission-b', status: 'awaiting_approval', updatedAt: sameTime })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionRows(state);
+
+    expect(result).toHaveLength(3);
+    // missionID ASC tie-break: mission-a < mission-b < mission-c
+    expect(result[0].id).toBe('mission-a');
+    expect(result[1].id).toBe('mission-b');
+    expect(result[2].id).toBe('mission-c');
   });
 
   it('should track approval state from mission approval', () => {
@@ -911,7 +930,7 @@ describe('buildMissionRows', () => {
     const missions: BurnBarMissionSnapshot[] = [
       createMockMission({
         id: 'mission-1',
-        status: 'running',
+        status: 'in_progress',
         packets: [{ id: 'packet-1', missionID: 'mission-1', workerName: 'worker-1', objective: 'test', status: 'in_progress', runID: 'run-1', metadata: {} }]
       })
     ];
@@ -949,7 +968,7 @@ describe('buildMissionDetailRows', () => {
         projectSlug: 'apollo',
         title: 'Ship the approval sheet',
         summary: 'Approval sheet is stable.',
-        status: 'running',
+        status: 'in_progress',
         recommendation: 'review'
       })
     ];
@@ -961,7 +980,7 @@ describe('buildMissionDetailRows', () => {
     expect(result.some(r => r.id === 'project')).toBe(true);
     expect(result.find(r => r.id === 'project')?.value).toBe('apollo');
     expect(result.some(r => r.id === 'status')).toBe(true);
-    expect(result.find(r => r.id === 'status')?.value).toBe('running');
+    expect(result.find(r => r.id === 'status')?.value).toBe('in_progress');
     expect(result.some(r => r.id === 'recommendation')).toBe(true);
     expect(result.some(r => r.id === 'summary')).toBe(true);
   });
@@ -1074,7 +1093,7 @@ describe('Mission Authoring Parity', () => {
       id: 'mission-app-1',
       title: 'Ship from app',
       projectSlug: 'apollo',
-      status: 'planned',
+      status: 'awaiting_approval',
       source: 'daemon',
       approved: false,
       packetsCount: 0,
@@ -1085,7 +1104,7 @@ describe('Mission Authoring Parity', () => {
       id: 'mission-ext-1',
       title: 'Ship from extension',
       projectSlug: 'apollo',
-      status: 'planned',
+      status: 'awaiting_approval',
       source: 'daemon',
       approved: false,
       packetsCount: 0,
@@ -1099,7 +1118,7 @@ describe('Mission Authoring Parity', () => {
       projectSlug: 'apollo',
       title: 'Parity mission',
       summary: 'Testing detail projection parity.',
-      status: 'running',
+      status: 'in_progress',
       recommendation: 'review',
       approval: { approved: true, approvedBy: 'alice' },
       packets: [
@@ -1116,35 +1135,30 @@ describe('Mission Authoring Parity', () => {
     // Both app and extension should produce the same detail rows
     expect(detailRows.find(r => r.id === 'title')?.value).toBe('Parity mission');
     expect(detailRows.find(r => r.id === 'project')?.value).toBe('apollo');
-    expect(detailRows.find(r => r.id === 'status')?.value).toBe('running');
+    expect(detailRows.find(r => r.id === 'status')?.value).toBe('in_progress');
     expect(detailRows.find(r => r.id === 'recommendation')?.value).toBe('review');
     expect(detailRows.find(r => r.id === 'summary')?.value).toBe('Testing detail projection parity.');
     expect(detailRows.find(r => r.id === 'packets')?.value).toBe('1 total');
     expect(detailRows.find(r => r.id === 'burn')?.value).toBe('1000.0000');
   });
 
+  // VAL-EXT-008: ordering matches daemon canonical (updatedAt DESC, missionID ASC tie-break)
   it('should order missions consistently regardless of entrypoint', () => {
     const missions: BurnBarMissionSnapshot[] = [
-      createMockMission({ id: 'mission-ext-1', status: 'running', updatedAt: '2024-01-15T12:00:00Z', metadata: { source: 'extension' } }),
-      createMockMission({ id: 'mission-app-1', status: 'running', updatedAt: '2024-01-15T11:00:00Z', metadata: { source: 'app' } }),
-      createMockMission({ id: 'mission-ext-2', status: 'planned', updatedAt: '2024-01-15T10:00:00Z', metadata: { source: 'extension' } }),
-      createMockMission({ id: 'mission-app-2', status: 'planned', updatedAt: '2024-01-15T09:00:00Z', metadata: { source: 'app' } })
+      createMockMission({ id: 'mission-ext-1', status: 'in_progress', updatedAt: '2024-01-15T12:00:00Z', metadata: { source: 'extension' } }),
+      createMockMission({ id: 'mission-app-1', status: 'in_progress', updatedAt: '2024-01-15T11:00:00Z', metadata: { source: 'app' } }),
+      createMockMission({ id: 'mission-ext-2', status: 'awaiting_approval', updatedAt: '2024-01-15T10:00:00Z', metadata: { source: 'extension' } }),
+      createMockMission({ id: 'mission-app-2', status: 'awaiting_approval', updatedAt: '2024-01-15T09:00:00Z', metadata: { source: 'app' } })
     ];
 
     const state = createMockState({ daemonMissions: missions });
     const rows = buildMissionRows(state);
 
-    // Running missions should come first, ordered by updatedAt descending
+    // Ordered by updatedAt DESC (no tie-break needed since all timestamps are distinct)
     expect(rows[0].id).toBe('mission-ext-1');
-    expect(rows[0].status).toBe('running');
     expect(rows[1].id).toBe('mission-app-1');
-    expect(rows[1].status).toBe('running');
-
-    // Then planned missions, ordered by updatedAt descending
     expect(rows[2].id).toBe('mission-ext-2');
-    expect(rows[2].status).toBe('planned');
     expect(rows[3].id).toBe('mission-app-2');
-    expect(rows[3].status).toBe('planned');
 
     // Order should be deterministic (same input always produces same output)
     const rowsAgain = buildMissionRows(state);

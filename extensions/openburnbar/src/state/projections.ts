@@ -436,7 +436,17 @@ export interface BurnBarMissionDetailRow {
   value: string;
 }
 
-export type BurnBarMissionStatus = 'planned' | 'running' | 'partial' | 'blocked' | 'completed';
+// Daemon canonical statuses: matches BurnBarMissionStatus in OpenBurnBarCore
+export type BurnBarMissionStatus =
+  | 'draft'
+  | 'awaiting_approval'
+  | 'approved'
+  | 'dispatching'
+  | 'in_progress'
+  | 'partially_completed'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 export type BurnBarMissionRecommendation = 'proceed' | 'review' | 'pause';
 export type BurnBarRunPhase =
   | 'idle'
@@ -458,7 +468,7 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         id: 'daemon-unavailable',
         title: 'Daemon unavailable',
         projectSlug: '',
-        status: 'blocked',
+        status: 'failed',
         recommendation: 'review',
         phase: 'failed',
         note: 'Mission board unavailable: daemon is not connected.',
@@ -477,7 +487,7 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         id: 'client-session-unavailable',
         title: 'Client session unavailable',
         projectSlug: '',
-        status: 'blocked',
+        status: 'failed',
         recommendation: 'review',
         phase: 'failed',
         note: 'Mission board unavailable: client session is not attached.',
@@ -496,7 +506,7 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         id: 'empty-mission-list',
         title: 'No missions yet',
         projectSlug: '',
-        status: 'planned',
+        status: 'awaiting_approval',
         recommendation: 'review',
         phase: 'idle',
         note: 'Use Mission Board in the OpenBurnBar app to create your first mission.',
@@ -509,21 +519,15 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
     ];
   }
 
-  // Sort missions: active first (running), then planned, then others, then by updatedAt descending
+  // Sort missions: updatedAt DESC, missionID ASC tie-break — matches daemon canonical ordering
   return [...state.daemonMissions]
     .sort((a, b) => {
-      const statusOrder: Record<BurnBarMissionStatus, number> = {
-        running: 0,
-        planned: 1,
-        partial: 2,
-        blocked: 3,
-        completed: 4
-      };
-      const statusDiff = statusOrder[a.status] - statusOrder[b.status];
-      if (statusDiff !== 0) {
-        return statusDiff;
+      const aTime = new Date(a.updatedAt).getTime();
+      const bTime = new Date(b.updatedAt).getTime();
+      if (aTime !== bTime) {
+        return bTime - aTime; // updatedAt DESC
       }
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      return a.id.localeCompare(b.id); // missionID ASC tie-break
     })
     .map((mission) => {
       const activePacket = mission.packets.find((p) => p.status === 'in_progress' || p.status === 'pending');
@@ -654,16 +658,24 @@ export function buildMissionDetailRows(state: OpenBurnBarState, missionId?: stri
 
 function missionPhaseFromStatus(status: BurnBarMissionStatus): BurnBarRunPhase {
   switch (status) {
-  case 'running':
+  case 'in_progress':
     return 'executing_tool';
-  case 'planned':
-    return 'planning';
+  case 'dispatching':
+    return 'executing_tool';
+  case 'awaiting_approval':
+    return 'awaiting_approval';
   case 'completed':
     return 'completed';
-  case 'blocked':
+  case 'failed':
     return 'failed';
-  case 'partial':
+  case 'cancelled':
+    return 'cancelled';
+  case 'partially_completed':
     return 'model_streaming';
+  case 'approved':
+    return 'planning';
+  case 'draft':
+    return 'planning';
   default:
     return 'idle';
   }
@@ -678,19 +690,19 @@ function describeMissionNote(
     return `Completed: ${completedPackets}/${mission.packets.length} packets done.`;
   }
 
-  if (mission.status === 'blocked') {
-    return 'Mission is blocked. Check packet failures.';
+  if (mission.status === 'failed') {
+    return 'Mission failed. Check packet failures.';
   }
 
   if (activePacket) {
     return `Active: ${activePacket.objective}`;
   }
 
-  if (mission.status === 'planned') {
-    return 'Mission is planned and awaiting dispatch.';
+  if (mission.status === 'awaiting_approval') {
+    return 'Mission awaiting operator approval.';
   }
 
-  if (mission.status === 'running') {
+  if (mission.status === 'dispatching' || mission.status === 'in_progress') {
     return 'Mission is running with no active packet.';
   }
 
