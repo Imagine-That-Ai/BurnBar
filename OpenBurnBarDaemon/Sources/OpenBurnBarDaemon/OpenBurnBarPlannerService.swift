@@ -4,6 +4,7 @@ import Foundation
 public enum BurnBarPlannerServiceError: Error, LocalizedError {
     case invalidIntent(String)
     case invalidPlannerInput(String)
+    case unsupportedWorkflow(String)
 
     public var errorDescription: String? {
         switch self {
@@ -11,6 +12,8 @@ public enum BurnBarPlannerServiceError: Error, LocalizedError {
             return "OpenBurnBar planner could not normalize the requested intent: \(message)"
         case .invalidPlannerInput(let message):
             return "OpenBurnBar planner input is invalid: \(message)"
+        case .unsupportedWorkflow(let type):
+            return "OpenBurnBar planner does not support workflow type '\(type)'. Supported types: replace_string_in_file."
         }
     }
 }
@@ -131,8 +134,8 @@ public struct BurnBarPlannerService {
         let workflow = try workflowValue.decode(BurnBarReplaceStringWorkflowPayload.self)
         // Only supported workflow type is replace_string_in_file
         guard workflow.type == "replace_string_in_file" else {
-            // Return nil to allow fallback to tool metadata
-            return nil
+            // Unsupported workflow type is a validation error - fail pre-execution per VAL-DAEMON-008
+            throw BurnBarPlannerServiceError.unsupportedWorkflow(workflow.type)
         }
 
         return BurnBarAgentIntent(

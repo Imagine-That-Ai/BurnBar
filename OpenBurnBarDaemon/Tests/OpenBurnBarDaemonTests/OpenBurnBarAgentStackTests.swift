@@ -650,61 +650,78 @@ final class BurnBarAgentStackTests: XCTestCase {
 
     // MARK: - VAL-DAEMON-008: Unsupported workflow intent fails pre-execution
 
-    func testPlannerUnsupportedWorkflowIntentFallsBackGracefully() throws {
+    func testPlannerUnsupportedWorkflowIntentFailsPreExecution() throws {
         let planner = BurnBarPlannerService()
 
-        // Unsupported workflow type should be skipped (returns nil) so fallback to generic
+        // Unsupported workflow type should throw validation error per VAL-DAEMON-008
         // Note: workflow payload still requires path/from/to fields for decoding, but type check fails
-        let planned = try planner.plan(
-            for: BurnBarRunCreateRequest(
-                clientID: BurnBarClientID(rawValue: "client-a"),
-                sessionID: BurnBarSessionID(rawValue: "session-a"),
-                prompt: "do something",
-                modelID: "glm-5",
-                metadata: [
-                    "workspaceWorkflow": .object([
-                        "type": .string("unsupported_workflow_type"),
-                        "path": .string("some/path.swift"),
-                        "from": .string("old"),
-                        "to": .string("new")
-                    ])
-                ]
+        do {
+            _ = try planner.plan(
+                for: BurnBarRunCreateRequest(
+                    clientID: BurnBarClientID(rawValue: "client-a"),
+                    sessionID: BurnBarSessionID(rawValue: "session-a"),
+                    prompt: "do something",
+                    modelID: "glm-5",
+                    metadata: [
+                        "workspaceWorkflow": .object([
+                            "type": .string("unsupported_workflow_type"),
+                            "path": .string("some/path.swift"),
+                            "from": .string("old"),
+                            "to": .string("new")
+                        ])
+                    ]
+                )
             )
-        )
-        // Should fall back to generic since unsupported workflow is skipped
-        XCTAssertEqual(planned.intent.kind, .generic)
-        XCTAssertEqual(planned.intent.objective, "do something")
+            XCTFail("Expected planner to throw for unsupported workflow type")
+        } catch let error as BurnBarPlannerServiceError {
+            switch error {
+            case .unsupportedWorkflow(let type):
+                XCTAssertEqual(type, "unsupported_workflow_type")
+            default:
+                XCTFail("Expected unsupportedWorkflow error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarPlannerServiceError, got \(error)")
+        }
     }
 
-    func testPlannerUnsupportedWorkflowWithValidFallbackDoesNotThrow() throws {
-        // Even if one workflow type is unsupported, if another parsing path succeeds, it should work
+    func testPlannerUnsupportedWorkflowFailsEvenWithValidToolMetadata() throws {
+        // Unsupported workflow is a validation error - it fails pre-execution even if tool metadata is present
         let planner = BurnBarPlannerService()
 
-        // This has an unsupported workflow but tool metadata will be used instead
-        let planned = try planner.plan(
-            for: BurnBarRunCreateRequest(
-                clientID: BurnBarClientID(rawValue: "client-a"),
-                sessionID: BurnBarSessionID(rawValue: "session-a"),
-                prompt: "run tests",
-                modelID: "glm-5",
-                metadata: [
-                    "workspaceWorkflow": .object([
-                        "type": .string("unsupported_type"),
-                        "path": .string("some/path.swift"),
-                        "from": .string("old"),
-                        "to": .string("new")
-                    ]),
-                    "toolKind": .string("run_terminal"),
-                    "toolArguments": .object([
-                        "command": .string("npm test")
-                    ])
-                ]
+        // This has an unsupported workflow AND valid tool metadata - unsupported workflow still fails
+        do {
+            _ = try planner.plan(
+                for: BurnBarRunCreateRequest(
+                    clientID: BurnBarClientID(rawValue: "client-a"),
+                    sessionID: BurnBarSessionID(rawValue: "session-a"),
+                    prompt: "run tests",
+                    modelID: "glm-5",
+                    metadata: [
+                        "workspaceWorkflow": .object([
+                            "type": .string("unsupported_type"),
+                            "path": .string("some/path.swift"),
+                            "from": .string("old"),
+                            "to": .string("new")
+                        ]),
+                        "toolKind": .string("run_terminal"),
+                        "toolArguments": .object([
+                            "command": .string("npm test")
+                        ])
+                    ]
+                )
             )
-        )
-
-        // Tool metadata wins because workflow was unsupported
-        XCTAssertEqual(planned.intent.kind, .runTerminal)
-        XCTAssertEqual(planned.intent.terminalCommand?.command, "npm test")
+            XCTFail("Expected planner to throw for unsupported workflow type even with valid tool metadata")
+        } catch let error as BurnBarPlannerServiceError {
+            switch error {
+            case .unsupportedWorkflow(let type):
+                XCTAssertEqual(type, "unsupported_type")
+            default:
+                XCTFail("Expected unsupportedWorkflow error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarPlannerServiceError, got \(error)")
+        }
     }
 
     // MARK: - VAL-DAEMON-014: Typed planner input requires constraints, risk level, and desired outputs

@@ -22,7 +22,10 @@ None.
    - `swift test --package-path OpenBurnBarCore --filter OpenBurnBarMissionControlContractsTests`
    - `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarMissionControlServiceTests`
    - `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarProviderRouterTests`
-6. If this feature changes public contracts used by app/extension, add compatibility notes in handoff and include affected fields.
+6. Verify handoff commitId before finalizing:
+   - Run `git rev-parse --verify <commitId>` to confirm commit exists
+   - Run `git show --name-only <commitId>` to confirm the diff contains relevant feature files
+7. If this feature changes public contracts used by app/extension, add compatibility notes in handoff and include affected fields.
 
 ## Example Handoff
 ```json
