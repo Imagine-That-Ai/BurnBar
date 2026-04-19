@@ -186,11 +186,16 @@ public struct BurnBarProviderRouter: Sendable {
         preferredProviderID: String? = nil,
         excludedRouteKeys: Set<String> = []
     ) async throws -> BurnBarProviderRoute {
-        guard let route = try await candidateRoutes(
+        // Use scoreAndRankRoutes() to select the best route based on five-dimensional scoring:
+        // capability, cost, latency, trust, and policy-fit. This ensures routing decisions
+        // are driven by the scorecard rather than legacy candidate ordering.
+        let ranking = try await scoreAndRankRoutes(
             modelName: modelName,
             preferredProviderID: preferredProviderID,
             excludedRouteKeys: excludedRouteKeys
-        ).first else {
+        )
+
+        guard let route = ranking.winner else {
             throw BurnBarProviderRouterError.unsupportedModel(modelName.trimmingCharacters(in: .whitespacesAndNewlines))
         }
 

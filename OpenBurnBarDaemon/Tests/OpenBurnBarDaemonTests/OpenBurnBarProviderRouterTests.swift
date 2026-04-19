@@ -83,7 +83,10 @@ final class BurnBarProviderRouterTests: XCTestCase {
         }
     }
 
-    func testRouterPrefersManualSlotThenFallsBackToRoundRobin() async throws {
+    func testRouterSelectsByScorecardWithPreferredSlotBoost() async throws {
+        // With scoring-based routing, preferred slot gets policyFit=1.0 vs 0.3 for non-preferred.
+        // This test verifies: (1) preferred slot is selected when set, (2) without preferred slot,
+        // selection follows scorecard ordering with deterministic tie-break (providerID asc, slotID asc).
         let harness = try makeHarness(name: "slots")
         _ = try await harness.configStore.upsertProvider(
             BurnBarProviderSettings(
@@ -106,14 +109,18 @@ final class BurnBarProviderRouterTests: XCTestCase {
             apiKey: "zai-key-b"
         )
         try await harness.configStore.recordCredentialSelection(providerID: "zai", slotID: "slot-a")
-        try await harness.configStore.setPreferredCredentialSlot(providerID: "zai", slotID: nil)
 
-        let roundRobinRoute = try await harness.router.route(modelName: "glm-5")
-        XCTAssertEqual(roundRobinRoute.credentialSlotID, "slot-b")
-
+        // When preferred slot is set to slot-a, it should be selected due to policyFit scoring
         try await harness.configStore.setPreferredCredentialSlot(providerID: "zai", slotID: "slot-a")
         let preferredRoute = try await harness.router.route(modelName: "glm-5")
-        XCTAssertEqual(preferredRoute.credentialSlotID, "slot-a")
+        XCTAssertEqual(preferredRoute.credentialSlotID, "slot-a", "Preferred slot should be selected via policyFit scoring")
+
+        // When preferred slot is nil, scoring determines selection.
+        // Both slots have identical scores except for tie-break (providerID asc, slotID asc).
+        // Since both are zai provider and slot-a < slot-b alphabetically, slot-a wins.
+        try await harness.configStore.setPreferredCredentialSlot(providerID: "zai", slotID: nil)
+        let unconstrainedRoute = try await harness.router.route(modelName: "glm-5")
+        XCTAssertEqual(unconstrainedRoute.credentialSlotID, "slot-a", "With equal scores, deterministic tie-break selects slot-a (alphabetically first)")
     }
 
     func testRouterMarksQuotaFailureAsExhaustedSlot() async throws {
