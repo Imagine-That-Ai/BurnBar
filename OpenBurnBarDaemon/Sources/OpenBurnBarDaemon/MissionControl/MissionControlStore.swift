@@ -505,9 +505,63 @@ public actor BurnBarMissionControlStore {
         )
     }
 
+    /// Terminal mission statuses that block dispatch.
+    private static let terminalStatuses: Set<BurnBarMissionStatus> = [
+        .completed, .failed, .cancelled
+    ]
+
+    public func missionCancel(_ request: BurnBarMissionCancelRequest) throws -> BurnBarMissionMutationResponse {
+        guard let existing = try mission(id: request.missionID) else {
+            throw BurnBarMissionControlError.missionNotFound(request.missionID)
+        }
+
+        let now = Date()
+        let updated = BurnBarMissionSnapshot(
+            id: existing.id,
+            projectSlug: existing.projectSlug,
+            title: existing.title,
+            summary: existing.summary,
+            status: .cancelled,
+            recommendation: existing.recommendation,
+            createdAt: existing.createdAt,
+            updatedAt: now,
+            approval: existing.approval,
+            packets: existing.packets,
+            results: existing.results,
+            burnRecords: existing.burnRecords,
+            takeoverHistory: existing.takeoverHistory,
+            metadata: existing.metadata.merging(["cancelled_by": .string(request.actor)]) { _, new in new }
+        )
+
+        let event = try appendEvent(
+            family: .mission,
+            eventType: "mission_cancelled",
+            projectSlug: updated.projectSlug,
+            summary: updated.title,
+            detail: request.note,
+            payload: try BurnBarJSONValue.fromEncodable(updated)
+        )
+
+        return BurnBarMissionMutationResponse(
+            mission: try missionValue(updated.id),
+            emittedEvent: event
+        )
+    }
+
     public func dispatchMissionPacket(_ request: BurnBarMissionDispatchPacketRequest) throws -> BurnBarMissionMutationResponse {
         guard let existing = try mission(id: request.missionID) else {
             throw BurnBarMissionControlError.missionNotFound(request.missionID)
+        }
+
+        // VAL-DAEMON-009: Dispatch is approval-gated and terminal-safe
+        // Block dispatch if mission is not approved
+        guard existing.approval.approved else {
+            throw BurnBarMissionControlError.missionNotApproved(request.missionID)
+        }
+
+        // Block dispatch if mission is in a terminal state
+        guard !Self.terminalStatuses.contains(existing.status) else {
+            throw BurnBarMissionControlError.missionTerminal(request.missionID, existing.status)
         }
 
         let packet = BurnBarMissionPacketSnapshot(

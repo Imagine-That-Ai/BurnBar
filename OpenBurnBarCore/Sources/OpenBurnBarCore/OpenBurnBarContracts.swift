@@ -40,6 +40,7 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case missionsList = "daemon.mission.list"
     case missionGet = "daemon.mission.get"
     case missionApprove = "daemon.mission.approve"
+    case missionCancel = "daemon.mission.cancel"
     case missionDispatchPacket = "daemon.mission.packet.dispatch"
     case missionRecordResult = "daemon.mission.result.record"
     case notificationConfigGet = "daemon.notification.config.get"

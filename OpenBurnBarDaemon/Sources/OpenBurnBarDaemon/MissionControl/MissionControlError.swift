@@ -6,6 +6,8 @@ public enum BurnBarMissionControlError: Error, LocalizedError {
     case questionNotFound(BurnBarQuestionID)
     case followupNotFound(BurnBarFollowupID)
     case missionNotFound(BurnBarMissionID)
+    case missionNotApproved(BurnBarMissionID)
+    case missionTerminal(BurnBarMissionID, BurnBarMissionStatus)
     case simulatorRunNotFound(BurnBarSimulatorRunID)
     case missingPayload(String)
 
@@ -19,6 +21,10 @@ public enum BurnBarMissionControlError: Error, LocalizedError {
             return "OpenBurnBar followup '\(id.rawValue)' was not found."
         case .missionNotFound(let id):
             return "OpenBurnBar mission '\(id.rawValue)' was not found."
+        case .missionNotApproved(let id):
+            return "OpenBurnBar mission '\(id.rawValue)' has not been approved. Dispatch is blocked."
+        case .missionTerminal(let id, let status):
+            return "OpenBurnBar mission '\(id.rawValue)' is in terminal state '\(status.rawValue)'. Dispatch is blocked."
         case .simulatorRunNotFound(let id):
             return "OpenBurnBar simulator run '\(id.rawValue)' was not found."
         case .missingPayload(let eventType):

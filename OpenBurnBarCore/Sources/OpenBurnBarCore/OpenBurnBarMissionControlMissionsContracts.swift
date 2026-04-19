@@ -713,6 +713,18 @@ public struct BurnBarMissionApproveRequest: Codable, Hashable, Sendable {
     }
 }
 
+public struct BurnBarMissionCancelRequest: Codable, Hashable, Sendable {
+    public let missionID: BurnBarMissionID
+    public let actor: String
+    public let note: String?
+
+    public init(missionID: BurnBarMissionID, actor: String, note: String? = nil) {
+        self.missionID = missionID
+        self.actor = actor
+        self.note = note
+    }
+}
+
 public struct BurnBarMissionDispatchPacketRequest: Codable, Hashable, Sendable {
     public let missionID: BurnBarMissionID
     public let actor: String

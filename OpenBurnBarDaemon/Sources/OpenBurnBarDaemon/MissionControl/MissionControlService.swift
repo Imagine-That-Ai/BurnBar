@@ -190,6 +190,10 @@ public actor BurnBarMissionControlService {
         try await store.approveMission(request)
     }
 
+    public func missionCancel(_ request: BurnBarMissionCancelRequest) async throws -> BurnBarMissionMutationResponse {
+        try await store.missionCancel(request)
+    }
+
     public func missionDispatchPacket(_ request: BurnBarMissionDispatchPacketRequest) async throws -> BurnBarMissionMutationResponse {
         guard let mission = try await store.mission(id: request.missionID) else {
             throw BurnBarMissionControlError.missionNotFound(request.missionID)

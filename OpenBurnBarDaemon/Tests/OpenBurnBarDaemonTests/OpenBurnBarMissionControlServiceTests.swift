@@ -658,6 +658,374 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         )
     }
 
+    // MARK: - VAL-DAEMON-004: Packet dispatch rejects unknown mission IDs
+
+    func testVAL_DAEMON_004_PacketDispatchRejectsUnknownMissionID() async throws {
+        let harness = try makeHarness(name: "val-daemon-004")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        // Get initial mission and packet counts
+        let initialMissions = try await harness.service.missionsList(
+            BurnBarMissionListRequest(projectSlug: "orion", statuses: BurnBarMissionStatus.allCases)
+        )
+        let initialMissionCount = initialMissions.missions.count
+        let initialPacketCount = initialMissions.missions.reduce(0) { $0 + $1.packets.count }
+
+        // Attempt to dispatch to a non-existent mission
+        let nonExistentID = BurnBarMissionID(rawValue: "non-existent-mission-id")
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: nonExistentID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-test"),
+                        missionID: nonExistentID,
+                        workerName: "test-worker",
+                        objective: "Test objective",
+                        status: .queued
+                    )
+                )
+            )
+            XCTFail("Expected missionNotFound error for non-existent mission ID")
+        } catch let error as BurnBarMissionControlError {
+            // VAL-DAEMON-004: Error must be missionNotFound
+            switch error {
+            case .missionNotFound(let id):
+                XCTAssertEqual(id, nonExistentID, "Error must contain the non-existent mission ID")
+            default:
+                XCTFail("Expected missionNotFound error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarMissionControlError, got \(error)")
+        }
+
+        // Verify mission and packet counts are unchanged (no mutation)
+        let finalMissions = try await harness.service.missionsList(
+            BurnBarMissionListRequest(projectSlug: "orion", statuses: BurnBarMissionStatus.allCases)
+        )
+        let finalMissionCount = finalMissions.missions.count
+        let finalPacketCount = finalMissions.missions.reduce(0) { $0 + $1.packets.count }
+
+        XCTAssertEqual(finalMissionCount, initialMissionCount, "Mission count must not change after failed dispatch")
+        XCTAssertEqual(finalPacketCount, initialPacketCount, "Packet count must not change after failed dispatch")
+    }
+
+    // MARK: - VAL-DAEMON-006: Packet dispatch is idempotent by packet ID
+
+    func testVAL_DAEMON_006_PacketDispatchIsIdempotentByPacketID() async throws {
+        let harness = try makeHarness(name: "val-daemon-006")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        // Create and approve a mission
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Test mission for idempotent dispatch",
+                summary: "Verify packet upsert is idempotent.",
+                createdBy: "test-actor",
+                recommendation: .review
+            )
+        )
+        let missionID = try XCTUnwrap(created.mission.id)
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approved")
+        )
+
+        let packetID = BurnBarMissionPacketID(rawValue: "packet-idempotent-test")
+
+        // First dispatch
+        let firstDispatch = try await harness.service.missionDispatchPacket(
+            BurnBarMissionDispatchPacketRequest(
+                missionID: missionID,
+                actor: "operator",
+                packet: BurnBarMissionPacketSnapshot(
+                    id: packetID,
+                    missionID: missionID,
+                    workerName: "test-worker",
+                    objective: "First dispatch objective",
+                    status: .queued
+                )
+            )
+        )
+        XCTAssertEqual(firstDispatch.mission.packets.count, 1, "Should have 1 packet after first dispatch")
+
+        // Second dispatch with same packet ID (idempotent upsert)
+        let secondDispatch = try await harness.service.missionDispatchPacket(
+            BurnBarMissionDispatchPacketRequest(
+                missionID: missionID,
+                actor: "operator",
+                packet: BurnBarMissionPacketSnapshot(
+                    id: packetID,
+                    missionID: missionID,
+                    workerName: "test-worker-updated",
+                    objective: "Second dispatch objective - should overwrite",
+                    status: .dispatched,
+                    metadata: ["updated": .bool(true)]
+                )
+            )
+        )
+
+        // VAL-DAEMON-006: Packet count must remain constant (upsert, not duplicate)
+        XCTAssertEqual(secondDispatch.mission.packets.count, 1, "Packet count must remain 1 after re-dispatch (idempotent upsert)")
+
+        // Verify the packet was updated (not duplicated)
+        let updatedPacket = secondDispatch.mission.packets.first
+        XCTAssertEqual(updatedPacket?.id, packetID, "Packet ID must match")
+        XCTAssertEqual(updatedPacket?.objective, "Second dispatch objective - should overwrite", "Packet objective should be updated")
+        XCTAssertEqual(updatedPacket?.status, .dispatched, "Packet status should be updated")
+
+        // Third dispatch with different packet ID (should create new packet)
+        let thirdDispatch = try await harness.service.missionDispatchPacket(
+            BurnBarMissionDispatchPacketRequest(
+                missionID: missionID,
+                actor: "operator",
+                packet: BurnBarMissionPacketSnapshot(
+                    id: BurnBarMissionPacketID(rawValue: "packet-different-id"),
+                    missionID: missionID,
+                    workerName: "another-worker",
+                    objective: "Different packet",
+                    status: .queued
+                )
+            )
+        )
+        XCTAssertEqual(thirdDispatch.mission.packets.count, 2, "Should have 2 packets after adding a new one")
+    }
+
+    // MARK: - VAL-DAEMON-009: Dispatch is approval-gated and terminal-safe
+
+    func testVAL_DAEMON_009_DispatchBlockedForUnapprovedMission() async throws {
+        let harness = try makeHarness(name: "val-daemon-009-unapproved")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        // Create a mission but do NOT approve it
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Unapproved mission",
+                summary: "This mission is not approved.",
+                createdBy: "test-actor",
+                recommendation: .review
+            )
+        )
+        let missionID = try XCTUnwrap(created.mission.id)
+        XCTAssertEqual(created.mission.status, .awaitingApproval)
+        XCTAssertEqual(created.mission.approval.approved, false)
+
+        // Attempt to dispatch - should fail
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-unapproved"),
+                        missionID: missionID,
+                        workerName: "test-worker",
+                        objective: "Should not be dispatched",
+                        status: .queued
+                    )
+                )
+            )
+            XCTFail("Expected missionNotApproved error for unapproved mission")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .missionNotApproved(let id):
+                XCTAssertEqual(id, missionID, "Error must contain the mission ID")
+            default:
+                XCTFail("Expected missionNotApproved error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarMissionControlError, got \(error)")
+        }
+
+        // Verify no packet was created
+        let mission = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
+        XCTAssertEqual(mission.mission?.packets.count, 0, "No packets should be created for unapproved mission")
+    }
+
+    func testVAL_DAEMON_009_DispatchBlockedForTerminalMission() async throws {
+        let harness = try makeHarness(name: "val-daemon-009-terminal")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        // Create, approve, and cancel a mission
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Cancelled mission",
+                summary: "This mission was cancelled.",
+                createdBy: "test-actor",
+                recommendation: .review
+            )
+        )
+        let missionID = try XCTUnwrap(created.mission.id)
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approved")
+        )
+        _ = try await harness.service.missionCancel(
+            BurnBarMissionCancelRequest(missionID: missionID, actor: "operator", note: "Cancelled")
+        )
+
+        // Verify mission is cancelled
+        let cancelledMission = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
+        XCTAssertEqual(cancelledMission.mission?.status, .cancelled)
+
+        // Attempt to dispatch - should fail for cancelled mission
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-cancelled"),
+                        missionID: missionID,
+                        workerName: "test-worker",
+                        objective: "Should not be dispatched",
+                        status: .queued
+                    )
+                )
+            )
+            XCTFail("Expected missionTerminal error for cancelled mission")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .missionTerminal(let id, let status):
+                XCTAssertEqual(id, missionID, "Error must contain the mission ID")
+                XCTAssertEqual(status, .cancelled, "Error must specify cancelled status")
+            default:
+                XCTFail("Expected missionTerminal error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarMissionControlError, got \(error)")
+        }
+
+        // Also test for completed and failed terminal states
+        // Create a completed mission
+        let completedMission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Completed mission",
+                summary: "This mission was completed.",
+                createdBy: "test-actor",
+                recommendation: .review
+            )
+        )
+        let completedID = try XCTUnwrap(completedMission.mission.id)
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: completedID, actor: "operator", note: "Approved")
+        )
+
+        // Directly inject a completed status into the store for testing
+        // (Since there's no direct "complete" method, we simulate by using recordResult with succeeded status)
+        _ = try await harness.service.missionRecordResult(
+            BurnBarMissionRecordResultRequest(
+                missionID: completedID,
+                result: BurnBarMissionResultSnapshot(
+                    id: BurnBarMissionResultID(rawValue: "result-completed"),
+                    missionID: completedID,
+                    packetID: nil,
+                    runID: nil,
+                    status: .succeeded,
+                    summary: "Mission completed successfully",
+                    detail: nil,
+                    burnDelta: 0,
+                    createdAt: Date(),
+                    evidenceRefs: [],
+                    metadata: [:]
+                )
+            )
+        )
+
+        let finalCompletedMission = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: completedID))
+        XCTAssertEqual(finalCompletedMission.mission?.status, .completed)
+
+        // Attempt to dispatch - should fail for completed mission
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: completedID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-completed"),
+                        missionID: completedID,
+                        workerName: "test-worker",
+                        objective: "Should not be dispatched",
+                        status: .queued
+                    )
+                )
+            )
+            XCTFail("Expected missionTerminal error for completed mission")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .missionTerminal(let id, let status):
+                XCTAssertEqual(id, completedID, "Error must contain the mission ID")
+                XCTAssertEqual(status, .completed, "Error must specify completed status")
+            default:
+                XCTFail("Expected missionTerminal error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarMissionControlError, got \(error)")
+        }
+    }
+
+    // MARK: - Cancelled mission approval preserves cancelled status
+
+    func testVAL_DAEMON_002_CancelledMissionApprovalPreservesCancelledStatus() async throws {
+        let harness = try makeHarness(name: "val-daemon-002-cancelled")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        // Create, approve, then cancel a mission
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Mission to cancel then re-approve",
+                summary: "Cancel this mission, then try to approve it again.",
+                createdBy: "test-actor",
+                recommendation: .review
+            )
+        )
+        let missionID = try XCTUnwrap(created.mission.id)
+
+        // Approve the mission
+        let approved = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Initial approval")
+        )
+        XCTAssertEqual(approved.mission.status, .approved)
+        XCTAssertEqual(approved.mission.approval.approved, true)
+
+        // Cancel the mission
+        let cancelled = try await harness.service.missionCancel(
+            BurnBarMissionCancelRequest(missionID: missionID, actor: "operator", note: "Cancelling")
+        )
+        XCTAssertEqual(cancelled.mission.status, .cancelled)
+
+        // Try to approve the cancelled mission - status should remain cancelled
+        let reApproved = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Trying to re-approve")
+        )
+
+        // VAL-DAEMON-002 note: Approval preserves cancelled status
+        // The approval metadata is updated but status remains cancelled
+        XCTAssertEqual(reApproved.mission.status, .cancelled, "Cancelled mission must remain cancelled even after approval attempt")
+        XCTAssertEqual(reApproved.mission.approval.approved, true, "Approval metadata should still be set to true")
+        XCTAssertEqual(reApproved.mission.approval.approvedBy, "operator", "Approval actor should be recorded")
+        XCTAssertNotNil(reApproved.mission.approval.approvedAt, "Approval timestamp should be recorded")
+    }
+
     func testNotificationCommandsAndSimulatorReplayUpdateControllerState() async throws {
         let harness = try makeHarness(name: "notifications-and-simulator")
 

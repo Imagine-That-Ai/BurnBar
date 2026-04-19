@@ -573,6 +573,17 @@ public actor BurnBarDaemonServer {
                     result: try await missionControlService.missionApprove(typedRequest.params)
                 )
                 return encode(response)
+            case .missionCancel:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarMissionCancelRequest>.self,
+                    from: requestData
+                )
+                let response = BurnBarRPCResponseEnvelope<BurnBarMissionMutationResponse>(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: try await missionControlService.missionCancel(typedRequest.params)
+                )
+                return encode(response)
             case .missionDispatchPacket:
                 let typedRequest = try decoder.decode(
                     BurnBarRPCRequestEnvelopeWithParams<BurnBarMissionDispatchPacketRequest>.self,
