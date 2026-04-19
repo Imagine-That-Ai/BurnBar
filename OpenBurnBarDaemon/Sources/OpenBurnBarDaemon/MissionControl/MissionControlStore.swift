@@ -415,7 +415,13 @@ public actor BurnBarMissionControlStore {
                 (request.projectSlug == nil || item.projectSlug == request.projectSlug)
                     && request.statuses.contains(item.status)
             }
-            .sorted { $0.updatedAt > $1.updatedAt }
+            .sorted { lhs, rhs in
+                if lhs.updatedAt != rhs.updatedAt {
+                    return lhs.updatedAt > rhs.updatedAt
+                }
+                // Tie-break: missionID ascending (lexicographic)
+                return lhs.id.rawValue < rhs.id.rawValue
+            }
             .prefix(request.limit)
             .map { $0 } ?? []
     }
