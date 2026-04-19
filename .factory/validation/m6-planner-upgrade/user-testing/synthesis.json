@@ -1,0 +1,20 @@
+{
+  "milestone": "m6-planner-upgrade",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-DAEMON-004",
+    "VAL-DAEMON-006",
+    "VAL-DAEMON-009"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}
