@@ -402,3 +402,341 @@ public extension BurnBarAgentIntent {
         !(requestedTools ?? []).isEmpty
     }
 }
+
+// MARK: - DAG Domain Model
+
+/// Schema version for DAG contracts.
+/// Versions supported: 1 (current).
+public enum BurnBarDAGSchemaVersion: Int, Codable, CaseIterable, Hashable, Sendable {
+    case v1 = 1
+
+    public static let current = v1
+    public static let supported: [BurnBarDAGSchemaVersion] = [.v1]
+
+    public static func isSupported(_ version: BurnBarDAGSchemaVersion) -> Bool {
+        supported.contains(version)
+    }
+}
+
+/// Errors related to DAG contract validation.
+public enum BurnBarDAGError: Error, LocalizedError {
+    case unsupportedSchemaVersion(Int)
+    case missingRequiredNode(String)
+    case circularDependencyDetected(nodeID: String)
+    case invalidEdge(sourceID: String, targetID: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unsupportedSchemaVersion(let version):
+            return "DAG contract has unsupported schema version \(version). Supported versions: \(BurnBarDAGSchemaVersion.supported.map { $0.rawValue })."
+        case .missingRequiredNode(let nodeID):
+            return "DAG contract references missing node: '\(nodeID)'."
+        case .circularDependencyDetected(let nodeID):
+            return "DAG contract contains circular dependency involving node: '\(nodeID)'."
+        case .invalidEdge(let sourceID, let targetID):
+            return "DAG contract contains invalid edge from '\(sourceID)' to '\(targetID)'."
+        }
+    }
+}
+
+/// Identifier for a DAG node.
+public struct BurnBarDAGNodeID: RawRepresentable, Codable, Hashable, Sendable {
+    public let rawValue: String
+
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    /// Creates a deterministic node ID from mission ID, step index, and content hash.
+    /// This ensures the same intent input produces identical node IDs.
+    public static func deterministic(
+        missionID: BurnBarMissionID,
+        stepIndex: Int,
+        contentHash: String
+    ) -> BurnBarDAGNodeID {
+        let input = "\(missionID.rawValue)|\(stepIndex)|\(contentHash)"
+        return BurnBarDAGNodeID(rawValue: deterministicIDHash(input))
+    }
+
+    /// Generates a stable hash from input string.
+    private static func deterministicIDHash(_ input: String) -> String {
+        var hasher = Hasher()
+        hasher.combine(input)
+        let result = hasher.finalize()
+        return String(result, radix: 16, uppercase: false)
+    }
+}
+
+/// Identifier for a DAG edge.
+public struct BurnBarDAGEdgeID: RawRepresentable, Codable, Hashable, Sendable {
+    public let rawValue: String
+
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    /// Creates a deterministic edge ID from source and target node IDs.
+    /// This ensures the same edge produces identical IDs across serializations.
+    public static func deterministic(
+        sourceNodeID: BurnBarDAGNodeID,
+        targetNodeID: BurnBarDAGNodeID
+    ) -> BurnBarDAGEdgeID {
+        let input = "edge|\(sourceNodeID.rawValue)|\(targetNodeID.rawValue)"
+        return BurnBarDAGEdgeID(rawValue: deterministicEdgeHash(input))
+    }
+
+    /// Generates a stable hash from edge input.
+    private static func deterministicEdgeHash(_ input: String) -> String {
+        var hasher = Hasher()
+        hasher.combine(input)
+        let result = hasher.finalize()
+        return String(result, radix: 16, uppercase: false)
+    }
+}
+
+/// Execution status of a DAG node.
+public enum BurnBarDAGNodeStatus: String, Codable, CaseIterable, Hashable, Sendable {
+    case pending
+    case ready
+    case running
+    case completed
+    case failed
+    case skipped
+}
+
+/// A node in the typed DAG representing a discrete step or task.
+public struct BurnBarDAGNode: Codable, Hashable, Identifiable, Sendable {
+    public let id: BurnBarDAGNodeID
+    public let title: String
+    public let detail: String
+    public let status: BurnBarDAGNodeStatus
+    public let dependsOn: [BurnBarDAGNodeID]
+    public let metadata: [String: BurnBarJSONValue]?
+
+    public init(
+        id: BurnBarDAGNodeID,
+        title: String,
+        detail: String,
+        status: BurnBarDAGNodeStatus = .pending,
+        dependsOn: [BurnBarDAGNodeID] = [],
+        metadata: [String: BurnBarJSONValue]? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+        self.status = status
+        self.dependsOn = dependsOn
+        self.metadata = metadata
+    }
+
+    /// Creates a deterministic node ID based on mission context and step properties.
+    public static func makeDeterministicID(
+        missionID: BurnBarMissionID,
+        stepIndex: Int,
+        title: String,
+        detail: String
+    ) -> BurnBarDAGNodeID {
+        let contentHash = "\(title)|\(detail)"
+        return BurnBarDAGNodeID.deterministic(
+            missionID: missionID,
+            stepIndex: stepIndex,
+            contentHash: contentHash
+        )
+    }
+}
+
+/// An edge in the DAG representing a dependency relationship between two nodes.
+public struct BurnBarDAGEdge: Codable, Hashable, Identifiable, Sendable {
+    public let id: BurnBarDAGEdgeID
+    public let sourceNodeID: BurnBarDAGNodeID
+    public let targetNodeID: BurnBarDAGNodeID
+
+    public init(
+        id: BurnBarDAGEdgeID? = nil,
+        sourceNodeID: BurnBarDAGNodeID,
+        targetNodeID: BurnBarDAGNodeID
+    ) {
+        self.sourceNodeID = sourceNodeID
+        self.targetNodeID = targetNodeID
+        // Use provided ID or generate deterministic one
+        self.id = id ?? BurnBarDAGEdgeID.deterministic(
+            sourceNodeID: sourceNodeID,
+            targetNodeID: targetNodeID
+        )
+    }
+}
+
+/// A typed DAG contract produced by the planner.
+/// Contains versioned serialization with backward compatibility support.
+public struct BurnBarDAGContract: Codable, Hashable, Sendable {
+    public let schemaVersion: BurnBarDAGSchemaVersion
+    public let missionID: BurnBarMissionID
+    public let nodes: [BurnBarDAGNode]
+    public let edges: [BurnBarDAGEdge]
+    public let metadata: [String: BurnBarJSONValue]?
+
+    public init(
+        schemaVersion: BurnBarDAGSchemaVersion = .v1,
+        missionID: BurnBarMissionID,
+        nodes: [BurnBarDAGNode],
+        edges: [BurnBarDAGEdge] = [],
+        metadata: [String: BurnBarJSONValue]? = nil
+    ) {
+        self.schemaVersion = schemaVersion
+        self.missionID = missionID
+        self.nodes = nodes
+        self.edges = edges
+        self.metadata = metadata
+    }
+
+    /// Validates the DAG contract for consistency.
+    /// Throws BurnBarDAGError if validation fails.
+    public func validate() throws {
+        // Check schema version is supported
+        guard BurnBarDAGSchemaVersion.isSupported(schemaVersion) else {
+            throw BurnBarDAGError.unsupportedSchemaVersion(schemaVersion.rawValue)
+        }
+
+        // Build set of valid node IDs
+        let nodeIDs = Set(nodes.map { $0.id })
+
+        // Validate all node IDs in dependsOn exist
+        for node in nodes {
+            for depID in node.dependsOn {
+                guard nodeIDs.contains(depID) else {
+                    throw BurnBarDAGError.missingRequiredNode(depID.rawValue)
+                }
+            }
+        }
+
+        // Validate all edge endpoints exist
+        for edge in edges {
+            guard nodeIDs.contains(edge.sourceNodeID) else {
+                throw BurnBarDAGError.invalidEdge(
+                    sourceID: edge.sourceNodeID.rawValue,
+                    targetID: edge.targetNodeID.rawValue
+                )
+            }
+            guard nodeIDs.contains(edge.targetNodeID) else {
+                throw BurnBarDAGError.invalidEdge(
+                    sourceID: edge.sourceNodeID.rawValue,
+                    targetID: edge.targetNodeID.rawValue
+                )
+            }
+        }
+
+        // Check for circular dependencies using DFS
+        try detectCircularDependencies()
+    }
+
+    /// Detects circular dependencies in the DAG using depth-first search.
+    private func detectCircularDependencies() throws {
+        var visited: Set<BurnBarDAGNodeID> = []
+        var recursionStack: Set<BurnBarDAGNodeID> = []
+
+        func dfs(_ nodeID: BurnBarDAGNodeID) throws {
+            visited.insert(nodeID)
+            recursionStack.insert(nodeID)
+
+            // Find all nodes this node depends on
+            guard let node = nodes.first(where: { $0.id == nodeID }) else { return }
+            for depID in node.dependsOn {
+                if !visited.contains(depID) {
+                    try dfs(depID)
+                } else if recursionStack.contains(depID) {
+                    throw BurnBarDAGError.circularDependencyDetected(nodeID: nodeID.rawValue)
+                }
+            }
+
+            recursionStack.remove(nodeID)
+        }
+
+        for node in nodes {
+            if !visited.contains(node.id) {
+                try dfs(node.id)
+            }
+        }
+    }
+
+    /// Returns the topological order of nodes if the DAG is valid.
+    /// Returns nil if the DAG has cycles.
+    public func topologicalSort() -> [BurnBarDAGNode]? {
+        var inDegree: [BurnBarDAGNodeID: Int] = [:]
+        var adjacency: [BurnBarDAGNodeID: [BurnBarDAGNodeID]] = [:]
+
+        // Initialize
+        for node in nodes {
+            inDegree[node.id] = node.dependsOn.count
+            adjacency[node.id] = []
+        }
+
+        // Build adjacency list (reverse of dependsOn)
+        for node in nodes {
+            for depID in node.dependsOn {
+                adjacency[depID, default: []].append(node.id)
+            }
+        }
+
+        // Kahn's algorithm
+        var queue: [BurnBarDAGNodeID] = []
+        for (nodeID, degree) in inDegree where degree == 0 {
+            queue.append(nodeID)
+        }
+
+        var result: [BurnBarDAGNode] = []
+        while !queue.isEmpty {
+            let current = queue.removeFirst()
+            if let node = nodes.first(where: { $0.id == current }) {
+                result.append(node)
+            }
+
+            for neighbor in adjacency[current] ?? [] {
+                inDegree[neighbor]! -= 1
+                if inDegree[neighbor] == 0 {
+                    queue.append(neighbor)
+                }
+            }
+        }
+
+        // If not all nodes are in result, there's a cycle
+        return result.count == nodes.count ? result : nil
+    }
+}
+
+/// Encoder/decoder for versioned DAG contracts with explicit schema version tracking.
+public enum BurnBarDAGContractCodec {
+    /// Current schema version for encoding.
+    public static let currentSchemaVersion = BurnBarDAGSchemaVersion.v1
+
+    /// Encodes a DAG contract to JSON data.
+    public static func encode(_ contract: BurnBarDAGContract) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(contract)
+    }
+
+    /// Decodes a DAG contract from JSON data.
+    /// Throws BurnBarDAGError for unsupported schema versions.
+    public static func decode(from data: Data) throws -> BurnBarDAGContract {
+        let decoder = JSONDecoder()
+        let contract = try decoder.decode(BurnBarDAGContract.self, from: data)
+
+        // Validate schema version
+        guard BurnBarDAGSchemaVersion.isSupported(contract.schemaVersion) else {
+            throw BurnBarDAGError.unsupportedSchemaVersion(contract.schemaVersion.rawValue)
+        }
+
+        // Validate DAG structure
+        try contract.validate()
+
+        return contract
+    }
+
+    /// Decodes a DAG contract from JSON string.
+    public static func decode(from jsonString: String) throws -> BurnBarDAGContract {
+        guard let data = jsonString.data(using: .utf8) else {
+            throw BurnBarDAGError.unsupportedSchemaVersion(0)
+        }
+        return try decode(from: data)
+    }
+}

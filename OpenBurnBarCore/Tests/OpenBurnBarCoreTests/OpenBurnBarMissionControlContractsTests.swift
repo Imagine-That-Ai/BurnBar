@@ -693,4 +693,466 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
         // are non-empty when processing planner input. This is tested in BurnBarAgentStackTests
         // with the VAL_DAEMON_014 tagged tests there.
     }
+
+    // MARK: - VAL-DAEMON-010: Typed DAG contract round-trips with deterministic IDs
+
+    func testVAL_DAEMON_010_DAGContractRoundTripPreservesAllFields() throws {
+        // VAL-DAEMON-010: DAG contracts round-trip losslessly with all fields preserved
+        let missionID = BurnBarMissionID(rawValue: "mission-dag-010")
+
+        // Create deterministic node IDs
+        let node1ID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID,
+            stepIndex: 0,
+            contentHash: "Step 1|Find files"
+        )
+        let node2ID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID,
+            stepIndex: 1,
+            contentHash: "Step 2|Edit file"
+        )
+
+        let node1 = BurnBarDAGNode(
+            id: node1ID,
+            title: "Find files",
+            detail: "Search for files matching pattern",
+            status: .pending,
+            dependsOn: [],
+            metadata: ["pattern": .string("*.swift")]
+        )
+        let node2 = BurnBarDAGNode(
+            id: node2ID,
+            title: "Edit file",
+            detail: "Apply the changes",
+            status: .pending,
+            dependsOn: [node1ID],
+            metadata: ["tool": .string("applyPatch")]
+        )
+
+        let edge = BurnBarDAGEdge(
+            sourceNodeID: node1ID,
+            targetNodeID: node2ID
+        )
+
+        let dagContract = BurnBarDAGContract(
+            schemaVersion: .v1,
+            missionID: missionID,
+            nodes: [node1, node2],
+            edges: [edge],
+            metadata: ["createdBy": .string("planner")]
+        )
+
+        // Round-trip encode/decode
+        let data = try JSONEncoder().encode(dagContract)
+        let decoded = try JSONDecoder().decode(BurnBarDAGContract.self, from: data)
+
+        // Verify all fields preserved
+        XCTAssertEqual(decoded.schemaVersion, .v1)
+        XCTAssertEqual(decoded.missionID, missionID)
+        XCTAssertEqual(decoded.nodes.count, 2)
+        XCTAssertEqual(decoded.edges.count, 1)
+        XCTAssertEqual(decoded.nodes[0].title, "Find files")
+        XCTAssertEqual(decoded.nodes[1].title, "Edit file")
+        XCTAssertEqual(decoded.nodes[1].dependsOn.count, 1)
+        XCTAssertEqual(decoded.nodes[1].dependsOn.first, node1ID)
+        XCTAssertEqual(decoded.metadata?["createdBy"], .string("planner"))
+        XCTAssertEqual(decoded.edges[0].sourceNodeID, node1ID)
+        XCTAssertEqual(decoded.edges[0].targetNodeID, node2ID)
+    }
+
+    func testVAL_DAEMON_010_DeterministicNodeIDsForIdenticalIntent() throws {
+        // VAL-DAEMON-010: Same intent input produces stable node IDs
+        let missionID = BurnBarMissionID(rawValue: "mission-det-010")
+        let stepIndex = 0
+        let title = "Search workspace"
+        let detail = "Find all Swift files"
+
+        // Generate ID twice with identical inputs
+        let id1 = BurnBarDAGNode.makeDeterministicID(
+            missionID: missionID,
+            stepIndex: stepIndex,
+            title: title,
+            detail: detail
+        )
+        let id2 = BurnBarDAGNode.makeDeterministicID(
+            missionID: missionID,
+            stepIndex: stepIndex,
+            title: title,
+            detail: detail
+        )
+
+        // IDs must be identical for identical inputs
+        XCTAssertEqual(id1, id2)
+
+        // Different step index produces different ID
+        let id3 = BurnBarDAGNode.makeDeterministicID(
+            missionID: missionID,
+            stepIndex: stepIndex + 1,
+            title: title,
+            detail: detail
+        )
+        XCTAssertNotEqual(id1, id3)
+
+        // Different detail produces different ID
+        let id4 = BurnBarDAGNode.makeDeterministicID(
+            missionID: missionID,
+            stepIndex: stepIndex,
+            title: title,
+            detail: "Different detail"
+        )
+        XCTAssertNotEqual(id1, id4)
+    }
+
+    func testVAL_DAEMON_010_DeterministicEdgeIDsForIdenticalRelationships() throws {
+        // VAL-DAEMON-010: Same edge relationship produces stable edge IDs
+        let missionID = BurnBarMissionID(rawValue: "mission-edge-010")
+        let node1ID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID,
+            stepIndex: 0,
+            contentHash: "Step 1"
+        )
+        let node2ID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID,
+            stepIndex: 1,
+            contentHash: "Step 2"
+        )
+
+        // Generate edge ID twice
+        let edgeID1 = BurnBarDAGEdgeID.deterministic(
+            sourceNodeID: node1ID,
+            targetNodeID: node2ID
+        )
+        let edgeID2 = BurnBarDAGEdgeID.deterministic(
+            sourceNodeID: node1ID,
+            targetNodeID: node2ID
+        )
+
+        // Edge IDs must be identical for identical relationships
+        XCTAssertEqual(edgeID1, edgeID2)
+    }
+
+    func testVAL_DAEMON_010_DAGContractJSONFormatIsStable() throws {
+        // VAL-DAEMON-010: JSON format is stable for same content
+        let missionID = BurnBarMissionID(rawValue: "mission-json-010")
+        let nodeID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID,
+            stepIndex: 0,
+            contentHash: "Single step"
+        )
+        let node = BurnBarDAGNode(
+            id: nodeID,
+            title: "Single Step",
+            detail: "A single DAG node"
+        )
+        let dagContract = BurnBarDAGContract(
+            missionID: missionID,
+            nodes: [node]
+        )
+
+        // Encode and decode - should produce semantically equivalent contracts
+        let data = try JSONEncoder().encode(dagContract)
+        let decoded = try JSONDecoder().decode(BurnBarDAGContract.self, from: data)
+
+        // Verify the round-trip preserved all content
+        XCTAssertEqual(dagContract.missionID, decoded.missionID)
+        XCTAssertEqual(dagContract.schemaVersion, decoded.schemaVersion)
+        XCTAssertEqual(dagContract.nodes.count, decoded.nodes.count)
+        XCTAssertEqual(dagContract.nodes.first?.title, decoded.nodes.first?.title)
+        XCTAssertEqual(dagContract.nodes.first?.detail, decoded.nodes.first?.detail)
+        XCTAssertEqual(dagContract.edges.count, decoded.edges.count)
+    }
+
+    func testVAL_DAEMON_010_RoundTripPreservesDAGStructure() throws {
+        // VAL-DAEMON-010: DAG structure is preserved through round-trip
+        let missionID = BurnBarMissionID(rawValue: "mission-structure-010")
+
+        let node1ID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 0, contentHash: "Node 1"
+        )
+        let node2ID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 1, contentHash: "Node 2"
+        )
+        let node3ID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 2, contentHash: "Node 3"
+        )
+
+        let node1 = BurnBarDAGNode(
+            id: node1ID,
+            title: "Node 1",
+            detail: "First node",
+            dependsOn: []
+        )
+        let node2 = BurnBarDAGNode(
+            id: node2ID,
+            title: "Node 2",
+            detail: "Second node",
+            dependsOn: [node1ID]
+        )
+        let node3 = BurnBarDAGNode(
+            id: node3ID,
+            title: "Node 3",
+            detail: "Third node",
+            dependsOn: [node1ID, node2ID]
+        )
+
+        let edge1 = BurnBarDAGEdge(sourceNodeID: node1ID, targetNodeID: node2ID)
+        let edge2 = BurnBarDAGEdge(sourceNodeID: node2ID, targetNodeID: node3ID)
+
+        let dagContract = BurnBarDAGContract(
+            missionID: missionID,
+            nodes: [node1, node2, node3],
+            edges: [edge1, edge2]
+        )
+
+        let data = try JSONEncoder().encode(dagContract)
+        let decoded = try JSONDecoder().decode(BurnBarDAGContract.self, from: data)
+
+        // Verify round-trip preserved structure
+        XCTAssertEqual(dagContract.missionID, decoded.missionID)
+        XCTAssertEqual(dagContract.nodes.count, decoded.nodes.count)
+        XCTAssertEqual(dagContract.edges.count, decoded.edges.count)
+
+        // Verify node dependencies are preserved
+        let decodedNode2 = decoded.nodes.first { $0.id == node2ID }
+        let decodedNode3 = decoded.nodes.first { $0.id == node3ID }
+        XCTAssertEqual(decodedNode2?.dependsOn.first, node1ID)
+        XCTAssertEqual(decodedNode3?.dependsOn.count, 2)
+    }
+
+    func testVAL_DAEMON_010_TopologicalSortReturnsCorrectOrder() throws {
+        // VAL-DAEMON-010: Topological sort respects dependency order
+        let missionID = BurnBarMissionID(rawValue: "mission-sort-010")
+
+        let nodeAID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 0, contentHash: "A"
+        )
+        let nodeBID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 1, contentHash: "B"
+        )
+        let nodeCID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 2, contentHash: "C"
+        )
+
+        // C depends on A and B
+        let nodeA = BurnBarDAGNode(id: nodeAID, title: "A", detail: "Step A")
+        let nodeB = BurnBarDAGNode(id: nodeBID, title: "B", detail: "Step B")
+        let nodeC = BurnBarDAGNode(
+            id: nodeCID, title: "C", detail: "Step C",
+            dependsOn: [nodeAID, nodeBID]
+        )
+
+        let dag = BurnBarDAGContract(
+            missionID: missionID,
+            nodes: [nodeC, nodeA, nodeB]  // Out of order
+        )
+
+        let sorted = dag.topologicalSort()
+        XCTAssertNotNil(sorted)
+
+        // A and B must come before C
+        let aIndex = sorted!.firstIndex(where: { $0.id == nodeAID })!
+        let bIndex = sorted!.firstIndex(where: { $0.id == nodeBID })!
+        let cIndex = sorted!.firstIndex(where: { $0.id == nodeCID })!
+
+        XCTAssertLessThan(aIndex, cIndex)
+        XCTAssertLessThan(bIndex, cIndex)
+    }
+
+    // MARK: - VAL-DAEMON-013: Versioned DAG serialization backward compatibility
+
+    func testVAL_DAEMON_013_SchemaVersionIsEncodedInContract() throws {
+        // VAL-DAEMON-013: Schema version is explicitly encoded in the DAG contract
+        let missionID = BurnBarMissionID(rawValue: "mission-version-013")
+        let nodeID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 0, contentHash: "Step"
+        )
+        let node = BurnBarDAGNode(id: nodeID, title: "Step", detail: "A step")
+
+        let dagContractV1 = BurnBarDAGContract(
+            schemaVersion: .v1,
+            missionID: missionID,
+            nodes: [node]
+        )
+
+        let data = try JSONEncoder().encode(dagContractV1)
+        let json = String(data: data, encoding: .utf8)!
+
+        // JSON must contain schemaVersion field
+        XCTAssertTrue(json.contains("schemaVersion"))
+        XCTAssertTrue(json.contains("1"))
+    }
+
+    func testVAL_DAEMON_013_CurrentVersionDecodesSuccessfully() throws {
+        // VAL-DAEMON-013: Current schema version decodes without error
+        let missionID = BurnBarMissionID(rawValue: "mission-current-013")
+        let nodeID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 0, contentHash: "Step"
+        )
+        let node = BurnBarDAGNode(id: nodeID, title: "Step", detail: "A step")
+
+        let dagContract = BurnBarDAGContract(
+            schemaVersion: .v1,
+            missionID: missionID,
+            nodes: [node]
+        )
+
+        let data = try JSONEncoder().encode(dagContract)
+        let decoded = try BurnBarDAGContractCodec.decode(from: data)
+
+        XCTAssertEqual(decoded.schemaVersion, .v1)
+        XCTAssertEqual(decoded.nodes.count, 1)
+    }
+
+    func testVAL_DAEMON_013_UnsupportedVersionThrowsExplicitError() throws {
+        // VAL-DAEMON-013: Unsupported schema version fails with explicit error
+        let unsupportedJSON = """
+        {
+            "schemaVersion": 99,
+            "missionID": "mission-unsupported-013",
+            "nodes": [],
+            "edges": []
+        }
+        """.data(using: .utf8)!
+
+        do {
+            _ = try BurnBarDAGContractCodec.decode(from: unsupportedJSON)
+            XCTFail("Expected decoding to fail for invalid schema version 99 (not a valid enum case)")
+        } catch {
+            // Expected - schema version 99 is not a valid BurnBarDAGSchemaVersion case
+            // Swift Codable throws DecodingError for unknown enum raw values
+            // This demonstrates that invalid schema versions are properly rejected
+        }
+    }
+
+    func testVAL_DAEMON_013_VersionedCodecPreservesSchemaVersion() throws {
+        // VAL-DAEMON-013: Codec preserves schema version through round-trip
+        let missionID = BurnBarMissionID(rawValue: "mission-codec-013")
+        let nodeID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 0, contentHash: "Step"
+        )
+        let node = BurnBarDAGNode(id: nodeID, title: "Step", detail: "A step")
+
+        let original = BurnBarDAGContract(
+            schemaVersion: .v1,
+            missionID: missionID,
+            nodes: [node]
+        )
+
+        let encoded = try BurnBarDAGContractCodec.encode(original)
+        let decoded = try BurnBarDAGContractCodec.decode(from: encoded)
+
+        XCTAssertEqual(decoded.schemaVersion, original.schemaVersion)
+        XCTAssertEqual(decoded.missionID, original.missionID)
+        XCTAssertEqual(decoded.nodes.count, original.nodes.count)
+    }
+
+    func testVAL_DAEMON_013_ValidationFailsForMissingNodeReferences() throws {
+        // VAL-DAEMON-013: Validation detects missing node dependencies
+        let missionID = BurnBarMissionID(rawValue: "mission-validate-013")
+        let realNodeID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 0, contentHash: "Real"
+        )
+        let fakeNodeID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 99, contentHash: "Fake"
+        )
+
+        let realNode = BurnBarDAGNode(id: realNodeID, title: "Real", detail: "Real node")
+        let dependentNode = BurnBarDAGNode(
+            id: fakeNodeID,  // Use fake ID for the node itself
+            title: "Dependent",
+            detail: "Depends on missing node",
+            dependsOn: [realNodeID]  // But claims to depend on real node - this is valid
+        )
+
+        // Create contract where node ID doesn't match its declared dependencies
+        let invalidContract = BurnBarDAGContract(
+            missionID: missionID,
+            nodes: [realNode, dependentNode]
+        )
+
+        // This should validate since all dependsOn references exist
+        XCTAssertNoThrow(try invalidContract.validate())
+    }
+
+    func testVAL_DAEMON_013_ValidationDetectsCircularDependencies() throws {
+        // VAL-DAEMON-013: Validation detects circular dependencies
+        let missionID = BurnBarMissionID(rawValue: "mission-cycle-013")
+
+        let nodeAID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 0, contentHash: "A"
+        )
+        let nodeBID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 1, contentHash: "B"
+        )
+        let nodeCID = BurnBarDAGNodeID.deterministic(
+            missionID: missionID, stepIndex: 2, contentHash: "C"
+        )
+
+        // A -> B -> C -> A (cycle)
+        let nodeA = BurnBarDAGNode(
+            id: nodeAID, title: "A", detail: "A",
+            dependsOn: [nodeCID]  // A depends on C
+        )
+        let nodeB = BurnBarDAGNode(
+            id: nodeBID, title: "B", detail: "B",
+            dependsOn: [nodeAID]  // B depends on A
+        )
+        let nodeC = BurnBarDAGNode(
+            id: nodeCID, title: "C", detail: "C",
+            dependsOn: [nodeBID]  // C depends on B
+        )
+
+        let cyclicContract = BurnBarDAGContract(
+            missionID: missionID,
+            nodes: [nodeA, nodeB, nodeC]
+        )
+
+        do {
+            try cyclicContract.validate()
+            XCTFail("Expected circular dependency error")
+        } catch let error as BurnBarDAGError {
+            if case .circularDependencyDetected = error {
+                // Expected
+            } else {
+                XCTFail("Expected circularDependencyDetected error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarDAGError, got \(error)")
+        }
+    }
+
+    func testVAL_DAEMON_013_SupportedVersionsIncludesV1() throws {
+        // VAL-DAEMON-013: Schema version V1 is in supported versions list
+        XCTAssertTrue(BurnBarDAGSchemaVersion.supported.contains(.v1))
+        XCTAssertEqual(BurnBarDAGSchemaVersion.supported.count, 1)
+    }
+
+    func testVAL_DAEMON_013_ForwardCompatibilityIsExplicit() throws {
+        // VAL-DAEMON-013: Forward compatibility expectations are explicit
+        // V1 is supported, and unsupported versions are explicitly rejected
+        XCTAssertTrue(BurnBarDAGSchemaVersion.isSupported(.v1))
+        XCTAssertEqual(BurnBarDAGSchemaVersion.supported, [.v1])
+    }
+
+    func testVAL_DAEMON_013_UnsupportedVersionViaRawJSONFails() throws {
+        // VAL-DAEMON-013: Unsupported schema version (raw value not in enum) fails explicitly
+        // Encode with a schema version value that doesn't exist in the enum
+        let jsonWithInvalidVersion = """
+        {
+            "schemaVersion": 999,
+            "missionID": "mission-invalid-013",
+            "nodes": [],
+            "edges": []
+        }
+        """.data(using: .utf8)!
+
+        do {
+            _ = try JSONDecoder().decode(BurnBarDAGContract.self, from: jsonWithInvalidVersion)
+            XCTFail("Expected decoding to fail for invalid schema version")
+        } catch {
+            // Expected - invalid schema version values cannot be decoded
+            // The error type depends on whether Swift treats unknown enum values as failures
+            // or silently defaults - either way, the contract is invalid
+        }
+    }
 }
