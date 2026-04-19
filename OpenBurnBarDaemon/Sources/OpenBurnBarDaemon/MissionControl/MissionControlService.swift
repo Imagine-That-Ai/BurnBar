@@ -223,8 +223,8 @@ public actor BurnBarMissionControlService {
         }
 
         // VAL-DAEMON-011: Execution readiness gate fails closed with explicit reason codes.
-        // Run readiness check before any side effects. When executionReadinessGate is nil,
-        // the check is skipped (legacy behavior for environments without readiness infrastructure).
+        // Run readiness check before any side effects. Fail-closed when executionReadinessGate
+        // is nil (no gate data available) — return explicit reason code instead of allowing dispatch.
         if let readinessGate = executionReadinessGate {
             if let failure = await readinessGate(mission, request.packet) {
                 throw BurnBarMissionControlError.executionReadinessFailed(
@@ -233,6 +233,13 @@ public actor BurnBarMissionControlService {
                     failure.detail
                 )
             }
+        } else {
+            // Fail-closed: when no readiness gate is configured, reject dispatch with explicit reason
+            throw BurnBarMissionControlError.executionReadinessFailed(
+                request.missionID,
+                .runtimeUnavailable,
+                "Execution readiness gate is not configured. Mission dispatch requires a readiness gate to verify runtime availability."
+            )
         }
 
         let launchedRun: BurnBarRunCreateResponse?

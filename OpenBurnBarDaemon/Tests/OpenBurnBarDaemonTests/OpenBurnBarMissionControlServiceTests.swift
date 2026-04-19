@@ -1364,10 +1364,11 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(dispatched.mission.packets.first?.status, .queued, "Packet status remains queued when no launcher is configured")
     }
 
-    func testVAL_DAEMON_011_ReadinessGateSkippedWhenNil() async throws {
-        // When executionReadinessGate is nil, dispatch should proceed without checks
+    func testVAL_DAEMON_011_ReadinessGateFailsClosedWhenNil() async throws {
+        // VAL-DAEMON-011: When executionReadinessGate is nil, dispatch fails closed with
+        // explicit reason code (.runtimeUnavailable) instead of allowing dispatch to proceed.
         let harness = try makeHarness(
-            name: "val-daemon-011-no-gate",
+            name: "val-daemon-011-fail-closed-nil-gate",
             executionReadinessGate: nil
         )
 
@@ -1379,7 +1380,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             BurnBarMissionCreateRequest(
                 projectSlug: "orion",
                 title: "Mission without readiness gate",
-                summary: "Test dispatch succeeds when readiness gate is nil.",
+                summary: "Test dispatch fails when readiness gate is nil (fail-closed).",
                 createdBy: "test-actor",
                 recommendation: .proceed
             )
@@ -1390,22 +1391,38 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approved")
         )
 
-        // Dispatch should succeed even without a readiness gate (legacy behavior)
-        let dispatched = try await harness.service.missionDispatchPacket(
-            BurnBarMissionDispatchPacketRequest(
-                missionID: missionID,
-                actor: "operator",
-                packet: BurnBarMissionPacketSnapshot(
-                    id: BurnBarMissionPacketID(rawValue: "packet-no-gate-test"),
+        // Dispatch must fail with executionReadinessFailed when gate is nil (fail-closed)
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
                     missionID: missionID,
-                    workerName: "test-worker",
-                    objective: "Test objective",
-                    status: .queued
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-no-gate-test"),
+                        missionID: missionID,
+                        workerName: "test-worker",
+                        objective: "Test objective",
+                        status: .queued
+                    )
                 )
             )
-        )
+            XCTFail("Expected executionReadinessFailed error when gate is nil")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .executionReadinessFailed(let id, let code, let detail):
+                XCTAssertEqual(id, missionID)
+                XCTAssertEqual(code, .runtimeUnavailable)
+                XCTAssertTrue(detail.contains("readiness gate is not configured"))
+            default:
+                XCTFail("Expected executionReadinessFailed error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarMissionControlError, got \(error)")
+        }
 
-        XCTAssertEqual(dispatched.mission.packets.count, 1, "Packet should be created when readiness gate is nil")
+        // Verify no packet was created (dispatch was rejected)
+        let mission = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
+        XCTAssertEqual(mission.mission?.packets.count, 0, "No packets should be created when readiness gate is nil")
     }
 
     // MARK: - Cancelled mission approval preserves cancelled status
@@ -2034,7 +2051,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         activitySnapshot: BurnBarControllerActivitySnapshot? = nil,
         reviewRunLauncher: BurnBarMissionControlReviewRunLauncher? = nil,
         runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup? = nil,
-        executionReadinessGate: BurnBarExecutionReadinessGate? = nil
+        executionReadinessGate: BurnBarExecutionReadinessGate? = { _, _ in nil }
     ) throws -> (service: BurnBarMissionControlService, rootURL: URL) {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
