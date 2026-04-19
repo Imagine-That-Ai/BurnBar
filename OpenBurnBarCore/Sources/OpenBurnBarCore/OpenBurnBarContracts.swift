@@ -351,6 +351,20 @@ public enum BurnBarToolExecutionErrorCode: String, Codable, CaseIterable, Hashab
     case unknown
 }
 
+/// Reason codes for pre-dispatch execution readiness gate failures.
+/// These codes are used consistently across daemon, app, and extension surfaces
+/// to propagate actionable failure reasons when a mission cannot be dispatched.
+public enum BurnBarExecutionReadinessCode: String, Codable, CaseIterable, Hashable, Sendable {
+    /// Required credential is missing or invalid for the execution provider.
+    case missingCredential = "missing_credential"
+    /// The target repository is invalid, inaccessible, or branch does not exist.
+    case invalidRepoBranch = "invalid_repo_branch"
+    /// Required runtime precondition is unavailable (e.g., workspace, tool, or service).
+    case runtimeUnavailable = "runtime_unavailable"
+    /// Credential exists but lacks sufficient permissions for the requested operation.
+    case insufficientCredentialPermissions = "insufficient_credential_permissions"
+}
+
 public struct BurnBarToolExecutionError: Codable, Hashable, Sendable {
     public let code: BurnBarToolExecutionErrorCode
     public let message: String

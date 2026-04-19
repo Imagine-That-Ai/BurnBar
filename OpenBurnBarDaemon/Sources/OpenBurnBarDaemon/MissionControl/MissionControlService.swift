@@ -9,6 +9,9 @@ public actor BurnBarMissionControlService {
     private let reviewRunLauncher: BurnBarMissionControlReviewRunLauncher?
     private let runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup?
     private let usageLedgerURL: URL
+    /// VAL-DAEMON-011: Execution readiness gate for pre-dispatch checks.
+    /// When nil, dispatch proceeds without readiness checks (legacy behavior for tests).
+    private let executionReadinessGate: BurnBarExecutionReadinessGate?
 
     /// Terminal mission statuses that block dispatch — must match MissionControlStore.terminalStatuses.
     private static let terminalMissionStatuses: Set<BurnBarMissionStatus> = [
@@ -23,7 +26,8 @@ public actor BurnBarMissionControlService {
         activitySnapshotURL: URL? = BurnBarDaemonPaths.defaultControllerActivitySnapshotURL,
         reviewRunLauncher: BurnBarMissionControlReviewRunLauncher? = nil,
         runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup? = nil,
-        usageLedgerURL: URL = BurnBarDaemonPaths.defaultUsageLedgerURL
+        usageLedgerURL: URL = BurnBarDaemonPaths.defaultUsageLedgerURL,
+        executionReadinessGate: BurnBarExecutionReadinessGate? = nil
     ) {
         self.store = store
         self.logger = logger
@@ -32,6 +36,7 @@ public actor BurnBarMissionControlService {
         self.reviewRunLauncher = reviewRunLauncher
         self.runSnapshotLookup = runSnapshotLookup
         self.usageLedgerURL = usageLedgerURL
+        self.executionReadinessGate = executionReadinessGate
     }
 
     init(
@@ -41,7 +46,8 @@ public actor BurnBarMissionControlService {
         activitySnapshotURL: URL? = nil,
         reviewRunLauncher: BurnBarMissionControlReviewRunLauncher? = nil,
         runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup? = nil,
-        usageLedgerURL: URL = BurnBarDaemonPaths.defaultUsageLedgerURL
+        usageLedgerURL: URL = BurnBarDaemonPaths.defaultUsageLedgerURL,
+        executionReadinessGate: BurnBarExecutionReadinessGate? = nil
     ) {
         self.store = store
         self.logger = logger
@@ -50,6 +56,7 @@ public actor BurnBarMissionControlService {
         self.reviewRunLauncher = reviewRunLauncher
         self.runSnapshotLookup = runSnapshotLookup
         self.usageLedgerURL = usageLedgerURL
+        self.executionReadinessGate = executionReadinessGate
     }
 
     public func startBackgroundLoops() {
@@ -213,6 +220,19 @@ public actor BurnBarMissionControlService {
         // Block dispatch if mission is in a terminal state
         guard !Self.terminalMissionStatuses.contains(mission.status) else {
             throw BurnBarMissionControlError.missionTerminal(request.missionID, mission.status)
+        }
+
+        // VAL-DAEMON-011: Execution readiness gate fails closed with explicit reason codes.
+        // Run readiness check before any side effects. When executionReadinessGate is nil,
+        // the check is skipped (legacy behavior for environments without readiness infrastructure).
+        if let readinessGate = executionReadinessGate {
+            if let failure = await readinessGate(mission, request.packet) {
+                throw BurnBarMissionControlError.executionReadinessFailed(
+                    request.missionID,
+                    failure.code,
+                    failure.detail
+                )
+            }
         }
 
         let launchedRun: BurnBarRunCreateResponse?

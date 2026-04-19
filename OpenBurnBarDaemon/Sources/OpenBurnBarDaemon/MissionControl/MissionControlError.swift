@@ -10,6 +10,8 @@ public enum BurnBarMissionControlError: Error, LocalizedError {
     case missionTerminal(BurnBarMissionID, BurnBarMissionStatus)
     case simulatorRunNotFound(BurnBarSimulatorRunID)
     case missingPayload(String)
+    /// VAL-DAEMON-011: Execution readiness gate failed with explicit reason code.
+    case executionReadinessFailed(BurnBarMissionID, BurnBarExecutionReadinessCode, String)
 
     public var errorDescription: String? {
         switch self {
@@ -29,6 +31,8 @@ public enum BurnBarMissionControlError: Error, LocalizedError {
             return "OpenBurnBar simulator run '\(id.rawValue)' was not found."
         case .missingPayload(let eventType):
             return "OpenBurnBar controller event '\(eventType)' is missing a payload."
+        case .executionReadinessFailed(let id, let code, let detail):
+            return "OpenBurnBar mission '\(id.rawValue)' dispatch blocked: [\(code.rawValue)] \(detail)"
         }
     }
 }

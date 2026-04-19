@@ -48,3 +48,23 @@ public typealias BurnBarMissionControlReviewRunLauncher = @Sendable (
 public typealias BurnBarMissionControlRunSnapshotLookup = @Sendable (
     _ runID: BurnBarRunID
 ) async -> BurnBarRunStateSnapshot?
+
+/// Result of an execution readiness check.
+/// If the check passes, readiness is nil.
+/// If the check fails, readiness contains the reason code and a human-readable detail.
+public struct BurnBarExecutionReadiness: Sendable {
+    public let code: BurnBarExecutionReadinessCode
+    public let detail: String
+
+    public init(code: BurnBarExecutionReadinessCode, detail: String) {
+        self.code = code
+        self.detail = detail
+    }
+}
+
+/// Typealias for the execution readiness gate function.
+/// Takes mission and packet context and returns nil if ready, or a BurnBarExecutionReadiness describing the failure.
+public typealias BurnBarExecutionReadinessGate = @Sendable (
+    _ mission: BurnBarMissionSnapshot,
+    _ packet: BurnBarMissionPacketSnapshot
+) async -> BurnBarExecutionReadiness?

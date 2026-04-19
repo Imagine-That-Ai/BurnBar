@@ -1124,6 +1124,290 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(mission.mission?.packets.count, 0, "No packets should be created for rejected dispatch")
     }
 
+    // MARK: - VAL-DAEMON-011: Execution readiness gate fails closed with explicit reasons
+
+    func testVAL_DAEMON_011_ReadinessGateMissingCredential() async throws {
+        // Simulate a readiness gate that fails with missingCredential
+        let readinessGate: BurnBarExecutionReadinessGate = { _, _ in
+            BurnBarExecutionReadiness(
+                code: .missingCredential,
+                detail: "GitHub credentials are not configured for this project."
+            )
+        }
+        let harness = try makeHarness(
+            name: "val-daemon-011-missing-credential",
+            executionReadinessGate: readinessGate
+        )
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Mission with missing credential",
+                summary: "Test readiness gate failure for missing credential.",
+                createdBy: "test-actor",
+                recommendation: .proceed
+            )
+        )
+        let missionID = try XCTUnwrap(created.mission.id)
+
+        // Approve the mission so we pass the approval check
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approved for test")
+        )
+
+        // Attempt to dispatch — must fail with executionReadinessFailed
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-credential-test"),
+                        missionID: missionID,
+                        workerName: "test-worker",
+                        objective: "Test objective",
+                        status: .queued
+                    )
+                )
+            )
+            XCTFail("Expected executionReadinessFailed error")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .executionReadinessFailed(let id, let code, let detail):
+                XCTAssertEqual(id, missionID)
+                XCTAssertEqual(code, .missingCredential)
+                XCTAssertTrue(detail.contains("GitHub credentials"))
+            default:
+                XCTFail("Expected executionReadinessFailed error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarMissionControlError, got \(error)")
+        }
+
+        // Verify no packet was created
+        let mission = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
+        XCTAssertEqual(mission.mission?.packets.count, 0, "No packets should be created when readiness fails")
+    }
+
+    func testVAL_DAEMON_011_ReadinessGateInvalidRepoBranch() async throws {
+        // Simulate a readiness gate that fails with invalidRepoBranch
+        let readinessGate: BurnBarExecutionReadinessGate = { _, _ in
+            BurnBarExecutionReadiness(
+                code: .invalidRepoBranch,
+                detail: "Branch 'main' does not exist in repository 'nonexistent/repo'."
+            )
+        }
+        let harness = try makeHarness(
+            name: "val-daemon-011-invalid-repo",
+            executionReadinessGate: readinessGate
+        )
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Mission with invalid repo",
+                summary: "Test readiness gate failure for invalid repo/branch.",
+                createdBy: "test-actor",
+                recommendation: .proceed
+            )
+        )
+        let missionID = try XCTUnwrap(created.mission.id)
+
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approved")
+        )
+
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-repo-test"),
+                        missionID: missionID,
+                        workerName: "test-worker",
+                        objective: "Test objective",
+                        status: .queued
+                    )
+                )
+            )
+            XCTFail("Expected executionReadinessFailed error")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .executionReadinessFailed(let id, let code, let detail):
+                XCTAssertEqual(id, missionID)
+                XCTAssertEqual(code, .invalidRepoBranch)
+                XCTAssertTrue(detail.contains("main") && detail.contains("nonexistent/repo"))
+            default:
+                XCTFail("Expected executionReadinessFailed error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarMissionControlError, got \(error)")
+        }
+    }
+
+    func testVAL_DAEMON_011_ReadinessGateRuntimeUnavailable() async throws {
+        // Simulate a readiness gate that fails with runtimeUnavailable
+        let readinessGate: BurnBarExecutionReadinessGate = { _, _ in
+            BurnBarExecutionReadiness(
+                code: .runtimeUnavailable,
+                detail: "Required workspace service is not available."
+            )
+        }
+        let harness = try makeHarness(
+            name: "val-daemon-011-runtime-unavailable",
+            executionReadinessGate: readinessGate
+        )
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Mission with unavailable runtime",
+                summary: "Test readiness gate failure for unavailable runtime.",
+                createdBy: "test-actor",
+                recommendation: .proceed
+            )
+        )
+        let missionID = try XCTUnwrap(created.mission.id)
+
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approved")
+        )
+
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-runtime-test"),
+                        missionID: missionID,
+                        workerName: "test-worker",
+                        objective: "Test objective",
+                        status: .queued
+                    )
+                )
+            )
+            XCTFail("Expected executionReadinessFailed error")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .executionReadinessFailed(let id, let code, let detail):
+                XCTAssertEqual(id, missionID)
+                XCTAssertEqual(code, .runtimeUnavailable)
+                XCTAssertTrue(detail.contains("workspace service"))
+            default:
+                XCTFail("Expected executionReadinessFailed error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarMissionControlError, got \(error)")
+        }
+    }
+
+    func testVAL_DAEMON_011_ReadinessGatePassesWhenReady() async throws {
+        // Simulate a readiness gate that returns nil (ready)
+        let readinessGate: BurnBarExecutionReadinessGate = { _, _ in
+            nil // Ready to dispatch
+        }
+        let harness = try makeHarness(
+            name: "val-daemon-011-ready",
+            executionReadinessGate: readinessGate
+        )
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Mission with ready gate",
+                summary: "Test readiness gate passes when ready.",
+                createdBy: "test-actor",
+                recommendation: .proceed
+            )
+        )
+        let missionID = try XCTUnwrap(created.mission.id)
+
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approved")
+        )
+
+        // Dispatch should succeed when readiness passes
+        let dispatched = try await harness.service.missionDispatchPacket(
+            BurnBarMissionDispatchPacketRequest(
+                missionID: missionID,
+                actor: "operator",
+                packet: BurnBarMissionPacketSnapshot(
+                    id: BurnBarMissionPacketID(rawValue: "packet-ready-test"),
+                    missionID: missionID,
+                    workerName: "test-worker",
+                    objective: "Test objective",
+                    status: .queued
+                )
+            )
+        )
+
+        XCTAssertEqual(dispatched.mission.packets.count, 1, "Packet should be created when readiness passes")
+        // Without a reviewRunLauncher, the status remains as passed (.queued in this case)
+        XCTAssertEqual(dispatched.mission.packets.first?.status, .queued, "Packet status remains queued when no launcher is configured")
+    }
+
+    func testVAL_DAEMON_011_ReadinessGateSkippedWhenNil() async throws {
+        // When executionReadinessGate is nil, dispatch should proceed without checks
+        let harness = try makeHarness(
+            name: "val-daemon-011-no-gate",
+            executionReadinessGate: nil
+        )
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Mission without readiness gate",
+                summary: "Test dispatch succeeds when readiness gate is nil.",
+                createdBy: "test-actor",
+                recommendation: .proceed
+            )
+        )
+        let missionID = try XCTUnwrap(created.mission.id)
+
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approved")
+        )
+
+        // Dispatch should succeed even without a readiness gate (legacy behavior)
+        let dispatched = try await harness.service.missionDispatchPacket(
+            BurnBarMissionDispatchPacketRequest(
+                missionID: missionID,
+                actor: "operator",
+                packet: BurnBarMissionPacketSnapshot(
+                    id: BurnBarMissionPacketID(rawValue: "packet-no-gate-test"),
+                    missionID: missionID,
+                    workerName: "test-worker",
+                    objective: "Test objective",
+                    status: .queued
+                )
+            )
+        )
+
+        XCTAssertEqual(dispatched.mission.packets.count, 1, "Packet should be created when readiness gate is nil")
+    }
+
     // MARK: - Cancelled mission approval preserves cancelled status
 
     func testVAL_DAEMON_002_CancelledMissionApprovalPreservesCancelledStatus() async throws {
@@ -1749,7 +2033,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         transport: BurnBarMissionControlTransport = .live(),
         activitySnapshot: BurnBarControllerActivitySnapshot? = nil,
         reviewRunLauncher: BurnBarMissionControlReviewRunLauncher? = nil,
-        runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup? = nil
+        runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup? = nil,
+        executionReadinessGate: BurnBarExecutionReadinessGate? = nil
     ) throws -> (service: BurnBarMissionControlService, rootURL: URL) {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -1773,7 +2058,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             activitySnapshotURL: activitySnapshot == nil ? nil : activitySnapshotURL,
             reviewRunLauncher: reviewRunLauncher,
             runSnapshotLookup: runSnapshotLookup,
-            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl")
+            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl"),
+            executionReadinessGate: executionReadinessGate
         )
         return (service, rootURL)
     }
@@ -1781,7 +2067,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
     /// Creates a harness with direct store access for tests that need to manipulate timestamps
     private func makeHarnessWithStore(
         name: String,
-        transport: BurnBarMissionControlTransport = .live()
+        transport: BurnBarMissionControlTransport = .live(),
+        executionReadinessGate: BurnBarExecutionReadinessGate? = nil
     ) throws -> (service: BurnBarMissionControlService, store: BurnBarMissionControlStore, rootURL: URL) {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -1799,7 +2086,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             activitySnapshotURL: nil,
             reviewRunLauncher: nil,
             runSnapshotLookup: nil,
-            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl")
+            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl"),
+            executionReadinessGate: executionReadinessGate
         )
         return (service, store, rootURL)
     }
