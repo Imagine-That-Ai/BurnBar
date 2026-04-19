@@ -72,6 +72,7 @@ Rule: when assertions combine surfaces, overall concurrency is constrained by th
 - Isolation boundary: test only assigned extension assertions through extension unit tests and extension-host integration script.
 - Allowed command family: `npm --prefix extensions/openburnbar run test:unit -- ...` and `./scripts/test-openburnbar-extension-host.sh` when required by assigned assertions.
 - Extension validators may run concurrently up to 5, but avoid sharing mutable temp artifacts outside each assigned evidence directory.
+- When contract evidence requires assertion-tagged test names, run the required unit command first, then add a supplemental rerun with `--reporter=verbose` to capture explicit assertion-tagged lines.
 - Do not modify daemon/app source or global machine config; only produce flow report JSON and evidence files in assigned milestone paths.
 
 ## Flow Validator Guidance: MC-CROSS

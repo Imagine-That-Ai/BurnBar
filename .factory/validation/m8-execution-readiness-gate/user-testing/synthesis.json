@@ -1,29 +1,24 @@
 {
   "milestone": "m8-execution-readiness-gate",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "assertionsSummary": {
-    "total": 2,
+    "total": 1,
     "passed": 1,
-    "failed": 1,
+    "failed": 0,
     "blocked": 0
   },
   "passedAssertions": [
-    "VAL-DAEMON-011"
+    "VAL-CROSS-009"
   ],
-  "failedAssertions": [
-    {
-      "id": "VAL-CROSS-009",
-      "reason": "All required commands completed successfully after a single xcodebuild retry, but required cross-surface parity evidence is incomplete: daemon readiness reason-code tests are tagged and passing, while app and extension required-command artifacts do not include assertion-tagged readiness reason-code mapping proof."
-    }
-  ],
+  "failedAssertions": [],
   "blockedAssertions": [],
   "appliedUpdates": [
     {
       "target": "user-testing.md",
-      "description": "Added MC-CROSS retry guidance for transient xcodebuild package/binary artifact resolution failures before classifying assertions as blocked.",
+      "description": "Documented MC-EXT guidance to run a supplemental verbose projections rerun when assertion-tagged evidence lines are required because default vitest output may omit test names.",
       "source": "flow-report"
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/m8-execution-readiness-gate/user-testing/synthesis.round1.json"
 }
