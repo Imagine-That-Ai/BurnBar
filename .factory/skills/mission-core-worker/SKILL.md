@@ -19,9 +19,9 @@ None.
 3. Implement minimal core/daemon code changes to make tests pass while preserving deterministic behavior and typed contracts.
 4. Validate schema/version compatibility and deterministic tie-break behavior for ordering/routing.
 5. Run focused validators first, then broader mission checks:
-   - `swift test --package-path OpenBurnBarCore --filter OpenBurnBarMissionControlContractsTests`
-   - `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarMissionControlServiceTests`
-   - `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarProviderRouterTests`
+   - `swift test --package-path OpenBurnBarCore --filter BurnBarMissionControlContractsTests`
+   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`
+   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarProviderRouterTests`
 6. Verify handoff commitId before finalizing:
    - Run `git rev-parse --verify <commitId>` to confirm commit exists
    - Run `git show --name-only <commitId>` to confirm the diff contains relevant feature files
@@ -36,12 +36,12 @@ None.
   "verification": {
     "commandsRun": [
       {
-        "command": "swift test --package-path OpenBurnBarCore --filter OpenBurnBarMissionControlContractsTests",
+        "command": "swift test --package-path OpenBurnBarCore --filter BurnBarMissionControlContractsTests",
         "exitCode": 0,
         "observation": "All contract round-trip and version compatibility cases passed."
       },
       {
-        "command": "swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarMissionControlServiceTests",
+        "command": "swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests",
         "exitCode": 0,
         "observation": "Mission preflight/reason-code scenarios passed."
       }
