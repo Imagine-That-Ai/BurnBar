@@ -1282,10 +1282,14 @@ public actor BurnBarRunService {
         try transition(&run, to: .modelStreaming)
         var attemptedRouteKeys: Set<String> = [router.routeKey(providerID: run.route.providerID, slotID: run.route.credentialSlotID)]
         var candidateRoutes: [BurnBarProviderRoute] = [run.route]
-        let additionalRoutes = (try? await router.candidateRoutes(
+        // Use scoreAndRankRoutes() instead of candidateRoutes() to ensure failover alternates
+        // are ordered by scorecard composite score (capability, cost, latency, trust, policy-fit)
+        // with deterministic tie-break, matching the primary route selection logic.
+        let ranking = (try? await router.scoreAndRankRoutes(
             modelName: run.modelID,
             excludedRouteKeys: attemptedRouteKeys
-        )) ?? []
+        ))
+        let additionalRoutes = ranking?.rankedRoutes.map { $0.route } ?? []
         candidateRoutes.append(contentsOf: additionalRoutes)
 
         for (index, route) in candidateRoutes.enumerated() {

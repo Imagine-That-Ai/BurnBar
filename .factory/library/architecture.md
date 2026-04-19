@@ -197,7 +197,7 @@ Daemon projection rows consumed by app + extension must expose:
 
 ### Ordering and Tie-Break Rules
 - Mission listing: `updatedAt DESC`, tie-break `missionID ASC`.
-- Route ranking: capability/policy fitness first, then trust, then latency, then cost, then deterministic lexical route ID tie-break.
+- Route ranking: weighted composite scoring across five dimensions (capability=0.20, cost=0.25, latency=0.15, trust=0.25, policyFit=0.15). Identical composite scores are tie-broken by providerID ascending (lexicographic), then slotID ascending (nil "legacy" sorts first). This same ordering is used for both primary route selection and failover alternates.
 - Cross-surface projection ordering must use the same canonical comparator inputs and tie-break chain.
 
 ### Winner Selection Precedence (Reconciliation)
