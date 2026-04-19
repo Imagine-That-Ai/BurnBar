@@ -1,7 +1,7 @@
 {
   "milestone": "m8-execution-readiness-gate",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -21,50 +21,18 @@
   },
   "reviewsSummary": {
     "total": 1,
-    "passed": 0,
-    "failed": 1,
-    "failedFeatures": [
-      "m8-execution-readiness-gate"
-    ]
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "m8-execution-readiness-gate",
-      "severity": "blocking",
-      "description": "OpenBurnBarDaemonServer constructs BurnBarMissionControlService without executionReadinessGate, so production dispatch path skips readiness checks."
-    },
-    {
-      "featureId": "m8-execution-readiness-gate",
-      "severity": "blocking",
-      "description": "MissionControlService readiness enforcement is optional when executionReadinessGate is nil, which keeps fail-open semantics instead of fail-closed defaults."
-    },
-    {
-      "featureId": "m8-execution-readiness-gate",
-      "severity": "blocking",
-      "description": "VAL-DAEMON-011 test coverage includes a nil-gate pass-through case that codifies fail-open dispatch behavior and conflicts with milestone requirements."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
-  "suggestedGuidanceUpdates": [
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [
     {
-      "target": ".factory/skills/mission-core-worker/SKILL.md",
-      "suggestion": "Require explicit evidence that newly introduced runtime gates are wired into daemon/server composition roots, not only service-level seams.",
-      "evidence": "Feature m8 review found readiness gate added to service but never injected from OpenBurnBarDaemonServer, leaving runtime behavior fail-open.",
-      "isSystemic": false
-    },
-    {
-      "target": ".factory/skills/mission-core-worker/SKILL.md",
-      "suggestion": "Add a mandatory checklist item to execute and report every feature verificationStep surface (daemon + app + extension when specified) before handoff.",
-      "evidence": "m8 feature metadata required app and extension verification commands, but worker handoff only ran daemon/core commands.",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Add handoff accuracy rule: claimed symbols/paths in whatWasImplemented must be verifiable in committed diff via grep or file references.",
-      "evidence": "m8 handoff claimed BurnBarTransportExecutionReadinessProbe, but reviewer found no symbol match in the commit.",
-      "isSystemic": true
+      "observation": "`mission-core-worker` requires adding/adjusting failing tests before implementation edits, but the worker performed implementation edits first and updated tests afterward.",
+      "reason": "already-documented"
     }
   ],
-  "rejectedObservations": [],
-  "previousRound": null
+  "previousRound": ".factory/validation/m8-execution-readiness-gate/scrutiny/synthesis.round1.json"
 }
