@@ -1,0 +1,28 @@
+{
+  "featureId": "m7-runservice-failover-scorecard-ordering",
+  "reviewedAt": "2026-04-19T21:55:39Z",
+  "commitId": "4dd11f9a34bc5106fd0b5f26ed108d3532d1a2d4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix adequately addresses the prior m7 failure: RunService provider-only failover alternates now come from scoreAndRankRoutes()-derived ordering, and architecture wording now matches weighted composite scorecard behavior. The original blocker from m7-runtime-router-wiring-to-scorecard is resolved.",
+    "issues": [
+      {
+        "file": "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarRunServiceTests.swift",
+        "line": 250,
+        "severity": "non_blocking",
+        "description": "The new RunService VAL-EXEC-008 test validates successful failover and single usage record, but it does not assert attempted route slot order directly; BurnBarFailoverSimulatorProviderExecutor fails/succeeds by call count only and ignores route identity, so this test cannot independently distinguish scorecard ordering from legacy ordering."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "runtime-orchestration-worker SKILL validation command snippets still reference legacy OpenBurnBar* test filters that do not match the current BurnBar* command canon in services.yaml.",
+      "evidence": ".factory/skills/runtime-orchestration-worker/SKILL.md:22-24,36,41 reference OpenBurnBarRunServiceTests/OpenBurnBarMissionControlServiceTests/OpenBurnBarProviderRouterTests, while .factory/services.yaml defines BurnBarRunServiceTests/BurnBarMissionControlServiceTests/BurnBarProviderRouterTests."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/m7-router-scoring-layer/scrutiny/reviews/m7-runtime-router-wiring-to-scorecard.json",
+  "summary": "Reviewed fix transcript skeleton plus both feature diffs (original b3e48dd9 and fix 4dd11f9a). The prior blocking issue is fixed: executeProviderOnlyRun now sources failover alternates from scoreAndRankRoutes() instead of legacy candidateRoutes() ordering, and architecture documentation is aligned to weighted composite routing semantics."
+}

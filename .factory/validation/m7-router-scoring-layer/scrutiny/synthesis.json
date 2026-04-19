@@ -1,7 +1,7 @@
 {
   "milestone": "m7-router-scoring-layer",
-  "round": 2,
-  "status": "fail",
+  "round": 3,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -21,26 +21,20 @@
   },
   "reviewsSummary": {
     "total": 1,
-    "passed": 0,
-    "failed": 1,
-    "failedFeatures": [
-      "m7-runtime-router-wiring-to-scorecard"
-    ]
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "m7-runtime-router-wiring-to-scorecard",
-      "severity": "blocking",
-      "description": "Runtime provider-only failover still iterates routes from legacy candidateRoutes() ordering in OpenBurnBarRunService.executeProviderOnlyRun(), while candidateRoutes()/selectRoutes do not consume scoreAndRankRoutes() output; routing winner is scorecard-driven, but failover alternates are not."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
-  "suggestedGuidanceUpdates": [],
-  "rejectedObservations": [
+  "suggestedGuidanceUpdates": [
     {
-      "observation": "Shared architecture note still describes ordered precedence route ranking while implementation uses weighted composite scoring.",
-      "reason": "ambiguous ownership/source-of-truth during an unresolved blocking routing review; not safe to apply a documentation update until runtime failover wiring is corrected."
+      "target": ".factory/skills/runtime-orchestration-worker/SKILL.md",
+      "suggestion": "Update runtime-orchestration-worker validator command snippets to use BurnBar* test filters from .factory/services.yaml instead of legacy OpenBurnBar* filters.",
+      "evidence": "Review m7-runservice-failover-scorecard-ordering found SKILL.md lines 22-24, 36, and 41 still reference OpenBurnBarRunServiceTests/OpenBurnBarMissionControlServiceTests/OpenBurnBarProviderRouterTests while services.yaml canon uses BurnBar* filters.",
+      "isSystemic": true
     }
   ],
-  "previousRound": ".factory/validation/m7-router-scoring-layer/scrutiny/synthesis.round1.json"
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/m7-router-scoring-layer/scrutiny/synthesis.round2.json"
 }
