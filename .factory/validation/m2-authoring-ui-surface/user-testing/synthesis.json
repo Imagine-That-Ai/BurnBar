@@ -1,44 +1,21 @@
 {
   "milestone": "m2-authoring-ui-surface",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "assertionsSummary": {
     "total": 4,
-    "passed": 0,
+    "passed": 4,
     "failed": 0,
-    "blocked": 4
+    "blocked": 0
   },
-  "passedAssertions": [],
+  "passedAssertions": [
+    "VAL-APP-001",
+    "VAL-APP-002",
+    "VAL-APP-003",
+    "VAL-APP-009"
+  ],
   "failedAssertions": [],
-  "blockedAssertions": [
-    {
-      "id": "VAL-APP-001",
-      "blockedBy": "No assertion-ID-tagged OpenBurnBarOperatingComposerTests output for approval affordance gating; retry run output contained zero VAL-APP-* tags."
-    },
-    {
-      "id": "VAL-APP-002",
-      "blockedBy": "No assertion-ID-tagged OpenBurnBarOperatingComposerTests output for mission approval feedback paths; retry run output contained zero VAL-APP-* tags."
-    },
-    {
-      "id": "VAL-APP-003",
-      "blockedBy": "No assertion-ID-tagged output for direction-override required-field validation (summary/rationale and force-status-without-status) in OpenBurnBarOperatingComposerTests."
-    },
-    {
-      "id": "VAL-APP-009",
-      "blockedBy": "No assertion-ID-tagged output proving app mission authoring created a daemon mission and reflected provenance in board runtime within OpenBurnBarOperatingComposerTests."
-    }
-  ],
-  "appliedUpdates": [
-    {
-      "target": "user-testing.md",
-      "description": "Added Flow Validator Guidance: MC-APP section for serial app-validator isolation boundaries and allowed command family.",
-      "source": "setup"
-    },
-    {
-      "target": "user-testing.md",
-      "description": "Documented retry-once behavior for transient DerivedData index-store rename/write friction observed in app flow validation.",
-      "source": "flow-report"
-    }
-  ],
-  "previousRound": null
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/m2-authoring-ui-surface/user-testing/synthesis.round1.json"
 }
