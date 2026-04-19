@@ -110,6 +110,141 @@ final class BurnBarRunServiceTests: XCTestCase {
         XCTAssertEqual(retriedDetail.run?.phase, .completed)
     }
 
+    // MARK: - VAL-EXEC-011: Run-level failover continuity preserves idempotent usage accounting
+
+    func test_VAL_EXEC_011_usageAccountingIsIdempotentUnderFailover() async throws {
+        // VAL-EXEC-011: Failover retries within a run do not duplicate usage records
+        // for same run attempt idempotency key.
+        let harness = try makeHarness(name: "idempotent-usage")
+        let clientID = BurnBarClientID(rawValue: "idempotent-client")
+        let sessionID = BurnBarSessionID(rawValue: "idempotent-session")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Idempotent Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await harness.configStore.setSecret("zai-secret", for: "zai")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+
+        // Create a run that completes successfully
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Simple completion",
+                modelID: "glm-5"
+            )
+        )
+        XCTAssertEqual(createResponse.phase, .completed)
+
+        // Record the initial usage
+        let initialRecords = try await harness.usageRecorder.records()
+        let initialCount = initialRecords.count
+
+        // Verify idempotency: recording the same event again should not create duplicate
+        let usageEvent = BurnBarUsageEvent(
+            runID: createResponse.runID,
+            providerID: "zai",
+            modelID: "glm-5",
+            inputTokens: 100,
+            outputTokens: 50,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            cost: 0.001,
+            recordedAt: Date()
+        )
+
+        // Record with same idempotency key as the completed run (attempt 1)
+        let idempotencyKey = "run:\(createResponse.runID.rawValue):attempt:1"
+        let result1 = try await harness.usageRecorder.record(usageEvent, idempotencyKey: idempotencyKey)
+        XCTAssertFalse(result1.inserted, "Second record with same idempotency key should not insert")
+
+        // Verify no new record was added
+        let finalRecords = try await harness.usageRecorder.records()
+        XCTAssertEqual(finalRecords.count, initialCount, "No duplicate record should be created")
+
+        // Verify the idempotency key pattern works correctly
+        let differentKeyResult = try await harness.usageRecorder.record(usageEvent, idempotencyKey: "run:\(createResponse.runID.rawValue):attempt:2")
+        XCTAssertTrue(differentKeyResult.inserted, "Different idempotency key should insert")
+
+        let recordsAfterDifferentKey = try await harness.usageRecorder.records()
+        XCTAssertEqual(recordsAfterDifferentKey.count, initialCount + 1, "New key should create record")
+    }
+
+    func test_VAL_EXEC_011_usageIdempotencyKeyIncludesAttempt() async throws {
+        // VAL-EXEC-011: Idempotency key includes attempt number
+        // Uses an approval-required run that completes via explicit approve.
+        let harness = try makeHarness(name: "usage-idempotency-key")
+        let clientID = BurnBarClientID(rawValue: "idempotency-key-client")
+        let sessionID = BurnBarSessionID(rawValue: "idempotency-key-session")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Idempotency Key Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await harness.configStore.setSecret("zai-secret", for: "zai")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+
+        // Create a run that requires approval (this pattern is tested in existing tests)
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Run with idempotency check",
+                modelID: "glm-5",
+                metadata: [
+                    "requiresApproval": .bool(true),
+                    "toolKind": .string(BurnBarToolKind.applyPatch.rawValue)
+                ]
+            )
+        )
+        XCTAssertEqual(createResponse.phase, .awaitingApproval)
+
+        // Approve the run
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: createResponse.runID, clientID: clientID)
+        )
+        let approvalID = try XCTUnwrap(detail.approvalRequest?.approvalID)
+        let completedDetail = try await harness.runService.respondToApproval(
+            BurnBarApprovalRespondRequest(
+                response: BurnBarApprovalResponse(
+                    approvalID: approvalID,
+                    clientID: clientID,
+                    decision: .approve,
+                    respondedAt: Date()
+                )
+            )
+        )
+        XCTAssertEqual(completedDetail.run?.phase, .completed)
+
+        // Verify usage was recorded with attempt 1
+        let records = try await harness.usageRecorder.records()
+        XCTAssertEqual(records.count, 1)
+        XCTAssertTrue(records.first?.idempotencyKey.hasSuffix(":attempt:1") ?? false, "First attempt should use attempt:1")
+    }
+
     func testObserverCannotControlUntilControllerDetachesAndPromotionOccurs() async throws {
         let harness = try makeHarness(name: "arbitration")
         let controllerID = BurnBarClientID(rawValue: "controller")
