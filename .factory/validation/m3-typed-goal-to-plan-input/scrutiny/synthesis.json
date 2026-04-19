@@ -1,48 +1,33 @@
 {
   "milestone": "m3-typed-goal-to-plan-input",
-  "round": 2,
-  "status": "fail",
+  "round": 3,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
-      "command": "/Users/albertonunez/Documents/Windsurf/BurnBar/scripts/test-openburnbar-swift.sh && CI=true /Users/albertonunez/Documents/Windsurf/BurnBar/scripts/test-openburnbar-app.sh && /Users/albertonunez/Documents/Windsurf/BurnBar/scripts/test-openburnbar-ts.sh",
+      "command": "scripts/test-openburnbar-swift.sh && CI=true scripts/test-openburnbar-app.sh && scripts/test-openburnbar-ts.sh",
       "exitCode": 0
     },
     "typecheck": {
       "passed": true,
-      "command": "xcodebuild build-for-testing -project /Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath /Users/albertonunez/Documents/Windsurf/BurnBar/.spm-cache -derivedDataPath /Users/albertonunez/Documents/Windsurf/BurnBar/.derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
       "exitCode": 0
     },
     "lint": {
       "passed": true,
-      "command": "npm --prefix /Users/albertonunez/Documents/Windsurf/BurnBar/extensions/openburnbar run lint",
+      "command": "npm --prefix extensions/openburnbar run lint",
       "exitCode": 0
     }
   },
   "reviewsSummary": {
     "total": 1,
-    "passed": 0,
-    "failed": 1,
-    "failedFeatures": [
-      "m3-contract-alignment-unsupported-workflow-and-traceability"
-    ]
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "m3-contract-alignment-unsupported-workflow-and-traceability",
-      "severity": "blocking",
-      "description": "Feature expectedBehavior requires mission-core-worker SKILL validator snippets to use BurnBar* filters, but .factory/skills/mission-core-worker/SKILL.md still uses OpenBurnBar* filters in both the work procedure and example handoff command snippets."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
-  "suggestedGuidanceUpdates": [
-    {
-      "target": "skills",
-      "suggestion": "Update mission-core-worker SKILL validator command snippets to use BurnBar* XCTest filters from .factory/services.yaml so workers do not run mismatched OpenBurnBar* filters.",
-      "evidence": "Round-2 review of m3-contract-alignment-unsupported-workflow-and-traceability shows SKILL.md lines 22-24/39/44 still use OpenBurnBar* filters while .factory/services.yaml commands use BurnBar* filters.",
-      "isSystemic": true
-    }
-  ],
+  "suggestedGuidanceUpdates": [],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/m3-typed-goal-to-plan-input/scrutiny/synthesis.round1.json"
+  "previousRound": ".factory/validation/m3-typed-goal-to-plan-input/scrutiny/synthesis.round2.json"
 }
