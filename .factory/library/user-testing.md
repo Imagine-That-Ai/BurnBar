@@ -59,3 +59,10 @@ Rule: when assertions combine surfaces, overall concurrency is constrained by th
 - Allowed commands: `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests` plus read-only artifact collection.
 - Do not modify app/extension code, global system settings, or unrelated test fixtures.
 - Keep evidence scoped to the assigned assertion IDs and write outputs only under the provided flow report/evidence directories.
+
+## Flow Validator Guidance: MC-APP
+- Isolation boundary: test only the assigned app-surface assertions against `OpenBurnBarOperatingComposerTests`.
+- Allowed command family: `xcodebuild test ... -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests"` with optional narrowing to assertion-tagged test names.
+- Run app validators serially (`max 1`) to avoid `xcodebuild` contention in shared DerivedData/SPM caches.
+- If an initial run fails with a transient index-store write/rename error in DerivedData, retry the same command once before classifying as blocked.
+- Do not mutate daemon fixtures, extension tests, or global machine settings; write only flow JSON and evidence files under the assigned milestone paths.
