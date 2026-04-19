@@ -67,3 +67,15 @@ Rule: when assertions combine surfaces, overall concurrency is constrained by th
 - Run app validators serially (`max 1`) to avoid `xcodebuild` contention in shared DerivedData/SPM caches.
 - If an initial run fails with a transient index-store write/rename error in DerivedData, retry the same command once before classifying as blocked.
 - Do not mutate daemon fixtures, extension tests, or global machine settings; write only flow JSON and evidence files under the assigned milestone paths.
+
+## Flow Validator Guidance: MC-EXT
+- Isolation boundary: test only assigned extension assertions through extension unit tests and extension-host integration script.
+- Allowed command family: `npm --prefix extensions/openburnbar run test:unit -- ...` and `./scripts/test-openburnbar-extension-host.sh` when required by assigned assertions.
+- Extension validators may run concurrently up to 5, but avoid sharing mutable temp artifacts outside each assigned evidence directory.
+- Do not modify daemon/app source or global machine config; only produce flow report JSON and evidence files in assigned milestone paths.
+
+## Flow Validator Guidance: MC-CROSS
+- Isolation boundary: test only assigned cross-surface assertions and collect artifacts from each required surface command listed in the validation contract.
+- Required discipline: run every listed command for the assigned assertion and record exit codes plus assertion-tagged evidence lines for each surface.
+- App-inclusive cross assertions must respect app concurrency cap (`max 1`) and should not overlap with other `xcodebuild` validators.
+- Do not apply source-code changes while validating; create only flow/evidence artifacts under assigned milestone directories.
