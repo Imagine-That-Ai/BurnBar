@@ -1200,4 +1200,117 @@ describe("buildPanelViewModel", () => {
     expect(vm.selectedModelOptions[0]?.id).toBe("glm-4.6");
     expect(vm.selectedModelOptions[0]?.providerName).toBe("Z.ai");
   });
+
+  // MARK: - VAL-EXT-004: Pending tool lifecycle is end-to-end visible
+
+  it("VAL-EXT-004: pending tool lifecycle is end-to-end visible through poll transitions", async () => {
+    // VAL-EXT-004: run.poll pending call, dispatch, and completion transitions are reflected in extension state.
+    // This test verifies the full pending tool lifecycle: waiting -> in-progress -> completed.
+
+    let pollCallCount = 0;
+    const pendingToolCall = {
+      toolCallID: "tool-call-1",
+      runID: "run-pending-tool",
+      toolName: "search_files",
+      arguments: { query: "BurnBarRun" },
+      status: "waiting" as const,
+      createdAt: "2026-03-22T09:00:00.000Z"
+    };
+
+    const client = makeConnectedClient({
+      pollRuns: vi.fn().mockImplementation(() => {
+        pollCallCount++;
+        // Simulate phase transitions over poll cycles
+        if (pollCallCount === 1) {
+          return Promise.resolve({
+            runs: [
+              {
+                runID: "run-pending-tool",
+                clientID: "test-client",
+                sessionID: "session-1",
+                phase: "executing_tool",
+                modelID: "glm-4.6",
+                updatedAt: "2026-03-22T09:00:00.000Z"
+              }
+            ],
+            approvals: [],
+            pendingToolCalls: [pendingToolCall],
+            arbitration: {
+              activeClientID: "test-client",
+              attachedClientIDs: ["test-client"]
+            },
+            emittedAt: "2026-03-22T09:00:00.000Z"
+          });
+        } else if (pollCallCount === 2) {
+          return Promise.resolve({
+            runs: [
+              {
+                runID: "run-pending-tool",
+                clientID: "test-client",
+                sessionID: "session-1",
+                phase: "model_streaming",
+                modelID: "glm-4.6",
+                updatedAt: "2026-03-22T09:00:05.000Z"
+              }
+            ],
+            approvals: [],
+            pendingToolCalls: [], // Tool completed
+            arbitration: {
+              activeClientID: "test-client",
+              attachedClientIDs: ["test-client"]
+            },
+            emittedAt: "2026-03-22T09:00:05.000Z"
+          });
+        } else {
+          return Promise.resolve({
+            runs: [
+              {
+                runID: "run-pending-tool",
+                clientID: "test-client",
+                sessionID: "session-1",
+                phase: "completed",
+                modelID: "glm-4.6",
+                updatedAt: "2026-03-22T09:00:10.000Z"
+              }
+            ],
+            approvals: [],
+            pendingToolCalls: [],
+            arbitration: {
+              activeClientID: "test-client",
+              attachedClientIDs: ["test-client"]
+            },
+            emittedAt: "2026-03-22T09:00:10.000Z"
+          });
+        }
+      })
+    });
+
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: { repair: vi.fn().mockResolvedValue({ message: "ok" }) }
+      },
+      { clientID: "test-client", sessionID: "session-1" }
+    );
+
+    // Initial poll: pending tool visible
+    await controller.refresh();
+    expect(controller.snapshot.runs[0]?.phase).toBe("executing_tool");
+    expect(controller.snapshot.pendingToolCalls).toHaveLength(1);
+    expect(controller.snapshot.pendingToolCalls[0]?.toolName).toBe("search_files");
+    expect(controller.snapshot.pendingToolCalls[0]?.status).toBe("waiting");
+
+    // Second poll: tool dispatch in progress (removed from pending)
+    await controller.refresh();
+    expect(controller.snapshot.pendingToolCalls).toHaveLength(0);
+    expect(controller.snapshot.runs[0]?.phase).toBe("model_streaming");
+
+    // Third poll: run completed
+    await controller.refresh();
+    expect(controller.snapshot.runs[0]?.phase).toBe("completed");
+    expect(controller.snapshot.pendingToolCalls).toHaveLength(0);
+  });
 });
