@@ -9,6 +9,11 @@ public actor BurnBarMissionControlService {
     private let reviewRunLauncher: BurnBarMissionControlReviewRunLauncher?
     private let runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup?
     private let usageLedgerURL: URL
+
+    /// Terminal mission statuses that block dispatch — must match MissionControlStore.terminalStatuses.
+    private static let terminalMissionStatuses: Set<BurnBarMissionStatus> = [
+        .completed, .failed, .cancelled
+    ]
     private var notificationLoopTask: Task<Void, Never>?
     private var lastIngestedActivityDigest: String?
 
@@ -197,6 +202,17 @@ public actor BurnBarMissionControlService {
     public func missionDispatchPacket(_ request: BurnBarMissionDispatchPacketRequest) async throws -> BurnBarMissionMutationResponse {
         guard let mission = try await store.mission(id: request.missionID) else {
             throw BurnBarMissionControlError.missionNotFound(request.missionID)
+        }
+
+        // VAL-DAEMON-009: Dispatch is approval-gated and terminal-safe.
+        // Guards MUST be checked before any reviewRunLauncher side effect, not after.
+        // Block dispatch if mission is not approved
+        guard mission.approval.approved else {
+            throw BurnBarMissionControlError.missionNotApproved(request.missionID)
+        }
+        // Block dispatch if mission is in a terminal state
+        guard !Self.terminalMissionStatuses.contains(mission.status) else {
+            throw BurnBarMissionControlError.missionTerminal(request.missionID, mission.status)
         }
 
         let launchedRun: BurnBarRunCreateResponse?

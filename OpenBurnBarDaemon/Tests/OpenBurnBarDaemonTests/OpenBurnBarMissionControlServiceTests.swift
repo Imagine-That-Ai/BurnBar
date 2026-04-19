@@ -979,6 +979,151 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         }
     }
 
+    // MARK: - VAL-DAEMON-009: Dispatch with non-nil launcher — unapproved — zero side effects
+
+    func testVAL_DAEMON_009_UnapprovedMissionDispatch_WithLauncher_NeverCallsLauncher() async throws {
+        let launcher = ReviewLauncherRecorder()
+        let harness = try makeHarness(
+            name: "val-daemon-009-unapproved-launcher",
+            reviewRunLauncher: { prompt, modelID, metadata in
+                await launcher.record(prompt: prompt, modelID: modelID, metadata: metadata)
+                return BurnBarRunCreateResponse(runID: BurnBarRunID(rawValue: "should-not-launch"), phase: .planning)
+            }
+        )
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        // Create a mission but do NOT approve it
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Unapproved mission with launcher",
+                summary: "This mission is not approved.",
+                createdBy: "test-actor",
+                recommendation: .review
+            )
+        )
+        let missionID = try XCTUnwrap(created.mission.id)
+        XCTAssertEqual(created.mission.approval.approved, false)
+
+        // Attempt to dispatch — must fail with missionNotApproved BEFORE calling launcher
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-unapproved-with-launcher"),
+                        missionID: missionID,
+                        workerName: "test-worker",
+                        objective: "Should not be dispatched",
+                        status: .queued
+                    )
+                )
+            )
+            XCTFail("Expected missionNotApproved error for unapproved mission")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .missionNotApproved(let id):
+                XCTAssertEqual(id, missionID)
+            default:
+                XCTFail("Expected missionNotApproved error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarMissionControlError, got \(error)")
+        }
+
+        // VAL-DAEMON-009: With non-nil launcher, zero launch side effects must occur
+        let launches = await launcher.launches
+        XCTAssertEqual(
+            launches.count, 0,
+            "reviewRunLauncher must never be called for unapproved mission dispatch attempt"
+        )
+
+        // Verify no packet was created
+        let mission = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
+        XCTAssertEqual(mission.mission?.packets.count, 0, "No packets should be created for rejected dispatch")
+    }
+
+    // MARK: - VAL-DAEMON-009: Dispatch with non-nil launcher — terminal — zero side effects
+
+    func testVAL_DAEMON_009_TerminalMissionDispatch_WithLauncher_NeverCallsLauncher() async throws {
+        let launcher = ReviewLauncherRecorder()
+        let harness = try makeHarness(
+            name: "val-daemon-009-terminal-launcher",
+            reviewRunLauncher: { prompt, modelID, metadata in
+                await launcher.record(prompt: prompt, modelID: modelID, metadata: metadata)
+                return BurnBarRunCreateResponse(runID: BurnBarRunID(rawValue: "should-not-launch"), phase: .planning)
+            }
+        )
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        // Create, approve, then cancel a mission
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Cancelled mission with launcher",
+                summary: "This mission is cancelled.",
+                createdBy: "test-actor",
+                recommendation: .review
+            )
+        )
+        let missionID = try XCTUnwrap(created.mission.id)
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approved")
+        )
+        _ = try await harness.service.missionCancel(
+            BurnBarMissionCancelRequest(missionID: missionID, actor: "operator", note: "Cancelled")
+        )
+
+        let cancelledMission = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
+        XCTAssertEqual(cancelledMission.mission?.status, .cancelled)
+
+        // Attempt to dispatch — must fail with missionTerminal BEFORE calling launcher
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-cancelled-with-launcher"),
+                        missionID: missionID,
+                        workerName: "test-worker",
+                        objective: "Should not be dispatched",
+                        status: .queued
+                    )
+                )
+            )
+            XCTFail("Expected missionTerminal error for cancelled mission")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .missionTerminal(let id, let status):
+                XCTAssertEqual(id, missionID)
+                XCTAssertEqual(status, .cancelled)
+            default:
+                XCTFail("Expected missionTerminal error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarMissionControlError, got \(error)")
+        }
+
+        // VAL-DAEMON-009: With non-nil launcher, zero launch side effects must occur
+        let launches = await launcher.launches
+        XCTAssertEqual(
+            launches.count, 0,
+            "reviewRunLauncher must never be called for terminal mission dispatch attempt"
+        )
+
+        // Verify no packet was created
+        let mission = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
+        XCTAssertEqual(mission.mission?.packets.count, 0, "No packets should be created for rejected dispatch")
+    }
+
     // MARK: - Cancelled mission approval preserves cancelled status
 
     func testVAL_DAEMON_002_CancelledMissionApprovalPreservesCancelledStatus() async throws {
