@@ -453,7 +453,7 @@ final class BurnBarAgentStackTests: XCTestCase {
 
     // MARK: - VAL-DAEMON-007: Intent normalization precedence is deterministic
 
-    func testPlannerIntentNormalizationPrecedenceIsDeterministic_explicitIntentWinsOverWorkflow() throws {
+    func testVAL_DAEMON_007_IntentNormalizationPrecedence_explicitIntentWinsOverWorkflow() throws {
         let planner = BurnBarPlannerService()
         // When both explicit agentIntent AND workspaceWorkflow are provided,
         // explicit intent metadata must win (precedence: explicit > workflow > tool > prompt > generic)
@@ -491,7 +491,7 @@ final class BurnBarAgentStackTests: XCTestCase {
         XCTAssertNil(planned.intent.replacement)
     }
 
-    func testPlannerIntentNormalizationPrecedenceIsDeterministic_workflowWinsOverTool() throws {
+    func testVAL_DAEMON_007_IntentNormalizationPrecedence_workflowWinsOverTool() throws {
         let planner = BurnBarPlannerService()
         // When both workspaceWorkflow AND toolKind are provided, workflow wins
         let planned = try planner.plan(
@@ -523,7 +523,7 @@ final class BurnBarAgentStackTests: XCTestCase {
         XCTAssertEqual(planned.intent.requestedTools, [.readFile, .applyPatch])
     }
 
-    func testPlannerIntentNormalizationPrecedenceIsDeterministic_toolWinsOverPrompt() throws {
+    func testVAL_DAEMON_007_IntentNormalizationPrecedence_toolWinsOverPrompt() throws {
         let planner = BurnBarPlannerService()
         // When both toolKind and prompt heuristics are provided, tool wins
         let planned = try planner.plan(
@@ -548,7 +548,7 @@ final class BurnBarAgentStackTests: XCTestCase {
         XCTAssertEqual(planned.intent.requestedTools, [.searchWorkspace])
     }
 
-    func testPlannerIntentNormalizationPrecedenceIsDeterministic_promptWinsOverGenericFallback() throws {
+    func testVAL_DAEMON_007_IntentNormalizationPrecedence_promptWinsOverGenericFallback() throws {
         let planner = BurnBarPlannerService()
         // When prompt can be parsed, it wins over generic fallback
         let planned = try planner.plan(
@@ -567,7 +567,7 @@ final class BurnBarAgentStackTests: XCTestCase {
         XCTAssertEqual(planned.intent.requestedTools, [.searchWorkspace])
     }
 
-    func testPlannerIntentNormalizationPrecedenceMatrix_fullOrderingIsStable() throws {
+    func testVAL_DAEMON_007_IntentNormalizationPrecedence_fullOrderingMatrix() throws {
         // VAL-DAEMON-007: Intent resolution precedence is deterministic:
         // explicit intent metadata > workflow metadata > tool metadata > prompt heuristics > generic fallback
         let planner = BurnBarPlannerService()
@@ -650,7 +650,7 @@ final class BurnBarAgentStackTests: XCTestCase {
 
     // MARK: - VAL-DAEMON-008: Unsupported workflow intent fails pre-execution
 
-    func testPlannerUnsupportedWorkflowIntentFailsPreExecution() throws {
+    func testVAL_DAEMON_008_UnsupportedWorkflowFailsPreExecution() throws {
         let planner = BurnBarPlannerService()
 
         // Unsupported workflow type should throw validation error per VAL-DAEMON-008
@@ -685,7 +685,7 @@ final class BurnBarAgentStackTests: XCTestCase {
         }
     }
 
-    func testPlannerUnsupportedWorkflowFailsEvenWithValidToolMetadata() throws {
+    func testVAL_DAEMON_008_UnsupportedWorkflowFailsEvenWithValidToolMetadata() throws {
         // Unsupported workflow is a validation error - it fails pre-execution even if tool metadata is present
         let planner = BurnBarPlannerService()
 
@@ -726,7 +726,7 @@ final class BurnBarAgentStackTests: XCTestCase {
 
     // MARK: - VAL-DAEMON-014: Typed planner input requires constraints, risk level, and desired outputs
 
-    func testTypedPlannerInputRejectsMissingConstraints() throws {
+    func testVAL_DAEMON_014_TypedPlannerInputRejectsMissingConstraints() throws {
         let planner = BurnBarPlannerService()
         let intent = BurnBarAgentIntent(
             kind: .generic,
@@ -757,7 +757,7 @@ final class BurnBarAgentStackTests: XCTestCase {
         }
     }
 
-    func testTypedPlannerInputRejectsMissingDesiredOutputs() throws {
+    func testVAL_DAEMON_014_TypedPlannerInputRejectsMissingDesiredOutputs() throws {
         let planner = BurnBarPlannerService()
         let intent = BurnBarAgentIntent(
             kind: .generic,
@@ -788,7 +788,7 @@ final class BurnBarAgentStackTests: XCTestCase {
         }
     }
 
-    func testTypedPlannerInputAcceptsValidInputWithAllRequiredFields() throws {
+    func testVAL_DAEMON_014_TypedPlannerInputAcceptsValidInputWithAllRequiredFields() throws {
         let planner = BurnBarPlannerService()
         let intent = BurnBarAgentIntent(
             kind: .replaceStringInFile,
@@ -815,7 +815,7 @@ final class BurnBarAgentStackTests: XCTestCase {
         XCTAssertEqual(planned.outline.steps.count, 3)
     }
 
-    func testTypedPlannerInputPreservesFieldsThroughPlanAndOutline() throws {
+    func testVAL_DAEMON_014_TypedPlannerInputPreservesFieldsThroughPlanAndOutline() throws {
         let planner = BurnBarPlannerService()
         let intent = BurnBarAgentIntent(
             kind: .inspectWorkspace,
@@ -846,7 +846,7 @@ final class BurnBarAgentStackTests: XCTestCase {
         XCTAssertEqual(planned.outline.steps.count, 3) // search, inspect, summarize
     }
 
-    func testTypedPlannerInputRejectsUnsupportedSchemaVersion() throws {
+    func testVAL_DAEMON_014_TypedPlannerInputRejectsUnsupportedSchemaVersion() throws {
         let planner = BurnBarPlannerService()
         let intent = BurnBarAgentIntent(
             kind: .generic,

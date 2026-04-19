@@ -890,6 +890,208 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertTrue(launches.last?.prompt.contains("OpenBurnBar auto-takeover for mission Recover the rollout packet") == true)
     }
 
+    // MARK: - VAL-DAEMON-014: Typed planner input requires constraints, risk level, and desired outputs
+
+    func testVAL_DAEMON_014_PlannerInputValidationRejectsEmptyConstraints() async throws {
+        // VAL-DAEMON-014: Planner input rejects missing required fields (empty constraints)
+        let harness = try makeHarness(name: "val-daemon-014-constraints")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let mission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Test planner input validation",
+                summary: "Verify planner input requires constraints.",
+                createdBy: "test-actor",
+                recommendation: .review
+            )
+        )
+        let missionID = try XCTUnwrap(mission.mission.id)
+
+        // Create a planner service to test validation
+        let plannerService = BurnBarPlannerService()
+
+        let intent = BurnBarAgentIntent(
+            kind: .generic,
+            objective: "test",
+            summary: "test summary"
+        )
+
+        // Empty constraints should be rejected
+        do {
+            _ = try plannerService.plan(
+                for: BurnBarPlannerInput(
+                    missionID: missionID,
+                    normalizedIntent: intent,
+                    constraints: [], // Empty - should fail
+                    riskLevel: .low,
+                    desiredOutputs: ["output1"]
+                )
+            )
+            XCTFail("Expected planner to reject empty constraints")
+        } catch let error as BurnBarPlannerServiceError {
+            switch error {
+            case .invalidPlannerInput(let message):
+                XCTAssertTrue(message.contains("constraints") || message.contains("empty"),
+                              "Expected error message about constraints, got: \(message)")
+            default:
+                XCTFail("Expected invalidPlannerInput error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarPlannerServiceError, got \(error)")
+        }
+    }
+
+    func testVAL_DAEMON_014_PlannerInputValidationRejectsEmptyDesiredOutputs() async throws {
+        // VAL-DAEMON-014: Planner input rejects missing required fields (empty desiredOutputs)
+        let harness = try makeHarness(name: "val-daemon-014-outputs")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let mission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Test planner input validation",
+                summary: "Verify planner input requires desired outputs.",
+                createdBy: "test-actor",
+                recommendation: .review
+            )
+        )
+        let missionID = try XCTUnwrap(mission.mission.id)
+
+        let plannerService = BurnBarPlannerService()
+
+        let intent = BurnBarAgentIntent(
+            kind: .generic,
+            objective: "test",
+            summary: "test summary"
+        )
+
+        // Empty desiredOutputs should be rejected
+        do {
+            _ = try plannerService.plan(
+                for: BurnBarPlannerInput(
+                    missionID: missionID,
+                    normalizedIntent: intent,
+                    constraints: ["constraint1"],
+                    riskLevel: .low,
+                    desiredOutputs: [] // Empty - should fail
+                )
+            )
+            XCTFail("Expected planner to reject empty desiredOutputs")
+        } catch let error as BurnBarPlannerServiceError {
+            switch error {
+            case .invalidPlannerInput(let message):
+                XCTAssertTrue(message.contains("desiredOutputs") || message.contains("empty"),
+                              "Expected error message about desiredOutputs, got: \(message)")
+            default:
+                XCTFail("Expected invalidPlannerInput error, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected BurnBarPlannerServiceError, got \(error)")
+        }
+    }
+
+    func testVAL_DAEMON_014_PlannerInputValidationAcceptsValidInput() async throws {
+        // VAL-DAEMON-014: Planner input accepts valid input with all required fields
+        let harness = try makeHarness(name: "val-daemon-014-valid")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let mission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Test planner input validation",
+                summary: "Verify planner input accepts valid input.",
+                createdBy: "test-actor",
+                recommendation: .review
+            )
+        )
+        let missionID = try XCTUnwrap(mission.mission.id)
+
+        let plannerService = BurnBarPlannerService()
+
+        let intent = BurnBarAgentIntent(
+            kind: .replaceStringInFile,
+            objective: "replace old with new",
+            summary: "replace operation",
+            targetPath: "test.swift",
+            replacement: BurnBarTextReplacement(from: "old", to: "new"),
+            requestedTools: [.readFile, .applyPatch]
+        )
+
+        // Valid input should succeed
+        let planned = try plannerService.plan(
+            for: BurnBarPlannerInput(
+                missionID: missionID,
+                normalizedIntent: intent,
+                constraints: ["do not modify tests", "preserve imports"],
+                riskLevel: .medium,
+                desiredOutputs: ["file updated", "compilation succeeds"]
+            )
+        )
+
+        XCTAssertEqual(planned.intent.kind, .replaceStringInFile)
+        XCTAssertEqual(planned.constraints, ["do not modify tests", "preserve imports"])
+        XCTAssertEqual(planned.riskLevel, .medium)
+        XCTAssertEqual(planned.desiredOutputs, ["file updated", "compilation succeeds"])
+    }
+
+    func testVAL_DAEMON_014_PlannerInputPreservesFieldsThroughPlanning() async throws {
+        // VAL-DAEMON-014: Planner input fields are preserved through planning
+        let harness = try makeHarness(name: "val-daemon-014-preserve")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let mission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Test planner input field preservation",
+                summary: "Verify planner input fields are preserved.",
+                createdBy: "test-actor",
+                recommendation: .review
+            )
+        )
+        let missionID = try XCTUnwrap(mission.mission.id)
+
+        let plannerService = BurnBarPlannerService()
+
+        let intent = BurnBarAgentIntent(
+            kind: .inspectWorkspace,
+            objective: "find relevant files",
+            summary: "workspace inspection",
+            searchQuery: "BurnBarRunService",
+            requestedTools: [.searchWorkspace]
+        )
+
+        let planned = try plannerService.plan(
+            for: BurnBarPlannerInput(
+                missionID: missionID,
+                normalizedIntent: intent,
+                constraints: ["only search src/"],
+                riskLevel: .low,
+                desiredOutputs: ["files identified"],
+                workflowHints: ["scope": .string("src")]
+            )
+        )
+
+        // Verify fields preserved through planning
+        XCTAssertEqual(planned.intent.kind, .inspectWorkspace)
+        XCTAssertEqual(planned.intent.searchQuery, "BurnBarRunService")
+        XCTAssertEqual(planned.constraints, ["only search src/"])
+        XCTAssertEqual(planned.riskLevel, .low)
+        XCTAssertEqual(planned.desiredOutputs, ["files identified"])
+    }
+
     private func makeHarness(
         name: String,
         transport: BurnBarMissionControlTransport = .live(),
