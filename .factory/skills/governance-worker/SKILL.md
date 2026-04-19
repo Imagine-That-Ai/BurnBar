@@ -23,11 +23,15 @@ None.
 4. Ensure reason codes map consistently across daemon/app/extension surfaces.
 5. Run validation commands:
    - `swift test --package-path OpenBurnBarCore --filter OpenBurnBarMissionControlContractsTests`
-   - `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarMissionControlServiceTests`
-   - `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarDaemonServerTests`
+   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`
+   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests`
    - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests"`
    - `npm --prefix extensions/openburnbar run test:unit -- test/projections.test.ts test/extension.test.ts`
-6. Include explicit invariant checks in handoff evidence.
+6. **Evidence rigor for handoff finalization:**
+   - **verificationStep coverage:** For every verificationStep in the feature definition, record the actual command output and observed result as evidence in `commandsRun`. Each verificationStep must have at least one corresponding command run with its exit code and observation.
+   - **fulfilled assertion surface coverage:** For every assertion ID listed in `fulfills`, confirm the surface(s) it targets (daemon/core/app/extension) and include evidence from each surface. If an assertion spans multiple surfaces (e.g., VAL-CROSS- assertions), evidence from ALL surfaces is required before handoff.
+   - **Daemon + extension host parity checks:** For cross-surface assertions, run `swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests` AND `./scripts/test-openburnbar-extension-host.sh` and include both outputs in handoff evidence.
+   - **Explicit invariant checks:** In the handoff `verification.commandsRun`, explicitly note which assertions are verified by each command and confirm all `fulfills` IDs have corresponding evidence.
 
 ## Example Handoff
 ```json
@@ -38,14 +42,29 @@ None.
   "verification": {
     "commandsRun": [
       {
-        "command": "swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarMissionControlServiceTests",
+        "command": "swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests",
         "exitCode": 0,
-        "observation": "Governance invariants and scheduling tests passed."
+        "observation": "Governance invariants and scheduling tests passed. Covers VAL-GOV-001, VAL-GOV-002, VAL-GOV-006, VAL-GOV-008, VAL-GOV-010."
       },
       {
-        "command": "swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarDaemonServerTests",
+        "command": "swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests",
         "exitCode": 0,
-        "observation": "Connector and server contract parity tests passed."
+        "observation": "Connector and server contract parity tests passed. Covers VAL-GOV-003."
+      },
+      {
+        "command": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -only-testing:\"OpenBurnBarTests/OpenBurnBarOperatingComposerTests\"",
+        "exitCode": 0,
+        "observation": "App surface governance UI tests passed."
+      },
+      {
+        "command": "npm --prefix extensions/openburnbar run test:unit -- test/projections.test.ts test/extension.test.ts",
+        "exitCode": 0,
+        "observation": "Extension projection parity tests passed. Covers VAL-EXT-007, VAL-EXT-008."
+      },
+      {
+        "command": "./scripts/test-openburnbar-extension-host.sh",
+        "exitCode": 0,
+        "observation": "Extension host integration smoke passed. Covers VAL-CROSS-010 parity between app and extension authoring."
       }
     ],
     "interactiveChecks": []
@@ -57,7 +76,7 @@ None.
         "cases": [
           {
             "name": "testClosureQuestionUniquenessPerMission",
-            "verifies": "Exactly one closure approval question invariant"
+            "verifies": "Exactly one closure approval question invariant (VAL-GOV-006)"
           }
         ]
       }
@@ -67,7 +86,31 @@ None.
 }
 ```
 
+**Evidence rigor requirements for handoff:**
+- Every `verificationStep` from the feature definition must appear in `verification.commandsRun` with exit code and concrete observation.
+- Every `fulfills` assertion ID must be listed in at least one command's observation field.
+- Cross-surface assertions (VAL-CROSS-*, VAL-EXT-*) require evidence from ALL listed surfaces (daemon + app + extension).
+- For daemon + extension parity: run BOTH `swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests` AND `./scripts/test-openburnbar-extension-host.sh` and include both outputs.
+
 ## When to Return to Orchestrator
 - Governance rule conflicts require product/policy decision (for example precedence between budget cap and approval mode).
 - Real connector integration required for validation is unavailable.
 - Invariant enforcement requires migration strategy that could break existing persisted mission data.
+
+commands:
+  install: ./.factory/init.sh
+  typecheck: xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+  lint: npm --prefix extensions/openburnbar run lint
+  test: scripts/test-openburnbar-swift.sh && CI=true scripts/test-openburnbar-app.sh && scripts/test-openburnbar-ts.sh
+  test_daemon_mission: swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests
+  test_daemon_runtime: swift test --package-path OpenBurnBarDaemon --filter BurnBarRunServiceTests
+  test_daemon_rpc: swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests
+  test_core_contracts: swift test --package-path OpenBurnBarCore --filter BurnBarMissionControlContractsTests
+  test_router: swift test --package-path OpenBurnBarDaemon --filter BurnBarProviderRouterTests
+  test_app_operating: xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''
+  test_extension_unit: npm --prefix extensions/openburnbar run test:unit -- test/controller.test.ts test/projections.test.ts test/workspacePanel.test.ts test/extension.test.ts
+  test_extension_host: ./scripts/test-openburnbar-extension-host.sh
+  test_real_integration_smoke: ./scripts/test-openburnbar-extension-host.sh && swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests
+  build: scripts/build.sh --build --configuration Debug --cache-dir .spm-cache --derived-data .derived-data/ci-build
+
+services: {}
