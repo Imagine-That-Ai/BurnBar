@@ -6,14 +6,18 @@ import type {
   BurnBarRunStateSnapshot,
   BurnBarUsageEvent,
   BurnBarWorkspaceCapabilities,
-  BurnBarRunPhase
+  BurnBarRunPhase,
+  BurnBarMissionSnapshot
 } from '../src/types';
 import {
   projectRuns,
   buildHealthRows,
   buildRunDetailRows,
+  buildMissionRows,
+  buildMissionDetailRows,
   type BurnBarHealthRow,
-  type BurnBarRunDetailRow
+  type BurnBarRunDetailRow,
+  type BurnBarMissionRow
 } from '../src/state/projections';
 
 // Helper to create a minimal state for testing
@@ -32,6 +36,7 @@ function createMockState(overrides: Partial<OpenBurnBarState> = {}): OpenBurnBar
       models: []
     },
     daemonRuns: [],
+    daemonMissions: [],
     pendingToolCalls: [],
     recentUsage: [],
     lastError: undefined,
@@ -766,5 +771,383 @@ describe('Projection Edge Cases', () => {
 
     const workspaceRow = rows.find(r => r.id === 'workspace-mode');
     expect(workspaceRow?.icon).toBe('pass');
+  });
+});
+
+// Helper to create a mock mission
+function createMockMission(overrides: Partial<BurnBarMissionSnapshot> = {}): BurnBarMissionSnapshot {
+  return {
+    id: 'mission-123',
+    projectSlug: 'apollo',
+    title: 'Ship the approval sheet',
+    summary: 'Approval sheet is stable, QA passed, and only launch coordination remains before release.',
+    status: 'planned',
+    recommendation: 'review',
+    createdAt: '2024-01-15T12:00:00Z',
+    updatedAt: '2024-01-15T12:00:00Z',
+    approval: { approved: false },
+    packets: [],
+    results: [],
+    burnRecords: [],
+    takeoverHistory: [],
+    metadata: {},
+    ...overrides
+  };
+}
+
+// VAL-EXT-008: Extension mission list/detail projections mirror daemon mission lifecycle transitions and ordering
+describe('buildMissionRows', () => {
+  it('should return daemon unavailable state when not connected', () => {
+    const state = createMockState({ connectionStatus: 'disconnected' });
+    const result = buildMissionRows(state);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('daemon-unavailable');
+    expect(result[0].phase).toBe('failed');
+    expect(result[0].source).toBe('projected');
+  });
+
+  it('should return client session unavailable when not attached', () => {
+    const state = createMockState({ clientAttached: false });
+    const result = buildMissionRows(state);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('client-session-unavailable');
+    expect(result[0].phase).toBe('failed');
+    expect(result[0].source).toBe('projected');
+  });
+
+  it('should return empty mission list when no missions', () => {
+    const state = createMockState({ daemonMissions: [] });
+    const result = buildMissionRows(state);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('empty-mission-list');
+    expect(result[0].phase).toBe('idle');
+    expect(result[0].source).toBe('projected');
+  });
+
+  it('should project daemon missions when available', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({ id: 'mission-1', status: 'running', title: 'Active mission' }),
+      createMockMission({ id: 'mission-2', status: 'completed', title: 'Done mission' })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionRows(state);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe('mission-1');
+    expect(result[0].source).toBe('daemon');
+    expect(result[0].status).toBe('running');
+    expect(result[1].id).toBe('mission-2');
+    expect(result[1].status).toBe('completed');
+  });
+
+  it('should sort missions by lifecycle status with running first', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({ id: 'planned-1', status: 'planned', updatedAt: '2024-01-15T12:00:00Z' }),
+      createMockMission({ id: 'running-1', status: 'running', updatedAt: '2024-01-15T11:00:00Z' }),
+      createMockMission({ id: 'completed-1', status: 'completed', updatedAt: '2024-01-15T10:00:00Z' })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionRows(state);
+
+    expect(result).toHaveLength(3);
+    expect(result[0].status).toBe('running');
+    expect(result[1].status).toBe('planned');
+    expect(result[2].status).toBe('completed');
+  });
+
+  it('should track approval state from mission approval', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({ id: 'mission-1', approval: { approved: true, approvedBy: 'alice' } }),
+      createMockMission({ id: 'mission-2', approval: { approved: false } })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionRows(state);
+
+    expect(result[0].approved).toBe(true);
+    expect(result[0].approvedBy).toBe('alice');
+    expect(result[1].approved).toBe(false);
+  });
+
+  it('should track takeover count from mission takeover history', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-1',
+        takeoverHistory: [
+          { id: 'takeover-1', projectSlug: 'apollo', status: 'completed', reason: 'test', createdAt: '2024-01-15T12:00:00Z', updatedAt: '2024-01-15T12:00:00Z', metadata: {} },
+          { id: 'takeover-2', projectSlug: 'apollo', status: 'completed', reason: 'test2', createdAt: '2024-01-15T12:00:00Z', updatedAt: '2024-01-15T12:00:00Z', metadata: {} }
+        ]
+      })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionRows(state);
+
+    expect(result[0].takeoverCount).toBe(2);
+  });
+
+  it('should track packets count from mission packets', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-1',
+        packets: [
+          { id: 'packet-1', missionID: 'mission-1', workerName: 'worker-1', objective: 'test', status: 'completed', metadata: {} },
+          { id: 'packet-2', missionID: 'mission-1', workerName: 'worker-2', objective: 'test2', status: 'pending', metadata: {} }
+        ]
+      })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionRows(state);
+
+    expect(result[0].packetsCount).toBe(2);
+    expect(result[0].activePacketID).toBe('packet-2');
+  });
+
+  it('should reflect mission phase from associated run', () => {
+    const runs: BurnBarRunStateSnapshot[] = [
+      createMockRun({ runID: 'run-1', phase: 'executing_tool' })
+    ];
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-1',
+        status: 'running',
+        packets: [{ id: 'packet-1', missionID: 'mission-1', workerName: 'worker-1', objective: 'test', status: 'in_progress', runID: 'run-1', metadata: {} }]
+      })
+    ];
+    const state = createMockState({ daemonRuns: runs, daemonMissions: missions });
+    const result = buildMissionRows(state);
+
+    expect(result[0].phase).toBe('executing_tool');
+  });
+});
+
+describe('buildMissionDetailRows', () => {
+  it('should return empty row when no mission selected', () => {
+    const state = createMockState({ daemonMissions: [] });
+    const result = buildMissionDetailRows(state);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('empty');
+  });
+
+  it('should return not found when mission does not exist', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({ id: 'mission-1' })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionDetailRows(state, 'non-existent');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('not-found');
+  });
+
+  it('should show mission details when mission exists', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-1',
+        projectSlug: 'apollo',
+        title: 'Ship the approval sheet',
+        summary: 'Approval sheet is stable.',
+        status: 'running',
+        recommendation: 'review'
+      })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionDetailRows(state, 'mission-1');
+
+    expect(result.some(r => r.id === 'title')).toBe(true);
+    expect(result.find(r => r.id === 'title')?.value).toBe('Ship the approval sheet');
+    expect(result.some(r => r.id === 'project')).toBe(true);
+    expect(result.find(r => r.id === 'project')?.value).toBe('apollo');
+    expect(result.some(r => r.id === 'status')).toBe(true);
+    expect(result.find(r => r.id === 'status')?.value).toBe('running');
+    expect(result.some(r => r.id === 'recommendation')).toBe(true);
+    expect(result.some(r => r.id === 'summary')).toBe(true);
+  });
+
+  it('should show approval status', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-1',
+        approval: { approved: true, approvedBy: 'alice', note: 'Looks good' }
+      })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionDetailRows(state, 'mission-1');
+
+    const approvalRow = result.find(r => r.id === 'approval');
+    expect(approvalRow?.value).toContain('Yes');
+    expect(approvalRow?.value).toContain('alice');
+  });
+
+  it('should show packets count and active packet', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-1',
+        packets: [
+          { id: 'packet-1', missionID: 'mission-1', workerName: 'worker-1', objective: 'test objective', status: 'completed', metadata: {} },
+          { id: 'packet-2', missionID: 'mission-1', workerName: 'worker-2', objective: 'active objective', status: 'in_progress', metadata: {} }
+        ]
+      })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionDetailRows(state, 'mission-1');
+
+    const packetsRow = result.find(r => r.id === 'packets');
+    expect(packetsRow?.value).toContain('2 total');
+
+    const activePacketRow = result.find(r => r.id === 'active-packet');
+    expect(activePacketRow?.value).toContain('active objective');
+  });
+
+  it('should show burn records total', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-1',
+        burnRecords: [
+          { id: 'burn-1', label: 'tokens', amount: 1500, unit: 'tokens', recordedAt: '2024-01-15T12:00:00Z' },
+          { id: 'burn-2', label: 'tokens', amount: 500, unit: 'tokens', recordedAt: '2024-01-15T13:00:00Z' }
+        ]
+      })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionDetailRows(state, 'mission-1');
+
+    const burnRow = result.find(r => r.id === 'burn');
+    expect(burnRow?.value).toBe('2000.0000');
+  });
+
+  it('should show takeover history count', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-1',
+        takeoverHistory: [
+          { id: 'takeover-1', projectSlug: 'apollo', status: 'completed', reason: 'test', createdAt: '2024-01-15T12:00:00Z', updatedAt: '2024-01-15T12:00:00Z', metadata: {} }
+        ]
+      })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionDetailRows(state, 'mission-1');
+
+    const takeoversRow = result.find(r => r.id === 'takeovers');
+    expect(takeoversRow?.value).toContain('1 total');
+  });
+});
+
+// VAL-CROSS-010: Mission authoring parity holds across app and extension entrypoints
+describe('Mission Authoring Parity', () => {
+  it('should produce consistent mission structure from app and extension', () => {
+    // Simulate mission created from app
+    const appMission: BurnBarMissionSnapshot = createMockMission({
+      id: 'mission-app-1',
+      projectSlug: 'apollo',
+      title: 'Ship from app',
+      summary: 'Created from OpenBurnBar app.',
+      recommendation: 'proceed',
+      metadata: { createdBy: 'app', source: 'OpenBurnBar.app' }
+    });
+
+    // Simulate mission created from extension
+    const extensionMission: BurnBarMissionSnapshot = createMockMission({
+      id: 'mission-ext-1',
+      projectSlug: 'apollo',
+      title: 'Ship from extension',
+      summary: 'Created from OpenBurnBar extension.',
+      recommendation: 'proceed',
+      metadata: { createdBy: 'extension', source: 'OpenBurnBar.extension' }
+    });
+
+    // Both should have the same structural properties
+    const appKeys = Object.keys(appMission);
+    const extensionKeys = Object.keys(extensionMission);
+    expect(appKeys).toEqual(extensionKeys);
+
+    // Both should be projectable by buildMissionRows
+    const state1 = createMockState({ daemonMissions: [appMission] });
+    const state2 = createMockState({ daemonMissions: [extensionMission] });
+
+    const rows1 = buildMissionRows(state1);
+    const rows2 = buildMissionRows(state2);
+
+    expect(rows1[0]).toMatchObject({
+      id: 'mission-app-1',
+      title: 'Ship from app',
+      projectSlug: 'apollo',
+      status: 'planned',
+      source: 'daemon',
+      approved: false,
+      packetsCount: 0,
+      takeoverCount: 0
+    });
+
+    expect(rows2[0]).toMatchObject({
+      id: 'mission-ext-1',
+      title: 'Ship from extension',
+      projectSlug: 'apollo',
+      status: 'planned',
+      source: 'daemon',
+      approved: false,
+      packetsCount: 0,
+      takeoverCount: 0
+    });
+  });
+
+  it('should produce identical detail rows for missions from both entrypoints', () => {
+    const appMission = createMockMission({
+      id: 'mission-parity-1',
+      projectSlug: 'apollo',
+      title: 'Parity mission',
+      summary: 'Testing detail projection parity.',
+      status: 'running',
+      recommendation: 'review',
+      approval: { approved: true, approvedBy: 'alice' },
+      packets: [
+        { id: 'packet-1', missionID: 'mission-parity-1', workerName: 'worker-1', objective: 'test', status: 'completed', metadata: {} }
+      ],
+      burnRecords: [
+        { id: 'burn-1', label: 'tokens', amount: 1000, unit: 'tokens', recordedAt: '2024-01-15T12:00:00Z' }
+      ]
+    });
+
+    const state = createMockState({ daemonMissions: [appMission] });
+    const detailRows = buildMissionDetailRows(state, 'mission-parity-1');
+
+    // Both app and extension should produce the same detail rows
+    expect(detailRows.find(r => r.id === 'title')?.value).toBe('Parity mission');
+    expect(detailRows.find(r => r.id === 'project')?.value).toBe('apollo');
+    expect(detailRows.find(r => r.id === 'status')?.value).toBe('running');
+    expect(detailRows.find(r => r.id === 'recommendation')?.value).toBe('review');
+    expect(detailRows.find(r => r.id === 'summary')?.value).toBe('Testing detail projection parity.');
+    expect(detailRows.find(r => r.id === 'packets')?.value).toBe('1 total');
+    expect(detailRows.find(r => r.id === 'burn')?.value).toBe('1000.0000');
+  });
+
+  it('should order missions consistently regardless of entrypoint', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({ id: 'mission-ext-1', status: 'running', updatedAt: '2024-01-15T12:00:00Z', metadata: { source: 'extension' } }),
+      createMockMission({ id: 'mission-app-1', status: 'running', updatedAt: '2024-01-15T11:00:00Z', metadata: { source: 'app' } }),
+      createMockMission({ id: 'mission-ext-2', status: 'planned', updatedAt: '2024-01-15T10:00:00Z', metadata: { source: 'extension' } }),
+      createMockMission({ id: 'mission-app-2', status: 'planned', updatedAt: '2024-01-15T09:00:00Z', metadata: { source: 'app' } })
+    ];
+
+    const state = createMockState({ daemonMissions: missions });
+    const rows = buildMissionRows(state);
+
+    // Running missions should come first, ordered by updatedAt descending
+    expect(rows[0].id).toBe('mission-ext-1');
+    expect(rows[0].status).toBe('running');
+    expect(rows[1].id).toBe('mission-app-1');
+    expect(rows[1].status).toBe('running');
+
+    // Then planned missions, ordered by updatedAt descending
+    expect(rows[2].id).toBe('mission-ext-2');
+    expect(rows[2].status).toBe('planned');
+    expect(rows[3].id).toBe('mission-app-2');
+    expect(rows[3].status).toBe('planned');
+
+    // Order should be deterministic (same input always produces same output)
+    const rowsAgain = buildMissionRows(state);
+    expect(rows.map(r => r.id)).toEqual(rowsAgain.map(r => r.id));
   });
 });

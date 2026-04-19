@@ -398,12 +398,90 @@ export interface BurnBarRunProjection {
   source: 'projected' | 'daemon';
 }
 
+export type BurnBarMissionStatus = 'planned' | 'running' | 'partial' | 'blocked' | 'completed';
+export type BurnBarMissionRecommendation = 'proceed' | 'review' | 'pause';
+export type BurnBarMissionPacketStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
+export type BurnBarMissionResultStatus = 'pending' | 'success' | 'failed' | 'partial';
+export type BurnBarAutoTakeoverStatus = 'requested' | 'in_progress' | 'completed' | 'declined' | 'failed';
+
+export interface BurnBarMissionApprovalSnapshot {
+  approved: boolean;
+  approvedAt?: string;
+  approvedBy?: string;
+  note?: string;
+}
+
+export interface BurnBarMissionPacketSnapshot {
+  id: string;
+  missionID: string;
+  workerName: string;
+  objective: string;
+  status: BurnBarMissionPacketStatus;
+  runID?: string;
+  dispatchedAt?: string;
+  completedAt?: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface BurnBarMissionResultSnapshot {
+  id: string;
+  missionID: string;
+  packetID?: string;
+  runID?: string;
+  status: BurnBarMissionResultStatus;
+  summary: string;
+  detail?: string;
+  burnDelta: number;
+  createdAt: string;
+  evidenceRefs: string[];
+  metadata: Record<string, unknown>;
+}
+
+export interface BurnBarMissionBurnRecord {
+  id: string;
+  label: string;
+  amount: number;
+  unit: string;
+  recordedAt: string;
+}
+
+export interface BurnBarAutoTakeoverRecord {
+  id: string;
+  projectSlug: string;
+  missionID?: string;
+  sourceRunID?: string;
+  takeoverRunID?: string;
+  status: BurnBarAutoTakeoverStatus;
+  reason: string;
+  createdAt: string;
+  updatedAt: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface BurnBarMissionSnapshot {
+  id: string;
+  projectSlug: string;
+  title: string;
+  summary: string;
+  status: BurnBarMissionStatus;
+  recommendation: BurnBarMissionRecommendation;
+  createdAt: string;
+  updatedAt: string;
+  approval?: BurnBarMissionApprovalSnapshot;
+  packets: BurnBarMissionPacketSnapshot[];
+  results: BurnBarMissionResultSnapshot[];
+  burnRecords: BurnBarMissionBurnRecord[];
+  takeoverHistory: BurnBarAutoTakeoverRecord[];
+  metadata: Record<string, unknown>;
+}
+
 export interface OpenBurnBarState {
   connectionStatus: BurnBarConnectionStatus;
   clientAttached: boolean;
   health?: BurnBarHealthResponse;
   catalog?: BurnBarCatalog;
   daemonRuns: BurnBarRunStateSnapshot[];
+  daemonMissions?: BurnBarMissionSnapshot[];
   pendingToolCalls: BurnBarToolCallSnapshot[];
   arbitration?: BurnBarClientArbitrationSnapshot;
   selectedRunDetail?: BurnBarRunDetailResponse;

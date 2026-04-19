@@ -3,7 +3,9 @@ import type {
   BurnBarRunProjection,
   BurnBarRunStateSnapshot,
   OpenBurnBarState,
-  BurnBarUsageEvent
+  BurnBarUsageEvent,
+  BurnBarMissionSnapshot,
+  BurnBarMissionPacketSnapshot
 } from '../types';
 import type { BurnBarWorkspaceCapabilities } from '../workspace/types';
 
@@ -406,6 +408,291 @@ export function buildRunDetailRows(state: OpenBurnBarState): BurnBarRunDetailRow
   }
 
   return rows;
+}
+
+// MARK: - Mission Projections (VAL-EXT-008, VAL-CROSS-010)
+
+export interface BurnBarMissionRow {
+  id: string;
+  title: string;
+  projectSlug: string;
+  status: BurnBarMissionStatus;
+  recommendation: BurnBarMissionRecommendation;
+  phase: BurnBarRunPhase;
+  note: string;
+  updatedAt: string;
+  source: 'daemon' | 'projected';
+  // Ownership and transfer tracking
+  approved: boolean;
+  approvedBy?: string;
+  packetsCount: number;
+  activePacketID?: string;
+  takeoverCount: number;
+}
+
+export interface BurnBarMissionDetailRow {
+  id: string;
+  label: string;
+  value: string;
+}
+
+export type BurnBarMissionStatus = 'planned' | 'running' | 'partial' | 'blocked' | 'completed';
+export type BurnBarMissionRecommendation = 'proceed' | 'review' | 'pause';
+export type BurnBarRunPhase =
+  | 'idle'
+  | 'planning'
+  | 'executing_tool'
+  | 'waiting_on_companion'
+  | 'model_streaming'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'awaiting_approval';
+
+export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
+  const timestamp = new Date().toISOString();
+
+  if (state.connectionStatus !== 'connected' || !state.health) {
+    return [
+      {
+        id: 'daemon-unavailable',
+        title: 'Daemon unavailable',
+        projectSlug: '',
+        status: 'blocked',
+        recommendation: 'review',
+        phase: 'failed',
+        note: 'Mission board unavailable: daemon is not connected.',
+        updatedAt: timestamp,
+        source: 'projected',
+        approved: false,
+        packetsCount: 0,
+        takeoverCount: 0
+      }
+    ];
+  }
+
+  if (!state.clientAttached) {
+    return [
+      {
+        id: 'client-session-unavailable',
+        title: 'Client session unavailable',
+        projectSlug: '',
+        status: 'blocked',
+        recommendation: 'review',
+        phase: 'failed',
+        note: 'Mission board unavailable: client session is not attached.',
+        updatedAt: timestamp,
+        source: 'projected',
+        approved: false,
+        packetsCount: 0,
+        takeoverCount: 0
+      }
+    ];
+  }
+
+  if (!state.daemonMissions || state.daemonMissions.length === 0) {
+    return [
+      {
+        id: 'empty-mission-list',
+        title: 'No missions yet',
+        projectSlug: '',
+        status: 'planned',
+        recommendation: 'review',
+        phase: 'idle',
+        note: 'Use Mission Board in the OpenBurnBar app to create your first mission.',
+        updatedAt: timestamp,
+        source: 'projected',
+        approved: false,
+        packetsCount: 0,
+        takeoverCount: 0
+      }
+    ];
+  }
+
+  // Sort missions: active first (running), then planned, then others, then by updatedAt descending
+  return [...state.daemonMissions]
+    .sort((a, b) => {
+      const statusOrder: Record<BurnBarMissionStatus, number> = {
+        running: 0,
+        planned: 1,
+        partial: 2,
+        blocked: 3,
+        completed: 4
+      };
+      const statusDiff = statusOrder[a.status] - statusOrder[b.status];
+      if (statusDiff !== 0) return statusDiff;
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    })
+    .map((mission) => {
+      const activePacket = mission.packets.find((p) => p.status === 'in_progress' || p.status === 'pending');
+      const runForMission = state.daemonRuns.find((run) =>
+        mission.packets.some((packet) => packet.runID === run.runID)
+      );
+
+      return {
+        id: mission.id,
+        title: mission.title,
+        projectSlug: mission.projectSlug,
+        status: mission.status,
+        recommendation: mission.recommendation,
+        phase: runForMission?.phase ?? missionPhaseFromStatus(mission.status),
+        note: describeMissionNote(mission, activePacket),
+        updatedAt: mission.updatedAt,
+        source: 'daemon' as const,
+        approved: mission.approval?.approved ?? false,
+        approvedBy: mission.approval?.approvedBy,
+        packetsCount: mission.packets.length,
+        activePacketID: activePacket?.id,
+        takeoverCount: mission.takeoverHistory?.length ?? 0
+      };
+    });
+}
+
+export function buildMissionDetailRows(state: OpenBurnBarState, missionId?: string): BurnBarMissionDetailRow[] {
+  if (!missionId) {
+    return [
+      {
+        id: 'empty',
+        label: 'Mission',
+        value: 'Select a mission from the board to inspect details.'
+      }
+    ];
+  }
+
+  const mission = state.daemonMissions?.find((m) => m.id === missionId);
+  if (!mission) {
+    return [
+      {
+        id: 'not-found',
+        label: 'Mission',
+        value: 'Mission not found.'
+      }
+    ];
+  }
+
+  const rows: BurnBarMissionDetailRow[] = [
+    {
+      id: 'title',
+      label: 'Mission',
+      value: mission.title
+    },
+    {
+      id: 'project',
+      label: 'Project',
+      value: mission.projectSlug
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      value: mission.status
+    },
+    {
+      id: 'recommendation',
+      label: 'Recommendation',
+      value: mission.recommendation
+    },
+    {
+      id: 'summary',
+      label: 'Summary',
+      value: mission.summary
+    },
+    {
+      id: 'created-at',
+      label: 'Created',
+      value: mission.createdAt
+    },
+    {
+      id: 'updated-at',
+      label: 'Updated',
+      value: mission.updatedAt
+    },
+    {
+      id: 'approval',
+      label: 'Approved',
+      value: mission.approval?.approved ? `Yes by ${mission.approval.approvedBy ?? 'unknown'}` : 'Pending'
+    }
+  ];
+
+  if (mission.packets.length > 0) {
+    rows.push({
+      id: 'packets',
+      label: 'Packets',
+      value: `${mission.packets.length} total`
+    });
+
+    const activePacket = mission.packets.find((p) => p.status === 'in_progress');
+    if (activePacket) {
+      rows.push({
+        id: 'active-packet',
+        label: 'Active packet',
+        value: `${activePacket.objective} (${activePacket.status})`
+      });
+    }
+  }
+
+  if (mission.burnRecords && mission.burnRecords.length > 0) {
+    const totalBurn = mission.burnRecords.reduce((sum, record) => sum + record.amount, 0);
+    rows.push({
+      id: 'burn',
+      label: 'Total burn',
+      value: `${totalBurn.toFixed(4)}`
+    });
+  }
+
+  if (mission.takeoverHistory && mission.takeoverHistory.length > 0) {
+    rows.push({
+      id: 'takeovers',
+      label: 'Takeovers',
+      value: `${mission.takeoverHistory.length} total`
+    });
+  }
+
+  return rows;
+}
+
+function missionPhaseFromStatus(status: BurnBarMissionStatus): BurnBarRunPhase {
+  switch (status) {
+  case 'running':
+    return 'executing_tool';
+  case 'planned':
+    return 'planning';
+  case 'completed':
+    return 'completed';
+  case 'blocked':
+    return 'failed';
+  case 'partial':
+    return 'model_streaming';
+  default:
+    return 'idle';
+  }
+}
+
+function describeMissionNote(
+  mission: BurnBarMissionSnapshot,
+  activePacket?: BurnBarMissionPacketSnapshot
+): string {
+  if (mission.status === 'completed') {
+    const completedPackets = mission.packets.filter((p) => p.status === 'completed').length;
+    return `Completed: ${completedPackets}/${mission.packets.length} packets done.`;
+  }
+
+  if (mission.status === 'blocked') {
+    return 'Mission is blocked. Check packet failures.';
+  }
+
+  if (activePacket) {
+    return `Active: ${activePacket.objective}`;
+  }
+
+  if (mission.status === 'planned') {
+    return 'Mission is planned and awaiting dispatch.';
+  }
+
+  if (mission.status === 'running') {
+    return 'Mission is running with no active packet.';
+  }
+
+  return `${mission.packets.length} packet(s), status: ${mission.status}`;
 }
 
 function visibleModels(catalog?: BurnBarCatalog): Array<{ id: string }> {

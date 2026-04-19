@@ -123,10 +123,11 @@ struct ProjectsView: View {
             )
         }
 
-        // Sort: attention first, then by cost
+        // Sort: attention first, then by cost descending, then by slug ascending (deterministic tie-break)
         return merged.values.sorted { lhs, rhs in
             if lhs.needsAttention != rhs.needsAttention { return lhs.needsAttention }
-            return lhs.totalCost > rhs.totalCost
+            if lhs.totalCost != rhs.totalCost { return lhs.totalCost > rhs.totalCost }
+            return lhs.slug.localizedCaseInsensitiveCompare(rhs.slug) == .orderedAscending
         }
     }
 
