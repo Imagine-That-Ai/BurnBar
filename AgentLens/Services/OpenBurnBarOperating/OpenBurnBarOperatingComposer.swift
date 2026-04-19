@@ -489,7 +489,8 @@ enum OpenBurnBarOperatingComposer {
                 totalTokens: 0,
                 estimatedCostUSD: 0,
                 recommendationSummary: "Run a local scan or index a recent project conversation to make the mission legible.",
-                approvalNote: nil
+                approvalNote: nil,
+                readinessFailure: nil
             )
         }
 
@@ -543,7 +544,8 @@ enum OpenBurnBarOperatingComposer {
             totalTokens: projectUsages.reduce(0) { $0 + $1.totalTokens },
             estimatedCostUSD: projectUsages.reduce(0) { $0 + $1.cost },
             recommendationSummary: recommendation,
-            approvalNote: approvalRecord?.note.nonEmpty
+            approvalNote: approvalRecord?.note.nonEmpty,
+            readinessFailure: nil
         )
     }
 

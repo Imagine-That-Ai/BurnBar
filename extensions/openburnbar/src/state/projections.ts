@@ -412,6 +412,39 @@ export function buildRunDetailRows(state: OpenBurnBarState): BurnBarRunDetailRow
 
 // MARK: - Mission Projections (VAL-EXT-008, VAL-CROSS-010)
 
+// VAL-CROSS-009: Readiness reason codes for pre-dispatch execution failures
+// Maps directly from daemon BurnBarExecutionReadinessCode for cross-surface parity
+
+export type BurnBarReadinessReasonCode =
+  | 'missing_credential'
+  | 'invalid_repo_branch'
+  | 'runtime_unavailable'
+  | 'insufficient_credential_permissions';
+
+export interface BurnBarReadinessFailure {
+  code: BurnBarReadinessReasonCode;
+  detail: string;
+}
+
+/**
+ * Maps a readiness reason code to a human-readable display message for operator-facing UI.
+ * Matches the displayMessage computed property in BurnBarReadinessFailure (Swift, app side).
+ */
+export function readinessDisplayMessage(failure: BurnBarReadinessFailure): string {
+  switch (failure.code) {
+    case 'missing_credential':
+      return `Credential missing: ${failure.detail}`;
+    case 'invalid_repo_branch':
+      return `Repository unavailable: ${failure.detail}`;
+    case 'runtime_unavailable':
+      return `Runtime unavailable: ${failure.detail}`;
+    case 'insufficient_credential_permissions':
+      return `Insufficient permissions: ${failure.detail}`;
+    default:
+      return `Readiness check failed: ${failure.detail}`;
+  }
+}
+
 export interface BurnBarMissionRow {
   id: string;
   title: string;
@@ -428,6 +461,8 @@ export interface BurnBarMissionRow {
   packetsCount: number;
   activePacketID?: string;
   takeoverCount: number;
+  // VAL-CROSS-009: Readiness failure for pre-dispatch execution failures
+  readinessFailure?: BurnBarReadinessFailure;
 }
 
 export interface BurnBarMissionDetailRow {
@@ -549,9 +584,44 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         approvedBy: mission.approval?.approvedBy,
         packetsCount: mission.packets.length,
         activePacketID: activePacket?.id,
-        takeoverCount: mission.takeoverHistory?.length ?? 0
+        takeoverCount: mission.takeoverHistory?.length ?? 0,
+        // VAL-CROSS-009: Extract readiness failure from mission metadata if present
+        readinessFailure: extractReadinessFailure(mission.metadata)
       };
     });
+}
+
+/**
+ * Extracts readiness failure information from mission metadata.
+ * Matches the BurnBarReadinessFailure structure for cross-surface parity.
+ */
+function extractReadinessFailure(
+  metadata?: Record<string, unknown>
+): BurnBarReadinessFailure | undefined {
+  if (!metadata) return undefined;
+
+  const readiness = metadata.readinessFailure as
+    | { code: string; detail: string }
+    | undefined;
+
+  if (!readiness?.code || !readiness?.detail) return undefined;
+
+  // Validate that the code is one of the known reason codes
+  const validCodes: BurnBarReadinessReasonCode[] = [
+    'missing_credential',
+    'invalid_repo_branch',
+    'runtime_unavailable',
+    'insufficient_credential_permissions'
+  ];
+
+  if (!validCodes.includes(readiness.code as BurnBarReadinessReasonCode)) {
+    return undefined;
+  }
+
+  return {
+    code: readiness.code as BurnBarReadinessReasonCode,
+    detail: readiness.detail
+  };
 }
 
 export function buildMissionDetailRows(state: OpenBurnBarState, missionId?: string): BurnBarMissionDetailRow[] {

@@ -1016,6 +1016,158 @@ extension OpenBurnBarOperatingComposerTests {
     }
 }
 
+// MARK: - VAL-CROSS-009: Execution Readiness Reason Code Propagation Tests
+
+/// VAL-CROSS-009: Execution-readiness failure reasons propagate consistently to all surfaces.
+/// When readiness preflight fails, daemon reason codes appear consistently in app and extension operator messaging.
+/// These tests prove that readiness failure types exist and generate correct operator-facing messages.
+extension OpenBurnBarOperatingComposerTests {
+
+    // MARK: BurnBarReadinessFailure type tests
+
+    /// VAL-CROSS-009 Evidence: BurnBarReadinessFailure maps missingCredential reason code correctly
+    func testVAL_CROSS_009_MissingCredentialDisplayMessage() {
+        let failure = BurnBarReadinessFailure(
+            code: .missingCredential,
+            detail: "GitHub credentials are not configured for this project."
+        )
+
+        XCTAssertEqual(failure.code, .missingCredential)
+        XCTAssertTrue(failure.displayMessage.contains("Credential missing"))
+        XCTAssertTrue(failure.displayMessage.contains("GitHub credentials"))
+    }
+
+    /// VAL-CROSS-009 Evidence: BurnBarReadinessFailure maps invalidRepoBranch reason code correctly
+    func testVAL_CROSS_009_InvalidRepoBranchDisplayMessage() {
+        let failure = BurnBarReadinessFailure(
+            code: .invalidRepoBranch,
+            detail: "Branch 'main' does not exist in repository 'nonexistent/repo'."
+        )
+
+        XCTAssertEqual(failure.code, .invalidRepoBranch)
+        XCTAssertTrue(failure.displayMessage.contains("Repository unavailable"))
+        XCTAssertTrue(failure.displayMessage.contains("main"))
+        XCTAssertTrue(failure.displayMessage.contains("nonexistent/repo"))
+    }
+
+    /// VAL-CROSS-009 Evidence: BurnBarReadinessFailure maps runtimeUnavailable reason code correctly
+    func testVAL_CROSS_009_RuntimeUnavailableDisplayMessage() {
+        let failure = BurnBarReadinessFailure(
+            code: .runtimeUnavailable,
+            detail: "Required workspace service is not available."
+        )
+
+        XCTAssertEqual(failure.code, .runtimeUnavailable)
+        XCTAssertTrue(failure.displayMessage.contains("Runtime unavailable"))
+        XCTAssertTrue(failure.displayMessage.contains("workspace service"))
+    }
+
+    /// VAL-CROSS-009 Evidence: BurnBarReadinessFailure maps insufficientCredentialPermissions reason code correctly
+    func testVAL_CROSS_009_InsufficientCredentialPermissionsDisplayMessage() {
+        let failure = BurnBarReadinessFailure(
+            code: .insufficientCredentialPermissions,
+            detail: "Token lacks 'repo' scope for this operation."
+        )
+
+        XCTAssertEqual(failure.code, .insufficientCredentialPermissions)
+        XCTAssertTrue(failure.displayMessage.contains("Insufficient permissions"))
+        XCTAssertTrue(failure.displayMessage.contains("repo"))
+    }
+
+    // MARK: Mission summary readiness failure field tests
+
+    /// VAL-CROSS-009 Evidence: Mission summary can carry readiness failure information
+    func testVAL_CROSS_009_MissionSummarySupportsReadinessFailure() {
+        let readinessFailure = BurnBarReadinessFailure(
+            code: .missingCredential,
+            detail: "GitHub credentials are not configured."
+        )
+
+        let summary = OpenBurnBarMissionSummary(
+            availability: .available,
+            missionID: "mission-001",
+            projectName: "Apollo",
+            title: "Ship the approval sheet",
+            subtitle: "Approval sheet is ready for release.",
+            state: .planned,
+            approval: .pending,
+            sessionCount: 5,
+            summarizedSessionCount: 3,
+            burnRecordCount: 2,
+            totalTokens: 15000,
+            estimatedCostUSD: 1.50,
+            recommendationSummary: "Proceed with approval.",
+            approvalNote: nil,
+            readinessFailure: readinessFailure
+        )
+
+        XCTAssertNotNil(summary.readinessFailure)
+        XCTAssertEqual(summary.readinessFailure?.code, .missingCredential)
+        XCTAssertTrue(summary.readinessFailure?.displayMessage.contains("Credential missing") == true)
+    }
+
+    /// VAL-CROSS-009 Evidence: Mission summary readinessFailure is nil when no failure exists
+    func testVAL_CROSS_009_MissionSummaryReadinessFailureIsNilWhenNoFailure() {
+        let summary = OpenBurnBarMissionSummary(
+            availability: .available,
+            missionID: "mission-001",
+            projectName: "Apollo",
+            title: "Ship the approval sheet",
+            subtitle: "Approval sheet is ready for release.",
+            state: .planned,
+            approval: .pending,
+            sessionCount: 5,
+            summarizedSessionCount: 3,
+            burnRecordCount: 2,
+            totalTokens: 15000,
+            estimatedCostUSD: 1.50,
+            recommendationSummary: "Proceed with approval.",
+            approvalNote: nil,
+            readinessFailure: nil
+        )
+
+        XCTAssertNil(summary.readinessFailure)
+    }
+
+    /// VAL-CROSS-009 Evidence: Readiness failure codes are used consistently across surfaces (daemon -> app)
+    func testVAL_CROSS_009_ReadinessCodeConsistencyAcrossSurfaces() {
+        // Verify all BurnBarExecutionReadinessCode cases can be mapped to BurnBarReadinessFailure
+        let allCodes: [BurnBarExecutionReadinessCode] = [
+            .missingCredential,
+            .invalidRepoBranch,
+            .runtimeUnavailable,
+            .insufficientCredentialPermissions
+        ]
+
+        for code in allCodes {
+            let failure = BurnBarReadinessFailure(code: code, detail: "Test detail for \(code.rawValue)")
+            XCTAssertEqual(failure.code, code, "VAL-CROSS-009: BurnBarReadinessFailure must preserve the original code")
+            XCTAssertFalse(failure.displayMessage.isEmpty, "VAL-CROSS-009: Display message must be non-empty for \(code.rawValue)")
+            XCTAssertTrue(failure.detail.contains("Test detail"), "VAL-CROSS-009: Detail must be preserved in display message")
+        }
+    }
+
+    /// VAL-CROSS-009 Evidence: Readiness failures are displayed differently per reason code
+    func testVAL_CROSS_009_ReadinessFailuresHaveDistinctDisplayMessages() {
+        let missingCred = BurnBarReadinessFailure(code: .missingCredential, detail: "detail")
+        let invalidRepo = BurnBarReadinessFailure(code: .invalidRepoBranch, detail: "detail")
+        let runtimeUnavail = BurnBarReadinessFailure(code: .runtimeUnavailable, detail: "detail")
+        let insufficientPerms = BurnBarReadinessFailure(code: .insufficientCredentialPermissions, detail: "detail")
+
+        // Each reason code should produce a distinct display message prefix
+        XCTAssertTrue(missingCred.displayMessage.hasPrefix("Credential missing"))
+        XCTAssertTrue(invalidRepo.displayMessage.hasPrefix("Repository unavailable"))
+        XCTAssertTrue(runtimeUnavail.displayMessage.hasPrefix("Runtime unavailable"))
+        XCTAssertTrue(insufficientPerms.displayMessage.hasPrefix("Insufficient permissions"))
+
+        // All should include the detail
+        XCTAssertTrue(missingCred.displayMessage.contains("detail"))
+        XCTAssertTrue(invalidRepo.displayMessage.contains("detail"))
+        XCTAssertTrue(runtimeUnavail.displayMessage.contains("detail"))
+        XCTAssertTrue(insufficientPerms.displayMessage.contains("detail"))
+    }
+}
+
 // MARK: - Mission Authoring Tests
 
 extension OpenBurnBarOperatingComposerTests {

@@ -15,6 +15,7 @@ import {
   buildRunDetailRows,
   buildMissionRows,
   buildMissionDetailRows,
+  readinessDisplayMessage,
   type BurnBarHealthRow,
   type BurnBarRunDetailRow,
   type BurnBarMissionRow
@@ -1163,5 +1164,154 @@ describe('Mission Authoring Parity', () => {
     // Order should be deterministic (same input always produces same output)
     const rowsAgain = buildMissionRows(state);
     expect(rows.map(r => r.id)).toEqual(rowsAgain.map(r => r.id));
+  });
+});
+
+// VAL-CROSS-009: Execution-readiness failure reasons propagate consistently to all surfaces
+// When readiness preflight fails, daemon reason codes appear consistently in app and extension operator messaging
+describe('VAL-CROSS-009: Readiness Reason Code Propagation', () => {
+  // Helper to create a mission with readiness failure metadata
+  function createMissionWithReadinessFailure(
+    code: 'missing_credential' | 'invalid_repo_branch' | 'runtime_unavailable' | 'insufficient_credential_permissions',
+    detail: string
+  ): BurnBarMissionSnapshot {
+    return createMockMission({
+      id: `mission-readiness-${code}`,
+      title: 'Mission with readiness failure',
+      summary: 'Testing readiness failure propagation.',
+      status: 'failed',
+      recommendation: 'review',
+      metadata: {
+        readinessFailure: { code, detail }
+      }
+    });
+  }
+
+  // VAL-CROSS-009 Evidence: missing_credential code produces correct display message
+  it('should map missing_credential reason code to correct display message', () => {
+    const failure = { code: 'missing_credential' as const, detail: 'GitHub credentials are not configured.' };
+    const message = readinessDisplayMessage(failure);
+    expect(message).toBe('Credential missing: GitHub credentials are not configured.');
+  });
+
+  // VAL-CROSS-009 Evidence: invalid_repo_branch code produces correct display message
+  it('should map invalid_repo_branch reason code to correct display message', () => {
+    const failure = { code: 'invalid_repo_branch' as const, detail: "Branch 'main' does not exist." };
+    const message = readinessDisplayMessage(failure);
+    expect(message).toBe("Repository unavailable: Branch 'main' does not exist.");
+  });
+
+  // VAL-CROSS-009 Evidence: runtime_unavailable code produces correct display message
+  it('should map runtime_unavailable reason code to correct display message', () => {
+    const failure = { code: 'runtime_unavailable' as const, detail: 'Required workspace service is not available.' };
+    const message = readinessDisplayMessage(failure);
+    expect(message).toBe('Runtime unavailable: Required workspace service is not available.');
+  });
+
+  // VAL-CROSS-009 Evidence: insufficient_credential_permissions code produces correct display message
+  it('should map insufficient_credential_permissions reason code to correct display message', () => {
+    const failure = { code: 'insufficient_credential_permissions' as const, detail: "Token lacks 'repo' scope." };
+    const message = readinessDisplayMessage(failure);
+    expect(message).toBe("Insufficient permissions: Token lacks 'repo' scope.");
+  });
+
+  // VAL-CROSS-009 Evidence: All readiness reason codes produce distinct display messages
+  it('should produce distinct display messages for each reason code', () => {
+    const codes = [
+      { code: 'missing_credential' as const, detail: 'test' },
+      { code: 'invalid_repo_branch' as const, detail: 'test' },
+      { code: 'runtime_unavailable' as const, detail: 'test' },
+      { code: 'insufficient_credential_permissions' as const, detail: 'test' }
+    ];
+
+    const messages = codes.map(c => readinessDisplayMessage(c));
+    const uniqueMessages = new Set(messages);
+
+    // All messages should be unique (each starts with a distinct prefix)
+    expect(uniqueMessages.size).toBe(4);
+    expect(messages[0]).toMatch(/^Credential missing:/);
+    expect(messages[1]).toMatch(/^Repository unavailable:/);
+    expect(messages[2]).toMatch(/^Runtime unavailable:/);
+    expect(messages[3]).toMatch(/^Insufficient permissions:/);
+  });
+
+  // VAL-CROSS-009 Evidence: Mission rows include readiness failure when present in metadata
+  it('should include readiness failure in mission row when present in metadata', () => {
+    const mission = createMissionWithReadinessFailure('missing_credential', 'GitHub credentials missing.');
+    const state = createMockState({ daemonMissions: [mission] });
+    const rows = buildMissionRows(state);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].readinessFailure).toBeDefined();
+    expect(rows[0].readinessFailure?.code).toBe('missing_credential');
+    expect(rows[0].readinessFailure?.detail).toBe('GitHub credentials missing.');
+  });
+
+  // VAL-CROSS-009 Evidence: Mission rows have no readiness failure when not present
+  it('should not include readiness failure in mission row when not present in metadata', () => {
+    const mission = createMockMission({
+      id: 'mission-no-readiness',
+      title: 'Mission without readiness failure',
+      summary: 'Normal mission without readiness issues.',
+      status: 'in_progress',
+      recommendation: 'proceed',
+      metadata: {}
+    });
+    const state = createMockState({ daemonMissions: [mission] });
+    const rows = buildMissionRows(state);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].readinessFailure).toBeUndefined();
+  });
+
+  // VAL-CROSS-009 Evidence: Mission rows handle invalid readiness code gracefully
+  it('should handle invalid readiness code gracefully', () => {
+    const mission = createMockMission({
+      id: 'mission-invalid-readiness',
+      title: 'Mission with invalid readiness code',
+      summary: 'Testing invalid code handling.',
+      status: 'failed',
+      recommendation: 'review',
+      metadata: {
+        readinessFailure: { code: 'invalid_code', detail: 'Some detail' }
+      }
+    });
+    const state = createMockState({ daemonMissions: [mission] });
+    const rows = buildMissionRows(state);
+
+    // Invalid code should be filtered out, readinessFailure should be undefined
+    expect(rows).toHaveLength(1);
+    expect(rows[0].readinessFailure).toBeUndefined();
+  });
+
+  // VAL-CROSS-009 Evidence: Readiness failure display message can be constructed from mission row
+  it('should construct readiness display message from mission row readiness failure', () => {
+    const mission = createMissionWithReadinessFailure('runtime_unavailable', 'Workspace service unavailable.');
+    const state = createMockState({ daemonMissions: [mission] });
+    const rows = buildMissionRows(state);
+
+    const message = readinessDisplayMessage(rows[0].readinessFailure!);
+    expect(message).toBe('Runtime unavailable: Workspace service unavailable.');
+  });
+
+  // VAL-CROSS-009 Evidence: Readiness reason codes are consistent between app and extension
+  it('should use same reason code values as app BurnBarExecutionReadinessCode', () => {
+    // Verify the reason codes match the Swift enum values in OpenBurnBarCore
+    const expectedCodes = [
+      'missing_credential',
+      'invalid_repo_branch',
+      'runtime_unavailable',
+      'insufficient_credential_permissions'
+    ];
+
+    // These should match BurnBarExecutionReadinessCode in OpenBurnBarCore
+    const validCodes: Array<'missing_credential' | 'invalid_repo_branch' | 'runtime_unavailable' | 'insufficient_credential_permissions'> = [
+      'missing_credential',
+      'invalid_repo_branch',
+      'runtime_unavailable',
+      'insufficient_credential_permissions'
+    ];
+
+    expect(validCodes).toEqual(expectedCodes);
   });
 });

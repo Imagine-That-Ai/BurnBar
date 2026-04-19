@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - Operating Layer Models
 
@@ -215,6 +216,37 @@ struct OpenBurnBarMissionSummary: Equatable, Sendable {
     let estimatedCostUSD: Double
     let recommendationSummary: String
     let approvalNote: String?
+    let readinessFailure: BurnBarReadinessFailure?
+}
+
+// MARK: - Readiness Failure
+
+/// Represents a pre-dispatch execution readiness failure.
+/// Maps directly from daemon BurnBarExecutionReadinessCode for cross-surface parity.
+/// Used to propagate actionable failure reasons when a mission cannot be dispatched.
+struct BurnBarReadinessFailure: Equatable, Sendable {
+    let code: BurnBarExecutionReadinessCode
+    let detail: String
+
+    /// Human-readable display message for operator-facing UI.
+    var displayMessage: String {
+        switch code {
+        case .missingCredential:
+            return "Credential missing: \(detail)"
+        case .invalidRepoBranch:
+            return "Repository unavailable: \(detail)"
+        case .runtimeUnavailable:
+            return "Runtime unavailable: \(detail)"
+        case .insufficientCredentialPermissions:
+            return "Insufficient permissions: \(detail)"
+        }
+    }
+
+    /// Creates a readiness failure from daemon execution readiness response.
+    init(code: BurnBarExecutionReadinessCode, detail: String) {
+        self.code = code
+        self.detail = detail
+    }
 }
 
 struct OpenBurnBarDirectionSummary: Equatable, Sendable {
