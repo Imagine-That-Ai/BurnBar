@@ -22,11 +22,16 @@ None.
    - audit event durability/replay safety
 4. Ensure reason codes map consistently across daemon/app/extension surfaces.
 5. Run validation commands:
-   - `swift test --package-path OpenBurnBarCore --filter OpenBurnBarMissionControlContractsTests`
+   - `swift test --package-path OpenBurnBarCore --filter BurnBarMissionControlContractsTests`
    - `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`
    - `swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests`
    - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests"`
    - `npm --prefix extensions/openburnbar run test:unit -- test/projections.test.ts test/extension.test.ts`
+
+   **Mission-scoped validation-contract path:** Each mission's validation contract lives at `{missionDir}/validation-contract.md` (e.g., `~/.factory/missions/{missionId}/validation-contract.md`). The canonical test filter names (e.g., `BurnBarMissionControlContractsTests`) are defined in `.factory/services.yaml` and match the actual XCTest target class names.
+
+   **CI fallback for app test execution:** When running the full app test suite, use `CI=true scripts/test-openburnbar-app.sh` to enable headless/CI-appropriate test execution. Without the `CI=true` prefix, the script may attempt GUI-interactive test modes unsuitable for CI environments.
+
 6. **Evidence rigor for handoff finalization:**
    - **verificationStep coverage:** For every verificationStep in the feature definition, record the actual command output and observed result as evidence in `commandsRun`. Each verificationStep must have at least one corresponding command run with its exit code and observation.
    - **fulfilled assertion surface coverage:** For every assertion ID listed in `fulfills`, confirm the surface(s) it targets (daemon/core/app/extension) and include evidence from each surface. If an assertion spans multiple surfaces (e.g., VAL-CROSS- assertions), evidence from ALL surfaces is required before handoff.

@@ -538,7 +538,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         let fixedTimestamp = Date(timeIntervalSince1970: 1_710_000_000)
 
         // Create three missions with EXACTLY equal updatedAt timestamps
-        // We use IDs that will sort lexicographically as: mission-z < mission-a < mission-m
+        // We use IDs that will sort lexicographically as: mission-a < mission-m < mission-z
         let missionZ = BurnBarMissionSnapshot(
             id: BurnBarMissionID(rawValue: "mission-z-equal"),
             projectSlug: "orion",
