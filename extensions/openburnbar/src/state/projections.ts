@@ -520,7 +520,9 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         completed: 4
       };
       const statusDiff = statusOrder[a.status] - statusOrder[b.status];
-      if (statusDiff !== 0) return statusDiff;
+      if (statusDiff !== 0) {
+        return statusDiff;
+      }
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     })
     .map((mission) => {

@@ -1,0 +1,53 @@
+{
+  "milestone": "m4-mission-board-baseline",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && CI=true scripts/test-openburnbar-app.sh && scripts/test-openburnbar-ts.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "m4-mission-board-cross-surface-baseline"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "m4-mission-board-cross-surface-baseline",
+      "severity": "blocking",
+      "description": "Extension mission projection sorts by local status priority before updatedAt, which diverges from daemon canonical ordering (updatedAt DESC, missionID ASC tie-break) and breaks deterministic cross-surface parity expectations."
+    },
+    {
+      "featureId": "m4-mission-board-cross-surface-baseline",
+      "severity": "blocking",
+      "description": "Extension mission lifecycle enums cannot represent daemon lifecycle values (awaiting_approval, approved, dispatching, in_progress, partially_completed, failed, cancelled), preventing contract-level mission lifecycle parity."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills",
+      "suggestion": "Update governance-worker handoff/verification procedure to require evidence for every listed feature verification step and all fulfilled validation-contract surfaces before completion.",
+      "evidence": "The reviewed m4 feature handoff recorded only app/projection unit checks while the feature and validation contract required daemon mission-control coverage and extension host/parity checks (VAL-EXT-008, VAL-CROSS-010).",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}
