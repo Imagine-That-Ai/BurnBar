@@ -1141,7 +1141,7 @@ extension OpenBurnBarOperatingComposerTests {
 
         // Test that all recommendation kinds are accepted by validation (they don't cause validation failure)
         // The daemon call would fail since there's no real daemon, but validation should pass
-        for recommendation in [BurnBarMissionRecommendation.proceed, .review, .pause] {
+        for recommendation in [BurnBarMissionRecommendation.proceed, .review, .pause, .escalate] {
             do {
                 _ = try await layer.createMission(
                     projectSlug: "apollo-\(recommendation.rawValue)",

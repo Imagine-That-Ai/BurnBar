@@ -20,8 +20,11 @@ None.
 4. Validate deterministic ordering (next action, queue items, tie-breaks) and singleton top-level question card behavior.
 5. Run app and relevant daemon checks:
    - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests"`
-   - `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarMissionControlServiceTests`
-6. Include screenshots/state snapshots or equivalent test artifacts in handoff observations.
+   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`
+6. Verify handoff commitId before finalizing:
+   - Run `git rev-parse --verify <commitId>` to confirm commit exists
+   - Run `git show --name-only <commitId>` to confirm the diff contains relevant feature files
+7. Include screenshots/state snapshots or equivalent test artifacts in handoff observations.
 
 ## Example Handoff
 ```json
