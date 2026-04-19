@@ -1,7 +1,7 @@
 {
   "milestone": "m5-dag-domain-model",
-  "round": 2,
-  "status": "pass",
+  "round": 1,
+  "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -21,13 +21,26 @@
   },
   "reviewsSummary": {
     "total": 1,
-    "passed": 1,
-    "failed": 0,
-    "failedFeatures": []
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "m5-dag-domain-model"
+    ]
   },
-  "blockingIssues": [],
+  "blockingIssues": [
+    {
+      "featureId": "m5-dag-domain-model",
+      "severity": "blocking",
+      "description": "Deterministic node/edge IDs use Swift Hasher in OpenBurnBarAgentContracts.swift, which is process-seeded and not stable across launches, violating deterministic ID guarantees."
+    },
+    {
+      "featureId": "m5-dag-domain-model",
+      "severity": "blocking",
+      "description": "Unsupported DAG schema versions do not reliably surface as explicit BurnBarDAGError.unsupportedSchemaVersion in the main decode path; unknown enum values fail earlier as DecodingError."
+    }
+  ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/m5-dag-domain-model/scrutiny/synthesis.round1.json"
+  "previousRound": null
 }

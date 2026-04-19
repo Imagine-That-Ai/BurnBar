@@ -1,0 +1,15 @@
+{
+  "featureId": "m5-dag-deterministic-hash-and-explicit-version-errors",
+  "reviewedAt": "2026-04-19T20:16:38Z",
+  "commitId": "ae132030a883e6c3ef57eb607950be468eb7f34b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix fully resolves both prior blockers: node/edge ID derivation now uses SHA256 over canonical inputs (removing process-seeded Hasher nondeterminism), and unsupported schema versions now reliably throw explicit BurnBarDAGError.unsupportedSchemaVersion via BurnBarDAGContract's custom decoder path. Updated VAL_DAEMON_013 tests assert the explicit error type for both codec and direct JSONDecoder decode paths.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m5-dag-domain-model/scrutiny/reviews/m5-dag-domain-model.json",
+  "summary": "Reviewed prior failed report, fix handoff/transcript skeleton, and commit ae132030. Result: pass. The fix adequately addresses the original blocking findings for cross-launch deterministic DAG IDs and explicit unsupported-schema-version error behavior."
+}
