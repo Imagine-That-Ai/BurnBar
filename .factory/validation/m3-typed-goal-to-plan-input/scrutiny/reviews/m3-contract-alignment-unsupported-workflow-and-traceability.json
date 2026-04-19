@@ -1,0 +1,28 @@
+{
+  "featureId": "m3-contract-alignment-unsupported-workflow-and-traceability",
+  "reviewedAt": "2026-04-19T17:11:01Z",
+  "commitId": "26631b94d314ac9ed14a7984c089122c9df3d29d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix commit correctly addresses the original scrutiny blockers for VAL-DAEMON-008 behavior and handoff commit traceability, but it does not complete the feature requirement to align mission-core-worker SKILL test filter snippets with BurnBar* commands.",
+    "issues": [
+      {
+        "file": ".factory/skills/mission-core-worker/SKILL.md",
+        "line": 22,
+        "severity": "blocking",
+        "description": "Feature expectedBehavior requires SKILL test filter snippets to match BurnBar* commands, but SKILL.md still uses OpenBurnBar* filters (e.g., OpenBurnBarMissionControlContractsTests/OpenBurnBarMissionControlServiceTests/OpenBurnBarProviderRouterTests) in both work procedure and example handoff. This remains misaligned with canonical commands in .factory/services.yaml (BurnBarMissionControlContractsTests, BurnBarMissionControlServiceTests, BurnBarProviderRouterTests)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "mission-core-worker SKILL command snippets are still out of sync with .factory/services.yaml test filters, so workers can continue to run mismatched/no-match filters despite this fix feature targeting that exact alignment.",
+      "evidence": ".factory/skills/mission-core-worker/SKILL.md:22-24,39,44 use OpenBurnBar* filters; .factory/services.yaml test_daemon_mission/test_core_contracts/test_router use BurnBar* filters."
+    }
+  ],
+  "addressesFailureFrom": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m3-typed-goal-to-plan-input/scrutiny/reviews/m3-typed-planner-input.json",
+  "summary": "Reviewed fix transcript skeleton plus both feature diffs (original 62ef19b8 and fix 26631b94). The fix now enforces unsupported-workflow hard-fail pre-execution and demonstrates commitId traceability against relevant files, but the SKILL BurnBar* command-alignment requirement is still incomplete, so the feature remains failing."
+}
