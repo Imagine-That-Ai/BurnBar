@@ -1,7 +1,7 @@
 {
   "milestone": "m11-parallel-dag-scheduler",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -21,21 +21,26 @@
   },
   "reviewsSummary": {
     "total": 1,
-    "passed": 0,
-    "failed": 1,
-    "failedFeatures": [
-      "m11-parallel-dag-scheduler"
-    ]
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
     {
-      "featureId": "m11-parallel-dag-scheduler",
-      "severity": "blocking",
-      "description": "BurnBarParallelDAGScheduler.handleNodeCompletion accepts completion/failure for non-running nodes, allowing out-of-order node state advancement and invalid dependency satisfaction."
+      "target": "runtime-orchestration-worker skill",
+      "suggestion": "Tighten procedure-compliance guidance so `followedProcedure` cannot be marked true when required test-first steps or mandated validator subsets are skipped; require explicit deviation entries whenever command sets differ.",
+      "evidence": "Review m11-scheduler-running-state-guard-and-registry-alignment found SKILL.md requires test-first and specific focused commands, while the fix handoff reported `followedProcedure=true` despite omitting part of the prescribed command set.",
+      "isSystemic": false
+    },
+    {
+      "target": "mission AGENTS guidance and/or services.yaml policy",
+      "suggestion": "Clarify command-source-of-truth expectations: either require assertion-ID validator commands used in features to be listed in .factory/services.yaml, or explicitly allow supplemental feature-scoped commands beyond the shared catalog.",
+      "evidence": "Mission AGENTS guidance says to use .factory/services.yaml as single command source, but the fix feature verification used VAL_EXEC_009/VAL_EXEC_013 filters not currently defined there.",
+      "isSystemic": true
     }
   ],
-  "appliedUpdates": [],
-  "suggestedGuidanceUpdates": [],
   "rejectedObservations": [],
-  "previousRound": null
+  "previousRound": ".factory/validation/m11-parallel-dag-scheduler/scrutiny/synthesis.round1.json"
 }
