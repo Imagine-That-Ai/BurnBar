@@ -221,6 +221,17 @@ public actor BurnBarParallelDAGScheduler {
             return
         }
 
+        // Reject completion/failure for nodes that are not currently running.
+        // This prevents out-of-order state advancement that could corrupt
+        // dependency satisfaction tracking.
+        guard nodeStatus == .running else {
+            logger.warning("completion_rejected_for_non_running_node", metadata: [
+                "nodeID": nodeID.rawValue,
+                "currentStatus": String(describing: nodeStatus)
+            ])
+            return
+        }
+
         // Update node status
         nodeStatus = success ? .completed : .failed
         state.nodeStatuses[nodeID.rawValue] = nodeStatus
@@ -630,12 +641,14 @@ extension BurnBarParallelDAGScheduler {
         dispatch: any BurnBarDAGSchedulerDispatch,
         maxConcurrency: Int = BurnBarParallelDAGScheduler.defaultMaxConcurrency
     ) -> BurnBarParallelDAGScheduler {
-        BurnBarParallelDAGScheduler(
+        let scheduler = BurnBarParallelDAGScheduler(
             missionID: missionID,
             dag: dag,
             dispatch: dispatch,
             maxConcurrency: maxConcurrency
         )
+        activeSchedulers[missionID] = scheduler
+        return scheduler
     }
 
     /// Retrieves the active scheduler for a mission if one exists.
