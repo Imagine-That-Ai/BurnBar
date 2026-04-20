@@ -142,6 +142,14 @@ public actor BurnBarParallelDAGScheduler {
     /// Pending node completions keyed by node ID.
     private var pendingCompletions: [BurnBarDAGNodeID: Bool] = [:]
 
+    /// VAL-EXEC-010: Counter for tracking terminal completion sequence (runtime order).
+    /// Increments each time a node reaches terminal state (completed or failed).
+    private var terminalSequenceCounter: Int = 0
+
+    /// VAL-EXEC-010: Maps each node ID to its terminal completion sequence number.
+    /// This reflects actual runtime completion order, not static DAG declaration order.
+    private var terminalSequenceNumbers: [BurnBarDAGNodeID: Int] = [:]
+
     /// Creates a new parallel DAG scheduler for a mission.
     public init(
         missionID: BurnBarMissionID,
@@ -284,6 +292,10 @@ public actor BurnBarParallelDAGScheduler {
         nodeStatus = success ? .completed : .failed
         state.nodeStatuses[nodeID.rawValue] = nodeStatus
 
+        // VAL-EXEC-010: Record terminal completion sequence number (runtime order)
+        terminalSequenceCounter += 1
+        terminalSequenceNumbers[nodeID] = terminalSequenceCounter
+
         // Update running/completed/failed node lists
         state.runningNodes.removeAll { $0 == nodeID }
         if success {
@@ -350,18 +362,51 @@ public actor BurnBarParallelDAGScheduler {
 
     // MARK: - VAL-EXEC-010: Reconciler Winner Selection
 
+    /// Finds terminal conflicting outcomes by filtering to nodes that are terminal
+    /// AND have no active dependents (i.e., all nodes that depend on this node are also terminal).
+    /// This excludes prerequisite/internal nodes that happened to complete but are not
+    /// true endpoints of parallel execution paths.
+    private func findTerminalConflictingOutcomes() -> [BurnBarDAGNode] {
+        // Build a map of which nodes depend on each node
+        // node.dependsOn lists prerequisites; we need to find dependents (reverse mapping)
+        var dependentsMap: [BurnBarDAGNodeID: [BurnBarDAGNodeID]] = [:]
+        for node in dag.nodes {
+            for depID in node.dependsOn {
+                dependentsMap[depID, default: []].append(node.id)
+            }
+        }
+
+        // Filter to terminal nodes (completed or failed) whose all dependents are also terminal
+        return dag.nodes.filter { node in
+            guard let status = state.nodeStatuses[node.id.rawValue] else { return false }
+            guard status == .completed || status == .failed else { return false }
+
+            // Check if all dependents are also terminal
+            let dependents = dependentsMap[node.id] ?? []
+            if dependents.isEmpty {
+                // No dependents means this IS a terminal outcome (leaf node)
+                return true
+            }
+
+            // All dependents must be terminal for this node to be a conflicting outcome
+            return dependents.allSatisfy { depID in
+                guard let depStatus = state.nodeStatuses[depID.rawValue] else { return false }
+                return depStatus == .completed || depStatus == .failed || depStatus == .skipped
+            }
+        }
+    }
+
     /// Performs winner selection when the DAG completes with multiple terminal outcomes.
     /// Uses deterministic, replay-stable selection based on the winner selection precedence.
     private func performWinnerSelection() async {
-        // Find terminal nodes that can be candidates for winner selection
-        let terminalNodes = dag.nodes.filter { node in
-            guard let status = state.nodeStatuses[node.id.rawValue] else { return false }
-            return status == .completed || status == .failed
-        }
+        // VAL-EXEC-010: Find only terminal conflicting outcomes, not all terminal nodes.
+        // This excludes prerequisite/internal nodes that completed but are not endpoints
+        // of parallel execution paths.
+        let terminalConflictingOutcomes = findTerminalConflictingOutcomes()
 
         // If only one candidate or no conflict, no reconciliation needed
-        if terminalNodes.count <= 1 {
-            if let singleNode = terminalNodes.first {
+        if terminalConflictingOutcomes.count <= 1 {
+            if let singleNode = terminalConflictingOutcomes.first {
                 state.reconciliationArtifact = BurnBarDAGReconciliationArtifact(
                     missionID: missionID,
                     winnerNodeID: singleNode.id,
@@ -379,18 +424,20 @@ public actor BurnBarParallelDAGScheduler {
         // Score all candidates using the metrics provider or defaults
         var candidateScores: [BurnBarDAGNodeID: (score: Double, metrics: BurnBarDAGNodeOutcomeMetrics)] = [:]
 
-        for node in terminalNodes {
+        for node in terminalConflictingOutcomes {
             let metrics: BurnBarDAGNodeOutcomeMetrics
             if let provider = metricsProvider, let provided = provider.metrics(for: node.id) {
                 metrics = provided
             } else {
+                // VAL-EXEC-010: Use runtime terminal sequence number, not static DAG order
+                let runtimeSequence = terminalSequenceNumbers[node.id] ?? 0
                 // Use default metrics based on success/failure
                 metrics = BurnBarDAGNodeOutcomeMetrics(
                     evidenceCompleteness: 0.5,
                     riskResidual: state.nodeStatuses[node.id.rawValue] == .completed ? 0.3 : 0.7,
                     costPenalty: 0.5,
                     latencyPenalty: 0.5,
-                    sequenceNumber: terminalNodes.firstIndex(where: { $0.id == node.id }) ?? 0,
+                    sequenceNumber: runtimeSequence,
                     isSuccessful: state.nodeStatuses[node.id.rawValue] == .completed
                 )
             }
@@ -416,7 +463,7 @@ public actor BurnBarParallelDAGScheduler {
         }
 
         // Sort candidates by score (descending), then by lexical ID (ascending) for tie-breaking
-        let sortedCandidates = terminalNodes.sorted { nodeA, nodeB in
+        let sortedCandidates = terminalConflictingOutcomes.sorted { nodeA, nodeB in
             let scoreA = candidateScores[nodeA.id]?.score ?? 0
             let scoreB = candidateScores[nodeB.id]?.score ?? 0
             if scoreA != scoreB {
@@ -426,18 +473,21 @@ public actor BurnBarParallelDAGScheduler {
         }
 
         guard let winner = sortedCandidates.first else { return }
+        let runnerUp = sortedCandidates.count > 1 ? sortedCandidates[1] : nil
 
         // Determine the winner reason code based on what made the difference
         let winnerScore = candidateScores[winner.id]?.score ?? 0
         let winnerMetrics = candidateScores[winner.id]?.metrics
+        let runnerUpMetrics = runnerUp.flatMap { candidateScores[$0.id]?.metrics }
 
         var winnerReasonCode: BurnBarReconcilerWinnerReasonCode = .noReconciliationNeeded
         var rationale = "Winner selected by deterministic reconciliation"
 
-        if terminalNodes.count == 1 {
+        if terminalConflictingOutcomes.count == 1 {
             winnerReasonCode = .onlyCandidate
             rationale = "Only candidate node - winner is the only terminal outcome"
         } else if let wMetrics = winnerMetrics {
+            // VAL-EXEC-010: Use winner-vs-runner-up deltas instead of absolute thresholds
             // Check if winner won due to success over failure
             let hasFailedCandidates = sortedCandidates.dropFirst().contains { node in
                 guard let m = candidateScores[node.id]?.metrics else { return false }
@@ -447,23 +497,38 @@ public actor BurnBarParallelDAGScheduler {
                 winnerReasonCode = .successOverFailure
                 rationale = "Winner succeeded while other candidates failed"
             }
-            // Check if winner won due to higher evidence completeness
-            else if wMetrics.evidenceCompleteness > 0.5 {
-                winnerReasonCode = .higherEvidenceCompleteness
-                rationale = String(format: "Winner had higher evidence completeness (%.2f)", wMetrics.evidenceCompleteness)
+            // Check if winner won due to higher evidence completeness vs runner-up
+            else if let rMetrics = runnerUpMetrics {
+                let evidenceDelta = wMetrics.evidenceCompleteness - rMetrics.evidenceCompleteness
+                let riskDelta = rMetrics.riskResidual - wMetrics.riskResidual  // Inverted: lower is better
+                let costDelta = rMetrics.costPenalty - wMetrics.costPenalty    // Inverted: lower is better
+                let latencyDelta = rMetrics.latencyPenalty - wMetrics.latencyPenalty  // Inverted: lower is better
+                let sequenceDelta = (rMetrics.sequenceNumber) - wMetrics.sequenceNumber  // Inverted: lower is better
+
+                // Determine what gave the winner the decisive advantage
+                if evidenceDelta > 0.01 {  // Winner has meaningfully higher evidence
+                    winnerReasonCode = .higherEvidenceCompleteness
+                    rationale = String(format: "Winner had higher evidence completeness (%.2f vs %.2f, delta=%.2f)",
+                                       wMetrics.evidenceCompleteness, rMetrics.evidenceCompleteness, evidenceDelta)
+                } else if riskDelta > 0.01 {  // Winner has meaningfully lower risk
+                    winnerReasonCode = .lowerRiskResidual
+                    rationale = String(format: "Winner had lower risk residual (%.2f vs %.2f, delta=%.2f)",
+                                       wMetrics.riskResidual, rMetrics.riskResidual, riskDelta)
+                } else if costDelta > 0.01 || latencyDelta > 0.01 {  // Winner has meaningfully lower cost/latency
+                    winnerReasonCode = .lowerCostLatencyPenalty
+                    rationale = String(format: "Winner had lower cost/latency (cost=%.2f vs %.2f, latency=%.2f vs %.2f)",
+                                       wMetrics.costPenalty, rMetrics.costPenalty,
+                                       wMetrics.latencyPenalty, rMetrics.latencyPenalty)
+                } else if sequenceDelta > 0 {  // Winner completed earlier
+                    winnerReasonCode = .earliestSequenceNumber
+                    rationale = String(format: "Winner had earliest terminal sequence (%d vs %d, delta=%d)",
+                                       wMetrics.sequenceNumber, rMetrics.sequenceNumber, sequenceDelta)
+                } else {
+                    winnerReasonCode = .lexicalTieBreak
+                    rationale = "Winner selected by lexical tie-break on candidate ID"
+                }
             }
-            // Check if winner won due to lower risk
-            else if wMetrics.riskResidual < 0.5 {
-                winnerReasonCode = .lowerRiskResidual
-                rationale = String(format: "Winner had lower risk residual (%.2f)", wMetrics.riskResidual)
-            }
-            // Check if winner won due to lower cost/latency
-            else if wMetrics.costPenalty < 0.5 || wMetrics.latencyPenalty < 0.5 {
-                winnerReasonCode = .lowerCostLatencyPenalty
-                rationale = String(format: "Winner had lower cost/latency (cost=%.2f, latency=%.2f)",
-                                   wMetrics.costPenalty, wMetrics.latencyPenalty)
-            }
-            // Check if winner won due to earliest sequence
+            // Fallback if no runner-up but multiple candidates (shouldn't happen)
             else if wMetrics.sequenceNumber == 0 {
                 winnerReasonCode = .earliestSequenceNumber
                 rationale = "Winner had earliest terminal sequence number"
@@ -476,14 +541,14 @@ public actor BurnBarParallelDAGScheduler {
 
         // Build candidate scores map for the artifact
         var artifactCandidateScores: [String: Double] = [:]
-        for node in terminalNodes {
+        for node in terminalConflictingOutcomes {
             artifactCandidateScores[node.id.rawValue] = candidateScores[node.id]?.score ?? 0
         }
 
         state.reconciliationArtifact = BurnBarDAGReconciliationArtifact(
             missionID: missionID,
             winnerNodeID: winner.id,
-            candidateNodeIDs: terminalNodes.map { $0.id },
+            candidateNodeIDs: terminalConflictingOutcomes.map { $0.id },
             winnerReasonCode: winnerReasonCode,
             winnerRationale: rationale,
             winnerScore: winnerScore,
@@ -495,7 +560,7 @@ public actor BurnBarParallelDAGScheduler {
             "winnerNodeID": winner.id.rawValue,
             "reasonCode": winnerReasonCode.rawValue,
             "winnerScore": String(winnerScore),
-            "candidateCount": String(terminalNodes.count)
+            "candidateCount": String(terminalConflictingOutcomes.count)
         ])
     }
 
