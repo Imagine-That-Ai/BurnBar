@@ -766,3 +766,181 @@ public enum BurnBarDAGContractCodec {
         return try decode(from: data)
     }
 }
+
+// MARK: - Critical Path Tracking
+
+/// Tracks the execution timing and critical path for a DAG node.
+public struct BurnBarDAGNodeTiming: Codable, Hashable, Sendable {
+    public let nodeID: BurnBarDAGNodeID
+    public let scheduledAt: Date?
+    public let startedAt: Date?
+    public let completedAt: Date?
+    public let estimatedDuration: TimeInterval?
+    public let actualDuration: TimeInterval?
+
+    public init(
+        nodeID: BurnBarDAGNodeID,
+        scheduledAt: Date? = nil,
+        startedAt: Date? = nil,
+        completedAt: Date? = nil,
+        estimatedDuration: TimeInterval? = nil,
+        actualDuration: TimeInterval? = nil
+    ) {
+        self.nodeID = nodeID
+        self.scheduledAt = scheduledAt
+        self.startedAt = startedAt
+        self.completedAt = completedAt
+        self.estimatedDuration = estimatedDuration
+        self.actualDuration = actualDuration
+    }
+
+    /// Whether this node has started execution.
+    public var hasStarted: Bool { startedAt != nil }
+
+    /// Whether this node has completed execution.
+    public var hasCompleted: Bool { completedAt != nil }
+
+    /// Whether this node is currently running.
+    public var isRunning: Bool { startedAt != nil && completedAt == nil }
+
+    /// The actual duration if completed.
+    public var durationIfCompleted: TimeInterval? {
+        guard let started = startedAt, let completed = completedAt else { return nil }
+        return completed.timeIntervalSince(started)
+    }
+}
+
+/// Represents the critical path through a DAG - the longest sequence of dependent nodes
+/// that determines the minimum execution time.
+public struct BurnBarCriticalPathArtifact: Codable, Hashable, Sendable {
+    public let missionID: BurnBarMissionID
+    public let dagSchemaVersion: BurnBarDAGSchemaVersion
+    /// Ordered list of node IDs forming the critical path (from start to end).
+    public let criticalPathNodes: [BurnBarDAGNodeID]
+    /// Total estimated duration of the critical path.
+    public let estimatedTotalDuration: TimeInterval
+    /// Current critical path nodes with updated timing (may differ from criticalPathNodes
+    /// as execution progresses and estimates are refined).
+    public let currentCriticalPathNodes: [BurnBarDAGNodeID]
+    /// Estimated remaining duration along the critical path.
+    public let estimatedRemainingDuration: TimeInterval
+    /// Node timings keyed by node ID.
+    public let nodeTimings: [String: BurnBarDAGNodeTiming]
+    /// When this artifact was last updated.
+    public let updatedAt: Date
+    /// Whether the DAG execution is complete.
+    public let isComplete: Bool
+
+    public init(
+        missionID: BurnBarMissionID,
+        dagSchemaVersion: BurnBarDAGSchemaVersion = .v1,
+        criticalPathNodes: [BurnBarDAGNodeID] = [],
+        estimatedTotalDuration: TimeInterval = 0,
+        currentCriticalPathNodes: [BurnBarDAGNodeID] = [],
+        estimatedRemainingDuration: TimeInterval = 0,
+        nodeTimings: [String: BurnBarDAGNodeTiming] = [:],
+        updatedAt: Date = Date(),
+        isComplete: Bool = false
+    ) {
+        self.missionID = missionID
+        self.dagSchemaVersion = dagSchemaVersion
+        self.criticalPathNodes = criticalPathNodes
+        self.estimatedTotalDuration = estimatedTotalDuration
+        self.currentCriticalPathNodes = currentCriticalPathNodes
+        self.estimatedRemainingDuration = estimatedRemainingDuration
+        self.nodeTimings = nodeTimings
+        self.updatedAt = updatedAt
+        self.isComplete = isComplete
+    }
+
+    /// Returns timing for a specific node if available.
+    public func timing(for nodeID: BurnBarDAGNodeID) -> BurnBarDAGNodeTiming? {
+        nodeTimings[nodeID.rawValue]
+    }
+
+    /// Returns whether a specific node is on the critical path.
+    public func isOnCriticalPath(_ nodeID: BurnBarDAGNodeID) -> Bool {
+        currentCriticalPathNodes.contains(nodeID)
+    }
+
+    /// Returns the total completed duration for all nodes that have completed.
+    public var completedCriticalPathDuration: TimeInterval {
+        nodeTimings.values
+            .compactMap { $0.durationIfCompleted }
+            .reduce(0, +)
+    }
+}
+
+/// Tracks the execution state of a DAG scheduler for a mission.
+public enum BurnBarSchedulerPhase: String, Codable, CaseIterable, Hashable, Sendable {
+    case idle
+    case running
+    case paused
+    case completed
+    case failed
+}
+
+/// The full scheduler state for a mission's DAG execution.
+public struct BurnBarDAGSchedulerState: Codable, Hashable, Sendable {
+    public let missionID: BurnBarMissionID
+    public var phase: BurnBarSchedulerPhase
+    /// Node statuses keyed by node ID.
+    public var nodeStatuses: [String: BurnBarDAGNodeStatus]
+    /// Currently executing node IDs.
+    public var runningNodes: [BurnBarDAGNodeID]
+    /// Nodes that are ready to execute (dependencies satisfied, not yet running).
+    public var readyNodes: [BurnBarDAGNodeID]
+    /// Nodes that have completed execution.
+    public var completedNodes: [BurnBarDAGNodeID]
+    /// Nodes that have failed.
+    public var failedNodes: [BurnBarDAGNodeID]
+    /// Critical path tracking artifact.
+    public var criticalPath: BurnBarCriticalPathArtifact?
+    /// Concurrency limit for parallel execution.
+    public let maxConcurrency: Int
+    /// When the scheduler state was last updated.
+    public var updatedAt: Date
+    /// Error message if the scheduler is in failed state.
+    public var errorMessage: String?
+
+    public init(
+        missionID: BurnBarMissionID,
+        phase: BurnBarSchedulerPhase = .idle,
+        nodeStatuses: [String: BurnBarDAGNodeStatus] = [:],
+        runningNodes: [BurnBarDAGNodeID] = [],
+        readyNodes: [BurnBarDAGNodeID] = [],
+        completedNodes: [BurnBarDAGNodeID] = [],
+        failedNodes: [BurnBarDAGNodeID] = [],
+        criticalPath: BurnBarCriticalPathArtifact? = nil,
+        maxConcurrency: Int = 4,
+        updatedAt: Date = Date(),
+        errorMessage: String? = nil
+    ) {
+        self.missionID = missionID
+        self.phase = phase
+        self.nodeStatuses = nodeStatuses
+        self.runningNodes = runningNodes
+        self.readyNodes = readyNodes
+        self.completedNodes = completedNodes
+        self.failedNodes = failedNodes
+        self.criticalPath = criticalPath
+        self.maxConcurrency = maxConcurrency
+        self.updatedAt = updatedAt
+        self.errorMessage = errorMessage
+    }
+
+    /// Whether the scheduler can accept new node starts.
+    public var canStartMoreNodes: Bool {
+        runningNodes.count < maxConcurrency && phase == .running
+    }
+
+    /// Whether all nodes are in terminal states.
+    public var isTerminal: Bool {
+        phase == .completed || phase == .failed
+    }
+
+    /// Returns the status of a specific node.
+    public func status(for nodeID: BurnBarDAGNodeID) -> BurnBarDAGNodeStatus? {
+        nodeStatuses[nodeID.rawValue]
+    }
+}

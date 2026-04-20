@@ -2926,6 +2926,322 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         return (service, rootURL)
     }
 
+    // MARK: - VAL-EXEC-009: Parallel scheduler enforces dependency invariants
+
+    func testVAL_EXEC_009_ParallelSchedulerEnforcesDependencyGating() async throws {
+        // VAL-EXEC-009: DAG nodes never start before dependencies succeed.
+        // This test verifies that a scheduler respects the dependsOn ordering
+        // and only allows nodes to start when all dependencies have completed.
+
+        // Create a DAG with A -> B -> C (linear chain)
+        let nodeAID = BurnBarDAGNodeID(rawValue: "node-a")
+        let nodeBID = BurnBarDAGNodeID(rawValue: "node-b")
+        let nodeCID = BurnBarDAGNodeID(rawValue: "node-c")
+
+        let dag = BurnBarDAGContract(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-009"),
+            nodes: [
+                BurnBarDAGNode(id: nodeAID, title: "Node A", detail: "First node", status: .pending, dependsOn: []),
+                BurnBarDAGNode(id: nodeBID, title: "Node B", detail: "Depends on A", status: .pending, dependsOn: [nodeAID]),
+                BurnBarDAGNode(id: nodeCID, title: "Node C", detail: "Depends on B", status: .pending, dependsOn: [nodeBID])
+            ],
+            edges: []
+        )
+
+        // Track execution order
+        final class TestSchedulerDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+            var order: [BurnBarDAGNodeID] = []
+            let lock = NSLock()
+
+            func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {
+                lock.lock()
+                order.append(nodeID)
+                lock.unlock()
+            }
+
+            func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
+            func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
+        }
+
+        let testDispatch = TestSchedulerDispatch()
+        let scheduler = BurnBarParallelDAGScheduler.create(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-009"),
+            dag: dag,
+            dispatch: testDispatch,
+            maxConcurrency: 1
+        )
+
+        // Start scheduler - node A should be dispatched immediately (no dependencies)
+        try await scheduler.start()
+        let initialState = await scheduler.currentState()
+
+        // VAL-EXEC-009: Node A should be running (dispatched immediately on start)
+        XCTAssertTrue(
+            initialState.runningNodes.contains(nodeAID),
+            "Node A should be running (dispatched on start)"
+        )
+        // B and C cannot run because they depend on A which hasn't completed
+        XCTAssertEqual(
+            initialState.nodeStatuses[nodeBID.rawValue],
+            .pending,
+            "Node B should still be pending (depends on A)"
+        )
+        XCTAssertEqual(
+            initialState.nodeStatuses[nodeCID.rawValue],
+            .pending,
+            "Node C should still be pending (depends on B)"
+        )
+
+        // Complete node A
+        await scheduler.reportNodeCompleted(nodeAID)
+        let afterAState = await scheduler.currentState()
+
+        // VAL-EXEC-009: After A completes, B should be running (dispatched automatically)
+        XCTAssertTrue(
+            afterAState.runningNodes.contains(nodeBID),
+            "Node B should be running after A completes"
+        )
+        XCTAssertEqual(
+            afterAState.nodeStatuses[nodeCID.rawValue],
+            .pending,
+            "Node C should still be pending (depends on B)"
+        )
+
+        // Complete node B
+        await scheduler.reportNodeCompleted(nodeBID)
+        let afterBState = await scheduler.currentState()
+
+        // VAL-EXEC-009: After B completes, C should be running
+        XCTAssertTrue(
+            afterBState.runningNodes.contains(nodeCID),
+            "Node C should be running after B completes"
+        )
+
+        // Complete node C
+        await scheduler.reportNodeCompleted(nodeCID)
+        let finalState = await scheduler.currentState()
+
+        // VAL-EXEC-009: All nodes should be completed and scheduler should be done
+        XCTAssertEqual(finalState.phase, .completed, "Scheduler should be completed")
+        XCTAssertTrue(finalState.runningNodes.isEmpty, "No nodes should be running")
+
+        // Verify execution order matches dependency order
+        testDispatch.lock.lock()
+        let order = testDispatch.order
+        testDispatch.lock.unlock()
+        XCTAssertEqual(order, [nodeAID, nodeBID, nodeCID], "Nodes should execute in dependency order")
+    }
+
+    func testVAL_EXEC_009_IndependentNodesExecuteConcurrently() async throws {
+        // VAL-EXEC-009: Independent ready nodes may execute concurrently.
+        // This test verifies that parallel DAG execution allows concurrent
+        // execution of nodes with no dependencies on each other.
+
+        // Create a DAG with A, B, C all independent (parallel execution)
+        let nodeAID = BurnBarDAGNodeID(rawValue: "concurrent-a")
+        let nodeBID = BurnBarDAGNodeID(rawValue: "concurrent-b")
+        let nodeCID = BurnBarDAGNodeID(rawValue: "concurrent-c")
+
+        let dag = BurnBarDAGContract(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-009-concurrent"),
+            nodes: [
+                BurnBarDAGNode(id: nodeAID, title: "Concurrent A", detail: "No dependencies", status: .pending, dependsOn: []),
+                BurnBarDAGNode(id: nodeBID, title: "Concurrent B", detail: "No dependencies", status: .pending, dependsOn: []),
+                BurnBarDAGNode(id: nodeCID, title: "Concurrent C", detail: "No dependencies", status: .pending, dependsOn: [])
+            ],
+            edges: []
+        )
+
+        final class ConcurrentTestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+            var scheduledNodes: [BurnBarDAGNodeID] = []
+            let lock = NSLock()
+
+            func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {
+                lock.lock()
+                scheduledNodes.append(nodeID)
+                lock.unlock()
+            }
+
+            func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
+            func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
+        }
+
+        let testDispatch = ConcurrentTestDispatch()
+        let scheduler = BurnBarParallelDAGScheduler.create(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-009-concurrent"),
+            dag: dag,
+            dispatch: testDispatch,
+            maxConcurrency: 3  // Allow 3 concurrent executions
+        )
+
+        // Start scheduler
+        try await scheduler.start()
+        let state = await scheduler.currentState()
+
+        // VAL-EXEC-009: All three independent nodes should be running (dispatched immediately)
+        XCTAssertEqual(
+            state.runningNodes.count, 3,
+            "All 3 independent nodes should be running concurrently with maxConcurrency=3"
+        )
+        XCTAssertTrue(state.runningNodes.contains(nodeAID), "Node A should be running")
+        XCTAssertTrue(state.runningNodes.contains(nodeBID), "Node B should be running")
+        XCTAssertTrue(state.runningNodes.contains(nodeCID), "Node C should be running")
+
+        // VAL-EXEC-009: With maxConcurrency=3, all nodes should be scheduled
+        testDispatch.lock.lock()
+        let scheduled = testDispatch.scheduledNodes
+        testDispatch.lock.unlock()
+        XCTAssertEqual(
+            scheduled.count, 3,
+            "All 3 independent nodes should be scheduled concurrently with maxConcurrency=3"
+        )
+    }
+
+    // MARK: - VAL-EXEC-013: Parallel scheduler emits critical-path tracking artifacts
+
+    func testVAL_EXEC_013_CriticalPathArtifactIsEmittedOnDAGStart() async throws {
+        // VAL-EXEC-013: Parallel DAG execution computes and persists critical-path
+        // timeline/metrics for each mission run.
+        // This test verifies that a critical-path artifact is emitted when the
+        // scheduler starts and contains the correct DAG structure.
+
+        // Create a DAG with a known critical path: A -> B -> C
+        let nodeAID = BurnBarDAGNodeID(rawValue: "cp-node-a")
+        let nodeBID = BurnBarDAGNodeID(rawValue: "cp-node-b")
+        let nodeCID = BurnBarDAGNodeID(rawValue: "cp-node-c")
+
+        let dag = BurnBarDAGContract(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-013"),
+            nodes: [
+                BurnBarDAGNode(id: nodeAID, title: "CP Node A", detail: "First", status: .pending, dependsOn: []),
+                BurnBarDAGNode(id: nodeBID, title: "CP Node B", detail: "Depends on A", status: .pending, dependsOn: [nodeAID]),
+                BurnBarDAGNode(id: nodeCID, title: "CP Node C", detail: "Depends on B", status: .pending, dependsOn: [nodeBID])
+            ],
+            edges: []
+        )
+
+        final class CriticalPathTestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+            func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
+            func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
+            func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
+        }
+
+        let scheduler = BurnBarParallelDAGScheduler.create(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-013"),
+            dag: dag,
+            dispatch: CriticalPathTestDispatch(),
+            maxConcurrency: 4
+        )
+
+        // Start scheduler
+        try await scheduler.start()
+        let state = await scheduler.currentState()
+
+        // VAL-EXEC-013: Critical path artifact should exist
+        XCTAssertNotNil(state.criticalPath, "Critical path artifact should be emitted")
+
+        guard let criticalPath = state.criticalPath else { return }
+
+        // VAL-EXEC-013: Critical path should contain the correct mission ID
+        XCTAssertEqual(criticalPath.missionID, BurnBarMissionID(rawValue: "mission-val-exec-013"))
+
+        // VAL-EXEC-013: Critical path should identify the correct nodes (A -> B -> C)
+        XCTAssertEqual(criticalPath.criticalPathNodes.count, 3, "Critical path should have 3 nodes")
+        XCTAssertEqual(criticalPath.criticalPathNodes[0], nodeAID)
+        XCTAssertEqual(criticalPath.criticalPathNodes[1], nodeBID)
+        XCTAssertEqual(criticalPath.criticalPathNodes[2], nodeCID)
+
+        // VAL-EXEC-013: Current critical path should match
+        XCTAssertEqual(criticalPath.currentCriticalPathNodes, criticalPath.criticalPathNodes)
+
+        // VAL-EXEC-013: Estimated duration should be positive
+        XCTAssertGreaterThan(criticalPath.estimatedTotalDuration, 0, "Estimated total duration should be positive")
+
+        // VAL-EXEC-013: Artifact should not be marked complete yet
+        XCTAssertFalse(criticalPath.isComplete, "Critical path should not be complete at start")
+    }
+
+    func testVAL_EXEC_013_CriticalPathIsUpdatedOnNodeCompletion() async throws {
+        // VAL-EXEC-013: Critical path metrics are updated as execution progresses.
+        // This test verifies that the critical path artifact is updated when nodes complete.
+
+        let nodeAID = BurnBarDAGNodeID(rawValue: "update-cp-a")
+        let nodeBID = BurnBarDAGNodeID(rawValue: "update-cp-b")
+        let nodeCID = BurnBarDAGNodeID(rawValue: "update-cp-c")
+
+        let dag = BurnBarDAGContract(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-013-update"),
+            nodes: [
+                BurnBarDAGNode(id: nodeAID, title: "Update CP A", detail: "First", status: .pending, dependsOn: []),
+                BurnBarDAGNode(id: nodeBID, title: "Update CP B", detail: "Depends on A", status: .pending, dependsOn: [nodeAID]),
+                BurnBarDAGNode(id: nodeCID, title: "Update CP C", detail: "Depends on B", status: .pending, dependsOn: [nodeBID])
+            ],
+            edges: []
+        )
+
+        final class UpdateCPTestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+            func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
+            func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
+            func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
+        }
+
+        let scheduler = BurnBarParallelDAGScheduler.create(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-013-update"),
+            dag: dag,
+            dispatch: UpdateCPTestDispatch(),
+            maxConcurrency: 1
+        )
+
+        try await scheduler.start()
+        let initialState = await scheduler.currentState()
+        let initialCriticalPath = initialState.criticalPath
+
+        XCTAssertNotNil(initialCriticalPath, "Initial critical path should exist")
+
+        // Complete node A
+        await scheduler.reportNodeCompleted(nodeAID)
+        let afterAState = await scheduler.currentState()
+        let afterACriticalPath = afterAState.criticalPath
+
+        // VAL-EXEC-013: Critical path should be updated
+        XCTAssertNotNil(afterACriticalPath, "Critical path should exist after A completes")
+
+        // VAL-EXEC-013: Updated timestamp should change
+        XCTAssertGreaterThan(
+            afterACriticalPath!.updatedAt,
+            initialCriticalPath!.updatedAt,
+            "Updated timestamp should change after node completion"
+        )
+
+        // VAL-EXEC-013: The critical path nodes should be updated to exclude completed node A
+        // Initial path is A -> B -> C, after A completes path should be B -> C
+        XCTAssertFalse(
+            afterACriticalPath!.currentCriticalPathNodes.contains(nodeAID),
+            "Completed node A should not be on current critical path"
+        )
+        XCTAssertTrue(
+            afterACriticalPath!.currentCriticalPathNodes.contains(nodeBID),
+            "Node B should still be on current critical path"
+        )
+        XCTAssertTrue(
+            afterACriticalPath!.currentCriticalPathNodes.contains(nodeCID),
+            "Node C should still be on current critical path"
+        )
+
+        // VAL-EXEC-013: The completed duration should be tracked
+        let completedDuration = afterACriticalPath!.completedCriticalPathDuration
+        XCTAssertGreaterThan(completedDuration, 0, "Completed duration should be tracked")
+
+        // Complete all nodes
+        await scheduler.reportNodeCompleted(nodeBID)
+        await scheduler.reportNodeCompleted(nodeCID)
+        let finalState = await scheduler.currentState()
+
+        // VAL-EXEC-013: DAG completion should mark critical path as complete
+        XCTAssertTrue(finalState.criticalPath?.isComplete == true, "Critical path should be marked complete")
+        XCTAssertEqual(finalState.phase, .completed, "Scheduler should be in completed state")
+    }
+
     /// Creates a harness with direct store access for tests that need to manipulate timestamps
     private func makeHarnessWithStore(
         name: String,
