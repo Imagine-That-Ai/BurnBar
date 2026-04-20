@@ -1,0 +1,83 @@
+{
+  "groupId": "extension-tool-lifecycle",
+  "testedAt": "2026-04-20T08:30:14Z",
+  "isolation": {
+    "surface": "MC-EXT",
+    "assignedAssertionIds": [
+      "VAL-EXT-004"
+    ],
+    "scope": "Validate only extension pending tool lifecycle assertion",
+    "allowedCommands": [
+      "npm --prefix extensions/openburnbar run test:unit -- test/controller.test.ts"
+    ]
+  },
+  "toolsUsed": [
+    "npm",
+    "vitest",
+    "python3"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-EXT-004",
+      "title": "Pending tool lifecycle is end-to-end visible",
+      "status": "pass",
+      "commands": [
+        {
+          "command": "npm --prefix extensions/openburnbar run test:unit -- test/controller.test.ts",
+          "exitCode": 0,
+          "transcript": "m9-single-node-e2e-thin-slice/extension-tool-lifecycle/required-command-transcript.txt"
+        },
+        {
+          "command": "npm --prefix extensions/openburnbar run test:unit -- test/controller.test.ts --reporter=verbose",
+          "exitCode": 0,
+          "transcript": "m9-single-node-e2e-thin-slice/extension-tool-lifecycle/verbose-rerun-transcript.txt"
+        }
+      ],
+      "steps": [
+        {
+          "action": "Poll cycle 1 in VAL-EXT-004 test fixture",
+          "expected": "pending tool call appears with waiting status while run phase is executing_tool",
+          "observed": "Assertion verifies phase executing_tool, pendingToolCalls length 1, toolName search_files, status waiting"
+        },
+        {
+          "action": "Poll cycle 2 in VAL-EXT-004 test fixture",
+          "expected": "pending list clears when tool dispatch progresses and run phase becomes model_streaming",
+          "observed": "Assertion verifies pendingToolCalls length 0 and phase model_streaming"
+        },
+        {
+          "action": "Poll cycle 3 in VAL-EXT-004 test fixture",
+          "expected": "run completes with no pending tool calls",
+          "observed": "Assertion verifies phase completed and pendingToolCalls length 0"
+        }
+      ],
+      "evidence": {
+        "assertionTagged": [
+          "m9-single-node-e2e-thin-slice/extension-tool-lifecycle/VAL-EXT-004-assertion-tagged-lines.txt"
+        ],
+        "stateArtifacts": [
+          "m9-single-node-e2e-thin-slice/extension-tool-lifecycle/VAL-EXT-004-source-snippet.txt"
+        ],
+        "commandEvidence": [
+          "m9-single-node-e2e-thin-slice/extension-tool-lifecycle/commands-and-exit-codes.txt",
+          "m9-single-node-e2e-thin-slice/extension-tool-lifecycle/required-command-exit-code.txt",
+          "m9-single-node-e2e-thin-slice/extension-tool-lifecycle/verbose-rerun-exit-code.txt"
+        ],
+        "consoleErrors": "not applicable (CLI/unit-test flow)",
+        "network": "not applicable (local unit-test flow)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Default unit-test reporter output did not include assertion ID lines, so an additional verbose rerun was required to capture explicit VAL-EXT-004 evidence.",
+      "resolved": true,
+      "resolution": "Executed supplemental command with --reporter=verbose and extracted the tagged line into an evidence file.",
+      "affectedAssertions": [
+        "VAL-EXT-004"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated 1 assertion (VAL-EXT-004): pass. Required unit test command exited 0; supplemental verbose rerun exited 0 and captured assertion-tagged lifecycle evidence."
+}
