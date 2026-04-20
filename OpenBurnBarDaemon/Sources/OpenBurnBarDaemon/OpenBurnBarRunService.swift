@@ -984,7 +984,9 @@ public actor BurnBarRunService {
                 )
             )
         case .retryTool:
+            run.attempt += 1
             try transition(&run, to: .planning, activeApprovalID: nil)
+            try await continueExecution(for: &run)
         case .failRun:
             try transition(
                 &run,

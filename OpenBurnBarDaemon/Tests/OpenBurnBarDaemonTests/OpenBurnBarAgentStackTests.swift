@@ -291,12 +291,23 @@ final class BurnBarAgentStackTests: XCTestCase {
         )
         XCTAssertEqual(approvalDecision.action, .requestApproval)
 
-        let failureDecision = engine.decide(
+        // VAL-EXEC-007: applyFailed is retryable within bounds (attempt < 2)
+        let retryableDecision = engine.decide(
             for: BurnBarToolExecutionError(code: .applyFailed, message: "Patch failed."),
             toolCall: toolCall,
             attempt: 1
         )
-        XCTAssertEqual(failureDecision.action, .failRun)
+        XCTAssertEqual(retryableDecision.action, .retryTool)
+        XCTAssertEqual(retryableDecision.reason, "retryable_tool_failure")
+
+        // VAL-EXEC-007: retry bounds exceeded → terminal failure
+        let terminalDecision = engine.decide(
+            for: BurnBarToolExecutionError(code: .applyFailed, message: "Patch failed."),
+            toolCall: toolCall,
+            attempt: 2
+        )
+        XCTAssertEqual(terminalDecision.action, .failRun)
+        XCTAssertEqual(terminalDecision.reason, "terminal_tool_failure")
     }
 
     func testContextSelectorCanSearchWorkspaceForInspectIntent() throws {

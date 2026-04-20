@@ -942,8 +942,8 @@ final class BurnBarRunServiceTests: XCTestCase {
                 succeeded: false,
                 output: nil,
                 error: BurnBarToolExecutionError(
-                    code: .applyFailed,
-                    message: "Workspace edit failed."
+                    code: .terminalFailed,
+                    message: "Companion is no longer available."
                 ),
                 completedAt: Date()
             )
@@ -1531,6 +1531,353 @@ final class BurnBarRunServiceTests: XCTestCase {
         let replayEvents = try await harness.runJournal.events(for: runID)
         XCTAssertEqual(events.map { $0.eventID }, replayEvents.map { $0.eventID },
             "Replay should produce identical sequence for failed run")
+    }
+
+    // MARK: - VAL-EXEC-005: Retry is failed-only and resets workflow state
+
+    func testVAL_EXEC_005_RetryRejectsNonFailedRun() async throws {
+        // VAL-EXEC-005: run.retry rejects non-failed runs and resets failed run
+        // approval/tool workflow before re-execution.
+        // This test verifies that retry on a non-failed run throws retryRequiresFailedRun error.
+        let harness = try makeHarness(name: "val-exec-005-reject-non-failed")
+        let clientID = BurnBarClientID(rawValue: "client-reject-retry")
+        let sessionID = BurnBarSessionID(rawValue: "session-reject-retry")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Reject Retry Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await harness.configStore.setSecret("zai-secret", for: "zai")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+
+        // Create a run that completes successfully (not failed)
+        let completedRun = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Simple completion",
+                modelID: "glm-5"
+            )
+        )
+        XCTAssertEqual(completedRun.phase, .completed, "Run should complete successfully")
+
+        // Attempting to retry a non-failed run should throw retryRequiresFailedRun error
+        do {
+            _ = try await harness.runService.retryRun(
+                BurnBarRunRetryRequest(runID: completedRun.runID, clientID: clientID)
+            )
+            XCTFail("Expected retryRequiresFailedRun error for non-failed run")
+        } catch let error as BurnBarRunServiceError {
+            guard case .retryRequiresFailedRun(let runID) = error else {
+                return XCTFail("Expected retryRequiresFailedRun error, got: \(error)")
+            }
+            XCTAssertEqual(runID, completedRun.runID)
+        }
+    }
+
+    func testVAL_EXEC_005_RetryResetsWorkflowStateAndApproval() async throws {
+        // VAL-EXEC-005: Retry resets approval/tool workflow state before re-execution.
+        let harness = try makeHarness(name: "val-exec-005-reset-workflow")
+        let clientID = BurnBarClientID(rawValue: "client-reset-workflow")
+        let sessionID = BurnBarSessionID(rawValue: "session-reset-workflow")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Reset Workflow Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        // Create a run that goes to awaiting approval and then fails
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Fail after approval",
+                modelID: "glm-5",
+                metadata: [
+                    "requiresApproval": .bool(true),
+                    "toolKind": .string(BurnBarToolKind.applyPatch.rawValue),
+                    "failUntilAttempt": .number(1)
+                ]
+            )
+        )
+        XCTAssertEqual(created.phase, .awaitingApproval)
+
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertNotNil(detail.approvalRequest, "Should have approval request")
+
+        // Approve and let it fail
+        let approvalID = try XCTUnwrap(detail.approvalRequest?.approvalID)
+        _ = try await harness.runService.respondToApproval(
+            BurnBarApprovalRespondRequest(
+                response: BurnBarApprovalResponse(
+                    approvalID: approvalID,
+                    clientID: clientID,
+                    decision: .approve,
+                    respondedAt: Date()
+                )
+            )
+        )
+
+        // Wait for failure
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let failedDetail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(failedDetail.run?.phase, .failed, "Run should have failed")
+        XCTAssertNil(failedDetail.approvalRequest, "Approval should be cleared after failure")
+
+        // Retry should reset workflow state and start fresh
+        let retriedDetail = try await harness.runService.retryRun(
+            BurnBarRunRetryRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(retriedDetail.run?.phase, .awaitingApproval, "Retry should start fresh with approval request")
+        XCTAssertNotNil(retriedDetail.approvalRequest, "Retry should have fresh approval request")
+    }
+
+    // MARK: - VAL-EXEC-007: Tool failure recovery policy is explicit
+
+    func testVAL_EXEC_007_TrustGatedFailureEscalatesToApproval() async throws {
+        // VAL-EXEC-007: Trust/workspace/policy failures escalate to approval.
+        let harness = try makeHarness(name: "val-exec-007-trust-gated")
+        let clientID = BurnBarClientID(rawValue: "client-trust-gated")
+        let sessionID = BurnBarSessionID(rawValue: "session-trust-gated")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Trust Gated Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Apply patch",
+                modelID: "glm-5",
+                metadata: [
+                    "workspaceWorkflow": .object([
+                        "type": .string("replace_string_in_file"),
+                        "path": .string("src/example.ts"),
+                        "from": .string("value = 1"),
+                        "to": .string("value = 2")
+                    ])
+                ]
+            )
+        )
+
+        let claim = try await harness.runService.executeTool(
+            BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+
+        // Submit trust-gated failure
+        _ = try await harness.runService.submitToolResult(
+            BurnBarToolResultSubmissionRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                runID: created.runID,
+                callID: try XCTUnwrap(claim.toolCall?.callID),
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: .trustGated,
+                    message: "Trust this workspace before applying edits."
+                ),
+                completedAt: Date()
+            )
+        )
+
+        // VAL-EXEC-007: Trust-gated failure should escalate to approval, not fail the run
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(detail.run?.phase, .awaitingApproval, "Trust-gated failure should escalate to approval")
+        XCTAssertEqual(detail.approvalRequest?.tool, .readFile, "Approval tool should be the tool that failed")
+        XCTAssertEqual(detail.approvalRequest?.message, "Trust this workspace before applying edits.")
+
+        // Verify journal recorded the recovery decision
+        let events = try await harness.runJournal.events(for: created.runID)
+        let recoveryEvents = events.filter { $0.kind == .recoveryDecided }
+        XCTAssertFalse(recoveryEvents.isEmpty, "Should have recovery decision event")
+    }
+
+    func testVAL_EXEC_007_RetryableFailureRetriesWithinBounds() async throws {
+        // VAL-EXEC-007: Retryable failures retry within bounds.
+        // applyFailed is a retryable tool error that should retry up to attempt limit.
+        let harness = try makeHarness(name: "val-exec-007-retryable")
+        let clientID = BurnBarClientID(rawValue: "client-retryable")
+        let sessionID = BurnBarSessionID(rawValue: "session-retryable")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Retryable Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Apply patch",
+                modelID: "glm-5",
+                metadata: [
+                    "workspaceWorkflow": .object([
+                        "type": .string("replace_string_in_file"),
+                        "path": .string("src/example.ts"),
+                        "from": .string("value = 1"),
+                        "to": .string("value = 2")
+                    ])
+                ]
+            )
+        )
+
+        let claim = try await harness.runService.executeTool(
+            BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+
+        // Submit retryable failure (applyFailed - workspace edit failed but can be retried)
+        _ = try await harness.runService.submitToolResult(
+            BurnBarToolResultSubmissionRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                runID: created.runID,
+                callID: try XCTUnwrap(claim.toolCall?.callID),
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: .applyFailed,
+                    message: "Workspace edit failed."
+                ),
+                completedAt: Date()
+            )
+        )
+
+        // First retryable failure should trigger automatic retry and dispatch new tool call
+        let afterFirstFailure = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(afterFirstFailure.run?.phase, .waitingOnCompanion, "First retryable failure should trigger retry and dispatch new tool call")
+
+        // Submit second retryable failure (attempt 2)
+        let secondClaim = try await harness.runService.executeTool(
+            BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+        _ = try await harness.runService.submitToolResult(
+            BurnBarToolResultSubmissionRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                runID: created.runID,
+                callID: try XCTUnwrap(secondClaim.toolCall?.callID),
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: .applyFailed,
+                    message: "Workspace edit failed again."
+                ),
+                completedAt: Date()
+            )
+        )
+
+        // VAL-EXEC-007: Second retryable failure (attempt 2) should fail the run (bounds exceeded)
+        let afterSecondFailure = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(afterSecondFailure.run?.phase, .failed, "Second retryable failure should exceed bounds and fail run")
+
+        // Verify journal recorded both recovery decisions
+        let events = try await harness.runJournal.events(for: created.runID)
+        let recoveryEvents = events.filter { $0.kind == .recoveryDecided }
+        XCTAssertEqual(recoveryEvents.count, 2, "Should have two recovery decision events")
+    }
+
+    func testVAL_EXEC_007_TerminalFailureEndsRun() async throws {
+        // VAL-EXEC-007: Terminal failures end run.
+        let harness = try makeHarness(name: "val-exec-007-terminal")
+        let clientID = BurnBarClientID(rawValue: "client-terminal")
+        let sessionID = BurnBarSessionID(rawValue: "session-terminal")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Terminal Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Apply patch",
+                modelID: "glm-5",
+                metadata: [
+                    "workspaceWorkflow": .object([
+                        "type": .string("replace_string_in_file"),
+                        "path": .string("src/example.ts"),
+                        "from": .string("value = 1"),
+                        "to": .string("value = 2")
+                    ])
+                ]
+            )
+        )
+
+        let claim = try await harness.runService.executeTool(
+            BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+
+        // Submit terminal failure (terminalFailed - non-retryable companion error)
+        _ = try await harness.runService.submitToolResult(
+            BurnBarToolResultSubmissionRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                runID: created.runID,
+                callID: try XCTUnwrap(claim.toolCall?.callID),
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: .terminalFailed,
+                    message: "Workspace companion crashed."
+                ),
+                completedAt: Date()
+            )
+        )
+
+        // VAL-EXEC-007: Terminal failure should end the run immediately
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(detail.run?.phase, .failed, "Terminal failure should end the run")
+
+        // Verify no approval was requested (terminal = no recovery possible)
+        XCTAssertNil(detail.approvalRequest, "Terminal failure should not request approval")
     }
 }
 

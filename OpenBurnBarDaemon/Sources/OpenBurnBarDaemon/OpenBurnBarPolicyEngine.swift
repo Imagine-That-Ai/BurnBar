@@ -51,9 +51,9 @@ public struct BurnBarPolicyEngine {
 
     public func isRetryable(_ error: BurnBarToolExecutionError) -> Bool {
         switch error.code {
-        case .trustGated, .noWorkspace, .remoteUnsupported:
+        case .trustGated, .noWorkspace, .remoteUnsupported, .applyFailed:
             return true
-        case .applyFailed, .terminalFailed, .unknown:
+        case .terminalFailed, .unknown:
             return false
         }
     }
