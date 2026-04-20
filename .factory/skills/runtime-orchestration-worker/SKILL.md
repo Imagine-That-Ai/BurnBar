@@ -19,9 +19,10 @@ None.
 3. Implement runtime code with idempotency and append-only journal assumptions preserved.
 4. Verify no duplicate terminal results, no duplicate usage accounting, and stable takeover semantics.
 5. Run focused validation commands:
-   - `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarRunServiceTests`
-   - `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarMissionControlServiceTests`
-   - `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarProviderRouterTests`
+   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarRunServiceTests`
+   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`
+   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarProviderRouterTests`
+   Each command must produce explicit evidence output (test case names, assertion results) captured in the handoff `verification.commandsRun` array with `observation` field detailing what passed.
 6. If touching scheduling/reconciliation, include explicit before/after timeline evidence in handoff.
 
 ## Example Handoff
@@ -33,14 +34,19 @@ None.
   "verification": {
     "commandsRun": [
       {
-        "command": "swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarRunServiceTests",
+        "command": "swift test --package-path OpenBurnBarDaemon --filter BurnBarRunServiceTests",
         "exitCode": 0,
-        "observation": "Run recovery/retry/restart tests passed including new journal assertions."
+        "observation": "Run recovery/retry/restart tests passed including VAL-EXEC-008 failover order assertions and VAL-EXEC-012 journal sequence tests. All 47 test cases executed successfully."
       },
       {
-        "command": "swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarMissionControlServiceTests",
+        "command": "swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests",
         "exitCode": 0,
-        "observation": "Parallel scheduler and reconciliation tests passed."
+        "observation": "Parallel scheduler and reconciliation tests passed. VAL-EXEC-009 dependency gating and VAL-EXEC-010 winner selection determinism verified."
+      },
+      {
+        "command": "swift test --package-path OpenBurnBarDaemon --filter BurnBarProviderRouterTests",
+        "exitCode": 0,
+        "observation": "Router scorecard and VAL-EXEC-008 failover tests passed. Route ordering assertions confirmed deterministic composite scoring."
       }
     ],
     "interactiveChecks": []
@@ -48,11 +54,11 @@ None.
   "tests": {
     "added": [
       {
-        "file": "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarMissionControlServiceTests.swift",
+        "file": "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarRunServiceTests.swift",
         "cases": [
           {
-            "name": "testReconcilerWinnerIsReplayStable",
-            "verifies": "Winner remains identical after replay"
+            "name": "test_VAL_EXEC_008_failoverAttemptsAreDeterministicallyOrdered",
+            "verifies": "VAL-EXEC-008: Explicit deterministic attempted failover route slot/identity order"
           }
         ]
       }

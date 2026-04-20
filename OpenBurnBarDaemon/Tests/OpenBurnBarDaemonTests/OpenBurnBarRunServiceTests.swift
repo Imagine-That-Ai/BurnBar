@@ -315,6 +315,87 @@ final class BurnBarRunServiceTests: XCTestCase {
         XCTAssertEqual(usageRecords.first?.providerID, "zai")
     }
 
+    func test_VAL_EXEC_008_failoverAttemptsAreDeterministicallyOrdered() async throws {
+        // VAL-EXEC-008: Explicitly assert deterministic attempted failover route slot/identity order.
+        // This test strengthens coverage by verifying the exact sequence of slot/identity attempts
+        // during failover, not just that failover occurred or call counts.
+        let recorder = BurnBarRecordingFailoverSimulatorProviderExecutor()
+        let harness = try makeHarness(
+            name: "failover-ordered",
+            providerExecutor: recorder
+        )
+        let clientID = BurnBarClientID(rawValue: "failover-ordered-client")
+        let sessionID = BurnBarSessionID(rawValue: "failover-ordered-session")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Failover Ordered Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+
+        // Set up one provider (zai) with two credential slots for glm-5
+        // slot-a is added first, slot-b second - deterministic slot ID ordering
+        try await harness.configStore.setSecret("zai-key-a", for: "zai")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/v1",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+        // Add two credential slots in deterministic slotID order: slot-a first, slot-b second
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-a",
+            label: "Plan A",
+            apiKey: "zai-key-a"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-b",
+            label: "Plan B",
+            apiKey: "zai-key-b"
+        )
+
+        // Create a run - failover simulator will fail on first attempt (slot-a), succeed on second (slot-b)
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Test deterministic failover ordering",
+                modelID: "glm-5"
+            )
+        )
+
+        // Verify the run completed successfully via failover
+        XCTAssertEqual(createResponse.phase, .completed)
+
+        // Extract the ordered sequence of route slot/identity attempts
+        let attemptedRoutes = await recorder.attemptedRoutes()
+
+        // VAL-EXEC-008: Assert deterministic attempted route order
+        // The router must attempt slot-a first (highest ranked), then failover to slot-b
+        XCTAssertEqual(attemptedRoutes.count, 2,
+            "Failover should attempt exactly 2 routes: first fails, second succeeds")
+        XCTAssertEqual(attemptedRoutes[0].credentialSlotID, "slot-a",
+            "First attempted route should be slot-a (primary)")
+        XCTAssertEqual(attemptedRoutes[1].credentialSlotID, "slot-b",
+            "Second attempted route should be slot-b (failover target)")
+
+        // Verify provider identity is preserved through failover
+        XCTAssertEqual(attemptedRoutes[0].providerID, "zai")
+        XCTAssertEqual(attemptedRoutes[1].providerID, "zai")
+
+        // Verify only one usage record (no duplicate terminal records from failover retry)
+        let usageRecords = try await harness.usageRecorder.recentUsage(limit: 10)
+        XCTAssertEqual(usageRecords.count, 1, "Failover must not duplicate usage records")
+        XCTAssertEqual(usageRecords.first?.runID, createResponse.runID)
+    }
+
     func testObserverCannotControlUntilControllerDetachesAndPromotionOccurs() async throws {
         let harness = try makeHarness(name: "arbitration")
         let controllerID = BurnBarClientID(rawValue: "controller")
@@ -1934,6 +2015,43 @@ private actor BurnBarFailoverSimulatorProviderExecutor: BurnBarProviderExecuting
             cacheCreationTokens: 0,
             cacheReadTokens: 0
         )
+    }
+}
+
+/// Recording failover simulator that tracks the ordered sequence of route attempts.
+/// Used to verify VAL-EXEC-008: deterministic attempted failover route slot/identity order.
+private actor BurnBarRecordingFailoverSimulatorProviderExecutor: BurnBarProviderExecuting {
+    private var callCount = 0
+    private var attemptedRoutesList: [BurnBarProviderRoute] = []
+
+    func completeStructured(
+        _ request: BurnBarStructuredPromptRequest,
+        route: BurnBarProviderRoute
+    ) async throws -> BurnBarProviderExecutionResult {
+        // Record every route attempt with its slot/identity
+        attemptedRoutesList.append(route)
+        callCount += 1
+        if callCount == 1 {
+            // First call: simulate rate limit failure (retryable)
+            throw BurnBarProviderExecutorError.upstreamError(429, "Rate limit exceeded")
+        }
+        // Subsequent calls: succeed
+        let prompt = [request.systemPrompt, request.userPrompt]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
+        return BurnBarProviderExecutionResult(
+            outputText: #"{"action":"complete","rationale":"Failover succeeded.","message":"Completed via failover route."}"#,
+            inputTokens: max(1, prompt.count / 4),
+            outputTokens: 32,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0
+        )
+    }
+
+    /// Returns the ordered sequence of routes that were attempted.
+    /// Each entry includes slotID and providerID for deterministic order verification.
+    func attemptedRoutes() -> [BurnBarProviderRoute] {
+        return attemptedRoutesList
     }
 }
 
