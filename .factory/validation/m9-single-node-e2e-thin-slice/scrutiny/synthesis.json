@@ -1,6 +1,6 @@
 {
   "milestone": "m9-single-node-e2e-thin-slice",
-  "round": 2,
+  "round": 3,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,34 +20,35 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
+    "total": 2,
     "passed": 0,
-    "failed": 1,
+    "failed": 2,
     "failedFeatures": [
-      "m9-terminal-phase-mapping-and-runjournal-replay-evidence"
+      "m9-val-exec-001-terminal-mappings-and-val-exec-003-provenance-tags",
+      "m9-failed-cancelled-packet-status-sync-fix"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "m9-terminal-phase-mapping-and-runjournal-replay-evidence",
+      "featureId": "m9-val-exec-001-terminal-mappings-and-val-exec-003-provenance-tags",
       "severity": "blocking",
-      "description": "VAL-EXEC-001 remains incomplete: `testVAL_EXEC_001_RunPhaseToPacketStatusMappingIsDeterministic` still validates only `.completed`, without explicit failed/cancelled terminal phase→packet status mapping assertions."
+      "description": "VAL-EXEC-001 failed/cancelled coverage still validates result status only; packet-level terminal status and `completedAt` mapping assertions are not present in `testVAL_EXEC_001_*` coverage."
     },
     {
-      "featureId": "m9-terminal-phase-mapping-and-runjournal-replay-evidence",
+      "featureId": "m9-failed-cancelled-packet-status-sync-fix",
       "severity": "blocking",
-      "description": "Explicit VAL-EXEC-003 assertion-tagged provenance coverage is still missing; provenance assertions remain in untagged test coverage."
+      "description": "syncMissionExecution introduces a regression: `if isTerminalPhase || desiredPacketStatus != packet.status || packet.completedAt == nil` is true for non-terminal packets, causing repeated `mission_packet_synced` rewrites and `updatedAt` churn even without state changes."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skill:.factory/skills/runtime-orchestration-worker/SKILL.md",
-      "suggestion": "Align validation command examples with `.factory/services.yaml` canonical `BurnBar*` filters and require evidence capture for each listed focused validator to reduce rerun drift.",
-      "evidence": "Round-2 fix review again found command/evidence drift (`OpenBurnBar*` guidance in skill vs `BurnBar*` canonical commands), while rerun evidence still missed required VAL-EXEC-001 and VAL-EXEC-003 tagging requirements.",
+      "suggestion": "Replace outdated `OpenBurnBar*` XCTest filter examples with canonical `.factory/services.yaml` `BurnBar*` commands and require focused-command evidence capture to prevent command/evidence drift during reruns.",
+      "evidence": "Both round-3 fix reviews independently flagged skill-command mismatch (`OpenBurnBar*` vs `BurnBar*`) and handoff drift away from focused verification commands, indicating a repeated systemic process issue.",
       "isSystemic": true
     }
   ],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/m9-single-node-e2e-thin-slice/scrutiny/synthesis.round1.json"
+  "previousRound": ".factory/validation/m9-single-node-e2e-thin-slice/scrutiny/synthesis.round2.json"
 }

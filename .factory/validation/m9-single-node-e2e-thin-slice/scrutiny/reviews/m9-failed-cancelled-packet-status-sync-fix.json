@@ -1,0 +1,28 @@
+{
+  "featureId": "m9-failed-cancelled-packet-status-sync-fix",
+  "reviewedAt": "2026-04-20T07:55:44Z",
+  "commitId": "7cca143d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix does add explicit VAL-EXEC-001 failed/cancelled packet-level assertions and removes the prior result-only blind spot, but the new sync predicate now rewrites non-terminal packets on every transport cycle. This introduces continuous mission snapshot churn unrelated to state changes and is a blocking regression in syncMissionExecution.",
+    "issues": [
+      {
+        "file": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/MissionControlService.swift",
+        "line": 699,
+        "severity": "blocking",
+        "description": "The condition `if isTerminalPhase || desiredPacketStatus != packet.status || packet.completedAt == nil` is always true for non-terminal packets (their `completedAt` is normally nil), so `syncMissionExecution` persists `mission_packet_synced` updates every cycle even when run phase and packet status are unchanged. This causes unnecessary state/event churn and `updatedAt` drift for in-progress missions."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The runtime-orchestration skill still documents outdated XCTest filter names (`OpenBurnBar*`) that diverge from canonical service commands (`BurnBar*`), increasing risk of false-green runs with zero matched tests.",
+      "evidence": ".factory/skills/runtime-orchestration-worker/SKILL.md:22-24 vs .factory/services.yaml:6-7,10"
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/m9-single-node-e2e-thin-slice/scrutiny/reviews/m9-terminal-phase-mapping-and-runjournal-replay-evidence.json",
+  "summary": "Review failed. The rerun correctly adds explicit non-skipped VAL-EXEC-001 failed/cancelled packet assertions, but commit 7cca143d introduces a blocking sync predicate regression that rewrites non-terminal packets every cycle."
+}
