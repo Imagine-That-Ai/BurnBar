@@ -2298,6 +2298,125 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(refreshed.mission?.results.first?.runID, runID, "Result should link to correct run")
     }
 
+    func testVAL_EXEC_001_NonTerminalPacketsDoNotChurnOnRepeatedSync() async throws {
+        // VAL-EXEC-001 regression: Non-terminal packets must NOT be rewritten on every sync cycle.
+        // The predicate `isTerminalPhase || desiredPacketStatus != packet.status` ensures that
+        // non-terminal packets are only updated when their status changes, not on every cycle.
+        let now = Date(timeIntervalSince1970: 1_710_400_000)
+        let runID = BurnBarRunID(rawValue: "nonterminal-churn-test")
+
+        let harness = try makeHarness(
+            name: "val-exec-001-nonterminal-churn",
+            reviewRunLauncher: { _, _, _ in
+                BurnBarRunCreateResponse(runID: runID, phase: .planning)
+            },
+            runSnapshotLookup: { requestedRunID in
+                guard requestedRunID == runID else { return nil }
+                // Non-terminal phase .planning maps to .dispatched status
+                return BurnBarRunStateSnapshot(
+                    runID: requestedRunID,
+                    clientID: BurnBarClientID(rawValue: "daemon"),
+                    sessionID: BurnBarSessionID(rawValue: "session"),
+                    phase: .planning,
+                    modelID: "glm-5",
+                    updatedAt: now
+                )
+            }
+        )
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let mission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Non-terminal churn regression test",
+                summary: "Ensure non-terminal packets don't churn",
+                createdBy: "test",
+                recommendation: .review
+            )
+        )
+        let missionID = mission.mission.id
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "test", note: nil)
+        )
+        _ = try await harness.service.missionDispatchPacket(
+            BurnBarMissionDispatchPacketRequest(
+                missionID: missionID,
+                actor: "test",
+                packet: BurnBarMissionPacketSnapshot(
+                    id: BurnBarMissionPacketID(rawValue: "packet-nonterminal"),
+                    missionID: missionID,
+                    workerName: "test-worker",
+                    objective: "Test objective",
+                    status: .queued,
+                    runID: nil
+                )
+            )
+        )
+
+        // First sync - packet transitions from queued to dispatched (.planning maps to dispatched)
+        try await harness.service.runTransportCycle(now: now.addingTimeInterval(1))
+
+        let afterFirstSync = try await harness.service.missionGet(
+            BurnBarMissionGetRequest(missionID: missionID)
+        )
+        let firstUpdatedAt = afterFirstSync.mission?.updatedAt
+        let firstPacketStatus = afterFirstSync.mission?.packets.first?.status
+
+        // .planning maps to .dispatched, so after first sync status should be dispatched
+        XCTAssertEqual(
+            firstPacketStatus,
+            .dispatched,
+            "Non-terminal phase .planning should map to dispatched status"
+        )
+
+        // Second sync - same non-terminal phase, no status change
+        // Churn bug: old predicate `|| packet.completedAt == nil` was true for non-terminal
+        // packets since completedAt is always nil, causing mission_packet_synced every cycle
+        try await harness.service.runTransportCycle(now: now.addingTimeInterval(2))
+
+        let afterSecondSync = try await harness.service.missionGet(
+            BurnBarMissionGetRequest(missionID: missionID)
+        )
+        let secondUpdatedAt = afterSecondSync.mission?.updatedAt
+        let secondPacketStatus = afterSecondSync.mission?.packets.first?.status
+
+        // Status should remain unchanged (still .planning → .dispatched)
+        XCTAssertEqual(
+            secondPacketStatus,
+            .dispatched,
+            "Non-terminal status should remain dispatched across stable phase sync"
+        )
+        // VAL-EXEC-001: No churn - mission updatedAt should NOT change when packet status is stable
+        XCTAssertEqual(
+            firstUpdatedAt,
+            secondUpdatedAt,
+            "Non-terminal packet sync must NOT rewrite mission on every cycle (no churn)"
+        )
+
+        // Third sync - still no change should occur
+        try await harness.service.runTransportCycle(now: now.addingTimeInterval(3))
+
+        let afterThirdSync = try await harness.service.missionGet(
+            BurnBarMissionGetRequest(missionID: missionID)
+        )
+        let thirdUpdatedAt = afterThirdSync.mission?.updatedAt
+
+        XCTAssertEqual(
+            secondUpdatedAt,
+            thirdUpdatedAt,
+            "Third sync should also not cause churn for stable non-terminal packet"
+        )
+        // No results should be created for non-terminal phase
+        XCTAssertEqual(
+            afterThirdSync.mission?.results.count,
+            0,
+            "Non-terminal phase should not create results"
+        )
+    }
+
     // MARK: - VAL-EXEC-002: Terminal run sync records exactly one result per run ID
 
     func testVAL_EXEC_002_TerminalRunSyncRecordsExactlyOneResultPerRunID() async throws {

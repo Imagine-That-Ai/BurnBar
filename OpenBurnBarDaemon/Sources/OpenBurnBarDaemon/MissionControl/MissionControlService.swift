@@ -694,9 +694,12 @@ public actor BurnBarMissionControlService {
 
                 let desiredPacketStatus = missionPacketStatus(for: snapshot.phase)
                 let isTerminalPhase = isTerminal(phase: snapshot.phase)
-                // VAL-EXEC-001: Always update packet status for terminal phases to ensure
-                // correct phase→status mapping regardless of prior packet state.
-                if isTerminalPhase || desiredPacketStatus != packet.status || packet.completedAt == nil {
+                // VAL-EXEC-001: Update packet status for terminal phases (always, to ensure
+                // correct phase→status mapping regardless of prior state) and for non-terminal
+                // phases only when the status has changed. The completedAt check is intentionally
+                // excluded for non-terminal packets since nil completedAt is expected and should
+                // not trigger a rewrite on every sync cycle.
+                if isTerminalPhase || desiredPacketStatus != packet.status {
                     let updatedPacket = BurnBarMissionPacketSnapshot(
                         id: packet.id,
                         missionID: currentMission.id,
