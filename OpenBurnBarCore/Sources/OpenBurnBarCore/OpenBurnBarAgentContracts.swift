@@ -871,6 +871,90 @@ public struct BurnBarCriticalPathArtifact: Codable, Hashable, Sendable {
     }
 }
 
+// MARK: - VAL-EXEC-010: Reconciler Winner Selection
+
+/// Reason codes for winner selection during DAG reconciliation.
+/// These codes provide deterministic, replay-stable winner selection.
+public enum BurnBarReconcilerWinnerReasonCode: String, Codable, CaseIterable, Hashable, Sendable {
+    /// Winner selected because it was the only policy-valid, dependency-complete candidate.
+    case onlyCandidate = "ONLY_CANDIDATE"
+    /// Winner selected because it succeeded when others failed.
+    case successOverFailure = "SUCCESS_OVER_FAILURE"
+    /// Winner selected because it had higher evidence completeness.
+    case higherEvidenceCompleteness = "HIGHER_EVIDENCE_COMPLETENESS"
+    /// Winner selected because it had lower risk residual.
+    case lowerRiskResidual = "LOWER_RISK_RESIDUAL"
+    /// Winner selected because it had lower cost/latency penalty.
+    case lowerCostLatencyPenalty = "LOWER_COST_LATENCY_PENALTY"
+    /// Winner selected because it had the earliest terminal sequence number.
+    case earliestSequenceNumber = "EARLIEST_SEQUENCE_NUMBER"
+    /// Winner selected as final tie-break by lexical candidate ID.
+    case lexicalTieBreak = "LEXICAL_TIE_BREAK"
+    /// No reconciliation needed (single winner or no conflict).
+    case noReconciliationNeeded = "NO_RECONCILIATION_NEEDED"
+
+    public var label: String {
+        switch self {
+        case .onlyCandidate: return "Only valid candidate"
+        case .successOverFailure: return "Succeeded over failed"
+        case .higherEvidenceCompleteness: return "Higher evidence completeness"
+        case .lowerRiskResidual: return "Lower risk residual"
+        case .lowerCostLatencyPenalty: return "Lower cost/latency"
+        case .earliestSequenceNumber: return "Earliest sequence number"
+        case .lexicalTieBreak: return "Lexical tie-break"
+        case .noReconciliationNeeded: return "No reconciliation needed"
+        }
+    }
+}
+
+/// Tracks a reconciliation event when multiple parallel DAG paths produce conflicting outcomes.
+public struct BurnBarDAGReconciliationArtifact: Codable, Hashable, Sendable {
+    /// Unique identifier for this reconciliation event.
+    public let id: String
+    /// Mission this reconciliation belongs to.
+    public let missionID: BurnBarMissionID
+    /// The winning node ID.
+    public let winnerNodeID: BurnBarDAGNodeID
+    /// All candidate node IDs that were considered.
+    public let candidateNodeIDs: [BurnBarDAGNodeID]
+    /// The reason code for why this winner was selected.
+    public let winnerReasonCode: BurnBarReconcilerWinnerReasonCode
+    /// Human-readable rationale for the winner selection.
+    public let winnerRationale: String
+    /// Priority score used for selection (higher = better).
+    public let winnerScore: Double
+    /// Scores for each candidate (for audit/debugging).
+    public let candidateScores: [String: Double]
+    /// When the reconciliation occurred.
+    public let reconciledAt: Date
+    /// Schema version for forward compatibility.
+    public let schemaVersion: Int
+
+    public init(
+        id: String = UUID().uuidString,
+        missionID: BurnBarMissionID,
+        winnerNodeID: BurnBarDAGNodeID,
+        candidateNodeIDs: [BurnBarDAGNodeID],
+        winnerReasonCode: BurnBarReconcilerWinnerReasonCode,
+        winnerRationale: String,
+        winnerScore: Double,
+        candidateScores: [String: Double],
+        reconciledAt: Date = Date(),
+        schemaVersion: Int = 1
+    ) {
+        self.id = id
+        self.missionID = missionID
+        self.winnerNodeID = winnerNodeID
+        self.candidateNodeIDs = candidateNodeIDs
+        self.winnerReasonCode = winnerReasonCode
+        self.winnerRationale = winnerRationale
+        self.winnerScore = winnerScore
+        self.candidateScores = candidateScores
+        self.reconciledAt = reconciledAt
+        self.schemaVersion = schemaVersion
+    }
+}
+
 /// Tracks the execution state of a DAG scheduler for a mission.
 public enum BurnBarSchedulerPhase: String, Codable, CaseIterable, Hashable, Sendable {
     case idle
@@ -896,6 +980,8 @@ public struct BurnBarDAGSchedulerState: Codable, Hashable, Sendable {
     public var failedNodes: [BurnBarDAGNodeID]
     /// Critical path tracking artifact.
     public var criticalPath: BurnBarCriticalPathArtifact?
+    /// VAL-EXEC-010: Reconciliation artifact when multiple parallel outcomes need winner selection.
+    public var reconciliationArtifact: BurnBarDAGReconciliationArtifact?
     /// Concurrency limit for parallel execution.
     public let maxConcurrency: Int
     /// When the scheduler state was last updated.
@@ -912,6 +998,7 @@ public struct BurnBarDAGSchedulerState: Codable, Hashable, Sendable {
         completedNodes: [BurnBarDAGNodeID] = [],
         failedNodes: [BurnBarDAGNodeID] = [],
         criticalPath: BurnBarCriticalPathArtifact? = nil,
+        reconciliationArtifact: BurnBarDAGReconciliationArtifact? = nil,
         maxConcurrency: Int = 4,
         updatedAt: Date = Date(),
         errorMessage: String? = nil
@@ -924,6 +1011,7 @@ public struct BurnBarDAGSchedulerState: Codable, Hashable, Sendable {
         self.completedNodes = completedNodes
         self.failedNodes = failedNodes
         self.criticalPath = criticalPath
+        self.reconciliationArtifact = reconciliationArtifact
         self.maxConcurrency = maxConcurrency
         self.updatedAt = updatedAt
         self.errorMessage = errorMessage

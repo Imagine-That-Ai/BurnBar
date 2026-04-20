@@ -59,12 +59,55 @@ public protocol BurnBarDAGSchedulerDispatch: Sendable {
     ) async
 }
 
+// MARK: - VAL-EXEC-010: Reconciler Winner Selection
+
+/// Metrics for a node outcome used in winner selection.
+/// Higher scores indicate better outcomes for reconciliation.
+public struct BurnBarDAGNodeOutcomeMetrics: Sendable {
+    /// Evidence completeness score (0.0 - 1.0): tests passed, artifacts produced, required outputs satisfied.
+    public let evidenceCompleteness: Double
+    /// Risk residual score (0.0 - 1.0): lower is better.
+    public let riskResidual: Double
+    /// Normalized cost penalty (0.0 - 1.0): lower is better.
+    public let costPenalty: Double
+    /// Normalized latency penalty (0.0 - 1.0): lower is better.
+    public let latencyPenalty: Double
+    /// Sequence number for ordering (lower is earlier).
+    public let sequenceNumber: Int
+    /// Whether the outcome was successful.
+    public let isSuccessful: Bool
+
+    public init(
+        evidenceCompleteness: Double = 0.5,
+        riskResidual: Double = 0.5,
+        costPenalty: Double = 0.5,
+        latencyPenalty: Double = 0.5,
+        sequenceNumber: Int = 0,
+        isSuccessful: Bool = true
+    ) {
+        self.evidenceCompleteness = evidenceCompleteness
+        self.riskResidual = riskResidual
+        self.costPenalty = costPenalty
+        self.latencyPenalty = latencyPenalty
+        self.sequenceNumber = sequenceNumber
+        self.isSuccessful = isSuccessful
+    }
+}
+
+/// Protocol for providing node outcome metrics during winner selection.
+/// Implement this to customize how the reconciler scores outcomes.
+public protocol BurnBarDAGReconcilerMetricsProvider: Sendable {
+    /// Returns outcome metrics for a node. Return nil if metrics are unavailable.
+    func metrics(for nodeID: BurnBarDAGNodeID) -> BurnBarDAGNodeOutcomeMetrics?
+}
+
 /// Actor that manages parallel DAG execution with dependency gating and critical path tracking.
 ///
 /// The scheduler enforces that:
 /// - DAG nodes never start before their dependencies succeed
 /// - Independent ready nodes may execute concurrently (up to maxConcurrency)
 /// - Critical path is computed and updated as execution progresses
+/// - VAL-EXEC-010: When multiple parallel paths complete, winner selection is deterministic and replay-stable
 public actor BurnBarParallelDAGScheduler {
     /// Default maximum concurrent node execution.
     public static let defaultMaxConcurrency = 4
@@ -80,6 +123,9 @@ public actor BurnBarParallelDAGScheduler {
 
     /// Callback for dispatching node execution.
     private let dispatch: any BurnBarDAGSchedulerDispatch
+
+    /// VAL-EXEC-010: Provider for node outcome metrics used in winner selection.
+    private let metricsProvider: (any BurnBarDAGReconcilerMetricsProvider)?
 
     /// Maximum concurrent node execution.
     private let maxConcurrency: Int
@@ -101,12 +147,14 @@ public actor BurnBarParallelDAGScheduler {
         missionID: BurnBarMissionID,
         dag: BurnBarDAGContract,
         dispatch: any BurnBarDAGSchedulerDispatch,
+        metricsProvider: (any BurnBarDAGReconcilerMetricsProvider)? = nil,
         maxConcurrency: Int = BurnBarParallelDAGScheduler.defaultMaxConcurrency,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "parallel-dag-scheduler")
     ) {
         self.missionID = missionID
         self.dag = dag
         self.dispatch = dispatch
+        self.metricsProvider = metricsProvider
         self.maxConcurrency = maxConcurrency
         self.logger = logger
 
@@ -256,6 +304,8 @@ public actor BurnBarParallelDAGScheduler {
         if allTerminal {
             state.phase = state.failedNodes.isEmpty ? .completed : .failed
             state.errorMessage = state.failedNodes.isEmpty ? nil : "Some nodes failed"
+            // VAL-EXEC-010: Perform winner selection when all nodes complete
+            await performWinnerSelection()
         } else if state.phase == .running {
             // Dispatch newly ready nodes
             await dispatchReadyNodes()
@@ -296,6 +346,157 @@ public actor BurnBarParallelDAGScheduler {
         }
 
         return nil
+    }
+
+    // MARK: - VAL-EXEC-010: Reconciler Winner Selection
+
+    /// Performs winner selection when the DAG completes with multiple terminal outcomes.
+    /// Uses deterministic, replay-stable selection based on the winner selection precedence.
+    private func performWinnerSelection() async {
+        // Find terminal nodes that can be candidates for winner selection
+        let terminalNodes = dag.nodes.filter { node in
+            guard let status = state.nodeStatuses[node.id.rawValue] else { return false }
+            return status == .completed || status == .failed
+        }
+
+        // If only one candidate or no conflict, no reconciliation needed
+        if terminalNodes.count <= 1 {
+            if let singleNode = terminalNodes.first {
+                state.reconciliationArtifact = BurnBarDAGReconciliationArtifact(
+                    missionID: missionID,
+                    winnerNodeID: singleNode.id,
+                    candidateNodeIDs: [singleNode.id],
+                    winnerReasonCode: .noReconciliationNeeded,
+                    winnerRationale: "Single terminal node - no reconciliation needed",
+                    winnerScore: 1.0,
+                    candidateScores: [singleNode.id.rawValue: 1.0],
+                    reconciledAt: Date()
+                )
+            }
+            return
+        }
+
+        // Score all candidates using the metrics provider or defaults
+        var candidateScores: [BurnBarDAGNodeID: (score: Double, metrics: BurnBarDAGNodeOutcomeMetrics)] = [:]
+
+        for node in terminalNodes {
+            let metrics: BurnBarDAGNodeOutcomeMetrics
+            if let provider = metricsProvider, let provided = provider.metrics(for: node.id) {
+                metrics = provided
+            } else {
+                // Use default metrics based on success/failure
+                metrics = BurnBarDAGNodeOutcomeMetrics(
+                    evidenceCompleteness: 0.5,
+                    riskResidual: state.nodeStatuses[node.id.rawValue] == .completed ? 0.3 : 0.7,
+                    costPenalty: 0.5,
+                    latencyPenalty: 0.5,
+                    sequenceNumber: terminalNodes.firstIndex(where: { $0.id == node.id }) ?? 0,
+                    isSuccessful: state.nodeStatuses[node.id.rawValue] == .completed
+                )
+            }
+
+            // Calculate composite score using winner selection precedence:
+            // 1. Policy-valid and dependency-complete candidates (all terminal nodes satisfy this)
+            // 2. Successful terminal outcomes over failed outcomes (+2.0 for success)
+            // 3. Higher evidence completeness (0-1 scale, multiplier 1.0)
+            // 4. Lower risk residual (invert: 1 - riskResidual, multiplier 1.0)
+            // 5. Lower normalized cost/latency penalty (invert both, multiplier 0.5 each)
+            // 6. Earliest terminal sequence number (invert: 1 / (1 + sequenceNumber))
+            // 7. Lexical tie-break: handled by stable sort
+            let successBonus = metrics.isSuccessful ? 2.0 : 0.0
+            let evidenceScore = metrics.evidenceCompleteness * 1.0
+            let riskScore = (1.0 - metrics.riskResidual) * 1.0
+            let costScore = (1.0 - metrics.costPenalty) * 0.5
+            let latencyScore = (1.0 - metrics.latencyPenalty) * 0.5
+            let sequenceScore = 1.0 / Double(1 + metrics.sequenceNumber)
+
+            let compositeScore = successBonus + evidenceScore + riskScore + costScore + latencyScore + sequenceScore
+
+            candidateScores[node.id] = (compositeScore, metrics)
+        }
+
+        // Sort candidates by score (descending), then by lexical ID (ascending) for tie-breaking
+        let sortedCandidates = terminalNodes.sorted { nodeA, nodeB in
+            let scoreA = candidateScores[nodeA.id]?.score ?? 0
+            let scoreB = candidateScores[nodeB.id]?.score ?? 0
+            if scoreA != scoreB {
+                return scoreA > scoreB  // Higher score wins
+            }
+            return nodeA.id.rawValue < nodeB.id.rawValue  // Lexical tie-break
+        }
+
+        guard let winner = sortedCandidates.first else { return }
+
+        // Determine the winner reason code based on what made the difference
+        let winnerScore = candidateScores[winner.id]?.score ?? 0
+        let winnerMetrics = candidateScores[winner.id]?.metrics
+
+        var winnerReasonCode: BurnBarReconcilerWinnerReasonCode = .noReconciliationNeeded
+        var rationale = "Winner selected by deterministic reconciliation"
+
+        if terminalNodes.count == 1 {
+            winnerReasonCode = .onlyCandidate
+            rationale = "Only candidate node - winner is the only terminal outcome"
+        } else if let wMetrics = winnerMetrics {
+            // Check if winner won due to success over failure
+            let hasFailedCandidates = sortedCandidates.dropFirst().contains { node in
+                guard let m = candidateScores[node.id]?.metrics else { return false }
+                return !m.isSuccessful
+            }
+            if wMetrics.isSuccessful && hasFailedCandidates {
+                winnerReasonCode = .successOverFailure
+                rationale = "Winner succeeded while other candidates failed"
+            }
+            // Check if winner won due to higher evidence completeness
+            else if wMetrics.evidenceCompleteness > 0.5 {
+                winnerReasonCode = .higherEvidenceCompleteness
+                rationale = String(format: "Winner had higher evidence completeness (%.2f)", wMetrics.evidenceCompleteness)
+            }
+            // Check if winner won due to lower risk
+            else if wMetrics.riskResidual < 0.5 {
+                winnerReasonCode = .lowerRiskResidual
+                rationale = String(format: "Winner had lower risk residual (%.2f)", wMetrics.riskResidual)
+            }
+            // Check if winner won due to lower cost/latency
+            else if wMetrics.costPenalty < 0.5 || wMetrics.latencyPenalty < 0.5 {
+                winnerReasonCode = .lowerCostLatencyPenalty
+                rationale = String(format: "Winner had lower cost/latency (cost=%.2f, latency=%.2f)",
+                                   wMetrics.costPenalty, wMetrics.latencyPenalty)
+            }
+            // Check if winner won due to earliest sequence
+            else if wMetrics.sequenceNumber == 0 {
+                winnerReasonCode = .earliestSequenceNumber
+                rationale = "Winner had earliest terminal sequence number"
+            }
+            else {
+                winnerReasonCode = .lexicalTieBreak
+                rationale = "Winner selected by lexical tie-break on candidate ID"
+            }
+        }
+
+        // Build candidate scores map for the artifact
+        var artifactCandidateScores: [String: Double] = [:]
+        for node in terminalNodes {
+            artifactCandidateScores[node.id.rawValue] = candidateScores[node.id]?.score ?? 0
+        }
+
+        state.reconciliationArtifact = BurnBarDAGReconciliationArtifact(
+            missionID: missionID,
+            winnerNodeID: winner.id,
+            candidateNodeIDs: terminalNodes.map { $0.id },
+            winnerReasonCode: winnerReasonCode,
+            winnerRationale: rationale,
+            winnerScore: winnerScore,
+            candidateScores: artifactCandidateScores,
+            reconciledAt: Date()
+        )
+
+        logger.info("winner_selected", metadata: [
+            "winnerNodeID": winner.id.rawValue,
+            "reasonCode": winnerReasonCode.rawValue,
+            "winnerScore": String(winnerScore),
+            "candidateCount": String(terminalNodes.count)
+        ])
     }
 
     /// Starts a node by dispatching it.
@@ -639,12 +840,14 @@ extension BurnBarParallelDAGScheduler {
         missionID: BurnBarMissionID,
         dag: BurnBarDAGContract,
         dispatch: any BurnBarDAGSchedulerDispatch,
+        metricsProvider: (any BurnBarDAGReconcilerMetricsProvider)? = nil,
         maxConcurrency: Int = BurnBarParallelDAGScheduler.defaultMaxConcurrency
     ) -> BurnBarParallelDAGScheduler {
         let scheduler = BurnBarParallelDAGScheduler(
             missionID: missionID,
             dag: dag,
             dispatch: dispatch,
+            metricsProvider: metricsProvider,
             maxConcurrency: maxConcurrency
         )
         activeSchedulers[missionID] = scheduler

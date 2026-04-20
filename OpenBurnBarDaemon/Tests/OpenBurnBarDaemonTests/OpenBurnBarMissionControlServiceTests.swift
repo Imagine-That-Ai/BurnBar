@@ -3242,6 +3242,445 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(finalState.phase, .completed, "Scheduler should be in completed state")
     }
 
+    // MARK: - VAL-EXEC-010: Reconciler winner selection with persisted winner reason
+
+    func testVAL_EXEC_010_ReconcilerSelectsWinnerWhenMultipleNodesComplete() async throws {
+        // VAL-EXEC-010: When multiple parallel DAG paths complete, the reconciler
+        // deterministically selects a winner with a persisted reason code.
+
+        // Create a DAG with two independent parallel paths that both complete
+        let nodeAID = BurnBarDAGNodeID(rawValue: "parallel-a")
+        let nodeBID = BurnBarDAGNodeID(rawValue: "parallel-b")
+
+        let dag = BurnBarDAGContract(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-010"),
+            nodes: [
+                BurnBarDAGNode(id: nodeAID, title: "Parallel A", detail: "First path", status: .pending, dependsOn: []),
+                BurnBarDAGNode(id: nodeBID, title: "Parallel B", detail: "Second path", status: .pending, dependsOn: [])
+            ],
+            edges: []
+        )
+
+        final class TestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+            func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
+            func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
+            func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
+        }
+
+        let scheduler = BurnBarParallelDAGScheduler.create(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-010"),
+            dag: dag,
+            dispatch: TestDispatch(),
+            maxConcurrency: 2
+        )
+
+        try await scheduler.start()
+
+        // Complete both nodes
+        await scheduler.reportNodeCompleted(nodeAID)
+        await scheduler.reportNodeCompleted(nodeBID)
+
+        let finalState = await scheduler.currentState()
+
+        // VAL-EXEC-010: Reconciliation artifact should be present
+        XCTAssertNotNil(finalState.reconciliationArtifact, "Reconciliation artifact should be present")
+
+        guard let reconciliation = finalState.reconciliationArtifact else { return }
+
+        // VAL-EXEC-010: Winner should be one of the candidates
+        XCTAssertTrue(
+            [nodeAID, nodeBID].contains(reconciliation.winnerNodeID),
+            "Winner should be one of the candidates"
+        )
+
+        // VAL-EXEC-010: All candidates should be listed
+        XCTAssertEqual(
+            reconciliation.candidateNodeIDs.count, 2,
+            "Both candidates should be listed"
+        )
+
+        // VAL-EXEC-010: Winner reason code should be set
+        XCTAssertNotEqual(
+            reconciliation.winnerReasonCode, .noReconciliationNeeded,
+            "Winner reason should be set (not noReconciliationNeeded)"
+        )
+
+        // VAL-EXEC-010: Winner rationale should be non-empty
+        XCTAssertFalse(
+            reconciliation.winnerRationale.isEmpty,
+            "Winner rationale should be non-empty"
+        )
+
+        // VAL-EXEC-010: Winner score should be positive
+        XCTAssertGreaterThan(
+            reconciliation.winnerScore, 0,
+            "Winner score should be positive"
+        )
+
+        // VAL-EXEC-010: Candidate scores should include both candidates
+        XCTAssertEqual(
+            reconciliation.candidateScores.count, 2,
+            "Both candidates should have scores"
+        )
+    }
+
+    func testVAL_EXEC_010_ReconcilerSuccessWinsOverFailure() async throws {
+        // VAL-EXEC-010: When one node succeeds and another fails, success wins.
+
+        let nodeAID = BurnBarDAGNodeID(rawValue: "success-a")
+        let nodeBID = BurnBarDAGNodeID(rawValue: "fail-b")
+
+        let dag = BurnBarDAGContract(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-010-success"),
+            nodes: [
+                BurnBarDAGNode(id: nodeAID, title: "Success A", detail: "Will succeed", status: .pending, dependsOn: []),
+                BurnBarDAGNode(id: nodeBID, title: "Fail B", detail: "Will fail", status: .pending, dependsOn: [])
+            ],
+            edges: []
+        )
+
+        final class TestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+            func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
+            func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
+            func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
+        }
+
+        let scheduler = BurnBarParallelDAGScheduler.create(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-010-success"),
+            dag: dag,
+            dispatch: TestDispatch(),
+            maxConcurrency: 2
+        )
+
+        try await scheduler.start()
+
+        // Complete A successfully, fail B
+        await scheduler.reportNodeCompleted(nodeAID)
+        await scheduler.reportNodeFailed(nodeBID)
+
+        let finalState = await scheduler.currentState()
+
+        guard let reconciliation = finalState.reconciliationArtifact else {
+            XCTFail("Reconciliation artifact should be present")
+            return
+        }
+
+        // VAL-EXEC-010: Winner should be the successful node
+        XCTAssertEqual(
+            reconciliation.winnerNodeID, nodeAID,
+            "Successful node should win over failed node"
+        )
+
+        // VAL-EXEC-010: Reason should indicate success over failure
+        XCTAssertEqual(
+            reconciliation.winnerReasonCode, .successOverFailure,
+            "Reason should be success over failure"
+        )
+    }
+
+    func testVAL_EXEC_010_ReconcilerUsesMetricsProvider() async throws {
+        // VAL-EXEC-010: When a metrics provider is provided, it is used for scoring.
+
+        let nodeAID = BurnBarDAGNodeID(rawValue: "high-quality-a")
+        let nodeBID = BurnBarDAGNodeID(rawValue: "low-quality-b")
+
+        let dag = BurnBarDAGContract(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-010-metrics"),
+            nodes: [
+                BurnBarDAGNode(id: nodeAID, title: "High Quality A", detail: "High evidence", status: .pending, dependsOn: []),
+                BurnBarDAGNode(id: nodeBID, title: "Low Quality B", detail: "Low evidence", status: .pending, dependsOn: [])
+            ],
+            edges: []
+        )
+
+        final class TestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+            func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
+            func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
+            func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
+        }
+
+        // Custom metrics provider that prefers node A
+        final class CustomMetricsProvider: @unchecked Sendable, BurnBarDAGReconcilerMetricsProvider {
+            func metrics(for nodeID: BurnBarDAGNodeID) -> BurnBarDAGNodeOutcomeMetrics? {
+                if nodeID.rawValue == "high-quality-a" {
+                    return BurnBarDAGNodeOutcomeMetrics(
+                        evidenceCompleteness: 0.9,
+                        riskResidual: 0.2,
+                        costPenalty: 0.3,
+                        latencyPenalty: 0.3,
+                        sequenceNumber: 1,
+                        isSuccessful: true
+                    )
+                } else {
+                    return BurnBarDAGNodeOutcomeMetrics(
+                        evidenceCompleteness: 0.3,
+                        riskResidual: 0.7,
+                        costPenalty: 0.7,
+                        latencyPenalty: 0.7,
+                        sequenceNumber: 0,
+                        isSuccessful: true
+                    )
+                }
+            }
+        }
+
+        let scheduler = BurnBarParallelDAGScheduler.create(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-010-metrics"),
+            dag: dag,
+            dispatch: TestDispatch(),
+            metricsProvider: CustomMetricsProvider(),
+            maxConcurrency: 2
+        )
+
+        try await scheduler.start()
+
+        await scheduler.reportNodeCompleted(nodeAID)
+        await scheduler.reportNodeCompleted(nodeBID)
+
+        let finalState = await scheduler.currentState()
+
+        guard let reconciliation = finalState.reconciliationArtifact else {
+            XCTFail("Reconciliation artifact should be present")
+            return
+        }
+
+        // VAL-EXEC-010: High quality node should win based on metrics
+        XCTAssertEqual(
+            reconciliation.winnerNodeID, nodeAID,
+            "High quality node should win when metrics provider is used"
+        )
+
+        // VAL-EXEC-010: Winner should have higher score
+        let winnerScore = reconciliation.candidateScores[nodeAID.rawValue] ?? 0
+        let loserScore = reconciliation.candidateScores[nodeBID.rawValue] ?? 0
+        XCTAssertGreaterThan(
+            winnerScore, loserScore,
+            "Winner should have higher score"
+        )
+    }
+
+    // MARK: - VAL-CROSS-006: Auto-takeover outcomes propagate to operator-facing surfaces
+
+    func testVAL_CROSS_006_TakeoverHistoryAppearsInMissionSnapshot() async throws {
+        // VAL-CROSS-006: When auto-takeover completes, the outcome propagates
+        // to the mission snapshot's takeoverHistory field.
+
+        let launcher = ReviewLauncherRecorder()
+        let now = Date(timeIntervalSince1970: 1_710_300_000)
+        let sourceRunID = BurnBarRunID(rawValue: "source-run-cross-006")
+        let takeoverRunID = BurnBarRunID(rawValue: "takeover-run-cross-006")
+
+        var runSnapshots: [BurnBarRunID: BurnBarRunStateSnapshot] = [:]
+
+        let harness = try makeHarness(
+            name: "val-cross-006-takeover",
+            reviewRunLauncher: { prompt, modelID, metadata in
+                await launcher.record(prompt: prompt, modelID: modelID, metadata: metadata)
+                let isAutoTakeover = self.boolValue(metadata["autoTakeover"]) ?? false
+                let launchedRunID = isAutoTakeover ? takeoverRunID : sourceRunID
+                return BurnBarRunCreateResponse(runID: launchedRunID, phase: .planning)
+            },
+            runSnapshotLookup: { requestedRunID in
+                return runSnapshots[requestedRunID]
+            }
+        )
+
+        // Create project and mission
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let mission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Takeover propagation test",
+                summary: "Test takeover history propagation",
+                createdBy: "test",
+                recommendation: .review
+            )
+        )
+        let missionID = mission.mission.id
+
+        // Approve and dispatch
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "test", note: nil)
+        )
+        _ = try await harness.service.missionDispatchPacket(
+            BurnBarMissionDispatchPacketRequest(
+                missionID: missionID,
+                actor: "test",
+                packet: BurnBarMissionPacketSnapshot(
+                    id: BurnBarMissionPacketID(rawValue: "packet-cross-006"),
+                    missionID: missionID,
+                    workerName: "test-worker",
+                    objective: "Test takeover propagation",
+                    status: .queued,
+                    runID: nil
+                )
+            )
+        )
+
+        // Set source run to failed to trigger takeover
+        runSnapshots[sourceRunID] = BurnBarRunStateSnapshot(
+            runID: sourceRunID,
+            clientID: BurnBarClientID(rawValue: "daemon"),
+            sessionID: BurnBarSessionID(rawValue: "session"),
+            phase: .failed,
+            modelID: "glm-4",
+            updatedAt: now
+        )
+
+        // Initial sync - dispatch creates packet, then sync sees failed run and triggers takeover
+        try await harness.service.runTransportCycle(now: now.addingTimeInterval(10))
+
+        // Set takeover run to launched
+        runSnapshots[takeoverRunID] = BurnBarRunStateSnapshot(
+            runID: takeoverRunID,
+            clientID: BurnBarClientID(rawValue: "daemon"),
+            sessionID: BurnBarSessionID(rawValue: "session"),
+            phase: .planning,
+            modelID: "glm-4",
+            updatedAt: now.addingTimeInterval(20)
+        )
+
+        // Sync again to pick up takeover launch
+        try await harness.service.runTransportCycle(now: now.addingTimeInterval(30))
+
+        // Get mission and verify takeover history
+        let refreshed = try await harness.service.missionGet(
+            BurnBarMissionGetRequest(missionID: missionID)
+        )
+
+        // VAL-CROSS-006: Takeover history should be present in mission snapshot
+        XCTAssertNotNil(
+            refreshed.mission?.takeoverHistory,
+            "Takeover history should be present in mission snapshot"
+        )
+
+        guard let takeoverHistory = refreshed.mission?.takeoverHistory else { return }
+
+        // VAL-CROSS-006: Takeover history should have at least one entry
+        XCTAssertFalse(
+            takeoverHistory.isEmpty,
+            "Takeover history should have at least one entry"
+        )
+
+        // VAL-CROSS-006: Latest takeover should reference the source run
+        let latestTakeover = takeoverHistory.last
+        XCTAssertEqual(
+            latestTakeover?.sourceRunID, sourceRunID,
+            "Latest takeover should reference the source run"
+        )
+    }
+
+    func testVAL_CROSS_006_TakeoverStateReflectedInMissionLifecycle() async throws {
+        // VAL-CROSS-006: Takeover status changes should be reflected in mission lifecycle.
+
+        let launcher = ReviewLauncherRecorder()
+        let now = Date(timeIntervalSince1970: 1_710_300_000)
+        let sourceRunID = BurnBarRunID(rawValue: "source-run-lifecycle")
+        let takeoverRunID = BurnBarRunID(rawValue: "takeover-run-lifecycle")
+
+        var runSnapshots: [BurnBarRunID: BurnBarRunStateSnapshot] = [:]
+
+        let harness = try makeHarness(
+            name: "val-cross-006-lifecycle",
+            reviewRunLauncher: { prompt, modelID, metadata in
+                await launcher.record(prompt: prompt, modelID: modelID, metadata: metadata)
+                let isAutoTakeover = self.boolValue(metadata["autoTakeover"]) ?? false
+                let launchedRunID = isAutoTakeover ? takeoverRunID : sourceRunID
+                return BurnBarRunCreateResponse(runID: launchedRunID, phase: .planning)
+            },
+            runSnapshotLookup: { requestedRunID in
+                return runSnapshots[requestedRunID]
+            }
+        )
+
+        // Create project and mission
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let mission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Takeover lifecycle test",
+                summary: "Test takeover lifecycle",
+                createdBy: "test",
+                recommendation: .review
+            )
+        )
+        let missionID = mission.mission.id
+
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "test", note: nil)
+        )
+        _ = try await harness.service.missionDispatchPacket(
+            BurnBarMissionDispatchPacketRequest(
+                missionID: missionID,
+                actor: "test",
+                packet: BurnBarMissionPacketSnapshot(
+                    id: BurnBarMissionPacketID(rawValue: "packet-lifecycle"),
+                    missionID: missionID,
+                    workerName: "test-worker",
+                    objective: "Test lifecycle",
+                    status: .queued,
+                    runID: nil
+                )
+            )
+        )
+
+        // Set source run to failed to trigger takeover
+        runSnapshots[sourceRunID] = BurnBarRunStateSnapshot(
+            runID: sourceRunID,
+            clientID: BurnBarClientID(rawValue: "daemon"),
+            sessionID: BurnBarSessionID(rawValue: "session"),
+            phase: .failed,
+            modelID: "glm-4",
+            updatedAt: now
+        )
+
+        // Set takeover run to completed
+        runSnapshots[takeoverRunID] = BurnBarRunStateSnapshot(
+            runID: takeoverRunID,
+            clientID: BurnBarClientID(rawValue: "daemon"),
+            sessionID: BurnBarSessionID(rawValue: "session"),
+            phase: .completed,
+            modelID: "glm-4",
+            updatedAt: now.addingTimeInterval(60)
+        )
+
+        // Sync to trigger dispatch and takeover
+        try await harness.service.runTransportCycle(now: now.addingTimeInterval(10))
+
+        // Verify takeover launched
+        var refreshed = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
+        XCTAssertEqual(refreshed.mission?.takeoverHistory?.count, 1, "One takeover should be launched")
+
+        // Sync again to update takeover status
+        try await harness.service.runTransportCycle(now: now.addingTimeInterval(120))
+
+        refreshed = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
+
+        guard let takeoverHistory = refreshed.mission?.takeoverHistory,
+              let latestTakeover = takeoverHistory.last else {
+            XCTFail("Takeover history should be present")
+            return
+        }
+
+        // VAL-CROSS-006: Takeover status should be completed
+        XCTAssertEqual(
+            latestTakeover.status, .completed,
+            "Takeover status should be completed"
+        )
+
+        // VAL-CROSS-006: Takeover reason should be non-empty
+        XCTAssertFalse(
+            latestTakeover.reason.isEmpty,
+            "Takeover reason should be non-empty"
+        )
+    }
+
     /// Creates a harness with direct store access for tests that need to manipulate timestamps
     private func makeHarnessWithStore(
         name: String,
