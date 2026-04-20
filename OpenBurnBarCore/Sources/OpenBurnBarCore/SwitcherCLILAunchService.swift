@@ -970,13 +970,25 @@ public struct CLILaunchInvoker {
         into supervisor: CLITerminalSessionSupervisor,
         source: CLITerminalSessionOutputSource
     ) async {
-        let readHandle = pipe.fileHandleForReading
-        while true {
-            let data = readHandle.availableData
-            guard !data.isEmpty,
-                  let text = String(data: data, encoding: .utf8),
-                  !text.isEmpty else {
+        let fd = pipe.fileHandleForReading.fileDescriptor
+        let bufferSize = 4096
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
+        
+        while !Task.isCancelled {
+            // Use read() system call directly - returns -1 on error (pipe closed) or 0 on EOF.
+            // This avoids NSFileHandleOperationException from availableData on closed pipe.
+            let bytesRead = buffer.withUnsafeMutableBytes { ptr -> Int in
+                read(fd, ptr.baseAddress, bufferSize)
+            }
+            
+            if bytesRead <= 0 {
+                // 0 = EOF (pipe closed normally), -1 = error (pipe in bad state)
                 return
+            }
+            
+            guard let text = String(bytes: buffer.prefix(bytesRead), encoding: .utf8),
+                  !text.isEmpty else {
+                continue
             }
             supervisor.ingest(text, source: source)
         }
