@@ -1370,7 +1370,8 @@ final class BurnBarRunServiceTests: XCTestCase {
             configStore: configStore,
             usageRecorder: usageRecorder,
             clientRegistry: clientRegistry,
-            runService: runService
+            runService: runService,
+            runJournal: runJournal
         )
     }
 
@@ -1385,6 +1386,152 @@ final class BurnBarRunServiceTests: XCTestCase {
             )
         )
     }
+
+    // MARK: - VAL-EXEC-012: Run journal captures deterministic replayable execution timeline
+
+    func testVAL_EXEC_012_RunJournalCapturesDeterministicReplayableExecutionTimeline() async throws {
+        // VAL-EXEC-012: Each run records ordered journal events for plan/approval/tool/recovery/terminal
+        // transitions sufficient to replay timeline deterministically.
+        // This test verifies:
+        // 1. Journal events are captured in emittedAt order
+        // 2. Replay (reading events again) produces same sequence
+        let harness = try makeHarness(name: "val-exec-012-journal")
+        let clientID = BurnBarClientID(rawValue: "client-journal")
+        let sessionID = BurnBarSessionID(rawValue: "session-journal")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Journal Test Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        // Create a run that goes through approval flow
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Execute journal test run",
+                modelID: "glm-5",
+                metadata: [
+                    "requiresApproval": .bool(true),
+                    "toolKind": .string(BurnBarToolKind.applyPatch.rawValue)
+                ]
+            )
+        )
+        let runID = createResponse.runID
+
+        // Get initial events after run creation
+        let initialEvents = try await harness.runJournal.events(for: runID)
+        XCTAssertFalse(initialEvents.isEmpty, "Journal should have events after run creation")
+
+        // Get approval and approve it
+        let awaitingDetail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: runID, clientID: clientID)
+        )
+        let approvalID = try XCTUnwrap(awaitingDetail.approvalRequest?.approvalID)
+        _ = try await harness.runService.respondToApproval(
+            BurnBarApprovalRespondRequest(
+                response: BurnBarApprovalResponse(
+                    approvalID: approvalID,
+                    clientID: clientID,
+                    decision: .approve,
+                    respondedAt: Date()
+                )
+            )
+        )
+
+        // Get events after approval
+        let afterApprovalEvents = try await harness.runJournal.events(for: runID)
+        XCTAssertTrue(
+            afterApprovalEvents.count >= initialEvents.count,
+            "Approval should add events to journal"
+        )
+
+        // Verify events are ordered by emittedAt (deterministic sequence)
+        let sortedEvents = afterApprovalEvents.sorted { $0.emittedAt < $1.emittedAt }
+        XCTAssertEqual(
+            afterApprovalEvents.map { $0.eventID },
+            sortedEvents.map { $0.eventID },
+            "Events should be stored in emittedAt order for deterministic replay"
+        )
+
+        // Verify replay produces same sequence (read events again)
+        let replayEvents = try await harness.runJournal.events(for: runID)
+        XCTAssertEqual(
+            afterApprovalEvents.map { $0.eventID },
+            replayEvents.map { $0.eventID },
+            "Replay should produce identical event sequence"
+        )
+        XCTAssertEqual(
+            afterApprovalEvents.map { $0.kind },
+            replayEvents.map { $0.kind },
+            "Replay should produce identical event kinds"
+        )
+
+        // Verify terminal event kind is captured
+        let terminalKinds: Set<BurnBarRunJournalEventKind> = [.runCompleted, .runFailed, .runCancelled]
+        let terminalEvents = replayEvents.filter { terminalKinds.contains($0.kind) }
+        XCTAssertFalse(terminalEvents.isEmpty, "Journal should capture terminal event")
+    }
+
+    func testVAL_EXEC_012_RunJournalEventSequenceForFailedRun() async throws {
+        // VAL-EXEC-012: Verify journal captures ordered events for failed runs.
+        let harness = try makeHarness(name: "val-exec-012-failed-journal")
+        let clientID = BurnBarClientID(rawValue: "client-failed-journal")
+        let sessionID = BurnBarSessionID(rawValue: "session-failed-journal")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Failed Journal Test",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        // Create a run that will fail
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "This run will fail",
+                modelID: "glm-5",
+                metadata: [
+                    "failUntilAttempt": .number(999)  // Always fail
+                ]
+            )
+        )
+        let runID = createResponse.runID
+
+        // Wait for run to complete (it should fail)
+        try await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
+
+        // Get events and verify sequence
+        let events = try await harness.runJournal.events(for: runID)
+        XCTAssertFalse(events.isEmpty, "Failed run should have journal events")
+
+        // Verify events are in chronological order
+        let sortedEvents = events.sorted { $0.emittedAt < $1.emittedAt }
+        XCTAssertEqual(
+            events.map { $0.eventID },
+            sortedEvents.map { $0.eventID },
+            "Events should be in emittedAt order"
+        )
+
+        // Verify runFailed event is present
+        let failedEvents = events.filter { $0.kind == .runFailed }
+        XCTAssertFalse(failedEvents.isEmpty, "Failed run should have runFailed journal event")
+
+        // Verify replay consistency
+        let replayEvents = try await harness.runJournal.events(for: runID)
+        XCTAssertEqual(events.map { $0.eventID }, replayEvents.map { $0.eventID },
+            "Replay should produce identical sequence for failed run")
+    }
 }
 
 private struct BurnBarRunServiceHarness {
@@ -1394,6 +1541,7 @@ private struct BurnBarRunServiceHarness {
     let usageRecorder: BurnBarUsageRecorder
     let clientRegistry: BurnBarClientRegistry
     let runService: BurnBarRunService
+    let runJournal: BurnBarRunJournal
 }
 
 private struct BurnBarStubProviderExecutor: BurnBarProviderExecuting {
