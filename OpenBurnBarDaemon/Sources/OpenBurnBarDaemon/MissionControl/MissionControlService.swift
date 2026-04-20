@@ -693,7 +693,10 @@ public actor BurnBarMissionControlService {
                 }
 
                 let desiredPacketStatus = missionPacketStatus(for: snapshot.phase)
-                if desiredPacketStatus != packet.status || (isTerminal(phase: snapshot.phase) && packet.completedAt == nil) {
+                let isTerminalPhase = isTerminal(phase: snapshot.phase)
+                // VAL-EXEC-001: Always update packet status for terminal phases to ensure
+                // correct phase→status mapping regardless of prior packet state.
+                if isTerminalPhase || desiredPacketStatus != packet.status || packet.completedAt == nil {
                     let updatedPacket = BurnBarMissionPacketSnapshot(
                         id: packet.id,
                         missionID: currentMission.id,
@@ -747,13 +750,14 @@ public actor BurnBarMissionControlService {
                             "cache_read_tokens": .number(Double(usage?.cacheReadTokens ?? 0))
                         ]
                     )
-                    _ = try await store.recordMissionResult(
+                    let recordResponse = try await store.recordMissionResult(
                         BurnBarMissionRecordResultRequest(
                             missionID: currentMission.id,
                             result: result
-                        )
+                        ),
+                        existingMission: currentMission
                     )
-                    currentMission = (try await store.mission(id: currentMission.id)) ?? currentMission
+                    currentMission = recordResponse.mission
                 }
             }
 

@@ -608,9 +608,15 @@ public actor BurnBarMissionControlStore {
         )
     }
 
-    public func recordMissionResult(_ request: BurnBarMissionRecordResultRequest) throws -> BurnBarMissionMutationResponse {
-        guard let existing = try mission(id: request.missionID) else {
-            throw BurnBarMissionControlError.missionNotFound(request.missionID)
+    public func recordMissionResult(_ request: BurnBarMissionRecordResultRequest, existingMission: BurnBarMissionSnapshot? = nil) throws -> BurnBarMissionMutationResponse {
+        let existing: BurnBarMissionSnapshot
+        if let provided = existingMission {
+            existing = provided
+        } else {
+            guard let fetched = try mission(id: request.missionID) else {
+                throw BurnBarMissionControlError.missionNotFound(request.missionID)
+            }
+            existing = fetched
         }
 
         let result = BurnBarMissionResultSnapshot(

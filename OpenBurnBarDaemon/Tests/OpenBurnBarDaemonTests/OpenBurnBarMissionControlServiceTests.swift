@@ -2193,6 +2193,18 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         let refreshed = try await harness.service.missionGet(
             BurnBarMissionGetRequest(missionID: missionID)
         )
+        // VAL-EXEC-001: Verify packet status is updated for failed terminal phase
+        let failedPacket = refreshed.mission?.packets.first { $0.id.rawValue == "packet-failed" }
+        XCTAssertEqual(
+            failedPacket?.status,
+            .failed,
+            "Phase failed should map to packet status failed"
+        )
+        // VAL-EXEC-001: Verify completedAt is set for terminal phase
+        XCTAssertNotNil(
+            failedPacket?.completedAt,
+            "Terminal phase should set packet completedAt"
+        )
         // VAL-EXEC-001: Verify result is created for terminal phase
         // This confirms the phase→status mapping produces correct result status
         XCTAssertEqual(refreshed.mission?.results.count, 1, "Terminal phase should create result")
@@ -2265,6 +2277,18 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
 
         let refreshed = try await harness.service.missionGet(
             BurnBarMissionGetRequest(missionID: missionID)
+        )
+        // VAL-EXEC-001: Verify packet status is updated for cancelled terminal phase
+        let cancelledPacket = refreshed.mission?.packets.first { $0.id.rawValue == "packet-cancelled" }
+        XCTAssertEqual(
+            cancelledPacket?.status,
+            .cancelled,
+            "Phase cancelled should map to packet status cancelled"
+        )
+        // VAL-EXEC-001: Verify completedAt is set for terminal phase
+        XCTAssertNotNil(
+            cancelledPacket?.completedAt,
+            "Terminal phase should set packet completedAt"
         )
         // VAL-EXEC-001: Verify result is created for terminal phase
         // This confirms the phase→status mapping produces correct result status
