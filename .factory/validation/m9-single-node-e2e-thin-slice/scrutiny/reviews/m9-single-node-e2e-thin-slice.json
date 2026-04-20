@@ -1,0 +1,45 @@
+{
+  "featureId": "m9-single-node-e2e-thin-slice",
+  "reviewedAt": "2026-04-20T01:31:07Z",
+  "commitId": "9cc7fc73",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit adds useful assertion-tagged tests, but two core assertions are only partially covered: VAL-EXEC-001 validates only the completed phase, and VAL-EXEC-012 does not verify run-journal event ordering or replay artifacts. As written, the diff does not fully substantiate deterministic phase mapping and replayable run-journal timeline behavior required by the feature contract.",
+    "issues": [
+      {
+        "file": "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarMissionControlServiceTests.swift",
+        "line": 2050,
+        "severity": "blocking",
+        "description": "`testVAL_EXEC_001_RunPhaseToPacketStatusMappingIsDeterministic` only exercises `.completed` and explicitly documents that `.failed`/`.cancelled` are not covered, so deterministic phase→status mapping is not validated across terminal outcomes required by VAL-EXEC-001."
+      },
+      {
+        "file": "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarMissionControlServiceTests.swift",
+        "line": 2235,
+        "severity": "blocking",
+        "description": "`testVAL_EXEC_012_RunJournalCapturesDeterministicReplayableExecutionTimeline` does not inspect run-journal events, ordering, or replay output; it only asserts final packet/result state (lines 2304-2306). This does not satisfy VAL-EXEC-012 evidence requirements for journal sequence + replay consistency."
+      },
+      {
+        "file": "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarMissionControlServiceTests.swift",
+        "line": 1648,
+        "severity": "non_blocking",
+        "description": "Feature metadata includes VAL-EXEC-003, but this commit adds no assertion-tagged VAL-EXEC-003 case. Provenance checks remain in an untagged legacy test (`testMissionDispatchLinksRealRunAndSyncsResultProvenance`), reducing assertion traceability."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`runtime-orchestration-worker` procedure asks workers to run `BurnBarProviderRouterTests` as part of focused validation, but this run omitted it while still marking `followedProcedure: true`.",
+      "evidence": "Skill file `.factory/skills/runtime-orchestration-worker/SKILL.md` step 5 includes `swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarProviderRouterTests`; handoff verification commands list only MissionControl tests, full daemon tests, and extension controller unit tests."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The worker discovered a repeatable harness limitation around failed/cancelled terminal-phase sync coverage, but this constraint is not captured in shared library notes.",
+      "evidence": "Handoff `discoveredIssues` notes VAL-EXEC-001 was simplified because failed/cancelled terminal phases did not sync correctly in harness-only testing; `.factory/library/mission-control-m6-known-behaviors.md` does not document this testing caveat."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed. The diff adds new tests but does not fully validate two critical contract assertions: deterministic phase mapping across terminal phases (VAL-EXEC-001) and replayable run-journal timeline evidence (VAL-EXEC-012)."
+}

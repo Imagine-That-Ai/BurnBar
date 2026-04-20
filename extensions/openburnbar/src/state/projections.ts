@@ -432,16 +432,16 @@ export interface BurnBarReadinessFailure {
  */
 export function readinessDisplayMessage(failure: BurnBarReadinessFailure): string {
   switch (failure.code) {
-    case 'missing_credential':
-      return `Credential missing: ${failure.detail}`;
-    case 'invalid_repo_branch':
-      return `Repository unavailable: ${failure.detail}`;
-    case 'runtime_unavailable':
-      return `Runtime unavailable: ${failure.detail}`;
-    case 'insufficient_credential_permissions':
-      return `Insufficient permissions: ${failure.detail}`;
-    default:
-      return `Readiness check failed: ${failure.detail}`;
+  case 'missing_credential':
+    return `Credential missing: ${failure.detail}`;
+  case 'invalid_repo_branch':
+    return `Repository unavailable: ${failure.detail}`;
+  case 'runtime_unavailable':
+    return `Runtime unavailable: ${failure.detail}`;
+  case 'insufficient_credential_permissions':
+    return `Insufficient permissions: ${failure.detail}`;
+  default:
+    return `Readiness check failed: ${failure.detail}`;
   }
 }
 
@@ -598,13 +598,17 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
 function extractReadinessFailure(
   metadata?: Record<string, unknown>
 ): BurnBarReadinessFailure | undefined {
-  if (!metadata) return undefined;
+  if (!metadata) {
+    return undefined;
+  }
 
   const readiness = metadata.readinessFailure as
     | { code: string; detail: string }
     | undefined;
 
-  if (!readiness?.code || !readiness?.detail) return undefined;
+  if (!readiness?.code || !readiness?.detail) {
+    return undefined;
+  }
 
   // Validate that the code is one of the known reason codes
   const validCodes: BurnBarReadinessReasonCode[] = [
