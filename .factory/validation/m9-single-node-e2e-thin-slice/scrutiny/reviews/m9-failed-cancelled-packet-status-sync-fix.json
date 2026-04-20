@@ -1,28 +1,21 @@
 {
   "featureId": "m9-failed-cancelled-packet-status-sync-fix",
-  "reviewedAt": "2026-04-20T07:55:44Z",
-  "commitId": "7cca143d",
+  "reviewedAt": "2026-04-20T08:19:26Z",
+  "commitId": "a73cc37cf9e3df2e3b6e5ab57e549206e3a60be3",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
-  "status": "fail",
+  "status": "pass",
   "codeReview": {
-    "summary": "The fix does add explicit VAL-EXEC-001 failed/cancelled packet-level assertions and removes the prior result-only blind spot, but the new sync predicate now rewrites non-terminal packets on every transport cycle. This introduces continuous mission snapshot churn unrelated to state changes and is a blocking regression in syncMissionExecution.",
-    "issues": [
-      {
-        "file": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/MissionControlService.swift",
-        "line": 699,
-        "severity": "blocking",
-        "description": "The condition `if isTerminalPhase || desiredPacketStatus != packet.status || packet.completedAt == nil` is always true for non-terminal packets (their `completedAt` is normally nil), so `syncMissionExecution` persists `mission_packet_synced` updates every cycle even when run phase and packet status are unchanged. This causes unnecessary state/event churn and `updatedAt` drift for in-progress missions."
-      }
-    ]
+    "summary": "Pass. The prior blocking churn regression is fixed in `syncMissionExecution` by removing the non-terminal `completedAt == nil` trigger (`MissionControlService.swift:702`), and the rerun includes explicit packet-level VAL-EXEC-001 failed/cancelled/completedAt assertions (`OpenBurnBarMissionControlServiceTests.swift:2196-2206`, `2281-2291`) plus explicit VAL-EXEC-003 provenance payload assertions (`2621-2634`). The new non-terminal churn regression test (`testVAL_EXEC_001_NonTerminalPacketsDoNotChurnOnRepeatedSync`) verifies repeated sync stability (`2301+`).",
+    "issues": []
   },
   "sharedStateObservations": [
     {
       "area": "skills",
-      "observation": "The runtime-orchestration skill still documents outdated XCTest filter names (`OpenBurnBar*`) that diverge from canonical service commands (`BurnBar*`), increasing risk of false-green runs with zero matched tests.",
-      "evidence": ".factory/skills/runtime-orchestration-worker/SKILL.md:22-24 vs .factory/services.yaml:6-7,10"
+      "observation": "The runtime-orchestration worker skill still references outdated `OpenBurnBar*` test filters instead of canonical `BurnBar*` filters, which can cause command drift versus mission-standard validators.",
+      "evidence": ".factory/skills/runtime-orchestration-worker/SKILL.md:22-24,36,41 vs .factory/services.yaml:6-7,10"
     }
   ],
-  "addressesFailureFrom": ".factory/validation/m9-single-node-e2e-thin-slice/scrutiny/reviews/m9-terminal-phase-mapping-and-runjournal-replay-evidence.json",
-  "summary": "Review failed. The rerun correctly adds explicit non-skipped VAL-EXEC-001 failed/cancelled packet assertions, but commit 7cca143d introduces a blocking sync predicate regression that rewrites non-terminal packets every cycle."
+  "addressesFailureFrom": ".factory/validation/m9-single-node-e2e-thin-slice/scrutiny/reviews/m9-val-exec-001-terminal-mappings-and-val-exec-003-provenance-tags.json",
+  "summary": "Review passed. The latest fix commit resolves the prior non-terminal sync churn blocker and, together with current test coverage in this feature state, provides explicit packet-level VAL-EXEC-001 terminal mapping assertions and explicit VAL-EXEC-003 provenance payload evidence."
 }
