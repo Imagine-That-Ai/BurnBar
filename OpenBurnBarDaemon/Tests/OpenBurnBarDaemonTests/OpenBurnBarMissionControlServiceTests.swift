@@ -1843,6 +1843,187 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertTrue(launches.last?.prompt.contains("OpenBurnBar auto-takeover for mission Recover the rollout packet") == true)
     }
 
+    // MARK: - VAL-EXEC-004: Auto-takeover triggers only for qualifying source runs
+
+    func testVAL_EXEC_004_AutoTakeoverDoesNotTriggerForAwaitingApprovalPhase() async throws {
+        // VAL-EXEC-004: Auto-takeover triggers only for qualifying source runs.
+        // awaiting_approval phase should NOT trigger auto-takeover.
+        // Note: missionDispatchPacket always calls reviewRunLauncher if provided (1 launch).
+        // syncMissionExecution correctly skips .awaitingApproval phase (0 additional launches).
+        let launcher = ReviewLauncherRecorder()
+        let now = Date(timeIntervalSince1970: 1_710_200_000)
+        let sourceRunID = BurnBarRunID(rawValue: "source-awaiting-approval")
+        let harness = try makeHarness(
+            name: "auto-takeover-no-awaiting-approval",
+            reviewRunLauncher: { prompt, modelID, metadata in
+                await launcher.record(prompt: prompt, modelID: modelID, metadata: metadata)
+                return BurnBarRunCreateResponse(runID: BurnBarRunID(rawValue: "unexpected-takeover"), phase: .planning)
+            },
+            runSnapshotLookup: { requestedRunID in
+                if requestedRunID == sourceRunID {
+                    return BurnBarRunStateSnapshot(
+                        runID: requestedRunID,
+                        clientID: BurnBarClientID(rawValue: "daemon"),
+                        sessionID: BurnBarSessionID(rawValue: "source-session"),
+                        phase: .awaitingApproval,
+                        modelID: "glm-5",
+                        updatedAt: now.addingTimeInterval(-1_800),
+                        errorMessage: nil
+                    )
+                }
+                return nil
+            }
+        )
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+        let mission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "apollo",
+                title: "Mission with awaiting approval run",
+                summary: "Should not auto-takeover awaiting approval runs.",
+                createdBy: "operator",
+                recommendation: .review
+            )
+        )
+        let missionID = mission.mission.id
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Proceed")
+        )
+        _ = try await harness.service.missionDispatchPacket(
+            BurnBarMissionDispatchPacketRequest(
+                missionID: missionID,
+                actor: "operator",
+                packet: BurnBarMissionPacketSnapshot(
+                    id: BurnBarMissionPacketID(rawValue: "packet-awaiting-approval"),
+                    missionID: missionID,
+                    workerName: "waiting-worker",
+                    objective: "Waiting for approval",
+                    status: .queued,
+                    runID: sourceRunID
+                )
+            )
+        )
+
+        try await harness.service.runTransportCycle(now: now)
+
+        // VAL-EXEC-004: No auto-takeover launched for awaiting_approval phase.
+        // 1 launch from missionDispatchPacket (reviewRunLauncher always called if provided).
+        // 0 auto-takeover launches (syncMissionExecution skips .awaitingApproval).
+        let launches = await launcher.launches
+        XCTAssertEqual(launches.count, 1, "One dispatch launch expected; no auto-takeover for awaiting_approval phase")
+        XCTAssertNil(launches.first?.metadata["autoTakeover"],
+            "The dispatch launch should NOT be an autoTakeover launch (key is absent)")
+        let refreshed = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
+        XCTAssertNil(refreshed.mission?.takeoverHistory, "No takeover history should be created for awaiting_approval phase")
+    }
+
+    func testVAL_EXEC_004_AutoTakeoverDoesNotTriggerForTakeoverDerivedPackets() async throws {
+        // VAL-EXEC-004: Auto-takeover triggers only for qualifying source runs.
+        // takeover-derived packets (those with source_packet_id set) should NOT trigger further takeover.
+        // This follows the same pattern as testVAL_EXEC_001_TriggersAutoTakeoverForFailedRuns:
+        // 1 dispatch → cycle 1 (auto-takeover creates new packet) → cycle 2 (no further takeover).
+        let launcher = ReviewLauncherRecorder()
+        let now = Date(timeIntervalSince1970: 1_710_200_000)
+        let sourceRunID = BurnBarRunID(rawValue: "original-source")
+        let firstTakeoverRunID = BurnBarRunID(rawValue: "first-takeover-run")
+        let harness = try makeHarness(
+            name: "auto-takeover-no-recursion",
+            reviewRunLauncher: { prompt, modelID, metadata in
+                await launcher.record(prompt: prompt, modelID: modelID, metadata: metadata)
+                let isAutoTakeover = self.boolValue(metadata["autoTakeover"]) ?? false
+                let launchedRunID = isAutoTakeover ? firstTakeoverRunID : sourceRunID
+                return BurnBarRunCreateResponse(runID: launchedRunID, phase: .planning)
+            },
+            runSnapshotLookup: { requestedRunID in
+                if requestedRunID == sourceRunID {
+                    return BurnBarRunStateSnapshot(
+                        runID: requestedRunID,
+                        clientID: BurnBarClientID(rawValue: "daemon"),
+                        sessionID: BurnBarSessionID(rawValue: "source-session"),
+                        phase: .failed,
+                        modelID: "glm-5",
+                        updatedAt: now.addingTimeInterval(-3_600),
+                        errorMessage: "Original worker failed."
+                    )
+                }
+                if requestedRunID == firstTakeoverRunID {
+                    return BurnBarRunStateSnapshot(
+                        runID: requestedRunID,
+                        clientID: BurnBarClientID(rawValue: "daemon"),
+                        sessionID: BurnBarSessionID(rawValue: "takeover-session"),
+                        phase: .failed,
+                        modelID: "glm-5",
+                        updatedAt: now.addingTimeInterval(-1_800),
+                        errorMessage: "First takeover also failed."
+                    )
+                }
+                return nil
+            }
+        )
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+        let mission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "apollo",
+                title: "Mission with failed runs",
+                summary: "First original fails, then first takeover also fails — verify no further takeover.",
+                createdBy: "operator",
+                recommendation: .review
+            )
+        )
+        let missionID = mission.mission.id
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Proceed")
+        )
+        // Original packet - dispatch creates packet with runID=sourceRunID
+        _ = try await harness.service.missionDispatchPacket(
+            BurnBarMissionDispatchPacketRequest(
+                missionID: missionID,
+                actor: "operator",
+                packet: BurnBarMissionPacketSnapshot(
+                    id: BurnBarMissionPacketID(rawValue: "packet-original"),
+                    missionID: missionID,
+                    workerName: "original-worker",
+                    objective: "Original task",
+                    status: .queued,
+                    runID: sourceRunID
+                )
+            )
+        )
+
+        // Cycle 1: syncMissionExecution processes original packet; synchronizeAutoTakeover creates takeover packet
+        try await harness.service.runTransportCycle(now: now)
+
+        // Cycle 2: syncMissionExecution processes both packets; synchronizeAutoTakeover skips both
+        // (original has existingTakeover record; takeover-derived has source_packet_id set)
+        try await harness.service.runTransportCycle(now: now.addingTimeInterval(120))
+
+        let refreshed = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
+
+        // VAL-EXEC-004: Exactly 2 launches:
+        // - Launch 1: dispatch call → reviewRunLauncher (normal mission dispatch)
+        // - Launch 2: cycle 1 auto-takeover for original packet
+        // No further takeover: cycle 2 sees existingTakeover for original and source_packet_id for takeover-derived
+        let launches = await launcher.launches
+        XCTAssertEqual(launches.count, 2, "Expected 2 launches: 1 dispatch + 1 auto-takeover; no further takeover")
+        XCTAssertEqual(boolValue(launches.last?.metadata["autoTakeover"]), true,
+            "Last launch should be the auto-takeover launch")
+        XCTAssertNil(launches.first?.metadata["autoTakeover"],
+            "First launch (dispatch) should not be autoTakeover (key is absent)")
+
+        // Verify exactly 2 packets total (original + first takeover created in cycle 1)
+        XCTAssertEqual(refreshed.mission?.packets.count, 2,
+            "Should not create more packets from takeover recursion; only original + first takeover")
+
+        // Verify takeover history records the single takeover
+        XCTAssertEqual(refreshed.mission?.takeoverHistory?.count, 1,
+            "Should have exactly 1 takeover record (no recursion)")
+    }
+
     // MARK: - VAL-DAEMON-014: Typed planner input requires constraints, risk level, and desired outputs
 
     func testVAL_DAEMON_014_PlannerInputValidationRejectsEmptyConstraints() async throws {
