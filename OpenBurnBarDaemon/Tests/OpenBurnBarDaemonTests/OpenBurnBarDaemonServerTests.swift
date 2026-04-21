@@ -504,6 +504,157 @@ final class BurnBarDaemonServerTests: XCTestCase {
         await server.stop()
     }
 
+    func testVAL_GOV_003_ConnectorPlaneHealthOutcomesAreDeterministic() async throws {
+        let socketPath = makeSocketPath(name: "val-gov-003")
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-connector-determinism-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        actor ConnectorTransportFixture {
+            var statusCode: Int = 200
+
+            func setStatusCode(_ nextStatusCode: Int) {
+                statusCode = nextStatusCode
+            }
+
+            func respond(_ request: URLRequest) throws -> (Data, HTTPURLResponse) {
+                guard let url = request.url else {
+                    fatalError("Expected connector transport request URL.")
+                }
+                let payload: [String: Any] = (200 ..< 300).contains(statusCode)
+                    ? ["login": "openburnbar-bot", "html_url": "https://github.com/openburnbar-bot"]
+                    : ["message": "Service unavailable"]
+                let data = try JSONSerialization.data(withJSONObject: payload)
+                let response = HTTPURLResponse(url: url, statusCode: statusCode, httpVersion: nil, headerFields: nil)!
+                return (data, response)
+            }
+        }
+
+        let fixture = ConnectorTransportFixture()
+        let connectorService = BurnBarConnectorPlaneService(
+            fileURL: rootURL.appendingPathComponent("connector-plane.json"),
+            secretStore: BurnBarInMemoryConnectorSecretStore(),
+            transport: { request in
+                try await fixture.respond(request)
+            },
+            logger: BurnBarDaemonLogger(category: "server-tests")
+        )
+        let configStore = BurnBarConfigStore(
+            fileURL: rootURL.appendingPathComponent("provider-config.json"),
+            logger: BurnBarDaemonLogger(category: "server-tests")
+        )
+        let runService = BurnBarRunService(
+            router: BurnBarProviderRouter(
+                configStore: configStore,
+                logger: BurnBarDaemonLogger(category: "server-tests")
+            ),
+            usageRecorder: BurnBarUsageRecorder(
+                fileURL: rootURL.appendingPathComponent("usage-events.jsonl"),
+                logger: BurnBarDaemonLogger(category: "server-tests")
+            ),
+            clientRegistry: BurnBarClientRegistry(logger: BurnBarDaemonLogger(category: "server-tests")),
+            connectorPlaneService: connectorService,
+            logger: BurnBarDaemonLogger(category: "server-tests")
+        )
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath),
+            logger: BurnBarDaemonLogger(category: "server-tests"),
+            runService: runService
+        )
+
+        try await server.start()
+
+        func githubStatus(from response: BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse>) throws -> BurnBarConnectorHealthStatus {
+            try XCTUnwrap(response.result?.snapshot.connectors.first(where: { $0.kind == .github })?.status)
+        }
+
+        let initialGet: BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse> = try sendRequest(
+            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-1", method: .connectorPlaneGet),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(try githubStatus(from: initialGet), .disabled)
+
+        _ = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "val-gov-003-update-1",
+                method: .connectorConfigUpdate,
+                params: BurnBarConnectorConfigUpdateRequest(
+                    config: BurnBarConnectorConfigMutation(
+                        kind: .github,
+                        isEnabled: true,
+                        baseURL: "https://api.github.com",
+                        authKind: .bearerToken
+                    ),
+                    secret: nil,
+                    replaceSecret: true
+                )
+            ),
+            socketPath: socketPath
+        ) as BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse>
+        let missingSecretGet: BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse> = try sendRequest(
+            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-2", method: .connectorPlaneGet),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(try githubStatus(from: missingSecretGet), .missingSecret)
+
+        _ = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "val-gov-003-update-2",
+                method: .connectorConfigUpdate,
+                params: BurnBarConnectorConfigUpdateRequest(
+                    config: BurnBarConnectorConfigMutation(
+                        kind: .github,
+                        isEnabled: true,
+                        baseURL: "https://api.github.com",
+                        authKind: .bearerToken
+                    ),
+                    secret: "ghp_test",
+                    replaceSecret: true
+                )
+            ),
+            socketPath: socketPath
+        ) as BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse>
+        let configuredGet: BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse> = try sendRequest(
+            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-3", method: .connectorPlaneGet),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(try githubStatus(from: configuredGet), .configured)
+
+        await fixture.setStatusCode(200)
+        let healthyAction: BurnBarRPCResponseEnvelope<BurnBarConnectorActionResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "val-gov-003-action-1",
+                method: .connectorAction,
+                params: BurnBarConnectorActionRequest(kind: .github, action: .testConnection)
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(healthyAction.result?.ok, true)
+        let healthyGet: BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse> = try sendRequest(
+            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-4", method: .connectorPlaneGet),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(try githubStatus(from: healthyGet), .healthy)
+
+        await fixture.setStatusCode(503)
+        let degradedAction: BurnBarRPCResponseEnvelope<BurnBarConnectorActionResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "val-gov-003-action-2",
+                method: .connectorAction,
+                params: BurnBarConnectorActionRequest(kind: .github, action: .testConnection)
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(degradedAction.result?.ok, false)
+        let degradedGet: BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse> = try sendRequest(
+            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-5", method: .connectorPlaneGet),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(try githubStatus(from: degradedGet), .degraded)
+
+        await server.stop()
+    }
+
     func testServerExposesMissionControlRPCs() async throws {
         let socketPath = makeSocketPath(name: "mission-control")
         let server = BurnBarDaemonServer(
@@ -578,6 +729,125 @@ final class BurnBarDaemonServerTests: XCTestCase {
         )
         XCTAssertEqual(summary.result?.summary.counts.pendingQuestionCount, 1)
         XCTAssertEqual(summary.result?.summary.counts.openFollowupCount, 1)
+
+        await server.stop()
+    }
+
+    func testVAL_CROSS_015_MissionDispatchPathRunsThroughLiveDaemonSocketIntegration() async throws {
+        let socketPath = makeSocketPath(name: "val-cross-015")
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-cross-015-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        let missionControlStore = BurnBarMissionControlStore(
+            eventsFileURL: rootURL.appendingPathComponent("controller-events.jsonl"),
+            projectionFileURL: rootURL.appendingPathComponent("controller-projection.json"),
+            logger: BurnBarDaemonLogger(category: "server-tests")
+        )
+        let missionControlService = BurnBarMissionControlService(
+            store: missionControlStore,
+            logger: BurnBarDaemonLogger(category: "server-tests"),
+            transport: .live(),
+            activitySnapshotURL: nil,
+            reviewRunLauncher: nil,
+            runSnapshotLookup: nil,
+            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl"),
+            executionReadinessGate: { _, _ in nil }
+        )
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath),
+            logger: BurnBarDaemonLogger(category: "server-tests"),
+            missionControlService: missionControlService
+        )
+
+        try await server.start()
+
+        let projectUpsert: BurnBarRPCResponseEnvelope<BurnBarControllerProjectResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "val-cross-015-project-upsert",
+                method: .controllerProjectUpsert,
+                params: BurnBarControllerProjectUpsertRequest(
+                    project: BurnBarReviewProjectSnapshot(
+                        id: "project-atlas",
+                        projectSlug: "atlas",
+                        displayName: "Atlas",
+                        summary: "Cross-surface integration smoke project.",
+                        status: .healthy,
+                        preferredCadence: .daily,
+                        freshness: .provisional,
+                        pendingQuestionCount: 0,
+                        openFollowupCount: 0,
+                        activeMissionCount: 0,
+                        needsOperatorAttention: false
+                    )
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(projectUpsert.result?.project?.projectSlug, "atlas")
+
+        let missionCreate: BurnBarRPCResponseEnvelope<BurnBarMissionMutationResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "val-cross-015-mission-create",
+                method: .missionCreate,
+                params: BurnBarMissionCreateRequest(
+                    projectSlug: "atlas",
+                    title: "Dispatch integration smoke",
+                    summary: "Exercise daemon socket dispatch path without mock-only controller state.",
+                    createdBy: "operator",
+                    recommendation: .review
+                )
+            ),
+            socketPath: socketPath
+        )
+        let missionID = try XCTUnwrap(missionCreate.result?.mission.id)
+
+        _ = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "val-cross-015-mission-approve",
+                method: .missionApprove,
+                params: BurnBarMissionApproveRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    note: "Proceed with integration smoke."
+                )
+            ),
+            socketPath: socketPath
+        ) as BurnBarRPCResponseEnvelope<BurnBarMissionMutationResponse>
+
+        let dispatch: BurnBarRPCResponseEnvelope<BurnBarMissionMutationResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "val-cross-015-mission-dispatch",
+                method: .missionDispatchPacket,
+                params: BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-cross-015"),
+                        missionID: missionID,
+                        workerName: "integration-worker",
+                        objective: "Run live daemon socket integration smoke",
+                        status: .queued,
+                        metadata: [:]
+                    )
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(dispatch.result?.mission.packets.count, 1)
+        XCTAssertEqual(dispatch.result?.mission.packets.first?.status, .queued)
+        XCTAssertNil(dispatch.result?.mission.packets.first?.runID)
+
+        let missionGet: BurnBarRPCResponseEnvelope<BurnBarMissionResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "val-cross-015-mission-get",
+                method: .missionGet,
+                params: BurnBarMissionGetRequest(missionID: missionID)
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(missionGet.result?.mission?.id, missionID)
+        XCTAssertEqual(missionGet.result?.mission?.packets.first?.id.rawValue, "packet-cross-015")
 
         await server.stop()
     }

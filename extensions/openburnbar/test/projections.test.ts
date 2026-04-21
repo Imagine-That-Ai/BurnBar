@@ -17,6 +17,7 @@ import {
   buildMissionNextActions,
   buildMissionDetailRows,
   readinessDisplayMessage,
+  enterprisePolicyDisplayMessage,
   type BurnBarHealthRow,
   type BurnBarRunDetailRow,
   type BurnBarMissionRow
@@ -1542,5 +1543,143 @@ describe('VAL-CROSS-009: Readiness Reason Code Propagation', () => {
     ];
 
     expect(validCodes).toEqual(expectedCodes);
+  });
+});
+
+// VAL-CROSS-012: Enterprise controls enforce budget and approval-mode policy consistently
+describe('VAL-CROSS-012: Enterprise Policy Block Reason Propagation', () => {
+  it('should map budget hard cap block reason to deterministic operator message', () => {
+    const block = {
+      reasonCode: 'policy_budget_hard_cap_blocked' as const,
+      detail: 'Observed spend 12.5 USD exceeds hard cap 10 USD.'
+    };
+
+    expect(enterprisePolicyDisplayMessage(block)).toBe(
+      'Budget hard cap reached: Observed spend 12.5 USD exceeds hard cap 10 USD.'
+    );
+  });
+
+  it('should map approval-required block reason to deterministic operator message', () => {
+    const block = {
+      reasonCode: 'policy_approval_required_by_mode' as const,
+      detail: 'manual_all mode requires explicit operator approval metadata.'
+    };
+
+    expect(enterprisePolicyDisplayMessage(block)).toBe(
+      'Explicit approval required: manual_all mode requires explicit operator approval metadata.'
+    );
+  });
+
+  it('should project enterprise policy block from mission metadata into mission rows', () => {
+    const mission = createMockMission({
+      id: 'mission-enterprise-blocked',
+      status: 'awaiting_approval',
+      recommendation: 'review',
+      metadata: {
+        enterprisePolicyBlock: {
+          reasonCode: 'policy_budget_hard_cap_blocked',
+          detail: 'Observed spend 12.5 USD exceeds hard cap 10 USD.'
+        }
+      }
+    });
+    const state = createMockState({ daemonMissions: [mission] });
+    const rows = buildMissionRows(state);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].enterprisePolicyBlock?.reasonCode).toBe('policy_budget_hard_cap_blocked');
+    expect(rows[0].note).toContain('Budget hard cap reached');
+  });
+
+  it('should ignore invalid enterprise policy reason codes from metadata', () => {
+    const mission = createMockMission({
+      id: 'mission-enterprise-invalid',
+      status: 'failed',
+      metadata: {
+        enterprisePolicyBlock: {
+          reasonCode: 'policy_invalid_unknown',
+          detail: 'Invalid code from upstream payload.'
+        }
+      }
+    });
+    const state = createMockState({ daemonMissions: [mission] });
+    const rows = buildMissionRows(state);
+
+    expect(rows[0].enterprisePolicyBlock).toBeUndefined();
+  });
+});
+
+// VAL-CROSS-013: Scheduled reviews and notifications converge across daemon, app, and extension
+describe('VAL-CROSS-013: Scheduled Review Intent Projection', () => {
+  it('should project scheduled review intent metadata into mission rows', () => {
+    const mission = createMockMission({
+      id: 'mission-scheduled-review',
+      metadata: {
+        scheduledReviewIntent: {
+          taskID: 'scheduled-review-apollo-daily-1710320000',
+          projectSlug: 'apollo',
+          dueAt: '2024-03-14T09:00:00.000Z',
+          notificationIntentID: 'intent-apollo-daily-1710320000',
+          notificationChannels: ['local', 'telegram']
+        }
+      }
+    });
+    const state = createMockState({ daemonMissions: [mission] });
+    const rows = buildMissionRows(state);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].scheduledReviewIntent?.taskID).toBe('scheduled-review-apollo-daily-1710320000');
+    expect(rows[0].scheduledReviewIntent?.projectSlug).toBe('apollo');
+    expect(rows[0].scheduledReviewIntent?.dueAt).toBe('2024-03-14T09:00:00.000Z');
+    expect(rows[0].scheduledReviewIntent?.notificationChannels).toEqual(['local', 'telegram']);
+  });
+
+  it('should include scheduled review due row in mission detail projection', () => {
+    const mission = createMockMission({
+      id: 'mission-scheduled-detail',
+      metadata: {
+        scheduledReviewIntent: {
+          taskID: 'scheduled-review-orion-weekly-1710406400',
+          projectSlug: 'orion',
+          dueAt: '2024-03-15T09:00:00.000Z',
+          notificationIntentID: 'intent-orion-weekly-1710406400',
+          notificationChannels: ['local', 'telegram', 'calendar']
+        }
+      }
+    });
+    const state = createMockState({ daemonMissions: [mission] });
+    const detailRows = buildMissionDetailRows(state, 'mission-scheduled-detail');
+
+    expect(detailRows.find((row) => row.id === 'scheduled-review-task')?.value).toBe(
+      'scheduled-review-orion-weekly-1710406400'
+    );
+    expect(detailRows.find((row) => row.id === 'scheduled-review-due')?.value).toBe(
+      '2024-03-15T09:00:00.000Z'
+    );
+  });
+});
+
+// VAL-CROSS-014: Long-running multi-agent execution respects performance guardrails
+describe('VAL-CROSS-014: Mission projection performance guardrails', () => {
+  it('should keep large mission-board projection within latency guardrail and preserve deterministic IDs', () => {
+    const missionCount = 1200;
+    const missions = Array.from({ length: missionCount }, (_, index) =>
+      createMockMission({
+        id: `mission-perf-${String(index).padStart(4, '0')}`,
+        updatedAt: new Date(1710000000000 + index * 1000).toISOString(),
+        title: `Perf mission ${index}`,
+        summary: `Performance fixture mission ${index}.`
+      })
+    );
+    const state = createMockState({ daemonMissions: missions });
+
+    const start = performance.now();
+    const rows = buildMissionRows(state);
+    const elapsedMs = performance.now() - start;
+
+    expect(rows).toHaveLength(missionCount);
+    expect(elapsedMs).toBeLessThan(750);
+
+    const rowsReplay = buildMissionRows(state);
+    expect(rows.map((row) => row.id)).toEqual(rowsReplay.map((row) => row.id));
   });
 });

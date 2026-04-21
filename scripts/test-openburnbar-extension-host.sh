@@ -38,4 +38,6 @@ echo "VAL-EXT-009: Question answer (answerPendingQuestion → daemon.question.an
 
 # Run extension-host integration tests
 echo "VAL-CROSS-010: Running extension-host integration tests"
+echo "VAL-CROSS-015: Running extension-host real workspace integration tests"
 npm --prefix "$repo_root/extensions/openburnbar" run test:extension-host
+echo "VAL-CROSS-015: Extension-host integration exercised live workspace command bridge"

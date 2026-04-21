@@ -2333,6 +2333,254 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(mission.mission?.packets.count, 0, "No packets should be created when readiness gate is nil")
     }
 
+    func testVAL_CROSS_012_EnterpriseBudgetCapBlocksDispatchAndPersistsReasonCode() async throws {
+        let harness = try makeHarness(name: "val-cross-012-budget-cap")
+
+        let policyProject = BurnBarReviewProjectSnapshot(
+            id: "project-orion",
+            projectSlug: "orion",
+            displayName: "Orion",
+            summary: "Enterprise policy budget cap test.",
+            status: .healthy,
+            preferredCadence: .daily,
+            freshness: .provisional,
+            pendingQuestionCount: 0,
+            openFollowupCount: 0,
+            activeMissionCount: 0,
+            needsOperatorAttention: false,
+            metadata: [
+                "enterprise_budget_hard_cap_usd": .number(10),
+                "enterprise_budget_spend_usd": .number(12.5)
+            ]
+        )
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: policyProject)
+        )
+
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "orion",
+                title: "Budget-capped mission",
+                summary: "Must block dispatch when spend exceeds cap.",
+                createdBy: "operator",
+                recommendation: .review
+            )
+        )
+        let missionID = created.mission.id
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approved")
+        )
+
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-budget-block"),
+                        missionID: missionID,
+                        workerName: "budget-worker",
+                        objective: "Execute enterprise policy budget block check",
+                        status: .queued
+                    )
+                )
+            )
+            XCTFail("Expected enterprise policy budget-cap dispatch block.")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .enterprisePolicyBlocked(let blockedMissionID, let reasonCode, let detail):
+                XCTAssertEqual(blockedMissionID, missionID)
+                XCTAssertEqual(reasonCode, .budgetHardCapBlocked)
+                XCTAssertTrue(detail.contains("hard cap"))
+            default:
+                XCTFail("Expected enterprisePolicyBlocked error, got \(error)")
+            }
+        }
+
+        let refreshed = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
+        XCTAssertEqual(refreshed.mission?.status, .awaitingApproval)
+        let blockMetadata = objectValue(refreshed.mission?.metadata["enterprise_policy_block"])
+        XCTAssertEqual(
+            stringValue(blockMetadata?["reason_code"]),
+            BurnBarEnterprisePolicyReasonCode.budgetHardCapBlocked.rawValue
+        )
+    }
+
+    func testVAL_CROSS_012_EnterpriseApprovalModeRequiresExplicitApprovalMetadata() async throws {
+        let harness = try makeHarness(name: "val-cross-012-approval-mode")
+
+        let policyProject = BurnBarReviewProjectSnapshot(
+            id: "project-atlas",
+            projectSlug: "atlas",
+            displayName: "Atlas",
+            summary: "Enterprise approval mode test.",
+            status: .healthy,
+            preferredCadence: .daily,
+            freshness: .provisional,
+            pendingQuestionCount: 0,
+            openFollowupCount: 0,
+            activeMissionCount: 0,
+            needsOperatorAttention: false,
+            metadata: [
+                "enterprise_approval_mode": .string(BurnBarEnterpriseApprovalMode.manualAll.rawValue)
+            ]
+        )
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: policyProject)
+        )
+
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "atlas",
+                title: "Approval-mode mission",
+                summary: "Dispatch requires explicit enterprise approval metadata.",
+                createdBy: "operator",
+                recommendation: .review
+            )
+        )
+        let missionID = created.mission.id
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "Approved")
+        )
+
+        do {
+            _ = try await harness.service.missionDispatchPacket(
+                BurnBarMissionDispatchPacketRequest(
+                    missionID: missionID,
+                    actor: "operator",
+                    packet: BurnBarMissionPacketSnapshot(
+                        id: BurnBarMissionPacketID(rawValue: "packet-approval-mode-block"),
+                        missionID: missionID,
+                        workerName: "approval-worker",
+                        objective: "Dispatch without explicit approval metadata",
+                        status: .queued,
+                        metadata: ["risk_level": .string("high")]
+                    )
+                )
+            )
+            XCTFail("Expected approval-mode policy block when explicit approval metadata is absent.")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .enterprisePolicyBlocked(_, let reasonCode, _):
+                XCTAssertEqual(reasonCode, .approvalRequiredByMode)
+            default:
+                XCTFail("Expected enterprisePolicyBlocked error, got \(error)")
+            }
+        }
+
+        let dispatched = try await harness.service.missionDispatchPacket(
+            BurnBarMissionDispatchPacketRequest(
+                missionID: missionID,
+                actor: "operator",
+                packet: BurnBarMissionPacketSnapshot(
+                    id: BurnBarMissionPacketID(rawValue: "packet-approval-mode-allowed"),
+                    missionID: missionID,
+                    workerName: "approval-worker",
+                    objective: "Dispatch with explicit approval metadata",
+                    status: .queued,
+                    metadata: [
+                        "risk_level": .string("high"),
+                        "enterprise_explicit_approval_granted": .bool(true)
+                    ]
+                )
+            )
+        )
+        XCTAssertEqual(dispatched.mission.packets.count, 1)
+        XCTAssertEqual(dispatched.mission.packets.first?.status, .queued)
+    }
+
+    func testVAL_CROSS_014_PerformanceGuardrailsRejectMissionCountBeyondThreshold() async throws {
+        let harness = try makeHarness(
+            name: "val-cross-014-mission-count-limit",
+            performanceGuardrails: BurnBarMissionControlPerformanceGuardrails(
+                maxTransportCycleDurationMilliseconds: 5_000,
+                maxTrackedMissionCount: 1
+            )
+        )
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "atlas"))
+        )
+        _ = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "atlas",
+                title: "Mission A",
+                summary: "Guardrail fixture mission A",
+                createdBy: "operator",
+                recommendation: .review
+            )
+        )
+        _ = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "atlas",
+                title: "Mission B",
+                summary: "Guardrail fixture mission B",
+                createdBy: "operator",
+                recommendation: .review
+            )
+        )
+
+        do {
+            try await harness.service.runTransportCycle(now: Date())
+            XCTFail("Expected performance guardrail violation once mission count exceeds threshold.")
+        } catch let error as BurnBarMissionControlError {
+            switch error {
+            case .performanceGuardrailExceeded(let metric, _, _):
+                XCTAssertEqual(metric, "tracked_mission_count")
+            default:
+                XCTFail("Expected performanceGuardrailExceeded error, got \(error)")
+            }
+        }
+    }
+
+    func testVAL_CROSS_014_PerformanceGuardrailsPreserveStateWithinThresholds() async throws {
+        let harness = try makeHarness(
+            name: "val-cross-014-state-preservation",
+            performanceGuardrails: BurnBarMissionControlPerformanceGuardrails(
+                maxTransportCycleDurationMilliseconds: 5_000,
+                maxTrackedMissionCount: 25
+            )
+        )
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+        for index in 1 ... 10 {
+            _ = try await harness.service.missionCreate(
+                BurnBarMissionCreateRequest(
+                    projectSlug: "orion",
+                    title: "Fixture mission \(index)",
+                    summary: "Long-running guardrail fixture mission \(index).",
+                    createdBy: "operator",
+                    recommendation: .review
+                )
+            )
+        }
+
+        let before = try await capturePublicProjectionSurface(
+            service: harness.service,
+            projectSlug: "orion"
+        )
+
+        try await harness.service.runTransportCycle(now: Date(timeIntervalSince1970: 1_710_300_000))
+
+        let after = try await capturePublicProjectionSurface(
+            service: harness.service,
+            projectSlug: "orion"
+        )
+
+        XCTAssertEqual(
+            before.missions.map(\.id),
+            after.missions.map(\.id),
+            "VAL-CROSS-014: Mission IDs should remain stable across guarded transport cycles."
+        )
+        XCTAssertEqual(
+            before.counts.activeMissionCount,
+            after.counts.activeMissionCount,
+            "VAL-CROSS-014: No mission-state divergence should occur under guardrail-compliant cycles."
+        )
+    }
+
     // MARK: - Cancelled mission approval preserves cancelled status
 
     func testVAL_DAEMON_002_CancelledMissionApprovalPreservesCancelledStatus() async throws {
@@ -2551,6 +2799,176 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             BurnBarControllerProjectsListRequest(includePaused: true, limit: 20)
         )
         XCTAssertNotNil(refreshedProjects.projects.first?.latestDailyReviewAt)
+    }
+
+    func testVAL_GOV_009_ActivityIngestedQuestionDedupeHoldsAcrossSnapshotDigestChanges() async throws {
+        let now = Date(timeIntervalSince1970: 1_710_310_000)
+        let activityProject = BurnBarControllerActivityProject(
+            projectSlug: "apollo",
+            displayName: "Apollo",
+            summary: "Apollo checkpoint summary.",
+            latestActivityAt: now,
+            latestConversationID: "conversation-apollo-1",
+            latestConversationSessionID: BurnBarSessionID(rawValue: "session-apollo-1"),
+            latestConversationTitle: "Apollo checkpoint",
+            latestConversationSummary: "Apollo checkpoint summary.",
+            latestQuestionPrompt: "Should we ship this now?",
+            sessionCountLast7Days: 4,
+            totalCostLast7Days: 1.2,
+            totalTokensLast7Days: 5_200
+        )
+        let harness = try makeHarness(
+            name: "val-gov-009-fingerprint-dedupe",
+            activitySnapshot: BurnBarControllerActivitySnapshot(
+                generatedAt: now,
+                activeProjectSlug: "apollo",
+                projects: [activityProject]
+            )
+        )
+
+        _ = try await harness.service.controllerSummary(
+            BurnBarControllerSummaryRequest(projectSlug: "apollo")
+        )
+        let firstQuestions = try await harness.service.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: "apollo", statuses: [.pending], limit: 20)
+        )
+        XCTAssertEqual(firstQuestions.questions.count, 1)
+
+        let updatedSnapshot = BurnBarControllerActivitySnapshot(
+            generatedAt: now.addingTimeInterval(120),
+            activeProjectSlug: "apollo",
+            projects: [
+                BurnBarControllerActivityProject(
+                    projectSlug: "apollo",
+                    displayName: "Apollo",
+                    summary: "Apollo checkpoint summary updated digest.",
+                    latestActivityAt: now.addingTimeInterval(60),
+                    latestConversationID: "conversation-apollo-1",
+                    latestConversationSessionID: BurnBarSessionID(rawValue: "session-apollo-1"),
+                    latestConversationTitle: "Apollo checkpoint",
+                    latestConversationSummary: "Apollo checkpoint summary updated digest.",
+                    latestQuestionPrompt: "Should we ship this now?",
+                    sessionCountLast7Days: 4,
+                    totalCostLast7Days: 1.3,
+                    totalTokensLast7Days: 5_300
+                )
+            ]
+        )
+        let activitySnapshotURL = harness.rootURL.appendingPathComponent("controller-activity-snapshot.json")
+        try JSONEncoder().encode(updatedSnapshot).write(to: activitySnapshotURL, options: .atomic)
+
+        _ = try await harness.service.controllerSummary(
+            BurnBarControllerSummaryRequest(projectSlug: "apollo")
+        )
+        let secondQuestions = try await harness.service.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: "apollo", statuses: [.pending], limit: 20)
+        )
+        XCTAssertEqual(
+            secondQuestions.questions.count,
+            1,
+            "VAL-GOV-009: Re-ingesting same activity fingerprint must not create duplicate pending questions."
+        )
+        XCTAssertEqual(
+            stringValue(secondQuestions.questions.first?.metadata["ingestion_fingerprint"]),
+            "conversation-apollo-1|Should we ship this now?"
+        )
+    }
+
+    func testVAL_GOV_010_VAL_CROSS_013_ScheduledReviewLaunchPersistsDeterministicNotificationIntents() async throws {
+        let launcher = ReviewLauncherRecorder()
+        let now = Date()
+        let dueAt = Calendar.current.date(
+            bySettingHour: 0,
+            minute: 0,
+            second: 0,
+            of: Calendar.current.startOfDay(for: now)
+        ) ?? Calendar.current.startOfDay(for: now)
+        let harness = try makeHarness(
+            name: "val-gov-010-cross-013-scheduled-intents",
+            transport: BurnBarMissionControlTransport(
+                deliverLocalNotification: { _, _ in },
+                sendTelegramMessage: { _, _, _ in },
+                fetchTelegramUpdates: { _, _ in [] },
+                applyCalendarEntry: { _, entry, _ in entry }
+            ),
+            reviewRunLauncher: { prompt, modelID, metadata in
+                await launcher.record(prompt: prompt, modelID: modelID, metadata: metadata)
+                return BurnBarRunCreateResponse(runID: BurnBarRunID(rawValue: "scheduled-review-run-1"), phase: .completed)
+            }
+        )
+
+        _ = try await harness.service.notificationConfigUpdate(
+            BurnBarNotificationConfigUpdateRequest(
+                config: BurnBarNotificationConfig(
+                    defaultSnoozeMinutes: 30,
+                    nudgeHoursLocal: [9, 13, 17],
+                    local: BurnBarLocalNotificationConfig(isEnabled: true),
+                    telegram: BurnBarTelegramNotificationConfig(
+                        isEnabled: true,
+                        botTokenConfigured: true,
+                        botToken: "123456:token",
+                        botTokenHint: "1234…oken",
+                        chatID: "chat-1"
+                    ),
+                    calendar: BurnBarCalendarNotificationConfig(isEnabled: false, defaultDurationMinutes: 30)
+                )
+            )
+        )
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(
+                project: BurnBarReviewProjectSnapshot(
+                    id: "project-apollo",
+                    projectSlug: "apollo",
+                    displayName: "Apollo",
+                    summary: "Scheduled review policy fixture.",
+                    status: .healthy,
+                    preferredCadence: .daily,
+                    automationMode: .scheduled,
+                    reviewModelID: "glm-5",
+                    scheduleHourLocal: 0,
+                    scheduleWeekdayLocal: 2,
+                    freshness: .provisional,
+                    pendingQuestionCount: 0,
+                    openFollowupCount: 0,
+                    activeMissionCount: 0,
+                    needsOperatorAttention: false
+                )
+            )
+        )
+
+        try await harness.service.runTransportCycle(now: now)
+
+        let launchesAfterFirstCycle = await launcher.launches
+        XCTAssertEqual(launchesAfterFirstCycle.count, 1)
+        XCTAssertEqual(launchesAfterFirstCycle.first?.modelID, "glm-5")
+        XCTAssertTrue(launchesAfterFirstCycle.first?.prompt.contains("OpenBurnBar daily review for project Apollo") == true)
+        XCTAssertEqual(stringValue(launchesAfterFirstCycle.first?.metadata["controller_review_origin"]), "scheduled")
+        XCTAssertNotNil(stringValue(launchesAfterFirstCycle.first?.metadata["scheduled_review_task_id"]))
+        XCTAssertEqual(
+            stringValue(launchesAfterFirstCycle.first?.metadata["scheduled_review_due_at"]),
+            dueAt.ISO8601Format()
+        )
+        XCTAssertEqual(
+            stringArrayValue(launchesAfterFirstCycle.first?.metadata["notification_intent_channels"]),
+            ["local", "telegram"]
+        )
+        XCTAssertTrue(
+            stringValue(launchesAfterFirstCycle.first?.metadata["notification_intent_dedupe_key"])?.contains("apollo") == true
+        )
+
+        try await harness.service.runTransportCycle(now: now.addingTimeInterval(60))
+        let launchesAfterSecondCycle = await launcher.launches
+        XCTAssertEqual(
+            launchesAfterSecondCycle.count,
+            1,
+            "VAL-GOV-010: Scheduled review launches should be deterministic for a single due window."
+        )
+
+        let refreshedProject = try await harness.service.controllerProject(
+            BurnBarControllerProjectGetRequest(projectSlug: "apollo")
+        )
+        XCTAssertNotNil(refreshedProject.project?.latestDailyReviewAt)
+        XCTAssertNotNil(refreshedProject.project?.nextScheduledReviewAt)
     }
 
     func testMissionDispatchLinksRealRunAndSyncsResultProvenance() async throws {
@@ -3804,7 +4222,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         activitySnapshot: BurnBarControllerActivitySnapshot? = nil,
         reviewRunLauncher: BurnBarMissionControlReviewRunLauncher? = nil,
         runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup? = nil,
-        executionReadinessGate: BurnBarExecutionReadinessGate? = { _, _ in nil }
+        executionReadinessGate: BurnBarExecutionReadinessGate? = { _, _ in nil },
+        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil
     ) throws -> (service: BurnBarMissionControlService, rootURL: URL) {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -3829,7 +4248,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             reviewRunLauncher: reviewRunLauncher,
             runSnapshotLookup: runSnapshotLookup,
             usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl"),
-            executionReadinessGate: executionReadinessGate
+            executionReadinessGate: executionReadinessGate,
+            performanceGuardrails: performanceGuardrails
         )
         return (service, rootURL)
     }
@@ -4948,7 +5368,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
     private func makeHarnessWithStore(
         name: String,
         transport: BurnBarMissionControlTransport = .live(),
-        executionReadinessGate: BurnBarExecutionReadinessGate? = nil
+        executionReadinessGate: BurnBarExecutionReadinessGate? = nil,
+        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil
     ) throws -> (service: BurnBarMissionControlService, store: BurnBarMissionControlStore, rootURL: URL) {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -4967,7 +5388,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             reviewRunLauncher: nil,
             runSnapshotLookup: nil,
             usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl"),
-            executionReadinessGate: executionReadinessGate
+            executionReadinessGate: executionReadinessGate,
+            performanceGuardrails: performanceGuardrails
         )
         return (service, store, rootURL)
     }
@@ -4976,7 +5398,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         name: String,
         events: [BurnBarControllerEvent],
         transport: BurnBarMissionControlTransport = .live(),
-        executionReadinessGate: BurnBarExecutionReadinessGate? = nil
+        executionReadinessGate: BurnBarExecutionReadinessGate? = nil,
+        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil
     ) throws -> (service: BurnBarMissionControlService, rootURL: URL) {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -4998,7 +5421,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             reviewRunLauncher: nil,
             runSnapshotLookup: nil,
             usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl"),
-            executionReadinessGate: executionReadinessGate
+            executionReadinessGate: executionReadinessGate,
+            performanceGuardrails: performanceGuardrails
         )
         return (service, rootURL)
     }
@@ -5131,6 +5555,19 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
     private func numberValue(_ value: BurnBarJSONValue?) -> Double? {
         guard case .number(let rawValue)? = value else { return nil }
         return rawValue
+    }
+
+    private func objectValue(_ value: BurnBarJSONValue?) -> [String: BurnBarJSONValue]? {
+        guard case .object(let rawValue)? = value else { return nil }
+        return rawValue
+    }
+
+    private func stringArrayValue(_ value: BurnBarJSONValue?) -> [String]? {
+        guard case .array(let rawValues)? = value else { return nil }
+        return rawValues.compactMap { item in
+            guard case .string(let stringValue) = item else { return nil }
+            return stringValue
+        }
     }
 
     private func waitUntil(

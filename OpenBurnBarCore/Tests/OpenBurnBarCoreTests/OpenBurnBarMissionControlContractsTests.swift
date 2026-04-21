@@ -145,6 +145,46 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
         XCTAssertEqual(decodedRun.summary.counts.openFollowupCount, 1)
     }
 
+    func testVAL_CROSS_012_EnterprisePolicyBlockContractsRoundTrip() throws {
+        let block = BurnBarEnterprisePolicyBlock(
+            reasonCode: .budgetHardCapBlocked,
+            detail: "Observed spend (12.5 USD) exceeds hard cap (10 USD).",
+            approvalMode: .manualAll,
+            budgetHardCapUSD: 10,
+            observedSpendUSD: 12.5,
+            blockedAt: Date(timeIntervalSince1970: 1_710_320_000)
+        )
+
+        let data = try JSONEncoder().encode(block)
+        let decoded = try JSONDecoder().decode(BurnBarEnterprisePolicyBlock.self, from: data)
+
+        XCTAssertEqual(decoded.reasonCode, .budgetHardCapBlocked)
+        XCTAssertEqual(decoded.approvalMode, .manualAll)
+        XCTAssertEqual(decoded.budgetHardCapUSD, 10)
+        XCTAssertEqual(decoded.observedSpendUSD, 12.5)
+        XCTAssertTrue(decoded.displayMessage.contains("Budget hard cap reached"))
+    }
+
+    func testVAL_CROSS_013_ScheduledReviewIntentContractsRoundTrip() throws {
+        let dueAt = Date(timeIntervalSince1970: 1_710_320_500)
+        let intent = BurnBarScheduledReviewIntent(
+            taskID: "scheduled-review-apollo-daily-1710320500",
+            projectSlug: "apollo",
+            dueAt: dueAt,
+            notificationIntentID: "intent-apollo-daily-1710320500",
+            notificationChannels: [.local, .telegram]
+        )
+
+        let data = try JSONEncoder().encode(intent)
+        let decoded = try JSONDecoder().decode(BurnBarScheduledReviewIntent.self, from: data)
+
+        XCTAssertEqual(decoded.taskID, "scheduled-review-apollo-daily-1710320500")
+        XCTAssertEqual(decoded.projectSlug, "apollo")
+        XCTAssertEqual(decoded.dueAt, dueAt)
+        XCTAssertEqual(decoded.notificationIntentID, "intent-apollo-daily-1710320500")
+        XCTAssertEqual(decoded.notificationChannels, [.local, .telegram])
+    }
+
     func testLegacyProjectAndReviewRunPayloads_decodeWithWaveOneDefaults() throws {
         let legacyProjectData = """
         {

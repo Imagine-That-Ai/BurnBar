@@ -12,6 +12,7 @@ public actor BurnBarMissionControlService {
     /// VAL-DAEMON-011: Execution readiness gate for pre-dispatch checks.
     /// When nil, dispatch proceeds without readiness checks (legacy behavior for tests).
     private let executionReadinessGate: BurnBarExecutionReadinessGate?
+    private let performanceGuardrails: BurnBarMissionControlPerformanceGuardrails?
 
     /// Terminal mission statuses that block dispatch — must match MissionControlStore.terminalStatuses.
     private static let terminalMissionStatuses: Set<BurnBarMissionStatus> = [
@@ -27,7 +28,8 @@ public actor BurnBarMissionControlService {
         reviewRunLauncher: BurnBarMissionControlReviewRunLauncher? = nil,
         runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup? = nil,
         usageLedgerURL: URL = BurnBarDaemonPaths.defaultUsageLedgerURL,
-        executionReadinessGate: BurnBarExecutionReadinessGate? = nil
+        executionReadinessGate: BurnBarExecutionReadinessGate? = nil,
+        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil
     ) {
         self.store = store
         self.logger = logger
@@ -37,6 +39,7 @@ public actor BurnBarMissionControlService {
         self.runSnapshotLookup = runSnapshotLookup
         self.usageLedgerURL = usageLedgerURL
         self.executionReadinessGate = executionReadinessGate
+        self.performanceGuardrails = performanceGuardrails
     }
 
     init(
@@ -47,7 +50,8 @@ public actor BurnBarMissionControlService {
         reviewRunLauncher: BurnBarMissionControlReviewRunLauncher? = nil,
         runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup? = nil,
         usageLedgerURL: URL = BurnBarDaemonPaths.defaultUsageLedgerURL,
-        executionReadinessGate: BurnBarExecutionReadinessGate? = nil
+        executionReadinessGate: BurnBarExecutionReadinessGate? = nil,
+        performanceGuardrails: BurnBarMissionControlPerformanceGuardrails? = nil
     ) {
         self.store = store
         self.logger = logger
@@ -57,6 +61,7 @@ public actor BurnBarMissionControlService {
         self.runSnapshotLookup = runSnapshotLookup
         self.usageLedgerURL = usageLedgerURL
         self.executionReadinessGate = executionReadinessGate
+        self.performanceGuardrails = performanceGuardrails
     }
 
     public func startBackgroundLoops() {
@@ -233,6 +238,19 @@ public actor BurnBarMissionControlService {
         // Block dispatch if mission is in a terminal state
         guard !Self.terminalMissionStatuses.contains(mission.status) else {
             throw BurnBarMissionControlError.missionTerminal(request.missionID, mission.status)
+        }
+
+        if let enterprisePolicyBlock = try await evaluateEnterprisePolicyBlock(mission: mission, packet: request.packet) {
+            try await persistEnterprisePolicyBlock(
+                enterprisePolicyBlock,
+                mission: mission,
+                actor: request.actor
+            )
+            throw BurnBarMissionControlError.enterprisePolicyBlocked(
+                request.missionID,
+                enterprisePolicyBlock.reasonCode,
+                enterprisePolicyBlock.detail
+            )
         }
 
         // VAL-DAEMON-011: Execution readiness gate fails closed with explicit reason codes.
@@ -444,12 +462,15 @@ public actor BurnBarMissionControlService {
     }
 
     private func processTransportCycle(now: Date) async throws {
+        let cycleStartedAt = Date()
+        try await enforcePerformanceGuardrailsBeforeTransportCycle()
         try await ingestControllerActivityIfNeeded(now: now)
         try await launchDueScheduledReviews(now: now)
         try await syncMissionExecution(now: now)
         let dueFollowups = try await store.evaluateDueNotifications(now: now)
         try await deliverDueFollowups(dueFollowups)
         try await pollTelegramCommands()
+        try enforcePerformanceGuardrailsAfterTransportCycle(startedAt: cycleStartedAt, finishedAt: Date())
     }
 
     private func ingestControllerActivityIfNeeded(now: Date) async throws {
@@ -477,6 +498,42 @@ public actor BurnBarMissionControlService {
         let snapshot = try JSONDecoder().decode(BurnBarControllerActivitySnapshot.self, from: data)
         lastIngestedActivityDigest = digest
         return snapshot
+    }
+
+    private func enforcePerformanceGuardrailsBeforeTransportCycle() async throws {
+        guard let performanceGuardrails else { return }
+
+        let probeLimit = max(performanceGuardrails.maxTrackedMissionCount + 1, 1)
+        let trackedMissions = try await store.missions(
+            BurnBarMissionListRequest(
+                statuses: BurnBarMissionStatus.allCases,
+                limit: probeLimit
+            )
+        )
+        let trackedMissionCount = trackedMissions.count
+        if trackedMissionCount > performanceGuardrails.maxTrackedMissionCount {
+            throw BurnBarMissionControlError.performanceGuardrailExceeded(
+                "tracked_mission_count",
+                Double(performanceGuardrails.maxTrackedMissionCount),
+                Double(trackedMissionCount)
+            )
+        }
+    }
+
+    private func enforcePerformanceGuardrailsAfterTransportCycle(
+        startedAt: Date,
+        finishedAt: Date
+    ) throws {
+        guard let performanceGuardrails else { return }
+
+        let elapsedMilliseconds = finishedAt.timeIntervalSince(startedAt) * 1_000
+        if elapsedMilliseconds > performanceGuardrails.maxTransportCycleDurationMilliseconds {
+            throw BurnBarMissionControlError.performanceGuardrailExceeded(
+                "transport_cycle_duration_ms",
+                performanceGuardrails.maxTransportCycleDurationMilliseconds,
+                elapsedMilliseconds
+            )
+        }
     }
 
     private func syncActivityProject(
@@ -656,6 +713,133 @@ public actor BurnBarMissionControlService {
         )
     }
 
+    private func evaluateEnterprisePolicyBlock(
+        mission: BurnBarMissionSnapshot,
+        packet: BurnBarMissionPacketSnapshot
+    ) async throws -> BurnBarEnterprisePolicyBlock? {
+        guard let project = try await store.project(slug: mission.projectSlug) else {
+            return nil
+        }
+
+        let metadata = project.metadata
+        if let hardCap = metadata["enterprise_budget_hard_cap_usd"]?.numberValue(),
+           let observedSpend = metadata["enterprise_budget_spend_usd"]?.numberValue(),
+           observedSpend > hardCap {
+            return BurnBarEnterprisePolicyBlock(
+                reasonCode: .budgetHardCapBlocked,
+                detail: String(
+                    format: "Observed spend (%.2f USD) exceeds hard cap (%.2f USD).",
+                    observedSpend,
+                    hardCap
+                ),
+                approvalMode: metadata["enterprise_approval_mode"]
+                    .flatMap { $0.stringValue() }
+                    .flatMap(BurnBarEnterpriseApprovalMode.init(rawValue:)),
+                budgetHardCapUSD: hardCap,
+                observedSpendUSD: observedSpend,
+                blockedAt: Date()
+            )
+        }
+
+        guard let approvalModeRaw = metadata["enterprise_approval_mode"]?.stringValue() else {
+            return nil
+        }
+        guard let approvalMode = BurnBarEnterpriseApprovalMode(rawValue: approvalModeRaw) else {
+            return BurnBarEnterprisePolicyBlock(
+                reasonCode: .configurationInvalid,
+                detail: "Unsupported enterprise approval mode '\(approvalModeRaw)'.",
+                blockedAt: Date()
+            )
+        }
+
+        switch approvalMode {
+        case .manualAll:
+            let hasExplicitApproval = packet.metadata["enterprise_explicit_approval_granted"]?.boolValue() == true
+            if hasExplicitApproval == false {
+                return BurnBarEnterprisePolicyBlock(
+                    reasonCode: .approvalRequiredByMode,
+                    detail: "\(approvalMode.rawValue) mode requires explicit operator approval metadata.",
+                    approvalMode: approvalMode,
+                    blockedAt: Date()
+                )
+            }
+        case .autoLowOnly:
+            let riskLevel = packet.metadata["risk_level"]?.stringValue()?.lowercased()
+            if riskLevel == "high" || riskLevel == "critical" {
+                return BurnBarEnterprisePolicyBlock(
+                    reasonCode: .approvalRequiredByMode,
+                    detail: "\(approvalMode.rawValue) mode blocks \(riskLevel ?? "high") risk packets without explicit approval metadata.",
+                    approvalMode: approvalMode,
+                    blockedAt: Date()
+                )
+            }
+        case .autoLowMedium:
+            break
+        }
+
+        return nil
+    }
+
+    private func persistEnterprisePolicyBlock(
+        _ block: BurnBarEnterprisePolicyBlock,
+        mission: BurnBarMissionSnapshot,
+        actor: String
+    ) async throws {
+        var snapshot = missionSnapshot(
+            from: mission,
+            status: .awaitingApproval,
+            updatedAt: block.blockedAt,
+            packets: mission.packets,
+            results: mission.results,
+            burnRecords: mission.burnRecords,
+            takeoverHistory: mission.takeoverHistory
+        )
+        var metadata = snapshot.metadata
+        var policyMetadata: [String: BurnBarJSONValue] = [
+            "reason_code": .string(block.reasonCode.rawValue),
+            "detail": .string(block.detail),
+            "blocked_at": .string(block.blockedAt.ISO8601Format())
+        ]
+        if let approvalMode = block.approvalMode {
+            policyMetadata["approval_mode"] = .string(approvalMode.rawValue)
+        }
+        if let hardCap = block.budgetHardCapUSD {
+            policyMetadata["budget_hard_cap_usd"] = .number(hardCap)
+        }
+        if let observedSpend = block.observedSpendUSD {
+            policyMetadata["observed_spend_usd"] = .number(observedSpend)
+        }
+
+        metadata["enterprise_policy_block"] = .object(policyMetadata)
+        metadata["enterprise_policy_block_reason_code"] = .string(block.reasonCode.rawValue)
+        metadata["enterprise_policy_blocked_at"] = .string(block.blockedAt.ISO8601Format())
+        metadata["enterprise_policy_blocked_by"] = .string(actor)
+
+        snapshot = BurnBarMissionSnapshot(
+            id: snapshot.id,
+            projectSlug: snapshot.projectSlug,
+            title: snapshot.title,
+            summary: snapshot.summary,
+            status: snapshot.status,
+            recommendation: snapshot.recommendation,
+            createdAt: snapshot.createdAt,
+            updatedAt: snapshot.updatedAt,
+            approval: snapshot.approval,
+            packets: snapshot.packets,
+            results: snapshot.results,
+            burnRecords: snapshot.burnRecords,
+            takeoverHistory: snapshot.takeoverHistory,
+            prLinkage: snapshot.prLinkage,
+            metadata: metadata
+        )
+        _ = try await store.persistMissionSnapshot(
+            snapshot,
+            eventType: "mission_dispatch_blocked_enterprise_policy",
+            summary: snapshot.title,
+            detail: block.detail
+        )
+    }
+
     private func launchDueScheduledReviews(now: Date) async throws {
         let projects = try await store.projects(
             BurnBarControllerProjectsListRequest(includePaused: false, limit: 500)
@@ -670,12 +854,17 @@ public actor BurnBarMissionControlService {
             }
 
             do {
+                let scheduledReviewIntent = try await buildScheduledReviewIntent(
+                    project: project,
+                    dueAt: dueAt
+                )
                 _ = try await launchReviewRun(
                     projectSlug: project.projectSlug,
                     cadence: project.preferredCadence,
                     origin: .scheduled,
                     triggeredBy: "scheduler",
-                    summary: "Scheduled \(project.preferredCadence.rawValue) review launched automatically."
+                    summary: "Scheduled \(project.preferredCadence.rawValue) review launched automatically.",
+                    metadata: scheduledReviewIntent.metadata
                 )
                 try await clearScheduledLaunchFailure(for: project)
             } catch {
@@ -904,6 +1093,71 @@ public actor BurnBarMissionControlService {
         }
 
         return currentMission
+    }
+
+    private struct BurnBarScheduledReviewIntentPayload {
+        let intent: BurnBarScheduledReviewIntent
+        let metadata: BurnBarMetadata
+    }
+
+    private func buildScheduledReviewIntent(
+        project: BurnBarReviewProjectSnapshot,
+        dueAt: Date
+    ) async throws -> BurnBarScheduledReviewIntentPayload {
+        let dueTimestamp = Int(dueAt.timeIntervalSince1970)
+        let taskID = "scheduled-review-\(project.projectSlug)-\(project.preferredCadence.rawValue)-\(dueTimestamp)"
+        let notificationIntentID = "intent-\(project.projectSlug)-\(project.preferredCadence.rawValue)-\(dueTimestamp)"
+        let config = try await store.notificationConfig()
+        let channels = enabledNotificationChannels(from: config)
+        let dueAtISO = dueAt.ISO8601Format()
+        let dedupeKey = [
+            "scheduled-review",
+            project.projectSlug,
+            project.preferredCadence.rawValue,
+            dueAtISO
+        ].joined(separator: "|")
+        let intent = BurnBarScheduledReviewIntent(
+            taskID: taskID,
+            projectSlug: project.projectSlug,
+            dueAt: dueAt,
+            notificationIntentID: notificationIntentID,
+            notificationChannels: channels
+        )
+
+        let intentObject: [String: BurnBarJSONValue] = [
+            "taskID": .string(intent.taskID),
+            "projectSlug": .string(intent.projectSlug),
+            "dueAt": .string(dueAtISO),
+            "notificationIntentID": .string(intent.notificationIntentID),
+            "notificationChannels": .array(intent.notificationChannels.map { .string($0.rawValue) })
+        ]
+        let metadata: BurnBarMetadata = [
+            "scheduled_review_task_id": .string(intent.taskID),
+            "scheduled_review_due_at": .string(dueAtISO),
+            "notification_intent_id": .string(intent.notificationIntentID),
+            "notification_intent_dedupe_key": .string(dedupeKey),
+            "notification_intent_channels": .array(intent.notificationChannels.map { .string($0.rawValue) }),
+            "scheduledReviewIntent": .object(intentObject)
+        ]
+        return BurnBarScheduledReviewIntentPayload(intent: intent, metadata: metadata)
+    }
+
+    private func enabledNotificationChannels(
+        from config: BurnBarNotificationConfig
+    ) -> [BurnBarNotificationChannel] {
+        var channels: [BurnBarNotificationChannel] = []
+        if config.local.isEnabled {
+            channels.append(.local)
+        }
+        if config.telegram.isEnabled,
+           config.telegram.botToken?.nonEmpty != nil,
+           config.telegram.chatID?.nonEmpty != nil {
+            channels.append(.telegram)
+        }
+        if config.calendar.isEnabled {
+            channels.append(.calendar)
+        }
+        return channels
     }
 
     private func shouldAttemptScheduledLaunch(

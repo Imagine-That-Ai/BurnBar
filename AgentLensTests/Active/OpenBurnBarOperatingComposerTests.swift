@@ -2427,6 +2427,129 @@ extension OpenBurnBarOperatingComposerTests {
     }
 }
 
+// MARK: - VAL-CROSS-012 / VAL-CROSS-013: Enterprise policy + scheduled review parity tests
+
+extension OpenBurnBarOperatingComposerTests {
+    func testVAL_CROSS_012_BudgetHardCapPolicyBlockDisplayMessage() {
+        let block = BurnBarEnterprisePolicyBlock(
+            reasonCode: .budgetHardCapBlocked,
+            detail: "Observed spend (12.5 USD) exceeds hard cap (10 USD)."
+        )
+
+        XCTAssertEqual(block.reasonCode, .budgetHardCapBlocked)
+        XCTAssertTrue(block.displayMessage.hasPrefix("Budget hard cap reached"))
+        XCTAssertTrue(block.displayMessage.contains("12.5 USD"))
+    }
+
+    func testVAL_CROSS_012_ApprovalModePolicyBlockDisplayMessage() {
+        let block = BurnBarEnterprisePolicyBlock(
+            reasonCode: .approvalRequiredByMode,
+            detail: "manual_all mode requires explicit operator approval metadata."
+        )
+
+        XCTAssertEqual(block.reasonCode, .approvalRequiredByMode)
+        XCTAssertTrue(block.displayMessage.hasPrefix("Explicit approval required"))
+        XCTAssertTrue(block.displayMessage.contains("manual_all"))
+    }
+
+    func testVAL_CROSS_012_MissionSummarySupportsEnterprisePolicyBlock() {
+        let summary = OpenBurnBarMissionSummary(
+            availability: .available,
+            missionID: "mission-cross-012",
+            projectName: "Apollo",
+            title: "Enterprise policy blocked mission",
+            subtitle: "Dispatch blocked by enterprise policy.",
+            state: .blocked,
+            approval: .pending,
+            sessionCount: 6,
+            summarizedSessionCount: 4,
+            burnRecordCount: 2,
+            totalTokens: 18_000,
+            estimatedCostUSD: 3.42,
+            changedFilesSummary: "No changed files because mission dispatch is blocked.",
+            risksSummary: "Enterprise policy currently blocks autonomous progression.",
+            remainingWorkSummary: "Collect explicit operator approval or adjust policy budget rails.",
+            recommendationSummary: "Review and resolve enterprise policy block.",
+            nextRecommendation: "Open policy controls and resolve the block reason.",
+            approvalNote: nil,
+            readinessFailure: nil,
+            enterprisePolicyBlock: BurnBarEnterprisePolicyBlock(
+                reasonCode: .budgetHardCapBlocked,
+                detail: "Observed spend exceeds configured hard cap."
+            )
+        )
+
+        XCTAssertEqual(summary.enterprisePolicyBlock?.reasonCode, .budgetHardCapBlocked)
+        XCTAssertTrue(summary.enterprisePolicyBlock?.displayMessage.contains("Budget hard cap reached") == true)
+    }
+
+    func testVAL_CROSS_012_EnterprisePolicyReasonCodeConsistencyAcrossSurfaces() {
+        let allCodes: [BurnBarEnterprisePolicyReasonCode] = [
+            .budgetHardCapBlocked,
+            .approvalRequiredByMode,
+            .realIntegrationRequired,
+            .configurationInvalid
+        ]
+
+        for code in allCodes {
+            let block = BurnBarEnterprisePolicyBlock(code: code, detail: "Detail for \(code.rawValue)")
+            XCTAssertEqual(block.reasonCode, code)
+            XCTAssertFalse(block.displayMessage.isEmpty)
+        }
+    }
+
+    func testVAL_CROSS_013_MissionSummarySupportsScheduledReviewIntent() {
+        let dueAt = Date(timeIntervalSince1970: 1_710_320_000)
+        let summary = OpenBurnBarMissionSummary(
+            availability: .available,
+            missionID: "mission-cross-013",
+            projectName: "Apollo",
+            title: "Scheduled review due mission",
+            subtitle: "Scheduled review + notification intent parity fixture.",
+            state: .planned,
+            approval: .approved,
+            sessionCount: 8,
+            summarizedSessionCount: 5,
+            burnRecordCount: 3,
+            totalTokens: 24_000,
+            estimatedCostUSD: 5.10,
+            changedFilesSummary: "No changed files yet.",
+            risksSummary: "Upcoming scheduled review notification is due.",
+            remainingWorkSummary: "Operator should inspect the scheduled review task.",
+            recommendationSummary: "Follow scheduled review recommendation.",
+            nextRecommendation: "Open scheduled review task in Mission Board.",
+            approvalNote: "Pre-approved for review automation.",
+            readinessFailure: nil,
+            scheduledReviewIntent: BurnBarScheduledReviewIntent(
+                taskID: "scheduled-review-apollo-daily-1710320000",
+                projectSlug: "apollo",
+                dueAt: dueAt,
+                notificationIntentID: "intent-apollo-daily-1710320000",
+                notificationChannels: [.local, .telegram]
+            )
+        )
+
+        XCTAssertEqual(summary.scheduledReviewIntent?.taskID, "scheduled-review-apollo-daily-1710320000")
+        XCTAssertEqual(summary.scheduledReviewIntent?.projectSlug, "apollo")
+        XCTAssertEqual(summary.scheduledReviewIntent?.dueAt, dueAt)
+    }
+
+    func testVAL_CROSS_013_ScheduledReviewIntentPreservesDueTimestampAndChannels() {
+        let dueAt = Date(timeIntervalSince1970: 1_710_320_500)
+        let intent = BurnBarScheduledReviewIntent(
+            taskID: "scheduled-review-orion-weekly-1710320500",
+            projectSlug: "orion",
+            dueAt: dueAt,
+            notificationIntentID: "intent-orion-weekly-1710320500",
+            notificationChannels: [.local, .telegram, .calendar]
+        )
+
+        XCTAssertEqual(intent.notificationChannels, [.local, .telegram, .calendar])
+        XCTAssertEqual(intent.dueAt, dueAt)
+        XCTAssertEqual(intent.notificationIntentID, "intent-orion-weekly-1710320500")
+    }
+}
+
 // MARK: - Mission Authoring Tests
 
 extension OpenBurnBarOperatingComposerTests {

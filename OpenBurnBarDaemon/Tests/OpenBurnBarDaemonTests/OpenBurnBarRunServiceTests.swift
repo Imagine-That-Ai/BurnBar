@@ -1279,6 +1279,95 @@ final class BurnBarRunServiceTests: XCTestCase {
         XCTAssertEqual(usage.first?.runID, createResponse.runID)
     }
 
+    // MARK: - VAL-GOV-005: Aggressive autonomy enforces high-risk approval gates
+
+    func testVAL_GOV_005_LowRiskReadFileRunRemainsAutonomousInAggressiveMode() async throws {
+        let harness = try makeHarness(name: "val-gov-005-low-risk")
+        let clientID = BurnBarClientID(rawValue: "low-risk-client")
+        let sessionID = BurnBarSessionID(rawValue: "low-risk-session")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Low Risk Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Read the repository README for context",
+                modelID: "glm-5",
+                metadata: [
+                    "toolKind": .string(BurnBarToolKind.readFile.rawValue),
+                    "path": .string("README.md"),
+                    "toolArguments": .object([
+                        "path": .string("README.md")
+                    ])
+                ]
+            )
+        )
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: createResponse.runID, clientID: clientID)
+        )
+
+        XCTAssertNotEqual(
+            createResponse.phase,
+            .awaitingApproval,
+            "VAL-GOV-005: Low-risk actions should remain autonomous in aggressive mode."
+        )
+        XCTAssertNil(
+            detail.approvalRequest,
+            "VAL-GOV-005: Low-risk read_file run must not create explicit approval request."
+        )
+    }
+
+    func testVAL_GOV_005_HighRiskRunTerminalRequiresExplicitApprovalInAggressiveMode() async throws {
+        let harness = try makeHarness(name: "val-gov-005-high-risk")
+        let clientID = BurnBarClientID(rawValue: "high-risk-client")
+        let sessionID = BurnBarSessionID(rawValue: "high-risk-session")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "High Risk Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Run terminal command for deployment checks",
+                modelID: "glm-5",
+                metadata: [
+                    "toolKind": .string(BurnBarToolKind.runTerminal.rawValue),
+                    "toolArguments": .object([
+                        "command": .string("npm test"),
+                        "cwd": .string(".")
+                    ])
+                ]
+            )
+        )
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: createResponse.runID, clientID: clientID)
+        )
+
+        XCTAssertEqual(
+            createResponse.phase,
+            .awaitingApproval,
+            "VAL-GOV-005: High-risk run_terminal actions must require explicit approval in aggressive mode."
+        )
+        XCTAssertEqual(detail.approvalRequest?.tool, .runTerminal)
+    }
+
     func testCancelWhileWaitingOnCompanionClearsPendingToolCall() async throws {
         let harness = try makeHarness(name: "cancel-waiting-on-companion")
         let clientID = BurnBarClientID(rawValue: "cancel-controller")

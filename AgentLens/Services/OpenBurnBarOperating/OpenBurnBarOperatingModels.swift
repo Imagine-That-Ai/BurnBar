@@ -221,6 +221,54 @@ struct OpenBurnBarMissionSummary: Equatable, Sendable {
     let nextRecommendation: String
     let approvalNote: String?
     let readinessFailure: BurnBarReadinessFailure?
+    let enterprisePolicyBlock: BurnBarEnterprisePolicyBlock?
+    let scheduledReviewIntent: BurnBarScheduledReviewIntent?
+
+    init(
+        availability: OpenBurnBarOperatingAvailability,
+        missionID: String,
+        projectName: String,
+        title: String,
+        subtitle: String,
+        state: OpenBurnBarMissionLifecycle,
+        approval: OpenBurnBarMissionApprovalState,
+        sessionCount: Int,
+        summarizedSessionCount: Int,
+        burnRecordCount: Int,
+        totalTokens: Int,
+        estimatedCostUSD: Double,
+        changedFilesSummary: String,
+        risksSummary: String,
+        remainingWorkSummary: String,
+        recommendationSummary: String,
+        nextRecommendation: String,
+        approvalNote: String?,
+        readinessFailure: BurnBarReadinessFailure?,
+        enterprisePolicyBlock: BurnBarEnterprisePolicyBlock? = nil,
+        scheduledReviewIntent: BurnBarScheduledReviewIntent? = nil
+    ) {
+        self.availability = availability
+        self.missionID = missionID
+        self.projectName = projectName
+        self.title = title
+        self.subtitle = subtitle
+        self.state = state
+        self.approval = approval
+        self.sessionCount = sessionCount
+        self.summarizedSessionCount = summarizedSessionCount
+        self.burnRecordCount = burnRecordCount
+        self.totalTokens = totalTokens
+        self.estimatedCostUSD = estimatedCostUSD
+        self.changedFilesSummary = changedFilesSummary
+        self.risksSummary = risksSummary
+        self.remainingWorkSummary = remainingWorkSummary
+        self.recommendationSummary = recommendationSummary
+        self.nextRecommendation = nextRecommendation
+        self.approvalNote = approvalNote
+        self.readinessFailure = readinessFailure
+        self.enterprisePolicyBlock = enterprisePolicyBlock
+        self.scheduledReviewIntent = scheduledReviewIntent
+    }
 }
 
 // MARK: - Readiness Failure

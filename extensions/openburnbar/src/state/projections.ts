@@ -427,6 +427,29 @@ export interface BurnBarReadinessFailure {
   detail: string;
 }
 
+export type BurnBarEnterprisePolicyReasonCode =
+  | 'policy_budget_hard_cap_blocked'
+  | 'policy_approval_required_by_mode'
+  | 'policy_real_integration_required'
+  | 'policy_configuration_invalid';
+
+export interface BurnBarEnterprisePolicyBlock {
+  reasonCode: BurnBarEnterprisePolicyReasonCode;
+  detail: string;
+  approvalMode?: string;
+  budgetHardCapUSD?: number;
+  observedSpendUSD?: number;
+  blockedAt?: string;
+}
+
+export interface BurnBarScheduledReviewIntent {
+  taskID: string;
+  projectSlug: string;
+  dueAt: string;
+  notificationIntentID: string;
+  notificationChannels: string[];
+}
+
 /**
  * Maps a readiness reason code to a human-readable display message for operator-facing UI.
  * Matches the displayMessage computed property in BurnBarReadinessFailure (Swift, app side).
@@ -443,6 +466,21 @@ export function readinessDisplayMessage(failure: BurnBarReadinessFailure): strin
     return `Insufficient permissions: ${failure.detail}`;
   default:
     return `Readiness check failed: ${failure.detail}`;
+  }
+}
+
+export function enterprisePolicyDisplayMessage(block: BurnBarEnterprisePolicyBlock): string {
+  switch (block.reasonCode) {
+  case 'policy_budget_hard_cap_blocked':
+    return `Budget hard cap reached: ${block.detail}`;
+  case 'policy_approval_required_by_mode':
+    return `Explicit approval required: ${block.detail}`;
+  case 'policy_real_integration_required':
+    return `Real integration required: ${block.detail}`;
+  case 'policy_configuration_invalid':
+    return `Enterprise policy configuration invalid: ${block.detail}`;
+  default:
+    return `Enterprise policy blocked mission dispatch: ${block.detail}`;
   }
 }
 
@@ -469,6 +507,8 @@ export interface BurnBarMissionRow {
   takeoverCount: number;
   // VAL-CROSS-009: Readiness failure for pre-dispatch execution failures
   readinessFailure?: BurnBarReadinessFailure;
+  enterprisePolicyBlock?: BurnBarEnterprisePolicyBlock;
+  scheduledReviewIntent?: BurnBarScheduledReviewIntent;
   // VAL-EXT-007: PR closure linkage and closure-question state parity.
   prLinkage?: BurnBarPRLinkageSnapshot;
   closureQuestionState: string;
@@ -641,6 +681,8 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
       );
       const prLinkage = resolveMissionPRLinkage(mission);
       const teamFields = extractTeamCollaborationFields(mission, activePacket);
+      const enterprisePolicyBlock = extractEnterprisePolicyBlock(mission.metadata);
+      const scheduledReviewIntent = extractScheduledReviewIntent(mission.metadata);
 
       return {
         id: mission.id,
@@ -649,7 +691,7 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         status: mission.status,
         recommendation: mission.recommendation,
         phase: runForMission?.phase ?? missionPhaseFromStatus(mission.status),
-        note: describeMissionNote(mission, activePacket),
+        note: describeMissionNote(mission, activePacket, enterprisePolicyBlock, scheduledReviewIntent),
         updatedAt: mission.updatedAt,
         source: 'daemon' as const,
         approved: mission.approval?.approved ?? false,
@@ -664,6 +706,8 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         takeoverCount: mission.takeoverHistory?.length ?? 0,
         // VAL-CROSS-009: Extract readiness failure from mission metadata if present
         readinessFailure: extractReadinessFailure(mission.metadata),
+        enterprisePolicyBlock,
+        scheduledReviewIntent,
         prLinkage,
         closureQuestionState: closureQuestionStateForStatus(mission.status)
       };
@@ -704,6 +748,84 @@ function extractReadinessFailure(
   return {
     code: readiness.code as BurnBarReadinessReasonCode,
     detail: readiness.detail
+  };
+}
+
+function extractEnterprisePolicyBlock(
+  metadata?: Record<string, unknown>
+): BurnBarEnterprisePolicyBlock | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+
+  const blockSource =
+    asObject(metadata.enterprisePolicyBlock)
+    ?? asObject(metadata.enterprise_policy_block)
+    ?? undefined;
+  if (!blockSource) {
+    return undefined;
+  }
+
+  const reasonCode = asString(blockSource.reasonCode) ?? asString(blockSource.reason_code);
+  const detail = asString(blockSource.detail);
+  if (!reasonCode || !detail) {
+    return undefined;
+  }
+
+  const validCodes: BurnBarEnterprisePolicyReasonCode[] = [
+    'policy_budget_hard_cap_blocked',
+    'policy_approval_required_by_mode',
+    'policy_real_integration_required',
+    'policy_configuration_invalid'
+  ];
+  if (!validCodes.includes(reasonCode as BurnBarEnterprisePolicyReasonCode)) {
+    return undefined;
+  }
+
+  return {
+    reasonCode: reasonCode as BurnBarEnterprisePolicyReasonCode,
+    detail,
+    approvalMode: asString(blockSource.approvalMode) ?? asString(blockSource.approval_mode),
+    budgetHardCapUSD: asNumber(blockSource.budgetHardCapUSD) ?? asNumber(blockSource.budget_hard_cap_usd),
+    observedSpendUSD: asNumber(blockSource.observedSpendUSD) ?? asNumber(blockSource.observed_spend_usd),
+    blockedAt: asString(blockSource.blockedAt) ?? asString(blockSource.blocked_at)
+  };
+}
+
+function extractScheduledReviewIntent(
+  metadata?: Record<string, unknown>
+): BurnBarScheduledReviewIntent | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+
+  const source =
+    asObject(metadata.scheduledReviewIntent)
+    ?? asObject(metadata.scheduled_review_intent)
+    ?? undefined;
+  const taskID = asString(source?.taskID) ?? asString(source?.task_id) ?? asString(metadata.scheduled_review_task_id);
+  const projectSlug = asString(source?.projectSlug) ?? asString(source?.project_slug);
+  const dueAt = asString(source?.dueAt) ?? asString(source?.due_at) ?? asString(metadata.scheduled_review_due_at);
+  const notificationIntentID =
+    asString(source?.notificationIntentID)
+    ?? asString(source?.notification_intent_id)
+    ?? asString(metadata.notification_intent_id);
+  const notificationChannels =
+    asStringArray(source?.notificationChannels)
+    ?? asStringArray(source?.notification_channels)
+    ?? asStringArray(metadata.notification_intent_channels)
+    ?? [];
+
+  if (!taskID || !projectSlug || !dueAt || !notificationIntentID) {
+    return undefined;
+  }
+
+  return {
+    taskID,
+    projectSlug,
+    dueAt,
+    notificationIntentID,
+    notificationChannels
   };
 }
 
@@ -837,6 +959,34 @@ export function buildMissionDetailRows(state: OpenBurnBarState, missionId?: stri
       value: closureQuestionStateForStatus(mission.status)
     }
   ];
+
+  const enterprisePolicyBlock = extractEnterprisePolicyBlock(mission.metadata);
+  if (enterprisePolicyBlock) {
+    rows.push({
+      id: 'enterprise-policy-reason',
+      label: 'Enterprise policy',
+      value: enterprisePolicyDisplayMessage(enterprisePolicyBlock)
+    });
+  }
+
+  const scheduledReviewIntent = extractScheduledReviewIntent(mission.metadata);
+  if (scheduledReviewIntent) {
+    rows.push({
+      id: 'scheduled-review-task',
+      label: 'Scheduled review task',
+      value: scheduledReviewIntent.taskID
+    });
+    rows.push({
+      id: 'scheduled-review-due',
+      label: 'Scheduled review due',
+      value: scheduledReviewIntent.dueAt
+    });
+    rows.push({
+      id: 'scheduled-review-notifications',
+      label: 'Notification channels',
+      value: scheduledReviewIntent.notificationChannels.join(', ')
+    });
+  }
 
   const prLinkage = resolveMissionPRLinkage(mission);
   if (prLinkage) {
@@ -1034,8 +1184,14 @@ function nextActionSummaryFallback(status: BurnBarMissionStatus): string {
 
 function describeMissionNote(
   mission: BurnBarMissionSnapshot,
-  activePacket?: BurnBarMissionPacketSnapshot
+  activePacket?: BurnBarMissionPacketSnapshot,
+  enterprisePolicyBlock?: BurnBarEnterprisePolicyBlock,
+  scheduledReviewIntent?: BurnBarScheduledReviewIntent
 ): string {
+  if (enterprisePolicyBlock) {
+    return enterprisePolicyDisplayMessage(enterprisePolicyBlock);
+  }
+
   const prLinkage = resolveMissionPRLinkage(mission);
 
   if (mission.status === 'completed') {
@@ -1055,6 +1211,9 @@ function describeMissionNote(
   }
 
   if (mission.status === 'awaiting_approval') {
+    if (scheduledReviewIntent) {
+      return `Mission awaiting operator approval. Scheduled review due ${scheduledReviewIntent.dueAt}.`;
+    }
     return 'Mission awaiting operator approval.';
   }
 
@@ -1177,6 +1336,16 @@ function asString(value: unknown): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const normalized = value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter((item) => item.length > 0);
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function asBoolean(value: unknown): boolean | undefined {

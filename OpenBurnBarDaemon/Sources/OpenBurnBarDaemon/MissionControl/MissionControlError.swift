@@ -8,6 +8,8 @@ public enum BurnBarMissionControlError: Error, LocalizedError {
     case missionNotFound(BurnBarMissionID)
     case missionNotApproved(BurnBarMissionID)
     case missionTerminal(BurnBarMissionID, BurnBarMissionStatus)
+    case enterprisePolicyBlocked(BurnBarMissionID, BurnBarEnterprisePolicyReasonCode, String)
+    case performanceGuardrailExceeded(String, Double, Double)
     case simulatorRunNotFound(BurnBarSimulatorRunID)
     case missingPayload(String)
     /// VAL-DAEMON-011: Execution readiness gate failed with explicit reason code.
@@ -27,6 +29,10 @@ public enum BurnBarMissionControlError: Error, LocalizedError {
             return "OpenBurnBar mission '\(id.rawValue)' has not been approved. Dispatch is blocked."
         case .missionTerminal(let id, let status):
             return "OpenBurnBar mission '\(id.rawValue)' is in terminal state '\(status.rawValue)'. Dispatch is blocked."
+        case .enterprisePolicyBlocked(let id, let reasonCode, let detail):
+            return "OpenBurnBar mission '\(id.rawValue)' blocked by enterprise policy [\(reasonCode.rawValue)]: \(detail)"
+        case .performanceGuardrailExceeded(let metric, let threshold, let observed):
+            return "OpenBurnBar mission-control performance guardrail exceeded [\(metric)]: observed \(observed) > threshold \(threshold)."
         case .simulatorRunNotFound(let id):
             return "OpenBurnBar simulator run '\(id.rawValue)' was not found."
         case .missingPayload(let eventType):

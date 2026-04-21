@@ -39,6 +39,19 @@ struct BurnBarMissionControlTransport: Sendable {
     }
 }
 
+public struct BurnBarMissionControlPerformanceGuardrails: Codable, Hashable, Sendable {
+    public let maxTransportCycleDurationMilliseconds: Double
+    public let maxTrackedMissionCount: Int
+
+    public init(
+        maxTransportCycleDurationMilliseconds: Double = 5_000,
+        maxTrackedMissionCount: Int = 500
+    ) {
+        self.maxTransportCycleDurationMilliseconds = maxTransportCycleDurationMilliseconds
+        self.maxTrackedMissionCount = maxTrackedMissionCount
+    }
+}
+
 public typealias BurnBarMissionControlReviewRunLauncher = @Sendable (
     _ prompt: String,
     _ modelID: String,
