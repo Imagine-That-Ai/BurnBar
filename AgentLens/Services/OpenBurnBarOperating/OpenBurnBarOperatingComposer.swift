@@ -230,6 +230,7 @@ enum OpenBurnBarOperatingComposer {
         )
         let mergedFollowups = mergeUniqueByID(primary: cached.followups, fallback: inferred.followups)
         let mergedMissions = mergeUniqueByID(primary: cached.missions, fallback: inferred.missions)
+        let mergedNextActions = OpenBurnBarControllerNextActionPlanner.orderedActions(from: mergedMissions)
         let mergedEvents = mergeEvents(primary: cached.recentEvents, fallback: inferred.recentEvents)
 
         return OpenBurnBarControllerRuntimeSnapshot(
@@ -247,6 +248,7 @@ enum OpenBurnBarOperatingComposer {
             questions: mergedQuestions,
             followups: mergedFollowups,
             missions: mergedMissions,
+            nextActions: mergedNextActions,
             recentEvents: Array(mergedEvents.prefix(10))
         )
     }
@@ -329,6 +331,7 @@ enum OpenBurnBarOperatingComposer {
                 updatedAt: freshness.updatedAt ?? now
             )
         ]
+        let nextActions = OpenBurnBarControllerNextActionPlanner.orderedActions(from: missions)
 
         var events = history.map {
             OpenBurnBarControllerEvent(
@@ -385,6 +388,7 @@ enum OpenBurnBarOperatingComposer {
             questions: questions,
             followups: followups,
             missions: missions,
+            nextActions: nextActions,
             recentEvents: Array(events.prefix(10))
         )
     }
@@ -1017,7 +1021,15 @@ enum OpenBurnBarOperatingComposer {
             )
         }()
 
-        return [missionApproval, directionOverride]
+        let missionCreation = OpenBurnBarActionAvailability(
+            kind: .missionCreation,
+            available: true,
+            reason: projectName?.nonEmpty.map { "Create a mission for \($0) from this brief." }
+                ?? "Create a mission to start tracking work from this surface.",
+            title: OpenBurnBarActionKind.missionCreation.label
+        )
+
+        return [missionApproval, directionOverride, missionCreation]
     }
 
     private static func buildCompactSummary(

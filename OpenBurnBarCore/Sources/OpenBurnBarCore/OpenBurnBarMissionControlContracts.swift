@@ -88,6 +88,46 @@ public enum BurnBarMissionRecommendation: String, Codable, CaseIterable, Hashabl
     case escalate
 }
 
+public enum BurnBarControllerNextActionBucket: String, Codable, CaseIterable, Hashable, Sendable {
+    case blockage
+    case interruption
+    case completion
+}
+
+public struct BurnBarControllerNextActionSnapshot: Codable, Hashable, Identifiable, Sendable {
+    public let id: String
+    public let missionID: BurnBarMissionID
+    public let projectSlug: String
+    public let title: String
+    public let summary: String
+    public let bucket: BurnBarControllerNextActionBucket
+    public let status: BurnBarMissionStatus
+    public let recommendation: BurnBarMissionRecommendation
+    public let updatedAt: Date
+
+    public init(
+        id: String,
+        missionID: BurnBarMissionID,
+        projectSlug: String,
+        title: String,
+        summary: String,
+        bucket: BurnBarControllerNextActionBucket,
+        status: BurnBarMissionStatus,
+        recommendation: BurnBarMissionRecommendation,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.missionID = missionID
+        self.projectSlug = projectSlug
+        self.title = title
+        self.summary = summary
+        self.bucket = bucket
+        self.status = status
+        self.recommendation = recommendation
+        self.updatedAt = updatedAt
+    }
+}
+
 public enum BurnBarMissionPacketStatus: String, Codable, CaseIterable, Hashable, Sendable {
     case queued
     case dispatched
@@ -295,6 +335,7 @@ public struct BurnBarControllerSummary: Codable, Hashable, Sendable {
     public let freshness: BurnBarControllerFreshnessState
     public let projectionStatus: [BurnBarProjectionStatusSnapshot]
     public let recentEvents: [BurnBarControllerEvent]
+    public let nextActions: [BurnBarControllerNextActionSnapshot]?
 
     public init(
         updatedAt: Date,
@@ -304,7 +345,8 @@ public struct BurnBarControllerSummary: Codable, Hashable, Sendable {
         latestReviewAt: Date? = nil,
         freshness: BurnBarControllerFreshnessState,
         projectionStatus: [BurnBarProjectionStatusSnapshot] = [],
-        recentEvents: [BurnBarControllerEvent] = []
+        recentEvents: [BurnBarControllerEvent] = [],
+        nextActions: [BurnBarControllerNextActionSnapshot]? = nil
     ) {
         self.updatedAt = updatedAt
         self.activeProjectSlug = activeProjectSlug
@@ -314,6 +356,7 @@ public struct BurnBarControllerSummary: Codable, Hashable, Sendable {
         self.freshness = freshness
         self.projectionStatus = projectionStatus
         self.recentEvents = recentEvents
+        self.nextActions = nextActions
     }
 }
 

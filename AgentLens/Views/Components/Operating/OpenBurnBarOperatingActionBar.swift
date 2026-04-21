@@ -308,6 +308,7 @@ struct OpenBurnBarOperatingActionBar: View {
         let snapshot = layer.snapshot
         let missionAction = snapshot.availableActions.first(where: { $0.kind == .missionApproval })
         let directionAction = snapshot.availableActions.first(where: { $0.kind == .directionOverride })
+        let creationAction = snapshot.availableActions.first(where: { $0.kind == .missionCreation })
 
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             HStack(spacing: DesignSystem.Spacing.sm) {
@@ -332,11 +333,11 @@ struct OpenBurnBarOperatingActionBar: View {
                 }
 
                 OpenBurnBarActionButton(
-                    title: compact ? "Create" : "Create Mission",
+                    title: compact ? "Create" : (creationAction?.title ?? "Create Mission"),
                     icon: OpenBurnBarActionKind.missionCreation.icon,
                     compact: compact,
-                    enabled: true,
-                    emphasized: false
+                    enabled: creationAction?.available ?? true,
+                    emphasized: creationAction?.available == true
                 ) {
                     showingMissionAuthoring = true
                 }

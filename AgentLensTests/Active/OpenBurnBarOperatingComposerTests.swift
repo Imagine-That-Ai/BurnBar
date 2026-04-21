@@ -1644,6 +1644,170 @@ extension OpenBurnBarOperatingComposerTests {
         }
     }
 
+    // MARK: VAL-BRIEF-004: Daily re-entry controls are visible and actionable
+
+    /// VAL-BRIEF-004 Evidence: Projects re-entry controls expose daily/weekly actions with deterministic enablement and review-history indicators.
+    func testVAL_BRIEF_004_ReentryControlsAndReviewHistoryIndicatorsAreDeterministic() {
+        let now = Date()
+        let registered = BurnBarReviewProjectSnapshot(
+            id: "project-apollo",
+            projectSlug: "apollo",
+            displayName: "Apollo",
+            summary: "Mission-critical approvals and release hygiene.",
+            status: .healthy,
+            preferredCadence: .daily,
+            freshness: .fresh,
+            latestDailyReviewAt: now.addingTimeInterval(-90 * 60),
+            latestWeeklyReviewAt: now.addingTimeInterval(-3 * 24 * 60 * 60),
+            pendingQuestionCount: 1,
+            openFollowupCount: 1,
+            activeMissionCount: 1,
+            needsOperatorAttention: true
+        )
+        let merged = MergedProject(
+            id: "apollo",
+            slug: "apollo",
+            displayName: "Apollo",
+            registeredProject: registered,
+            totalCost: 12.4,
+            totalTokens: 140_000,
+            sessionCount: 7,
+            providers: [.codex]
+        )
+
+        let healthyControls = merged.reentryReviewControls(daemonIsHealthy: true)
+        XCTAssertEqual(
+            healthyControls.map { $0.cadence },
+            [BurnBarControllerReviewCadence.daily, .weekly]
+        )
+        XCTAssertTrue(healthyControls.allSatisfy(\.isEnabled))
+
+        let unhealthyControls = merged.reentryReviewControls(daemonIsHealthy: false)
+        XCTAssertEqual(
+            unhealthyControls.map { $0.cadence },
+            [BurnBarControllerReviewCadence.daily, .weekly]
+        )
+        XCTAssertTrue(unhealthyControls.allSatisfy { !$0.isEnabled })
+
+        let indicators = merged.reviewHistoryIndicators
+        XCTAssertEqual(
+            indicators.map { $0.cadence },
+            [BurnBarControllerReviewCadence.weekly, .daily]
+        )
+        XCTAssertEqual(indicators, merged.reviewHistoryIndicators, "VAL-BRIEF-004: Review-history indicators should be deterministic across reads")
+        XCTAssertEqual(healthyControls, merged.reentryReviewControls(daemonIsHealthy: true), "VAL-BRIEF-004: Re-entry control ordering should be deterministic across reads")
+    }
+
+    // MARK: VAL-BRIEF-006: Compact home remains actionable pre-scan
+
+    /// VAL-BRIEF-006 Evidence: Pre-scan compact state keeps safe placeholder metrics and an actionable create-mission CTA.
+    func testVAL_BRIEF_006_PreScanCompactHomeKeepsActionableCreateMissionAndSafePlaceholderMetrics() throws {
+        let store = try makeInMemoryStore()
+        let snapshot = makeLayer(dataStore: store).snapshot
+
+        XCTAssertEqual(snapshot.mission.availability, .missing)
+        XCTAssertEqual(snapshot.mission.sessionCount, 0)
+        XCTAssertEqual(snapshot.mission.summarizedSessionCount, 0)
+        XCTAssertEqual(snapshot.mission.burnRecordCount, 0)
+        XCTAssertEqual(snapshot.mission.totalTokens, 0)
+        XCTAssertEqual(snapshot.mission.estimatedCostUSD, 0, accuracy: 0.000_001)
+        XCTAssertTrue(snapshot.mission.changedFilesSummary.contains("No changed files"))
+        XCTAssertTrue(snapshot.compactSummary.localizedCaseInsensitiveContains("waiting"))
+
+        let createAction = snapshot.availableActions.first(where: { $0.kind == .missionCreation })
+        XCTAssertNotNil(createAction, "VAL-BRIEF-006: Create Mission action should be available pre-scan")
+        XCTAssertEqual(createAction?.available, true, "VAL-BRIEF-006: Create Mission CTA must remain actionable pre-scan")
+        XCTAssertFalse(createAction?.reason.isEmpty ?? true, "VAL-BRIEF-006: Create Mission action should provide operator-facing context")
+    }
+
+    // MARK: VAL-CROSS-008: Re-entry next action ordering is deterministic
+
+    /// VAL-CROSS-008 Evidence: App next-action ordering stays deterministic across blockage, interruption, and completion states.
+    func testVAL_CROSS_008_AppNextActionOrderingIsDeterministicAcrossLifecycleStates() {
+        let now = Date()
+        func mission(
+            id: String,
+            title: String,
+            summary: String,
+            state: OpenBurnBarMissionLifecycle,
+            approval: OpenBurnBarMissionApprovalState,
+            updatedAt: Date
+        ) -> OpenBurnBarControllerMissionRecord {
+            OpenBurnBarControllerMissionRecord(
+                id: id,
+                projectName: "Apollo",
+                title: title,
+                summary: summary,
+                state: state,
+                approval: approval,
+                packetSummary: nil,
+                latestResultSummary: nil,
+                latestResultDetail: nil,
+                latestResultRunID: nil,
+                activeWorkerName: nil,
+                activeRunID: nil,
+                packetRunCount: 0,
+                latestTakeoverState: nil,
+                latestTakeoverReason: nil,
+                latestTakeoverRunID: nil,
+                takeoverCount: 0,
+                burnCostUSD: 0,
+                burnTokens: 0,
+                updatedAt: updatedAt
+            )
+        }
+
+        let missions: [OpenBurnBarControllerMissionRecord] = [
+            mission(
+                id: "mission-completed",
+                title: "Completed mission",
+                summary: "Closure landed.",
+                state: .completed,
+                approval: .approved,
+                updatedAt: now.addingTimeInterval(-300)
+            ),
+            mission(
+                id: "mission-blocked-b",
+                title: "Blocked B",
+                summary: "Projection outage still blocks dispatch.",
+                state: .blocked,
+                approval: .pending,
+                updatedAt: now
+            ),
+            mission(
+                id: "mission-interrupted",
+                title: "Interrupted mission",
+                summary: "Partial rollout needs a rerun.",
+                state: .partial,
+                approval: .approved,
+                updatedAt: now.addingTimeInterval(-60)
+            ),
+            mission(
+                id: "mission-blocked-a",
+                title: "Blocked A",
+                summary: "Credential gate is still unresolved.",
+                state: .blocked,
+                approval: .pending,
+                updatedAt: now
+            )
+        ]
+
+        let ordered = OpenBurnBarControllerNextActionPlanner.orderedActions(from: missions)
+        XCTAssertEqual(
+            ordered.map(\.missionID),
+            ["mission-blocked-a", "mission-blocked-b", "mission-interrupted", "mission-completed"]
+        )
+        XCTAssertEqual(
+            ordered.map(\.bucket),
+            [.blockage, .blockage, .interruption, .completion]
+        )
+        XCTAssertEqual(
+            ordered,
+            OpenBurnBarControllerNextActionPlanner.orderedActions(from: missions),
+            "VAL-CROSS-008: App next-action ordering should be deterministic across repeated computations"
+        )
+    }
+
     // MARK: VAL-APP-006: Mission card handles empty/sparse/blocked states explicitly
 
     /// VAL-APP-006 Evidence: Mission brief exposes explicit empty/sparse/blocked copy

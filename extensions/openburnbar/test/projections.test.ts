@@ -14,6 +14,7 @@ import {
   buildHealthRows,
   buildRunDetailRows,
   buildMissionRows,
+  buildMissionNextActions,
   buildMissionDetailRows,
   readinessDisplayMessage,
   type BurnBarHealthRow,
@@ -939,6 +940,58 @@ describe('buildMissionRows', () => {
     const result = buildMissionRows(state);
 
     expect(result[0].phase).toBe('executing_tool');
+  });
+});
+
+// VAL-CROSS-008: Re-entry next action ordering is deterministic after completion, interruption, or blockage
+describe('buildMissionNextActions', () => {
+  it('should order next actions by blockage, interruption, then completion with deterministic tie-breaks', () => {
+    const now = new Date('2024-01-15T12:00:00Z');
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-completed',
+        status: 'completed',
+        recommendation: 'proceed',
+        updatedAt: new Date(now.getTime() + 360_000).toISOString()
+      }),
+      createMockMission({
+        id: 'mission-blocked-b',
+        status: 'failed',
+        recommendation: 'review',
+        updatedAt: now.toISOString()
+      }),
+      createMockMission({
+        id: 'mission-interrupted',
+        status: 'partially_completed',
+        recommendation: 'pause',
+        updatedAt: new Date(now.getTime() + 180_000).toISOString()
+      }),
+      createMockMission({
+        id: 'mission-blocked-a',
+        status: 'failed',
+        recommendation: 'review',
+        updatedAt: now.toISOString()
+      })
+    ];
+
+    const state = createMockState({ daemonMissions: missions });
+    const actions = buildMissionNextActions(state);
+
+    expect(actions.map(a => a.missionId)).toEqual([
+      'mission-blocked-a',
+      'mission-blocked-b',
+      'mission-interrupted',
+      'mission-completed'
+    ]);
+    expect(actions.map(a => a.bucket)).toEqual([
+      'blockage',
+      'blockage',
+      'interruption',
+      'completion'
+    ]);
+
+    const actionsAgain = buildMissionNextActions(state);
+    expect(actionsAgain.map(a => a.id)).toEqual(actions.map(a => a.id));
   });
 });
 

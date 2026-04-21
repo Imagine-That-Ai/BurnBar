@@ -665,6 +665,126 @@ struct OpenBurnBarControllerMissionRecord: Identifiable, Codable, Equatable, Sen
     let updatedAt: Date
 }
 
+enum OpenBurnBarControllerNextActionBucket: String, Codable, Equatable, Sendable {
+    case blockage
+    case interruption
+    case completion
+}
+
+struct OpenBurnBarControllerNextAction: Identifiable, Codable, Equatable, Sendable {
+    let id: String
+    let missionID: String
+    let projectName: String
+    let title: String
+    let summary: String
+    let bucket: OpenBurnBarControllerNextActionBucket
+    let missionState: OpenBurnBarMissionLifecycle
+    let updatedAt: Date
+}
+
+enum OpenBurnBarControllerNextActionPlanner {
+    static func orderedActions(
+        from missions: [OpenBurnBarControllerMissionRecord]
+    ) -> [OpenBurnBarControllerNextAction] {
+        missions
+            .map(action(for:))
+            .sorted(by: actionSort)
+    }
+
+    private static func action(
+        for mission: OpenBurnBarControllerMissionRecord
+    ) -> OpenBurnBarControllerNextAction {
+        OpenBurnBarControllerNextAction(
+            id: "next-action-\(mission.id)",
+            missionID: mission.id,
+            projectName: mission.projectName,
+            title: actionTitle(for: mission.state, approval: mission.approval),
+            summary: mission.summary.nonEmpty
+                ?? mission.latestResultSummary?.nonEmpty
+                ?? "OpenBurnBar captured mission state and is ready for the next operator call.",
+            bucket: bucket(for: mission.state),
+            missionState: mission.state,
+            updatedAt: mission.updatedAt
+        )
+    }
+
+    private static func actionSort(
+        lhs: OpenBurnBarControllerNextAction,
+        rhs: OpenBurnBarControllerNextAction
+    ) -> Bool {
+        let lhsBucket = bucketRank(lhs.bucket)
+        let rhsBucket = bucketRank(rhs.bucket)
+        if lhsBucket != rhsBucket {
+            return lhsBucket < rhsBucket
+        }
+
+        let lhsStateRank = stateRank(lhs.missionState)
+        let rhsStateRank = stateRank(rhs.missionState)
+        if lhsStateRank != rhsStateRank {
+            return lhsStateRank < rhsStateRank
+        }
+
+        if lhs.updatedAt != rhs.updatedAt {
+            return lhs.updatedAt > rhs.updatedAt
+        }
+
+        return lhs.missionID < rhs.missionID
+    }
+
+    private static func bucket(
+        for state: OpenBurnBarMissionLifecycle
+    ) -> OpenBurnBarControllerNextActionBucket {
+        switch state {
+        case .blocked:
+            return .blockage
+        case .completed:
+            return .completion
+        case .running, .partial, .planned:
+            return .interruption
+        }
+    }
+
+    private static func bucketRank(
+        _ bucket: OpenBurnBarControllerNextActionBucket
+    ) -> Int {
+        switch bucket {
+        case .blockage: return 0
+        case .interruption: return 1
+        case .completion: return 2
+        }
+    }
+
+    private static func stateRank(
+        _ state: OpenBurnBarMissionLifecycle
+    ) -> Int {
+        switch state {
+        case .blocked: return 0
+        case .partial: return 1
+        case .running: return 2
+        case .planned: return 3
+        case .completed: return 4
+        }
+    }
+
+    private static func actionTitle(
+        for state: OpenBurnBarMissionLifecycle,
+        approval: OpenBurnBarMissionApprovalState
+    ) -> String {
+        switch state {
+        case .blocked:
+            return "Resolve blocker"
+        case .partial:
+            return "Resume interrupted mission"
+        case .running:
+            return "Monitor active mission"
+        case .planned:
+            return approval == .pending ? "Approve mission" : "Start mission execution"
+        case .completed:
+            return "Review completion"
+        }
+    }
+}
+
 struct OpenBurnBarControllerEvent: Identifiable, Codable, Equatable, Sendable {
     let id: String
     let projectName: String?
@@ -736,6 +856,7 @@ struct OpenBurnBarControllerRuntimeSnapshot: Codable, Equatable, Sendable {
     var questions: [OpenBurnBarControllerQuestion]
     var followups: [OpenBurnBarControllerFollowup]
     var missions: [OpenBurnBarControllerMissionRecord]
+    var nextActions: [OpenBurnBarControllerNextAction]? = nil
     var recentEvents: [OpenBurnBarControllerEvent]
 
     static let empty = OpenBurnBarControllerRuntimeSnapshot(
@@ -745,6 +866,7 @@ struct OpenBurnBarControllerRuntimeSnapshot: Codable, Equatable, Sendable {
         questions: [],
         followups: [],
         missions: [],
+        nextActions: [],
         recentEvents: []
     )
 
@@ -766,6 +888,9 @@ struct OpenBurnBarControllerRuntimeSnapshot: Codable, Equatable, Sendable {
         }
         if let followup = openFollowups.first {
             return followup.title
+        }
+        if let nextAction = nextActions?.first {
+            return nextAction.title
         }
         if let mission = missions.first {
             if let takeoverReason = mission.latestTakeoverReason?.nonEmpty {

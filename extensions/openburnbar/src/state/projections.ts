@@ -494,6 +494,43 @@ export type BurnBarRunPhase =
   | 'cancelled'
   | 'awaiting_approval';
 
+export type BurnBarMissionNextActionBucket = 'blockage' | 'interruption' | 'completion';
+
+export interface BurnBarMissionNextAction {
+  id: string;
+  missionId: string;
+  projectSlug: string;
+  title: string;
+  summary: string;
+  bucket: BurnBarMissionNextActionBucket;
+  status: BurnBarMissionStatus;
+  recommendation: BurnBarMissionRecommendation;
+  updatedAt: string;
+}
+
+export function buildMissionNextActions(state: OpenBurnBarState): BurnBarMissionNextAction[] {
+  if (!state.daemonMissions || state.daemonMissions.length === 0) {
+    return [];
+  }
+
+  return [...state.daemonMissions]
+    .sort(nextActionMissionComparator)
+    .map((mission) => {
+      const trimmedSummary = mission.summary.trim();
+      return {
+        id: `next-action-${mission.id}`,
+        missionId: mission.id,
+        projectSlug: mission.projectSlug,
+        title: nextActionTitle(mission.status),
+        summary: trimmedSummary.length > 0 ? trimmedSummary : nextActionSummaryFallback(mission.status),
+        bucket: nextActionBucket(mission.status),
+        status: mission.status,
+        recommendation: mission.recommendation,
+        updatedAt: mission.updatedAt
+      };
+    });
+}
+
 export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
   const timestamp = new Date().toISOString();
 
@@ -752,6 +789,114 @@ function missionPhaseFromStatus(status: BurnBarMissionStatus): BurnBarRunPhase {
     return 'planning';
   default:
     return 'idle';
+  }
+}
+
+function nextActionMissionComparator(
+  lhs: BurnBarMissionSnapshot,
+  rhs: BurnBarMissionSnapshot
+): number {
+  const bucketDelta = nextActionBucketRank(nextActionBucket(lhs.status)) - nextActionBucketRank(nextActionBucket(rhs.status));
+  if (bucketDelta !== 0) {
+    return bucketDelta;
+  }
+
+  const statusDelta = nextActionStatusRank(lhs.status) - nextActionStatusRank(rhs.status);
+  if (statusDelta !== 0) {
+    return statusDelta;
+  }
+
+  const lhsTime = new Date(lhs.updatedAt).getTime();
+  const rhsTime = new Date(rhs.updatedAt).getTime();
+  if (lhsTime !== rhsTime) {
+    return rhsTime - lhsTime;
+  }
+
+  return lhs.id.localeCompare(rhs.id);
+}
+
+function nextActionBucket(status: BurnBarMissionStatus): BurnBarMissionNextActionBucket {
+  switch (status) {
+  case 'failed':
+    return 'blockage';
+  case 'completed':
+  case 'cancelled':
+    return 'completion';
+  case 'draft':
+  case 'awaiting_approval':
+  case 'approved':
+  case 'dispatching':
+  case 'in_progress':
+  case 'partially_completed':
+  default:
+    return 'interruption';
+  }
+}
+
+function nextActionBucketRank(bucket: BurnBarMissionNextActionBucket): number {
+  switch (bucket) {
+  case 'blockage': return 0;
+  case 'interruption': return 1;
+  case 'completion': return 2;
+  default: return 3;
+  }
+}
+
+function nextActionStatusRank(status: BurnBarMissionStatus): number {
+  switch (status) {
+  case 'failed': return 0;
+  case 'awaiting_approval': return 1;
+  case 'partially_completed': return 2;
+  case 'in_progress': return 3;
+  case 'dispatching': return 4;
+  case 'approved': return 5;
+  case 'draft': return 6;
+  case 'completed': return 7;
+  case 'cancelled': return 8;
+  default: return 9;
+  }
+}
+
+function nextActionTitle(status: BurnBarMissionStatus): string {
+  switch (status) {
+  case 'failed': return 'Resolve blocker';
+  case 'awaiting_approval': return 'Approve mission';
+  case 'partially_completed': return 'Resume interrupted mission';
+  case 'in_progress':
+  case 'dispatching':
+    return 'Monitor active mission';
+  case 'approved':
+  case 'draft':
+    return 'Start mission execution';
+  case 'completed':
+    return 'Review completion';
+  case 'cancelled':
+    return 'Review cancellation';
+  default:
+    return 'Review mission state';
+  }
+}
+
+function nextActionSummaryFallback(status: BurnBarMissionStatus): string {
+  switch (status) {
+  case 'failed':
+    return 'Clear the blocker and resume execution.';
+  case 'awaiting_approval':
+    return 'Operator approval is required before dispatch can continue.';
+  case 'partially_completed':
+    return 'Mission work was interrupted and still needs closure.';
+  case 'in_progress':
+  case 'dispatching':
+    return 'Mission is active; watch for the next checkpoint.';
+  case 'approved':
+  case 'draft':
+    return 'Mission is ready to begin execution.';
+  case 'completed':
+    return 'Mission closed successfully; review closure evidence.';
+  case 'cancelled':
+    return 'Mission was cancelled; confirm whether it should be reopened.';
+  default:
+    return 'Review current mission status.';
   }
 }
 
