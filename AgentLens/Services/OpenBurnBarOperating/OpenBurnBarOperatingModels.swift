@@ -214,7 +214,11 @@ struct OpenBurnBarMissionSummary: Equatable, Sendable {
     let burnRecordCount: Int
     let totalTokens: Int
     let estimatedCostUSD: Double
+    let changedFilesSummary: String
+    let risksSummary: String
+    let remainingWorkSummary: String
     let recommendationSummary: String
+    let nextRecommendation: String
     let approvalNote: String?
     let readinessFailure: BurnBarReadinessFailure?
 }

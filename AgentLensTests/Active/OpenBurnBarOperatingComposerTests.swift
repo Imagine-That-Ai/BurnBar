@@ -322,7 +322,8 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
         latestMessage: String,
         latestSummary: String?,
         latestSummaryTitle: String?,
-        usageCosts: [Double]
+        usageCosts: [Double],
+        latestKeyFiles: [String] = []
     ) throws {
         let sortedDates = conversationDates.sorted()
         for (index, date) in sortedDates.enumerated() {
@@ -342,7 +343,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
                     messageCount: 14 + index,
                     userWordCount: 90,
                     assistantWordCount: 180,
-                    keyFiles: [],
+                    keyFiles: isLatest ? latestKeyFiles : [],
                     keyCommands: [],
                     keyTools: ["Read"],
                     inferredTaskTitle: summaryTitle ?? "\(project) checkpoint \(index)",
@@ -738,7 +739,7 @@ extension OpenBurnBarOperatingComposerTests {
 
         // Verify projects are sorted deterministically
         // Both have same cost (1.5), so tie-break should be by slug ascending (Alpha before Zeta)
-        let missionProjectName = snapshot.mission.projectName ?? ""
+        let missionProjectName = snapshot.mission.projectName
         XCTAssertFalse(missionProjectName.isEmpty, "VAL-APP-007: Mission projectName should be set")
 
         // The ordering should be deterministic: attention first, then cost descending, then slug ascending
@@ -1369,6 +1370,241 @@ extension OpenBurnBarOperatingComposerTests {
         }
     }
 
+    // MARK: VAL-BRIEF-001: Operator brief includes required closure fields
+
+    /// VAL-BRIEF-001 Evidence: Mission brief model includes identity/lifecycle/approval/burn and closure detail fields
+    @MainActor
+    func testVAL_BRIEF_001_MissionBriefIncludesRequiredClosureFields() throws {
+        let store = try makeInMemoryStore()
+        let now = Date()
+
+        try seedProject(
+            store: store,
+            project: "Apollo",
+            conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_700) },
+            latestMessage: "Ship flow is active and still resolving the final QA checklist.",
+            latestSummary: nil,
+            latestSummaryTitle: "Ship approval sheet",
+            usageCosts: [2.1, 1.7],
+            latestKeyFiles: [
+                "AgentLens/Views/Dashboard/DashboardView.swift",
+                "AgentLens/Services/OpenBurnBarOperating/OpenBurnBarOperatingComposer.swift",
+                "AgentLensTests/Active/OpenBurnBarOperatingComposerTests.swift"
+            ]
+        )
+
+        let snapshot = makeLayer(dataStore: store).snapshot
+        let mission = snapshot.mission
+
+        XCTAssertFalse(mission.missionID.isEmpty, "VAL-BRIEF-001: Mission identity must be present")
+        XCTAssertFalse(mission.state.label.isEmpty, "VAL-BRIEF-001: Mission lifecycle label must be present")
+        XCTAssertFalse(mission.approval.label.isEmpty, "VAL-BRIEF-001: Mission approval label must be present")
+        XCTAssertGreaterThan(mission.totalTokens, 0, "VAL-BRIEF-001: Burn tokens must be populated")
+        XCTAssertGreaterThan(mission.estimatedCostUSD, 0, "VAL-BRIEF-001: Burn cost must be populated")
+
+        XCTAssertFalse(mission.changedFilesSummary.isEmpty, "VAL-BRIEF-001: Changed-files summary must be populated")
+        XCTAssertTrue(mission.changedFilesSummary.contains("file"), "VAL-BRIEF-001: Changed-files summary should describe touched files")
+        XCTAssertFalse(mission.risksSummary.isEmpty, "VAL-BRIEF-001: Risks summary must be populated")
+        XCTAssertFalse(mission.remainingWorkSummary.isEmpty, "VAL-BRIEF-001: Remaining-work summary must be populated")
+        XCTAssertFalse(mission.nextRecommendation.isEmpty, "VAL-BRIEF-001: Next recommendation must be populated")
+    }
+
+    // MARK: VAL-BRIEF-003: Closure messaging is state-specific and deterministic
+
+    /// VAL-BRIEF-003 Evidence: Next recommendation messaging differs deterministically for running/blocked/partial/completed
+    @MainActor
+    func testVAL_BRIEF_003_StateSpecificRecommendationMatrixIsDeterministic() throws {
+        let now = Date()
+
+        // Running
+        do {
+            let store = try makeInMemoryStore()
+            try seedProject(
+                store: store,
+                project: "Apollo",
+                conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 1_500) },
+                latestMessage: "Execution is still active.",
+                latestSummary: "Execution is active and progressing.",
+                latestSummaryTitle: "Running checkpoint",
+                usageCosts: [1.2]
+            )
+            let layer = makeLayer(dataStore: store)
+            XCTAssertEqual(layer.snapshot.mission.state, .running)
+            XCTAssertEqual(layer.snapshot.mission.nextRecommendation, "Approve mission to keep active execution moving.")
+            XCTAssertEqual(layer.snapshot.mission.nextRecommendation, layer.snapshot.mission.nextRecommendation, "VAL-BRIEF-003: Running recommendation must be deterministic")
+        }
+
+        // Blocked
+        do {
+            let store = try makeInMemoryStore()
+            try seedProject(
+                store: store,
+                project: "Apollo",
+                conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 1_500) },
+                latestMessage: "Execution stalled.",
+                latestSummary: "Execution stalled while waiting on projection.",
+                latestSummaryTitle: "Blocked checkpoint",
+                usageCosts: [1.2]
+            )
+            try store.upsertRetrievalHealth(
+                RetrievalHealthRecord(
+                    subsystem: .projection,
+                    status: .failed,
+                    errorCode: "projection_failed",
+                    errorMessage: "Projection queue failed."
+                )
+            )
+            let layer = makeLayer(dataStore: store)
+            XCTAssertEqual(layer.snapshot.mission.state, .blocked)
+            XCTAssertEqual(layer.snapshot.mission.nextRecommendation, "Resolve blocking issues, then approve mission to retry.")
+            XCTAssertEqual(layer.snapshot.mission.nextRecommendation, layer.snapshot.mission.nextRecommendation, "VAL-BRIEF-003: Blocked recommendation must be deterministic")
+        }
+
+        // Partial
+        do {
+            let store = try makeInMemoryStore()
+            try seedProject(
+                store: store,
+                project: "Apollo",
+                conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 2_100) },
+                latestMessage: "The release notes say the migration is blocked. Should we keep the current launch scope?",
+                latestSummary: nil,
+                latestSummaryTitle: "Partial checkpoint",
+                usageCosts: [1.4]
+            )
+            let layer = makeLayer(dataStore: store)
+            XCTAssertEqual(layer.snapshot.mission.state, .partial)
+            XCTAssertEqual(layer.snapshot.mission.nextRecommendation, "Approve mission and close remaining work before rerun.")
+            XCTAssertEqual(layer.snapshot.mission.nextRecommendation, layer.snapshot.mission.nextRecommendation, "VAL-BRIEF-003: Partial recommendation must be deterministic")
+        }
+
+        // Completed
+        do {
+            let store = try makeInMemoryStore()
+            try seedProject(
+                store: store,
+                project: "Apollo",
+                conversationDates: [
+                    now.addingTimeInterval(-45 * 3_600),
+                    now.addingTimeInterval(-34 * 3_600),
+                    now.addingTimeInterval(-28 * 3_600),
+                    now.addingTimeInterval(-20 * 3_600),
+                    now.addingTimeInterval(-8 * 3_600),
+                ],
+                latestMessage: "Everything wrapped cleanly.",
+                latestSummary: "Closure complete and artifacts posted.",
+                latestSummaryTitle: "Completed checkpoint",
+                usageCosts: [1.1]
+            )
+            let layer = makeLayer(dataStore: store)
+            XCTAssertEqual(layer.snapshot.mission.state, .completed)
+            XCTAssertEqual(layer.snapshot.mission.nextRecommendation, "Approve mission closure or request one final follow-up.")
+            XCTAssertEqual(layer.snapshot.mission.nextRecommendation, layer.snapshot.mission.nextRecommendation, "VAL-BRIEF-003: Completed recommendation must be deterministic")
+        }
+    }
+
+    // MARK: VAL-APP-006: Mission card handles empty/sparse/blocked states explicitly
+
+    /// VAL-APP-006 Evidence: Mission brief exposes explicit empty/sparse/blocked copy
+    @MainActor
+    func testVAL_APP_006_MissionBriefShowsExplicitEmptySparseBlockedStates() throws {
+        let now = Date()
+
+        // Empty
+        do {
+            let store = try makeInMemoryStore()
+            let mission = makeLayer(dataStore: store).snapshot.mission
+            XCTAssertEqual(mission.availability, .missing, "VAL-APP-006: Empty state should use missing availability")
+            XCTAssertTrue(mission.title.contains("No active mission"), "VAL-APP-006: Empty state copy must be explicit")
+            XCTAssertTrue(mission.changedFilesSummary.contains("No changed files"), "VAL-APP-006: Empty state changed-files copy must be explicit")
+        }
+
+        // Sparse
+        do {
+            let store = try makeInMemoryStore()
+            try seedProject(
+                store: store,
+                project: "Apollo",
+                conversationDates: [now.addingTimeInterval(-20 * 60)],
+                latestMessage: "Only one checkpoint exists so far.",
+                latestSummary: "Initial checkpoint captured.",
+                latestSummaryTitle: "Initial checkpoint",
+                usageCosts: [0.4]
+            )
+            let mission = makeLayer(dataStore: store).snapshot.mission
+            XCTAssertEqual(mission.availability, .sparse, "VAL-APP-006: Sparse mission should use sparse availability")
+            XCTAssertTrue(mission.subtitle.contains("sparse"), "VAL-APP-006: Sparse state copy must be explicit")
+        }
+
+        // Blocked
+        do {
+            let store = try makeInMemoryStore()
+            try seedProject(
+                store: store,
+                project: "Apollo",
+                conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 1_800) },
+                latestMessage: "Execution stalled waiting on projection queue.",
+                latestSummary: "Waiting for projection queue recovery.",
+                latestSummaryTitle: "Blocked checkpoint",
+                usageCosts: [1.0]
+            )
+            try store.upsertRetrievalHealth(
+                RetrievalHealthRecord(
+                    subsystem: .projection,
+                    status: .failed,
+                    errorCode: "projection_failed",
+                    errorMessage: "Projection queue failed for Apollo."
+                )
+            )
+            let mission = makeLayer(dataStore: store).snapshot.mission
+            XCTAssertEqual(mission.state, .blocked, "VAL-APP-006: Blocked state should be explicit")
+            XCTAssertTrue(mission.risksSummary.contains("Projection queue failed"), "VAL-APP-006: Blocked risk copy must expose the blocking reason")
+        }
+    }
+
+    /// VAL-APP-006 Evidence: Mission brief replaces stale blocked copy after recovery
+    @MainActor
+    func testVAL_APP_006_BlockedStateDoesNotStayStaleAfterRecovery() throws {
+        let store = try makeInMemoryStore()
+        let now = Date()
+
+        try seedProject(
+            store: store,
+            project: "Apollo",
+            conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 1_800) },
+            latestMessage: "Execution resumed after queue fix.",
+            latestSummary: "Execution resumed and is moving.",
+            latestSummaryTitle: "Recovery checkpoint",
+            usageCosts: [1.3]
+        )
+        try store.upsertRetrievalHealth(
+            RetrievalHealthRecord(
+                subsystem: .projection,
+                status: .failed,
+                errorCode: "projection_failed",
+                errorMessage: "Projection queue failed for Apollo."
+            )
+        )
+
+        let layer = makeLayer(dataStore: store)
+        let blockedMission = layer.snapshot.mission
+        XCTAssertEqual(blockedMission.state, .blocked, "VAL-APP-006: Preconditions should start blocked")
+
+        try store.upsertRetrievalHealth(
+            RetrievalHealthRecord(
+                subsystem: .projection,
+                status: .healthy,
+                observedAt: now.addingTimeInterval(120),
+                updatedAt: now.addingTimeInterval(120)
+            )
+        )
+        layer.stateRevision += 1
+
+        let recoveredMission = layer.snapshot.mission
+        XCTAssertNotEqual(recoveredMission.state, .blocked, "VAL-APP-006: Mission state should clear blocked after health recovery")
+        XCTAssertNotEqual(recoveredMission.risksSummary, blockedMission.risksSummary, "VAL-APP-006: Risk messaging must update and avoid stale blocked copy")
+    }
+
     // MARK: VAL-BRIEF-005: Runtime source/degraded mode is visible across operating surfaces
 
     /// VAL-BRIEF-005 Evidence: Controller runtime exposes source field
@@ -1536,7 +1772,11 @@ extension OpenBurnBarOperatingComposerTests {
             burnRecordCount: 2,
             totalTokens: 15000,
             estimatedCostUSD: 1.50,
+            changedFilesSummary: "2 files touched: AgentLens/Views/Dashboard/DashboardView.swift, AgentLens/Services/OpenBurnBarOperating/OpenBurnBarOperatingComposer.swift",
+            risksSummary: "Operator approval is still pending for this mission checkpoint.",
+            remainingWorkSummary: "Approve this mission or record an override before dispatch can continue.",
             recommendationSummary: "Proceed with approval.",
+            nextRecommendation: "Approve mission to continue execution.",
             approvalNote: nil,
             readinessFailure: readinessFailure
         )
@@ -1561,7 +1801,11 @@ extension OpenBurnBarOperatingComposerTests {
             burnRecordCount: 2,
             totalTokens: 15000,
             estimatedCostUSD: 1.50,
+            changedFilesSummary: "No changed files are available yet.",
+            risksSummary: "Execution has not started yet, so downstream risk is still unvalidated.",
+            remainingWorkSummary: "Gather a project checkpoint so OpenBurnBar can form an actionable brief.",
             recommendationSummary: "Proceed with approval.",
+            nextRecommendation: "Start mission execution from the current plan.",
             approvalNote: nil,
             readinessFailure: nil
         )
@@ -1758,7 +2002,7 @@ extension OpenBurnBarOperatingComposerTests {
     @MainActor
     func testMissionAuthoringActionKindIsAvailableInActionBar() throws {
         let store = try makeInMemoryStore()
-        let layer = makeLayer(dataStore: store)
+        _ = makeLayer(dataStore: store)
 
         // Verify missionCreation action kind exists and has proper display properties
         XCTAssertEqual(OpenBurnBarActionKind.missionCreation.label, "Create Mission")
