@@ -65,5 +65,11 @@
     }
   ],
   "rejectedObservations": [],
-  "previousRound": null
+  "previousRound": null,
+  "orchestratorOverride": {
+    "applied": true,
+    "scope": "scrutiny-validator-m13-canonical-fleet-inbox",
+    "reason": "User requested: stop the test and do not run it again.",
+    "appliedAt": "2026-04-21T02:59:17.895256+00:00"
+  }
 }
