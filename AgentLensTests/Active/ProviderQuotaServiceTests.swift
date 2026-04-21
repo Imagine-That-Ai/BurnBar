@@ -1011,7 +1011,8 @@ private final class TestKeychainBackend: KeychainStoreBackend {
 }
 
 private final class StubURLProtocol: URLProtocol {
-    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    /// Test-only global seam intentionally mutable across test setup/teardown.
+    nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
 
     override class func canInit(with request: URLRequest) -> Bool {
         true
