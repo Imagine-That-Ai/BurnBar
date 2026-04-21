@@ -161,6 +161,26 @@ function makeConnectedClient(overrides: Partial<ConstructorParameters<typeof Ope
         updatedAt: "2026-03-22T10:03:00.000Z"
       }
     }),
+    missionApprove: vi.fn(),
+    missionList: vi.fn().mockResolvedValue({ missions: [] }),
+    missionGet: vi.fn(),
+    questionAnswer: vi.fn(),
+    questionsList: vi.fn().mockResolvedValue({ questions: [] }),
+    controllerSummary: vi.fn().mockResolvedValue({
+      summary: {
+        activeProjectSlug: "test-project",
+        counts: {
+          projectCount: 1,
+          pendingQuestionCount: 0,
+          openFollowupCount: 0,
+          activeMissionCount: 0,
+          staleProjectCount: 0
+        },
+        freshness: "provisional",
+        needsOperatorAttention: false,
+        metadata: {}
+      }
+    }),
     ...overrides
   };
 }
@@ -1312,5 +1332,325 @@ describe("buildPanelViewModel", () => {
     await controller.refresh();
     expect(controller.snapshot.runs[0]?.phase).toBe("completed");
     expect(controller.snapshot.pendingToolCalls).toHaveLength(0);
+  });
+});
+
+describe("VAL-EXT-009: Mission operator actions", () => {
+  it("VAL-EXT-009: approveMission calls daemon missionApprove and refreshes state", async () => {
+    const missionApprove = vi.fn().mockResolvedValue({
+      mission: {
+        id: "mission-1",
+        projectSlug: "test-project",
+        title: "Test Mission",
+        summary: "A test mission",
+        status: "approved",
+        recommendation: "proceed",
+        createdAt: "2026-03-22T10:00:00.000Z",
+        updatedAt: "2026-03-22T10:05:00.000Z",
+        approval: {
+          approved: true,
+          approvedAt: "2026-03-22T10:05:00.000Z",
+          approvedBy: "test-client"
+        },
+        packets: [],
+        results: [],
+        burnRecords: [],
+        takeoverHistory: [],
+        metadata: {}
+      }
+    });
+    const client = makeConnectedClient({
+      missionApprove
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    const result = await controller.approveMission("mission-1", "Approved from extension");
+
+    expect(missionApprove).toHaveBeenCalledWith({
+      missionID: "mission-1",
+      actor: "test-client",
+      note: "Approved from extension"
+    });
+    expect(result.mission.status).toBe("approved");
+    expect(result.mission.approval?.approved).toBe(true);
+  });
+
+  it("VAL-EXT-009: answerPendingQuestion calls daemon questionAnswer and refreshes state", async () => {
+    const questionAnswer = vi.fn().mockResolvedValue({
+      question: {
+        id: "question-1",
+        projectSlug: "test-project",
+        title: "What should happen next?",
+        prompt: "Need operator input",
+        stageLabel: "Operator Decision",
+        status: "answered",
+        priority: "normal",
+        askedAt: "2026-03-22T10:00:00.000Z",
+        latestAnswer: {
+          answer: "Proceed with the plan",
+          answeredBy: "test-client",
+          answeredAt: "2026-03-22T10:05:00.000Z"
+        },
+        evidenceRefs: [],
+        suggestedOptions: [
+          {
+            id: "proceed",
+            title: "Proceed",
+            detail: "Keep the current direction",
+            answer: "Proceed with the plan"
+          }
+        ],
+        metadata: {}
+      }
+    });
+    const client = makeConnectedClient({
+      questionAnswer
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    const result = await controller.answerPendingQuestion(
+      "question-1",
+      "Proceed with the plan",
+      "proceed",
+      true
+    );
+
+    expect(questionAnswer).toHaveBeenCalledWith({
+      questionID: "question-1",
+      answeredBy: "test-client",
+      answer: "Proceed with the plan",
+      selectedOptionID: "proceed",
+      markFollowupDone: true
+    });
+    expect(result.question.status).toBe("answered");
+    expect(result.question.latestAnswer?.answer).toBe("Proceed with the plan");
+  });
+
+  it("VAL-EXT-009: mission approve action mutates daemon state and converges without manual refresh", async () => {
+    // Track whether mission has been approved
+    let missionApproved = false;
+
+    const missionApprove = vi.fn().mockImplementation(() => {
+      missionApproved = true;
+      return Promise.resolve({
+        mission: {
+          id: "mission-awaiting",
+          projectSlug: "test-project",
+          title: "Awaiting Approval",
+          summary: "Needs approval",
+          status: "approved",
+          recommendation: "proceed",
+          createdAt: "2026-03-22T10:00:00.000Z",
+          updatedAt: "2026-03-22T10:05:00.000Z",
+          approval: {
+            approved: true,
+            approvedAt: "2026-03-22T10:05:00.000Z",
+            approvedBy: "test-client"
+          },
+          packets: [],
+          results: [],
+          burnRecords: [],
+          takeoverHistory: [],
+          metadata: {}
+        }
+      });
+    });
+
+    const missionList = vi.fn().mockImplementation(() => {
+      return Promise.resolve({
+        missions: [
+          {
+            id: "mission-awaiting",
+            projectSlug: "test-project",
+            title: "Awaiting Approval",
+            summary: "Needs approval",
+            status: missionApproved ? "approved" : "awaiting_approval",
+            recommendation: "review",
+            createdAt: "2026-03-22T10:00:00.000Z",
+            updatedAt: missionApproved ? "2026-03-22T10:05:00.000Z" : "2026-03-22T10:00:00.000Z",
+            approval: missionApproved
+              ? { approved: true, approvedAt: "2026-03-22T10:05:00.000Z", approvedBy: "test-client" }
+              : { approved: false },
+            packets: [],
+            results: [],
+            burnRecords: [],
+            takeoverHistory: [],
+            metadata: {}
+          }
+        ]
+      });
+    });
+
+    const client = makeConnectedClient({
+      missionApprove,
+      missionList
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+
+    // Initial state: mission is awaiting_approval
+    const missionsBefore = await controller.listMissions();
+    expect(missionsBefore[0]?.status).toBe("awaiting_approval");
+    expect(missionsBefore[0]?.approval?.approved).toBe(false);
+
+    // Approve the mission via daemon RPC
+    await controller.approveMission("mission-awaiting", "Approved via extension");
+
+    // After approval: mission status is updated and converged
+    const missionsAfter = await controller.listMissions();
+    expect(missionsAfter[0]?.status).toBe("approved");
+    expect(missionsAfter[0]?.approval?.approved).toBe(true);
+    expect(missionApprove).toHaveBeenCalledWith({
+      missionID: "mission-awaiting",
+      actor: "test-client",
+      note: "Approved via extension"
+    });
+  });
+
+  it("VAL-EXT-009: question answer action mutates daemon state and converges without manual refresh", async () => {
+    // Track whether question has been answered
+    let questionAnswered = false;
+
+    const questionAnswer = vi.fn().mockImplementation(() => {
+      questionAnswered = true;
+      return Promise.resolve({
+        question: {
+          id: "pending-question",
+          projectSlug: "test-project",
+          title: "What should happen?",
+          prompt: "Need a decision",
+          stageLabel: "Operator Decision",
+          status: "answered",
+          priority: "normal",
+          askedAt: "2026-03-22T10:00:00.000Z",
+          latestAnswer: {
+            answer: "Proceed",
+            answeredBy: "test-client",
+            answeredAt: "2026-03-22T10:05:00.000Z"
+          },
+          evidenceRefs: [],
+          suggestedOptions: [],
+          metadata: {}
+        }
+      });
+    });
+
+    const questionsList = vi.fn().mockImplementation(() => {
+      return Promise.resolve({
+        questions: [
+          {
+            id: "pending-question",
+            projectSlug: "test-project",
+            title: "What should happen?",
+            prompt: "Need a decision",
+            stageLabel: "Operator Decision",
+            status: questionAnswered ? "answered" : "pending",
+            priority: "normal",
+            askedAt: "2026-03-22T10:00:00.000Z",
+            latestAnswer: questionAnswered
+              ? { answer: "Proceed", answeredBy: "test-client", answeredAt: "2026-03-22T10:05:00.000Z" }
+              : undefined,
+            evidenceRefs: [],
+            suggestedOptions: [],
+            metadata: {}
+          }
+        ]
+      });
+    });
+
+    const client = makeConnectedClient({
+      questionAnswer,
+      questionsList
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+
+    // Initial state: question is pending
+    const questionsBefore = await controller.listPendingQuestions();
+    expect(questionsBefore[0]?.status).toBe("pending");
+    expect(questionsBefore[0]?.latestAnswer).toBeUndefined();
+
+    // Answer the question via daemon RPC
+    await controller.answerPendingQuestion("pending-question", "Proceed", undefined, true);
+
+    // After answer: question state is updated and converged
+    const questionsAfter = await controller.listPendingQuestions();
+    expect(questionsAfter[0]?.status).toBe("answered");
+    expect(questionsAfter[0]?.latestAnswer?.answer).toBe("Proceed");
+    expect(questionAnswer).toHaveBeenCalledWith({
+      questionID: "pending-question",
+      answeredBy: "test-client",
+      answer: "Proceed",
+      selectedOptionID: undefined,
+      markFollowupDone: true
+    });
   });
 });

@@ -9,6 +9,9 @@ import {
   type BurnBarCatalogModel,
   type BurnBarCatalogProvider,
   type BurnBarJSONValue,
+  type BurnBarMissionMutationResponse,
+  type BurnBarPendingQuestionSnapshot,
+  type BurnBarQuestionAnswerResponse,
   type BurnBarRunCreateResponse,
   type BurnBarRunDetailResponse,
   type BurnBarRunPhase,
@@ -375,6 +378,80 @@ export class OpenBurnBarExtensionController {
     await this.refresh();
     await this.selectRun(runId);
     return response;
+  }
+
+  // MARK: - Mission operator actions
+
+  async approveMission(
+    missionId: string,
+    note?: string
+  ): Promise<BurnBarMissionMutationResponse> {
+    await this.ensureClientAttachment();
+
+    const response = await this.withControllerRetry(() =>
+      this.dependencies.client.missionApprove({
+        missionID: missionId,
+        actor: this.clientID,
+        note
+      })
+    );
+
+    await this.refresh();
+    return response;
+  }
+
+  async listMissions(projectSlug?: string): Promise<BurnBarMissionMutationResponse['mission'][]> {
+    await this.ensureClientAttachment();
+
+    const response = await this.withControllerRetry(() =>
+      this.dependencies.client.missionList({ projectSlug })
+    );
+
+    return response.missions;
+  }
+
+  async getMission(missionId: string): Promise<BurnBarMissionMutationResponse> {
+    await this.ensureClientAttachment();
+
+    const response = await this.withControllerRetry(() =>
+      this.dependencies.client.missionGet({ missionID: missionId })
+    );
+
+    return response;
+  }
+
+  // MARK: - Question operator actions
+
+  async answerPendingQuestion(
+    questionId: string,
+    answer: string,
+    selectedOptionID?: string,
+    markFollowupDone = true
+  ): Promise<BurnBarQuestionAnswerResponse> {
+    await this.ensureClientAttachment();
+
+    const response = await this.withControllerRetry(() =>
+      this.dependencies.client.questionAnswer({
+        questionID: questionId,
+        answeredBy: this.clientID,
+        answer,
+        selectedOptionID,
+        markFollowupDone
+      })
+    );
+
+    await this.refresh();
+    return response;
+  }
+
+  async listPendingQuestions(projectSlug?: string): Promise<BurnBarPendingQuestionSnapshot[]> {
+    await this.ensureClientAttachment();
+
+    const response = await this.withControllerRetry(() =>
+      this.dependencies.client.questionsList({ projectSlug, statuses: ['pending'] })
+    );
+
+    return response.questions;
   }
 
   availableModels(): Array<BurnBarCatalogModel & { provider: BurnBarCatalogProvider }> {

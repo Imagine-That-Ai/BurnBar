@@ -41,6 +41,18 @@ import type {
   BurnBarToolExecutionResponse,
   BurnBarToolResultSubmissionRequest
 } from '../types';
+import type {
+  BurnBarMissionApproveRequest,
+  BurnBarMissionMutationResponse,
+  BurnBarMissionListRequest,
+  BurnBarMissionListResponse,
+  BurnBarMissionGetRequest,
+  BurnBarQuestionAnswerRequest,
+  BurnBarQuestionAnswerResponse,
+  BurnBarQuestionsListRequest,
+  BurnBarQuestionsListResponse,
+  BurnBarControllerSummaryResponse
+} from '../types';
 
 export const DEFAULT_BURNBAR_SOCKET_PATH = join(
   homedir(),
@@ -88,6 +100,15 @@ export interface OpenBurnBarDaemonClientLike {
   submitToolResult(params: BurnBarToolResultSubmissionRequest): Promise<BurnBarRunDetailResponse>;
   respondToApproval(params: OpenBurnBarApprovalRespondRequest): Promise<BurnBarRunDetailResponse>;
   searchQuery(params: BurnBarSearchQueryParams): Promise<BurnBarSearchQueryDaemonResult>;
+  // Mission methods
+  missionApprove(params: BurnBarMissionApproveRequest): Promise<BurnBarMissionMutationResponse>;
+  missionList(params: BurnBarMissionListRequest): Promise<BurnBarMissionListResponse>;
+  missionGet(params: BurnBarMissionGetRequest): Promise<BurnBarMissionMutationResponse>;
+  // Question methods
+  questionAnswer(params: BurnBarQuestionAnswerRequest): Promise<BurnBarQuestionAnswerResponse>;
+  questionsList(params: BurnBarQuestionsListRequest): Promise<BurnBarQuestionsListResponse>;
+  // Controller methods
+  controllerSummary(): Promise<BurnBarControllerSummaryResponse>;
 }
 
 export class OpenBurnBarDaemonClient implements OpenBurnBarDaemonClientLike {
@@ -171,6 +192,33 @@ export class OpenBurnBarDaemonClient implements OpenBurnBarDaemonClientLike {
 
   async searchQuery(params: BurnBarSearchQueryParams): Promise<BurnBarSearchQueryDaemonResult> {
     return this.send<BurnBarSearchQueryDaemonResult, BurnBarSearchQueryParams>('daemon.search.query', params);
+  }
+
+  // Mission methods
+  async missionApprove(params: BurnBarMissionApproveRequest): Promise<BurnBarMissionMutationResponse> {
+    return this.send('daemon.mission.approve', params);
+  }
+
+  async missionList(params: BurnBarMissionListRequest): Promise<BurnBarMissionListResponse> {
+    return this.send('daemon.mission.list', params);
+  }
+
+  async missionGet(params: BurnBarMissionGetRequest): Promise<BurnBarMissionMutationResponse> {
+    return this.send('daemon.mission.get', params);
+  }
+
+  // Question methods
+  async questionAnswer(params: BurnBarQuestionAnswerRequest): Promise<BurnBarQuestionAnswerResponse> {
+    return this.send('daemon.question.answer', params);
+  }
+
+  async questionsList(params: BurnBarQuestionsListRequest): Promise<BurnBarQuestionsListResponse> {
+    return this.send('daemon.question.list', params);
+  }
+
+  // Controller methods
+  async controllerSummary(): Promise<BurnBarControllerSummaryResponse> {
+    return this.send('daemon.controller.summary', {});
   }
 
   private async send<Result, Params = undefined>(method: BurnBarRPCMethod, params?: Params): Promise<Result> {
