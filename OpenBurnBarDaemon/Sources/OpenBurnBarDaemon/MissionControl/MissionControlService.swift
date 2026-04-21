@@ -733,6 +733,13 @@ public actor BurnBarMissionControlService {
                 if isTerminal(phase: snapshot.phase),
                    currentMission.results.contains(where: { $0.runID == runID }) == false {
                     let usage = latestUsageEvent(for: runID)
+                    var resultMetadata = packet.metadata
+                    resultMetadata["run_phase"] = .string(snapshot.phase.rawValue)
+                    resultMetadata["model_id"] = .string(snapshot.modelID)
+                    resultMetadata["provider_id"] = usage.map { .string($0.providerID) } ?? .string("unknown")
+                    resultMetadata["input_tokens"] = .number(Double(usage?.inputTokens ?? 0))
+                    resultMetadata["output_tokens"] = .number(Double(usage?.outputTokens ?? 0))
+                    resultMetadata["cache_read_tokens"] = .number(Double(usage?.cacheReadTokens ?? 0))
                     let result = BurnBarMissionResultSnapshot(
                         id: BurnBarMissionResultID(rawValue: "result-\(runID.rawValue)"),
                         missionID: currentMission.id,
@@ -744,14 +751,7 @@ public actor BurnBarMissionControlService {
                         burnDelta: usage?.cost ?? 0,
                         createdAt: now,
                         evidenceRefs: [runID.rawValue],
-                        metadata: [
-                            "run_phase": .string(snapshot.phase.rawValue),
-                            "model_id": .string(snapshot.modelID),
-                            "provider_id": usage.map { .string($0.providerID) } ?? .string("unknown"),
-                            "input_tokens": .number(Double(usage?.inputTokens ?? 0)),
-                            "output_tokens": .number(Double(usage?.outputTokens ?? 0)),
-                            "cache_read_tokens": .number(Double(usage?.cacheReadTokens ?? 0))
-                        ]
+                        metadata: resultMetadata
                     )
                     let recordResponse = try await store.recordMissionResult(
                         BurnBarMissionRecordResultRequest(

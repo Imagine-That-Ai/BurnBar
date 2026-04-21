@@ -1201,7 +1201,7 @@ final class BurnBarRunServiceTests: XCTestCase {
         XCTAssertEqual(detail.approvalRequest?.tool, .runTerminal)
     }
 
-    func testRunTerminalCompanionFlowCompletesAfterToolResultSubmission() async throws {
+    func testVAL_CROSS_003_HighRiskAutonomousStepEscalatesThenResumesOnExplicitApproval() async throws {
         let harness = try makeHarness(name: "terminal-companion-flow")
         let clientID = BurnBarClientID(rawValue: "terminal-controller")
         let sessionID = BurnBarSessionID(rawValue: "terminal-session")
@@ -1239,7 +1239,7 @@ final class BurnBarRunServiceTests: XCTestCase {
         )
         XCTAssertEqual(initialDetail.approvalRequest?.tool, .runTerminal)
 
-        _ = try await harness.runService.respondToApproval(
+        let resumedDetail = try await harness.runService.respondToApproval(
             BurnBarApprovalRespondRequest(
                 response: BurnBarApprovalResponse(
                     approvalID: try XCTUnwrap(initialDetail.approvalRequest?.approvalID),
@@ -1249,6 +1249,8 @@ final class BurnBarRunServiceTests: XCTestCase {
                 )
             )
         )
+        XCTAssertNil(resumedDetail.approvalRequest, "VAL-CROSS-003: explicit approval should clear pending approval request")
+        XCTAssertEqual(resumedDetail.run?.phase, .waitingOnCompanion, "VAL-CROSS-003: high-risk run should resume execution only after approval")
 
         let claimed = try await harness.runService.executeTool(
             BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: createResponse.runID)
@@ -1270,7 +1272,7 @@ final class BurnBarRunServiceTests: XCTestCase {
                 completedAt: Date()
             )
         )
-        XCTAssertEqual(detail.run?.phase, .completed)
+        XCTAssertEqual(detail.run?.phase, .completed, "VAL-CROSS-003: resumed run should reach terminal completion after approved high-risk step")
 
         let usage = try await harness.usageRecorder.recentUsage(limit: 5)
         XCTAssertEqual(usage.count, 1)

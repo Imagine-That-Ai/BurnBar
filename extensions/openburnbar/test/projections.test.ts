@@ -895,6 +895,34 @@ describe('buildMissionRows', () => {
     expect(result[0].closureQuestionState).toBe('No closure question pending');
   });
 
+  // VAL-CROSS-001: Extension closure projection reflects daemon merged-PR terminal outcome.
+  it('VAL-CROSS-001: mission closure projection shows merged PR with no pending closure approval question', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-val-cross-001',
+        status: 'completed',
+        title: 'Open and merge PR from one-line mission',
+        prLinkage: {
+          schemaVersion: 1,
+          repository: 'Ajnunezg/BurnBar',
+          prNumberOrID: '42',
+          url: 'https://github.com/Ajnunezg/BurnBar/pull/42',
+          state: 'merged',
+          mergeCommitSHA: 'abc123def',
+          mergedAt: '2024-01-15T12:00:00Z'
+        }
+      })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionRows(state);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].status).toBe('completed');
+    expect(result[0].prLinkage?.state).toBe('merged');
+    expect(result[0].prLinkage?.mergeCommitSHA).toBe('abc123def');
+    expect(result[0].closureQuestionState).toBe('No closure question pending');
+  });
+
   // VAL-EXT-008: matches daemon canonical ordering (updatedAt DESC, missionID ASC tie-break)
   it('should sort missions by updatedAt DESC with missionID ASC tie-break', () => {
     const missions: BurnBarMissionSnapshot[] = [

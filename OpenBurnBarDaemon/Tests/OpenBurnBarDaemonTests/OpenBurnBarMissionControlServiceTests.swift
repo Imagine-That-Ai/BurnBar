@@ -528,6 +528,124 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         )
     }
 
+    func testVAL_CROSS_001_OneLineMissionCompletesAutonomousMergedPRClosurePath() async throws {
+        let launcher = ReviewLauncherRecorder()
+        let now = Date(timeIntervalSince1970: 1_710_120_000)
+        let mergedAt = now.addingTimeInterval(-15)
+        let runID = BurnBarRunID(rawValue: "run-val-cross-001")
+        let harness = try makeHarness(
+            name: "val-cross-001-autonomous-closure",
+            reviewRunLauncher: { prompt, modelID, metadata in
+                await launcher.record(prompt: prompt, modelID: modelID, metadata: metadata)
+                return BurnBarRunCreateResponse(runID: runID, phase: .planning)
+            },
+            runSnapshotLookup: { requestedRunID in
+                guard requestedRunID == runID else { return nil }
+                return BurnBarRunStateSnapshot(
+                    runID: requestedRunID,
+                    clientID: BurnBarClientID(rawValue: "daemon"),
+                    sessionID: BurnBarSessionID(rawValue: "mission-session"),
+                    phase: .completed,
+                    modelID: "glm-5",
+                    updatedAt: now
+                )
+            }
+        )
+
+        try writeUsageRecord(
+            BurnBarUsageRecord(
+                idempotencyKey: "run:\(runID.rawValue):attempt:1",
+                event: BurnBarUsageEvent(
+                    runID: runID,
+                    providerID: "zai",
+                    modelID: "glm-5",
+                    inputTokens: 620,
+                    outputTokens: 180,
+                    cacheReadTokens: 20,
+                    cost: 1.19,
+                    recordedAt: now
+                )
+            ),
+            to: harness.rootURL.appendingPathComponent("usage-events.jsonl")
+        )
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+        let mission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "apollo",
+                title: "Ship Apollo closure path",
+                summary: "Open one PR and merge it.",
+                createdBy: "operator",
+                recommendation: .proceed
+            )
+        )
+        let missionID = mission.mission.id
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "autonomous closure allowed")
+        )
+
+        _ = try await harness.service.missionDispatchPacket(
+            BurnBarMissionDispatchPacketRequest(
+                missionID: missionID,
+                actor: "operator",
+                packet: BurnBarMissionPacketSnapshot(
+                    id: BurnBarMissionPacketID(rawValue: "packet-val-cross-001"),
+                    missionID: missionID,
+                    workerName: "closure-worker",
+                    objective: "Open and merge PR for the one-line mission.",
+                    status: .queued,
+                    metadata: [
+                        "pr_repository": .string("Ajnunezg/BurnBar"),
+                        "pr_number_or_id": .string("42"),
+                        "pr_url": .string("https://github.com/Ajnunezg/BurnBar/pull/42"),
+                        "pr_state": .string("merged"),
+                        "pr_is_merged": .bool(true),
+                        "pr_merge_commit_sha": .string("abc123def"),
+                        "pr_merged_at": .string(mergedAt.ISO8601Format())
+                    ]
+                )
+            )
+        )
+
+        try await harness.service.runTransportCycle(now: now.addingTimeInterval(5))
+
+        let refreshed = try await harness.service.missionGet(BurnBarMissionGetRequest(missionID: missionID))
+        let refreshedMission = try XCTUnwrap(refreshed.mission)
+        let result = try XCTUnwrap(refreshedMission.results.first)
+        let prLinkage = try XCTUnwrap(refreshedMission.prLinkage)
+
+        XCTAssertEqual(refreshedMission.status, .completed, "VAL-CROSS-001: one-line mission should converge to terminal completed state")
+        XCTAssertEqual(result.runID, runID)
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(prLinkage.repository, "Ajnunezg/BurnBar")
+        XCTAssertEqual(prLinkage.prNumberOrID, "42")
+        XCTAssertEqual(prLinkage.state, .merged)
+        XCTAssertTrue(prLinkage.isMerged)
+        XCTAssertEqual(prLinkage.mergeCommitSHA, "abc123def")
+        XCTAssertEqual(stringValue(refreshedMission.metadata["pr_state"]), "merged")
+        XCTAssertEqual(boolValue(refreshedMission.metadata["pr_is_merged"]), true)
+
+        let pendingQuestions = try await harness.service.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: "apollo", statuses: [.pending], limit: 200)
+        )
+        let pendingClosureQuestions = pendingQuestions.questions.filter {
+            stringValue($0.metadata["mission_id"]) == missionID.rawValue
+                && stringValue($0.metadata["question_kind"]) == "mission_closure_approval"
+        }
+        XCTAssertEqual(
+            pendingClosureQuestions.count,
+            0,
+            "VAL-CROSS-001: autonomous merged-PR closure path should not require a manual closure-approval question"
+        )
+
+        let launches = await launcher.launches
+        XCTAssertEqual(launches.count, 1)
+        XCTAssertTrue(launches.first?.prompt.contains("OpenBurnBar mission execution for project apollo.") == true)
+        XCTAssertEqual(boolValue(launches.first?.metadata["missionExecution"]), true)
+    }
+
     func testMissionLifecycleTracksApprovalPacketsResultsAndBurn() async throws {
         let harness = try makeHarness(name: "mission-lifecycle")
 

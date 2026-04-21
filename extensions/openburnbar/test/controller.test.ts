@@ -561,6 +561,182 @@ describe("OpenBurnBarExtensionController", () => {
     );
   });
 
+  it("VAL-CROSS-003 / VAL-EXT-005: explicit approve clears approval object and resumes high-risk run", async () => {
+    let runPhase: "awaiting_approval" | "planning" = "awaiting_approval";
+    let hasApproval = true;
+
+    const runSnapshot = () => ({
+      runID: "run-high-risk",
+      clientID: "test-client",
+      sessionID: "session-1",
+      phase: runPhase,
+      modelID: "glm-4.6",
+      updatedAt: "2026-03-22T10:00:00.000Z",
+      activeApprovalID: hasApproval ? "approval-high-risk" : undefined
+    });
+    const approvalSnapshot = () => ({
+      approvalID: "approval-high-risk",
+      runID: "run-high-risk",
+      tool: "run_terminal",
+      title: "Approve run_terminal",
+      message: "High-risk terminal command requires explicit approval.",
+      requestedAt: "2026-03-22T10:00:00.000Z"
+    });
+
+    const client = makeConnectedClient({
+      listRuns: vi.fn().mockImplementation(async () => [runSnapshot()]),
+      pollRuns: vi.fn().mockImplementation(async () => ({
+        runs: [runSnapshot()],
+        approvals: hasApproval ? [approvalSnapshot()] : [],
+        pendingToolCalls: [],
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        },
+        emittedAt: "2026-03-22T10:00:00.000Z"
+      })),
+      getRun: vi.fn().mockImplementation(async () => ({
+        run: runSnapshot(),
+        approvalRequest: hasApproval ? approvalSnapshot() : undefined,
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        }
+      })),
+      respondToApproval: vi.fn().mockImplementation(async ({ response }: { response: { decision: string } }) => {
+        if (response.decision === "approve") {
+          runPhase = "planning";
+        }
+        hasApproval = false;
+        return {
+          run: runSnapshot(),
+          approvalRequest: undefined
+        };
+      })
+    });
+
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    expect(controller.snapshot.selectedRunDetail?.approvalRequest?.approvalID).toBe("approval-high-risk");
+
+    await controller.respondToApproval("run-high-risk", "approve");
+
+    expect(client.respondToApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response: expect.objectContaining({
+          approvalID: "approval-high-risk",
+          decision: "approve"
+        })
+      })
+    );
+    expect(controller.snapshot.selectedRunDetail?.approvalRequest).toBeUndefined();
+    expect(controller.snapshot.runs.find((run) => run.id === "run-high-risk")?.phase).toBe("planning");
+  });
+
+  it("VAL-EXT-005: explicit reject clears approval object and transitions run to cancelled", async () => {
+    let runPhase: "awaiting_approval" | "cancelled" = "awaiting_approval";
+    let hasApproval = true;
+
+    const runSnapshot = () => ({
+      runID: "run-reject",
+      clientID: "test-client",
+      sessionID: "session-1",
+      phase: runPhase,
+      modelID: "glm-4.6",
+      updatedAt: "2026-03-22T10:00:00.000Z",
+      activeApprovalID: hasApproval ? "approval-reject" : undefined
+    });
+    const approvalSnapshot = () => ({
+      approvalID: "approval-reject",
+      runID: "run-reject",
+      tool: "apply_patch",
+      title: "Approve apply_patch",
+      message: "Apply patch requires explicit approval.",
+      requestedAt: "2026-03-22T10:00:00.000Z"
+    });
+
+    const client = makeConnectedClient({
+      listRuns: vi.fn().mockImplementation(async () => [runSnapshot()]),
+      pollRuns: vi.fn().mockImplementation(async () => ({
+        runs: [runSnapshot()],
+        approvals: hasApproval ? [approvalSnapshot()] : [],
+        pendingToolCalls: [],
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        },
+        emittedAt: "2026-03-22T10:00:00.000Z"
+      })),
+      getRun: vi.fn().mockImplementation(async () => ({
+        run: runSnapshot(),
+        approvalRequest: hasApproval ? approvalSnapshot() : undefined,
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        }
+      })),
+      respondToApproval: vi.fn().mockImplementation(async () => {
+        runPhase = "cancelled";
+        hasApproval = false;
+        return {
+          run: runSnapshot(),
+          approvalRequest: undefined
+        };
+      })
+    });
+
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    expect(controller.snapshot.selectedRunDetail?.approvalRequest?.approvalID).toBe("approval-reject");
+
+    await controller.respondToApproval("run-reject", "reject");
+
+    expect(client.respondToApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response: expect.objectContaining({
+          approvalID: "approval-reject",
+          decision: "reject"
+        })
+      })
+    );
+    expect(controller.snapshot.selectedRunDetail?.approvalRequest).toBeUndefined();
+    expect(controller.snapshot.runs.find((run) => run.id === "run-reject")?.phase).toBe("cancelled");
+  });
+
   it("dispatches pending tool calls to the workspace companion and submits results", async () => {
     const readToolCall = {
       callID: "call-read-1",
