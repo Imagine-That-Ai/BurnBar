@@ -1,0 +1,33 @@
+{
+  "featureId": "misc-runtime-skill-scope-alignment",
+  "reviewedAt": "2026-04-21T00:33:49Z",
+  "commitId": "5180949a1f6e24c70bfa12395d23bf7f3bd6ca4e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The change set addresses the scrutiny request by adding explicit Branch B CLI-launch reliability scope, codified skill-assignment ownership rules, and a documented handoff evidence requirement tying followedProcedure=true to validator evidence coverage. One clarity gap remains in branch-specific procedure wording.",
+    "issues": [
+      {
+        "file": ".factory/skills/runtime-orchestration-worker/SKILL.md",
+        "line": 36,
+        "severity": "non_blocking",
+        "description": "Work Procedure steps 3 and 5 still prescribe daemon-runtime-specific checks (run lifecycle/reconciliation, duplicate terminal/takeover semantics) even when Branch B is selected; this can mislead CLI-launch-reliability features that do not touch those runtime semantics."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "Branch B now requires `swift test --package-path OpenBurnBarCore --filter CLILaunchInvokerTests`, but `.factory/services.yaml` does not expose a dedicated command alias for this surface despite mission guidance saying to use services.yaml as the command source of truth.",
+      "evidence": ".factory/skills/runtime-orchestration-worker/SKILL.md:44 introduces CLILaunchInvokerTests command; mission AGENTS.md:29 says to use `.factory/services.yaml`; `.factory/services.yaml` has `test_core_contracts` and broad `test` but no CLILaunchInvoker-specific command."
+    },
+    {
+      "area": "skills",
+      "observation": "The updated skill adds a branch-mismatch return rule, but this reviewed run still marked followedProcedure=true without branch-specific validator evidence, indicating procedural enforcement is documentation-only (not currently machine-gated).",
+      "evidence": ".factory/skills/runtime-orchestration-worker/SKILL.md:119 says branch mismatches should return to orchestrator; handoff file `.../handoffs/2026-04-21T00-23-21-350Z__misc-runtime-skill-scope-alignment__15e2dea2-86a3-48d0-ae9d-6094e342e3d8.json` records `followedProcedure: true` with commandsRun containing only rg + BurnBarMissionControlContractsTests."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed feature misc-runtime-skill-scope-alignment for milestone misc-quality-hardening-04. Diff and transcript skeleton were reviewed; implementation meets the requested alignment/evidence-guidance goals overall, with one non-blocking branch-procedure clarity issue and two shared-state observations recorded."
+}
