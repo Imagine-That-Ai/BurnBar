@@ -1,6 +1,6 @@
 {
   "milestone": "m12-reconciler-winner-selection",
-  "round": 1,
+  "round": 2,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -24,36 +24,35 @@
     "passed": 0,
     "failed": 1,
     "failedFeatures": [
-      "m12-reconciler-winner-selection"
+      "m12-reconciler-candidate-scope-and-terminal-sequence-fix"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "m12-reconciler-winner-selection",
+      "featureId": "m12-reconciler-candidate-scope-and-terminal-sequence-fix",
       "severity": "blocking",
-      "description": "Reconciliation candidates currently include all completed/failed nodes (including upstream prerequisites) instead of limiting winner selection to conflicting terminal outcomes, so a non-terminal prerequisite can be incorrectly chosen as the winner."
+      "description": "Candidate scoping is still incorrect. `findTerminalConflictingOutcomes()` accepts any completed/failed node whose dependents are terminal (`dependents.allSatisfy(...)`). Because winner selection is only invoked after `allTerminal` is true (line 311), this condition is satisfied for completed prerequisite/internal nodes as well, so non-terminal outcomes can still enter reconciliation candidates."
     },
     {
-      "featureId": "m12-reconciler-winner-selection",
+      "featureId": "m12-reconciler-candidate-scope-and-terminal-sequence-fix",
       "severity": "blocking",
-      "description": "Earliest terminal sequence tie-break uses static DAG declaration order (`terminalNodes.firstIndex`) instead of actual terminal completion sequence, violating replay-stable precedence semantics and allowing incorrect winner/reason selection."
+      "description": "Winner-reason attribution is not fully runner-up delta based. The success check uses `sortedCandidates.dropFirst().contains` to detect any failed candidate, so with 3+ candidates it can emit `SUCCESS_OVER_FAILURE` even when the runner-up is successful. This violates deterministic winner-vs-runner-up attribution intent for persisted reason codes."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": ".factory/skills/runtime-orchestration-worker/SKILL.md",
-      "suggestion": "Add an explicit scrutiny-facing checklist item that handoff claims `followedProcedure: true` only when all required validator surfaces listed by the skill have been executed and recorded in handoff evidence.",
-      "evidence": "Feature m12-reconciler-winner-selection handoff marked `followedProcedure: true` while omitting required BurnBarRunServiceTests and BurnBarProviderRouterTests from recorded commands.",
-      "isSystemic": false
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Clarify that when a feature fulfills a cross-surface assertion (e.g., VAL-CROSS-*), handoff evidence must include every required surface command from verificationSteps (daemon + app + extension where listed) before the feature can be marked complete.",
-      "evidence": "Feature m12-reconciler-winner-selection fulfills VAL-CROSS-006 but recorded daemon/core-only evidence and omitted app/extension validation commands despite mission guidance requiring cross-surface artifacts.",
+      "suggestion": "Add an explicit scrutiny-facing checklist item that handoff claims followedProcedure: true only when all required validator surfaces listed by the skill have been executed and recorded in handoff evidence.",
+      "evidence": ".factory/skills/runtime-orchestration-worker/SKILL.md:22-24 vs /Users/albertonunez/.factory/missions/d1d1287f-f2a9-4a34-8ba9-fce37df13493/handoffs/2026-04-20T23-53-03-115Z__m12-reconciler-candidate-scope-and-terminal-sequence-fix__f3fde543-56e1-4bf3-a6bf-9193cd3c7b98.json:16-26",
       "isSystemic": false
     }
   ],
-  "rejectedObservations": [],
-  "previousRound": null
+  "rejectedObservations": [
+    {
+      "observation": "Mission guidance cross-surface evidence gap observation from prior failed feature review.",
+      "reason": "already-documented-in-round-1"
+    }
+  ],
+  "previousRound": ".factory/validation/m12-reconciler-winner-selection/scrutiny/synthesis.round1.json"
 }
