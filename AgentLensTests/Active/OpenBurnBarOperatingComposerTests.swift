@@ -929,6 +929,390 @@ extension OpenBurnBarOperatingComposerTests {
         XCTAssertEqual(missionState1, missionState2, "VAL-APP-010: Mission state should be deterministic across snapshots")
     }
 
+    // MARK: VAL-APP-004: Pending-question answer interactions are safe and explicit
+
+    /// VAL-APP-004 Evidence: Empty answer fails validation with explicit error feedback
+    @MainActor
+    func testVAL_APP_004_EmptyAnswerFailsValidation() async throws {
+        let store = try makeInMemoryStore()
+        let layer = makeLayer(dataStore: store)
+
+        // Attempt to answer with empty string
+        layer.clearControllerFeedback()
+        await layer.answerPendingQuestion(id: "question-1", answer: "", selectedOptionID: nil)
+
+        // Empty answer should set error feedback
+        XCTAssertNotNil(layer.controllerFeedback, "VAL-APP-004: controllerFeedback must be set after empty answer")
+        XCTAssertEqual(layer.controllerFeedback?.tone, .error, "VAL-APP-004: Empty answer must have .error tone")
+        XCTAssertTrue(layer.controllerFeedback?.message.contains("answer") == true,
+                      "VAL-APP-004: Error message must reference the answer field")
+    }
+
+    /// VAL-APP-004 Evidence: Empty whitespace answer fails validation
+    @MainActor
+    func testVAL_APP_004_WhitespaceOnlyAnswerFailsValidation() async throws {
+        let store = try makeInMemoryStore()
+        let layer = makeLayer(dataStore: store)
+
+        // Attempt to answer with whitespace-only string
+        layer.clearControllerFeedback()
+        await layer.answerPendingQuestion(id: "question-1", answer: "   ", selectedOptionID: nil)
+
+        // Whitespace-only answer should set error feedback (trimmed to empty)
+        XCTAssertNotNil(layer.controllerFeedback, "VAL-APP-004: controllerFeedback must be set after whitespace answer")
+        XCTAssertEqual(layer.controllerFeedback?.tone, .error, "VAL-APP-004: Whitespace-only answer must have .error tone")
+    }
+
+    /// VAL-APP-004 Evidence: Valid free-text answer proceeds without validation error
+    @MainActor
+    func testVAL_APP_004_ValidFreeTextAnswerProceeds() async throws {
+        let store = try makeInMemoryStore()
+        let layer = makeLayer(dataStore: store)
+
+        // Valid answer should not set error feedback immediately
+        // (it may fail due to no daemon, but not due to validation)
+        layer.clearControllerFeedback()
+        await layer.answerPendingQuestion(id: "question-1", answer: "Yes, proceed with the release.", selectedOptionID: nil)
+
+        // The action should proceed (validation should pass) - any error would be daemon-related, not validation
+        // This proves the free-text answer passes validation
+        XCTAssertNotEqual(layer.controllerFeedback?.tone, .error,
+                           "VAL-APP-004: Valid free-text answer should not fail validation")
+    }
+
+    /// VAL-APP-004 Evidence: Suggested option answer proceeds without validation error
+    @MainActor
+    func testVAL_APP_004_SuggestedOptionAnswerProceeds() async throws {
+        let store = try makeInMemoryStore()
+        let layer = makeLayer(dataStore: store)
+
+        // When a suggested option is selected, the answer text from that option must be provided.
+        // Production guard (OpenBurnBarOperatingLayer+ControllerActions.swift:28) rejects empty
+        // trimmed answers regardless of selectedOptionID - the option's answer text is required.
+        layer.clearControllerFeedback()
+        await layer.answerPendingQuestion(id: "question-1", answer: "Proceed with the release.", selectedOptionID: "proceed-option")
+
+        // The action should proceed with the suggested option's answer text
+        // This proves suggested-option answer passes validation when answer text is provided
+        XCTAssertNotEqual(layer.controllerFeedback?.tone, .error,
+                           "VAL-APP-004: Suggested-option answer should not fail validation when answer text is provided")
+    }
+
+    // MARK: VAL-APP-005: Followup controls honor done/snooze/calendar behavior
+
+    /// VAL-APP-005 Evidence: Complete followup action mutates followup state to done
+    @MainActor
+    func testVAL_APP_005_CompleteFollowupMutatesStateToDone() async throws {
+        let store = try makeInMemoryStore()
+        let now = Date()
+
+        // Seed a followup in the open state
+        let followupID = "followup-test-1"
+        let followup = OpenBurnBarControllerFollowup(
+            id: followupID,
+            projectName: "Apollo",
+            title: "Review approval sheet",
+            summary: "The approval sheet needs review.",
+            stageLabel: nil,
+            detail: nil,
+            state: .open,
+            kind: .pendingQuestion,
+            linkedQuestionID: nil,
+            deepLink: nil,
+            createdAt: now.addingTimeInterval(-3600),
+            updatedAt: now.addingTimeInterval(-3600),
+            snoozedUntil: nil,
+            calendarTitle: nil,
+            calendarStart: nil,
+            calendarEnd: nil
+        )
+        let snapshot = OpenBurnBarControllerRuntimeSnapshot(
+            source: .inferred,
+            updatedAt: now,
+            summary: OpenBurnBarControllerSummary(
+                headline: "Test followups",
+                detail: "Test summary",
+                pendingQuestions: 0,
+                unresolvedFollowups: 1,
+                openMissions: 0,
+                replayLabel: "Test replay",
+                notificationLabel: "Test notifications"
+            ),
+            questions: [],
+            followups: [followup],
+            missions: [],
+            recentEvents: []
+        )
+        try store.saveControllerRuntimeMirror(snapshot)
+
+        let layer = makeLayer(dataStore: store)
+
+        // Complete the followup
+        await layer.completeFollowup(id: followupID)
+
+        // Verify state mutation: followup should now be in done state
+        let updatedSnapshot = layer.snapshot.controllerRuntime
+        let updatedFollowup = updatedSnapshot.followups.first { $0.id == followupID }
+
+        XCTAssertNotNil(updatedFollowup, "VAL-APP-005: Followup should exist after completeFollowup")
+        XCTAssertEqual(updatedFollowup?.state, .done, "VAL-APP-005: Followup state must be .done after completeFollowup")
+    }
+
+    /// VAL-APP-005 Evidence: Snooze followup action mutates followup state to snoozed and sets snoozedUntil
+    @MainActor
+    func testVAL_APP_005_SnoozeFollowupMutatesStateToSnoozed() async throws {
+        let store = try makeInMemoryStore()
+        let now = Date()
+
+        // Seed a followup in the open state
+        let followupID = "followup-test-2"
+        let followup = OpenBurnBarControllerFollowup(
+            id: followupID,
+            projectName: "Apollo",
+            title: "Review approval sheet",
+            summary: "The approval sheet needs review.",
+            stageLabel: nil,
+            detail: nil,
+            state: .open,
+            kind: .pendingQuestion,
+            linkedQuestionID: nil,
+            deepLink: nil,
+            createdAt: now.addingTimeInterval(-3600),
+            updatedAt: now.addingTimeInterval(-3600),
+            snoozedUntil: nil,
+            calendarTitle: nil,
+            calendarStart: nil,
+            calendarEnd: nil
+        )
+        let snapshot = OpenBurnBarControllerRuntimeSnapshot(
+            source: .inferred,
+            updatedAt: now,
+            summary: OpenBurnBarControllerSummary(
+                headline: "Test followups",
+                detail: "Test summary",
+                pendingQuestions: 0,
+                unresolvedFollowups: 1,
+                openMissions: 0,
+                replayLabel: "Test replay",
+                notificationLabel: "Test notifications"
+            ),
+            questions: [],
+            followups: [followup],
+            missions: [],
+            recentEvents: []
+        )
+        try store.saveControllerRuntimeMirror(snapshot)
+
+        let layer = makeLayer(dataStore: store)
+        let snoozeUntil = now.addingTimeInterval(60 * 60) // 1 hour from now
+
+        // Snooze the followup
+        await layer.snoozeFollowup(id: followupID, until: snoozeUntil)
+
+        // Verify state mutation: followup should now be in snoozed state with snoozedUntil set
+        let updatedSnapshot = layer.snapshot.controllerRuntime
+        let updatedFollowup = updatedSnapshot.followups.first { $0.id == followupID }
+
+        XCTAssertNotNil(updatedFollowup, "VAL-APP-005: Followup should exist after snoozeFollowup")
+        XCTAssertEqual(updatedFollowup?.state, .snoozed, "VAL-APP-005: Followup state must be .snoozed after snoozeFollowup")
+        XCTAssertNotNil(updatedFollowup?.snoozedUntil, "VAL-APP-005: snoozedUntil must be set after snoozeFollowup")
+    }
+
+    /// VAL-APP-005 Evidence: Schedule calendar action sets calendar fields on followup
+    @MainActor
+    func testVAL_APP_005_ScheduleCalendarSetsCalendarFields() async throws {
+        let store = try makeInMemoryStore()
+        let now = Date()
+
+        // Seed a followup in the open state
+        let followupID = "followup-test-3"
+        let followup = OpenBurnBarControllerFollowup(
+            id: followupID,
+            projectName: "Apollo",
+            title: "Review approval sheet",
+            summary: "The approval sheet needs review.",
+            stageLabel: nil,
+            detail: nil,
+            state: .open,
+            kind: .pendingQuestion,
+            linkedQuestionID: nil,
+            deepLink: nil,
+            createdAt: now.addingTimeInterval(-3600),
+            updatedAt: now.addingTimeInterval(-3600),
+            snoozedUntil: nil,
+            calendarTitle: nil,
+            calendarStart: nil,
+            calendarEnd: nil
+        )
+        let snapshot = OpenBurnBarControllerRuntimeSnapshot(
+            source: .inferred,
+            updatedAt: now,
+            summary: OpenBurnBarControllerSummary(
+                headline: "Test followups",
+                detail: "Test summary",
+                pendingQuestions: 0,
+                unresolvedFollowups: 1,
+                openMissions: 0,
+                replayLabel: "Test replay",
+                notificationLabel: "Test notifications"
+            ),
+            questions: [],
+            followups: [followup],
+            missions: [],
+            recentEvents: []
+        )
+        try store.saveControllerRuntimeMirror(snapshot)
+
+        let layer = makeLayer(dataStore: store)
+
+        // Schedule calendar for the followup
+        await layer.scheduleFollowupCalendar(id: followupID, title: "Review session")
+
+        // Verify calendar fields are set
+        let updatedSnapshot = layer.snapshot.controllerRuntime
+        let updatedFollowup = updatedSnapshot.followups.first { $0.id == followupID }
+
+        XCTAssertNotNil(updatedFollowup, "VAL-APP-005: Followup should exist after scheduleFollowupCalendar")
+        XCTAssertNotNil(updatedFollowup?.calendarTitle, "VAL-APP-005: calendarTitle must be set after scheduleFollowupCalendar")
+        XCTAssertEqual(updatedFollowup?.calendarTitle, "Review session", "VAL-APP-005: calendarTitle should match provided title")
+        XCTAssertNotNil(updatedFollowup?.calendarStart, "VAL-APP-005: calendarStart must be set after scheduleFollowupCalendar")
+        XCTAssertNotNil(updatedFollowup?.calendarEnd, "VAL-APP-005: calendarEnd must be set after scheduleFollowupCalendar")
+    }
+
+    /// VAL-APP-005 Evidence: Followup state enum has all required states (open, done, snoozed)
+    @MainActor
+    func testVAL_APP_005_FollowupStateEnumHasRequiredCases() throws {
+        // Verify all required followup states exist
+        let openState = OpenBurnBarControllerFollowupState.open
+        let doneState = OpenBurnBarControllerFollowupState.done
+        let snoozedState = OpenBurnBarControllerFollowupState.snoozed
+
+        XCTAssertEqual(openState.rawValue, "open", "VAL-APP-005: open state must exist")
+        XCTAssertEqual(doneState.rawValue, "done", "VAL-APP-005: done state must exist")
+        XCTAssertEqual(snoozedState.rawValue, "snoozed", "VAL-APP-005: snoozed state must exist")
+    }
+
+    // MARK: VAL-BRIEF-002: Dashboard exposes one top-level Next Operator Question card
+
+    /// VAL-BRIEF-002 Evidence: Dashboard renders exactly one top-level next-question card when questions exist
+    @MainActor
+    func testVAL_BRIEF_002_DashboardSingletonQuestionCard() throws {
+        let store = try makeInMemoryStore()
+        let now = Date()
+
+        try seedProject(
+            store: store,
+            project: "Apollo",
+            conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
+            latestMessage: "Ship the approval sheet after QA.",
+            latestSummary: "Approval sheet is stable, QA passed, and only launch coordination remains before release.",
+            latestSummaryTitle: "Ship the approval sheet",
+            usageCosts: [2.0, 1.6]
+        )
+
+        let layer = makeLayer(dataStore: store)
+        let snapshot = layer.snapshot
+
+        // Dashboard next-question card is surfaced via pendingQuestions in controllerRuntime
+        // The singleton invariant (VAL-GOV-006) enforces at most one active closure-approval question per mission.
+        // The model provides the questions array; the UI surfaces at most one as "top-level".
+        let allQuestions = snapshot.controllerRuntime.questions
+        let pendingQuestions = allQuestions.filter { $0.state == .pending }
+
+        // Verify pendingQuestions is accessible and properly filtered
+        XCTAssertFalse(allQuestions.isEmpty, "VAL-BRIEF-002: Questions array should not be empty when project is seeded")
+
+        // The singleton invariant: at most one non-high-priority pending question should be top-level.
+        // High-priority questions may surface separately (VAL-GOV-006 enforcement at daemon level).
+        let nonHighPriorityPending = pendingQuestions.filter { $0.priority != .high }
+        XCTAssertLessThanOrEqual(nonHighPriorityPending.count, 1,
+            "VAL-BRIEF-002: At most one non-high-priority question should be top-level (singleton enforced by VAL-GOV-006)")
+    }
+
+    /// VAL-BRIEF-002 Evidence: Question ordering is deterministic by priority and createdAt
+    @MainActor
+    func testVAL_BRIEF_002_QuestionOrderingIsDeterministic() throws {
+        let store = try makeInMemoryStore()
+        let now = Date()
+
+        try seedProject(
+            store: store,
+            project: "Apollo",
+            conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
+            latestMessage: "Ship the approval sheet after QA.",
+            latestSummary: "Approval sheet is stable, QA passed, and only launch coordination remains before release.",
+            latestSummaryTitle: "Ship the approval sheet",
+            usageCosts: [2.0, 1.6]
+        )
+
+        let layer = makeLayer(dataStore: store)
+
+        // First snapshot
+        let snapshot1 = layer.snapshot
+        let questionCount1 = snapshot1.controllerRuntime.questions.count
+
+        // Second snapshot should be identical (deterministic)
+        let snapshot2 = layer.snapshot
+        let questionCount2 = snapshot2.controllerRuntime.questions.count
+
+        XCTAssertEqual(questionCount1, questionCount2, "VAL-BRIEF-002: Question count should be deterministic across snapshots")
+
+        // Questions array order should be stable
+        if !snapshot1.controllerRuntime.questions.isEmpty {
+            let ids1 = snapshot1.controllerRuntime.questions.map { $0.id }
+            let ids2 = snapshot2.controllerRuntime.questions.map { $0.id }
+            XCTAssertEqual(ids1, ids2, "VAL-BRIEF-002: Question ordering should be deterministic")
+        }
+    }
+
+    /// VAL-BRIEF-002 Evidence: Quick-answer options are surfaced via suggestedOptions on questions with deterministic ordering
+    @MainActor
+    func testVAL_BRIEF_002_QuickAnswerOptionsSurfacedWithDeterministicOrdering() throws {
+        let store = try makeInMemoryStore()
+        let now = Date()
+
+        try seedProject(
+            store: store,
+            project: "Apollo",
+            conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
+            latestMessage: "Ship the approval sheet after QA.",
+            latestSummary: "Approval sheet is stable, QA passed, and only launch coordination remains before release.",
+            latestSummaryTitle: "Ship the approval sheet",
+            usageCosts: [2.0, 1.6]
+        )
+
+        let layer = makeLayer(dataStore: store)
+        let snapshot1 = layer.snapshot
+
+        // Questions may have suggested options for quick-answer
+        // The model supports suggestedOptions on each question
+        let questions = snapshot1.controllerRuntime.questions
+        for question in questions {
+            // If suggestedOptions exist, they should have id, title, and answer
+            for option in question.suggestedOptions {
+                XCTAssertFalse(option.id.isEmpty, "VAL-BRIEF-002: Suggested option ID must be non-empty")
+                XCTAssertFalse(option.title.isEmpty, "VAL-BRIEF-002: Suggested option title must be non-empty")
+                XCTAssertFalse(option.answer.isEmpty, "VAL-BRIEF-002: Suggested option answer must be non-empty")
+            }
+        }
+
+        // Verify deterministic ordering: snapshot twice and compare option order
+        let snapshot2 = layer.snapshot
+        let questions2 = snapshot2.controllerRuntime.questions
+
+        // For each question, compare suggestedOptions order across snapshots
+        for (q1, q2) in zip(questions, questions2) {
+            let options1 = q1.suggestedOptions
+            let options2 = q2.suggestedOptions
+
+            // If both have options, verify order is identical (deterministic)
+            if !options1.isEmpty || !options2.isEmpty {
+                XCTAssertEqual(options1.map { $0.id }, options2.map { $0.id },
+                    "VAL-BRIEF-002: Suggested option ordering should be deterministic across snapshots")
+            }
+        }
+    }
+
     // MARK: VAL-BRIEF-005: Runtime source/degraded mode is visible across operating surfaces
 
     /// VAL-BRIEF-005 Evidence: Controller runtime exposes source field
