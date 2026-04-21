@@ -871,18 +871,21 @@ public struct CLILaunchInvoker {
                 process.terminate()
             }
         }
-        let stdoutTask = Task.detached(priority: .utility) {
-            await drainPipe(stdoutPipe, into: supervisor, source: .stdout)
-        }
-        let stderrTask = Task.detached(priority: .utility) {
-            await drainPipe(stderrPipe, into: supervisor, source: .stderr)
-        }
+        let observationQueue = DispatchQueue(label: "com.openburnbar.clilaunchinvoker.observation")
+        let stdoutObserver = supervisor.attach(
+            to: stdoutPipe,
+            source: .stdout,
+            queue: observationQueue
+        )
+        let stderrObserver = supervisor.attach(
+            to: stderrPipe,
+            source: .stderr,
+            queue: observationQueue
+        )
 
         let cleanup = LaunchObservationCleanup {
-            stdoutTask.cancel()
-            stderrTask.cancel()
-            try? stdoutPipe.fileHandleForReading.close()
-            try? stderrPipe.fileHandleForReading.close()
+            stdoutObserver.cancel()
+            stderrObserver.cancel()
         }
 
         func finish(_ result: Result<Void, CLILaunchError>) -> Result<Void, CLILaunchError> {
@@ -963,35 +966,6 @@ public struct CLILaunchInvoker {
 
     static func classifyQuotaExhaustion(for cliType: SwitcherCLIProfileType, in output: String) -> String? {
         CLIQuotaExhaustionClassifier.classify(for: cliType, in: output)
-    }
-
-    private static func drainPipe(
-        _ pipe: Pipe,
-        into supervisor: CLITerminalSessionSupervisor,
-        source: CLITerminalSessionOutputSource
-    ) async {
-        let fd = pipe.fileHandleForReading.fileDescriptor
-        let bufferSize = 4096
-        var buffer = [UInt8](repeating: 0, count: bufferSize)
-        
-        while !Task.isCancelled {
-            // Use read() system call directly - returns -1 on error (pipe closed) or 0 on EOF.
-            // This avoids NSFileHandleOperationException from availableData on closed pipe.
-            let bytesRead = buffer.withUnsafeMutableBytes { ptr -> Int in
-                read(fd, ptr.baseAddress, bufferSize)
-            }
-            
-            if bytesRead <= 0 {
-                // 0 = EOF (pipe closed normally), -1 = error (pipe in bad state)
-                return
-            }
-            
-            guard let text = String(bytes: buffer.prefix(bytesRead), encoding: .utf8),
-                  !text.isEmpty else {
-                continue
-            }
-            supervisor.ingest(text, source: source)
-        }
     }
 }
 
