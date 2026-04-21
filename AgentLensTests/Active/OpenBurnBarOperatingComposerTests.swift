@@ -1286,6 +1286,147 @@ extension OpenBurnBarOperatingComposerTests {
             "VAL-BRIEF-002: At most one non-high-priority question should be top-level (singleton enforced by VAL-GOV-006)")
     }
 
+    /// VAL-CROSS-002 Evidence: App closure runtime presents done-or-one-question invariant.
+    @MainActor
+    func testVAL_CROSS_002_AppClosureRuntimeShowsDoneOrOnePendingQuestion() throws {
+        let store = try makeInMemoryStore()
+        let now = Date()
+
+        try seedProject(
+            store: store,
+            project: "Apollo",
+            conversationDates: stride(from: 4, through: 0, by: -1).map { now.addingTimeInterval(Double(-$0) * 3_600) },
+            latestMessage: "Ship the approval sheet after QA.",
+            latestSummary: "Approval sheet is stable, QA passed, and only launch coordination remains before release.",
+            latestSummaryTitle: "Ship the approval sheet",
+            usageCosts: [2.0, 1.6]
+        )
+
+        let doneRuntime = OpenBurnBarControllerRuntimeSnapshot(
+            source: .daemon,
+            updatedAt: now,
+            summary: OpenBurnBarControllerSummary(
+                headline: "Mission closure is done.",
+                detail: "No pending closure approvals remain.",
+                pendingQuestions: 0,
+                unresolvedFollowups: 0,
+                openMissions: 0,
+                replayLabel: "Replay idle",
+                notificationLabel: "Local notifications armed"
+            ),
+            questions: [],
+            followups: [],
+            missions: [
+                OpenBurnBarControllerMissionRecord(
+                    id: "mission-apollo-done",
+                    projectName: "Apollo",
+                    title: "Ship approval sheet",
+                    summary: "Closure complete.",
+                    state: .completed,
+                    approval: .approved,
+                    packetSummary: "review-worker: finalize closure",
+                    latestResultSummary: "Completed",
+                    latestResultDetail: "Mission completed with no pending closure questions.",
+                    latestResultRunID: "run-done",
+                    activeWorkerName: nil,
+                    activeRunID: nil,
+                    packetRunCount: 1,
+                    latestTakeoverState: nil,
+                    latestTakeoverReason: nil,
+                    latestTakeoverRunID: nil,
+                    takeoverCount: 0,
+                    burnCostUSD: 0.5,
+                    burnTokens: 1200,
+                    updatedAt: now
+                )
+            ],
+            recentEvents: []
+        )
+        try store.saveControllerRuntimeMirror(doneRuntime)
+
+        var layer = makeLayer(dataStore: store)
+        let doneSnapshot = layer.snapshot.controllerRuntime
+        XCTAssertEqual(doneSnapshot.pendingQuestions.count, 0)
+        XCTAssertEqual(doneSnapshot.pendingQuestions.prefix(1).count, 0)
+        XCTAssertEqual(doneSnapshot.missions.filter { $0.state == .completed }.count, 1)
+
+        let awaitingRuntime = OpenBurnBarControllerRuntimeSnapshot(
+            source: .daemon,
+            updatedAt: now.addingTimeInterval(30),
+            summary: OpenBurnBarControllerSummary(
+                headline: "1 pending closure approval question.",
+                detail: "Awaiting operator decision before closure.",
+                pendingQuestions: 1,
+                unresolvedFollowups: 0,
+                openMissions: 1,
+                replayLabel: "Replay idle",
+                notificationLabel: "Local notifications armed"
+            ),
+            questions: [
+                OpenBurnBarControllerQuestion(
+                    id: "question-apollo-closure",
+                    projectName: "Apollo",
+                    sessionID: "apollo-4",
+                    title: "Approve mission closure",
+                    prompt: "Should OpenBurnBar finalize mission closure?",
+                    stageLabel: "Mission Closure",
+                    evidenceHint: "Ship the approval sheet",
+                    state: .pending,
+                    priority: .high,
+                    sourceLabel: "Daemon controller runtime",
+                    createdAt: now.addingTimeInterval(30),
+                    answeredAt: nil,
+                    answer: nil,
+                    selectedOptionID: nil,
+                    answerPlaceholder: "Record the operator call OpenBurnBar should carry forward…",
+                    suggestedOptions: [
+                        OpenBurnBarControllerQuestionOption(
+                            id: "approve",
+                            title: "Approve",
+                            detail: "Finalize the mission closure.",
+                            answer: "Approve mission closure."
+                        )
+                    ],
+                    deepLink: nil,
+                    isUnread: true,
+                    notificationCount: 1
+                )
+            ],
+            followups: [],
+            missions: [
+                OpenBurnBarControllerMissionRecord(
+                    id: "mission-apollo-awaiting",
+                    projectName: "Apollo",
+                    title: "Ship approval sheet",
+                    summary: "Waiting on closure approval.",
+                    state: .planned,
+                    approval: .pending,
+                    packetSummary: "review-worker: closure gate",
+                    latestResultSummary: nil,
+                    latestResultDetail: nil,
+                    latestResultRunID: nil,
+                    activeWorkerName: "review-worker",
+                    activeRunID: "run-awaiting",
+                    packetRunCount: 1,
+                    latestTakeoverState: nil,
+                    latestTakeoverReason: nil,
+                    latestTakeoverRunID: nil,
+                    takeoverCount: 0,
+                    burnCostUSD: 0.5,
+                    burnTokens: 1200,
+                    updatedAt: now.addingTimeInterval(30)
+                )
+            ],
+            recentEvents: []
+        )
+        try store.saveControllerRuntimeMirror(awaitingRuntime)
+
+        layer = makeLayer(dataStore: store)
+        let awaitingSnapshot = layer.snapshot.controllerRuntime
+        XCTAssertEqual(awaitingSnapshot.pendingQuestions.count, 1)
+        XCTAssertEqual(awaitingSnapshot.pendingQuestions.prefix(1).count, 1)
+    }
+
     /// VAL-BRIEF-002 Evidence: Question ordering is deterministic by priority and createdAt
     @MainActor
     func testVAL_BRIEF_002_QuestionOrderingIsDeterministic() throws {

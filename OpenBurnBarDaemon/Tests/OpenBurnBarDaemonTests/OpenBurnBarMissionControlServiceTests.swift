@@ -215,6 +215,319 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(answered.question.tracker?.isUnread, false)
     }
 
+    func testVAL_GOV_001_ControllerSummaryCountsReconcileWithStoreState() async throws {
+        let harness = try makeHarness(name: "val-gov-001-summary-reconcile")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+
+        let questionID = BurnBarQuestionID(rawValue: "question-val-gov-001")
+        _ = try await harness.service.questionCreate(
+            BurnBarQuestionCreateRequest(
+                question: BurnBarPendingQuestionSnapshot(
+                    id: questionID,
+                    projectSlug: "apollo",
+                    title: "Should we approve mission closure?",
+                    prompt: "Approval is required before closure can proceed.",
+                    status: .pending,
+                    priority: .high,
+                    askedAt: Date()
+                )
+            )
+        )
+
+        _ = try await harness.service.followupCreate(
+            BurnBarFollowupCreateRequest(
+                followup: BurnBarFollowupSnapshot(
+                    id: BurnBarFollowupID(rawValue: "followup-val-gov-001"),
+                    projectSlug: "apollo",
+                    title: "Schedule stakeholder followup",
+                    summary: "Open followup should reconcile with summary counts.",
+                    status: .open,
+                    kind: .controllerNudge,
+                    createdAt: Date()
+                )
+            )
+        )
+
+        let mission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "apollo",
+                title: "VAL-GOV-001 Mission",
+                summary: "Ensure summary counts stay reconciled.",
+                createdBy: "operator",
+                recommendation: .review
+            )
+        )
+        let missionID = mission.mission.id
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: missionID, actor: "operator", note: "approved")
+        )
+
+        let summaryBefore = try await harness.service.controllerSummary(
+            BurnBarControllerSummaryRequest(projectSlug: "apollo")
+        )
+        let pendingQuestionsBefore = try await harness.service.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: "apollo", statuses: [.pending], limit: 200)
+        )
+        let openFollowupsBefore = try await harness.service.followupsList(
+            BurnBarFollowupsListRequest(projectSlug: "apollo", statuses: [.open], limit: 200)
+        )
+        let activeMissionsBefore = try await harness.service.missionsList(
+            BurnBarMissionListRequest(projectSlug: "apollo", statuses: BurnBarMissionStatus.allCases, limit: 200)
+        )
+        let nonTerminalMissionsBefore = activeMissionsBefore.missions.filter {
+            ![BurnBarMissionStatus.completed, .failed, .cancelled].contains($0.status)
+        }
+
+        XCTAssertEqual(summaryBefore.summary.counts.pendingQuestionCount, pendingQuestionsBefore.questions.count)
+        XCTAssertEqual(summaryBefore.summary.counts.openFollowupCount, openFollowupsBefore.followups.count)
+        XCTAssertEqual(summaryBefore.summary.counts.activeMissionCount, nonTerminalMissionsBefore.count)
+
+        _ = try await harness.service.questionAnswer(
+            BurnBarQuestionAnswerRequest(
+                questionID: questionID,
+                answeredBy: "operator",
+                answer: "Approve closure."
+            )
+        )
+
+        let summaryAfter = try await harness.service.controllerSummary(
+            BurnBarControllerSummaryRequest(projectSlug: "apollo")
+        )
+        let pendingQuestionsAfter = try await harness.service.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: "apollo", statuses: [.pending], limit: 200)
+        )
+        let openFollowupsAfter = try await harness.service.followupsList(
+            BurnBarFollowupsListRequest(projectSlug: "apollo", statuses: [.open], limit: 200)
+        )
+        let activeMissionsAfter = try await harness.service.missionsList(
+            BurnBarMissionListRequest(projectSlug: "apollo", statuses: BurnBarMissionStatus.allCases, limit: 200)
+        )
+        let nonTerminalMissionsAfter = activeMissionsAfter.missions.filter {
+            ![BurnBarMissionStatus.completed, .failed, .cancelled].contains($0.status)
+        }
+
+        XCTAssertEqual(summaryAfter.summary.counts.pendingQuestionCount, pendingQuestionsAfter.questions.count)
+        XCTAssertEqual(summaryAfter.summary.counts.openFollowupCount, openFollowupsAfter.followups.count)
+        XCTAssertEqual(summaryAfter.summary.counts.activeMissionCount, nonTerminalMissionsAfter.count)
+    }
+
+    func testVAL_GOV_006_MissionClosureQuestionInvariantEnforcesSingleActiveQuestionPerMission() async throws {
+        let harness = try makeHarness(name: "val-gov-006-one-closure-question")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+
+        let mission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "apollo",
+                title: "Closure invariant mission",
+                summary: "Mission should retain exactly one active closure-approval question.",
+                createdBy: "operator",
+                recommendation: .review
+            )
+        )
+        let missionID = mission.mission.id
+
+        let firstClosureQuestionID = BurnBarQuestionID(rawValue: "question-closure-1")
+        let closureMetadata: BurnBarMetadata = [
+            "mission_id": .string(missionID.rawValue),
+            "question_kind": .string("mission_closure_approval"),
+            "closure_state": .string("awaiting_approval")
+        ]
+
+        let firstCreated = try await harness.service.questionCreate(
+            BurnBarQuestionCreateRequest(
+                question: BurnBarPendingQuestionSnapshot(
+                    id: firstClosureQuestionID,
+                    projectSlug: "apollo",
+                    title: "Approve closure for Apollo mission",
+                    prompt: "Should OpenBurnBar finalize this mission closure?",
+                    stageLabel: "Mission Closure",
+                    status: .pending,
+                    priority: .high,
+                    askedAt: Date().addingTimeInterval(-60),
+                    metadata: closureMetadata
+                )
+            )
+        )
+        XCTAssertEqual(firstCreated.question?.id, firstClosureQuestionID)
+
+        let secondCreated = try await harness.service.questionCreate(
+            BurnBarQuestionCreateRequest(
+                question: BurnBarPendingQuestionSnapshot(
+                    id: BurnBarQuestionID(rawValue: "question-closure-2"),
+                    projectSlug: "apollo",
+                    title: "Second closure approval prompt should merge",
+                    prompt: "Do we need one final operator approval before closure?",
+                    stageLabel: "Mission Closure",
+                    status: .pending,
+                    priority: .high,
+                    askedAt: Date(),
+                    metadata: closureMetadata
+                )
+            )
+        )
+
+        XCTAssertEqual(
+            secondCreated.question?.id,
+            firstClosureQuestionID,
+            "VAL-GOV-006: second active closure question should merge into the existing mission closure question"
+        )
+
+        let pendingQuestions = try await harness.service.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: "apollo", statuses: [.pending], limit: 200)
+        )
+        let missionClosureQuestions = pendingQuestions.questions.filter { question in
+            stringValue(question.metadata["mission_id"]) == missionID.rawValue
+                && stringValue(question.metadata["question_kind"]) == "mission_closure_approval"
+        }
+        XCTAssertEqual(
+            missionClosureQuestions.count,
+            1,
+            "VAL-GOV-006: each mission should keep exactly one active closure-approval question"
+        )
+
+        let summary = try await harness.service.controllerSummary(BurnBarControllerSummaryRequest(projectSlug: "apollo"))
+        XCTAssertEqual(summary.summary.counts.pendingQuestionCount, pendingQuestions.questions.count)
+
+        let openFollowups = try await harness.service.followupsList(
+            BurnBarFollowupsListRequest(projectSlug: "apollo", statuses: [.open], limit: 200)
+        )
+        XCTAssertEqual(openFollowups.followups.count, 1)
+        XCTAssertEqual(openFollowups.followups.first?.questionID, firstClosureQuestionID)
+    }
+
+    func testVAL_CROSS_002_ClosureEndsInDoneOrOnePendingApprovalQuestion() async throws {
+        let harness = try makeHarness(name: "val-cross-002-closure")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+
+        // Done-path mission: completed and zero pending closure questions.
+        let completedMission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "apollo",
+                title: "Completed closure mission",
+                summary: "Should end with done + zero pending closure questions.",
+                createdBy: "operator",
+                recommendation: .review
+            )
+        )
+        let completedMissionID = completedMission.mission.id
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(missionID: completedMissionID, actor: "operator", note: "approved")
+        )
+        _ = try await harness.service.missionRecordResult(
+            BurnBarMissionRecordResultRequest(
+                missionID: completedMissionID,
+                result: BurnBarMissionResultSnapshot(
+                    id: BurnBarMissionResultID(rawValue: "result-completed"),
+                    missionID: completedMissionID,
+                    packetID: nil,
+                    runID: nil,
+                    status: .succeeded,
+                    summary: "Mission complete.",
+                    detail: "All closure checks passed.",
+                    burnDelta: 0.25,
+                    createdAt: Date()
+                )
+            )
+        )
+
+        // Awaiting-approval path: daemon enforces one pending closure question.
+        let approvalMission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "apollo",
+                title: "Awaiting closure approval mission",
+                summary: "Should expose exactly one pending closure-approval question.",
+                createdBy: "operator",
+                recommendation: .review
+            )
+        )
+        let approvalMissionID = approvalMission.mission.id
+
+        let closureMetadata: BurnBarMetadata = [
+            "mission_id": .string(approvalMissionID.rawValue),
+            "question_kind": .string("mission_closure_approval"),
+            "closure_state": .string("awaiting_approval")
+        ]
+        _ = try await harness.service.questionCreate(
+            BurnBarQuestionCreateRequest(
+                question: BurnBarPendingQuestionSnapshot(
+                    id: BurnBarQuestionID(rawValue: "question-cross-002-a"),
+                    projectSlug: "apollo",
+                    title: "Approve mission closure",
+                    prompt: "Closure requires explicit operator approval.",
+                    stageLabel: "Mission Closure",
+                    status: .pending,
+                    priority: .high,
+                    askedAt: Date().addingTimeInterval(-30),
+                    metadata: closureMetadata
+                )
+            )
+        )
+        _ = try await harness.service.questionCreate(
+            BurnBarQuestionCreateRequest(
+                question: BurnBarPendingQuestionSnapshot(
+                    id: BurnBarQuestionID(rawValue: "question-cross-002-b"),
+                    projectSlug: "apollo",
+                    title: "Duplicate closure prompt",
+                    prompt: "A second closure prompt should collapse into one.",
+                    stageLabel: "Mission Closure",
+                    status: .pending,
+                    priority: .high,
+                    askedAt: Date(),
+                    metadata: closureMetadata
+                )
+            )
+        )
+
+        let pendingQuestions = try await harness.service.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: "apollo", statuses: [.pending], limit: 200)
+        )
+        let completedMissionPendingClosureQuestions = pendingQuestions.questions.filter {
+            stringValue($0.metadata["mission_id"]) == completedMissionID.rawValue
+                && stringValue($0.metadata["question_kind"]) == "mission_closure_approval"
+        }
+        let approvalMissionPendingClosureQuestions = pendingQuestions.questions.filter {
+            stringValue($0.metadata["mission_id"]) == approvalMissionID.rawValue
+                && stringValue($0.metadata["question_kind"]) == "mission_closure_approval"
+        }
+
+        let refreshedCompletedMission = try await harness.service.missionGet(
+            BurnBarMissionGetRequest(missionID: completedMissionID)
+        )
+        let refreshedApprovalMission = try await harness.service.missionGet(
+            BurnBarMissionGetRequest(missionID: approvalMissionID)
+        )
+
+        XCTAssertEqual(
+            refreshedCompletedMission.mission?.status,
+            .completed,
+            "VAL-CROSS-002: done-path mission must be completed"
+        )
+        XCTAssertEqual(
+            completedMissionPendingClosureQuestions.count,
+            0,
+            "VAL-CROSS-002: completed mission must have zero pending closure-approval questions"
+        )
+        XCTAssertEqual(
+            refreshedApprovalMission.mission?.status,
+            .awaitingApproval,
+            "VAL-CROSS-002: approval-path mission should remain awaiting approval"
+        )
+        XCTAssertEqual(
+            approvalMissionPendingClosureQuestions.count,
+            1,
+            "VAL-CROSS-002: awaiting-approval mission must have exactly one pending closure-approval question"
+        )
+    }
+
     func testMissionLifecycleTracksApprovalPacketsResultsAndBurn() async throws {
         let harness = try makeHarness(name: "mission-lifecycle")
 
