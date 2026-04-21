@@ -121,7 +121,7 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
     }
 }
 
-struct KeychainStore {
+struct KeychainStore: @unchecked Sendable {
     private let service: String
     private let legacyServices: [String]
     private let backend: any KeychainStoreBackend

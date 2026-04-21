@@ -505,8 +505,9 @@ final class OpenBurnBarDaemonManager {
             }
 
             if didMutate {
+                let snapshotToWrite = snapshot
                 _ = try await daemonRPC {
-                    try OpenBurnBarDaemonSocketClient.updateConfig(snapshot, at: socketURL)
+                    try OpenBurnBarDaemonSocketClient.updateConfig(snapshotToWrite, at: socketURL)
                 }
             }
         }
@@ -599,8 +600,9 @@ final class OpenBurnBarDaemonManager {
             throw OpenBurnBarDaemonManagerError.rpcError("Provider '\(providerID)' is not available in daemon config.")
         }
         snapshot.providers[index] = try mutate(snapshot.providers[index])
+        let snapshotToWrite = snapshot
         _ = try await daemonRPC {
-            try OpenBurnBarDaemonSocketClient.updateConfig(snapshot, at: socketURL)
+            try OpenBurnBarDaemonSocketClient.updateConfig(snapshotToWrite, at: socketURL)
         }
     }
 
@@ -714,8 +716,8 @@ final class OpenBurnBarDaemonManager {
         return String(trimmed.suffix(maxCharacters))
     }
 
-    static let resourceBundleName = "OpenBurnBarCore_OpenBurnBarCore.bundle"
-    static let legacyResourceBundleNames = ["BurnBarCore_BurnBarCore.bundle"]
+    nonisolated static let resourceBundleName = "OpenBurnBarCore_OpenBurnBarCore.bundle"
+    nonisolated static let legacyResourceBundleNames = ["BurnBarCore_BurnBarCore.bundle"]
 
     private func installFilesIfNeeded() throws {
         try dependencies.fileManager.createDirectory(at: paths.daemonDirectory, withIntermediateDirectories: true)
@@ -1272,6 +1274,7 @@ final class OpenBurnBarDaemonManager {
 /// Subscribes to `NSDistributedNotificationCenter` posts from the per-user daemon and mirrors them into
 /// standard UserNotifications from the real app process (menu bar `.app`), avoiding helper-tool issues
 /// and any `osascript` subprocess.
+@MainActor
 private final class OpenBurnBarDaemonLocalNotificationRelay: NSObject {
     static let shared = OpenBurnBarDaemonLocalNotificationRelay()
 
@@ -1296,7 +1299,7 @@ private final class OpenBurnBarDaemonLocalNotificationRelay: NSObject {
         else {
             return
         }
-        Task {
+        Task { [title, body] in
             await Self.deliverUserNotification(title: title, body: body)
         }
     }

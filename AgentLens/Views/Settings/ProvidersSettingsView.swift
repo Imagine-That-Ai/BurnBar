@@ -345,11 +345,13 @@ private struct CLIConnectionsSettingsSection: View {
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.activates = true
             NSWorkspace.shared.open([scriptURL], withApplicationAt: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"), configuration: configuration) { _, error in
-                if let error {
-                    testResults[cliType] = "Could not open Terminal: \(error.localizedDescription)"
-                    return
+                Task { @MainActor in
+                    if let error {
+                        testResults[cliType] = "Could not open Terminal: \(error.localizedDescription)"
+                        return
+                    }
+                    testResults[cliType] = "Opened \(cliType.displayName) login in Terminal. Run Test again after signing in."
                 }
-                testResults[cliType] = "Opened \(cliType.displayName) login in Terminal. Run Test again after signing in."
             }
         } catch {
             testResults[cliType] = "Could not prepare login command: \(error.localizedDescription)"

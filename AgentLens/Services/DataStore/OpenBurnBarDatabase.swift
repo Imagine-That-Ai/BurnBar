@@ -976,17 +976,17 @@ final class OpenBurnBarDatabase {
         return formatter
     }()
 
-    static let iso8601FractionalFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
+    private static func parseISO8601Date(_ string: String) -> Date? {
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let parsed = fractionalFormatter.date(from: string) {
+            return parsed
+        }
 
-    static let iso8601BasicFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
+        let basicFormatter = ISO8601DateFormatter()
+        basicFormatter.formatOptions = [.withInternetDateTime]
+        return basicFormatter.date(from: string)
+    }
 
     static func parseDateValue(_ value: Any?) -> Date? {
         if let date = value as? Date { return date }
@@ -1004,8 +1004,7 @@ final class OpenBurnBarDatabase {
         }
         if let string = value as? String {
             if let parsed = sqliteDateFormatter.date(from: string) { return parsed }
-            if let parsed = iso8601FractionalFormatter.date(from: string) { return parsed }
-            return iso8601BasicFormatter.date(from: string)
+            return parseISO8601Date(string)
         }
         return nil
     }
