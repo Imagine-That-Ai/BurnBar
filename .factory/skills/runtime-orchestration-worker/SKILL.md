@@ -52,6 +52,23 @@ None.
    
    A handoff with `followedProcedure=true` but missing evidence for any required validator surface is invalid and must be treated as a procedure deviation. List any validator surfaces that were not exercised as empty/omitted in the handoff if they genuinely do not apply to the feature.
 
+### Test Filter Guidance: Canonical vs. Assertion-Filter Commands
+
+**Canonical test commands** run all tests in a test class and are used for baseline validation:
+- `swift test --package-path OpenBurnBarDaemon --filter BurnBarRunServiceTests`
+- `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`
+- `swift test --package-path OpenBurnBarDaemon --filter BurnBarProviderRouterTests`
+
+**Assertion-filter commands** run a specific subset of tests that verify a particular validation assertion (e.g., `VAL_EXEC_009`). These are supplemental and appropriate when:
+- A feature's `verificationSteps` explicitly require assertion-filter verification (e.g., `swift test --filter VAL_EXEC_009`)
+- A worker is adding regression lock-in tests for a specific assertion ID
+- The feature scope is narrow and well-defined by a single assertion
+
+**When to use which:**
+- Use **canonical commands** for baseline validation and broad coverage
+- Use **assertion-filter commands** when the feature's `verificationSteps` explicitly specify them or when adding targeted regression tests for a specific assertion
+- Both are valid; the key is using the right tool for the task at hand
+
 ## Example Handoff
 ```json
 {

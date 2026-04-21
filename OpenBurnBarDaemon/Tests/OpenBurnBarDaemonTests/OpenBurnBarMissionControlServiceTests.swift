@@ -3097,6 +3097,261 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         )
     }
 
+    // MARK: - VAL-EXEC-009 Regression: Non-running completion/failure rejection
+
+    func testVAL_EXEC_009_NonRunningNodeCompletionIsRejected() async throws {
+        // VAL-EXEC-009 regression lock-in: Non-running completion/failure cannot advance state.
+        // This test directly asserts that reportNodeCompleted and reportNodeFailed are rejected
+        // for nodes that are not in the .running state, preventing out-of-order state corruption.
+
+        let nodeAID = BurnBarDAGNodeID(rawValue: "reject-a")
+        let nodeBID = BurnBarDAGNodeID(rawValue: "reject-b")
+
+        let dag = BurnBarDAGContract(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-009-reject"),
+            nodes: [
+                BurnBarDAGNode(id: nodeAID, title: "Node A", detail: "First node", status: .pending, dependsOn: []),
+                BurnBarDAGNode(id: nodeBID, title: "Node B", detail: "Depends on A", status: .pending, dependsOn: [nodeAID])
+            ],
+            edges: []
+        )
+
+        final class RejectTestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+            func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
+            func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
+            func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
+        }
+
+        let scheduler = BurnBarParallelDAGScheduler.create(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-009-reject"),
+            dag: dag,
+            dispatch: RejectTestDispatch(),
+            maxConcurrency: 1
+        )
+
+        // Start scheduler - node A should start
+        try await scheduler.start()
+        let afterStart = await scheduler.currentState()
+
+        // VAL-EXEC-009: Node A should be running
+        XCTAssertTrue(
+            afterStart.runningNodes.contains(nodeAID),
+            "Node A should be running after start"
+        )
+
+        // VAL-EXEC-009: Try to complete node B (not running - depends on A)
+        // This should be rejected and not advance state
+        await scheduler.reportNodeCompleted(nodeBID)
+        let afterRejectB = await scheduler.currentState()
+
+        // VAL-EXEC-009: Node B should NOT be completed - rejection prevents state advance
+        XCTAssertEqual(
+            afterRejectB.nodeStatuses[nodeBID.rawValue],
+            .pending,
+            "Non-running node B completion should be rejected, status should remain pending"
+        )
+        XCTAssertFalse(
+            afterRejectB.completedNodes.contains(nodeBID),
+            "Node B should not be in completed nodes after rejected completion"
+        )
+
+        // VAL-EXEC-009: Complete node A (valid)
+        await scheduler.reportNodeCompleted(nodeAID)
+        let afterCompleteA = await scheduler.currentState()
+
+        // VAL-EXEC-009: Node A should be completed
+        XCTAssertTrue(
+            afterCompleteA.completedNodes.contains(nodeAID),
+            "Node A should be completed"
+        )
+
+        // VAL-EXEC-009: Now node B should be running (dependency satisfied)
+        XCTAssertTrue(
+            afterCompleteA.runningNodes.contains(nodeBID),
+            "Node B should be running after A completes"
+        )
+
+        // VAL-EXEC-009: Try to complete node A again (already completed - not running)
+        // This should be rejected
+        await scheduler.reportNodeCompleted(nodeAID)
+        let afterRejectA = await scheduler.currentState()
+
+        // VAL-EXEC-009: Node A status should remain completed, not advance again
+        XCTAssertEqual(
+            afterRejectA.nodeStatuses[nodeAID.rawValue],
+            .completed,
+            "Already-completed node A should remain completed after rejected duplicate completion"
+        )
+        XCTAssertTrue(
+            afterRejectA.completedNodes.contains(nodeAID),
+            "Node A should still be in completed nodes"
+        )
+
+        // VAL-EXEC-009: Try to fail node A (already completed - not running)
+        await scheduler.reportNodeFailed(nodeAID)
+        let afterRejectFailA = await scheduler.currentState()
+
+        // VAL-EXEC-009: Node A status should remain completed despite rejected failure
+        XCTAssertEqual(
+            afterRejectFailA.nodeStatuses[nodeAID.rawValue],
+            .completed,
+            "Already-completed node A should remain completed after rejected failure"
+        )
+
+        // Complete node B normally to finish
+        await scheduler.reportNodeCompleted(nodeBID)
+        let finalState = await scheduler.currentState()
+        XCTAssertEqual(finalState.phase, .completed, "Scheduler should complete normally")
+    }
+
+    func testVAL_EXEC_009_NonRunningNodeFailureIsRejected() async throws {
+        // VAL-EXEC-009 regression lock-in: Non-running failure cannot advance state.
+        // This test verifies that reportNodeFailed is also rejected for non-running nodes.
+
+        let nodeAID = BurnBarDAGNodeID(rawValue: "reject-fail-a")
+        let nodeBID = BurnBarDAGNodeID(rawValue: "reject-fail-b")
+
+        let dag = BurnBarDAGContract(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-009-reject-fail"),
+            nodes: [
+                BurnBarDAGNode(id: nodeAID, title: "Fail Node A", detail: "First node", status: .pending, dependsOn: []),
+                BurnBarDAGNode(id: nodeBID, title: "Fail Node B", detail: "Depends on A", status: .pending, dependsOn: [nodeAID])
+            ],
+            edges: []
+        )
+
+        final class RejectFailDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+            func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
+            func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
+            func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
+        }
+
+        let scheduler = BurnBarParallelDAGScheduler.create(
+            missionID: BurnBarMissionID(rawValue: "mission-val-exec-009-reject-fail"),
+            dag: dag,
+            dispatch: RejectFailDispatch(),
+            maxConcurrency: 1
+        )
+
+        // Start scheduler - node A should start
+        try await scheduler.start()
+
+        // VAL-EXEC-009: Try to fail node B (not running - depends on A)
+        // This should be rejected
+        await scheduler.reportNodeFailed(nodeBID)
+        let afterRejectB = await scheduler.currentState()
+
+        // VAL-EXEC-009: Node B should NOT be failed - rejection prevents state advance
+        XCTAssertEqual(
+            afterRejectB.nodeStatuses[nodeBID.rawValue],
+            .pending,
+            "Non-running node B failure should be rejected, status should remain pending"
+        )
+        XCTAssertFalse(
+            afterRejectB.failedNodes.contains(nodeBID),
+            "Node B should not be in failed nodes after rejected failure"
+        )
+
+        // VAL-EXEC-009: Now complete A and verify B starts
+        await scheduler.reportNodeCompleted(nodeAID)
+        let afterA = await scheduler.currentState()
+
+        XCTAssertTrue(
+            afterA.runningNodes.contains(nodeBID),
+            "Node B should be running after A completes"
+        )
+
+        // VAL-EXEC-009: Complete B to finish
+        await scheduler.reportNodeCompleted(nodeBID)
+        let finalStateAfterB = await scheduler.currentState()
+        XCTAssertEqual(finalStateAfterB.phase, .completed)
+    }
+
+    // MARK: - VAL-EXEC-009 Regression: create() registration observable via activeScheduler
+
+    func testVAL_EXEC_009_CreateRegistrationIsObservableViaActiveScheduler() async throws {
+        // VAL-EXEC-009 regression lock-in: create() registration is observable through activeScheduler(for:).
+        // This test verifies that after calling BurnBarParallelDAGScheduler.create(),
+        // the scheduler can be retrieved via BurnBarParallelDAGScheduler.activeScheduler(for:).
+
+        let nodeAID = BurnBarDAGNodeID(rawValue: "register-a")
+        let missionID = BurnBarMissionID(rawValue: "mission-val-exec-009-register")
+
+        let dag = BurnBarDAGContract(
+            missionID: missionID,
+            nodes: [
+                BurnBarDAGNode(id: nodeAID, title: "Register Node", detail: "Test registration", status: .pending, dependsOn: [])
+            ],
+            edges: []
+        )
+
+        final class RegisterTestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+            func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
+            func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
+            func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
+        }
+
+        // VAL-EXEC-009: Before create(), activeScheduler should return nil
+        XCTAssertNil(
+            BurnBarParallelDAGScheduler.activeScheduler(for: missionID),
+            "activeScheduler should return nil before create()"
+        )
+
+        // VAL-EXEC-009: Create scheduler via factory method
+        let scheduler = BurnBarParallelDAGScheduler.create(
+            missionID: missionID,
+            dag: dag,
+            dispatch: RegisterTestDispatch(),
+            maxConcurrency: 1
+        )
+
+        // VAL-EXEC-009: After create(), activeScheduler should return the same scheduler
+        let retrieved = BurnBarParallelDAGScheduler.activeScheduler(for: missionID)
+        XCTAssertNotNil(
+            retrieved,
+            "activeScheduler should return scheduler after create()"
+        )
+        // Verify missionID via currentState() to avoid actor-isolation issues
+        if let retrievedScheduler = retrieved {
+            let retrievedState = await retrievedScheduler.currentState()
+            XCTAssertEqual(
+                retrievedState.missionID, missionID,
+                "Retrieved scheduler should have matching missionID"
+            )
+        }
+
+        // Start and complete
+        try await scheduler.start()
+        await scheduler.reportNodeCompleted(nodeAID)
+
+        // VAL-EXEC-009: Scheduler should still be retrievable after execution
+        let retrievedAfter = BurnBarParallelDAGScheduler.activeScheduler(for: missionID)
+        XCTAssertNotNil(
+            retrievedAfter,
+            "activeScheduler should still return scheduler after execution completes"
+        )
+        // Verify missionID via currentState() to avoid actor-isolation issues
+        if let retrievedAfterScheduler = retrievedAfter {
+            let retrievedAfterState = await retrievedAfterScheduler.currentState()
+            XCTAssertEqual(
+                retrievedAfterState.missionID, missionID,
+                "Retrieved scheduler after execution should have correct missionID"
+            )
+        }
+    }
+
+    func testVAL_EXEC_009_ActiveSchedulerReturnsNilForUnknownMission() async throws {
+        // VAL-EXEC-009 regression: activeScheduler returns nil for mission IDs not created via create().
+
+        let unknownMissionID = BurnBarMissionID(rawValue: "unknown-mission")
+
+        // VAL-EXEC-009: activeScheduler should return nil for unknown mission
+        XCTAssertNil(
+            BurnBarParallelDAGScheduler.activeScheduler(for: unknownMissionID),
+            "activeScheduler should return nil for mission never created"
+        )
+    }
+
     // MARK: - VAL-EXEC-013: Parallel scheduler emits critical-path tracking artifacts
 
     func testVAL_EXEC_013_CriticalPathArtifactIsEmittedOnDAGStart() async throws {
