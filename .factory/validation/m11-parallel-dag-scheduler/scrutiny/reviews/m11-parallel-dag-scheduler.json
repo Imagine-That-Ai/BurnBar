@@ -1,0 +1,28 @@
+{
+  "featureId": "m11-parallel-dag-scheduler",
+  "reviewedAt": "2026-04-20T11:19:18Z",
+  "commitId": "14876f2be6b313a2a9e50c8e386825a6f4aabd3c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds a dedicated parallel DAG scheduler and assertion-tagged tests for VAL-EXEC-009/013, but a core state-transition guard is missing: node completion/failure reports are accepted for non-running nodes, which can produce invalid scheduler state and violate dependency-aware execution semantics.",
+    "issues": [
+      {
+        "file": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/BurnBarParallelDAGScheduler.swift",
+        "line": 218,
+        "severity": "blocking",
+        "description": "handleNodeCompletion transitions any known node directly to completed/failed without verifying it is currently running. Because reportNodeCompleted/reportNodeFailed are public (lines 179-190), an out-of-order completion can mark a pending dependency as completed, allowing downstream nodes to be treated as dependency-satisfied and producing incorrect terminal state."
+      },
+      {
+        "file": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/BurnBarParallelDAGScheduler.swift",
+        "line": 627,
+        "severity": "non_blocking",
+        "description": "The create() factory is documented as 'Creates and registers a scheduler for a mission' but never writes to activeSchedulers; activeScheduler(for:) therefore cannot return created schedulers. This is API/behavior drift and can mislead future integrations."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Fail: parallel scheduler core behavior is close, but the completion path lacks running-state validation, so node state can be advanced out of order by public API calls. One additional non-blocking API drift was noted in scheduler registration docs vs behavior."
+}

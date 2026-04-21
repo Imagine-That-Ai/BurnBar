@@ -51,8 +51,10 @@ enum TokenExtractionUtility {
     }
 
     /// The current fallback estimator. Defaults to `.characterRatio`.
-    /// UsageAggregat or should set this based on the `tokenizerAssistedFallbackEnabled` user flag.
-    static var fallbackEstimator: FallbackEstimator = .characterRatio
+    /// UsageAggregator should set this based on the `tokenizerAssistedFallbackEnabled` user flag.
+    /// Access is coordinated by the `UsageAggregator` refresh lifecycle (single-main-actor writer,
+    /// read-only parser tasks during each refresh pass).
+    nonisolated(unsafe) static var fallbackEstimator: FallbackEstimator = .characterRatio
 
     /// Returns the estimator version string for use in provenance metadata.
     static var currentEstimatorVersion: String {

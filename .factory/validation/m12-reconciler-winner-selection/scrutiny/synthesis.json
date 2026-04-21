@@ -1,0 +1,40 @@
+{
+  "milestone": "m12-reconciler-winner-selection",
+  "round": 3,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "/Users/albertonunez/Documents/Windsurf/BurnBar/scripts/test-openburnbar-swift.sh && CI=true /Users/albertonunez/Documents/Windsurf/BurnBar/scripts/test-openburnbar-app.sh && /Users/albertonunez/Documents/Windsurf/BurnBar/scripts/test-openburnbar-ts.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project /Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination platform=macOS,arch=arm64 -clonedSourcePackagesDirPath /Users/albertonunez/Documents/Windsurf/BurnBar/.spm-cache -derivedDataPath /Users/albertonunez/Documents/Windsurf/BurnBar/.derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix /Users/albertonunez/Documents/Windsurf/BurnBar/extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": ".factory/skills/runtime-orchestration-worker/SKILL.md",
+      "suggestion": "Strengthen followedProcedure gating so workers may mark `followedProcedure: true` only when each required focused validator command is explicitly executed and recorded (or the skill is updated to explicitly allow equivalent assertion-filter evidence).",
+      "evidence": "Recurring across three m12 rounds: .factory/validation/m12-reconciler-winner-selection/scrutiny/synthesis.round1.json and synthesis.round2.json plus current review .factory/validation/m12-reconciler-winner-selection/scrutiny/reviews/m12-reconciler-candidate-scope-and-terminal-sequence-fix.json.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/m12-reconciler-winner-selection/scrutiny/synthesis.round2.json"
+}

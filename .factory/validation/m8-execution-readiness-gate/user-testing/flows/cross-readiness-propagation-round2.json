@@ -1,0 +1,133 @@
+{
+  "groupId": "cross-readiness-propagation-round2",
+  "testedAt": "2026-04-19T23:17:54Z",
+  "isolation": {
+    "flowValidatorGuidance": "MC-CROSS",
+    "assertionScope": ["VAL-CROSS-009"],
+    "missionDir": "/Users/albertonunez/.factory/missions/d1d1287f-f2a9-4a34-8ba9-fce37df13493",
+    "repoRoot": "/Users/albertonunez/Documents/Windsurf/BurnBar",
+    "appConcurrencyCap": 1,
+    "sourceCodeEdits": false
+  },
+  "toolsUsed": ["swift test", "xcodebuild", "npm", "rg"],
+  "commands": [
+    {
+      "surface": "daemon",
+      "command": "swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests",
+      "exitCode": 0,
+      "transcript": "m8-execution-readiness-gate/cross-readiness-propagation-round2/01-daemon-swift-test.log",
+      "exitCodePath": "m8-execution-readiness-gate/cross-readiness-propagation-round2/01-daemon-swift-test.exitcode"
+    },
+    {
+      "surface": "app",
+      "command": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -only-testing:\"OpenBurnBarTests/OpenBurnBarOperatingComposerTests\" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''",
+      "exitCode": 0,
+      "transcript": "m8-execution-readiness-gate/cross-readiness-propagation-round2/02-app-xcodebuild-test-attempt1.log",
+      "exitCodePath": "m8-execution-readiness-gate/cross-readiness-propagation-round2/02-app-xcodebuild-test.exitcode",
+      "retriedForTransientPackageArtifactIssue": false,
+      "retryFlagPath": "m8-execution-readiness-gate/cross-readiness-propagation-round2/02-app-xcodebuild-test.retried"
+    },
+    {
+      "surface": "extension",
+      "command": "npm --prefix extensions/openburnbar run test:unit -- test/projections.test.ts",
+      "exitCode": 0,
+      "transcript": "m8-execution-readiness-gate/cross-readiness-propagation-round2/03-extension-npm-test.log",
+      "exitCodePath": "m8-execution-readiness-gate/cross-readiness-propagation-round2/03-extension-npm-test.exitcode"
+    },
+    {
+      "surface": "extension",
+      "command": "npm --prefix extensions/openburnbar run test:unit -- test/projections.test.ts --reporter=verbose",
+      "purpose": "supplemental assertion-tagged evidence capture",
+      "exitCode": 0,
+      "transcript": "m8-execution-readiness-gate/cross-readiness-propagation-round2/03b-extension-npm-test-verbose.log",
+      "exitCodePath": "m8-execution-readiness-gate/cross-readiness-propagation-round2/03b-extension-npm-test-verbose.exitcode"
+    }
+  ],
+  "assertionTaggedTests": {
+    "daemon": [
+      "testVAL_DAEMON_011_ReadinessGateMissingCredential",
+      "testVAL_DAEMON_011_ReadinessGateInvalidRepoBranch",
+      "testVAL_DAEMON_011_ReadinessGateRuntimeUnavailable"
+    ],
+    "app": [
+      "testVAL_CROSS_009_MissingCredentialDisplayMessage",
+      "testVAL_CROSS_009_InvalidRepoBranchDisplayMessage",
+      "testVAL_CROSS_009_RuntimeUnavailableDisplayMessage",
+      "testVAL_CROSS_009_InsufficientCredentialPermissionsDisplayMessage",
+      "testVAL_CROSS_009_ReadinessCodeConsistencyAcrossSurfaces"
+    ],
+    "extension": [
+      "VAL-CROSS-009: Readiness Reason Code Propagation > should map missing_credential reason code to correct display message",
+      "VAL-CROSS-009: Readiness Reason Code Propagation > should map invalid_repo_branch reason code to correct display message",
+      "VAL-CROSS-009: Readiness Reason Code Propagation > should map runtime_unavailable reason code to correct display message",
+      "VAL-CROSS-009: Readiness Reason Code Propagation > should map insufficient_credential_permissions reason code to correct display message",
+      "VAL-CROSS-009: Readiness Reason Code Propagation > should use same reason code values as app BurnBarExecutionReadinessCode"
+    ]
+  },
+  "assertions": [
+    {
+      "id": "VAL-CROSS-009",
+      "title": "Execution-readiness failure reasons propagate consistently to all surfaces",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run daemon validator command",
+          "expected": "Readiness gate tests execute and pass",
+          "observed": "Readiness reason scenarios executed/passed with exit code 0"
+        },
+        {
+          "action": "Run app validator command",
+          "expected": "VAL_CROSS_009 app tests execute and pass",
+          "observed": "VAL_CROSS_009 tagged app tests executed/passed with exit code 0"
+        },
+        {
+          "action": "Run extension validator command",
+          "expected": "projections suite passes with exit code 0",
+          "observed": "test/projections.test.ts passed with exit code 0"
+        },
+        {
+          "action": "Capture explicit extension assertion-tagged lines",
+          "expected": "VAL-CROSS-009 reason-code mapping tests visible in output",
+          "observed": "Verbose rerun shows VAL-CROSS-009 tagged readiness reason-code tests and parity check"
+        }
+      ],
+      "evidence": {
+        "daemonReasonCodeArtifact": [
+          "01-daemon-swift-test.log:53 Test Case '-[OpenBurnBarDaemonTests.BurnBarMissionControlServiceTests testVAL_DAEMON_011_ReadinessGateInvalidRepoBranch]' started.",
+          "01-daemon-swift-test.log:55 Test Case '-[OpenBurnBarDaemonTests.BurnBarMissionControlServiceTests testVAL_DAEMON_011_ReadinessGateMissingCredential]' started.",
+          "01-daemon-swift-test.log:59 Test Case '-[OpenBurnBarDaemonTests.BurnBarMissionControlServiceTests testVAL_DAEMON_011_ReadinessGateRuntimeUnavailable]' started."
+        ],
+        "appTaggedEvidenceLines": [
+          "02-app-xcodebuild-test-attempt1.log:1146 Test Case '-[OpenBurnBarTests.OpenBurnBarOperatingComposerTests testVAL_CROSS_009_MissingCredentialDisplayMessage]' started.",
+          "02-app-xcodebuild-test-attempt1.log:1144 Test Case '-[OpenBurnBarTests.OpenBurnBarOperatingComposerTests testVAL_CROSS_009_InvalidRepoBranchDisplayMessage]' started.",
+          "02-app-xcodebuild-test-attempt1.log:1156 Test Case '-[OpenBurnBarTests.OpenBurnBarOperatingComposerTests testVAL_CROSS_009_RuntimeUnavailableDisplayMessage]' started.",
+          "02-app-xcodebuild-test-attempt1.log:1142 Test Case '-[OpenBurnBarTests.OpenBurnBarOperatingComposerTests testVAL_CROSS_009_InsufficientCredentialPermissionsDisplayMessage]' started.",
+          "02-app-xcodebuild-test-attempt1.log:1152 Test Case '-[OpenBurnBarTests.OpenBurnBarOperatingComposerTests testVAL_CROSS_009_ReadinessCodeConsistencyAcrossSurfaces]' started."
+        ],
+        "extensionTaggedEvidenceLines": [
+          "03b-extension-npm-test-verbose.log:83 ✓ test/projections.test.ts > VAL-CROSS-009: Readiness Reason Code Propagation > should map missing_credential reason code to correct display message",
+          "03b-extension-npm-test-verbose.log:84 ✓ test/projections.test.ts > VAL-CROSS-009: Readiness Reason Code Propagation > should map invalid_repo_branch reason code to correct display message",
+          "03b-extension-npm-test-verbose.log:85 ✓ test/projections.test.ts > VAL-CROSS-009: Readiness Reason Code Propagation > should map runtime_unavailable reason code to correct display message",
+          "03b-extension-npm-test-verbose.log:86 ✓ test/projections.test.ts > VAL-CROSS-009: Readiness Reason Code Propagation > should map insufficient_credential_permissions reason code to correct display message",
+          "03b-extension-npm-test-verbose.log:92 ✓ test/projections.test.ts > VAL-CROSS-009: Readiness Reason Code Propagation > should use same reason code values as app BurnBarExecutionReadinessCode"
+        ],
+        "surfaceExitSummary": {
+          "daemon": 0,
+          "app": 0,
+          "extension": 0
+        }
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Default vitest reporter in the required extension command does not print assertion-tagged test names, which is insufficient for explicit VAL-CROSS-009 tagged evidence lines.",
+      "resolved": true,
+      "resolution": "Executed a supplemental verbose rerun of the same required projections test file to capture assertion-tagged VAL-CROSS-009 output lines.",
+      "affectedAssertions": ["VAL-CROSS-009"]
+    }
+  ],
+  "blockers": [],
+  "summary": "VAL-CROSS-009 passed. All required daemon/app/extension commands exited 0, and explicit VAL-CROSS-009 assertion-tagged readiness reason-code evidence is present in both app and extension transcripts with matching readiness-code parity coverage." 
+}

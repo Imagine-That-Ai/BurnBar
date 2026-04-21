@@ -1,0 +1,33 @@
+{
+  "featureId": "m2-authoring-ui-surface",
+  "reviewedAt": "2026-04-19T16:23:58Z",
+  "commitId": "d411f91f22ca63e70928fb3d33a053fcb987bb80",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The feature implementation matches the requested scope: mission authoring UI was added, required field validation is deterministic in the operating layer, daemon mission-create RPC wiring is present, and approval/override feedback paths remain explicit. I found one non-blocking test coverage issue.",
+    "issues": [
+      {
+        "file": "AgentLensTests/Active/OpenBurnBarOperatingComposerTests.swift",
+        "line": 506,
+        "severity": "non_blocking",
+        "description": "testMissionAuthoringValidationAcceptsAllRecommendationKinds claims to validate all recommendation kinds but only iterates [.proceed, .review, .pause]; .escalate is omitted even though the UI exposes it (AgentLens/Views/Components/Operating/OpenBurnBarOperatingActionBar.swift:72), so regressions specific to escalate would not be caught."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The operator-ui-worker skill references an outdated daemon test filter, which led to a no-op filtered run in the worker session.",
+      "evidence": ".factory/skills/operator-ui-worker/SKILL.md:23 uses `--filter OpenBurnBarMissionControlServiceTests`, but .factory/services.yaml:6 defines `--filter BurnBarMissionControlServiceTests`. The transcript skeleton for session 6e723e39-9688-4eaa-aa35-68fa81923c7b shows the outdated filter command and follow-up note: \"The filter didn't match any tests.\""
+    },
+    {
+      "area": "conventions",
+      "observation": "The handoff recorded a non-resolvable commit SHA, which weakens auditability for downstream review tooling that expects commit IDs to be directly diffable.",
+      "evidence": "/Users/albertonunez/.factory/missions/d1d1287f-f2a9-4a34-8ba9-fce37df13493/handoffs/2026-04-19T16-16-47-979Z__m2-authoring-ui-surface__6e723e39-9688-4eaa-aa35-68fa81923c7b.json:6 records `d411f91fbf9fc0bc55f88ef9a30c90aad2e4c2b8`, and `git show` on that SHA returns `fatal: bad object`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed feature m2-authoring-ui-surface for worker session 6e723e39-9688-4eaa-aa35-68fa81923c7b against commit d411f91f22ca63e70928fb3d33a053fcb987bb80. Status is pass: implementation aligns with the feature contract, with one non-blocking recommendation-coverage gap and two shared-state observations."
+}

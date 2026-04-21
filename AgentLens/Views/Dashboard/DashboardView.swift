@@ -312,12 +312,9 @@ struct DashboardView: View {
             .help(canGoBack ? backButtonHelpText : "Back")
             .accessibilityLabel(canGoBack ? backButtonHelpText : "Back")
 
-            HStack(alignment: .center, spacing: 10) {
-                AppLogoView(size: 22)
-                Text("OpenBurnBar")
-                    .font(.system(size: 13, weight: .semibold, design: .default))
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-            }
+            Text("OpenBurnBar")
+                .font(.system(size: 13, weight: .semibold, design: .default))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("OpenBurnBar")
         }
@@ -419,25 +416,22 @@ struct DashboardView: View {
 
         return ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
-                    AppLogoView(size: 44)
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                        Text("Command")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                            .textCase(.uppercase)
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    Text("Command")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .textCase(.uppercase)
 
-                        Text(viewMode == .agents ? "Agent providers" : "LLM Models")
-                            .font(DesignSystem.Typography.title)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(viewMode == .agents ? "Agent providers" : "LLM Models")
+                        .font(DesignSystem.Typography.title)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                        Text(viewMode == .agents
-                            ? "Scan, compare spend, and drill into model behavior from one workspace."
-                            : "Track spend and token volume across every model your agents use.")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    Text(viewMode == .agents
+                        ? "Scan, compare spend, and drill into model behavior from one workspace."
+                        : "Track spend and token volume across every model your agents use.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 VStack(spacing: DesignSystem.Spacing.sm) {
@@ -467,7 +461,6 @@ struct DashboardView: View {
                                     navigate(to: .provider(summary.provider))
                                 }
                             }
-                            .focusable()
                             .opacity(sidebarAppeared ? 1 : 0)
                             .offset(y: sidebarAppeared ? 0 : 8)
                             .animation(
@@ -485,7 +478,6 @@ struct DashboardView: View {
                                     navigate(to: .model(summary.modelName))
                                 }
                             }
-                            .focusable()
                             .opacity(sidebarAppeared ? 1 : 0)
                             .offset(y: sidebarAppeared ? 0 : 8)
                             .animation(
@@ -590,7 +582,6 @@ struct DashboardView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .focusable()
         .onMoveCommand { direction in
             let order = sidebarRouteOrder
             guard let idx = order.firstIndex(of: mainRoute) else { return }
@@ -987,6 +978,13 @@ struct DashboardView: View {
                             icon: "checklist.checked",
                             title: "Latest result",
                             value: latestResult
+                        )
+                    }
+                    if let prLinkage = mission.prLinkage {
+                        runtimeLine(
+                            icon: "link",
+                            title: "Pull request",
+                            value: "\(prLinkage.repository) #\(prLinkage.prNumberOrID) • \(prLinkage.state.label)"
                         )
                     }
                     if let takeoverReason = mission.latestTakeoverReason?.trimmingCharacters(in: .whitespacesAndNewlines),

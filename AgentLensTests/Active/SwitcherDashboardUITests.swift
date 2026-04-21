@@ -1764,7 +1764,8 @@ final class SwitcherDashboardUITests: XCTestCase {
 // MARK: - Production Adapter for Testing
 
 /// Production adapter that wraps SwitcherProfileStore for use with launch services.
-private final class ProdSwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter {
+/// Test-scoped adapter is mutated only in deterministic test flows.
+private final class ProdSwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter, @unchecked Sendable {
     private let store: SwitcherProfileStore
 
     init(store: SwitcherProfileStore) {

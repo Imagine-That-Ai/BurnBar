@@ -161,6 +161,26 @@ function makeConnectedClient(overrides: Partial<ConstructorParameters<typeof Ope
         updatedAt: "2026-03-22T10:03:00.000Z"
       }
     }),
+    missionApprove: vi.fn(),
+    missionList: vi.fn().mockResolvedValue({ missions: [] }),
+    missionGet: vi.fn(),
+    questionAnswer: vi.fn(),
+    questionsList: vi.fn().mockResolvedValue({ questions: [] }),
+    controllerSummary: vi.fn().mockResolvedValue({
+      summary: {
+        activeProjectSlug: "test-project",
+        counts: {
+          projectCount: 1,
+          pendingQuestionCount: 0,
+          openFollowupCount: 0,
+          activeMissionCount: 0,
+          staleProjectCount: 0
+        },
+        freshness: "provisional",
+        needsOperatorAttention: false,
+        metadata: {}
+      }
+    }),
     ...overrides
   };
 }
@@ -220,7 +240,7 @@ describe("OpenBurnBarExtensionController", () => {
     );
   });
 
-  it("falls back to a repair-oriented placeholder when the daemon is unavailable", async () => {
+  it("VAL-EXT-001: daemon-unavailable state surfaces actionable reconnect/repair recovery guidance", async () => {
     const controller = new OpenBurnBarExtensionController(
       {
         client: {
@@ -276,6 +296,10 @@ describe("OpenBurnBarExtensionController", () => {
         value: expect.stringContaining("Repair Daemon")
       })
     );
+
+    const vm = buildPanelViewModel(controller.snapshot);
+    expect(vm.recoveryMessage).toContain("Reconnect");
+    expect(vm.recoveryMessage).toContain("Repair Daemon");
   });
 
   it("runs repair and refreshes daemon-backed state", async () => {
@@ -317,7 +341,7 @@ describe("OpenBurnBarExtensionController", () => {
     expect(capabilities).toHaveBeenCalledTimes(2);
   });
 
-  it("reattaches and retries when a run RPC hits a session mismatch", async () => {
+  it("VAL-EXT-002: reattaches and retries when a run RPC hits a session mismatch", async () => {
     const client = makeConnectedClient({
       createRun: vi
         .fn()
@@ -359,6 +383,77 @@ describe("OpenBurnBarExtensionController", () => {
     expect(result.runID).toBe("run-new");
     expect(client.createRun).toHaveBeenCalledTimes(2);
     expect(client.attach).toHaveBeenCalledTimes(3);
+    expect(controller.snapshot.connectionStatus).toBe("connected");
+    expect(controller.snapshot.clientAttached).toBe(true);
+    expect(controller.snapshot.lastError).toBeUndefined();
+  });
+
+  it("VAL-EXT-002: refresh auto-recovers poll session mismatch via deterministic reattach-and-retry", async () => {
+    const client = makeConnectedClient({
+      pollRuns: vi
+        .fn()
+        .mockRejectedValueOnce(
+          new Error(
+            "Client session mismatch. Expected 'old-session', received 'session-1'."
+          )
+        )
+        .mockResolvedValue({
+          runs: [
+            {
+              runID: "run-1234",
+              clientID: "test-client",
+              sessionID: "session-1",
+              phase: "awaiting_approval",
+              modelID: "glm-4.6",
+              updatedAt: "2026-03-22T10:00:00.000Z",
+              activeApprovalID: "approval-1"
+            }
+          ],
+          approvals: [
+            {
+              approvalID: "approval-1",
+              runID: "run-1234",
+              tool: "apply_patch",
+              title: "Approve apply_patch",
+              message: "OpenBurnBar needs approval before continuing this simulated tool step.",
+              requestedAt: "2026-03-22T10:00:00.000Z"
+            }
+          ],
+          pendingToolCalls: [],
+          arbitration: {
+            activeClientID: "test-client",
+            attachedClientIDs: ["test-client"],
+            reason: "controller_reconnected"
+          },
+          emittedAt: "2026-03-22T10:00:00.000Z"
+        })
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+
+    expect(client.pollRuns).toHaveBeenCalledTimes(2);
+    expect(client.attach).toHaveBeenCalledTimes(2);
+    expect(controller.snapshot.connectionStatus).toBe("connected");
+    expect(controller.snapshot.clientAttached).toBe(true);
+    expect(controller.snapshot.lastError).toBeUndefined();
+    expect(controller.snapshot.runs[0]?.id).toBe("run-1234");
   });
 
   it("surfaces a no-workspace empty state without claiming tools are ready", async () => {
@@ -541,6 +636,182 @@ describe("OpenBurnBarExtensionController", () => {
     );
   });
 
+  it("VAL-CROSS-003 / VAL-EXT-005: explicit approve clears approval object and resumes high-risk run", async () => {
+    let runPhase: "awaiting_approval" | "planning" = "awaiting_approval";
+    let hasApproval = true;
+
+    const runSnapshot = () => ({
+      runID: "run-high-risk",
+      clientID: "test-client",
+      sessionID: "session-1",
+      phase: runPhase,
+      modelID: "glm-4.6",
+      updatedAt: "2026-03-22T10:00:00.000Z",
+      activeApprovalID: hasApproval ? "approval-high-risk" : undefined
+    });
+    const approvalSnapshot = () => ({
+      approvalID: "approval-high-risk",
+      runID: "run-high-risk",
+      tool: "run_terminal",
+      title: "Approve run_terminal",
+      message: "High-risk terminal command requires explicit approval.",
+      requestedAt: "2026-03-22T10:00:00.000Z"
+    });
+
+    const client = makeConnectedClient({
+      listRuns: vi.fn().mockImplementation(async () => [runSnapshot()]),
+      pollRuns: vi.fn().mockImplementation(async () => ({
+        runs: [runSnapshot()],
+        approvals: hasApproval ? [approvalSnapshot()] : [],
+        pendingToolCalls: [],
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        },
+        emittedAt: "2026-03-22T10:00:00.000Z"
+      })),
+      getRun: vi.fn().mockImplementation(async () => ({
+        run: runSnapshot(),
+        approvalRequest: hasApproval ? approvalSnapshot() : undefined,
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        }
+      })),
+      respondToApproval: vi.fn().mockImplementation(async ({ response }: { response: { decision: string } }) => {
+        if (response.decision === "approve") {
+          runPhase = "planning";
+        }
+        hasApproval = false;
+        return {
+          run: runSnapshot(),
+          approvalRequest: undefined
+        };
+      })
+    });
+
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    expect(controller.snapshot.selectedRunDetail?.approvalRequest?.approvalID).toBe("approval-high-risk");
+
+    await controller.respondToApproval("run-high-risk", "approve");
+
+    expect(client.respondToApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response: expect.objectContaining({
+          approvalID: "approval-high-risk",
+          decision: "approve"
+        })
+      })
+    );
+    expect(controller.snapshot.selectedRunDetail?.approvalRequest).toBeUndefined();
+    expect(controller.snapshot.runs.find((run) => run.id === "run-high-risk")?.phase).toBe("planning");
+  });
+
+  it("VAL-EXT-005: explicit reject clears approval object and transitions run to cancelled", async () => {
+    let runPhase: "awaiting_approval" | "cancelled" = "awaiting_approval";
+    let hasApproval = true;
+
+    const runSnapshot = () => ({
+      runID: "run-reject",
+      clientID: "test-client",
+      sessionID: "session-1",
+      phase: runPhase,
+      modelID: "glm-4.6",
+      updatedAt: "2026-03-22T10:00:00.000Z",
+      activeApprovalID: hasApproval ? "approval-reject" : undefined
+    });
+    const approvalSnapshot = () => ({
+      approvalID: "approval-reject",
+      runID: "run-reject",
+      tool: "apply_patch",
+      title: "Approve apply_patch",
+      message: "Apply patch requires explicit approval.",
+      requestedAt: "2026-03-22T10:00:00.000Z"
+    });
+
+    const client = makeConnectedClient({
+      listRuns: vi.fn().mockImplementation(async () => [runSnapshot()]),
+      pollRuns: vi.fn().mockImplementation(async () => ({
+        runs: [runSnapshot()],
+        approvals: hasApproval ? [approvalSnapshot()] : [],
+        pendingToolCalls: [],
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        },
+        emittedAt: "2026-03-22T10:00:00.000Z"
+      })),
+      getRun: vi.fn().mockImplementation(async () => ({
+        run: runSnapshot(),
+        approvalRequest: hasApproval ? approvalSnapshot() : undefined,
+        arbitration: {
+          activeClientID: "test-client",
+          attachedClientIDs: ["test-client"]
+        }
+      })),
+      respondToApproval: vi.fn().mockImplementation(async () => {
+        runPhase = "cancelled";
+        hasApproval = false;
+        return {
+          run: runSnapshot(),
+          approvalRequest: undefined
+        };
+      })
+    });
+
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    expect(controller.snapshot.selectedRunDetail?.approvalRequest?.approvalID).toBe("approval-reject");
+
+    await controller.respondToApproval("run-reject", "reject");
+
+    expect(client.respondToApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response: expect.objectContaining({
+          approvalID: "approval-reject",
+          decision: "reject"
+        })
+      })
+    );
+    expect(controller.snapshot.selectedRunDetail?.approvalRequest).toBeUndefined();
+    expect(controller.snapshot.runs.find((run) => run.id === "run-reject")?.phase).toBe("cancelled");
+  });
+
   it("dispatches pending tool calls to the workspace companion and submits results", async () => {
     const readToolCall = {
       callID: "call-read-1",
@@ -648,7 +919,7 @@ describe("OpenBurnBarExtensionController", () => {
     );
   });
 
-  it("claims controller role and retries when a run action is rejected as observer-only", async () => {
+  it("VAL-EXT-003: observer-only mutation rejection claims control once and retries deterministically", async () => {
     const createRun = vi
       .fn()
       .mockRejectedValueOnce(new Error("Client 'test-client' is attached as an observer and cannot control runs."))
@@ -726,6 +997,55 @@ describe("OpenBurnBarExtensionController", () => {
       clientID: "test-client",
       sessionID: "session-1"
     });
+    expect(claimControl).toHaveBeenCalledTimes(1);
+    expect(createRun).toHaveBeenCalledTimes(2);
+  });
+
+  it("VAL-EXT-003: observer mutation errors with claim-control guidance also trigger claim-and-retry", async () => {
+    const createRun = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error("Observer client cannot mutate mission state; claim control and retry.")
+      )
+      .mockResolvedValue({
+        runID: "run-claimed-variant",
+        phase: "planning"
+      });
+    const claimControl = vi.fn().mockResolvedValue({
+      activeClientID: "test-client",
+      attachedClientIDs: ["other-client", "test-client"],
+      reason: "controller_transferred_to_requesting_client"
+    });
+    const client = makeConnectedClient({
+      createRun,
+      claimControl
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    const created = await controller.startRun({
+      prompt: "Need control",
+      modelID: "glm-4.6"
+    });
+
+    expect(created.runID).toBe("run-claimed-variant");
+    expect(claimControl).toHaveBeenCalledTimes(1);
     expect(createRun).toHaveBeenCalledTimes(2);
   });
 
@@ -985,7 +1305,7 @@ describe("buildPanelViewModel", () => {
     ).toBe(true);
   });
 
-  it("produces daemon-unavailable state with recovery message", async () => {
+  it("VAL-EXT-001: produces daemon-unavailable panel state with explicit recovery messaging", async () => {
     const controller = new OpenBurnBarExtensionController(
       {
         client: {
@@ -1017,6 +1337,8 @@ describe("buildPanelViewModel", () => {
     expect(vm.isDaemonUnavailable).toBe(true);
     expect(vm.isConnected).toBe(false);
     expect(vm.recoveryMessage).toContain("socket missing");
+    expect(vm.recoveryMessage).toContain("Reconnect");
+    expect(vm.recoveryMessage).toContain("Repair Daemon");
     expect(vm.isComposerEnabled).toBe(false);
     expect(vm.activeRun?.phase).toBe("failed");
   });
@@ -1199,5 +1521,438 @@ describe("buildPanelViewModel", () => {
     expect(vm.selectedModelOptions).toHaveLength(1);
     expect(vm.selectedModelOptions[0]?.id).toBe("glm-4.6");
     expect(vm.selectedModelOptions[0]?.providerName).toBe("Z.ai");
+  });
+
+  // MARK: - VAL-EXT-004: Pending tool lifecycle is end-to-end visible
+
+  it("VAL-EXT-004: pending tool lifecycle is end-to-end visible through poll transitions", async () => {
+    // VAL-EXT-004: run.poll pending call, dispatch, and completion transitions are reflected in extension state.
+    // This test verifies the full pending tool lifecycle: waiting -> in-progress -> completed.
+
+    let pollCallCount = 0;
+    const pendingToolCall = {
+      toolCallID: "tool-call-1",
+      runID: "run-pending-tool",
+      toolName: "search_files",
+      arguments: { query: "BurnBarRun" },
+      status: "waiting" as const,
+      createdAt: "2026-03-22T09:00:00.000Z"
+    };
+
+    const client = makeConnectedClient({
+      pollRuns: vi.fn().mockImplementation(() => {
+        pollCallCount++;
+        // Simulate phase transitions over poll cycles
+        if (pollCallCount === 1) {
+          return Promise.resolve({
+            runs: [
+              {
+                runID: "run-pending-tool",
+                clientID: "test-client",
+                sessionID: "session-1",
+                phase: "executing_tool",
+                modelID: "glm-4.6",
+                updatedAt: "2026-03-22T09:00:00.000Z"
+              }
+            ],
+            approvals: [],
+            pendingToolCalls: [pendingToolCall],
+            arbitration: {
+              activeClientID: "test-client",
+              attachedClientIDs: ["test-client"]
+            },
+            emittedAt: "2026-03-22T09:00:00.000Z"
+          });
+        } else if (pollCallCount === 2) {
+          return Promise.resolve({
+            runs: [
+              {
+                runID: "run-pending-tool",
+                clientID: "test-client",
+                sessionID: "session-1",
+                phase: "model_streaming",
+                modelID: "glm-4.6",
+                updatedAt: "2026-03-22T09:00:05.000Z"
+              }
+            ],
+            approvals: [],
+            pendingToolCalls: [], // Tool completed
+            arbitration: {
+              activeClientID: "test-client",
+              attachedClientIDs: ["test-client"]
+            },
+            emittedAt: "2026-03-22T09:00:05.000Z"
+          });
+        } else {
+          return Promise.resolve({
+            runs: [
+              {
+                runID: "run-pending-tool",
+                clientID: "test-client",
+                sessionID: "session-1",
+                phase: "completed",
+                modelID: "glm-4.6",
+                updatedAt: "2026-03-22T09:00:10.000Z"
+              }
+            ],
+            approvals: [],
+            pendingToolCalls: [],
+            arbitration: {
+              activeClientID: "test-client",
+              attachedClientIDs: ["test-client"]
+            },
+            emittedAt: "2026-03-22T09:00:10.000Z"
+          });
+        }
+      })
+    });
+
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: { repair: vi.fn().mockResolvedValue({ message: "ok" }) }
+      },
+      { clientID: "test-client", sessionID: "session-1" }
+    );
+
+    // Initial poll: pending tool visible
+    await controller.refresh();
+    expect(controller.snapshot.runs[0]?.phase).toBe("executing_tool");
+    expect(controller.snapshot.pendingToolCalls).toHaveLength(1);
+    expect(controller.snapshot.pendingToolCalls[0]?.toolName).toBe("search_files");
+    expect(controller.snapshot.pendingToolCalls[0]?.status).toBe("waiting");
+
+    // Second poll: tool dispatch in progress (removed from pending)
+    await controller.refresh();
+    expect(controller.snapshot.pendingToolCalls).toHaveLength(0);
+    expect(controller.snapshot.runs[0]?.phase).toBe("model_streaming");
+
+    // Third poll: run completed
+    await controller.refresh();
+    expect(controller.snapshot.runs[0]?.phase).toBe("completed");
+    expect(controller.snapshot.pendingToolCalls).toHaveLength(0);
+  });
+});
+
+describe("VAL-EXT-009: Mission operator actions", () => {
+  it("VAL-EXT-009: approveMission calls daemon missionApprove and refreshes state", async () => {
+    const missionApprove = vi.fn().mockResolvedValue({
+      mission: {
+        id: "mission-1",
+        projectSlug: "test-project",
+        title: "Test Mission",
+        summary: "A test mission",
+        status: "approved",
+        recommendation: "proceed",
+        createdAt: "2026-03-22T10:00:00.000Z",
+        updatedAt: "2026-03-22T10:05:00.000Z",
+        approval: {
+          approved: true,
+          approvedAt: "2026-03-22T10:05:00.000Z",
+          approvedBy: "test-client"
+        },
+        packets: [],
+        results: [],
+        burnRecords: [],
+        takeoverHistory: [],
+        metadata: {}
+      }
+    });
+    const client = makeConnectedClient({
+      missionApprove
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    const result = await controller.approveMission("mission-1", "Approved from extension");
+
+    expect(missionApprove).toHaveBeenCalledWith({
+      missionID: "mission-1",
+      actor: "test-client",
+      note: "Approved from extension"
+    });
+    expect(result.mission.status).toBe("approved");
+    expect(result.mission.approval?.approved).toBe(true);
+  });
+
+  it("VAL-EXT-009: answerPendingQuestion calls daemon questionAnswer and refreshes state", async () => {
+    const questionAnswer = vi.fn().mockResolvedValue({
+      question: {
+        id: "question-1",
+        projectSlug: "test-project",
+        title: "What should happen next?",
+        prompt: "Need operator input",
+        stageLabel: "Operator Decision",
+        status: "answered",
+        priority: "normal",
+        askedAt: "2026-03-22T10:00:00.000Z",
+        latestAnswer: {
+          answer: "Proceed with the plan",
+          answeredBy: "test-client",
+          answeredAt: "2026-03-22T10:05:00.000Z"
+        },
+        evidenceRefs: [],
+        suggestedOptions: [
+          {
+            id: "proceed",
+            title: "Proceed",
+            detail: "Keep the current direction",
+            answer: "Proceed with the plan"
+          }
+        ],
+        metadata: {}
+      }
+    });
+    const client = makeConnectedClient({
+      questionAnswer
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    const result = await controller.answerPendingQuestion(
+      "question-1",
+      "Proceed with the plan",
+      "proceed",
+      true
+    );
+
+    expect(questionAnswer).toHaveBeenCalledWith({
+      questionID: "question-1",
+      answeredBy: "test-client",
+      answer: "Proceed with the plan",
+      selectedOptionID: "proceed",
+      markFollowupDone: true
+    });
+    expect(result.question.status).toBe("answered");
+    expect(result.question.latestAnswer?.answer).toBe("Proceed with the plan");
+  });
+
+  it("VAL-EXT-009: mission approve action mutates daemon state and converges without manual refresh", async () => {
+    // Track whether mission has been approved
+    let missionApproved = false;
+
+    const missionApprove = vi.fn().mockImplementation(() => {
+      missionApproved = true;
+      return Promise.resolve({
+        mission: {
+          id: "mission-awaiting",
+          projectSlug: "test-project",
+          title: "Awaiting Approval",
+          summary: "Needs approval",
+          status: "approved",
+          recommendation: "proceed",
+          createdAt: "2026-03-22T10:00:00.000Z",
+          updatedAt: "2026-03-22T10:05:00.000Z",
+          approval: {
+            approved: true,
+            approvedAt: "2026-03-22T10:05:00.000Z",
+            approvedBy: "test-client"
+          },
+          packets: [],
+          results: [],
+          burnRecords: [],
+          takeoverHistory: [],
+          metadata: {}
+        }
+      });
+    });
+
+    const missionList = vi.fn().mockImplementation(() => {
+      return Promise.resolve({
+        missions: [
+          {
+            id: "mission-awaiting",
+            projectSlug: "test-project",
+            title: "Awaiting Approval",
+            summary: "Needs approval",
+            status: missionApproved ? "approved" : "awaiting_approval",
+            recommendation: "review",
+            createdAt: "2026-03-22T10:00:00.000Z",
+            updatedAt: missionApproved ? "2026-03-22T10:05:00.000Z" : "2026-03-22T10:00:00.000Z",
+            approval: missionApproved
+              ? { approved: true, approvedAt: "2026-03-22T10:05:00.000Z", approvedBy: "test-client" }
+              : { approved: false },
+            packets: [],
+            results: [],
+            burnRecords: [],
+            takeoverHistory: [],
+            metadata: {}
+          }
+        ]
+      });
+    });
+
+    const client = makeConnectedClient({
+      missionApprove,
+      missionList
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+
+    // Initial state: mission is awaiting_approval
+    const missionsBefore = await controller.listMissions();
+    expect(missionsBefore[0]?.status).toBe("awaiting_approval");
+    expect(missionsBefore[0]?.approval?.approved).toBe(false);
+
+    // Approve the mission via daemon RPC
+    await controller.approveMission("mission-awaiting", "Approved via extension");
+
+    // After approval: mission status is updated and converged
+    const missionsAfter = await controller.listMissions();
+    expect(missionsAfter[0]?.status).toBe("approved");
+    expect(missionsAfter[0]?.approval?.approved).toBe(true);
+    expect(missionApprove).toHaveBeenCalledWith({
+      missionID: "mission-awaiting",
+      actor: "test-client",
+      note: "Approved via extension"
+    });
+  });
+
+  it("VAL-EXT-009: question answer action mutates daemon state and converges without manual refresh", async () => {
+    // Track whether question has been answered
+    let questionAnswered = false;
+
+    const questionAnswer = vi.fn().mockImplementation(() => {
+      questionAnswered = true;
+      return Promise.resolve({
+        question: {
+          id: "pending-question",
+          projectSlug: "test-project",
+          title: "What should happen?",
+          prompt: "Need a decision",
+          stageLabel: "Operator Decision",
+          status: "answered",
+          priority: "normal",
+          askedAt: "2026-03-22T10:00:00.000Z",
+          latestAnswer: {
+            answer: "Proceed",
+            answeredBy: "test-client",
+            answeredAt: "2026-03-22T10:05:00.000Z"
+          },
+          evidenceRefs: [],
+          suggestedOptions: [],
+          metadata: {}
+        }
+      });
+    });
+
+    const questionsList = vi.fn().mockImplementation(() => {
+      return Promise.resolve({
+        questions: [
+          {
+            id: "pending-question",
+            projectSlug: "test-project",
+            title: "What should happen?",
+            prompt: "Need a decision",
+            stageLabel: "Operator Decision",
+            status: questionAnswered ? "answered" : "pending",
+            priority: "normal",
+            askedAt: "2026-03-22T10:00:00.000Z",
+            latestAnswer: questionAnswered
+              ? { answer: "Proceed", answeredBy: "test-client", answeredAt: "2026-03-22T10:05:00.000Z" }
+              : undefined,
+            evidenceRefs: [],
+            suggestedOptions: [],
+            metadata: {}
+          }
+        ]
+      });
+    });
+
+    const client = makeConnectedClient({
+      questionAnswer,
+      questionsList
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+
+    // Initial state: question is pending
+    const questionsBefore = await controller.listPendingQuestions();
+    expect(questionsBefore[0]?.status).toBe("pending");
+    expect(questionsBefore[0]?.latestAnswer).toBeUndefined();
+
+    // Answer the question via daemon RPC
+    await controller.answerPendingQuestion("pending-question", "Proceed", undefined, true);
+
+    // After answer: question state is updated and converged
+    const questionsAfter = await controller.listPendingQuestions();
+    expect(questionsAfter[0]?.status).toBe("answered");
+    expect(questionsAfter[0]?.latestAnswer?.answer).toBe("Proceed");
+    expect(questionAnswer).toHaveBeenCalledWith({
+      questionID: "pending-question",
+      answeredBy: "test-client",
+      answer: "Proceed",
+      selectedOptionID: undefined,
+      markFollowupDone: true
+    });
   });
 });

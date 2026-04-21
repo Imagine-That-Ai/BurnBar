@@ -1,0 +1,34 @@
+{
+  "featureId": "m7-runtime-router-wiring-to-scorecard",
+  "reviewedAt": "2026-04-19T21:40:47Z",
+  "commitId": "b3e48dd9fd901884dc8838c013d62eab1a816328",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix correctly wires route() to scoreAndRankRoutes() for primary selection, but runtime failover selection in provider-only execution still iterates legacy candidateRoutes() ordering (preferred slot then lastSelectedAt) instead of scorecard-ranked alternates, so the prior blocking requirement is not fully resolved.",
+    "issues": [
+      {
+        "file": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarRunService.swift",
+        "line": 1285,
+        "severity": "blocking",
+        "description": "executeProviderOnlyRun() still builds failover alternates from router.candidateRoutes() and iterates them in that order. candidateRoutes() does not consume scoreAndRankRoutes(); it calls selectRoutes() directly (OpenBurnBarProviderRouter.swift:208,241), and selectRoutes() preserves legacy ordering by preferred slot then lastSelectedAt (OpenBurnBarProviderRouter.swift:351-358). As a result, failover selection is not scorecard-driven even after this fix commit."
+      },
+      {
+        "file": "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarProviderRouterTests.swift",
+        "line": 287,
+        "severity": "non_blocking",
+        "description": "VAL-EXEC-008 coverage still validates router.route()/candidateRoutes() behavior, not the runtime provider-only failover path in RunService that consumes candidateRoutes() during retries. The fix commit updated scorecard route selection assertions (line ~86) but did not add coverage proving failover alternates are sourced from scoreAndRankRoutes() output."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Shared architecture canon for route ranking semantics is still inconsistent with implementation semantics, which can mislead future workers when wiring routing/failover behavior.",
+      "evidence": ".factory/library/architecture.md:200 specifies ordered precedence (capability/policy, trust, latency, cost, lexical tie-break), while OpenBurnBarProviderRouter.swift:26-29 implements weighted composite scoring (0.20/0.25/0.15/0.25/0.15)."
+    }
+  ],
+  "addressesFailureFrom": "/Users/albertonunez/Documents/Windsurf/BurnBar/.factory/validation/m7-router-scoring-layer/scrutiny/reviews/m7-router-scoring-layer.json",
+  "summary": "Reviewed both diffs (original 493935a1 and fix b3e48dd9) plus the fix transcript skeleton and prior failure report. The fix addresses primary route winner selection via scoreAndRankRoutes(), but failover alternates in runtime provider-only execution still come from legacy candidate ordering, so the original scrutiny blocker remains unresolved."
+}

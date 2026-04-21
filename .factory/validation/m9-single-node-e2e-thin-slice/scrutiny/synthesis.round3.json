@@ -1,0 +1,54 @@
+{
+  "milestone": "m9-single-node-e2e-thin-slice",
+  "round": 3,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && CI=true scripts/test-openburnbar-app.sh && scripts/test-openburnbar-ts.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 0,
+    "failed": 2,
+    "failedFeatures": [
+      "m9-val-exec-001-terminal-mappings-and-val-exec-003-provenance-tags",
+      "m9-failed-cancelled-packet-status-sync-fix"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "m9-val-exec-001-terminal-mappings-and-val-exec-003-provenance-tags",
+      "severity": "blocking",
+      "description": "VAL-EXEC-001 failed/cancelled coverage still validates result status only; packet-level terminal status and `completedAt` mapping assertions are not present in `testVAL_EXEC_001_*` coverage."
+    },
+    {
+      "featureId": "m9-failed-cancelled-packet-status-sync-fix",
+      "severity": "blocking",
+      "description": "syncMissionExecution introduces a regression: `if isTerminalPhase || desiredPacketStatus != packet.status || packet.completedAt == nil` is true for non-terminal packets, causing repeated `mission_packet_synced` rewrites and `updatedAt` churn even without state changes."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skill:.factory/skills/runtime-orchestration-worker/SKILL.md",
+      "suggestion": "Replace outdated `OpenBurnBar*` XCTest filter examples with canonical `.factory/services.yaml` `BurnBar*` commands and require focused-command evidence capture to prevent command/evidence drift during reruns.",
+      "evidence": "Both round-3 fix reviews independently flagged skill-command mismatch (`OpenBurnBar*` vs `BurnBar*`) and handoff drift away from focused verification commands, indicating a repeated systemic process issue.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/m9-single-node-e2e-thin-slice/scrutiny/synthesis.round2.json"
+}

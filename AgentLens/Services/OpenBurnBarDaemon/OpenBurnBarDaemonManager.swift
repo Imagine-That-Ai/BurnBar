@@ -150,6 +150,7 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
     case daemonResourceBundleUnavailable(expectedPath: String)
     case launchctlFailed(String)
     case timedOutWaitingForHealth(logTail: String?, logFilePath: String)
+    case daemonSocketAuthTokenUnavailable
     case emptyResponse
     case rpcError(String)
 
@@ -173,6 +174,8 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
                 message += " Rebuild the OpenBurnBar scheme (OpenBurnBarDaemon helper must exist), or check \(logFilePath)."
             }
             return message
+        case .daemonSocketAuthTokenUnavailable:
+            return "OpenBurnBar couldn't load a daemon socket auth token from the Keychain."
         case .emptyResponse:
             return "OpenBurnBarDaemon returned an empty response."
         case .rpcError(let message):
@@ -185,6 +188,7 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
 @MainActor
 final class OpenBurnBarDaemonManager {
     static let shared = OpenBurnBarDaemonManager()
+    private static let daemonSocketAuthTokenAccount = OpenBurnBarIdentity.daemonSocketAuthTokenAccount
     private static let controllerRuntimeSecrets = KeychainStore(
         service: OpenBurnBarIdentity.controllerRuntimeKeychainService,
         legacyServices: OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
@@ -501,8 +505,9 @@ final class OpenBurnBarDaemonManager {
             }
 
             if didMutate {
+                let snapshotToWrite = snapshot
                 _ = try await daemonRPC {
-                    try OpenBurnBarDaemonSocketClient.updateConfig(snapshot, at: socketURL)
+                    try OpenBurnBarDaemonSocketClient.updateConfig(snapshotToWrite, at: socketURL)
                 }
             }
         }
@@ -595,8 +600,9 @@ final class OpenBurnBarDaemonManager {
             throw OpenBurnBarDaemonManagerError.rpcError("Provider '\(providerID)' is not available in daemon config.")
         }
         snapshot.providers[index] = try mutate(snapshot.providers[index])
+        let snapshotToWrite = snapshot
         _ = try await daemonRPC {
-            try OpenBurnBarDaemonSocketClient.updateConfig(snapshot, at: socketURL)
+            try OpenBurnBarDaemonSocketClient.updateConfig(snapshotToWrite, at: socketURL)
         }
     }
 
@@ -710,8 +716,8 @@ final class OpenBurnBarDaemonManager {
         return String(trimmed.suffix(maxCharacters))
     }
 
-    static let resourceBundleName = "OpenBurnBarCore_OpenBurnBarCore.bundle"
-    static let legacyResourceBundleNames = ["BurnBarCore_BurnBarCore.bundle"]
+    nonisolated static let resourceBundleName = "OpenBurnBarCore_OpenBurnBarCore.bundle"
+    nonisolated static let legacyResourceBundleNames = ["BurnBarCore_BurnBarCore.bundle"]
 
     private func installFilesIfNeeded() throws {
         try dependencies.fileManager.createDirectory(at: paths.daemonDirectory, withIntermediateDirectories: true)
@@ -760,10 +766,12 @@ final class OpenBurnBarDaemonManager {
 
     private func writeLaunchAgentPlist() throws {
         let indexDbPath = OpenBurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
+        let daemonSocketAuthToken = try ensureDaemonSocketAuthToken()
         var programArguments = [
             paths.installedBinaryURL.path,
             "--socket-path", paths.socketURL.path,
-            "--index-database-path", indexDbPath
+            "--index-database-path", indexDbPath,
+            "--socket-auth-token", daemonSocketAuthToken
         ]
 
         let settings = settingsManager
@@ -793,6 +801,22 @@ final class OpenBurnBarDaemonManager {
             options: 0
         )
         try data.write(to: paths.launchAgentPlistURL, options: .atomic)
+    }
+
+    private func ensureDaemonSocketAuthToken() throws -> String {
+        if let token = try Self.controllerRuntimeSecrets.string(for: Self.daemonSocketAuthTokenAccount)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           token.isEmpty == false {
+            return token
+        }
+
+        let generatedToken = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        do {
+            try Self.controllerRuntimeSecrets.set(generatedToken, for: Self.daemonSocketAuthTokenAccount)
+            return generatedToken
+        } catch {
+            throw OpenBurnBarDaemonManagerError.daemonSocketAuthTokenUnavailable
+        }
     }
 
     private func bootoutIfNeeded() throws {
@@ -1026,6 +1050,30 @@ final class OpenBurnBarDaemonManager {
         return saved
     }
 
+    func createMission(
+        projectSlug: String,
+        title: String,
+        summary: String,
+        createdBy: String,
+        recommendation: BurnBarMissionRecommendation
+    ) async throws -> BurnBarMissionMutationResponse {
+        guard case .healthy = status else {
+            throw OpenBurnBarDaemonManagerError.rpcError("OpenBurnBar daemon must be healthy before creating missions.")
+        }
+
+        let socketURL = paths.socketURL
+        let request = BurnBarMissionCreateRequest(
+            projectSlug: projectSlug,
+            title: title,
+            summary: summary,
+            createdBy: createdBy,
+            recommendation: recommendation
+        )
+        return try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.missionCreate(request, at: socketURL)
+        }
+    }
+
     func launchControllerReview(
         projectSlug: String,
         cadence: BurnBarControllerReviewCadence,
@@ -1226,6 +1274,7 @@ final class OpenBurnBarDaemonManager {
 /// Subscribes to `NSDistributedNotificationCenter` posts from the per-user daemon and mirrors them into
 /// standard UserNotifications from the real app process (menu bar `.app`), avoiding helper-tool issues
 /// and any `osascript` subprocess.
+@MainActor
 private final class OpenBurnBarDaemonLocalNotificationRelay: NSObject {
     static let shared = OpenBurnBarDaemonLocalNotificationRelay()
 
@@ -1250,7 +1299,7 @@ private final class OpenBurnBarDaemonLocalNotificationRelay: NSObject {
         else {
             return
         }
-        Task {
+        Task { [title, body] in
             await Self.deliverUserNotification(title: title, body: body)
         }
     }

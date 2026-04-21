@@ -2,7 +2,7 @@ import XCTest
 import GRDB
 import SwiftUI
 import ViewInspector
-import OpenBurnBarCore
+@preconcurrency import OpenBurnBarCore
 @testable import OpenBurnBar
 
 // MARK: - Switcher Cross Flow Integration Tests
@@ -2946,7 +2946,8 @@ extension SwitcherCrossFlowTests {
 // MARK: - Spy/Mock Components for Launch Service Testing
 
 /// Spy adapter that records all calls for launch path verification.
-private final class SpySwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter {
+/// This adapter is test-scoped and mutated deterministically inside tests.
+private final class SpySwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter, @unchecked Sendable {
     private let store: SwitcherProfileStore
 
     init(store: SwitcherProfileStore) {

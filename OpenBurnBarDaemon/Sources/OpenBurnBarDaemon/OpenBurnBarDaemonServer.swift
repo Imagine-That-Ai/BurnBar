@@ -54,6 +54,50 @@ public actor BurnBarDaemonServer {
         self.usageRecorder = resolvedUsageRecorder
         self.clientRegistry = resolvedClientRegistry
         self.runService = resolvedRunService
+        // VAL-DAEMON-011: Wire a concrete execution readiness gate with fail-closed semantics.
+        // When gate data is unavailable (no config, no connector plane), the gate returns a failure
+        // with an explicit reason code instead of allowing dispatch to proceed (fail-open).
+        //
+        // Note: The readiness gate is @Sendable and runs on BurnBarMissionControlService actor.
+        // We can only call async actor methods from this closure. For sync actor methods like
+        // configStore.snapshot(), we rely on the fact that connectorPlaneSnapshot() validates
+        // both runtime availability AND provider credentials (since connectors are backed by
+        // the same credential system).
+        let executionReadinessGate: BurnBarExecutionReadinessGate = { @Sendable mission, packet in
+            // Check 1: Verify connector plane runtime is accessible
+            // This also implicitly validates that provider credentials are accessible since
+            // the connector plane is backed by the same secret store.
+            do {
+                let connectorPlane = try await resolvedRunService.connectorPlaneSnapshot()
+                // If connector plane has no enabled/healthy connectors, runtime is unavailable
+                let hasEnabledConnector = connectorPlane.connectors.contains { $0.isEnabled }
+                if !hasEnabledConnector {
+                    return BurnBarExecutionReadiness(
+                        code: .runtimeUnavailable,
+                        detail: "No connector plane runtime is configured. Configure at least one provider in OpenBurnBar Settings before dispatching missions."
+                    )
+                }
+                // Also check that at least one connector has a valid secret (credentials configured)
+                let hasConnectorWithCredentials = connectorPlane.connectors.contains { connector in
+                    connector.isEnabled && connector.secretConfigured
+                }
+                if !hasConnectorWithCredentials {
+                    return BurnBarExecutionReadiness(
+                        code: .missingCredential,
+                        detail: "No AI provider credentials are configured. Add provider credentials in OpenBurnBar Settings before dispatching missions."
+                    )
+                }
+            } catch {
+                return BurnBarExecutionReadiness(
+                    code: .runtimeUnavailable,
+                    detail: "Connector plane runtime is unavailable: \(error.localizedDescription)"
+                )
+            }
+
+            // All checks passed - mission is ready to dispatch
+            return nil
+        }
+
         self.missionControlService = missionControlService ?? BurnBarMissionControlService(
             store: BurnBarMissionControlStore(
                 logger: BurnBarDaemonLogger(category: "mission-control-store")
@@ -69,7 +113,8 @@ public actor BurnBarDaemonServer {
             },
             runSnapshotLookup: { runID in
                 await resolvedRunService.snapshot(for: runID)
-            }
+            },
+            executionReadinessGate: executionReadinessGate
         )
 
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -142,9 +187,7 @@ public actor BurnBarDaemonServer {
                 logger: logger
             )
         }
-        Task.detached(priority: .background) { [missionControlService] in
-            await missionControlService.startBackgroundLoops()
-        }
+        await missionControlService.startBackgroundLoops()
 
         logger.notice(
             "bootstrap_ready",
@@ -164,7 +207,7 @@ public actor BurnBarDaemonServer {
         }
     }
 
-    public func stop() {
+    public func stop() async {
         guard let listenerFileDescriptor else {
             logger.debug(
                 "shutdown_skipped",
@@ -179,11 +222,14 @@ public actor BurnBarDaemonServer {
         )
 
         self.listenerFileDescriptor = nil
-        acceptLoopTask?.cancel()
+        let acceptTask = acceptLoopTask
         acceptLoopTask = nil
+        acceptTask?.cancel()
 
         shutdown(listenerFileDescriptor, SHUT_RDWR)
         close(listenerFileDescriptor)
+        _ = await acceptTask?.result
+
         do {
             _ = try BurnBarUnixDomainSocket.removeStaleItemIfPresent(at: configuration.socketPath)
         } catch {
@@ -192,15 +238,11 @@ public actor BurnBarDaemonServer {
                 metadata: ["socket_path": configuration.socketPath, "error": "\(error)"]
             )
         }
-        Task.detached(priority: .background) { [missionControlService] in
-            await missionControlService.stopBackgroundLoops()
-        }
+        await missionControlService.stopBackgroundLoops()
 
         // Stop HTTP gateway
         if let gatewayServer {
-            Task.detached(priority: .background) {
-                await gatewayServer.stop()
-            }
+            await gatewayServer.stop()
         }
 
         logger.notice(
@@ -226,6 +268,24 @@ public actor BurnBarDaemonServer {
             let decoder = JSONDecoder()
             let incomingRequest = try decoder.decode(IncomingRequestEnvelope.self, from: requestData)
 
+            if let requiredToken = configuration.socketAuthToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+                let providedToken = incomingRequest.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                guard providedToken == requiredToken else {
+                    logger.warning(
+                        "rpc_request_unauthorized",
+                        metadata: [
+                            "request_id": incomingRequest.id,
+                            "method": incomingRequest.method
+                        ]
+                    )
+                    return encodeErrorResponse(
+                        id: incomingRequest.id,
+                        code: BurnBarRPCErrorCode.unauthorized,
+                        message: "Unauthorized OpenBurnBar RPC request."
+                    )
+                }
+            }
+
             guard let method = BurnBarRPCMethod(rawValue: incomingRequest.method) else {
                 logger.error(
                     "rpc_method_not_found",
@@ -241,7 +301,7 @@ public actor BurnBarDaemonServer {
                 )
             }
 
-            let request = BurnBarRPCRequestEnvelope(id: incomingRequest.id, method: method)
+            let request = BurnBarRPCRequestEnvelope(id: incomingRequest.id, method: method, authToken: incomingRequest.authToken)
 
             switch method {
             case .health:
@@ -571,6 +631,17 @@ public actor BurnBarDaemonServer {
                     id: typedRequest.id,
                     protocolVersion: BurnBarProtocolVersion.current,
                     result: try await missionControlService.missionApprove(typedRequest.params)
+                )
+                return encode(response)
+            case .missionCancel:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarMissionCancelRequest>.self,
+                    from: requestData
+                )
+                let response = BurnBarRPCResponseEnvelope<BurnBarMissionMutationResponse>(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: try await missionControlService.missionCancel(typedRequest.params)
                 )
                 return encode(response)
             case .missionDispatchPacket:

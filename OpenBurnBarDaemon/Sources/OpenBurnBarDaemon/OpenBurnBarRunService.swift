@@ -482,7 +482,7 @@ public actor BurnBarRunService {
         if let approval = policyEngine.approvalDescriptor(
             explicitApprovalRequired: run.plan.requiresApproval && !run.approvalResolvedForAttempt && run.approvalRequest == nil,
             intent: run.intent,
-            tool: run.intent.requestedTools.last,
+            tool: run.intent.requestedToolsOrEmpty.last,
             customTitle: run.plan.approvalTitle,
             customMessage: run.plan.approvalMessage
         ) {
@@ -557,7 +557,7 @@ public actor BurnBarRunService {
                 return
             }
 
-            if run.intent.kind == .generic && run.intent.requestedTools.count == 1 && run.intent.toolArguments == nil {
+            if run.intent.kind == .generic && run.intent.requestedToolsOrEmpty.count == 1 && run.intent.toolArguments == nil {
                 try await completeRunAndRecordUsage(for: &run)
                 return
             }
@@ -624,7 +624,7 @@ public actor BurnBarRunService {
             }
             return nil
         case .generic:
-            if run.intent.requestedTools.count == 1 {
+            if run.intent.requestedToolsOrEmpty.count == 1 {
                 return try contextSelector.nextAction(for: run.intent, state: selectionState)
             }
             return nil
@@ -932,7 +932,7 @@ public actor BurnBarRunService {
             break
         }
 
-        if run.intent.kind == .runTerminal || (run.intent.kind == .generic && run.intent.requestedTools.count == 1) {
+        if run.intent.kind == .runTerminal || (run.intent.kind == .generic && run.intent.requestedToolsOrEmpty.count == 1) {
             run.companionToolCompleted = true
         }
 
@@ -984,7 +984,9 @@ public actor BurnBarRunService {
                 )
             )
         case .retryTool:
+            run.attempt += 1
             try transition(&run, to: .planning, activeApprovalID: nil)
+            try await continueExecution(for: &run)
         case .failRun:
             try transition(
                 &run,
@@ -1282,10 +1284,14 @@ public actor BurnBarRunService {
         try transition(&run, to: .modelStreaming)
         var attemptedRouteKeys: Set<String> = [router.routeKey(providerID: run.route.providerID, slotID: run.route.credentialSlotID)]
         var candidateRoutes: [BurnBarProviderRoute] = [run.route]
-        let additionalRoutes = (try? await router.candidateRoutes(
+        // Use scoreAndRankRoutes() instead of candidateRoutes() to ensure failover alternates
+        // are ordered by scorecard composite score (capability, cost, latency, trust, policy-fit)
+        // with deterministic tie-break, matching the primary route selection logic.
+        let ranking = (try? await router.scoreAndRankRoutes(
             modelName: run.modelID,
             excludedRouteKeys: attemptedRouteKeys
-        )) ?? []
+        ))
+        let additionalRoutes = ranking?.rankedRoutes.map { $0.route } ?? []
         candidateRoutes.append(contentsOf: additionalRoutes)
 
         for (index, route) in candidateRoutes.enumerated() {

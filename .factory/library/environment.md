@@ -1,22 +1,33 @@
 # Environment
 
-Environment variables, external dependencies, and setup notes for the Context Pack mission.
+Environment variables, external dependencies, and setup notes for Mission Control Fleet.
 
-## Mission Notes
+## What belongs here
+- Required env vars and external credentials
+- Local runtime prerequisites
+- Integration assumptions for daemon/app/extension validation
 
-- No new external credentials required.
-- No new long-running services required.
-- Work is fully local to the existing OpenBurnBar macOS app/test toolchain.
-- On this machine, `scripts/test-openburnbar-app.sh` can hang at `xcodebuild test` launch time with `The test runner hung before establishing connection`; `CI=true scripts/test-openburnbar-app.sh` still completes the build-for-testing fallback if you need a compile-only confirmation.
+## What does not belong here
+- Service commands and validator commands (use `.factory/services.yaml`)
+- Mission scope/requirements (use mission artifacts)
 
-## Required Tooling
+## Local prerequisites
+- macOS with Xcode toolchain (Swift 5.10+)
+- Node 20 for extension workspace
+- `OpenBurnBarDaemon` and `OpenBurnBarCLI` buildable from `OpenBurnBarDaemon/Package.swift`
 
-- Xcode + `xcodebuild`
-- Swift toolchain
-- Node + npm (existing extension lint path)
-- `ripgrep` for fast source/test discovery
+## Required integration credentials (real integrations only)
+- Connector credentials needed for PR lifecycle validation (for example GitHub token/installation secrets through connector config paths)
+- Any mission-specific external provider credentials required by daemon execution routes
 
-## Assumptions
+If credentials are missing, related readiness checks must fail closed with explicit reason codes.
 
-- Existing test infrastructure remains available (`OpenBurnBar.xcodeproj`, app test target).
-- Context Pack behavior is validated through deterministic tests; manual UI validation is user-opted-out for this mission.
+## Runtime assumptions
+- Daemon is canonical source of mission state.
+- App and extension are projections/interaction surfaces and must converge to daemon state.
+- Mission-critical validation paths are real-integration paths unless explicit user-approved exception is recorded.
+
+## Known local constraints
+- Do not touch unrelated services/processes from other projects.
+- Reserve temporary mission services to port range 3100–3199 if additional services are introduced later.
+- Current frequently occupied ports include 5000, 7000, 5173, and 11434.

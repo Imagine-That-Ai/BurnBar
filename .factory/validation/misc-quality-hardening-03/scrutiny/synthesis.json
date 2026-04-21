@@ -1,0 +1,40 @@
+{
+  "milestone": "misc-quality-hardening-03",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && CI=true scripts/test-openburnbar-app.sh && scripts/test-openburnbar-ts.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": ".factory/skills/runtime-orchestration-worker/SKILL.md",
+      "suggestion": "Either narrow milestone feature-to-skill assignment to runtime-orchestration surfaces only, or broaden runtime-orchestration-worker procedure with an explicit branch for OpenBurnBarCore CLI-launch reliability features so validator command expectations stay aligned with assigned work.",
+      "evidence": "Feature `misc-cli-launch-invoker-test-flake-hardening` was assigned `runtime-orchestration-worker` but required OpenBurnBarCore CLILaunchInvoker and script-level validation (`features.json` + review report for that feature). Current skill procedure is daemon-runtime focused (`BurnBarRunServiceTests`/`BurnBarMissionControlServiceTests`) and does not match this feature’s surface.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}

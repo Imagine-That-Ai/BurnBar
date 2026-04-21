@@ -126,10 +126,29 @@ struct OpenBurnBarMissionSummaryCard: View {
                     OperatingViewHelpers.metric(title: "Tokens", value: summary.totalTokens.formatAsTokenVolume())
                 }
 
-                Text(summary.recommendationSummary)
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                missionBriefRow(
+                    title: "Changed Files",
+                    value: summary.changedFilesSummary,
+                    color: DesignSystem.Colors.textSecondary
+                )
+
+                missionBriefRow(
+                    title: "Risks",
+                    value: summary.risksSummary,
+                    color: summary.state == .blocked ? DesignSystem.Colors.error : DesignSystem.Colors.amber
+                )
+
+                missionBriefRow(
+                    title: "Remaining Work",
+                    value: summary.remainingWorkSummary,
+                    color: DesignSystem.Colors.textSecondary
+                )
+
+                missionBriefRow(
+                    title: "Recommendation",
+                    value: summary.nextRecommendation,
+                    color: DesignSystem.Colors.blaze
+                )
             }
             .padding(DesignSystem.Spacing.lg)
         }
@@ -137,6 +156,20 @@ struct OpenBurnBarMissionSummaryCard: View {
         .buttonStyle(.plain)
         .disabled(onOpenSummary == nil)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private func missionBriefRow(title: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
+            Text(title)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .textCase(.uppercase)
+            Text(value)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(color)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

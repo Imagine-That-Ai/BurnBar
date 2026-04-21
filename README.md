@@ -39,6 +39,8 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 
 **Cursor deep dives** (for humans and agents):
 
+- [Agent instructions (AGENTS.md)](AGENTS.md) — completion bar, tests, docs, scope for AI coding agents
+- [Claude / agent mirror (CLAUDE.md)](CLAUDE.md) — same bar for tools that prioritize `CLAUDE.md`
 - [OpenBurnBar Mission](docs/MISSION.md)
 - [OpenBurnBar Direction](docs/DIRECTION.md)
 - [OpenBurnBar Roadmap](docs/ROADMAP.md)

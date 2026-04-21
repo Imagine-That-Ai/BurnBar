@@ -1,0 +1,21 @@
+{
+  "featureId": "misc-cli-launch-invoker-test-flake-hardening",
+  "reviewedAt": "2026-04-20T09:56:14Z",
+  "commitId": "79211f41ca2ded5a4685909dc677e328f44dee6a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation matches the feature intent: it removes `NSFileHandle.availableData` usage from the two relevant pipe-read paths and uses deterministic `read()` handling (`>0` data ingest, `0/-1` graceful exit), which directly targets the intermittent `NSFileHandleOperationException` crash path. The reviewed diff is scoped to the affected launch/pipe logic and is consistent with the handoff verification evidence for repeated CLILaunchInvoker and full Swift test runs.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Assigned skill procedure does not match this feature’s actual surface. `runtime-orchestration-worker` is daemon-runtime focused, but this feature is OpenBurnBarCore CLI launch pipe handling and validation used core/script commands instead of the skill’s required daemon-focused command set.",
+      "evidence": "Feature assignment uses `skillName: runtime-orchestration-worker` (`features.json:1695`), while the skill mandates BurnBar daemon runtime commands (`.factory/skills/runtime-orchestration-worker/SKILL.md:21-24`). Handoff verification for this feature recorded `swift test --package-path OpenBurnBarCore --filter CLILaunchInvokerTests` and `./scripts/test-openburnbar-swift.sh` (`handoffs/2026-04-20T09-48-39-630Z__misc-cli-launch-invoker-test-flake-hardening__662f8804-a0ce-4764-8760-ea1d241fc6c2.json:16-22`)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed handoff, transcript skeleton, and commit 79211f41ca2ded5a4685909dc677e328f44dee6a for feature misc-cli-launch-invoker-test-flake-hardening. Implementation is correct and scoped to the flake/crash path; no blocking or non-blocking code defects were identified."
+}

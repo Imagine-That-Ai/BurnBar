@@ -879,33 +879,20 @@ struct DashboardQuickSwitchView: View {
 
     // MARK: - Target Icon
 
+    @ViewBuilder
     private func targetIcon(for profile: SwitcherProfileRecord) -> some View {
-        Group {
-            switch profile.targetKind {
-            case .browser:
-                if let browserType = profile.browserType, let logoName = browserType.bundledLogoName, NSImage(named: logoName) != nil {
-                    Image(logoName)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                } else {
-                    Image(systemName: profile.browserType == .safari ? "safari" : "globe")
-                        .font(.system(size: 12))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
-            case .cli:
-                if let cliType = profile.cliType, let logoName = cliType.bundledLogoName, NSImage(named: logoName) != nil {
-                    Image(logoName)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                } else {
-                    Image(systemName: "terminal.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
-            }
+        switch profile.targetKind {
+        case .browser:
+            Image(systemName: profile.browserType == .safari ? "safari" : "globe")
+                .font(.system(size: 12))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .frame(width: 14, height: 14)
+        case .cli:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .frame(width: 14, height: 14)
         }
-        // Keep custom provider logos from stretching the quick-switch layout.
-        .frame(width: 14, height: 14)
     }
 
     // MARK: - Data Operations
@@ -1426,7 +1413,7 @@ struct DashboardQuickSwitchView: View {
 // MARK: - Profile Store Adapter for Dashboard
 
 /// Adapter that wraps SwitcherProfileStore for use with launch services.
-private final class DashboardSwitcherProfileAdapter: SwitcherProfileStoreAdapter {
+private final class DashboardSwitcherProfileAdapter: SwitcherProfileStoreAdapter, @unchecked Sendable {
     private let store: SwitcherProfileStore
 
     init(store: SwitcherProfileStore) {

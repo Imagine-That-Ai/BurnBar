@@ -1,0 +1,62 @@
+{
+  "milestone": "misc-quality-hardening-04",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && CI=true scripts/test-openburnbar-app.sh && scripts/test-openburnbar-ts.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "services.yaml",
+      "description": "Added `test_core_cli_launch_invoker` command alias to keep runtime-orchestration Branch B validator coverage represented in `.factory/services.yaml`.",
+      "sourceFeature": "misc-runtime-skill-scope-alignment"
+    },
+    {
+      "target": "services.yaml",
+      "description": "Added `test_daemon_val_exec_009` command alias so supported supplemental assertion-filter validation is discoverable from the command source of truth.",
+      "sourceFeature": "misc-m11-scheduler-regression-lockin-and-guidance-alignment"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": ".factory/skills/runtime-orchestration-worker/SKILL.md",
+      "suggestion": "Split Work Procedure steps 3/5 by branch so Branch B (CLI-launch reliability) does not inherit daemon-runtime-specific lifecycle/reconciliation checks that do not apply.",
+      "evidence": "Review `misc-runtime-skill-scope-alignment` found non-blocking ambiguity: SKILL.md Work Procedure still references daemon run lifecycle/reconciliation checks even when Branch B is selected.",
+      "isSystemic": false
+    },
+    {
+      "target": ".factory/skills/runtime-orchestration-worker/SKILL.md",
+      "suggestion": "Add explicit enforcement language (or lintable handoff checklist hook) that `followedProcedure=true` requires evidence entries for every required validator surface for the selected branch, and require deviations when any required surface is omitted.",
+      "evidence": "Both milestone reviews observed handoffs marking `followedProcedure=true` without full required branch-surface evidence despite existing text requiring it.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Mission/source-of-truth ambiguity between assertion-filter usage and `.factory/services.yaml` coverage was reported in both reviews.",
+      "reason": "duplicate"
+    }
+  ],
+  "previousRound": null
+}

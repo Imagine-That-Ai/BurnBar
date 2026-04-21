@@ -128,15 +128,29 @@ public final class CLITerminalSessionSupervisor: @unchecked Sendable {
         source: CLITerminalSessionOutputSource,
         queue: DispatchQueue
     ) -> CLITerminalSessionPipeObserver {
+        let fd = pipe.fileHandleForReading.fileDescriptor
+        let bufferSize = 4096
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
+        
         let readSource = DispatchSource.makeReadSource(
-            fileDescriptor: pipe.fileHandleForReading.fileDescriptor,
+            fileDescriptor: fd,
             queue: queue
         )
         readSource.setEventHandler { [weak self] in
-            let data = pipe.fileHandleForReading.availableData
-            guard !data.isEmpty,
-                  let self,
-                  let text = String(data: data, encoding: .utf8),
+            guard let self else { return }
+            // Use read() system call - returns -1 on error (pipe closed), 0 on EOF, >0 on data.
+            // This avoids NSFileHandleOperationException from availableData when pipe is closed.
+            let bytesRead = buffer.withUnsafeMutableBytes { ptr -> Int in
+                read(fd, ptr.baseAddress, bufferSize)
+            }
+            
+            if bytesRead <= 0 {
+                // Pipe closed or error - stop reading
+                readSource.cancel()
+                return
+            }
+            
+            guard let text = String(bytes: buffer.prefix(bytesRead), encoding: .utf8),
                   !text.isEmpty else {
                 return
             }

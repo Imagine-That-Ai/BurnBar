@@ -1,0 +1,54 @@
+{
+  "milestone": "m6-planner-upgrade",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && CI=true scripts/test-openburnbar-app.sh && scripts/test-openburnbar-ts.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "m6-planner-upgrade-and-dispatch-gates"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "m6-planner-upgrade-and-dispatch-gates",
+      "severity": "blocking",
+      "description": "missionDispatchPacket invokes reviewRunLauncher before store-level approval/terminal guards are checked, so unapproved/terminal missions can still launch daemon-managed runs before dispatch is rejected."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Added .factory/library/mission-control-m6-known-behaviors.md to document current daemon behavior where mission.approve outside awaiting_approval does not reject and mission.cancel has no terminal-state guard.",
+      "sourceFeature": "m6-planner-upgrade-and-dispatch-gates"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": ".factory/skills/mission-core-worker/SKILL.md",
+      "suggestion": "Strengthen handoff enforcement by requiring a mandatory pre-EndFeatureRun commit verification transcript entry (`git rev-parse --verify <commitId>` and `git show --name-only <commitId>`) and failing handoff when commitId does not resolve.",
+      "evidence": "Reviewer found reported commitId `06c1a2a3e0b89c74f5d6e1a3b7c9f2d8e5a4b6c1` did not resolve in git, while actual commit was `06c1a2a30124ed4468e0ab33904a38ffbe0d3259`.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}

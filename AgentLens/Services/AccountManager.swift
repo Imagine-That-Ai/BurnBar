@@ -1,7 +1,7 @@
 import AppKit
 import AuthenticationServices
 import CryptoKit
-import FirebaseAuth
+@preconcurrency import FirebaseAuth
 import FirebaseCore
 import Foundation
 import GoogleSignIn
@@ -86,11 +86,15 @@ final class AccountManager {
     private func observeAuthState() {
         guard authStateListenerHandle == nil else { return }
         authStateListenerHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            let isSignedIn = user != nil
+            let userID = user?.uid
+            let userEmail = user?.email
+            let userDisplayName = user?.displayName ?? user?.email
             Task { @MainActor [weak self] in
-                self?.isSignedIn = user != nil
-                self?.userID = user?.uid
-                self?.userEmail = user?.email
-                self?.userDisplayName = user?.displayName ?? user?.email
+                self?.isSignedIn = isSignedIn
+                self?.userID = userID
+                self?.userEmail = userEmail
+                self?.userDisplayName = userDisplayName
             }
         }
     }
@@ -191,12 +195,14 @@ final class AccountManager {
                     return
                 }
                 let accessToken = signInResult.user.accessToken.tokenString
+                let profileEmail = signInResult.user.profile?.email
+                let profileName = signInResult.user.profile?.name
                 Task { @MainActor in
                     do {
                         self.lastOAuthProviderID = "google"
                         self.lastOAuthToken = accessToken
-                        self.lastOAuthEmail = signInResult.user.profile?.email
-                        self.lastOAuthDisplayName = signInResult.user.profile?.name
+                        self.lastOAuthEmail = profileEmail
+                        self.lastOAuthDisplayName = profileName
                         let credential = GoogleAuthProvider.credential(
                             withIDToken: idToken,
                             accessToken: accessToken

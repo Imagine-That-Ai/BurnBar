@@ -74,16 +74,18 @@ struct MissionControlSummaryEnricher {
 
     func makeSummary(for request: BurnBarControllerSummaryRequest) -> BurnBarControllerSummary {
         let projects = enrichedProjects().filter { request.projectSlug == nil || $0.projectSlug == request.projectSlug }
+        let missionSnapshots = projection?.missions.values.filter {
+            request.projectSlug == nil || $0.projectSlug == request.projectSlug
+        }.map { $0 } ?? []
         let pendingQuestions = projection?.questions.values.filter {
             (request.projectSlug == nil || $0.projectSlug == request.projectSlug) && $0.status == .pending
         }.count ?? 0
         let openFollowups = projection?.followups.values.filter {
             (request.projectSlug == nil || $0.projectSlug == request.projectSlug) && $0.status == .open
         }.count ?? 0
-        let activeMissions = projection?.missions.values.filter {
-            (request.projectSlug == nil || $0.projectSlug == request.projectSlug)
-                && ![BurnBarMissionStatus.completed, .failed, .cancelled].contains($0.status)
-        }.count ?? 0
+        let activeMissions = missionSnapshots.filter {
+            ![BurnBarMissionStatus.completed, .failed, .cancelled].contains($0.status)
+        }.count
         let latestReviewAt = projects
             .flatMap { [$0.latestDailyReviewAt, $0.latestWeeklyReviewAt] }
             .compactMap { $0 }
@@ -119,7 +121,8 @@ struct MissionControlSummaryEnricher {
             latestReviewAt: latestReviewAt,
             freshness: freshness,
             projectionStatus: projectionStatus,
-            recentEvents: recentEvents
+            recentEvents: recentEvents,
+            nextActions: BurnBarControllerNextActionPlanner.orderedActions(from: missionSnapshots)
         )
     }
 

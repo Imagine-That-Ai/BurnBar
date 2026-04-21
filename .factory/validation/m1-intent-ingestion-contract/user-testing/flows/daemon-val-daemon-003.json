@@ -1,0 +1,65 @@
+{
+  "groupId": "daemon-val-daemon-003",
+  "testedAt": "2026-04-19T03:54:48.682373+00:00",
+  "isolation": {
+    "surface": "MC-DAEMON",
+    "missionDir": "/Users/albertonunez/.factory/missions/d1d1287f-f2a9-4a34-8ba9-fce37df13493",
+    "repoRoot": "/Users/albertonunez/Documents/Windsurf/BurnBar",
+    "scope": [
+      "VAL-DAEMON-003"
+    ]
+  },
+  "toolsUsed": [
+    "swift test"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-DAEMON-003",
+      "title": "Mission list ordering is deterministic",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run contract command: swift test --package-path OpenBurnBarDaemon --filter OpenBurnBarMissionControlServiceTests",
+          "expected": "Mission-control tests execute and cover VAL-DAEMON-003",
+          "observed": "Exit 0 but warning indicated no matching test cases were run (filter mismatch with actual class name)."
+        },
+        {
+          "action": "Run assertion-scoped command: swift test --package-path OpenBurnBarDaemon --filter VAL_DAEMON_003",
+          "expected": "Assertion-tagged VAL-DAEMON-003 tests execute and pass.",
+          "observed": "2 tests executed and passed: testVAL_DAEMON_003_MissionListOrderingIsDeterministic and testVAL_DAEMON_003_MissionListTieBreakByMissionIDAscending."
+        },
+        {
+          "action": "Collect ordering proof pointers from source/tests",
+          "expected": "Evidence shows updatedAt desc + missionID asc tie-break semantics.",
+          "observed": "Store comparator in MissionControlStore.swift lines 419-423 uses updatedAt desc, then missionID asc; assertion-tagged tests validate deterministic ordering behavior."
+        }
+      ],
+      "evidence": {
+        "commandTranscripts": [
+          "m1-intent-ingestion-contract/daemon-val-daemon-003/swift-test-openburnbarmissioncontrolservicetests.log",
+          "m1-intent-ingestion-contract/daemon-val-daemon-003/swift-test-filter-VAL_DAEMON_003.log"
+        ],
+        "exitCodes": [
+          "m1-intent-ingestion-contract/daemon-val-daemon-003/swift-test-exit-code.txt",
+          "m1-intent-ingestion-contract/daemon-val-daemon-003/swift-test-filter-VAL_DAEMON_003-exit-code.txt"
+        ],
+        "orderingProof": [
+          "m1-intent-ingestion-contract/daemon-val-daemon-003/val-daemon-003-ordering-evidence.json"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Validation contract command filter `OpenBurnBarMissionControlServiceTests` does not match the current XCTest class name (`BurnBarMissionControlServiceTests`), causing 0 tests to run.",
+      "resolved": true,
+      "resolution": "Used assertion-ID filter `VAL_DAEMON_003` to execute the dedicated tagged tests without changing infrastructure or code.",
+      "affectedAssertions": [
+        "VAL-DAEMON-003"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated 1 assertion (VAL-DAEMON-003): pass. Deterministic mission list ordering behavior (updatedAt descending with missionID ascending tie-break) is covered by assertion-tagged tests and store comparator evidence."
+}

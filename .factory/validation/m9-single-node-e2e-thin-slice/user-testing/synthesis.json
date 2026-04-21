@@ -1,0 +1,23 @@
+{
+  "milestone": "m9-single-node-e2e-thin-slice",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-DAEMON-005",
+    "VAL-EXEC-001",
+    "VAL-EXEC-002",
+    "VAL-EXEC-003",
+    "VAL-EXEC-012",
+    "VAL-EXT-004"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}

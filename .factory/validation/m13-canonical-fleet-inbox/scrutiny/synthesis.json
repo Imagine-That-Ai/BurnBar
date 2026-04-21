@@ -1,0 +1,75 @@
+{
+  "milestone": "m13-canonical-fleet-inbox",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && CI=true scripts/test-openburnbar-app.sh && scripts/test-openburnbar-ts.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "m13-canonical-fleet-inbox-model"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "m13-canonical-fleet-inbox-model",
+      "severity": "blocking",
+      "description": "VAL-APP-004 suggested-option test expects non-error for empty answer and contradicts production empty-answer validation, so required behavior is not proven."
+    },
+    {
+      "featureId": "m13-canonical-fleet-inbox-model",
+      "severity": "blocking",
+      "description": "VAL-APP-005 tests are weak/vacuous (feedback presence and broad tone checks) and do not assert required done/snooze/calendar state mutations or visibility gating."
+    },
+    {
+      "featureId": "m13-canonical-fleet-inbox-model",
+      "severity": "blocking",
+      "description": "VAL-BRIEF-002 test includes a vacuous `XCTAssertTrue(true)` and does not enforce the singleton Next Operator Question card invariant or deterministic quick-answer ordering."
+    },
+    {
+      "featureId": "m13-canonical-fleet-inbox-model",
+      "severity": "blocking",
+      "description": "VAL-EXT-009 evidence path runs/responds to run approvals (`respondToApproval`) instead of mission approve/answer actions required by the validation contract."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "governance-worker skill",
+      "suggestion": "Add an explicit pre-handoff checklist item that verification evidence must include every feature verificationStep command and assertion surface verbatim, with failure if any required surface is omitted.",
+      "evidence": "Review of m13-canonical-fleet-inbox-model found handoff command coverage omitted required app and daemon-RPC validations while the skill states these surfaces are required.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Require full commit hash resolvability verification (`git rev-parse --verify <full-hash>`) in worker handoffs, not only short-hash checks, before reporting commit evidence.",
+      "evidence": "Review found handoff recorded a non-resolvable full hash while only the short prefix resolved, which weakens provenance reliability.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null,
+  "orchestratorOverride": {
+    "applied": true,
+    "scope": "scrutiny-validator-m13-canonical-fleet-inbox",
+    "reason": "User requested: stop the test and do not run it again.",
+    "appliedAt": "2026-04-21T02:59:17.895256+00:00"
+  }
+}

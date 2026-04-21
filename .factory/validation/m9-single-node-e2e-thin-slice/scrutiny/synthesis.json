@@ -1,0 +1,40 @@
+{
+  "milestone": "m9-single-node-e2e-thin-slice",
+  "round": 4,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && CI=true scripts/test-openburnbar-app.sh && scripts/test-openburnbar-ts.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skill:.factory/skills/runtime-orchestration-worker/SKILL.md",
+      "suggestion": "Replace outdated `OpenBurnBar*` XCTest filter examples with canonical `.factory/services.yaml` `BurnBar*` commands and require focused-command evidence capture to prevent command/evidence drift during reruns.",
+      "evidence": "Round-4 fix review still observed SKILL command examples using `OpenBurnBar*` while canonical commands in `.factory/services.yaml` use `BurnBar*`, indicating ongoing systemic process drift risk.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/m9-single-node-e2e-thin-slice/scrutiny/synthesis.round3.json"
+}

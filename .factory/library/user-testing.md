@@ -2,79 +2,83 @@
 
 ## Validation Surface
 
-### Surface CP1: ContextPack service ranking/capping/export core
-- Scope: ranking heuristics, deterministic tie-breaks, session cap, char cap, oldest-first trimming, dedupe, reason labels, usage summary, target envelope correctness.
-- Tools: `xcodebuild test` scoped suites:
-  - `OpenBurnBarTests/ContextPackServiceTests`
-  - `OpenBurnBarTests/ContextPackExportTests`
-- Coverage note: current service tests prove deterministic ordering and cap trimming separately, but they do not yet include an exact equal-score/equal-timestamp fixture that forces final ID-ascending survivor selection under cap pressure.
-- Export contract note: `VAL-CTXEXP-006` is exercised by `test_xmlSensitiveKeyFilesAndCommandsPreserveEnvelopeIntegrity`; the older XML-safety annotation in the repo is stale.
+### Surface MC-DAEMON: Daemon API mission-control runtime
+- Scope: mission creation/approval/dispatch/result, planner input contracts, DAG/reconciliation, recovery/takeover, policy/connector governance.
+- Primary tools:
+  - `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`
+  - `swift test --package-path OpenBurnBarDaemon --filter BurnBarRunServiceTests`
+  - `swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests`
+  - `swift test --package-path OpenBurnBarCore --filter BurnBarMissionControlContractsTests`
+  - For assertion-targeted reruns, prefer assertion-ID filter names (for example `--filter VAL_DAEMON_003`) when a suite-level filter yields 0 tests.
 
-## Flow Validator Guidance: Surface CP1
+### Surface MC-APP: macOS app operator surfaces
+- Scope: mission authoring affordances, mission board, inbox triage, brief completeness, one-question top-level UX, re-entry controls, degraded runtime messaging.
+- Primary tool:
+  - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+- Legacy selector guard: never use the old `AgentLensTests` operating-composer test selector; use `OpenBurnBarTests/OpenBurnBarOperatingComposerTests`.
 
-- Treat CP1 as a serialized heavy surface: run only one `xcodebuild` validator at a time.
-- Use a unique derived-data path per subagent under `.factory/validation/m1-context-pack-core/user-testing/derived-data/<group-id>` to avoid build-product collisions.
-- No app services or seeded runtime data are required for this surface; tests should rely on deterministic fixtures only.
-- Do not touch or probe unrelated busy ports/processes; this milestone is test-only.
-- If a fixture gap is discovered (for example, a missing exact equal-score/equal-timestamp survivor case), record it in the synthesis report instead of altering product code.
-- The flow-report finalization script now resolves the `m1-context-pack-core` default report set automatically; pass explicit filenames only when you need to override the built-in mapping (`cp1-service-ranking.json`, `cp1-service-cap.json`, `cp1-service-dedupe.json`, `cp1-export-envelopes.json`).
+### Surface MC-EXT: Extension bridge/operator surface
+- Scope: daemon connection lifecycle, arbitration/reconnect, mission parity, mission closure evidence, operator actions, extension-host integration.
+- Primary tools:
+  - `npm --prefix extensions/openburnbar run test:unit -- test/controller.test.ts test/projections.test.ts test/workspacePanel.test.ts test/extension.test.ts`
+  - `./scripts/test-openburnbar-extension-host.sh`
 
-### Surface CP2: Dashboard Context Pack UI
-- Scope: card placement, sheet presentation, target pill behavior, copy flow, budget threshold states, empty-state safeguards, modal collision behavior.
-- Tools: `xcodebuild test` scoped suite:
-  - `OpenBurnBarTests/ContextPackDashboardSurfaceTests`
+### Surface MC-CROSS: End-to-end convergence and real-integration assertions
+- Scope: one-line mission closure flow, done-or-one-question invariant, cross-surface parity mapping, scheduled reviews/notifications convergence, enterprise policy blocking.
+- Primary tools:
+  - Combined daemon/app/extension validators from `.factory/services.yaml`
+  - `test_real_integration_smoke`
 
-## Flow Validator Guidance: Surface CP2
+## Validation Artifact Requirements
+For each validated assertion group, collect:
+1. Command transcript (command + exit code)
+2. Assertion-ID-tagged test/spec name(s)
+3. State artifact(s) proving behavior (daemon snapshot, app snapshot, extension projection, or comparison artifact)
 
-- Treat CP2 as a serialized heavy surface: run only one `xcodebuild` validator at a time.
-- Use a unique derived-data path per subagent under `.factory/validation/m2-context-pack-ui/user-testing/derived-data/<group-id>` to avoid build-product collisions.
-- No app services or seeded runtime data are required; validate through deterministic `xcodebuild` fixtures only.
-- Keep the scope confined to `OpenBurnBarTests/ContextPackDashboardSurfaceTests`; do not rely on manual UI interaction or shared app runtime state.
-- Save the flow report under `.factory/validation/m2-context-pack-ui/user-testing/flows/<group-id>.json` and evidence under `.../evidence/<group-id>/`.
-
-### Surface CP3: Session Detail Context Pack UI
-- Scope: row gating and ordering, anchored launch identity/project, rapid-switch stability, stale-state prevention, reachability from provider/model ledger flows.
-- Tools: `xcodebuild test` scoped suite:
-  - `OpenBurnBarTests/ContextPackSessionDetailSurfaceTests`
-
-## Flow Validator Guidance: Surface CP3
-
-- Treat CP3 as a serialized heavy surface: run only one `xcodebuild` validator at a time.
-- Use a unique derived-data path per subagent under `.factory/validation/m2-context-pack-ui/user-testing/derived-data/<group-id>` to avoid build-product collisions.
-- The tests must exercise the real SwiftUI entry surfaces (`SessionDetailView` and the Context Pack launch path); helper-only assertions are insufficient for the UI selectors in this surface.
-- No app services or seeded runtime data are required; keep the surface deterministic and avoid touching unrelated local ports or processes.
-- Save the flow report under `.factory/validation/m2-context-pack-ui/user-testing/flows/<group-id>.json` and evidence under `.../evidence/<group-id>/`.
-
-### Surface CP4: Cross-area consistency
-- Scope: same-anchor parity across entrypoints, target-switch envelope-only changes, lifecycle resilience, anchored-vs-unanchored policy, anchor precedence over ambient dashboard filters.
-- Tools: `xcodebuild test` scoped suite:
-  - `OpenBurnBarTests/ContextPackCrossFlowTests`
-
-## Flow Validator Guidance: Surface CP4
-
-- Treat CP4 as a serialized heavy surface: run only one `xcodebuild` validator at a time.
-- Use a unique derived-data path per subagent under `.factory/validation/m2-context-pack-ui/user-testing/derived-data/<group-id>` to avoid build-product collisions.
-- Keep cross-flow assertions scoped to the Context Pack dashboard/session-detail entry surfaces; do not mutate shared app state outside the tested harness.
-- No services or external seeding are needed. Validate semantic parity and navigation resilience through the deterministic `xcodebuild` suites only.
-- Save the flow report under `.factory/validation/m2-context-pack-ui/user-testing/flows/<group-id>.json` and evidence under `.../evidence/<group-id>/`.
+Cross-surface assertions require artifacts from each required surface participating in the assertion.
 
 ## Validation Concurrency
+Resource classification from dry-run profiling:
+- App surface validators (`xcodebuild`): **max 1 concurrent**
+- Daemon surface validators (`swift test` mission/runtime): **max 5 concurrent**
+- Extension surface validators (`npm/vitest`): **max 5 concurrent**
 
-- Heavy validators (`xcodebuild`): **max 1 concurrent**
-- Lint/lightweight commands: **max 2 concurrent**
-- Rationale: local machine had high background CPU load during dry run; serializing heavy app-test runs reduces flake risk.
+Rule: when assertions combine surfaces, overall concurrency is constrained by the tightest participating surface (usually app=1).
+
+## Validation Readiness (latest)
+- Daemon smoke: runnable
+- App UI smoke: runnable
+- Extension bridge smoke: runnable
+- No blockers identified during dry-run readiness checks
 
 ## Accepted Constraints
+- Real integrations only for mission-critical paths (dispatch/recovery/reconciliation/PR lifecycle).
+- If an external integration is unavailable, validation must fail with explicit reason and return to orchestrator; do not silently substitute mocks.
 
-- User explicitly opted out of manual UI checks for this mission.
-- Validation therefore relies on deterministic app tests/build gates and export-content assertions.
+## Flow Validator Guidance: MC-DAEMON
+- Assertion-filter caveat: Swift test output may include a trailing Swift Testing footer (`0 tests in 0 suites`) even when XCTest executed matching tests. For contract evidence, classify non-zero execution using XCTest `Executed N tests` lines and assertion-tagged test-case names in the transcript.
+- Isolation boundary: test only daemon mission-control assertions assigned in your prompt.
+- Allowed commands: `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests` plus read-only artifact collection.
+- Do not modify app/extension code, global system settings, or unrelated test fixtures.
+- Keep evidence scoped to the assigned assertion IDs and write outputs only under the provided flow report/evidence directories.
 
-## Preferred Validation Commands
+## Flow Validator Guidance: MC-APP
+- Isolation boundary: test only the assigned app-surface assertions against `OpenBurnBarOperatingComposerTests`.
+- Allowed command family: `xcodebuild test ... -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests"` with optional narrowing to assertion-tagged test names.
+- Run app validators serially (`max 1`) to avoid `xcodebuild` contention in shared DerivedData/SPM caches.
+- If an initial run fails with a transient index-store write/rename error in DerivedData, retry the same command once before classifying as blocked.
+- Do not mutate daemon fixtures, extension tests, or global machine settings; write only flow JSON and evidence files under the assigned milestone paths.
 
-```bash
-xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/ContextPackServiceTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''
-xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/ContextPackExportTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''
-xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/ContextPackDashboardSurfaceTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''
-xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/ContextPackSessionDetailSurfaceTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''
-xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/ContextPackCrossFlowTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''
-```
+## Flow Validator Guidance: MC-EXT
+- Isolation boundary: test only assigned extension assertions through extension unit tests and extension-host integration script.
+- Allowed command family: `npm --prefix extensions/openburnbar run test:unit -- ...` and `./scripts/test-openburnbar-extension-host.sh` when required by assigned assertions.
+- Extension validators may run concurrently up to 5, but avoid sharing mutable temp artifacts outside each assigned evidence directory.
+- When contract evidence requires assertion-tagged test names, run the required unit command first, then add a supplemental rerun with `--reporter=verbose` to capture explicit assertion-tagged lines.
+- Do not modify daemon/app source or global machine config; only produce flow report JSON and evidence files in assigned milestone paths.
+
+## Flow Validator Guidance: MC-CROSS
+- Isolation boundary: test only assigned cross-surface assertions and collect artifacts from each required surface command listed in the validation contract.
+- Required discipline: run every listed command for the assigned assertion and record exit codes plus assertion-tagged evidence lines for each surface.
+- App-inclusive cross assertions must respect app concurrency cap (`max 1`) and should not overlap with other `xcodebuild` validators.
+- If app-inclusive cross runs hit transient `xcodebuild` package/binary artifact resolution failures (for example grpc artifact fetch), retry the same command once before classifying blocked.
+- Do not apply source-code changes while validating; create only flow/evidence artifacts under assigned milestone directories.

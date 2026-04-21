@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - Operating Layer Models
 
@@ -150,6 +151,7 @@ enum OpenBurnBarEvidenceFreshness: String, Equatable, Sendable {
 
 enum OpenBurnBarActionKind: String, CaseIterable, Identifiable, Codable, Sendable {
     case missionApproval = "mission_approval"
+    case missionCreation = "mission_creation"
     case directionOverride = "direction_override"
 
     var id: String { rawValue }
@@ -157,6 +159,7 @@ enum OpenBurnBarActionKind: String, CaseIterable, Identifiable, Codable, Sendabl
     var label: String {
         switch self {
         case .missionApproval: return "Approve Mission"
+        case .missionCreation: return "Create Mission"
         case .directionOverride: return "Override Direction"
         }
     }
@@ -164,6 +167,7 @@ enum OpenBurnBarActionKind: String, CaseIterable, Identifiable, Codable, Sendabl
     var icon: String {
         switch self {
         case .missionApproval: return "checkmark.seal.fill"
+        case .missionCreation: return "flag.badge.ellipsis"
         case .directionOverride: return "flag.fill"
         }
     }
@@ -210,8 +214,91 @@ struct OpenBurnBarMissionSummary: Equatable, Sendable {
     let burnRecordCount: Int
     let totalTokens: Int
     let estimatedCostUSD: Double
+    let changedFilesSummary: String
+    let risksSummary: String
+    let remainingWorkSummary: String
     let recommendationSummary: String
+    let nextRecommendation: String
     let approvalNote: String?
+    let readinessFailure: BurnBarReadinessFailure?
+    let enterprisePolicyBlock: BurnBarEnterprisePolicyBlock?
+    let scheduledReviewIntent: BurnBarScheduledReviewIntent?
+
+    init(
+        availability: OpenBurnBarOperatingAvailability,
+        missionID: String,
+        projectName: String,
+        title: String,
+        subtitle: String,
+        state: OpenBurnBarMissionLifecycle,
+        approval: OpenBurnBarMissionApprovalState,
+        sessionCount: Int,
+        summarizedSessionCount: Int,
+        burnRecordCount: Int,
+        totalTokens: Int,
+        estimatedCostUSD: Double,
+        changedFilesSummary: String,
+        risksSummary: String,
+        remainingWorkSummary: String,
+        recommendationSummary: String,
+        nextRecommendation: String,
+        approvalNote: String?,
+        readinessFailure: BurnBarReadinessFailure?,
+        enterprisePolicyBlock: BurnBarEnterprisePolicyBlock? = nil,
+        scheduledReviewIntent: BurnBarScheduledReviewIntent? = nil
+    ) {
+        self.availability = availability
+        self.missionID = missionID
+        self.projectName = projectName
+        self.title = title
+        self.subtitle = subtitle
+        self.state = state
+        self.approval = approval
+        self.sessionCount = sessionCount
+        self.summarizedSessionCount = summarizedSessionCount
+        self.burnRecordCount = burnRecordCount
+        self.totalTokens = totalTokens
+        self.estimatedCostUSD = estimatedCostUSD
+        self.changedFilesSummary = changedFilesSummary
+        self.risksSummary = risksSummary
+        self.remainingWorkSummary = remainingWorkSummary
+        self.recommendationSummary = recommendationSummary
+        self.nextRecommendation = nextRecommendation
+        self.approvalNote = approvalNote
+        self.readinessFailure = readinessFailure
+        self.enterprisePolicyBlock = enterprisePolicyBlock
+        self.scheduledReviewIntent = scheduledReviewIntent
+    }
+}
+
+// MARK: - Readiness Failure
+
+/// Represents a pre-dispatch execution readiness failure.
+/// Maps directly from daemon BurnBarExecutionReadinessCode for cross-surface parity.
+/// Used to propagate actionable failure reasons when a mission cannot be dispatched.
+struct BurnBarReadinessFailure: Equatable, Sendable {
+    let code: BurnBarExecutionReadinessCode
+    let detail: String
+
+    /// Human-readable display message for operator-facing UI.
+    var displayMessage: String {
+        switch code {
+        case .missingCredential:
+            return "Credential missing: \(detail)"
+        case .invalidRepoBranch:
+            return "Repository unavailable: \(detail)"
+        case .runtimeUnavailable:
+            return "Runtime unavailable: \(detail)"
+        case .insufficientCredentialPermissions:
+            return "Insufficient permissions: \(detail)"
+        }
+    }
+
+    /// Creates a readiness failure from daemon execution readiness response.
+    init(code: BurnBarExecutionReadinessCode, detail: String) {
+        self.code = code
+        self.detail = detail
+    }
 }
 
 struct OpenBurnBarDirectionSummary: Equatable, Sendable {
@@ -308,6 +395,7 @@ struct OpenBurnBarOperatingHistoryEntry: Identifiable, Equatable, Sendable {
     var tint: Color {
         switch kind {
         case .missionApproval: return DesignSystem.Colors.success
+        case .missionCreation: return DesignSystem.Colors.hermesAureate
         case .directionOverride: return DesignSystem.Colors.whimsy
         }
     }
@@ -315,6 +403,7 @@ struct OpenBurnBarOperatingHistoryEntry: Identifiable, Equatable, Sendable {
     var icon: String {
         switch kind {
         case .missionApproval: return "checkmark.seal.fill"
+        case .missionCreation: return "flag.badge.ellipsis"
         case .directionOverride: return "flag.fill"
         }
     }
@@ -608,6 +697,11 @@ struct OpenBurnBarControllerMissionRecord: Identifiable, Codable, Equatable, Sen
     let summary: String
     let state: OpenBurnBarMissionLifecycle
     let approval: OpenBurnBarMissionApprovalState
+    let ownerPrincipalID: String?
+    let assigneePrincipalID: String?
+    let roleEligibility: OpenBurnBarControllerMissionRoleEligibility
+    let latestAuditEventID: String?
+    let latestAuditSummary: String?
     let packetSummary: String?
     let latestResultSummary: String?
     let latestResultDetail: String?
@@ -622,6 +716,289 @@ struct OpenBurnBarControllerMissionRecord: Identifiable, Codable, Equatable, Sen
     let burnCostUSD: Double
     let burnTokens: Int
     let updatedAt: Date
+    let prLinkage: OpenBurnBarControllerMissionPRLinkage?
+
+    init(
+        id: String,
+        projectName: String,
+        title: String,
+        summary: String,
+        state: OpenBurnBarMissionLifecycle,
+        approval: OpenBurnBarMissionApprovalState,
+        ownerPrincipalID: String? = nil,
+        assigneePrincipalID: String? = nil,
+        roleEligibility: OpenBurnBarControllerMissionRoleEligibility = .none,
+        latestAuditEventID: String? = nil,
+        latestAuditSummary: String? = nil,
+        packetSummary: String?,
+        latestResultSummary: String?,
+        latestResultDetail: String?,
+        latestResultRunID: String?,
+        activeWorkerName: String?,
+        activeRunID: String?,
+        packetRunCount: Int,
+        latestTakeoverState: OpenBurnBarControllerTakeoverState?,
+        latestTakeoverReason: String?,
+        latestTakeoverRunID: String?,
+        takeoverCount: Int,
+        burnCostUSD: Double,
+        burnTokens: Int,
+        updatedAt: Date,
+        prLinkage: OpenBurnBarControllerMissionPRLinkage? = nil
+    ) {
+        self.id = id
+        self.projectName = projectName
+        self.title = title
+        self.summary = summary
+        self.state = state
+        self.approval = approval
+        self.ownerPrincipalID = ownerPrincipalID
+        self.assigneePrincipalID = assigneePrincipalID
+        self.roleEligibility = roleEligibility
+        self.latestAuditEventID = latestAuditEventID
+        self.latestAuditSummary = latestAuditSummary
+        self.packetSummary = packetSummary
+        self.latestResultSummary = latestResultSummary
+        self.latestResultDetail = latestResultDetail
+        self.latestResultRunID = latestResultRunID
+        self.activeWorkerName = activeWorkerName
+        self.activeRunID = activeRunID
+        self.packetRunCount = packetRunCount
+        self.latestTakeoverState = latestTakeoverState
+        self.latestTakeoverReason = latestTakeoverReason
+        self.latestTakeoverRunID = latestTakeoverRunID
+        self.takeoverCount = takeoverCount
+        self.burnCostUSD = burnCostUSD
+        self.burnTokens = burnTokens
+        self.updatedAt = updatedAt
+        self.prLinkage = prLinkage
+    }
+}
+
+struct OpenBurnBarControllerMissionRoleEligibility: Codable, Equatable, Sendable {
+    let canApprove: Bool
+    let canTransferOwnership: Bool
+    let canAnswerClosureQuestion: Bool
+
+    static let none = OpenBurnBarControllerMissionRoleEligibility(
+        canApprove: false,
+        canTransferOwnership: false,
+        canAnswerClosureQuestion: false
+    )
+}
+
+extension OpenBurnBarControllerMissionRecord {
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case projectName
+        case title
+        case summary
+        case state
+        case approval
+        case ownerPrincipalID
+        case assigneePrincipalID
+        case roleEligibility
+        case latestAuditEventID
+        case latestAuditSummary
+        case packetSummary
+        case latestResultSummary
+        case latestResultDetail
+        case latestResultRunID
+        case activeWorkerName
+        case activeRunID
+        case packetRunCount
+        case latestTakeoverState
+        case latestTakeoverReason
+        case latestTakeoverRunID
+        case takeoverCount
+        case burnCostUSD
+        case burnTokens
+        case updatedAt
+        case prLinkage
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(String.self, forKey: .id),
+            projectName: try container.decode(String.self, forKey: .projectName),
+            title: try container.decode(String.self, forKey: .title),
+            summary: try container.decode(String.self, forKey: .summary),
+            state: try container.decode(OpenBurnBarMissionLifecycle.self, forKey: .state),
+            approval: try container.decode(OpenBurnBarMissionApprovalState.self, forKey: .approval),
+            ownerPrincipalID: try container.decodeIfPresent(String.self, forKey: .ownerPrincipalID),
+            assigneePrincipalID: try container.decodeIfPresent(String.self, forKey: .assigneePrincipalID),
+            roleEligibility: try container.decodeIfPresent(
+                OpenBurnBarControllerMissionRoleEligibility.self,
+                forKey: .roleEligibility
+            ) ?? .none,
+            latestAuditEventID: try container.decodeIfPresent(String.self, forKey: .latestAuditEventID),
+            latestAuditSummary: try container.decodeIfPresent(String.self, forKey: .latestAuditSummary),
+            packetSummary: try container.decodeIfPresent(String.self, forKey: .packetSummary),
+            latestResultSummary: try container.decodeIfPresent(String.self, forKey: .latestResultSummary),
+            latestResultDetail: try container.decodeIfPresent(String.self, forKey: .latestResultDetail),
+            latestResultRunID: try container.decodeIfPresent(String.self, forKey: .latestResultRunID),
+            activeWorkerName: try container.decodeIfPresent(String.self, forKey: .activeWorkerName),
+            activeRunID: try container.decodeIfPresent(String.self, forKey: .activeRunID),
+            packetRunCount: try container.decode(Int.self, forKey: .packetRunCount),
+            latestTakeoverState: try container.decodeIfPresent(OpenBurnBarControllerTakeoverState.self, forKey: .latestTakeoverState),
+            latestTakeoverReason: try container.decodeIfPresent(String.self, forKey: .latestTakeoverReason),
+            latestTakeoverRunID: try container.decodeIfPresent(String.self, forKey: .latestTakeoverRunID),
+            takeoverCount: try container.decode(Int.self, forKey: .takeoverCount),
+            burnCostUSD: try container.decode(Double.self, forKey: .burnCostUSD),
+            burnTokens: try container.decode(Int.self, forKey: .burnTokens),
+            updatedAt: try container.decode(Date.self, forKey: .updatedAt),
+            prLinkage: try container.decodeIfPresent(OpenBurnBarControllerMissionPRLinkage.self, forKey: .prLinkage)
+        )
+    }
+}
+
+enum OpenBurnBarControllerMissionPRState: String, Codable, Equatable, Sendable {
+    case opened
+    case merged
+    case closed
+
+    var label: String {
+        switch self {
+        case .opened:
+            return "Opened"
+        case .merged:
+            return "Merged"
+        case .closed:
+            return "Closed"
+        }
+    }
+}
+
+struct OpenBurnBarControllerMissionPRLinkage: Codable, Equatable, Sendable {
+    let repository: String
+    let prNumberOrID: String
+    let url: String
+    let state: OpenBurnBarControllerMissionPRState
+    let isMerged: Bool
+    let mergeCommitSHA: String?
+    let mergedAt: Date?
+    let closedAt: Date?
+}
+
+enum OpenBurnBarControllerNextActionBucket: String, Codable, Equatable, Sendable {
+    case blockage
+    case interruption
+    case completion
+}
+
+struct OpenBurnBarControllerNextAction: Identifiable, Codable, Equatable, Sendable {
+    let id: String
+    let missionID: String
+    let projectName: String
+    let title: String
+    let summary: String
+    let bucket: OpenBurnBarControllerNextActionBucket
+    let missionState: OpenBurnBarMissionLifecycle
+    let updatedAt: Date
+}
+
+enum OpenBurnBarControllerNextActionPlanner {
+    static func orderedActions(
+        from missions: [OpenBurnBarControllerMissionRecord]
+    ) -> [OpenBurnBarControllerNextAction] {
+        missions
+            .map(action(for:))
+            .sorted(by: actionSort)
+    }
+
+    private static func action(
+        for mission: OpenBurnBarControllerMissionRecord
+    ) -> OpenBurnBarControllerNextAction {
+        OpenBurnBarControllerNextAction(
+            id: "next-action-\(mission.id)",
+            missionID: mission.id,
+            projectName: mission.projectName,
+            title: actionTitle(for: mission.state, approval: mission.approval),
+            summary: mission.summary.nonEmpty
+                ?? mission.latestResultSummary?.nonEmpty
+                ?? "OpenBurnBar captured mission state and is ready for the next operator call.",
+            bucket: bucket(for: mission.state),
+            missionState: mission.state,
+            updatedAt: mission.updatedAt
+        )
+    }
+
+    private static func actionSort(
+        lhs: OpenBurnBarControllerNextAction,
+        rhs: OpenBurnBarControllerNextAction
+    ) -> Bool {
+        let lhsBucket = bucketRank(lhs.bucket)
+        let rhsBucket = bucketRank(rhs.bucket)
+        if lhsBucket != rhsBucket {
+            return lhsBucket < rhsBucket
+        }
+
+        let lhsStateRank = stateRank(lhs.missionState)
+        let rhsStateRank = stateRank(rhs.missionState)
+        if lhsStateRank != rhsStateRank {
+            return lhsStateRank < rhsStateRank
+        }
+
+        if lhs.updatedAt != rhs.updatedAt {
+            return lhs.updatedAt > rhs.updatedAt
+        }
+
+        return lhs.missionID < rhs.missionID
+    }
+
+    private static func bucket(
+        for state: OpenBurnBarMissionLifecycle
+    ) -> OpenBurnBarControllerNextActionBucket {
+        switch state {
+        case .blocked:
+            return .blockage
+        case .completed:
+            return .completion
+        case .running, .partial, .planned:
+            return .interruption
+        }
+    }
+
+    private static func bucketRank(
+        _ bucket: OpenBurnBarControllerNextActionBucket
+    ) -> Int {
+        switch bucket {
+        case .blockage: return 0
+        case .interruption: return 1
+        case .completion: return 2
+        }
+    }
+
+    private static func stateRank(
+        _ state: OpenBurnBarMissionLifecycle
+    ) -> Int {
+        switch state {
+        case .blocked: return 0
+        case .partial: return 1
+        case .running: return 2
+        case .planned: return 3
+        case .completed: return 4
+        }
+    }
+
+    private static func actionTitle(
+        for state: OpenBurnBarMissionLifecycle,
+        approval: OpenBurnBarMissionApprovalState
+    ) -> String {
+        switch state {
+        case .blocked:
+            return "Resolve blocker"
+        case .partial:
+            return "Resume interrupted mission"
+        case .running:
+            return "Monitor active mission"
+        case .planned:
+            return approval == .pending ? "Approve mission" : "Start mission execution"
+        case .completed:
+            return "Review completion"
+        }
+    }
 }
 
 struct OpenBurnBarControllerEvent: Identifiable, Codable, Equatable, Sendable {
@@ -695,6 +1072,7 @@ struct OpenBurnBarControllerRuntimeSnapshot: Codable, Equatable, Sendable {
     var questions: [OpenBurnBarControllerQuestion]
     var followups: [OpenBurnBarControllerFollowup]
     var missions: [OpenBurnBarControllerMissionRecord]
+    var nextActions: [OpenBurnBarControllerNextAction]? = nil
     var recentEvents: [OpenBurnBarControllerEvent]
 
     static let empty = OpenBurnBarControllerRuntimeSnapshot(
@@ -704,6 +1082,7 @@ struct OpenBurnBarControllerRuntimeSnapshot: Codable, Equatable, Sendable {
         questions: [],
         followups: [],
         missions: [],
+        nextActions: [],
         recentEvents: []
     )
 
@@ -725,6 +1104,9 @@ struct OpenBurnBarControllerRuntimeSnapshot: Codable, Equatable, Sendable {
         }
         if let followup = openFollowups.first {
             return followup.title
+        }
+        if let nextAction = nextActions?.first {
+            return nextAction.title
         }
         if let mission = missions.first {
             if let takeoverReason = mission.latestTakeoverReason?.nonEmpty {

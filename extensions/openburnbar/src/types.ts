@@ -20,7 +20,27 @@ export type BurnBarRPCMethod =
   | 'approval.respond'
   | 'client.attach'
   | 'client.claimControl'
-  | 'client.detach';
+  | 'client.detach'
+  | 'daemon.mission.create'
+  | 'daemon.mission.list'
+  | 'daemon.mission.get'
+  | 'daemon.mission.approve'
+  | 'daemon.mission.cancel'
+  | 'daemon.mission.packet.dispatch'
+  | 'daemon.mission.result.record'
+  | 'daemon.question.create'
+  | 'daemon.question.get'
+  | 'daemon.question.list'
+  | 'daemon.question.answer'
+  | 'daemon.followup.create'
+  | 'daemon.followup.list'
+  | 'daemon.followup.done'
+  | 'daemon.followup.snooze'
+  | 'daemon.followup.calendar'
+  | 'daemon.controller.summary'
+  | 'daemon.controller.project.list'
+  | 'daemon.controller.project.get'
+  | 'daemon.controller.project.upsert';
 export type BurnBarConnectionStatus =
   | 'connecting'
   | 'connected'
@@ -398,12 +418,296 @@ export interface BurnBarRunProjection {
   source: 'projected' | 'daemon';
 }
 
+// Daemon canonical statuses: matches BurnBarMissionStatus in OpenBurnBarCore
+export type BurnBarMissionStatus =
+  | 'draft'
+  | 'awaiting_approval'
+  | 'approved'
+  | 'dispatching'
+  | 'in_progress'
+  | 'partially_completed'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+export type BurnBarMissionRecommendation = 'proceed' | 'review' | 'pause';
+export type BurnBarMissionPacketStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
+export type BurnBarMissionResultStatus = 'pending' | 'success' | 'failed' | 'partial';
+export type BurnBarAutoTakeoverStatus = 'requested' | 'in_progress' | 'completed' | 'declined' | 'failed';
+export type BurnBarPRLinkageState = 'opened' | 'merged' | 'closed';
+
+export interface BurnBarPRLinkageSnapshot {
+  schemaVersion: number;
+  repository: string;
+  prNumberOrID: string;
+  url: string;
+  state: BurnBarPRLinkageState;
+  mergeCommitSHA?: string;
+  mergedAt?: string;
+  closedAt?: string;
+}
+
+export interface BurnBarMissionApprovalSnapshot {
+  approved: boolean;
+  approvedAt?: string;
+  approvedBy?: string;
+  note?: string;
+}
+
+export interface BurnBarMissionPacketSnapshot {
+  id: string;
+  missionID: string;
+  workerName: string;
+  objective: string;
+  status: BurnBarMissionPacketStatus;
+  runID?: string;
+  dispatchedAt?: string;
+  completedAt?: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface BurnBarMissionResultSnapshot {
+  id: string;
+  missionID: string;
+  packetID?: string;
+  runID?: string;
+  status: BurnBarMissionResultStatus;
+  summary: string;
+  detail?: string;
+  burnDelta: number;
+  createdAt: string;
+  evidenceRefs: string[];
+  prLinkage?: BurnBarPRLinkageSnapshot;
+  metadata: Record<string, unknown>;
+}
+
+export interface BurnBarMissionBurnRecord {
+  id: string;
+  label: string;
+  amount: number;
+  unit: string;
+  recordedAt: string;
+}
+
+export interface BurnBarAutoTakeoverRecord {
+  id: string;
+  projectSlug: string;
+  missionID?: string;
+  sourceRunID?: string;
+  takeoverRunID?: string;
+  status: BurnBarAutoTakeoverStatus;
+  reason: string;
+  createdAt: string;
+  updatedAt: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface BurnBarMissionSnapshot {
+  id: string;
+  projectSlug: string;
+  title: string;
+  summary: string;
+  status: BurnBarMissionStatus;
+  recommendation: BurnBarMissionRecommendation;
+  createdAt: string;
+  updatedAt: string;
+  approval?: BurnBarMissionApprovalSnapshot;
+  packets: BurnBarMissionPacketSnapshot[];
+  results: BurnBarMissionResultSnapshot[];
+  burnRecords: BurnBarMissionBurnRecord[];
+  takeoverHistory: BurnBarAutoTakeoverRecord[];
+  prLinkage?: BurnBarPRLinkageSnapshot;
+  metadata: Record<string, unknown>;
+}
+
+// Mission RPC request/response types
+export interface BurnBarMissionApproveRequest {
+  missionID: string;
+  actor: string;
+  note?: string;
+}
+
+export interface BurnBarMissionMutationResponse {
+  mission: BurnBarMissionSnapshot;
+  emittedEvent?: unknown;
+}
+
+export interface BurnBarMissionListRequest {
+  projectSlug?: string;
+  statuses?: BurnBarMissionStatus[];
+  limit?: number;
+}
+
+export interface BurnBarMissionListResponse {
+  missions: BurnBarMissionSnapshot[];
+}
+
+export interface BurnBarMissionGetRequest {
+  missionID: string;
+}
+
+export interface BurnBarMissionCreateRequest {
+  projectSlug: string;
+  title: string;
+  summary: string;
+  objective: string;
+  riskLevel?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface BurnBarMissionCancelRequest {
+  missionID: string;
+  actor: string;
+  reason?: string;
+}
+
+// Question types
+export type BurnBarPendingQuestionStatus = 'pending' | 'answered' | 'dismissed';
+export type BurnBarPendingQuestionPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+export interface BurnBarQuestionOptionSnapshot {
+  id: string;
+  title: string;
+  detail?: string;
+  answer: string;
+}
+
+export interface BurnBarQuestionDeepLinkSnapshot {
+  kind: 'sessionLog' | 'project' | 'mission' | 'run';
+  targetID: string;
+  title: string;
+  subtitle?: string;
+}
+
+export interface BurnBarQuestionTrackerSnapshot {
+  isUnread: boolean;
+  surfacedAt?: string;
+  firstNotifiedAt?: string;
+  lastNotifiedAt?: string;
+  notificationCount: number;
+}
+
+export interface BurnBarAnswerRecord {
+  answer: string;
+  answeredBy: string;
+  answeredAt: string;
+  selectedOptionID?: string;
+}
+
+export interface BurnBarPendingQuestionSnapshot {
+  id: string;
+  projectSlug: string;
+  sessionID?: string;
+  title: string;
+  prompt: string;
+  stageLabel?: string;
+  status: BurnBarPendingQuestionStatus;
+  priority: BurnBarPendingQuestionPriority;
+  askedAt: string;
+  dueAt?: string;
+  latestAnswer?: BurnBarAnswerRecord;
+  answerPlaceholder?: string;
+  contextSummary?: string;
+  evidenceRefs: string[];
+  suggestedOptions: BurnBarQuestionOptionSnapshot[];
+  deepLink?: BurnBarQuestionDeepLinkSnapshot;
+  tracker?: BurnBarQuestionTrackerSnapshot;
+  metadata: Record<string, unknown>;
+}
+
+export interface BurnBarQuestionAnswerRequest {
+  questionID: string;
+  answeredBy: string;
+  answer: string;
+  selectedOptionID?: string;
+  markFollowupDone?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface BurnBarQuestionAnswerResponse {
+  question: BurnBarPendingQuestionSnapshot;
+  followup?: unknown;
+  emittedEvent?: unknown;
+}
+
+export interface BurnBarQuestionsListRequest {
+  projectSlug?: string;
+  statuses?: BurnBarPendingQuestionStatus[];
+  limit?: number;
+}
+
+export interface BurnBarQuestionsListResponse {
+  questions: BurnBarPendingQuestionSnapshot[];
+}
+
+export interface BurnBarQuestionGetRequest {
+  questionID: string;
+}
+
+export interface BurnBarQuestionResponse {
+  question?: BurnBarPendingQuestionSnapshot;
+}
+
+// Followup types
+export type BurnBarFollowupStatus = 'open' | 'snoozed' | 'done' | 'cancelled';
+
+export interface BurnBarFollowupSnapshot {
+  id: string;
+  projectSlug: string;
+  questionID?: string;
+  title: string;
+  note?: string;
+  status: BurnBarFollowupStatus;
+  dueAt?: string;
+  snoozedUntilAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface BurnBarFollowupsListRequest {
+  projectSlug?: string;
+  statuses?: BurnBarFollowupStatus[];
+  limit?: number;
+}
+
+export interface BurnBarFollowupsListResponse {
+  followups: BurnBarFollowupSnapshot[];
+}
+
+// Controller summary types
+export interface BurnBarControllerCounts {
+  projectCount: number;
+  pendingQuestionCount: number;
+  openFollowupCount: number;
+  activeMissionCount: number;
+  staleProjectCount: number;
+}
+
+export type BurnBarProjectFreshness = 'fresh' | 'provisional' | 'stale';
+export type BurnBarProjectStatus = 'onboarding' | 'healthy' | 'needsAttention' | 'paused' | 'stale';
+
+export interface BurnBarControllerSummary {
+  activeProjectSlug?: string;
+  counts: BurnBarControllerCounts;
+  freshness: BurnBarProjectFreshness;
+  latestDailyReviewAt?: string;
+  latestWeeklyReviewAt?: string;
+  nextScheduledReviewAt?: string;
+  needsOperatorAttention: boolean;
+  metadata: Record<string, unknown>;
+}
+
+export interface BurnBarControllerSummaryResponse {
+  summary: BurnBarControllerSummary;
+}
+
 export interface OpenBurnBarState {
   connectionStatus: BurnBarConnectionStatus;
   clientAttached: boolean;
   health?: BurnBarHealthResponse;
   catalog?: BurnBarCatalog;
   daemonRuns: BurnBarRunStateSnapshot[];
+  daemonMissions?: BurnBarMissionSnapshot[];
   pendingToolCalls: BurnBarToolCallSnapshot[];
   arbitration?: BurnBarClientArbitrationSnapshot;
   selectedRunDetail?: BurnBarRunDetailResponse;

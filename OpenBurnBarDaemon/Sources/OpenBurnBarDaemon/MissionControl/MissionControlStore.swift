@@ -94,29 +94,30 @@ public actor BurnBarMissionControlStore {
     }
 
     public func createQuestion(_ question: BurnBarPendingQuestionSnapshot) throws -> (BurnBarPendingQuestionSnapshot, BurnBarControllerEvent) {
+        let canonicalQuestion = enforceMissionClosureQuestionInvariant(question)
         let event = try appendEvent(
             family: .question,
             eventType: "question_created",
-            projectSlug: question.projectSlug,
-            summary: question.title,
-            detail: question.prompt,
-            payload: try BurnBarJSONValue.fromEncodable(question)
+            projectSlug: canonicalQuestion.projectSlug,
+            summary: canonicalQuestion.title,
+            detail: canonicalQuestion.prompt,
+            payload: try BurnBarJSONValue.fromEncodable(canonicalQuestion)
         )
 
-        if followupForQuestion(question.id) == nil {
+        if followupForQuestion(canonicalQuestion.id) == nil {
             let followup = BurnBarFollowupSnapshot(
-                id: BurnBarFollowupID(rawValue: "followup-\(question.id.rawValue)"),
-                projectSlug: question.projectSlug,
-                questionID: question.id,
-                title: question.title,
-                summary: question.contextSummary ?? question.prompt,
-                stageLabel: question.stageLabel,
+                id: BurnBarFollowupID(rawValue: "followup-\(canonicalQuestion.id.rawValue)"),
+                projectSlug: canonicalQuestion.projectSlug,
+                questionID: canonicalQuestion.id,
+                title: canonicalQuestion.title,
+                summary: canonicalQuestion.contextSummary ?? canonicalQuestion.prompt,
+                stageLabel: canonicalQuestion.stageLabel,
                 status: .open,
                 kind: .pendingQuestion,
-                createdAt: question.askedAt,
-                nextNudgeAt: question.dueAt ?? Calendar.current.date(byAdding: .hour, value: 2, to: question.askedAt),
-                deepLink: question.deepLink,
-                metadata: question.metadata
+                createdAt: canonicalQuestion.askedAt,
+                nextNudgeAt: canonicalQuestion.dueAt ?? Calendar.current.date(byAdding: .hour, value: 2, to: canonicalQuestion.askedAt),
+                deepLink: canonicalQuestion.deepLink,
+                metadata: canonicalQuestion.metadata
             )
             _ = try appendEvent(
                 family: .followup,
@@ -128,7 +129,7 @@ public actor BurnBarMissionControlStore {
             )
         }
 
-        return (try questionValue(question.id), event)
+        return (try questionValue(canonicalQuestion.id), event)
     }
 
     public func answerQuestion(_ request: BurnBarQuestionAnswerRequest) throws -> BurnBarQuestionAnswerResponse {
@@ -415,7 +416,13 @@ public actor BurnBarMissionControlStore {
                 (request.projectSlug == nil || item.projectSlug == request.projectSlug)
                     && request.statuses.contains(item.status)
             }
-            .sorted { $0.updatedAt > $1.updatedAt }
+            .sorted { lhs, rhs in
+                if lhs.updatedAt != rhs.updatedAt {
+                    return lhs.updatedAt > rhs.updatedAt
+                }
+                // Tie-break: missionID ascending (lexicographic)
+                return lhs.id.rawValue < rhs.id.rawValue
+            }
             .prefix(request.limit)
             .map { $0 } ?? []
     }
@@ -499,9 +506,63 @@ public actor BurnBarMissionControlStore {
         )
     }
 
+    /// Terminal mission statuses that block dispatch.
+    private static let terminalStatuses: Set<BurnBarMissionStatus> = [
+        .completed, .failed, .cancelled
+    ]
+
+    public func missionCancel(_ request: BurnBarMissionCancelRequest) throws -> BurnBarMissionMutationResponse {
+        guard let existing = try mission(id: request.missionID) else {
+            throw BurnBarMissionControlError.missionNotFound(request.missionID)
+        }
+
+        let now = Date()
+        let updated = BurnBarMissionSnapshot(
+            id: existing.id,
+            projectSlug: existing.projectSlug,
+            title: existing.title,
+            summary: existing.summary,
+            status: .cancelled,
+            recommendation: existing.recommendation,
+            createdAt: existing.createdAt,
+            updatedAt: now,
+            approval: existing.approval,
+            packets: existing.packets,
+            results: existing.results,
+            burnRecords: existing.burnRecords,
+            takeoverHistory: existing.takeoverHistory,
+            metadata: existing.metadata.merging(["cancelled_by": .string(request.actor)]) { _, new in new }
+        )
+
+        let event = try appendEvent(
+            family: .mission,
+            eventType: "mission_cancelled",
+            projectSlug: updated.projectSlug,
+            summary: updated.title,
+            detail: request.note,
+            payload: try BurnBarJSONValue.fromEncodable(updated)
+        )
+
+        return BurnBarMissionMutationResponse(
+            mission: try missionValue(updated.id),
+            emittedEvent: event
+        )
+    }
+
     public func dispatchMissionPacket(_ request: BurnBarMissionDispatchPacketRequest) throws -> BurnBarMissionMutationResponse {
         guard let existing = try mission(id: request.missionID) else {
             throw BurnBarMissionControlError.missionNotFound(request.missionID)
+        }
+
+        // VAL-DAEMON-009: Dispatch is approval-gated and terminal-safe
+        // Block dispatch if mission is not approved
+        guard existing.approval.approved else {
+            throw BurnBarMissionControlError.missionNotApproved(request.missionID)
+        }
+
+        // Block dispatch if mission is in a terminal state
+        guard !Self.terminalStatuses.contains(existing.status) else {
+            throw BurnBarMissionControlError.missionTerminal(request.missionID, existing.status)
         }
 
         let packet = BurnBarMissionPacketSnapshot(
@@ -548,9 +609,15 @@ public actor BurnBarMissionControlStore {
         )
     }
 
-    public func recordMissionResult(_ request: BurnBarMissionRecordResultRequest) throws -> BurnBarMissionMutationResponse {
-        guard let existing = try mission(id: request.missionID) else {
-            throw BurnBarMissionControlError.missionNotFound(request.missionID)
+    public func recordMissionResult(_ request: BurnBarMissionRecordResultRequest, existingMission: BurnBarMissionSnapshot? = nil) throws -> BurnBarMissionMutationResponse {
+        let existing: BurnBarMissionSnapshot
+        if let provided = existingMission {
+            existing = provided
+        } else {
+            guard let fetched = try mission(id: request.missionID) else {
+                throw BurnBarMissionControlError.missionNotFound(request.missionID)
+            }
+            existing = fetched
         }
 
         let result = BurnBarMissionResultSnapshot(
@@ -564,6 +631,7 @@ public actor BurnBarMissionControlStore {
             burnDelta: request.result.burnDelta,
             createdAt: request.result.createdAt,
             evidenceRefs: request.result.evidenceRefs,
+            prLinkage: request.result.prLinkage ?? BurnBarPRLinkageSnapshot.fromMetadata(request.result.metadata),
             metadata: request.result.metadata
         )
         let burnRecord = BurnBarMissionBurnRecord(
@@ -585,6 +653,12 @@ public actor BurnBarMissionControlStore {
         metadata["total_tokens"] = .number(Double(totalTokens))
         metadata["result_count"] = .number(Double(mergedResults.count))
         metadata["burn_record_count"] = .number(Double(mergedBurnRecords.count))
+        metadata = applyTeamCollaborationMetadata(metadata, incoming: request.result.metadata)
+        let reconciledPRLinkage = MissionControlMissionStateMerger.reconcilePRLinkage(
+            from: mergedResults,
+            fallback: existing.prLinkage
+        )
+        metadata = applyPRLinkageMetadata(metadata, prLinkage: reconciledPRLinkage)
         let updated = BurnBarMissionSnapshot(
             id: existing.id,
             projectSlug: existing.projectSlug,
@@ -599,6 +673,7 @@ public actor BurnBarMissionControlStore {
             results: mergedResults,
             burnRecords: mergedBurnRecords,
             takeoverHistory: existing.takeoverHistory,
+            prLinkage: reconciledPRLinkage,
             metadata: metadata
         )
 
@@ -923,6 +998,208 @@ public actor BurnBarMissionControlStore {
         return question
     }
 
+    /// VAL-GOV-006: enforce one active mission-closure approval question per mission.
+    /// If another active closure question already exists for the same mission, merge into
+    /// the existing question identity before persisting.
+    private func enforceMissionClosureQuestionInvariant(
+        _ incoming: BurnBarPendingQuestionSnapshot
+    ) -> BurnBarPendingQuestionSnapshot {
+        guard let missionID = missionClosureQuestionMissionID(for: incoming) else {
+            return incoming
+        }
+        guard let existing = activeMissionClosureQuestion(for: missionID),
+              existing.id != incoming.id else {
+            return incoming
+        }
+
+        let mergedEvidenceRefs = incoming.evidenceRefs.isEmpty ? existing.evidenceRefs : incoming.evidenceRefs
+        let mergedSuggestedOptions = incoming.suggestedOptions.isEmpty ? existing.suggestedOptions : incoming.suggestedOptions
+        let mergedTracker = existing.tracker ?? incoming.tracker
+        let mergedMetadata = existing.metadata
+            .merging(incoming.metadata) { _, new in new }
+            .merging(
+                [
+                    "invariant_reason_code": .string("CLOSURE_SINGLE_QUESTION_ENFORCED"),
+                    "closure_merged_from_question_id": .string(incoming.id.rawValue)
+                ]
+            ) { _, new in new }
+
+        return BurnBarPendingQuestionSnapshot(
+            id: existing.id,
+            projectSlug: existing.projectSlug,
+            sessionID: incoming.sessionID ?? existing.sessionID,
+            title: incoming.title,
+            prompt: incoming.prompt,
+            stageLabel: incoming.stageLabel ?? existing.stageLabel,
+            status: .pending,
+            priority: incoming.priority,
+            askedAt: existing.askedAt,
+            dueAt: incoming.dueAt ?? existing.dueAt,
+            latestAnswer: nil,
+            answerPlaceholder: incoming.answerPlaceholder ?? existing.answerPlaceholder,
+            contextSummary: incoming.contextSummary ?? existing.contextSummary,
+            evidenceRefs: mergedEvidenceRefs,
+            suggestedOptions: mergedSuggestedOptions,
+            deepLink: incoming.deepLink ?? existing.deepLink,
+            tracker: mergedTracker,
+            metadata: mergedMetadata
+        )
+    }
+
+    private func activeMissionClosureQuestion(for missionID: String) -> BurnBarPendingQuestionSnapshot? {
+        projection?.questions.values
+            .filter { question in
+                missionClosureQuestionMissionID(for: question) == missionID
+            }
+            .sorted { lhs, rhs in
+                if lhs.askedAt != rhs.askedAt {
+                    return lhs.askedAt < rhs.askedAt
+                }
+                return lhs.id.rawValue < rhs.id.rawValue
+            }
+            .first
+    }
+
+    private func missionClosureQuestionMissionID(
+        for question: BurnBarPendingQuestionSnapshot
+    ) -> String? {
+        guard question.status == .pending else { return nil }
+        guard let missionID = metadataString(question.metadata["mission_id"])?.nonEmpty else {
+            return nil
+        }
+
+        let kind = metadataString(question.metadata["question_kind"])?.lowercased()
+            ?? metadataString(question.metadata["question_type"])?.lowercased()
+            ?? ""
+        let closureState = metadataString(question.metadata["closure_state"])?.lowercased() ?? ""
+        let closureApproval = metadataBool(question.metadata["closure_approval"]) ?? false
+        let stageLabel = question.stageLabel?.lowercased() ?? ""
+
+        let closureKindMatch = kind.contains("closure") && (kind.contains("approval") || kind.contains("question"))
+        let closureStateMatch = ["awaiting_approval", "needs_approval", "blocked_approval"].contains(closureState)
+        let closureStageMatch = stageLabel.contains("closure") && stageLabel.contains("mission")
+
+        guard closureApproval || closureKindMatch || closureStateMatch || closureStageMatch else {
+            return nil
+        }
+        return missionID
+    }
+
+    private func metadataString(_ value: BurnBarJSONValue?) -> String? {
+        guard case .string(let rawValue)? = value else { return nil }
+        return rawValue
+    }
+
+    private func metadataBool(_ value: BurnBarJSONValue?) -> Bool? {
+        guard case .bool(let rawValue)? = value else { return nil }
+        return rawValue
+    }
+
+    private func applyPRLinkageMetadata(
+        _ metadata: BurnBarMetadata,
+        prLinkage: BurnBarPRLinkageSnapshot?
+    ) -> BurnBarMetadata {
+        var updated = metadata
+        let keys = [
+            "pr_repository",
+            "pr_number_or_id",
+            "pr_url",
+            "pr_state",
+            "pr_is_merged",
+            "pr_merge_commit_sha",
+            "pr_merged_at",
+            "pr_closed_at",
+            "pr_linkage"
+        ]
+        for key in keys {
+            updated.removeValue(forKey: key)
+        }
+
+        guard let prLinkage else {
+            return updated
+        }
+
+        updated["pr_repository"] = .string(prLinkage.repository)
+        updated["pr_number_or_id"] = .string(prLinkage.prNumberOrID)
+        updated["pr_url"] = .string(prLinkage.url)
+        updated["pr_state"] = .string(prLinkage.state.rawValue)
+        updated["pr_is_merged"] = .bool(prLinkage.isMerged)
+        if let mergeCommitSHA = prLinkage.mergeCommitSHA?.trimmingCharacters(in: .whitespacesAndNewlines),
+           mergeCommitSHA.isEmpty == false {
+            updated["pr_merge_commit_sha"] = .string(mergeCommitSHA)
+        }
+        if let mergedAt = prLinkage.mergedAt {
+            updated["pr_merged_at"] = .string(mergedAt.ISO8601Format())
+        }
+        if let closedAt = prLinkage.closedAt {
+            updated["pr_closed_at"] = .string(closedAt.ISO8601Format())
+        }
+
+        var prObject: [String: BurnBarJSONValue] = [
+            "schemaVersion": .number(Double(prLinkage.schemaVersion)),
+            "repository": .string(prLinkage.repository),
+            "prNumberOrID": .string(prLinkage.prNumberOrID),
+            "url": .string(prLinkage.url),
+            "state": .string(prLinkage.state.rawValue),
+            "isMerged": .bool(prLinkage.isMerged)
+        ]
+        if let mergeCommitSHA = prLinkage.mergeCommitSHA?.trimmingCharacters(in: .whitespacesAndNewlines),
+           mergeCommitSHA.isEmpty == false {
+            prObject["mergeCommitSHA"] = .string(mergeCommitSHA)
+        }
+        if let mergedAt = prLinkage.mergedAt {
+            prObject["mergedAt"] = .string(mergedAt.ISO8601Format())
+        }
+        if let closedAt = prLinkage.closedAt {
+            prObject["closedAt"] = .string(closedAt.ISO8601Format())
+        }
+        updated["pr_linkage"] = .object(prObject)
+        return updated
+    }
+
+    private func applyTeamCollaborationMetadata(
+        _ metadata: BurnBarMetadata,
+        incoming: BurnBarMetadata
+    ) -> BurnBarMetadata {
+        var updated = metadata
+        let explicitTeamKeys: Set<String> = [
+            "team_owner_id",
+            "owner_principal_id",
+            "team_assignee_id",
+            "assignee_principal_id",
+            "role_can_approve",
+            "role_can_transfer",
+            "role_can_answer_closure",
+            "audit_event_id",
+            "last_audit_event_id",
+            "audit_summary",
+            "last_audit_summary",
+            "audit_reason_code"
+        ]
+
+        for (key, value) in incoming where
+            explicitTeamKeys.contains(key)
+                || key.hasPrefix("team_")
+                || key.hasPrefix("role_")
+                || key.hasPrefix("audit_")
+        {
+            updated[key] = value
+        }
+
+        if case .object(let nestedTeamMetadata)? = incoming["team_collaboration"] {
+            for (key, value) in nestedTeamMetadata where
+                explicitTeamKeys.contains(key)
+                    || key.hasPrefix("team_")
+                    || key.hasPrefix("role_")
+                    || key.hasPrefix("audit_")
+            {
+                updated[key] = value
+            }
+        }
+
+        return updated
+    }
+
     private func followup(id: BurnBarFollowupID) -> BurnBarFollowupSnapshot? {
         projection?.followups[id.rawValue]
     }
@@ -1003,5 +1280,39 @@ public actor BurnBarMissionControlStore {
     private func writeProjection() throws {
         guard let projection else { return }
         try journal.writeProjectionFile(projection, encoder: encoder)
+    }
+
+    // MARK: - Test Helpers
+
+    /// Directly injects missions into the store's in-memory projection for testing
+    /// tie-break behavior with forced equal timestamps.
+    ///
+    /// This bypasses the event journal entirely and directly modifies the projection,
+    /// which is appropriate for unit testing the comparator logic.
+    ///
+    /// Note: After calling this, do NOT call ensureLoaded() or any method that would
+    /// rebuild the projection, as that would discard the injected data.
+    func injectMissionsForTieBreakTesting(_ missions: [BurnBarMissionSnapshot]) throws {
+        if projection == nil {
+            projection = BurnBarMissionControlProjectionFile.empty(now: Date())
+        }
+        for mission in missions {
+            projection?.missions[mission.id.rawValue] = mission
+        }
+    }
+
+    /// Returns the current list of missions from the projection without requiring a reload,
+    /// with the same sorting applied as the public missions() method.
+    ///
+    /// This is useful for tests to verify ordering after injecting test missions.
+    func missionsSnapshot() throws -> [BurnBarMissionSnapshot] {
+        return projection?.missions.values
+            .sorted { lhs, rhs in
+                if lhs.updatedAt != rhs.updatedAt {
+                    return lhs.updatedAt > rhs.updatedAt
+                }
+                // Tie-break: missionID ascending (lexicographic)
+                return lhs.id.rawValue < rhs.id.rawValue
+            } ?? []
     }
 }

@@ -1,0 +1,34 @@
+{
+  "featureId": "m9-terminal-phase-mapping-and-runjournal-replay-evidence",
+  "reviewedAt": "2026-04-20T02:43:27Z",
+  "commitId": "34532a42",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix commit materially improves VAL-EXEC-012 by adding assertion-tagged run-journal sequence/replay tests in BurnBarRunServiceTests, but it does not close the other required rerun blockers. VAL-EXEC-001 still lacks failed/cancelled terminal-phase mapping assertions, and explicit VAL-EXEC-003 tagged provenance coverage is still missing.",
+    "issues": [
+      {
+        "file": "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarMissionControlServiceTests.swift",
+        "line": 2050,
+        "severity": "blocking",
+        "description": "VAL-EXEC-001 remains incomplete: `testVAL_EXEC_001_RunPhaseToPacketStatusMappingIsDeterministic` still validates only `.completed`, with no assertion coverage for `.failed` or `.cancelled` terminal phase→packet-status mappings required by the rerun scope."
+      },
+      {
+        "file": "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarMissionControlServiceTests.swift",
+        "line": 1648,
+        "severity": "blocking",
+        "description": "Explicit VAL-EXEC-003 tagged provenance coverage was not added. Provenance assertions remain in untagged `testMissionDispatchLinksRealRunAndSyncsResultProvenance`, and no `VAL_EXEC_003`-tagged test exists."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `runtime-orchestration-worker` validation command guidance is out of sync with canonical service commands, which likely contributed to procedural drift in this rerun.",
+      "evidence": "`.factory/skills/runtime-orchestration-worker/SKILL.md` lines 22-24 specify `OpenBurnBar*` filters, while `.factory/services.yaml` canonical commands use `BurnBar*` filters. The fix handoff reports `swift test --package-path OpenBurnBarDaemon --filter VAL_EXEC` and full-suite execution instead of the skill's listed focused commands."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/m9-single-node-e2e-thin-slice/scrutiny/reviews/m9-single-node-e2e-thin-slice.json",
+  "summary": "Review failed: the rerun fixes VAL-EXEC-012 evidence quality, but does not implement the required failed/cancelled VAL-EXEC-001 mapping assertions or explicit VAL-EXEC-003 tagged provenance coverage."
+}

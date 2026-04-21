@@ -43,7 +43,7 @@ suite("OpenBurnBar extension host local workspace", () => {
     }
   });
 
-  test("executes workspace companion commands against a real workspace folder", async () => {
+  test("VAL-CROSS-015 executes workspace companion commands against a real workspace folder", async () => {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     assert.ok(workspaceFolder, "Expected the extension-host suite to open a workspace folder.");
 

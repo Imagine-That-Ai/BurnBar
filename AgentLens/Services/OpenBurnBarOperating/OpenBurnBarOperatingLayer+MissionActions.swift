@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 extension OpenBurnBarOperatingLayer {
     func approveMission(note: String = "") {
@@ -181,5 +182,105 @@ extension OpenBurnBarOperatingLayer {
             message: "Direction override saved for \(projectName).",
             detail: detail
         )
+    }
+
+    /// Creates a daemon mission with the given parameters.
+    /// - Parameters:
+    ///   - projectSlug: The project slug (identifier)
+    ///   - title: Mission title
+    ///   - summary: Mission summary/description
+    ///   - recommendation: Recommendation kind (proceed, review, pause)
+    /// - Returns: The created mission ID if successful
+    @discardableResult
+    func createMission(
+        projectSlug: String,
+        title: String,
+        summary: String,
+        recommendation: BurnBarMissionRecommendation
+    ) async throws -> String {
+        let trimmedProjectSlug = projectSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard trimmedProjectSlug.isEmpty == false else {
+            actionFeedback = OpenBurnBarActionFeedback(
+                kind: .missionCreation,
+                tone: .error,
+                message: "Project identifier is required.",
+                detail: nil
+            )
+            throw MissionAuthoringError.validationFailed("Project identifier is required.")
+        }
+
+        guard trimmedTitle.isEmpty == false else {
+            actionFeedback = OpenBurnBarActionFeedback(
+                kind: .missionCreation,
+                tone: .error,
+                message: "Mission title is required.",
+                detail: nil
+            )
+            throw MissionAuthoringError.validationFailed("Mission title is required.")
+        }
+
+        guard trimmedSummary.isEmpty == false else {
+            actionFeedback = OpenBurnBarActionFeedback(
+                kind: .missionCreation,
+                tone: .error,
+                message: "Mission summary is required.",
+                detail: nil
+            )
+            throw MissionAuthoringError.validationFailed("Mission summary is required.")
+        }
+
+        do {
+            let response = try await daemonManager.createMission(
+                projectSlug: trimmedProjectSlug,
+                title: trimmedTitle,
+                summary: trimmedSummary,
+                createdBy: "operator",
+                recommendation: recommendation
+            )
+
+            stateRevision += 1
+            actionFeedback = OpenBurnBarActionFeedback(
+                kind: .missionCreation,
+                tone: .success,
+                message: "Mission created for \(trimmedProjectSlug).",
+                detail: "Mission \"\(trimmedTitle)\" is awaiting approval."
+            )
+
+            // Record in local history as well
+            try? dataStore.appendOperatingActionRecord(
+                OpenBurnBarOperatingActionRecord(
+                    projectName: trimmedProjectSlug,
+                    missionFingerprint: response.mission.id.rawValue,
+                    actionKind: .missionCreation,
+                    summary: "Mission created: \(trimmedTitle)",
+                    detail: trimmedSummary
+                )
+            )
+
+            return response.mission.id.rawValue
+        } catch {
+            actionFeedback = OpenBurnBarActionFeedback(
+                kind: .missionCreation,
+                tone: .error,
+                message: "Mission creation failed.",
+                detail: error.localizedDescription
+            )
+            throw MissionAuthoringError.daemonError(error.localizedDescription)
+        }
+    }
+}
+
+enum MissionAuthoringError: Error, LocalizedError {
+    case validationFailed(String)
+    case daemonError(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .validationFailed(let message): return message
+        case .daemonError(let message): return message
+        }
     }
 }

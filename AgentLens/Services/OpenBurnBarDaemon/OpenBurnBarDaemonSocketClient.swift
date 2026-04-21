@@ -2,6 +2,11 @@ import OpenBurnBarCore
 import Foundation
 
 enum OpenBurnBarDaemonSocketClient {
+    private static let controllerRuntimeSecrets = KeychainStore(
+        service: OpenBurnBarIdentity.controllerRuntimeKeychainService,
+        legacyServices: OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
+    )
+
     static func health(at socketURL: URL) throws -> BurnBarHealthResponse {
         let envelope: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try send(
             BurnBarRPCRequestEnvelope(method: .health),
@@ -205,6 +210,19 @@ enum OpenBurnBarDaemonSocketClient {
         return response.project
     }
 
+    static func missionCreate(
+        _ request: BurnBarMissionCreateRequest,
+        at socketURL: URL
+    ) throws -> BurnBarMissionMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .missionCreate,
+                params: request
+            ),
+            socketURL: socketURL
+        ) as BurnBarMissionMutationResponse
+    }
+
     static func recordControllerReviewRun(
         _ run: BurnBarReviewRunSnapshot,
         at socketURL: URL
@@ -365,14 +383,25 @@ enum OpenBurnBarDaemonSocketClient {
         _ request: BurnBarRPCRequestEnvelope,
         socketURL: URL
     ) throws -> BurnBarRPCResponseEnvelope<Response> {
-        try sendEncoded(request, socketURL: socketURL)
+        let signedRequest = BurnBarRPCRequestEnvelope(
+            id: request.id,
+            method: request.method,
+            authToken: request.authToken ?? daemonSocketAuthToken()
+        )
+        return try sendEncoded(signedRequest, socketURL: socketURL)
     }
 
     private static func send<Params: Codable & Sendable, Response: Codable & Sendable>(
         _ request: BurnBarRPCRequestEnvelopeWithParams<Params>,
         socketURL: URL
     ) throws -> BurnBarRPCResponseEnvelope<Response> {
-        try sendEncoded(request, socketURL: socketURL)
+        let signedRequest = BurnBarRPCRequestEnvelopeWithParams(
+            id: request.id,
+            method: request.method,
+            authToken: request.authToken ?? daemonSocketAuthToken(),
+            params: request.params
+        )
+        return try sendEncoded(signedRequest, socketURL: socketURL)
     }
 
     private static func requestResult<Params: Codable & Sendable, Response: Codable & Sendable>(
@@ -476,9 +505,49 @@ enum OpenBurnBarDaemonSocketClient {
             }.first
             let activePacket = mission.packets.first(where: { [.queued, .dispatched, .running].contains($0.status) }) ?? latestPacket
             let latestResult = mission.results.sorted(by: { $0.createdAt > $1.createdAt }).first
+            let missionPRLinkage = mission.prLinkage ?? latestResult?.prLinkage
+            let packetSummary = latestPacket.map { packet in
+                "\(packet.workerName): \(packet.objective)"
+            }
+            let burnTokens = mission.results.reduce(0) { partial, result in
+                partial
+                    + intValue(in: result.metadata["input_tokens"])
+                    + intValue(in: result.metadata["output_tokens"])
+                    + intValue(in: result.metadata["cache_read_tokens"])
+            }
+            let mappedPRLinkage = missionPRLinkage.map {
+                OpenBurnBarControllerMissionPRLinkage(
+                    repository: $0.repository,
+                    prNumberOrID: $0.prNumberOrID,
+                    url: $0.url,
+                    state: missionPRState(for: $0.state),
+                    isMerged: $0.isMerged,
+                    mergeCommitSHA: $0.mergeCommitSHA,
+                    mergedAt: $0.mergedAt,
+                    closedAt: $0.closedAt
+                )
+            }
             let latestTakeover = mission.takeoverHistory?
                 .sorted(by: { $0.updatedAt > $1.updatedAt })
                 .first
+            let ownerPrincipalID = stringValue(in: mission.metadata["team_owner_id"])
+                ?? stringValue(in: mission.metadata["owner_principal_id"])
+                ?? mission.approval.approvedBy
+            let assigneePrincipalID = stringValue(in: mission.metadata["team_assignee_id"])
+                ?? stringValue(in: mission.metadata["assignee_principal_id"])
+                ?? activePacket?.workerName
+            let roleEligibility = OpenBurnBarControllerMissionRoleEligibility(
+                canApprove: boolValue(in: mission.metadata["role_can_approve"])
+                    ?? (!mission.approval.approved && mission.status == .awaitingApproval),
+                canTransferOwnership: boolValue(in: mission.metadata["role_can_transfer"])
+                    ?? ![BurnBarMissionStatus.completed, .failed, .cancelled].contains(mission.status),
+                canAnswerClosureQuestion: boolValue(in: mission.metadata["role_can_answer_closure"])
+                    ?? (mission.status == .awaitingApproval)
+            )
+            let latestAuditEventID = stringValue(in: mission.metadata["audit_event_id"])
+                ?? stringValue(in: mission.metadata["last_audit_event_id"])
+            let latestAuditSummary = stringValue(in: mission.metadata["audit_summary"])
+                ?? stringValue(in: mission.metadata["last_audit_summary"])
             return OpenBurnBarControllerMissionRecord(
                 id: mission.id.rawValue,
                 projectName: displayName(for: mission.projectSlug),
@@ -486,7 +555,12 @@ enum OpenBurnBarDaemonSocketClient {
                 summary: mission.summary,
                 state: missionLifecycle(for: mission.status),
                 approval: mission.approval.approved ? .approved : .pending,
-                packetSummary: latestPacket.map { "\($0.workerName): \($0.objective)" },
+                ownerPrincipalID: ownerPrincipalID,
+                assigneePrincipalID: assigneePrincipalID,
+                roleEligibility: roleEligibility,
+                latestAuditEventID: latestAuditEventID,
+                latestAuditSummary: latestAuditSummary,
+                packetSummary: packetSummary,
                 latestResultSummary: latestResult?.summary,
                 latestResultDetail: latestResult?.detail,
                 latestResultRunID: latestResult?.runID?.rawValue,
@@ -498,13 +572,9 @@ enum OpenBurnBarDaemonSocketClient {
                 latestTakeoverRunID: latestTakeover?.takeoverRunID?.rawValue,
                 takeoverCount: mission.takeoverHistory?.count ?? 0,
                 burnCostUSD: mission.burnRecords.reduce(0) { $0 + $1.amount },
-                burnTokens: mission.results.reduce(0) { partial, result in
-                    partial
-                        + intValue(in: result.metadata["input_tokens"])
-                        + intValue(in: result.metadata["output_tokens"])
-                        + intValue(in: result.metadata["cache_read_tokens"])
-                },
-                updatedAt: mission.updatedAt
+                burnTokens: burnTokens,
+                updatedAt: mission.updatedAt,
+                prLinkage: mappedPRLinkage
             )
         }
 
@@ -522,7 +592,7 @@ enum OpenBurnBarDaemonSocketClient {
 
         let pendingQuestionCount = mappedQuestions.filter { $0.state == .pending }.count
         let unresolvedFollowupCount = mappedFollowups.filter { $0.state == .open }.count
-        let openMissionCount = mappedMissions.filter { $0.state != .completed }.count
+        let openMissionCount = mappedMissions.filter { $0.state != OpenBurnBarMissionLifecycle.completed }.count
 
         return OpenBurnBarControllerRuntimeSnapshot(
             source: .daemon,
@@ -676,6 +746,17 @@ enum OpenBurnBarDaemonSocketClient {
         }
     }
 
+    private static func missionPRState(for state: BurnBarPRLinkageState) -> OpenBurnBarControllerMissionPRState {
+        switch state {
+        case .opened:
+            return .opened
+        case .merged:
+            return .merged
+        case .closed:
+            return .closed
+        }
+    }
+
     private static func takeoverState(for status: BurnBarAutoTakeoverStatus) -> OpenBurnBarControllerTakeoverState {
         switch status {
         case .monitoring:
@@ -727,10 +808,23 @@ enum OpenBurnBarDaemonSocketClient {
         }
     }
 
+    private static func boolValue(in value: BurnBarJSONValue?) -> Bool? {
+        guard case .bool(let value) = value else { return nil }
+        return value
+    }
+
     private static func stringValue(in value: BurnBarJSONValue?) -> String? {
         guard case .string(let value) = value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func daemonSocketAuthToken() -> String? {
+        guard let storedToken = try? controllerRuntimeSecrets.string(for: OpenBurnBarIdentity.daemonSocketAuthTokenAccount) else {
+            return nil
+        }
+        let token = storedToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
     }
 
     private static func sendEncoded<Request: Encodable, Response: Codable & Sendable>(

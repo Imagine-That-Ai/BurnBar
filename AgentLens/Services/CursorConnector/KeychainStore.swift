@@ -29,6 +29,7 @@ private func withKeychainInteractionDisabled<T>(_ operation: () throws -> T) ret
 enum KeychainStoreError: Error {
     case unexpectedData
     case unhandled(OSStatus)
+    case writeVerificationFailed
 }
 
 protocol KeychainStoreBackend {
@@ -120,7 +121,7 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
     }
 }
 
-struct KeychainStore {
+struct KeychainStore: @unchecked Sendable {
     private let service: String
     private let legacyServices: [String]
     private let backend: any KeychainStoreBackend
@@ -136,7 +137,9 @@ struct KeychainStore {
     }
 
     func set(_ value: String, for account: String) throws {
-        try backend.set(Data(value.utf8), service: service, account: account)
+        let data = Data(value.utf8)
+        try backend.set(data, service: service, account: account)
+        try ensureNonInteractiveReadability(for: account, expectedData: data)
     }
 
     func string(for account: String, allowUserInteraction: Bool = false) throws -> String? {
@@ -171,6 +174,19 @@ struct KeychainStore {
         try backend.delete(service: service, account: account)
         for legacyService in legacyServices {
             try backend.delete(service: legacyService, account: account)
+        }
+    }
+
+    private func ensureNonInteractiveReadability(for account: String, expectedData: Data) throws {
+        if try backend.data(for: service, account: account, allowUserInteraction: false) != nil {
+            return
+        }
+
+        try backend.delete(service: service, account: account)
+        try backend.set(expectedData, service: service, account: account)
+
+        guard try backend.data(for: service, account: account, allowUserInteraction: false) != nil else {
+            throw KeychainStoreError.writeVerificationFailed
         }
     }
 }

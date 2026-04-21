@@ -1,0 +1,38 @@
+{
+  "milestone": "m8-execution-readiness-gate",
+  "round": 2,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "/Users/albertonunez/Documents/Windsurf/BurnBar/scripts/test-openburnbar-swift.sh && CI=true /Users/albertonunez/Documents/Windsurf/BurnBar/scripts/test-openburnbar-app.sh && /Users/albertonunez/Documents/Windsurf/BurnBar/scripts/test-openburnbar-ts.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project /Users/albertonunez/Documents/Windsurf/BurnBar/OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath /Users/albertonunez/Documents/Windsurf/BurnBar/.spm-cache -derivedDataPath /Users/albertonunez/Documents/Windsurf/BurnBar/.derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix /Users/albertonunez/Documents/Windsurf/BurnBar/extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [
+    {
+      "observation": "`mission-core-worker` requires adding/adjusting failing tests before implementation edits, but the worker performed implementation edits first and updated tests afterward.",
+      "reason": "already-documented"
+    }
+  ],
+  "previousRound": ".factory/validation/m8-execution-readiness-gate/scrutiny/synthesis.round1.json"
+}

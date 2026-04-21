@@ -871,18 +871,21 @@ public struct CLILaunchInvoker {
                 process.terminate()
             }
         }
-        let stdoutTask = Task.detached(priority: .utility) {
-            await drainPipe(stdoutPipe, into: supervisor, source: .stdout)
-        }
-        let stderrTask = Task.detached(priority: .utility) {
-            await drainPipe(stderrPipe, into: supervisor, source: .stderr)
-        }
+        let observationQueue = DispatchQueue(label: "com.openburnbar.clilaunchinvoker.observation")
+        let stdoutObserver = supervisor.attach(
+            to: stdoutPipe,
+            source: .stdout,
+            queue: observationQueue
+        )
+        let stderrObserver = supervisor.attach(
+            to: stderrPipe,
+            source: .stderr,
+            queue: observationQueue
+        )
 
         let cleanup = LaunchObservationCleanup {
-            stdoutTask.cancel()
-            stderrTask.cancel()
-            try? stdoutPipe.fileHandleForReading.close()
-            try? stderrPipe.fileHandleForReading.close()
+            stdoutObserver.cancel()
+            stderrObserver.cancel()
         }
 
         func finish(_ result: Result<Void, CLILaunchError>) -> Result<Void, CLILaunchError> {
@@ -921,7 +924,9 @@ public struct CLILaunchInvoker {
 
                 let trimmedOutput = combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
                 let detail = trimmedOutput.isEmpty
-                    ? "\(cliType.displayName) exited during startup with status \(process.terminationStatus)."
+                    ? (process.terminationStatus == 127
+                        ? "\(cliType.displayName) command not found in app PATH (exit 127). Install \(cliType.displayName) or ensure its runtime dependencies are available."
+                        : "\(cliType.displayName) exited during startup with status \(process.terminationStatus).")
                     : trimmedOutput
                 return finish(.failure(.launchFailed(CLILaunchRedactor.redactSensitiveData(detail))))
             }
@@ -961,23 +966,6 @@ public struct CLILaunchInvoker {
 
     static func classifyQuotaExhaustion(for cliType: SwitcherCLIProfileType, in output: String) -> String? {
         CLIQuotaExhaustionClassifier.classify(for: cliType, in: output)
-    }
-
-    private static func drainPipe(
-        _ pipe: Pipe,
-        into supervisor: CLITerminalSessionSupervisor,
-        source: CLITerminalSessionOutputSource
-    ) async {
-        let readHandle = pipe.fileHandleForReading
-        while true {
-            let data = readHandle.availableData
-            guard !data.isEmpty,
-                  let text = String(data: data, encoding: .utf8),
-                  !text.isEmpty else {
-                return
-            }
-            supervisor.ingest(text, source: source)
-        }
     }
 }
 

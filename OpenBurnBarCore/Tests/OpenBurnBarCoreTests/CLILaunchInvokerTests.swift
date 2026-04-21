@@ -26,7 +26,7 @@ final class CLILaunchInvokerTests: XCTestCase {
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
         defer { try? FileManager.default.removeItem(at: executable) }
 
-        CLILaunchInvoker.startupObservationTimeout = 0.5
+        CLILaunchInvoker.startupObservationTimeout = 1.0
 
         let result = await CLILaunchInvoker.launchCLI(
             cliType: .codex,
@@ -41,6 +41,38 @@ final class CLILaunchInvokerTests: XCTestCase {
                 return XCTFail("Expected .quotaExhausted, got \(error)")
             }
             XCTAssertTrue(detail.localizedCaseInsensitiveContains("quota exhausted"))
+        }
+    }
+
+    func test_launchCLI_detectsQuotaExhaustionFromStartupOutputAcrossRepeatedLaunches() async throws {
+        CLILaunchInvoker.startupObservationTimeout = 1.0
+
+        for _ in 0..<6 {
+            let executable = FileManager.default.temporaryDirectory
+                .appendingPathComponent("cli-quota-repeat-\(UUID().uuidString)")
+            let script = """
+            #!/bin/sh
+            echo "quota exhausted for the 5-hour window" >&2
+            sleep 2
+            """
+            try script.write(to: executable, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+            defer { try? FileManager.default.removeItem(at: executable) }
+
+            let result = await CLILaunchInvoker.launchCLI(
+                cliType: .codex,
+                executable: executable
+            )
+
+            switch result {
+            case .success:
+                XCTFail("Expected quota exhaustion to fail the launch")
+            case .failure(let error):
+                guard case .quotaExhausted(let detail) = error else {
+                    return XCTFail("Expected .quotaExhausted, got \(error)")
+                }
+                XCTAssertTrue(detail.localizedCaseInsensitiveContains("quota exhausted"))
+            }
         }
     }
 

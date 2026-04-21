@@ -1,0 +1,45 @@
+{
+  "featureId": "m12-reconciler-winner-selection",
+  "reviewedAt": "2026-04-20T23:44:39Z",
+  "commitId": "02ce9db4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds reconciliation artifacts and basic tests, but the winner-selection logic is not aligned with the reconciliation contract for real DAGs: it selects from all completed/failed nodes and derives sequence precedence from static DAG order rather than terminal completion sequence. This can select an incorrect winner and persist an incorrect winner reason.",
+    "issues": [
+      {
+        "file": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/BurnBarParallelDAGScheduler.swift",
+        "line": 357,
+        "severity": "blocking",
+        "description": "Reconciliation candidates are built from every node with status completed/failed, which includes internal prerequisite nodes, not just conflicting terminal outcomes. In DAGs with dependencies this allows upstream nodes to incorrectly participate as winner candidates."
+      },
+      {
+        "file": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/BurnBarParallelDAGScheduler.swift",
+        "line": 393,
+        "severity": "blocking",
+        "description": "The 'earliest terminal sequence number' tie-break is computed from `terminalNodes.firstIndex` (DAG declaration order), not actual terminal completion sequence. This violates the precedence contract and can produce the wrong winner/reason when completion order differs from node declaration order."
+      },
+      {
+        "file": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/BurnBarParallelDAGScheduler.swift",
+        "line": 451,
+        "severity": "non_blocking",
+        "description": "Winner reason classification uses absolute thresholds (`> 0.5`, `< 0.5`) instead of comparing winner metrics against runner-up metrics, so persisted reason codes can misattribute why the winner actually won."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The runtime-orchestration skill procedure requires running BurnBarRunServiceTests, BurnBarMissionControlServiceTests, and BurnBarProviderRouterTests with explicit evidence, but this handoff recorded only BurnBarMissionControlServiceTests and OpenBurnBarCore tests while still marking `followedProcedure: true`.",
+      "evidence": ".factory/skills/runtime-orchestration-worker/SKILL.md:21-25 vs handoff 2026-04-20T23-37-37-420Z__m12-reconciler-winner-selection__b97b84a4-9d93-4dc8-a327-82664573b204.json:14-23,59"
+    },
+    {
+      "area": "conventions",
+      "observation": "Mission guidance says cross-surface assertions need artifacts from all participating surfaces, but VAL-CROSS-006 evidence in this run is daemon-only and omits app/extension validation commands.",
+      "evidence": "/Users/albertonunez/.factory/missions/d1d1287f-f2a9-4a34-8ba9-fce37df13493/AGENTS.md:30; features.json VAL-CROSS-006 verification steps include app test command at lines 1825-1830; handoff verification commands only include daemon/core tests (lines 16-23)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed due to two blocking reconciler correctness issues in winner selection candidate scope and sequence tie-break semantics. Additional shared-state observations were recorded for skill-procedure adherence and cross-surface validation evidence gaps."
+}

@@ -88,6 +88,46 @@ public enum BurnBarMissionRecommendation: String, Codable, CaseIterable, Hashabl
     case escalate
 }
 
+public enum BurnBarControllerNextActionBucket: String, Codable, CaseIterable, Hashable, Sendable {
+    case blockage
+    case interruption
+    case completion
+}
+
+public struct BurnBarControllerNextActionSnapshot: Codable, Hashable, Identifiable, Sendable {
+    public let id: String
+    public let missionID: BurnBarMissionID
+    public let projectSlug: String
+    public let title: String
+    public let summary: String
+    public let bucket: BurnBarControllerNextActionBucket
+    public let status: BurnBarMissionStatus
+    public let recommendation: BurnBarMissionRecommendation
+    public let updatedAt: Date
+
+    public init(
+        id: String,
+        missionID: BurnBarMissionID,
+        projectSlug: String,
+        title: String,
+        summary: String,
+        bucket: BurnBarControllerNextActionBucket,
+        status: BurnBarMissionStatus,
+        recommendation: BurnBarMissionRecommendation,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.missionID = missionID
+        self.projectSlug = projectSlug
+        self.title = title
+        self.summary = summary
+        self.bucket = bucket
+        self.status = status
+        self.recommendation = recommendation
+        self.updatedAt = updatedAt
+    }
+}
+
 public enum BurnBarMissionPacketStatus: String, Codable, CaseIterable, Hashable, Sendable {
     case queued
     case dispatched
@@ -116,6 +156,97 @@ public enum BurnBarNotificationChannel: String, Codable, CaseIterable, Hashable,
     case local
     case telegram
     case calendar
+}
+
+public enum BurnBarEnterpriseApprovalMode: String, Codable, CaseIterable, Hashable, Sendable {
+    case autoLowMedium = "auto_low_medium"
+    case autoLowOnly = "auto_low_only"
+    case manualAll = "manual_all"
+}
+
+public enum BurnBarEnterprisePolicyReasonCode: String, Codable, CaseIterable, Hashable, Sendable {
+    case budgetHardCapBlocked = "policy_budget_hard_cap_blocked"
+    case approvalRequiredByMode = "policy_approval_required_by_mode"
+    case realIntegrationRequired = "policy_real_integration_required"
+    case configurationInvalid = "policy_configuration_invalid"
+}
+
+public struct BurnBarEnterprisePolicyBlock: Codable, Hashable, Sendable {
+    public let reasonCode: BurnBarEnterprisePolicyReasonCode
+    public let detail: String
+    public let approvalMode: BurnBarEnterpriseApprovalMode?
+    public let budgetHardCapUSD: Double?
+    public let observedSpendUSD: Double?
+    public let blockedAt: Date
+
+    public init(
+        reasonCode: BurnBarEnterprisePolicyReasonCode,
+        detail: String,
+        approvalMode: BurnBarEnterpriseApprovalMode? = nil,
+        budgetHardCapUSD: Double? = nil,
+        observedSpendUSD: Double? = nil,
+        blockedAt: Date = Date()
+    ) {
+        self.reasonCode = reasonCode
+        self.detail = detail
+        self.approvalMode = approvalMode
+        self.budgetHardCapUSD = budgetHardCapUSD
+        self.observedSpendUSD = observedSpendUSD
+        self.blockedAt = blockedAt
+    }
+
+    public init(
+        code: BurnBarEnterprisePolicyReasonCode,
+        detail: String,
+        approvalMode: BurnBarEnterpriseApprovalMode? = nil,
+        budgetHardCapUSD: Double? = nil,
+        observedSpendUSD: Double? = nil,
+        blockedAt: Date = Date()
+    ) {
+        self.init(
+            reasonCode: code,
+            detail: detail,
+            approvalMode: approvalMode,
+            budgetHardCapUSD: budgetHardCapUSD,
+            observedSpendUSD: observedSpendUSD,
+            blockedAt: blockedAt
+        )
+    }
+
+    public var displayMessage: String {
+        switch reasonCode {
+        case .budgetHardCapBlocked:
+            return "Budget hard cap reached: \(detail)"
+        case .approvalRequiredByMode:
+            return "Explicit approval required: \(detail)"
+        case .realIntegrationRequired:
+            return "Real integration required: \(detail)"
+        case .configurationInvalid:
+            return "Enterprise policy configuration invalid: \(detail)"
+        }
+    }
+}
+
+public struct BurnBarScheduledReviewIntent: Codable, Hashable, Sendable {
+    public let taskID: String
+    public let projectSlug: String
+    public let dueAt: Date
+    public let notificationIntentID: String
+    public let notificationChannels: [BurnBarNotificationChannel]
+
+    public init(
+        taskID: String,
+        projectSlug: String,
+        dueAt: Date,
+        notificationIntentID: String,
+        notificationChannels: [BurnBarNotificationChannel]
+    ) {
+        self.taskID = taskID
+        self.projectSlug = projectSlug
+        self.dueAt = dueAt
+        self.notificationIntentID = notificationIntentID
+        self.notificationChannels = notificationChannels
+    }
 }
 
 public enum BurnBarNotificationHealthStatus: String, Codable, CaseIterable, Hashable, Sendable {
@@ -295,6 +426,7 @@ public struct BurnBarControllerSummary: Codable, Hashable, Sendable {
     public let freshness: BurnBarControllerFreshnessState
     public let projectionStatus: [BurnBarProjectionStatusSnapshot]
     public let recentEvents: [BurnBarControllerEvent]
+    public let nextActions: [BurnBarControllerNextActionSnapshot]?
 
     public init(
         updatedAt: Date,
@@ -304,7 +436,8 @@ public struct BurnBarControllerSummary: Codable, Hashable, Sendable {
         latestReviewAt: Date? = nil,
         freshness: BurnBarControllerFreshnessState,
         projectionStatus: [BurnBarProjectionStatusSnapshot] = [],
-        recentEvents: [BurnBarControllerEvent] = []
+        recentEvents: [BurnBarControllerEvent] = [],
+        nextActions: [BurnBarControllerNextActionSnapshot]? = nil
     ) {
         self.updatedAt = updatedAt
         self.activeProjectSlug = activeProjectSlug
@@ -314,6 +447,7 @@ public struct BurnBarControllerSummary: Codable, Hashable, Sendable {
         self.freshness = freshness
         self.projectionStatus = projectionStatus
         self.recentEvents = recentEvents
+        self.nextActions = nextActions
     }
 }
 

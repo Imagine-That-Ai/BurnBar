@@ -1,0 +1,58 @@
+{
+  "milestone": "m9-single-node-e2e-thin-slice",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "scripts/test-openburnbar-swift.sh && CI=true scripts/test-openburnbar-app.sh && scripts/test-openburnbar-ts.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "xcodebuild build-for-testing -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data/ci-typecheck CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "npm --prefix extensions/openburnbar run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "m9-single-node-e2e-thin-slice"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "m9-single-node-e2e-thin-slice",
+      "severity": "blocking",
+      "description": "`testVAL_EXEC_001_RunPhaseToPacketStatusMappingIsDeterministic` only exercises `.completed` and does not validate deterministic phase→status mapping across required terminal outcomes (`.failed` / `.cancelled`)."
+    },
+    {
+      "featureId": "m9-single-node-e2e-thin-slice",
+      "severity": "blocking",
+      "description": "`testVAL_EXEC_012_RunJournalCapturesDeterministicReplayableExecutionTimeline` asserts final state only and does not verify run-journal event ordering or replay-consistency artifacts."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skill:.factory/skills/runtime-orchestration-worker/SKILL.md",
+      "suggestion": "Align focused validation command filters with `.factory/services.yaml` canonical names (`BurnBarRunServiceTests`, `BurnBarMissionControlServiceTests`, `BurnBarProviderRouterTests`) and require explicit handoff evidence for each listed focused validator.",
+      "evidence": "Review for `m9-single-node-e2e-thin-slice` flagged procedure drift: skill text currently uses `OpenBurnBar*` filter names while mission validators and contract commands are BurnBar-based; the reviewed handoff also omitted router-focused evidence despite `followedProcedure: true`.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Document harness limitation for failed/cancelled terminal-phase sync in `.factory/library/`.",
+      "reason": "ambiguous-unverified: observation came from handoff commentary but was not independently reproduced during this scrutiny run."
+    }
+  ],
+  "previousRound": null
+}

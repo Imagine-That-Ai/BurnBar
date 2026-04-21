@@ -1,0 +1,40 @@
+{
+  "featureId": "m4-mission-board-cross-surface-baseline",
+  "reviewedAt": "2026-04-19T18:20:58Z",
+  "commitId": "9af3c61ccc55164f1d8125b9741966ed0b9ba70e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The app-side ProjectsView tie-break change is directionally correct for deterministic rendering, but the extension mission projection layer diverges from canonical daemon mission contracts. As implemented, extension ordering and lifecycle mapping cannot mirror daemon mission APIs, so VAL-EXT-008 and VAL-CROSS-010 are not satisfied.",
+    "issues": [
+      {
+        "file": "extensions/openburnbar/src/state/projections.ts",
+        "line": 512,
+        "severity": "blocking",
+        "description": "Mission rows are sorted by local status priority (`running`, `planned`, etc.) and then `updatedAt`, but canonical daemon ordering is `updatedAt DESC` with `missionID ASC` tie-break. This violates cross-surface deterministic comparator parity and can produce app/extension ordering drift for the same daemon snapshot."
+      },
+      {
+        "file": "extensions/openburnbar/src/types.ts",
+        "line": 401,
+        "severity": "blocking",
+        "description": "Extension mission enums do not match daemon mission lifecycle contracts (e.g., daemon emits `awaiting_approval`, `approved`, `dispatching`, `in_progress`, `partially_completed`, `failed`, `cancelled`). Because projection typing narrows to `planned|running|partial|blocked|completed`, lifecycle parity with daemon mission APIs is not representable."
+      },
+      {
+        "file": "AgentLensTests/Active/OpenBurnBarOperatingComposerTests.swift",
+        "line": 746,
+        "severity": "non_blocking",
+        "description": "Several VAL-APP-007 tests are assertion-light/tautological (for example, comparing literal \"alpha\" vs \"zeta\" rather than asserting actual projected board order). This weakens evidence quality even though production sorting was updated in ProjectsView."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Feature-level verification requirements and governance-worker procedure were not fully reflected in handoff evidence. The handoff lists only app test + projections test runs, while the feature contract and validation contract require daemon mission-control coverage and extension host/parity coverage for the fulfilled assertions.",
+      "evidence": "Handoff commands in /Users/albertonunez/.factory/missions/d1d1287f-f2a9-4a34-8ba9-fce37df13493/handoffs/2026-04-19T18-00-19-205Z__m4__0810363f-faf2-4433-a475-550504577f10.json show only xcodebuild + projections unit test; compare with feature verificationSteps in features.json and VAL-EXT-008 / VAL-CROSS-010 tool requirements in validation-contract.md."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed: extension mission projection contracts are not daemon-parity safe (ordering comparator and lifecycle enum mismatch), which blocks VAL-EXT-008 and undermines VAL-CROSS-010 parity guarantees. Report written to the requested scrutiny review path."
+}

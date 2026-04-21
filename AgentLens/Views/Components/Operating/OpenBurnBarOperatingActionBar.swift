@@ -1,4 +1,162 @@
 import SwiftUI
+import OpenBurnBarCore
+
+// MARK: - Mission Authoring Sheet
+
+struct OpenBurnBarMissionAuthoringSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var layer: OpenBurnBarOperatingLayer
+
+    @State private var projectSlug: String = ""
+    @State private var title: String = ""
+    @State private var summary: String = ""
+    @State private var recommendation: BurnBarMissionRecommendation = .review
+    @State private var isCreating: Bool = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+            Text("Create Mission")
+                .font(DesignSystem.Typography.title)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+            Text("Define a new mission for OpenBurnBar to plan, dispatch, and track execution.")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Project")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                TextField("e.g., apollo, my-project", text: $projectSlug)
+                    .textFieldStyle(.roundedBorder)
+                if let projectName = layer.snapshot.projectName, !projectName.isEmpty, projectSlug.isEmpty {
+                    Text("Tip: \(projectName) is your current project")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Title")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                TextField("What should this mission accomplish?", text: $title)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Summary")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                TextEditor(text: $summary)
+                    .frame(minHeight: 100)
+                    .padding(6)
+                    .background(DesignSystem.Colors.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .stroke(DesignSystem.Colors.border.opacity(0.55), lineWidth: 0.5)
+                    )
+            }
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Recommendation")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Picker("Recommendation", selection: $recommendation) {
+                    Text("Proceed").tag(BurnBarMissionRecommendation.proceed)
+                    Text("Review").tag(BurnBarMissionRecommendation.review)
+                    Text("Pause").tag(BurnBarMissionRecommendation.pause)
+                    Text("Escalate").tag(BurnBarMissionRecommendation.escalate)
+                }
+                .pickerStyle(.segmented)
+                Text(recommendationHint)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+
+            if let error = errorMessage {
+                Text(error)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.error)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Button("Cancel") {
+                    dismiss()
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                Spacer()
+
+                Button {
+                    createMission()
+                } label: {
+                    if isCreating {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    } else {
+                        Text("Create Mission")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DesignSystem.Colors.blaze)
+                .disabled(isCreating || !isValid)
+            }
+        }
+        .padding(DesignSystem.Spacing.xl)
+        .frame(minWidth: 480, idealWidth: 520)
+        .onAppear {
+            if let projectName = layer.snapshot.projectName, !projectName.isEmpty {
+                projectSlug = projectName.lowercased().replacingOccurrences(of: " ", with: "-")
+            }
+        }
+    }
+
+    private var isValid: Bool {
+        !projectSlug.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var recommendationHint: String {
+        switch recommendation {
+        case .proceed:
+            return "OpenBurnBar will attempt autonomous execution without additional approval gates."
+        case .review:
+            return "OpenBurnBar will plan and present the plan for your review before dispatching."
+        case .pause:
+            return "OpenBurnBar will create the mission but defer planning until you explicitly resume."
+        case .escalate:
+            return "OpenBurnBar will escalate this mission to a human reviewer before any planning or execution."
+        }
+    }
+
+    private func createMission() {
+        guard isValid else { return }
+        isCreating = true
+        errorMessage = nil
+
+        Task { @MainActor in
+            do {
+                _ = try await layer.createMission(
+                    projectSlug: projectSlug,
+                    title: title,
+                    summary: summary,
+                    recommendation: recommendation
+                )
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+                isCreating = false
+            }
+        }
+    }
+}
 
 // MARK: - Operating Action Bar
 
@@ -144,11 +302,13 @@ struct OpenBurnBarOperatingActionBar: View {
     @Bindable var layer: OpenBurnBarOperatingLayer
     var compact: Bool
     @State private var showingDirectionOverride = false
+    @State private var showingMissionAuthoring = false
 
     var body: some View {
         let snapshot = layer.snapshot
         let missionAction = snapshot.availableActions.first(where: { $0.kind == .missionApproval })
         let directionAction = snapshot.availableActions.first(where: { $0.kind == .directionOverride })
+        let creationAction = snapshot.availableActions.first(where: { $0.kind == .missionCreation })
 
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             HStack(spacing: DesignSystem.Spacing.sm) {
@@ -170,6 +330,16 @@ struct OpenBurnBarOperatingActionBar: View {
                     emphasized: directionAction?.available == true
                 ) {
                     showingDirectionOverride = true
+                }
+
+                OpenBurnBarActionButton(
+                    title: compact ? "Create" : (creationAction?.title ?? "Create Mission"),
+                    icon: OpenBurnBarActionKind.missionCreation.icon,
+                    compact: compact,
+                    enabled: creationAction?.available ?? true,
+                    emphasized: creationAction?.available == true
+                ) {
+                    showingMissionAuthoring = true
                 }
             }
 
@@ -195,6 +365,10 @@ struct OpenBurnBarOperatingActionBar: View {
         }
         .sheet(isPresented: $showingDirectionOverride) {
             OpenBurnBarDirectionOverrideSheet(layer: layer)
+                .presentationBackground(Material.ultraThinMaterial)
+        }
+        .sheet(isPresented: $showingMissionAuthoring) {
+            OpenBurnBarMissionAuthoringSheet(layer: layer)
                 .presentationBackground(Material.ultraThinMaterial)
         }
     }

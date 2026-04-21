@@ -1,0 +1,26 @@
+{
+  "milestone": "m3-typed-goal-to-plan-input",
+  "round": 2,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-DAEMON-007",
+    "VAL-DAEMON-008",
+    "VAL-DAEMON-014"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added MC-DAEMON guidance to ignore Swift Testing footer and use XCTest \"Executed N tests\" plus assertion-tagged case lines to confirm non-zero assertion-filter execution.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": ".factory/validation/m3-typed-goal-to-plan-input/user-testing/synthesis.round1.json"
+}

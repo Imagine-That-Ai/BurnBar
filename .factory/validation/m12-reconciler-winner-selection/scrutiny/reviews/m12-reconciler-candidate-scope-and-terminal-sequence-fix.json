@@ -1,0 +1,21 @@
+{
+  "featureId": "m12-reconciler-candidate-scope-and-terminal-sequence-fix",
+  "reviewedAt": "2026-04-21T00:14:53Z",
+  "commitId": "b2a08edf155244eaf5a599ac76d539d18924ace4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Rerun addresses both prior blockers. Candidate scoping now restricts reconciliation inputs to terminal leaf outcomes only (`dependents.isEmpty`), which excludes prerequisite/internal nodes even after full DAG completion. Winner reason attribution now computes success/evidence/risk/cost/latency/sequence deltas strictly from winner vs runner-up metrics, removing the prior ANY-failed-candidate shortcut.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The runtime-orchestration skill still requires three focused daemon commands (RunService, MissionControlService, ProviderRouter) with explicit per-command evidence, but this rerun handoff sets `followedProcedure: true` without running the focused RunService/ProviderRouter commands directly.",
+      "evidence": ".factory/skills/runtime-orchestration-worker/SKILL.md (Work Procedure step 5) vs /Users/albertonunez/.factory/missions/d1d1287f-f2a9-4a34-8ba9-fce37df13493/handoffs/2026-04-21T00-09-16-681Z__m12-reconciler-candidate-scope-and-terminal-sequence-fix__a9944963-2bde-48bd-81f5-fb18df708dae.json (`verification.commandsRun` includes VAL_EXEC_010, VAL_CROSS_006, BurnBarMissionControlServiceTests, full daemon/core only)."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/m12-reconciler-winner-selection/scrutiny/reviews/m12-reconciler-candidate-scope-and-terminal-sequence-fix.json",
+  "summary": "Pass. The rerun commit genuinely resolves the prior scrutiny failures: prerequisite/internal nodes are no longer eligible winner candidates, and persisted winner reason attribution now uses strict winner-vs-runner-up deltas."
+}

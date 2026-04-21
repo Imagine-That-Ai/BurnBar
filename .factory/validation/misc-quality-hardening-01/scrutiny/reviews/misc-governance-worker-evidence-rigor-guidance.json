@@ -1,0 +1,33 @@
+{
+  "featureId": "misc-governance-worker-evidence-rigor-guidance",
+  "reviewedAt": "2026-04-19T19:45:17Z",
+  "commitId": "a614343b96948c91bc1a3b74cfbe8e192676a8cb",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation satisfies the feature intent: governance-worker guidance now explicitly requires evidence for each verificationStep, requires fulfilled-assertion surface coverage, and mandates daemon plus extension-host parity evidence for cross-surface assertions before handoff finalization.",
+    "issues": [
+      {
+        "file": ".factory/skills/governance-worker/SKILL.md",
+        "line": 25,
+        "severity": "non_blocking",
+        "description": "The validation command list still references `--filter OpenBurnBarMissionControlContractsTests`, while canonical command sources use `BurnBarMissionControlContractsTests`; this inconsistency can misdirect workers running core contract checks."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The governance-worker skill now includes a duplicated command catalog copied from `.factory/services.yaml`, creating two sources of truth in one skill document.",
+      "evidence": ".factory/skills/governance-worker/SKILL.md:100-116 duplicates `.factory/services.yaml`; command text already diverges between line 25 and line 108."
+    },
+    {
+      "area": "conventions",
+      "observation": "Mission guidance says workers should use commands from `.factory/services.yaml`, but skill procedures still embed inline command variants that can drift.",
+      "evidence": "Mission AGENTS.md Testing & Validation Guidance says to use `.factory/services.yaml`; governance-worker inline command list at SKILL.md:24-29 differs from `.factory/services.yaml` (`OpenBurnBarMissionControlContractsTests` vs `BurnBarMissionControlContractsTests`)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The requested evidence-rigor hardening is present in the governance-worker skill. Non-blocking command-source drift remains and should be normalized to a single canonical source."
+}

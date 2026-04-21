@@ -37,6 +37,7 @@ enum OpenBurnBarIdentity {
     static let openClawBearerTokenAccount = "settings.chat.openclaw.bearerToken"
     static let hermesBearerTokenAccount = "settings.chat.hermes.bearerToken"
     static let gatewayAuthTokenAccount = "settings.gateway.http.authToken"
+    static let daemonSocketAuthTokenAccount = "daemon.socket.authToken"
     static let switcherAuthKeychainService = "com.openburnbar.switcher-auth"
 
     static let dailyDigestNotificationIdentifier = "openburnbar.daily-digest"

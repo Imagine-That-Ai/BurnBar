@@ -1,12 +1,6 @@
 import OpenBurnBarCore
 import Foundation
 
-public enum BurnBarToolRisk: String, Codable, CaseIterable, Hashable, Sendable {
-    case low
-    case medium
-    case high
-}
-
 public struct BurnBarApprovalDescriptor: Hashable, Sendable {
     public let tool: BurnBarToolKind
     public let title: String
@@ -46,7 +40,7 @@ public struct BurnBarPolicyEngine {
             return nil
         }
 
-        let effectiveTool = tool ?? intent.requestedTools.last ?? .applyPatch
+        let effectiveTool = tool ?? intent.requestedToolsOrEmpty.last ?? .applyPatch
         return BurnBarApprovalDescriptor(
             tool: effectiveTool,
             title: customTitle ?? "Approve \(effectiveTool.rawValue)",
@@ -57,9 +51,9 @@ public struct BurnBarPolicyEngine {
 
     public func isRetryable(_ error: BurnBarToolExecutionError) -> Bool {
         switch error.code {
-        case .trustGated, .noWorkspace, .remoteUnsupported:
+        case .trustGated, .noWorkspace, .remoteUnsupported, .applyFailed:
             return true
-        case .applyFailed, .terminalFailed, .unknown:
+        case .terminalFailed, .unknown:
             return false
         }
     }

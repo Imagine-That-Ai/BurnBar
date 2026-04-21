@@ -441,9 +441,11 @@ function buildRecoveryMessage(state: OpenBurnBarState): string | undefined {
   }
 
   if (state.connectionStatus === 'disconnected') {
+    const recoveryAction =
+      'Run Reconnect once. If the daemon still does not answer, run Repair Daemon from OpenBurnBar.';
     return state.lastError
-      ? `Daemon disconnected: ${state.lastError}`
-      : 'Daemon disconnected. Reconnect or repair the local OpenBurnBar daemon to resume.';
+      ? `Daemon disconnected: ${state.lastError} ${recoveryAction}`
+      : `Daemon disconnected. ${recoveryAction}`;
   }
 
   if (state.connectionStatus === 'connecting') {

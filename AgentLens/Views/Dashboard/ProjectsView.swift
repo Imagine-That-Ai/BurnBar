@@ -10,7 +10,22 @@ private extension String {
 
 // MARK: - Merged Project Model
 
-private struct MergedProject: Identifiable {
+struct ProjectReentryControl: Identifiable, Equatable {
+    let cadence: BurnBarControllerReviewCadence
+    let title: String
+    let isEnabled: Bool
+
+    var id: BurnBarControllerReviewCadence { cadence }
+}
+
+struct ProjectReviewHistoryIndicator: Identifiable, Equatable {
+    let cadence: BurnBarControllerReviewCadence
+    let reviewedAt: Date
+
+    var id: String { "\(cadence.rawValue)-\(reviewedAt.timeIntervalSinceReferenceDate)" }
+}
+
+struct MergedProject: Identifiable {
     let id: String
     let slug: String
     let displayName: String
@@ -41,6 +56,38 @@ private struct MergedProject: Identifiable {
         if activeMissionCount > 0 { parts.append("\(activeMissionCount) mission\(activeMissionCount == 1 ? "" : "s")") }
         if openFollowupCount > 0 { parts.append("\(openFollowupCount) followup\(openFollowupCount == 1 ? "" : "s")") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    func reentryReviewControls(daemonIsHealthy: Bool) -> [ProjectReentryControl] {
+        guard isRegistered else { return [] }
+        return [
+            ProjectReentryControl(
+                cadence: .daily,
+                title: "Run Daily Check-In",
+                isEnabled: daemonIsHealthy
+            ),
+            ProjectReentryControl(
+                cadence: .weekly,
+                title: "Run Weekly Review",
+                isEnabled: daemonIsHealthy
+            )
+        ]
+    }
+
+    var reviewHistoryIndicators: [ProjectReviewHistoryIndicator] {
+        guard let project = registeredProject else { return [] }
+        var indicators: [ProjectReviewHistoryIndicator] = []
+        if let latestWeekly = project.latestWeeklyReviewAt {
+            indicators.append(
+                ProjectReviewHistoryIndicator(cadence: .weekly, reviewedAt: latestWeekly)
+            )
+        }
+        if let latestDaily = project.latestDailyReviewAt {
+            indicators.append(
+                ProjectReviewHistoryIndicator(cadence: .daily, reviewedAt: latestDaily)
+            )
+        }
+        return indicators
     }
 }
 
@@ -123,10 +170,11 @@ struct ProjectsView: View {
             )
         }
 
-        // Sort: attention first, then by cost
+        // Sort: attention first, then by cost descending, then by slug ascending (deterministic tie-break)
         return merged.values.sorted { lhs, rhs in
             if lhs.needsAttention != rhs.needsAttention { return lhs.needsAttention }
-            return lhs.totalCost > rhs.totalCost
+            if lhs.totalCost != rhs.totalCost { return lhs.totalCost > rhs.totalCost }
+            return lhs.slug.localizedCaseInsensitiveCompare(rhs.slug) == .orderedAscending
         }
     }
 
@@ -617,11 +665,16 @@ private struct ProjectHubView: View {
                     }
                 }
 
-                if project.isRegistered && daemonIsHealthy {
+                if project.isRegistered {
+                    let reentryControls = project.reentryReviewControls(daemonIsHealthy: daemonIsHealthy)
                     HStack(spacing: DesignSystem.Spacing.sm) {
                         Menu {
-                            Button("Run Daily Check-In") { onLaunchReview(.daily) }
-                            Button("Run Weekly Review") { onLaunchReview(.weekly) }
+                            ForEach(reentryControls) { control in
+                                Button(control.title) {
+                                    onLaunchReview(control.cadence)
+                                }
+                                .disabled(!control.isEnabled)
+                            }
                         } label: {
                             HStack(spacing: DesignSystem.Spacing.xs) {
                                 Image(systemName: "play.fill")
@@ -643,6 +696,8 @@ private struct ProjectHubView: View {
                                     .stroke(DesignSystem.Colors.blaze.opacity(0.3), lineWidth: 0.75)
                             )
                         }
+                        .disabled(reentryControls.allSatisfy { !$0.isEnabled })
+                        .buttonStyle(.plain)
 
                         Button(action: onEditSetup) {
                             HStack(spacing: DesignSystem.Spacing.xs) {
@@ -664,6 +719,12 @@ private struct ProjectHubView: View {
                             )
                         }
                         .buttonStyle(.plain)
+                    }
+
+                    if daemonIsHealthy == false {
+                        Text("Daemon unavailable — review controls stay visible but are temporarily disabled.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
                     }
                 }
             }
@@ -730,17 +791,18 @@ private struct ProjectHubView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 sectionHeader("Review History")
-                if let p = project.registeredProject {
-                    if let latest = p.latestWeeklyReviewAt {
-                        factRow(icon: "calendar", title: "Last weekly", value: latest.formatted(date: .abbreviated, time: .shortened))
-                    }
-                    if let latest = p.latestDailyReviewAt {
-                        factRow(icon: "calendar", title: "Last daily", value: latest.formatted(date: .abbreviated, time: .shortened))
-                    }
-                    if p.latestDailyReviewAt == nil && p.latestWeeklyReviewAt == nil {
-                        Text("No reviews have run yet for this project.")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                let indicators = project.reviewHistoryIndicators
+                if indicators.isEmpty {
+                    Text("No reviews have run yet for this project.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                } else {
+                    ForEach(indicators) { indicator in
+                        factRow(
+                            icon: "calendar",
+                            title: indicator.cadence == .weekly ? "Last weekly" : "Last daily",
+                            value: indicator.reviewedAt.formatted(date: .abbreviated, time: .shortened)
+                        )
                     }
                 }
             }

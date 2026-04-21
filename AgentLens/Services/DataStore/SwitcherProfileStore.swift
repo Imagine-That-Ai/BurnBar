@@ -6,7 +6,7 @@ import OpenBurnBarCore
 
 /// A closure-based log emitter that can capture log output.
 /// This enables deterministic interception of production log output in tests.
-public struct LogEmitter: Sendable {
+public struct LogEmitter: @unchecked Sendable {
     /// The underlying logger for production use
     private let logger: AppLogger
     /// Optional capture closure for test interception

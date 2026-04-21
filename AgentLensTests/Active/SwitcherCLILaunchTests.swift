@@ -1,6 +1,6 @@
 import XCTest
-@testable import OpenBurnBarCore
-@testable import OpenBurnBar
+@preconcurrency @testable import OpenBurnBarCore
+@preconcurrency @testable import OpenBurnBar
 
 // MARK: - Test Seam Helpers
 
@@ -10,6 +10,15 @@ private func makeTempExecutable(at path: String, content: String = "#!/bin/sh\ne
     try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
     return {
         try? FileManager.default.removeItem(atPath: path)
+    }
+}
+
+/// Lightweight test helper for cross-task capture in deterministic seam assertions.
+private final class MutableBox<Value>: @unchecked Sendable {
+    var value: Value
+
+    init(_ value: Value) {
+        self.value = value
     }
 }
 
@@ -125,11 +134,11 @@ final class SwitcherCLILaunchTests: XCTestCase {
         let configDirectory = tempRoot.appendingPathComponent("codex-config", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempRoot) }
 
-        var capturedScriptContents: String?
+        let capturedScriptContents = MutableBox<String?>(nil)
         let coordinator = SwitcherCLIAuthCoordinator(
             dependencies: .init(
                 openScriptInTerminal: { scriptURL in
-                    capturedScriptContents = try String(contentsOf: scriptURL, encoding: .utf8)
+                    capturedScriptContents.value = try String(contentsOf: scriptURL, encoding: .utf8)
                     let markerURL = scriptURL.deletingLastPathComponent().appendingPathComponent("exit.status")
                     try "0".write(to: markerURL, atomically: true, encoding: .utf8)
                 },
@@ -162,8 +171,8 @@ final class SwitcherCLILaunchTests: XCTestCase {
             return XCTFail("Expected readyToPersist result")
         }
 
-        XCTAssertTrue(capturedScriptContents?.contains("export CODEX_HOME=") == true)
-        XCTAssertTrue(capturedScriptContents?.contains("export CODEX_CONFIG_PATH=") == true)
+        XCTAssertTrue(capturedScriptContents.value?.contains("export CODEX_HOME=") == true)
+        XCTAssertTrue(capturedScriptContents.value?.contains("export CODEX_CONFIG_PATH=") == true)
     }
 
     func test_cliAuthCoordinator_requestsConfirmationWhenDetectedAccountChanges() async throws {
@@ -233,7 +242,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         let existingConfigDirectory = tempRoot.appendingPathComponent("existing-codex", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempRoot) }
 
-        var discoveredConfigDirectory: String?
+        let discoveredConfigDirectory = MutableBox<String?>(nil)
         let coordinator = SwitcherCLIAuthCoordinator(
             dependencies: .init(
                 openScriptInTerminal: { scriptURL in
@@ -241,7 +250,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
                     try "0".write(to: markerURL, atomically: true, encoding: .utf8)
                 },
                 discoverAuthState: { cliType, configDirectory in
-                    discoveredConfigDirectory = configDirectory
+                    discoveredConfigDirectory.value = configDirectory
                     return CLIAuthInfo(
                         cliType: cliType,
                         isInstalled: true,
@@ -273,7 +282,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         XCTAssertEqual(previousAccount, "old@example.com")
         XCTAssertEqual(detectedAccount, "new@example.com")
-        XCTAssertEqual(discoveredConfigDirectory, updatedProfile.cliMetadata?.configDirectory)
+        XCTAssertEqual(discoveredConfigDirectory.value, updatedProfile.cliMetadata?.configDirectory)
         XCTAssertNotEqual(updatedProfile.cliMetadata?.configDirectory, existingConfigDirectory.path)
     }
 
@@ -1235,7 +1244,6 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
 // MARK: - In-Memory Store Tests
 
-@MainActor
 final class SwitcherCLILAunchServiceTests: XCTestCase {
 
     private var service: SwitcherCLILAunchService!
@@ -1588,8 +1596,9 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         )
         store.addProfile(profile)
 
+        let launchService = MutableBox(service!)
         // Launch once — this will block in the handler
-        let launchTask = Task { await service.launchCLI(for: "test-profile") }
+        let launchTask = Task { await launchService.value.launchCLI(for: "test-profile") }
         // Give the first launch time to start
         try? await Task.sleep(nanoseconds: 50_000)
 
@@ -1748,6 +1757,11 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         // Use seam: both executables NOT installed + simulated handler
         CLILaunchAdapter.executableResolver = { _ in nil }
         CLILaunchInvoker.launchHandler = { _, _, _, _, _, _ in .success(()) }
+
+        guard let service else {
+            XCTFail("Expected launch service to be initialized")
+            return
+        }
 
         // Launch both profiles concurrently
         async let launch1 = service.launchCLI(for: codexProfile.id)

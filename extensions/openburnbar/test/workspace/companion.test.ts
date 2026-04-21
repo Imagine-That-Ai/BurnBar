@@ -24,6 +24,7 @@ const mockApi = {
   saveAll: vi.fn(() => Promise.resolve(true)),
   createWorkspaceEdit: vi.fn(() => ({})),
   createRange: vi.fn(() => ({})),
+  confirmTerminalCommand: vi.fn(() => Promise.resolve(true)),
   createTerminal: vi.fn(() => ({ name: 'OpenBurnBar', show: vi.fn(), sendText: vi.fn() })),
   parseUri: (value: string) => ({ scheme: 'file', fsPath: value, toString: () => value } as any),
   fileUri: (value: string) => ({ scheme: 'file', fsPath: value, toString: () => `file://${value}` } as any),

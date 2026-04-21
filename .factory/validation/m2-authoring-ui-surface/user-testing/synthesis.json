@@ -1,0 +1,21 @@
+{
+  "milestone": "m2-authoring-ui-surface",
+  "round": 2,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-APP-001",
+    "VAL-APP-002",
+    "VAL-APP-003",
+    "VAL-APP-009"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/m2-authoring-ui-surface/user-testing/synthesis.round1.json"
+}

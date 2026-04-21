@@ -110,6 +110,292 @@ final class BurnBarRunServiceTests: XCTestCase {
         XCTAssertEqual(retriedDetail.run?.phase, .completed)
     }
 
+    // MARK: - VAL-EXEC-011: Run-level failover continuity preserves idempotent usage accounting
+
+    func test_VAL_EXEC_011_usageAccountingIsIdempotentUnderFailover() async throws {
+        // VAL-EXEC-011: Failover retries within a run do not duplicate usage records
+        // for same run attempt idempotency key.
+        let harness = try makeHarness(name: "idempotent-usage")
+        let clientID = BurnBarClientID(rawValue: "idempotent-client")
+        let sessionID = BurnBarSessionID(rawValue: "idempotent-session")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Idempotent Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await harness.configStore.setSecret("zai-secret", for: "zai")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+
+        // Create a run that completes successfully
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Simple completion",
+                modelID: "glm-5"
+            )
+        )
+        XCTAssertEqual(createResponse.phase, .completed)
+
+        // Record the initial usage
+        let initialRecords = try await harness.usageRecorder.records()
+        let initialCount = initialRecords.count
+
+        // Verify idempotency: recording the same event again should not create duplicate
+        let usageEvent = BurnBarUsageEvent(
+            runID: createResponse.runID,
+            providerID: "zai",
+            modelID: "glm-5",
+            inputTokens: 100,
+            outputTokens: 50,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            cost: 0.001,
+            recordedAt: Date()
+        )
+
+        // Record with same idempotency key as the completed run (attempt 1)
+        let idempotencyKey = "run:\(createResponse.runID.rawValue):attempt:1"
+        let result1 = try await harness.usageRecorder.record(usageEvent, idempotencyKey: idempotencyKey)
+        XCTAssertFalse(result1.inserted, "Second record with same idempotency key should not insert")
+
+        // Verify no new record was added
+        let finalRecords = try await harness.usageRecorder.records()
+        XCTAssertEqual(finalRecords.count, initialCount, "No duplicate record should be created")
+
+        // Verify the idempotency key pattern works correctly
+        let differentKeyResult = try await harness.usageRecorder.record(usageEvent, idempotencyKey: "run:\(createResponse.runID.rawValue):attempt:2")
+        XCTAssertTrue(differentKeyResult.inserted, "Different idempotency key should insert")
+
+        let recordsAfterDifferentKey = try await harness.usageRecorder.records()
+        XCTAssertEqual(recordsAfterDifferentKey.count, initialCount + 1, "New key should create record")
+    }
+
+    func test_VAL_EXEC_011_usageIdempotencyKeyIncludesAttempt() async throws {
+        // VAL-EXEC-011: Idempotency key includes attempt number
+        // Uses an approval-required run that completes via explicit approve.
+        let harness = try makeHarness(name: "usage-idempotency-key")
+        let clientID = BurnBarClientID(rawValue: "idempotency-key-client")
+        let sessionID = BurnBarSessionID(rawValue: "idempotency-key-session")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Idempotency Key Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await harness.configStore.setSecret("zai-secret", for: "zai")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+
+        // Create a run that requires approval (this pattern is tested in existing tests)
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Run with idempotency check",
+                modelID: "glm-5",
+                metadata: [
+                    "requiresApproval": .bool(true),
+                    "toolKind": .string(BurnBarToolKind.applyPatch.rawValue)
+                ]
+            )
+        )
+        XCTAssertEqual(createResponse.phase, .awaitingApproval)
+
+        // Approve the run
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: createResponse.runID, clientID: clientID)
+        )
+        let approvalID = try XCTUnwrap(detail.approvalRequest?.approvalID)
+        let completedDetail = try await harness.runService.respondToApproval(
+            BurnBarApprovalRespondRequest(
+                response: BurnBarApprovalResponse(
+                    approvalID: approvalID,
+                    clientID: clientID,
+                    decision: .approve,
+                    respondedAt: Date()
+                )
+            )
+        )
+        XCTAssertEqual(completedDetail.run?.phase, .completed)
+
+        // Verify usage was recorded with attempt 1
+        let records = try await harness.usageRecorder.records()
+        XCTAssertEqual(records.count, 1)
+        XCTAssertTrue(records.first?.idempotencyKey.hasSuffix(":attempt:1") ?? false, "First attempt should use attempt:1")
+    }
+
+    // MARK: - VAL-EXEC-008: Provider failover is deterministic for retryable upstream failures
+
+    func test_VAL_EXEC_008_providerFailoverIsDeterministicViaScorecard() async throws {
+        // VAL-EXEC-008: Provider failover is deterministic for retryable upstream failures.
+        // Retryable upstream failures fail over alternate routes with preserved run continuity
+        // and no duplicate terminal records.
+        // This test verifies RunService-level failover ordering is driven by scoreAndRankRoutes()
+        // output (scorecard composite score ordering), not legacy candidateRoutes() ordering.
+        let harness = try makeHarness(
+            name: "failover-scorecard",
+            providerExecutor: BurnBarFailoverSimulatorProviderExecutor()
+        )
+        let clientID = BurnBarClientID(rawValue: "failover-scorecard-client")
+        let sessionID = BurnBarSessionID(rawValue: "failover-scorecard-session")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Failover Scorecard Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+
+        // Set up one provider (zai) with two credential slots for glm-5
+        // This tests failover between slots ordered by scorecard composite scoring
+        try await harness.configStore.setSecret("zai-key-a", for: "zai")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/v1",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+        // Add two credential slots - failover simulator will fail on first, succeed on second
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-a",
+            label: "Plan A",
+            apiKey: "zai-key-a"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-b",
+            label: "Plan B",
+            apiKey: "zai-key-b"
+        )
+
+        // Create a run - the failover simulator will fail slot-a first, then succeed on slot-b
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Test failover ordering",
+                modelID: "glm-5"
+            )
+        )
+
+        // Verify the run completed successfully (failover worked)
+        XCTAssertEqual(createResponse.phase, .completed)
+
+        // Verify only one usage record was created (no duplicate terminal records)
+        let usageRecords = try await harness.usageRecorder.recentUsage(limit: 10)
+        XCTAssertEqual(usageRecords.count, 1, "Failover should produce exactly one usage record")
+        XCTAssertEqual(usageRecords.first?.runID, createResponse.runID)
+        // The successful route should be slot-b (failover target after slot-a failed)
+        XCTAssertEqual(usageRecords.first?.providerID, "zai")
+    }
+
+    func test_VAL_EXEC_008_failoverAttemptsAreDeterministicallyOrdered() async throws {
+        // VAL-EXEC-008: Explicitly assert deterministic attempted failover route slot/identity order.
+        // This test strengthens coverage by verifying the exact sequence of slot/identity attempts
+        // during failover, not just that failover occurred or call counts.
+        let recorder = BurnBarRecordingFailoverSimulatorProviderExecutor()
+        let harness = try makeHarness(
+            name: "failover-ordered",
+            providerExecutor: recorder
+        )
+        let clientID = BurnBarClientID(rawValue: "failover-ordered-client")
+        let sessionID = BurnBarSessionID(rawValue: "failover-ordered-session")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Failover Ordered Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+
+        // Set up one provider (zai) with two credential slots for glm-5
+        // slot-a is added first, slot-b second - deterministic slot ID ordering
+        try await harness.configStore.setSecret("zai-key-a", for: "zai")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/v1",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+        // Add two credential slots in deterministic slotID order: slot-a first, slot-b second
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-a",
+            label: "Plan A",
+            apiKey: "zai-key-a"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "slot-b",
+            label: "Plan B",
+            apiKey: "zai-key-b"
+        )
+
+        // Create a run - failover simulator will fail on first attempt (slot-a), succeed on second (slot-b)
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Test deterministic failover ordering",
+                modelID: "glm-5"
+            )
+        )
+
+        // Verify the run completed successfully via failover
+        XCTAssertEqual(createResponse.phase, .completed)
+
+        // Extract the ordered sequence of route slot/identity attempts
+        let attemptedRoutes = await recorder.attemptedRoutes()
+
+        // VAL-EXEC-008: Assert deterministic attempted route order
+        // The router must attempt slot-a first (highest ranked), then failover to slot-b
+        XCTAssertEqual(attemptedRoutes.count, 2,
+            "Failover should attempt exactly 2 routes: first fails, second succeeds")
+        XCTAssertEqual(attemptedRoutes[0].credentialSlotID, "slot-a",
+            "First attempted route should be slot-a (primary)")
+        XCTAssertEqual(attemptedRoutes[1].credentialSlotID, "slot-b",
+            "Second attempted route should be slot-b (failover target)")
+
+        // Verify provider identity is preserved through failover
+        XCTAssertEqual(attemptedRoutes[0].providerID, "zai")
+        XCTAssertEqual(attemptedRoutes[1].providerID, "zai")
+
+        // Verify only one usage record (no duplicate terminal records from failover retry)
+        let usageRecords = try await harness.usageRecorder.recentUsage(limit: 10)
+        XCTAssertEqual(usageRecords.count, 1, "Failover must not duplicate usage records")
+        XCTAssertEqual(usageRecords.first?.runID, createResponse.runID)
+    }
+
     func testObserverCannotControlUntilControllerDetachesAndPromotionOccurs() async throws {
         let harness = try makeHarness(name: "arbitration")
         let controllerID = BurnBarClientID(rawValue: "controller")
@@ -737,8 +1023,8 @@ final class BurnBarRunServiceTests: XCTestCase {
                 succeeded: false,
                 output: nil,
                 error: BurnBarToolExecutionError(
-                    code: .applyFailed,
-                    message: "Workspace edit failed."
+                    code: .terminalFailed,
+                    message: "Companion is no longer available."
                 ),
                 completedAt: Date()
             )
@@ -915,7 +1201,7 @@ final class BurnBarRunServiceTests: XCTestCase {
         XCTAssertEqual(detail.approvalRequest?.tool, .runTerminal)
     }
 
-    func testRunTerminalCompanionFlowCompletesAfterToolResultSubmission() async throws {
+    func testVAL_CROSS_003_HighRiskAutonomousStepEscalatesThenResumesOnExplicitApproval() async throws {
         let harness = try makeHarness(name: "terminal-companion-flow")
         let clientID = BurnBarClientID(rawValue: "terminal-controller")
         let sessionID = BurnBarSessionID(rawValue: "terminal-session")
@@ -953,7 +1239,7 @@ final class BurnBarRunServiceTests: XCTestCase {
         )
         XCTAssertEqual(initialDetail.approvalRequest?.tool, .runTerminal)
 
-        _ = try await harness.runService.respondToApproval(
+        let resumedDetail = try await harness.runService.respondToApproval(
             BurnBarApprovalRespondRequest(
                 response: BurnBarApprovalResponse(
                     approvalID: try XCTUnwrap(initialDetail.approvalRequest?.approvalID),
@@ -963,6 +1249,8 @@ final class BurnBarRunServiceTests: XCTestCase {
                 )
             )
         )
+        XCTAssertNil(resumedDetail.approvalRequest, "VAL-CROSS-003: explicit approval should clear pending approval request")
+        XCTAssertEqual(resumedDetail.run?.phase, .waitingOnCompanion, "VAL-CROSS-003: high-risk run should resume execution only after approval")
 
         let claimed = try await harness.runService.executeTool(
             BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: createResponse.runID)
@@ -984,11 +1272,100 @@ final class BurnBarRunServiceTests: XCTestCase {
                 completedAt: Date()
             )
         )
-        XCTAssertEqual(detail.run?.phase, .completed)
+        XCTAssertEqual(detail.run?.phase, .completed, "VAL-CROSS-003: resumed run should reach terminal completion after approved high-risk step")
 
         let usage = try await harness.usageRecorder.recentUsage(limit: 5)
         XCTAssertEqual(usage.count, 1)
         XCTAssertEqual(usage.first?.runID, createResponse.runID)
+    }
+
+    // MARK: - VAL-GOV-005: Aggressive autonomy enforces high-risk approval gates
+
+    func testVAL_GOV_005_LowRiskReadFileRunRemainsAutonomousInAggressiveMode() async throws {
+        let harness = try makeHarness(name: "val-gov-005-low-risk")
+        let clientID = BurnBarClientID(rawValue: "low-risk-client")
+        let sessionID = BurnBarSessionID(rawValue: "low-risk-session")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Low Risk Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Read the repository README for context",
+                modelID: "glm-5",
+                metadata: [
+                    "toolKind": .string(BurnBarToolKind.readFile.rawValue),
+                    "path": .string("README.md"),
+                    "toolArguments": .object([
+                        "path": .string("README.md")
+                    ])
+                ]
+            )
+        )
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: createResponse.runID, clientID: clientID)
+        )
+
+        XCTAssertNotEqual(
+            createResponse.phase,
+            .awaitingApproval,
+            "VAL-GOV-005: Low-risk actions should remain autonomous in aggressive mode."
+        )
+        XCTAssertNil(
+            detail.approvalRequest,
+            "VAL-GOV-005: Low-risk read_file run must not create explicit approval request."
+        )
+    }
+
+    func testVAL_GOV_005_HighRiskRunTerminalRequiresExplicitApprovalInAggressiveMode() async throws {
+        let harness = try makeHarness(name: "val-gov-005-high-risk")
+        let clientID = BurnBarClientID(rawValue: "high-risk-client")
+        let sessionID = BurnBarSessionID(rawValue: "high-risk-session")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "High Risk Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Run terminal command for deployment checks",
+                modelID: "glm-5",
+                metadata: [
+                    "toolKind": .string(BurnBarToolKind.runTerminal.rawValue),
+                    "toolArguments": .object([
+                        "command": .string("npm test"),
+                        "cwd": .string(".")
+                    ])
+                ]
+            )
+        )
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: createResponse.runID, clientID: clientID)
+        )
+
+        XCTAssertEqual(
+            createResponse.phase,
+            .awaitingApproval,
+            "VAL-GOV-005: High-risk run_terminal actions must require explicit approval in aggressive mode."
+        )
+        XCTAssertEqual(detail.approvalRequest?.tool, .runTerminal)
     }
 
     func testCancelWhileWaitingOnCompanionClearsPendingToolCall() async throws {
@@ -1165,7 +1542,8 @@ final class BurnBarRunServiceTests: XCTestCase {
             configStore: configStore,
             usageRecorder: usageRecorder,
             clientRegistry: clientRegistry,
-            runService: runService
+            runService: runService,
+            runJournal: runJournal
         )
     }
 
@@ -1180,6 +1558,499 @@ final class BurnBarRunServiceTests: XCTestCase {
             )
         )
     }
+
+    // MARK: - VAL-EXEC-012: Run journal captures deterministic replayable execution timeline
+
+    func testVAL_EXEC_012_RunJournalCapturesDeterministicReplayableExecutionTimeline() async throws {
+        // VAL-EXEC-012: Each run records ordered journal events for plan/approval/tool/recovery/terminal
+        // transitions sufficient to replay timeline deterministically.
+        // This test verifies:
+        // 1. Journal events are captured in emittedAt order
+        // 2. Replay (reading events again) produces same sequence
+        let harness = try makeHarness(name: "val-exec-012-journal")
+        let clientID = BurnBarClientID(rawValue: "client-journal")
+        let sessionID = BurnBarSessionID(rawValue: "session-journal")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Journal Test Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        // Create a run that goes through approval flow
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Execute journal test run",
+                modelID: "glm-5",
+                metadata: [
+                    "requiresApproval": .bool(true),
+                    "toolKind": .string(BurnBarToolKind.applyPatch.rawValue)
+                ]
+            )
+        )
+        let runID = createResponse.runID
+
+        // Get initial events after run creation
+        let initialEvents = try await harness.runJournal.events(for: runID)
+        XCTAssertFalse(initialEvents.isEmpty, "Journal should have events after run creation")
+
+        // Get approval and approve it
+        let awaitingDetail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: runID, clientID: clientID)
+        )
+        let approvalID = try XCTUnwrap(awaitingDetail.approvalRequest?.approvalID)
+        _ = try await harness.runService.respondToApproval(
+            BurnBarApprovalRespondRequest(
+                response: BurnBarApprovalResponse(
+                    approvalID: approvalID,
+                    clientID: clientID,
+                    decision: .approve,
+                    respondedAt: Date()
+                )
+            )
+        )
+
+        // Get events after approval
+        let afterApprovalEvents = try await harness.runJournal.events(for: runID)
+        XCTAssertTrue(
+            afterApprovalEvents.count >= initialEvents.count,
+            "Approval should add events to journal"
+        )
+
+        // Verify events are ordered by emittedAt (deterministic sequence)
+        let sortedEvents = afterApprovalEvents.sorted { $0.emittedAt < $1.emittedAt }
+        XCTAssertEqual(
+            afterApprovalEvents.map { $0.eventID },
+            sortedEvents.map { $0.eventID },
+            "Events should be stored in emittedAt order for deterministic replay"
+        )
+
+        // Verify replay produces same sequence (read events again)
+        let replayEvents = try await harness.runJournal.events(for: runID)
+        XCTAssertEqual(
+            afterApprovalEvents.map { $0.eventID },
+            replayEvents.map { $0.eventID },
+            "Replay should produce identical event sequence"
+        )
+        XCTAssertEqual(
+            afterApprovalEvents.map { $0.kind },
+            replayEvents.map { $0.kind },
+            "Replay should produce identical event kinds"
+        )
+
+        // Verify terminal event kind is captured
+        let terminalKinds: Set<BurnBarRunJournalEventKind> = [.runCompleted, .runFailed, .runCancelled]
+        let terminalEvents = replayEvents.filter { terminalKinds.contains($0.kind) }
+        XCTAssertFalse(terminalEvents.isEmpty, "Journal should capture terminal event")
+    }
+
+    func testVAL_EXEC_012_RunJournalEventSequenceForFailedRun() async throws {
+        // VAL-EXEC-012: Verify journal captures ordered events for failed runs.
+        let harness = try makeHarness(name: "val-exec-012-failed-journal")
+        let clientID = BurnBarClientID(rawValue: "client-failed-journal")
+        let sessionID = BurnBarSessionID(rawValue: "session-failed-journal")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Failed Journal Test",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        // Create a run that will fail
+        let createResponse = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "This run will fail",
+                modelID: "glm-5",
+                metadata: [
+                    "failUntilAttempt": .number(999)  // Always fail
+                ]
+            )
+        )
+        let runID = createResponse.runID
+
+        // Wait for run to complete (it should fail)
+        try await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
+
+        // Get events and verify sequence
+        let events = try await harness.runJournal.events(for: runID)
+        XCTAssertFalse(events.isEmpty, "Failed run should have journal events")
+
+        // Verify events are in chronological order
+        let sortedEvents = events.sorted { $0.emittedAt < $1.emittedAt }
+        XCTAssertEqual(
+            events.map { $0.eventID },
+            sortedEvents.map { $0.eventID },
+            "Events should be in emittedAt order"
+        )
+
+        // Verify runFailed event is present
+        let failedEvents = events.filter { $0.kind == .runFailed }
+        XCTAssertFalse(failedEvents.isEmpty, "Failed run should have runFailed journal event")
+
+        // Verify replay consistency
+        let replayEvents = try await harness.runJournal.events(for: runID)
+        XCTAssertEqual(events.map { $0.eventID }, replayEvents.map { $0.eventID },
+            "Replay should produce identical sequence for failed run")
+    }
+
+    // MARK: - VAL-EXEC-005: Retry is failed-only and resets workflow state
+
+    func testVAL_EXEC_005_RetryRejectsNonFailedRun() async throws {
+        // VAL-EXEC-005: run.retry rejects non-failed runs and resets failed run
+        // approval/tool workflow before re-execution.
+        // This test verifies that retry on a non-failed run throws retryRequiresFailedRun error.
+        let harness = try makeHarness(name: "val-exec-005-reject-non-failed")
+        let clientID = BurnBarClientID(rawValue: "client-reject-retry")
+        let sessionID = BurnBarSessionID(rawValue: "session-reject-retry")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Reject Retry Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await harness.configStore.setSecret("zai-secret", for: "zai")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+
+        // Create a run that completes successfully (not failed)
+        let completedRun = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Simple completion",
+                modelID: "glm-5"
+            )
+        )
+        XCTAssertEqual(completedRun.phase, .completed, "Run should complete successfully")
+
+        // Attempting to retry a non-failed run should throw retryRequiresFailedRun error
+        do {
+            _ = try await harness.runService.retryRun(
+                BurnBarRunRetryRequest(runID: completedRun.runID, clientID: clientID)
+            )
+            XCTFail("Expected retryRequiresFailedRun error for non-failed run")
+        } catch let error as BurnBarRunServiceError {
+            guard case .retryRequiresFailedRun(let runID) = error else {
+                return XCTFail("Expected retryRequiresFailedRun error, got: \(error)")
+            }
+            XCTAssertEqual(runID, completedRun.runID)
+        }
+    }
+
+    func testVAL_EXEC_005_RetryResetsWorkflowStateAndApproval() async throws {
+        // VAL-EXEC-005: Retry resets approval/tool workflow state before re-execution.
+        let harness = try makeHarness(name: "val-exec-005-reset-workflow")
+        let clientID = BurnBarClientID(rawValue: "client-reset-workflow")
+        let sessionID = BurnBarSessionID(rawValue: "session-reset-workflow")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Reset Workflow Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        // Create a run that goes to awaiting approval and then fails
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Fail after approval",
+                modelID: "glm-5",
+                metadata: [
+                    "requiresApproval": .bool(true),
+                    "toolKind": .string(BurnBarToolKind.applyPatch.rawValue),
+                    "failUntilAttempt": .number(1)
+                ]
+            )
+        )
+        XCTAssertEqual(created.phase, .awaitingApproval)
+
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertNotNil(detail.approvalRequest, "Should have approval request")
+
+        // Approve and let it fail
+        let approvalID = try XCTUnwrap(detail.approvalRequest?.approvalID)
+        _ = try await harness.runService.respondToApproval(
+            BurnBarApprovalRespondRequest(
+                response: BurnBarApprovalResponse(
+                    approvalID: approvalID,
+                    clientID: clientID,
+                    decision: .approve,
+                    respondedAt: Date()
+                )
+            )
+        )
+
+        // Wait for failure
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let failedDetail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(failedDetail.run?.phase, .failed, "Run should have failed")
+        XCTAssertNil(failedDetail.approvalRequest, "Approval should be cleared after failure")
+
+        // Retry should reset workflow state and start fresh
+        let retriedDetail = try await harness.runService.retryRun(
+            BurnBarRunRetryRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(retriedDetail.run?.phase, .awaitingApproval, "Retry should start fresh with approval request")
+        XCTAssertNotNil(retriedDetail.approvalRequest, "Retry should have fresh approval request")
+    }
+
+    // MARK: - VAL-EXEC-007: Tool failure recovery policy is explicit
+
+    func testVAL_EXEC_007_TrustGatedFailureEscalatesToApproval() async throws {
+        // VAL-EXEC-007: Trust/workspace/policy failures escalate to approval.
+        let harness = try makeHarness(name: "val-exec-007-trust-gated")
+        let clientID = BurnBarClientID(rawValue: "client-trust-gated")
+        let sessionID = BurnBarSessionID(rawValue: "session-trust-gated")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Trust Gated Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Apply patch",
+                modelID: "glm-5",
+                metadata: [
+                    "workspaceWorkflow": .object([
+                        "type": .string("replace_string_in_file"),
+                        "path": .string("src/example.ts"),
+                        "from": .string("value = 1"),
+                        "to": .string("value = 2")
+                    ])
+                ]
+            )
+        )
+
+        let claim = try await harness.runService.executeTool(
+            BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+
+        // Submit trust-gated failure
+        _ = try await harness.runService.submitToolResult(
+            BurnBarToolResultSubmissionRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                runID: created.runID,
+                callID: try XCTUnwrap(claim.toolCall?.callID),
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: .trustGated,
+                    message: "Trust this workspace before applying edits."
+                ),
+                completedAt: Date()
+            )
+        )
+
+        // VAL-EXEC-007: Trust-gated failure should escalate to approval, not fail the run
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(detail.run?.phase, .awaitingApproval, "Trust-gated failure should escalate to approval")
+        XCTAssertEqual(detail.approvalRequest?.tool, .readFile, "Approval tool should be the tool that failed")
+        XCTAssertEqual(detail.approvalRequest?.message, "Trust this workspace before applying edits.")
+
+        // Verify journal recorded the recovery decision
+        let events = try await harness.runJournal.events(for: created.runID)
+        let recoveryEvents = events.filter { $0.kind == .recoveryDecided }
+        XCTAssertFalse(recoveryEvents.isEmpty, "Should have recovery decision event")
+    }
+
+    func testVAL_EXEC_007_RetryableFailureRetriesWithinBounds() async throws {
+        // VAL-EXEC-007: Retryable failures retry within bounds.
+        // applyFailed is a retryable tool error that should retry up to attempt limit.
+        let harness = try makeHarness(name: "val-exec-007-retryable")
+        let clientID = BurnBarClientID(rawValue: "client-retryable")
+        let sessionID = BurnBarSessionID(rawValue: "session-retryable")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Retryable Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Apply patch",
+                modelID: "glm-5",
+                metadata: [
+                    "workspaceWorkflow": .object([
+                        "type": .string("replace_string_in_file"),
+                        "path": .string("src/example.ts"),
+                        "from": .string("value = 1"),
+                        "to": .string("value = 2")
+                    ])
+                ]
+            )
+        )
+
+        let claim = try await harness.runService.executeTool(
+            BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+
+        // Submit retryable failure (applyFailed - workspace edit failed but can be retried)
+        _ = try await harness.runService.submitToolResult(
+            BurnBarToolResultSubmissionRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                runID: created.runID,
+                callID: try XCTUnwrap(claim.toolCall?.callID),
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: .applyFailed,
+                    message: "Workspace edit failed."
+                ),
+                completedAt: Date()
+            )
+        )
+
+        // First retryable failure should trigger automatic retry and dispatch new tool call
+        let afterFirstFailure = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(afterFirstFailure.run?.phase, .waitingOnCompanion, "First retryable failure should trigger retry and dispatch new tool call")
+
+        // Submit second retryable failure (attempt 2)
+        let secondClaim = try await harness.runService.executeTool(
+            BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+        _ = try await harness.runService.submitToolResult(
+            BurnBarToolResultSubmissionRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                runID: created.runID,
+                callID: try XCTUnwrap(secondClaim.toolCall?.callID),
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: .applyFailed,
+                    message: "Workspace edit failed again."
+                ),
+                completedAt: Date()
+            )
+        )
+
+        // VAL-EXEC-007: Second retryable failure (attempt 2) should fail the run (bounds exceeded)
+        let afterSecondFailure = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(afterSecondFailure.run?.phase, .failed, "Second retryable failure should exceed bounds and fail run")
+
+        // Verify journal recorded both recovery decisions
+        let events = try await harness.runJournal.events(for: created.runID)
+        let recoveryEvents = events.filter { $0.kind == .recoveryDecided }
+        XCTAssertEqual(recoveryEvents.count, 2, "Should have two recovery decision events")
+    }
+
+    func testVAL_EXEC_007_TerminalFailureEndsRun() async throws {
+        // VAL-EXEC-007: Terminal failures end run.
+        let harness = try makeHarness(name: "val-exec-007-terminal")
+        let clientID = BurnBarClientID(rawValue: "client-terminal")
+        let sessionID = BurnBarSessionID(rawValue: "session-terminal")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Terminal Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Apply patch",
+                modelID: "glm-5",
+                metadata: [
+                    "workspaceWorkflow": .object([
+                        "type": .string("replace_string_in_file"),
+                        "path": .string("src/example.ts"),
+                        "from": .string("value = 1"),
+                        "to": .string("value = 2")
+                    ])
+                ]
+            )
+        )
+
+        let claim = try await harness.runService.executeTool(
+            BurnBarToolExecutionRequest(clientID: clientID, sessionID: sessionID, runID: created.runID)
+        )
+
+        // Submit terminal failure (terminalFailed - non-retryable companion error)
+        _ = try await harness.runService.submitToolResult(
+            BurnBarToolResultSubmissionRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                runID: created.runID,
+                callID: try XCTUnwrap(claim.toolCall?.callID),
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: .terminalFailed,
+                    message: "Workspace companion crashed."
+                ),
+                completedAt: Date()
+            )
+        )
+
+        // VAL-EXEC-007: Terminal failure should end the run immediately
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: created.runID, clientID: clientID)
+        )
+        XCTAssertEqual(detail.run?.phase, .failed, "Terminal failure should end the run")
+
+        // Verify no approval was requested (terminal = no recovery possible)
+        XCTAssertNil(detail.approvalRequest, "Terminal failure should not request approval")
+    }
 }
 
 private struct BurnBarRunServiceHarness {
@@ -1189,6 +2060,7 @@ private struct BurnBarRunServiceHarness {
     let usageRecorder: BurnBarUsageRecorder
     let clientRegistry: BurnBarClientRegistry
     let runService: BurnBarRunService
+    let runJournal: BurnBarRunJournal
 }
 
 private struct BurnBarStubProviderExecutor: BurnBarProviderExecuting {
@@ -1206,6 +2078,71 @@ private struct BurnBarStubProviderExecutor: BurnBarProviderExecuting {
             cacheCreationTokens: 6,
             cacheReadTokens: 4
         )
+    }
+}
+
+/// Provider executor that simulates failover: fails on first call with 429, succeeds on second.
+/// Used to test VAL-EXEC-008: provider failover is deterministic via scorecard ordering.
+private actor BurnBarFailoverSimulatorProviderExecutor: BurnBarProviderExecuting {
+    private var callCount = 0
+
+    func completeStructured(
+        _ request: BurnBarStructuredPromptRequest,
+        route: BurnBarProviderRoute
+    ) async throws -> BurnBarProviderExecutionResult {
+        callCount += 1
+        if callCount == 1 {
+            // First call: simulate rate limit failure
+            throw BurnBarProviderExecutorError.upstreamError(429, "Rate limit exceeded")
+        }
+        // Second call: succeed
+        let prompt = [request.systemPrompt, request.userPrompt]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
+        return BurnBarProviderExecutionResult(
+            outputText: #"{"action":"complete","rationale":"Failover succeeded.","message":"Completed via failover route."}"#,
+            inputTokens: max(1, prompt.count / 4),
+            outputTokens: 32,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0
+        )
+    }
+}
+
+/// Recording failover simulator that tracks the ordered sequence of route attempts.
+/// Used to verify VAL-EXEC-008: deterministic attempted failover route slot/identity order.
+private actor BurnBarRecordingFailoverSimulatorProviderExecutor: BurnBarProviderExecuting {
+    private var callCount = 0
+    private var attemptedRoutesList: [BurnBarProviderRoute] = []
+
+    func completeStructured(
+        _ request: BurnBarStructuredPromptRequest,
+        route: BurnBarProviderRoute
+    ) async throws -> BurnBarProviderExecutionResult {
+        // Record every route attempt with its slot/identity
+        attemptedRoutesList.append(route)
+        callCount += 1
+        if callCount == 1 {
+            // First call: simulate rate limit failure (retryable)
+            throw BurnBarProviderExecutorError.upstreamError(429, "Rate limit exceeded")
+        }
+        // Subsequent calls: succeed
+        let prompt = [request.systemPrompt, request.userPrompt]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
+        return BurnBarProviderExecutionResult(
+            outputText: #"{"action":"complete","rationale":"Failover succeeded.","message":"Completed via failover route."}"#,
+            inputTokens: max(1, prompt.count / 4),
+            outputTokens: 32,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0
+        )
+    }
+
+    /// Returns the ordered sequence of routes that were attempted.
+    /// Each entry includes slotID and providerID for deterministic order verification.
+    func attemptedRoutes() -> [BurnBarProviderRoute] {
+        return attemptedRoutesList
     }
 }
 

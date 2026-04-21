@@ -1,0 +1,33 @@
+{
+  "milestone": "m4-mission-board-baseline",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 6,
+    "passed": 5,
+    "failed": 1,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-APP-007",
+    "VAL-APP-008",
+    "VAL-APP-010",
+    "VAL-BRIEF-005",
+    "VAL-EXT-008"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-CROSS-010",
+      "reason": "Both required commands exited 0, but required cross-surface assertion-tagged parity proof is incomplete: xcodebuild emitted mission-authoring/app-board evidence while extension-host output did not emit VAL-CROSS-010 or mission-authoring parity-tagged lines, so extension-authored parity evidence is missing from required command output."
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance sections for MC-EXT and MC-CROSS isolation/boundary rules.",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}

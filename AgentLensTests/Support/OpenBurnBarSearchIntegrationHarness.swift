@@ -683,7 +683,8 @@ enum OpenBurnBarFakeEmbedderError: LocalizedError {
     }
 }
 
-final class OpenBurnBarFakeEmbedder: ChunkEmbeddingProviding {
+/// Test seam is mutated by single-test flows; mark unchecked to avoid noisy Swift 6 sendability warnings.
+final class OpenBurnBarFakeEmbedder: ChunkEmbeddingProviding, @unchecked Sendable {
     private let deterministicEmbedder: DeterministicFakeEmbeddingProvider
     var failAll = false
     var failingSubstrings: Set<String> = []
