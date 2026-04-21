@@ -362,10 +362,16 @@ public actor BurnBarParallelDAGScheduler {
 
     // MARK: - VAL-EXEC-010: Reconciler Winner Selection
 
-    /// Finds terminal conflicting outcomes by filtering to nodes that are terminal
-    /// AND have no active dependents (i.e., all nodes that depend on this node are also terminal).
-    /// This excludes prerequisite/internal nodes that happened to complete but are not
-    /// true endpoints of parallel execution paths.
+    /// Finds terminal conflicting outcomes - ONLY terminal leaf nodes with no dependents.
+    /// This excludes prerequisite/internal nodes even when their dependents are terminal,
+    /// ensuring only true endpoints of parallel execution paths participate in reconciliation.
+    ///
+    /// A node is a "true conflicting terminal outcome" if and only if:
+    /// 1. The node is in a terminal state (completed or failed)
+    /// 2. The node has NO dependents (i.e., no other nodes depend on it)
+    ///
+    /// Prerequisites and internal nodes are excluded because they are not endpoints
+    /// of parallel execution paths - their "completion" is just enabling dependents.
     private func findTerminalConflictingOutcomes() -> [BurnBarDAGNode] {
         // Build a map of which nodes depend on each node
         // node.dependsOn lists prerequisites; we need to find dependents (reverse mapping)
@@ -376,23 +382,16 @@ public actor BurnBarParallelDAGScheduler {
             }
         }
 
-        // Filter to terminal nodes (completed or failed) whose all dependents are also terminal
+        // Filter to ONLY terminal leaf nodes (no dependents)
+        // This ensures prerequisite/internal nodes never participate as winner candidates
         return dag.nodes.filter { node in
             guard let status = state.nodeStatuses[node.id.rawValue] else { return false }
             guard status == .completed || status == .failed else { return false }
 
-            // Check if all dependents are also terminal
+            // A true terminal outcome must be a leaf node (no dependents)
+            // Prerequisites/internal nodes have dependents and are thus excluded
             let dependents = dependentsMap[node.id] ?? []
-            if dependents.isEmpty {
-                // No dependents means this IS a terminal outcome (leaf node)
-                return true
-            }
-
-            // All dependents must be terminal for this node to be a conflicting outcome
-            return dependents.allSatisfy { depID in
-                guard let depStatus = state.nodeStatuses[depID.rawValue] else { return false }
-                return depStatus == .completed || depStatus == .failed || depStatus == .skipped
-            }
+            return dependents.isEmpty
         }
     }
 
@@ -486,57 +485,52 @@ public actor BurnBarParallelDAGScheduler {
         if terminalConflictingOutcomes.count == 1 {
             winnerReasonCode = .onlyCandidate
             rationale = "Only candidate node - winner is the only terminal outcome"
-        } else if let wMetrics = winnerMetrics {
-            // VAL-EXEC-010: Use winner-vs-runner-up deltas instead of absolute thresholds
-            // Check if winner won due to success over failure
-            let hasFailedCandidates = sortedCandidates.dropFirst().contains { node in
-                guard let m = candidateScores[node.id]?.metrics else { return false }
-                return !m.isSuccessful
-            }
-            if wMetrics.isSuccessful && hasFailedCandidates {
-                winnerReasonCode = .successOverFailure
-                rationale = "Winner succeeded while other candidates failed"
-            }
-            // Check if winner won due to higher evidence completeness vs runner-up
-            else if let rMetrics = runnerUpMetrics {
-                let evidenceDelta = wMetrics.evidenceCompleteness - rMetrics.evidenceCompleteness
-                let riskDelta = rMetrics.riskResidual - wMetrics.riskResidual  // Inverted: lower is better
-                let costDelta = rMetrics.costPenalty - wMetrics.costPenalty    // Inverted: lower is better
-                let latencyDelta = rMetrics.latencyPenalty - wMetrics.latencyPenalty  // Inverted: lower is better
-                let sequenceDelta = (rMetrics.sequenceNumber) - wMetrics.sequenceNumber  // Inverted: lower is better
+        } else if let wMetrics = winnerMetrics, let rMetrics = runnerUpMetrics {
+            // VAL-EXEC-010: Compute ALL winner-vs-runner-up deltas strictly
+            // These deltas determine what made the winner outperform the runner-up
+            let successDelta = (wMetrics.isSuccessful ? 1 : 0) - (rMetrics.isSuccessful ? 1 : 0)
+            let evidenceDelta = wMetrics.evidenceCompleteness - rMetrics.evidenceCompleteness
+            let riskDelta = rMetrics.riskResidual - wMetrics.riskResidual  // Inverted: lower is better
+            let costDelta = rMetrics.costPenalty - wMetrics.costPenalty    // Inverted: lower is better
+            let latencyDelta = rMetrics.latencyPenalty - wMetrics.latencyPenalty  // Inverted: lower is better
+            let sequenceDelta = rMetrics.sequenceNumber - wMetrics.sequenceNumber  // Inverted: lower is better
 
-                // Determine what gave the winner the decisive advantage
-                if evidenceDelta > 0.01 {  // Winner has meaningfully higher evidence
-                    winnerReasonCode = .higherEvidenceCompleteness
-                    rationale = String(format: "Winner had higher evidence completeness (%.2f vs %.2f, delta=%.2f)",
-                                       wMetrics.evidenceCompleteness, rMetrics.evidenceCompleteness, evidenceDelta)
-                } else if riskDelta > 0.01 {  // Winner has meaningfully lower risk
-                    winnerReasonCode = .lowerRiskResidual
-                    rationale = String(format: "Winner had lower risk residual (%.2f vs %.2f, delta=%.2f)",
-                                       wMetrics.riskResidual, rMetrics.riskResidual, riskDelta)
-                } else if costDelta > 0.01 || latencyDelta > 0.01 {  // Winner has meaningfully lower cost/latency
-                    winnerReasonCode = .lowerCostLatencyPenalty
-                    rationale = String(format: "Winner had lower cost/latency (cost=%.2f vs %.2f, latency=%.2f vs %.2f)",
-                                       wMetrics.costPenalty, rMetrics.costPenalty,
-                                       wMetrics.latencyPenalty, rMetrics.latencyPenalty)
-                } else if sequenceDelta > 0 {  // Winner completed earlier
-                    winnerReasonCode = .earliestSequenceNumber
-                    rationale = String(format: "Winner had earliest terminal sequence (%d vs %d, delta=%d)",
-                                       wMetrics.sequenceNumber, rMetrics.sequenceNumber, sequenceDelta)
-                } else {
-                    winnerReasonCode = .lexicalTieBreak
-                    rationale = "Winner selected by lexical tie-break on candidate ID"
-                }
-            }
-            // Fallback if no runner-up but multiple candidates (shouldn't happen)
-            else if wMetrics.sequenceNumber == 0 {
+            // Determine winner reason strictly from winner-vs-runner-up deltas
+            // Priority: success > evidence > risk > cost/latency > sequence > tie-break
+            if successDelta > 0 {
+                // Winner succeeded and runner-up failed
+                winnerReasonCode = .successOverFailure
+                rationale = String(format: "Winner succeeded while runner-up failed (success delta=%d)", successDelta)
+            } else if evidenceDelta > 0.01 {
+                // Winner has meaningfully higher evidence completeness
+                winnerReasonCode = .higherEvidenceCompleteness
+                rationale = String(format: "Winner had higher evidence completeness (%.2f vs %.2f, delta=%.2f)",
+                                   wMetrics.evidenceCompleteness, rMetrics.evidenceCompleteness, evidenceDelta)
+            } else if riskDelta > 0.01 {
+                // Winner has meaningfully lower risk residual
+                winnerReasonCode = .lowerRiskResidual
+                rationale = String(format: "Winner had lower risk residual (%.2f vs %.2f, delta=%.2f)",
+                                   wMetrics.riskResidual, rMetrics.riskResidual, riskDelta)
+            } else if costDelta > 0.01 || latencyDelta > 0.01 {
+                // Winner has meaningfully lower cost/latency penalty
+                winnerReasonCode = .lowerCostLatencyPenalty
+                rationale = String(format: "Winner had lower cost/latency (cost=%.2f vs %.2f, latency=%.2f vs %.2f)",
+                                   wMetrics.costPenalty, rMetrics.costPenalty,
+                                   wMetrics.latencyPenalty, rMetrics.latencyPenalty)
+            } else if sequenceDelta > 0 {
+                // Winner completed earlier (lower sequence number)
                 winnerReasonCode = .earliestSequenceNumber
-                rationale = "Winner had earliest terminal sequence number"
-            }
-            else {
+                rationale = String(format: "Winner had earliest terminal sequence (%d vs %d, delta=%d)",
+                                   wMetrics.sequenceNumber, rMetrics.sequenceNumber, sequenceDelta)
+            } else {
+                // All deltas are zero/negligible - lexical tie-break
                 winnerReasonCode = .lexicalTieBreak
                 rationale = "Winner selected by lexical tie-break on candidate ID"
             }
+        } else {
+            // Fallback: should not happen with 2+ candidates, but handle gracefully
+            winnerReasonCode = .lexicalTieBreak
+            rationale = "Winner selected by lexical tie-break (runner-up metrics unavailable)"
         }
 
         // Build candidate scores map for the artifact
