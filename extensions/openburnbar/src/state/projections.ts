@@ -74,7 +74,7 @@ export function projectRuns(
         id: 'client-session-unavailable',
         title: 'Client session unavailable',
         phase: 'failed',
-        note: state.lastError ?? 'OpenBurnBar reached the daemon but could not attach the sidebar session.',
+        note: clientSessionRecoveryNote(state.lastError),
         updatedAt: timestamp,
         source: 'projected'
       }
@@ -598,7 +598,6 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         status: 'failed',
         recommendation: 'review',
         phase: 'failed',
-        note: 'Mission board unavailable: daemon is not connected.',
         updatedAt: timestamp,
         source: 'projected',
         approved: false,
@@ -609,7 +608,10 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         },
         packetsCount: 0,
         takeoverCount: 0,
-        closureQuestionState: 'Unknown'
+        closureQuestionState: 'Unknown',
+        note: state.lastError
+          ? `Mission board unavailable: ${state.lastError} ${daemonRecoveryStep(state.lastError)}`
+          : `Mission board unavailable. ${daemonRecoveryStep(undefined)}`
       }
     ];
   }
@@ -623,7 +625,6 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         status: 'failed',
         recommendation: 'review',
         phase: 'failed',
-        note: 'Mission board unavailable: client session is not attached.',
         updatedAt: timestamp,
         source: 'projected',
         approved: false,
@@ -634,7 +635,8 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         },
         packetsCount: 0,
         takeoverCount: 0,
-        closureQuestionState: 'Unknown'
+        closureQuestionState: 'Unknown',
+        note: `Mission board unavailable: ${clientSessionRecoveryNote(state.lastError)}`
       }
     ];
   }
@@ -1548,7 +1550,7 @@ function recommendedNextStep(state: OpenBurnBarState): string | undefined {
   }
 
   if (!state.clientAttached) {
-    return 'Run OpenBurnBar: Reconnect to attach a fresh daemon client session.';
+    return clientSessionRecoveryNote();
   }
 
   if (state.runError) {
@@ -1599,7 +1601,7 @@ function runRecoveryStep(runId: string, state: OpenBurnBarState): string | undef
   case 'daemon-unavailable':
     return daemonRecoveryStep(state.lastError);
   case 'client-session-unavailable':
-    return 'Run OpenBurnBar: Reconnect to attach a fresh daemon client session.';
+    return clientSessionRecoveryNote();
   case 'run-state-unavailable':
     return 'Refresh the OpenBurnBar runs view. If the daemon stays healthy but run state does not load, reconnect.';
   case 'empty-run-list':
@@ -1631,6 +1633,11 @@ function runRecoveryStep(runId: string, state: OpenBurnBarState): string | undef
 
 function shortID(value: string): string {
   return value.slice(0, 8);
+}
+
+function clientSessionRecoveryNote(lastError?: string): string {
+  const step = 'Run OpenBurnBar: Reconnect to attach a fresh daemon client session.';
+  return lastError ? `${lastError} ${step}` : step;
 }
 
 function daemonRecoveryNote(lastError?: string): string {

@@ -240,7 +240,7 @@ describe("OpenBurnBarExtensionController", () => {
     );
   });
 
-  it("falls back to a repair-oriented placeholder when the daemon is unavailable", async () => {
+  it("VAL-EXT-001: daemon-unavailable state surfaces actionable reconnect/repair recovery guidance", async () => {
     const controller = new OpenBurnBarExtensionController(
       {
         client: {
@@ -296,6 +296,10 @@ describe("OpenBurnBarExtensionController", () => {
         value: expect.stringContaining("Repair Daemon")
       })
     );
+
+    const vm = buildPanelViewModel(controller.snapshot);
+    expect(vm.recoveryMessage).toContain("Reconnect");
+    expect(vm.recoveryMessage).toContain("Repair Daemon");
   });
 
   it("runs repair and refreshes daemon-backed state", async () => {
@@ -337,7 +341,7 @@ describe("OpenBurnBarExtensionController", () => {
     expect(capabilities).toHaveBeenCalledTimes(2);
   });
 
-  it("reattaches and retries when a run RPC hits a session mismatch", async () => {
+  it("VAL-EXT-002: reattaches and retries when a run RPC hits a session mismatch", async () => {
     const client = makeConnectedClient({
       createRun: vi
         .fn()
@@ -379,6 +383,77 @@ describe("OpenBurnBarExtensionController", () => {
     expect(result.runID).toBe("run-new");
     expect(client.createRun).toHaveBeenCalledTimes(2);
     expect(client.attach).toHaveBeenCalledTimes(3);
+    expect(controller.snapshot.connectionStatus).toBe("connected");
+    expect(controller.snapshot.clientAttached).toBe(true);
+    expect(controller.snapshot.lastError).toBeUndefined();
+  });
+
+  it("VAL-EXT-002: refresh auto-recovers poll session mismatch via deterministic reattach-and-retry", async () => {
+    const client = makeConnectedClient({
+      pollRuns: vi
+        .fn()
+        .mockRejectedValueOnce(
+          new Error(
+            "Client session mismatch. Expected 'old-session', received 'session-1'."
+          )
+        )
+        .mockResolvedValue({
+          runs: [
+            {
+              runID: "run-1234",
+              clientID: "test-client",
+              sessionID: "session-1",
+              phase: "awaiting_approval",
+              modelID: "glm-4.6",
+              updatedAt: "2026-03-22T10:00:00.000Z",
+              activeApprovalID: "approval-1"
+            }
+          ],
+          approvals: [
+            {
+              approvalID: "approval-1",
+              runID: "run-1234",
+              tool: "apply_patch",
+              title: "Approve apply_patch",
+              message: "OpenBurnBar needs approval before continuing this simulated tool step.",
+              requestedAt: "2026-03-22T10:00:00.000Z"
+            }
+          ],
+          pendingToolCalls: [],
+          arbitration: {
+            activeClientID: "test-client",
+            attachedClientIDs: ["test-client"],
+            reason: "controller_reconnected"
+          },
+          emittedAt: "2026-03-22T10:00:00.000Z"
+        })
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+
+    expect(client.pollRuns).toHaveBeenCalledTimes(2);
+    expect(client.attach).toHaveBeenCalledTimes(2);
+    expect(controller.snapshot.connectionStatus).toBe("connected");
+    expect(controller.snapshot.clientAttached).toBe(true);
+    expect(controller.snapshot.lastError).toBeUndefined();
+    expect(controller.snapshot.runs[0]?.id).toBe("run-1234");
   });
 
   it("surfaces a no-workspace empty state without claiming tools are ready", async () => {
@@ -844,7 +919,7 @@ describe("OpenBurnBarExtensionController", () => {
     );
   });
 
-  it("claims controller role and retries when a run action is rejected as observer-only", async () => {
+  it("VAL-EXT-003: observer-only mutation rejection claims control once and retries deterministically", async () => {
     const createRun = vi
       .fn()
       .mockRejectedValueOnce(new Error("Client 'test-client' is attached as an observer and cannot control runs."))
@@ -922,6 +997,55 @@ describe("OpenBurnBarExtensionController", () => {
       clientID: "test-client",
       sessionID: "session-1"
     });
+    expect(claimControl).toHaveBeenCalledTimes(1);
+    expect(createRun).toHaveBeenCalledTimes(2);
+  });
+
+  it("VAL-EXT-003: observer mutation errors with claim-control guidance also trigger claim-and-retry", async () => {
+    const createRun = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error("Observer client cannot mutate mission state; claim control and retry.")
+      )
+      .mockResolvedValue({
+        runID: "run-claimed-variant",
+        phase: "planning"
+      });
+    const claimControl = vi.fn().mockResolvedValue({
+      activeClientID: "test-client",
+      attachedClientIDs: ["other-client", "test-client"],
+      reason: "controller_transferred_to_requesting_client"
+    });
+    const client = makeConnectedClient({
+      createRun,
+      claimControl
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    const created = await controller.startRun({
+      prompt: "Need control",
+      modelID: "glm-4.6"
+    });
+
+    expect(created.runID).toBe("run-claimed-variant");
+    expect(claimControl).toHaveBeenCalledTimes(1);
     expect(createRun).toHaveBeenCalledTimes(2);
   });
 
@@ -1181,7 +1305,7 @@ describe("buildPanelViewModel", () => {
     ).toBe(true);
   });
 
-  it("produces daemon-unavailable state with recovery message", async () => {
+  it("VAL-EXT-001: produces daemon-unavailable panel state with explicit recovery messaging", async () => {
     const controller = new OpenBurnBarExtensionController(
       {
         client: {
@@ -1213,6 +1337,8 @@ describe("buildPanelViewModel", () => {
     expect(vm.isDaemonUnavailable).toBe(true);
     expect(vm.isConnected).toBe(false);
     expect(vm.recoveryMessage).toContain("socket missing");
+    expect(vm.recoveryMessage).toContain("Reconnect");
+    expect(vm.recoveryMessage).toContain("Repair Daemon");
     expect(vm.isComposerEnabled).toBe(false);
     expect(vm.activeRun?.phase).toBe("failed");
   });

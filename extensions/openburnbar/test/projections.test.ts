@@ -95,13 +95,14 @@ describe('projectRuns', () => {
     expect(result[0].source).toBe('projected');
   });
 
-  it('should return daemon unavailable when not connected', () => {
+  it('VAL-EXT-001: returns daemon-unavailable projection with actionable reconnect/repair guidance', () => {
     const state = createMockState({ connectionStatus: 'disconnected' });
     const result = projectRuns(state);
 
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('daemon-unavailable');
     expect(result[0].phase).toBe('failed');
+    expect(result[0].note).toContain('Reconnect');
   });
 
   it('should return daemon unavailable when health is missing', () => {
@@ -112,13 +113,26 @@ describe('projectRuns', () => {
     expect(result[0].id).toBe('daemon-unavailable');
   });
 
-  it('should return client session unavailable when not attached', () => {
+  it('VAL-EXT-001: returns client-session-unavailable projection with reconnect guidance', () => {
     const state = createMockState({ clientAttached: false });
     const result = projectRuns(state);
 
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('client-session-unavailable');
     expect(result[0].phase).toBe('failed');
+    expect(result[0].note).toContain('Reconnect');
+  });
+
+  it('VAL-EXT-001: includes Repair Daemon guidance when daemon socket is missing', () => {
+    const state = createMockState({
+      connectionStatus: 'disconnected',
+      lastError: 'socket missing'
+    });
+    const result = projectRuns(state);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('daemon-unavailable');
+    expect(result[0].note).toContain('Repair Daemon');
   });
 
   it('should return run error state when runError is set', () => {
@@ -800,7 +814,7 @@ function createMockMission(overrides: Partial<BurnBarMissionSnapshot> = {}): Bur
 
 // VAL-EXT-008: Extension mission list/detail projections mirror daemon mission lifecycle transitions and ordering
 describe('buildMissionRows', () => {
-  it('should return daemon unavailable state when not connected', () => {
+  it('VAL-EXT-001: mission rows expose daemon-unavailable recovery guidance when disconnected', () => {
     const state = createMockState({ connectionStatus: 'disconnected' });
     const result = buildMissionRows(state);
 
@@ -808,9 +822,10 @@ describe('buildMissionRows', () => {
     expect(result[0].id).toBe('daemon-unavailable');
     expect(result[0].phase).toBe('failed');
     expect(result[0].source).toBe('projected');
+    expect(result[0].note).toContain('Reconnect');
   });
 
-  it('should return client session unavailable when not attached', () => {
+  it('VAL-EXT-001: mission rows expose client-session reconnect guidance when not attached', () => {
     const state = createMockState({ clientAttached: false });
     const result = buildMissionRows(state);
 
@@ -818,6 +833,7 @@ describe('buildMissionRows', () => {
     expect(result[0].id).toBe('client-session-unavailable');
     expect(result[0].phase).toBe('failed');
     expect(result[0].source).toBe('projected');
+    expect(result[0].note).toContain('Reconnect');
   });
 
   it('should return empty mission list when no missions', () => {

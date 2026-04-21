@@ -51,6 +51,9 @@ export interface BurnBarStartRunOptions {
   metadata?: Record<string, BurnBarJSONValue>;
 }
 
+const SESSION_RETRY_LIMIT = 2;
+const CONTROLLER_RETRY_LIMIT = 2;
+
 class SimpleEventEmitter<T> {
   private listeners = new Set<(event: T) => void>();
 
@@ -544,39 +547,49 @@ export class OpenBurnBarExtensionController {
   }
 
   private async withControllerRetry<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await this.withSessionRetry(operation);
-    } catch (error) {
-      if (!isObserverControlError(error)) {
-        throw error;
-      }
+    for (let attempt = 0; attempt < CONTROLLER_RETRY_LIMIT; attempt += 1) {
+      try {
+        return await this.withSessionRetry(operation);
+      } catch (error) {
+        const shouldRetry =
+          isObserverControlError(error) && attempt < CONTROLLER_RETRY_LIMIT - 1;
+        if (!shouldRetry) {
+          throw error;
+        }
 
-      const arbitration = await this.withSessionRetry(() =>
-        this.dependencies.client.claimControl({
-          clientID: this.clientID,
-          sessionID: this.sessionID
-        })
-      );
-      this.patchState({ arbitration });
-      return await this.withSessionRetry(operation);
+        const arbitration = await this.withSessionRetry(() =>
+          this.dependencies.client.claimControl({
+            clientID: this.clientID,
+            sessionID: this.sessionID
+          })
+        );
+        this.patchState({ arbitration, lastError: undefined });
+      }
     }
+
+    throw new Error('OpenBurnBar controller retry limit reached.');
   }
 
   private async withSessionRetry<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation();
-    } catch (error) {
-      if (!isSessionMismatchError(error)) {
-        throw error;
-      }
+    for (let attempt = 0; attempt < SESSION_RETRY_LIMIT; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        const shouldRetry =
+          isSessionMismatchError(error) && attempt < SESSION_RETRY_LIMIT - 1;
+        if (!shouldRetry) {
+          throw error;
+        }
 
-      await this.attachClientSession();
-      this.patchState({
-        clientAttached: true,
-        lastError: undefined
-      });
-      return await operation();
+        await this.attachClientSession();
+        this.patchState({
+          clientAttached: true,
+          lastError: undefined
+        });
+      }
     }
+
+    throw new Error('OpenBurnBar session retry limit reached.');
   }
 
   private async refreshSelectedRunDetail(runId = this.state.selectedRunId): Promise<void> {
@@ -835,7 +848,14 @@ function isObserverControlError(error: unknown): boolean {
   }
 
   const message = error.message.toLowerCase();
-  return message.includes('attached as an observer') && message.includes('cannot control runs');
+  return (
+    (message.includes('attached as an observer') && message.includes('cannot control runs')) ||
+    (message.includes('observer') &&
+      (message.includes('cannot control') ||
+        message.includes('cannot mutate') ||
+        message.includes('claim control') ||
+        message.includes('claimcontrol')))
+  );
 }
 
 function isSessionMismatchError(error: unknown): boolean {
@@ -843,7 +863,11 @@ function isSessionMismatchError(error: unknown): boolean {
     return false;
   }
 
-  return error.message.toLowerCase().includes('client session mismatch');
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('client session mismatch') ||
+    (message.includes('session mismatch') && message.includes('expected') && message.includes('received'))
+  );
 }
 
 function chooseSelectedRunId(runs: OpenBurnBarState['runs'], currentSelectedRunId?: string): string | undefined {
