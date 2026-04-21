@@ -1,7 +1,7 @@
 {
   "milestone": "m12-reconciler-winner-selection",
-  "round": 2,
-  "status": "fail",
+  "round": 3,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -21,38 +21,20 @@
   },
   "reviewsSummary": {
     "total": 1,
-    "passed": 0,
-    "failed": 1,
-    "failedFeatures": [
-      "m12-reconciler-candidate-scope-and-terminal-sequence-fix"
-    ]
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "m12-reconciler-candidate-scope-and-terminal-sequence-fix",
-      "severity": "blocking",
-      "description": "Candidate scoping is still incorrect. `findTerminalConflictingOutcomes()` accepts any completed/failed node whose dependents are terminal (`dependents.allSatisfy(...)`). Because winner selection is only invoked after `allTerminal` is true (line 311), this condition is satisfied for completed prerequisite/internal nodes as well, so non-terminal outcomes can still enter reconciliation candidates."
-    },
-    {
-      "featureId": "m12-reconciler-candidate-scope-and-terminal-sequence-fix",
-      "severity": "blocking",
-      "description": "Winner-reason attribution is not fully runner-up delta based. The success check uses `sortedCandidates.dropFirst().contains` to detect any failed candidate, so with 3+ candidates it can emit `SUCCESS_OVER_FAILURE` even when the runner-up is successful. This violates deterministic winner-vs-runner-up attribution intent for persisted reason codes."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": ".factory/skills/runtime-orchestration-worker/SKILL.md",
-      "suggestion": "Add an explicit scrutiny-facing checklist item that handoff claims followedProcedure: true only when all required validator surfaces listed by the skill have been executed and recorded in handoff evidence.",
-      "evidence": ".factory/skills/runtime-orchestration-worker/SKILL.md:22-24 vs /Users/albertonunez/.factory/missions/d1d1287f-f2a9-4a34-8ba9-fce37df13493/handoffs/2026-04-20T23-53-03-115Z__m12-reconciler-candidate-scope-and-terminal-sequence-fix__f3fde543-56e1-4bf3-a6bf-9193cd3c7b98.json:16-26",
-      "isSystemic": false
+      "suggestion": "Strengthen followedProcedure gating so workers may mark `followedProcedure: true` only when each required focused validator command is explicitly executed and recorded (or the skill is updated to explicitly allow equivalent assertion-filter evidence).",
+      "evidence": "Recurring across three m12 rounds: .factory/validation/m12-reconciler-winner-selection/scrutiny/synthesis.round1.json and synthesis.round2.json plus current review .factory/validation/m12-reconciler-winner-selection/scrutiny/reviews/m12-reconciler-candidate-scope-and-terminal-sequence-fix.json.",
+      "isSystemic": true
     }
   ],
-  "rejectedObservations": [
-    {
-      "observation": "Mission guidance cross-surface evidence gap observation from prior failed feature review.",
-      "reason": "already-documented-in-round-1"
-    }
-  ],
-  "previousRound": ".factory/validation/m12-reconciler-winner-selection/scrutiny/synthesis.round1.json"
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/m12-reconciler-winner-selection/scrutiny/synthesis.round2.json"
 }

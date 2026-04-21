@@ -1,34 +1,21 @@
 {
   "featureId": "m12-reconciler-candidate-scope-and-terminal-sequence-fix",
-  "reviewedAt": "2026-04-20T23:59:24Z",
-  "commitId": "1a35036f9fe4a46cd8e98fad2fb20e16515bcb6b",
+  "reviewedAt": "2026-04-21T00:14:53Z",
+  "commitId": "b2a08edf155244eaf5a599ac76d539d18924ace4",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
-  "status": "fail",
+  "status": "pass",
   "codeReview": {
-    "summary": "The fix correctly switched sequence sourcing to runtime completion order, but two contract-critical blockers remain: candidate scoping still admits prerequisite/internal nodes after DAG completion, and winner-reason attribution is not strictly winner-vs-runner-up for success-over-failure.",
-    "issues": [
-      {
-        "file": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/BurnBarParallelDAGScheduler.swift",
-        "line": 392,
-        "severity": "blocking",
-        "description": "Candidate scoping is still incorrect. `findTerminalConflictingOutcomes()` accepts any completed/failed node whose dependents are terminal (`dependents.allSatisfy(...)`). Because winner selection is only invoked after `allTerminal` is true (line 311), this condition is satisfied for completed prerequisite/internal nodes as well, so non-terminal outcomes can still enter reconciliation candidates."
-      },
-      {
-        "file": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/BurnBarParallelDAGScheduler.swift",
-        "line": 492,
-        "severity": "blocking",
-        "description": "Winner-reason attribution is not fully runner-up delta based. The success check uses `sortedCandidates.dropFirst().contains` to detect any failed candidate, so with 3+ candidates it can emit `SUCCESS_OVER_FAILURE` even when the runner-up is successful. This violates deterministic winner-vs-runner-up attribution intent for persisted reason codes."
-      }
-    ]
+    "summary": "Rerun addresses both prior blockers. Candidate scoping now restricts reconciliation inputs to terminal leaf outcomes only (`dependents.isEmpty`), which excludes prerequisite/internal nodes even after full DAG completion. Winner reason attribution now computes success/evidence/risk/cost/latency/sequence deltas strictly from winner vs runner-up metrics, removing the prior ANY-failed-candidate shortcut.",
+    "issues": []
   },
   "sharedStateObservations": [
     {
       "area": "skills",
-      "observation": "The runtime-orchestration skill requires three focused daemon test commands (RunService, MissionControlService, ProviderRouter), but this fix handoff marked `followedProcedure: true` while running only MissionControl plus build/core tests.",
-      "evidence": ".factory/skills/runtime-orchestration-worker/SKILL.md:22-24 vs /Users/albertonunez/.factory/missions/d1d1287f-f2a9-4a34-8ba9-fce37df13493/handoffs/2026-04-20T23-53-03-115Z__m12-reconciler-candidate-scope-and-terminal-sequence-fix__f3fde543-56e1-4bf3-a6bf-9193cd3c7b98.json:16-26"
+      "observation": "The runtime-orchestration skill still requires three focused daemon commands (RunService, MissionControlService, ProviderRouter) with explicit per-command evidence, but this rerun handoff sets `followedProcedure: true` without running the focused RunService/ProviderRouter commands directly.",
+      "evidence": ".factory/skills/runtime-orchestration-worker/SKILL.md (Work Procedure step 5) vs /Users/albertonunez/.factory/missions/d1d1287f-f2a9-4a34-8ba9-fce37df13493/handoffs/2026-04-21T00-09-16-681Z__m12-reconciler-candidate-scope-and-terminal-sequence-fix__a9944963-2bde-48bd-81f5-fb18df708dae.json (`verification.commandsRun` includes VAL_EXEC_010, VAL_CROSS_006, BurnBarMissionControlServiceTests, full daemon/core only)."
     }
   ],
-  "addressesFailureFrom": ".factory/validation/m12-reconciler-winner-selection/scrutiny/reviews/m12-reconciler-winner-selection.json",
-  "summary": "Fail. Runtime completion-sequence sourcing was improved, but the fix does not fully resolve the prior blocking scope/attribution concerns: internal nodes can still be candidate winners, and success-over-failure reasoning is not restricted to winner-vs-runner-up comparison."
+  "addressesFailureFrom": ".factory/validation/m12-reconciler-winner-selection/scrutiny/reviews/m12-reconciler-candidate-scope-and-terminal-sequence-fix.json",
+  "summary": "Pass. The rerun commit genuinely resolves the prior scrutiny failures: prerequisite/internal nodes are no longer eligible winner candidates, and persisted winner reason attribution now uses strict winner-vs-runner-up deltas."
 }
