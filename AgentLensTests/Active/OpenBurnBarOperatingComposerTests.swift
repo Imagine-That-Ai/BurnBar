@@ -1536,6 +1536,167 @@ extension OpenBurnBarOperatingComposerTests {
         XCTAssertEqual(mappedMission.prLinkage?.mergeCommitSHA, "abc123def")
     }
 
+    /// VAL-CROSS-004 Evidence: App mission/question projection keeps lifecycle/approval/recovery/closure fields deterministic.
+    @MainActor
+    func testVAL_CROSS_004_DaemonLifecycleApprovalRecoveryAndClosureFieldsStayDeterministicInAppRuntime() throws {
+        let now = Date(timeIntervalSince1970: 1_710_002_000)
+        let missionID = BurnBarMissionID(rawValue: "mission-apollo-cross-004")
+        let question = BurnBarPendingQuestionSnapshot(
+            id: BurnBarQuestionID(rawValue: "question-apollo-cross-004"),
+            projectSlug: "apollo",
+            title: "Approve mission closure",
+            prompt: "Should OpenBurnBar finalize this closure now?",
+            stageLabel: "Mission Closure",
+            status: .pending,
+            priority: .high,
+            askedAt: now,
+            metadata: [
+                "mission_id": .string(missionID.rawValue),
+                "question_kind": .string("mission_closure_approval"),
+                "closure_state": .string("awaiting_approval")
+            ]
+        )
+        let mission = BurnBarMissionSnapshot(
+            id: missionID,
+            projectSlug: "apollo",
+            title: "Deterministic app parity mission",
+            summary: "Lifecycle/approval/recovery/closure values should stay stable.",
+            status: .awaitingApproval,
+            recommendation: .review,
+            createdAt: now.addingTimeInterval(-120),
+            updatedAt: now,
+            approval: BurnBarMissionApprovalSnapshot(
+                approved: false,
+                approvedBy: nil
+            ),
+            packets: [
+                BurnBarMissionPacketSnapshot(
+                    id: BurnBarMissionPacketID(rawValue: "packet-cross-004"),
+                    missionID: missionID,
+                    workerName: "review-worker",
+                    objective: "Verify deterministic projection mapping",
+                    status: .running,
+                    runID: BurnBarRunID(rawValue: "run-cross-004"),
+                    dispatchedAt: now.addingTimeInterval(-60)
+                )
+            ],
+            takeoverHistory: [
+                BurnBarAutoTakeoverRecord(
+                    id: "takeover-cross-004",
+                    projectSlug: "apollo",
+                    missionID: missionID,
+                    sourceRunID: BurnBarRunID(rawValue: "run-cross-004-source"),
+                    takeoverRunID: BurnBarRunID(rawValue: "run-cross-004"),
+                    status: .completed,
+                    reason: "stalled_run",
+                    createdAt: now.addingTimeInterval(-30),
+                    updatedAt: now.addingTimeInterval(-5)
+                )
+            ]
+        )
+        let summary = BurnBarControllerSummary(
+            updatedAt: now,
+            activeProjectSlug: "apollo",
+            counts: BurnBarControllerCounts(
+                projectCount: 1,
+                pendingQuestionCount: 1,
+                openFollowupCount: 0,
+                activeMissionCount: 1,
+                staleProjectCount: 0
+            ),
+            freshness: .fresh
+        )
+
+        let runtimeA = OpenBurnBarDaemonSocketClient.makeControllerRuntimeSnapshot(
+            summary: summary,
+            questions: [question],
+            followups: [],
+            missions: [mission],
+            notificationHealth: BurnBarNotificationHealthSnapshot(checkedAt: now, channels: []),
+            simulatorRuns: []
+        )
+        let runtimeB = OpenBurnBarDaemonSocketClient.makeControllerRuntimeSnapshot(
+            summary: summary,
+            questions: [question],
+            followups: [],
+            missions: [mission],
+            notificationHealth: BurnBarNotificationHealthSnapshot(checkedAt: now, channels: []),
+            simulatorRuns: []
+        )
+
+        XCTAssertEqual(runtimeA.questions, runtimeB.questions)
+        XCTAssertEqual(runtimeA.missions, runtimeB.missions)
+
+        let mappedMission = try XCTUnwrap(runtimeA.missions.first)
+        XCTAssertEqual(mappedMission.state, .planned)
+        XCTAssertEqual(mappedMission.approval, .pending)
+        XCTAssertEqual(mappedMission.latestTakeoverState, .completed)
+        XCTAssertEqual(mappedMission.latestTakeoverReason, "stalled_run")
+        XCTAssertEqual(mappedMission.latestTakeoverRunID, "run-cross-004")
+        XCTAssertEqual(mappedMission.takeoverCount, 1)
+        XCTAssertEqual(runtimeA.pendingQuestions.first?.id, "question-apollo-cross-004")
+    }
+
+    /// VAL-CROSS-011 Evidence: Daemon team-collaboration ownership/role/audit rails map into app runtime mission records.
+    @MainActor
+    func testVAL_CROSS_011_DaemonTeamCollaborationRailsMapIntoAppRuntimeMissionRecord() throws {
+        let now = Date(timeIntervalSince1970: 1_710_002_100)
+        let missionID = BurnBarMissionID(rawValue: "mission-apollo-cross-011")
+        let mission = BurnBarMissionSnapshot(
+            id: missionID,
+            projectSlug: "apollo",
+            title: "Ownership transfer mission",
+            summary: "App runtime should expose owner/assignee/role/audit parity fields.",
+            status: .awaitingApproval,
+            recommendation: .review,
+            createdAt: now.addingTimeInterval(-120),
+            updatedAt: now,
+            approval: BurnBarMissionApprovalSnapshot(
+                approved: false,
+                approvedBy: nil
+            ),
+            metadata: [
+                "team_owner_id": .string("bob"),
+                "team_assignee_id": .string("worker-b"),
+                "role_can_approve": .bool(false),
+                "role_can_transfer": .bool(true),
+                "role_can_answer_closure": .bool(true),
+                "audit_event_id": .string("audit-transfer-2"),
+                "audit_summary": .string("ownership transferred from alice to bob")
+            ]
+        )
+        let summary = BurnBarControllerSummary(
+            updatedAt: now,
+            activeProjectSlug: "apollo",
+            counts: BurnBarControllerCounts(
+                projectCount: 1,
+                pendingQuestionCount: 0,
+                openFollowupCount: 0,
+                activeMissionCount: 1,
+                staleProjectCount: 0
+            ),
+            freshness: .fresh
+        )
+
+        let runtime = OpenBurnBarDaemonSocketClient.makeControllerRuntimeSnapshot(
+            summary: summary,
+            questions: [],
+            followups: [],
+            missions: [mission],
+            notificationHealth: BurnBarNotificationHealthSnapshot(checkedAt: now, channels: []),
+            simulatorRuns: []
+        )
+
+        let mappedMission = try XCTUnwrap(runtime.missions.first)
+        XCTAssertEqual(mappedMission.ownerPrincipalID, "bob")
+        XCTAssertEqual(mappedMission.assigneePrincipalID, "worker-b")
+        XCTAssertEqual(mappedMission.roleEligibility.canApprove, false)
+        XCTAssertEqual(mappedMission.roleEligibility.canTransferOwnership, true)
+        XCTAssertEqual(mappedMission.roleEligibility.canAnswerClosureQuestion, true)
+        XCTAssertEqual(mappedMission.latestAuditEventID, "audit-transfer-2")
+        XCTAssertEqual(mappedMission.latestAuditSummary, "ownership transferred from alice to bob")
+    }
+
     /// VAL-BRIEF-002 Evidence: Question ordering is deterministic by priority and createdAt
     @MainActor
     func testVAL_BRIEF_002_QuestionOrderingIsDeterministic() throws {

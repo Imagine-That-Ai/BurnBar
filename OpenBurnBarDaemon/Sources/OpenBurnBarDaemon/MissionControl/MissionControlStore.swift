@@ -653,6 +653,7 @@ public actor BurnBarMissionControlStore {
         metadata["total_tokens"] = .number(Double(totalTokens))
         metadata["result_count"] = .number(Double(mergedResults.count))
         metadata["burn_record_count"] = .number(Double(mergedBurnRecords.count))
+        metadata = applyTeamCollaborationMetadata(metadata, incoming: request.result.metadata)
         let reconciledPRLinkage = MissionControlMissionStateMerger.reconcilePRLinkage(
             from: mergedResults,
             fallback: existing.prLinkage
@@ -1153,6 +1154,49 @@ public actor BurnBarMissionControlStore {
             prObject["closedAt"] = .string(closedAt.ISO8601Format())
         }
         updated["pr_linkage"] = .object(prObject)
+        return updated
+    }
+
+    private func applyTeamCollaborationMetadata(
+        _ metadata: BurnBarMetadata,
+        incoming: BurnBarMetadata
+    ) -> BurnBarMetadata {
+        var updated = metadata
+        let explicitTeamKeys: Set<String> = [
+            "team_owner_id",
+            "owner_principal_id",
+            "team_assignee_id",
+            "assignee_principal_id",
+            "role_can_approve",
+            "role_can_transfer",
+            "role_can_answer_closure",
+            "audit_event_id",
+            "last_audit_event_id",
+            "audit_summary",
+            "last_audit_summary",
+            "audit_reason_code"
+        ]
+
+        for (key, value) in incoming where
+            explicitTeamKeys.contains(key)
+                || key.hasPrefix("team_")
+                || key.hasPrefix("role_")
+                || key.hasPrefix("audit_")
+        {
+            updated[key] = value
+        }
+
+        if case .object(let nestedTeamMetadata)? = incoming["team_collaboration"] {
+            for (key, value) in nestedTeamMetadata where
+                explicitTeamKeys.contains(key)
+                    || key.hasPrefix("team_")
+                    || key.hasPrefix("role_")
+                    || key.hasPrefix("audit_")
+            {
+                updated[key] = value
+            }
+        }
+
         return updated
     }
 

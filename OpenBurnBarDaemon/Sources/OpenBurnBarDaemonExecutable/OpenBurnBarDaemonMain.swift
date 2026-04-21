@@ -52,6 +52,8 @@ private enum BurnBarDaemonCommandLine {
             ?? "8317") ?? 8317
         var gatewayAuthToken = environment["OPENBURNBAR_GATEWAY_AUTH_TOKEN"]
             ?? environment["BURNBAR_GATEWAY_AUTH_TOKEN"]
+        var socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
+            ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
 
         var index = 0
         while index < arguments.count {
@@ -95,6 +97,12 @@ private enum BurnBarDaemonCommandLine {
                     throw BurnBarDaemonCommandLineError.missingValue(argument)
                 }
                 gatewayAuthToken = arguments[index]
+            case "--socket-auth-token":
+                index += 1
+                guard index < arguments.count else {
+                    throw BurnBarDaemonCommandLineError.missingValue(argument)
+                }
+                socketAuthToken = arguments[index]
             case "--help":
                 print(
                     """
@@ -108,6 +116,7 @@ private enum BurnBarDaemonCommandLine {
                       --gateway-host HOST          Gateway bind host (default 127.0.0.1)
                       --gateway-port PORT          Gateway port (default 8317)
                       --gateway-auth-token TOKEN   Bearer token for gateway auth
+                      --socket-auth-token TOKEN    Shared token required for daemon socket RPC
 
                     Environment overrides:
                       OPENBURNBAR_DAEMON_SOCKET_PATH
@@ -117,6 +126,7 @@ private enum BurnBarDaemonCommandLine {
                       OPENBURNBAR_GATEWAY_HOST
                       OPENBURNBAR_GATEWAY_PORT
                       OPENBURNBAR_GATEWAY_AUTH_TOKEN
+                      OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN
                     """
                 )
                 Darwin.exit(EXIT_SUCCESS)
@@ -135,6 +145,7 @@ private enum BurnBarDaemonCommandLine {
         )
         return BurnBarDaemonConfiguration(
             socketPath: socketPath,
+            socketAuthToken: socketAuthToken,
             daemonVersion: daemonVersion,
             indexDatabasePath: (trimmedIndexPath?.isEmpty == false) ? trimmedIndexPath : nil,
             gateway: gateway

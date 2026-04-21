@@ -970,6 +970,78 @@ describe('buildMissionRows', () => {
     expect(result[1].approved).toBe(false);
   });
 
+  // VAL-CROSS-004: Extension lifecycle + approval + recovery + closure fields mirror daemon deterministically.
+  it('VAL-CROSS-004: should keep lifecycle/approval/recovery/closure mission fields deterministic', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-cross-004',
+        status: 'awaiting_approval',
+        approval: { approved: false },
+        packets: [
+          {
+            id: 'packet-cross-004',
+            missionID: 'mission-cross-004',
+            workerName: 'review-worker',
+            objective: 'Verify deterministic parity',
+            status: 'in_progress',
+            metadata: {}
+          }
+        ],
+        takeoverHistory: [
+          {
+            id: 'takeover-cross-004',
+            projectSlug: 'apollo',
+            status: 'completed',
+            reason: 'stalled_run',
+            createdAt: '2024-01-15T12:00:00Z',
+            updatedAt: '2024-01-15T12:01:00Z',
+            metadata: {}
+          }
+        ]
+      })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+
+    const rowsA = buildMissionRows(state);
+    const rowsB = buildMissionRows(state);
+
+    expect(rowsA).toEqual(rowsB);
+    expect(rowsA[0].status).toBe('awaiting_approval');
+    expect(rowsA[0].approved).toBe(false);
+    expect(rowsA[0].takeoverCount).toBe(1);
+    expect(rowsA[0].activePacketID).toBe('packet-cross-004');
+    expect(rowsA[0].closureQuestionState).toBe('Pending closure approval question');
+  });
+
+  // VAL-CROSS-011: Extension ownership/role/audit rails preserve daemon parity.
+  it('VAL-CROSS-011: should project ownership transfer, role eligibility, and audit metadata', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-cross-011',
+        status: 'awaiting_approval',
+        metadata: {
+          team_owner_id: 'bob',
+          team_assignee_id: 'worker-b',
+          role_can_approve: false,
+          role_can_transfer: true,
+          role_can_answer_closure: true,
+          audit_event_id: 'audit-transfer-2',
+          audit_summary: 'ownership transferred from alice to bob'
+        }
+      })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const rows = buildMissionRows(state);
+
+    expect(rows[0].ownerPrincipalID).toBe('bob');
+    expect(rows[0].assigneePrincipalID).toBe('worker-b');
+    expect(rows[0].roleEligibility.canApprove).toBe(false);
+    expect(rows[0].roleEligibility.canTransferOwnership).toBe(true);
+    expect(rows[0].roleEligibility.canAnswerClosureQuestion).toBe(true);
+    expect(rows[0].latestAuditEventID).toBe('audit-transfer-2');
+    expect(rows[0].latestAuditSummary).toBe('ownership transferred from alice to bob');
+  });
+
   it('should track takeover count from mission takeover history', () => {
     const missions: BurnBarMissionSnapshot[] = [
       createMockMission({

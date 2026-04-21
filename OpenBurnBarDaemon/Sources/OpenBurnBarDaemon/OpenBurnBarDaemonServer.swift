@@ -187,9 +187,7 @@ public actor BurnBarDaemonServer {
                 logger: logger
             )
         }
-        Task.detached(priority: .background) { [missionControlService] in
-            await missionControlService.startBackgroundLoops()
-        }
+        await missionControlService.startBackgroundLoops()
 
         logger.notice(
             "bootstrap_ready",
@@ -209,7 +207,7 @@ public actor BurnBarDaemonServer {
         }
     }
 
-    public func stop() {
+    public func stop() async {
         guard let listenerFileDescriptor else {
             logger.debug(
                 "shutdown_skipped",
@@ -224,11 +222,14 @@ public actor BurnBarDaemonServer {
         )
 
         self.listenerFileDescriptor = nil
-        acceptLoopTask?.cancel()
+        let acceptTask = acceptLoopTask
         acceptLoopTask = nil
+        acceptTask?.cancel()
 
         shutdown(listenerFileDescriptor, SHUT_RDWR)
         close(listenerFileDescriptor)
+        _ = await acceptTask?.result
+
         do {
             _ = try BurnBarUnixDomainSocket.removeStaleItemIfPresent(at: configuration.socketPath)
         } catch {
@@ -237,15 +238,11 @@ public actor BurnBarDaemonServer {
                 metadata: ["socket_path": configuration.socketPath, "error": "\(error)"]
             )
         }
-        Task.detached(priority: .background) { [missionControlService] in
-            await missionControlService.stopBackgroundLoops()
-        }
+        await missionControlService.stopBackgroundLoops()
 
         // Stop HTTP gateway
         if let gatewayServer {
-            Task.detached(priority: .background) {
-                await gatewayServer.stop()
-            }
+            await gatewayServer.stop()
         }
 
         logger.notice(
@@ -271,6 +268,24 @@ public actor BurnBarDaemonServer {
             let decoder = JSONDecoder()
             let incomingRequest = try decoder.decode(IncomingRequestEnvelope.self, from: requestData)
 
+            if let requiredToken = configuration.socketAuthToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+                let providedToken = incomingRequest.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                guard providedToken == requiredToken else {
+                    logger.warning(
+                        "rpc_request_unauthorized",
+                        metadata: [
+                            "request_id": incomingRequest.id,
+                            "method": incomingRequest.method
+                        ]
+                    )
+                    return encodeErrorResponse(
+                        id: incomingRequest.id,
+                        code: BurnBarRPCErrorCode.unauthorized,
+                        message: "Unauthorized OpenBurnBar RPC request."
+                    )
+                }
+            }
+
             guard let method = BurnBarRPCMethod(rawValue: incomingRequest.method) else {
                 logger.error(
                     "rpc_method_not_found",
@@ -286,7 +301,7 @@ public actor BurnBarDaemonServer {
                 )
             }
 
-            let request = BurnBarRPCRequestEnvelope(id: incomingRequest.id, method: method)
+            let request = BurnBarRPCRequestEnvelope(id: incomingRequest.id, method: method, authToken: incomingRequest.authToken)
 
             switch method {
             case .health:

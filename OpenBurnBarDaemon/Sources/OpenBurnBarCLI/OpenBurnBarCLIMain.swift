@@ -4,7 +4,10 @@ import Foundation
 @main
 struct BurnBarCLIExecutable {
     static func main() {
-        let runner = BurnBarCLIRunner(client: BurnBarCLISocketClient())
+        let environment = ProcessInfo.processInfo.environment
+        let socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
+            ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
+        let runner = BurnBarCLIRunner(client: BurnBarCLISocketClient(authToken: socketAuthToken))
         let semaphore = DispatchSemaphore(value: 0)
         var exitCode = Int32(EXIT_FAILURE)
 

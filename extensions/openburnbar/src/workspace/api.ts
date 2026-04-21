@@ -58,6 +58,7 @@ export interface BurnBarWorkspaceApi {
     endLine: number,
     endCharacter: number
   ): BurnBarWorkspaceRange;
+  confirmTerminalCommand(command: string, cwd: string): Thenable<boolean>;
   createTerminal(options: { name: string; cwd?: string }): BurnBarWorkspaceTerminal;
   parseUri(value: string): BurnBarWorkspaceUri;
   fileUri(value: string): BurnBarWorkspaceUri;
@@ -79,6 +80,17 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
     createWorkspaceEdit: () => new vscode.WorkspaceEdit(),
     createRange: (startLine, startCharacter, endLine, endCharacter) =>
       new vscode.Range(startLine, startCharacter, endLine, endCharacter),
+    confirmTerminalCommand: async (command, cwd) => {
+      const selection = await vscode.window.showWarningMessage(
+        'OpenBurnBar wants to run a terminal command.',
+        {
+          modal: true,
+          detail: `Command: ${command}\nWorking directory: ${cwd}`
+        },
+        'Run Command'
+      );
+      return selection === 'Run Command';
+    },
     createTerminal: (options) => vscode.window.createTerminal(options),
     parseUri: (value) => vscode.Uri.parse(value),
     fileUri: (value) => vscode.Uri.file(value),

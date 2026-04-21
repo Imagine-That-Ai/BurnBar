@@ -150,6 +150,7 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
     case daemonResourceBundleUnavailable(expectedPath: String)
     case launchctlFailed(String)
     case timedOutWaitingForHealth(logTail: String?, logFilePath: String)
+    case daemonSocketAuthTokenUnavailable
     case emptyResponse
     case rpcError(String)
 
@@ -173,6 +174,8 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
                 message += " Rebuild the OpenBurnBar scheme (OpenBurnBarDaemon helper must exist), or check \(logFilePath)."
             }
             return message
+        case .daemonSocketAuthTokenUnavailable:
+            return "OpenBurnBar couldn't load a daemon socket auth token from the Keychain."
         case .emptyResponse:
             return "OpenBurnBarDaemon returned an empty response."
         case .rpcError(let message):
@@ -185,6 +188,7 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
 @MainActor
 final class OpenBurnBarDaemonManager {
     static let shared = OpenBurnBarDaemonManager()
+    private static let daemonSocketAuthTokenAccount = OpenBurnBarIdentity.daemonSocketAuthTokenAccount
     private static let controllerRuntimeSecrets = KeychainStore(
         service: OpenBurnBarIdentity.controllerRuntimeKeychainService,
         legacyServices: OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
@@ -760,10 +764,12 @@ final class OpenBurnBarDaemonManager {
 
     private func writeLaunchAgentPlist() throws {
         let indexDbPath = OpenBurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
+        let daemonSocketAuthToken = try ensureDaemonSocketAuthToken()
         var programArguments = [
             paths.installedBinaryURL.path,
             "--socket-path", paths.socketURL.path,
-            "--index-database-path", indexDbPath
+            "--index-database-path", indexDbPath,
+            "--socket-auth-token", daemonSocketAuthToken
         ]
 
         let settings = settingsManager
@@ -793,6 +799,22 @@ final class OpenBurnBarDaemonManager {
             options: 0
         )
         try data.write(to: paths.launchAgentPlistURL, options: .atomic)
+    }
+
+    private func ensureDaemonSocketAuthToken() throws -> String {
+        if let token = try Self.controllerRuntimeSecrets.string(for: Self.daemonSocketAuthTokenAccount)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           token.isEmpty == false {
+            return token
+        }
+
+        let generatedToken = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        do {
+            try Self.controllerRuntimeSecrets.set(generatedToken, for: Self.daemonSocketAuthTokenAccount)
+            return generatedToken
+        } catch {
+            throw OpenBurnBarDaemonManagerError.daemonSocketAuthTokenUnavailable
+        }
     }
 
     private func bootoutIfNeeded() throws {

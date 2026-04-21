@@ -401,6 +401,483 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(openFollowups.followups.first?.questionID, firstClosureQuestionID)
     }
 
+    func testVAL_GOV_004_GovernanceMutationsRemainReplaySafeAcrossProjectionRebuild() async throws {
+        let harness = try makeHarness(name: "val-gov-004-replay-safe")
+
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+
+        let mission = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "apollo",
+                title: "Replay-safe governance mutation",
+                summary: "Public mission/question/followup projections should survive rebuilds.",
+                createdBy: "operator",
+                recommendation: .review
+            )
+        )
+        let missionID = mission.mission.id
+        _ = try await harness.service.missionApprove(
+            BurnBarMissionApproveRequest(
+                missionID: missionID,
+                actor: "operator",
+                note: "approve replay-safe test"
+            )
+        )
+
+        let questionID = BurnBarQuestionID(rawValue: "question-val-gov-004")
+        _ = try await harness.service.questionCreate(
+            BurnBarQuestionCreateRequest(
+                question: BurnBarPendingQuestionSnapshot(
+                    id: questionID,
+                    projectSlug: "apollo",
+                    title: "Approve closure replay?",
+                    prompt: "Should this replay-safe closure path proceed?",
+                    stageLabel: "Mission Closure",
+                    status: .pending,
+                    priority: .high,
+                    askedAt: Date(),
+                    metadata: [
+                        "mission_id": .string(missionID.rawValue),
+                        "question_kind": .string("mission_closure_approval"),
+                        "closure_state": .string("awaiting_approval")
+                    ]
+                )
+            )
+        )
+
+        _ = try await harness.service.followupCreate(
+            BurnBarFollowupCreateRequest(
+                followup: BurnBarFollowupSnapshot(
+                    id: BurnBarFollowupID(rawValue: "followup-val-gov-004"),
+                    projectSlug: "apollo",
+                    questionID: questionID,
+                    title: "Close governance loop",
+                    summary: "Followup state should remain identical after projection rebuild.",
+                    status: .open,
+                    kind: .pendingQuestion,
+                    createdAt: Date()
+                )
+            )
+        )
+
+        let before = try await capturePublicProjectionSurface(
+            service: harness.service,
+            projectSlug: "apollo"
+        )
+
+        _ = try await harness.service.projectionRebuild(
+            BurnBarProjectionRebuildRequest(projectionNames: [])
+        )
+
+        let after = try await capturePublicProjectionSurface(
+            service: harness.service,
+            projectSlug: "apollo"
+        )
+
+        XCTAssertEqual(
+            after,
+            before,
+            "VAL-GOV-004: public summary/list mission-question-followup projection state must remain identical after projection rebuild"
+        )
+    }
+
+    func testVAL_GOV_008_ProjectionRebuildIsIdempotentWithDuplicateAndOutOfOrderEvents() async throws {
+        let baseline = Date(timeIntervalSince1970: 1_710_620_000)
+        let missionID = BurnBarMissionID(rawValue: "mission-val-gov-008")
+
+        let seededProject = project(slug: "apollo")
+        let seededMission = BurnBarMissionSnapshot(
+            id: missionID,
+            projectSlug: "apollo",
+            title: "Duplicate and out-of-order rebuild test",
+            summary: "Projection rebuild should converge deterministically.",
+            status: .approved,
+            recommendation: .review,
+            createdAt: baseline,
+            updatedAt: baseline.addingTimeInterval(120),
+            approval: BurnBarMissionApprovalSnapshot(
+                approved: true,
+                approvedAt: baseline.addingTimeInterval(90),
+                approvedBy: "operator"
+            ),
+            metadata: [
+                "team_owner_id": .string("alice"),
+                "role_can_transfer": .bool(true),
+                "audit_event_id": .string("audit-val-gov-008")
+            ]
+        )
+        let seededQuestion = BurnBarPendingQuestionSnapshot(
+            id: BurnBarQuestionID(rawValue: "question-val-gov-008"),
+            projectSlug: "apollo",
+            title: "Replay-safe question",
+            prompt: "Should duplicate events change final state?",
+            status: .pending,
+            priority: .medium,
+            askedAt: baseline.addingTimeInterval(150)
+        )
+        let seededFollowup = BurnBarFollowupSnapshot(
+            id: BurnBarFollowupID(rawValue: "followup-val-gov-008"),
+            projectSlug: "apollo",
+            questionID: seededQuestion.id,
+            title: "Track replay-safe followup",
+            summary: "Followup should remain stable across replay permutations.",
+            status: .open,
+            kind: .pendingQuestion,
+            createdAt: baseline.addingTimeInterval(180)
+        )
+
+        func makeEvent<Payload: Encodable>(
+            id: String,
+            sequence: Int,
+            family: BurnBarControllerEventFamily,
+            eventType: String,
+            projectSlug: String,
+            recordedAt: Date,
+            summary: String,
+            payload: Payload
+        ) throws -> BurnBarControllerEvent {
+            BurnBarControllerEvent(
+                id: BurnBarControllerEventID(rawValue: id),
+                family: family,
+                eventType: eventType,
+                projectSlug: projectSlug,
+                recordedAt: recordedAt,
+                sequence: sequence,
+                summary: summary,
+                metadata: ["payload": try BurnBarJSONValue.fromEncodable(payload)]
+            )
+        }
+
+        let projectEvent = try makeEvent(
+            id: "event-val-gov-008-project",
+            sequence: 10,
+            family: .controller,
+            eventType: "project_upserted",
+            projectSlug: "apollo",
+            recordedAt: baseline.addingTimeInterval(10),
+            summary: "Project seeded",
+            payload: seededProject
+        )
+        let missionEvent = try makeEvent(
+            id: "event-val-gov-008-mission",
+            sequence: 20,
+            family: .mission,
+            eventType: "mission_created",
+            projectSlug: "apollo",
+            recordedAt: baseline.addingTimeInterval(20),
+            summary: "Mission seeded",
+            payload: seededMission
+        )
+        let questionEvent = try makeEvent(
+            id: "event-val-gov-008-question",
+            sequence: 30,
+            family: .question,
+            eventType: "question_created",
+            projectSlug: "apollo",
+            recordedAt: baseline.addingTimeInterval(30),
+            summary: "Question seeded",
+            payload: seededQuestion
+        )
+        let followupEvent = try makeEvent(
+            id: "event-val-gov-008-followup",
+            sequence: 40,
+            family: .followup,
+            eventType: "followup_created",
+            projectSlug: "apollo",
+            recordedAt: baseline.addingTimeInterval(40),
+            summary: "Followup seeded",
+            payload: seededFollowup
+        )
+
+        let duplicateMissionEvent = BurnBarControllerEvent(
+            id: missionEvent.id,
+            family: missionEvent.family,
+            eventType: missionEvent.eventType,
+            projectSlug: missionEvent.projectSlug,
+            recordedAt: baseline.addingTimeInterval(50),
+            sequence: 25,
+            summary: missionEvent.summary,
+            detail: missionEvent.detail,
+            metadata: missionEvent.metadata
+        )
+        let duplicateQuestionEvent = BurnBarControllerEvent(
+            id: questionEvent.id,
+            family: questionEvent.family,
+            eventType: questionEvent.eventType,
+            projectSlug: questionEvent.projectSlug,
+            recordedAt: baseline.addingTimeInterval(60),
+            sequence: 35,
+            summary: questionEvent.summary,
+            detail: questionEvent.detail,
+            metadata: questionEvent.metadata
+        )
+
+        let permutationA: [BurnBarControllerEvent] = [
+            followupEvent,
+            duplicateMissionEvent,
+            projectEvent,
+            questionEvent,
+            missionEvent,
+            duplicateQuestionEvent
+        ]
+        let permutationB: [BurnBarControllerEvent] = [
+            duplicateQuestionEvent,
+            missionEvent,
+            projectEvent,
+            followupEvent,
+            questionEvent,
+            duplicateMissionEvent
+        ]
+
+        let harnessA = try makeSeededHarness(name: "val-gov-008-a", events: permutationA)
+        let harnessB = try makeSeededHarness(name: "val-gov-008-b", events: permutationB)
+
+        _ = try await harnessA.service.projectionRebuild(BurnBarProjectionRebuildRequest(projectionNames: []))
+        _ = try await harnessB.service.projectionRebuild(BurnBarProjectionRebuildRequest(projectionNames: []))
+
+        let snapshotA = try await capturePublicProjectionSurface(
+            service: harnessA.service,
+            projectSlug: "apollo"
+        )
+        let snapshotB = try await capturePublicProjectionSurface(
+            service: harnessB.service,
+            projectSlug: "apollo"
+        )
+
+        XCTAssertEqual(
+            snapshotA,
+            snapshotB,
+            "VAL-GOV-008: duplicate IDs and out-of-order event ingestion must converge to the same public projection state"
+        )
+
+        _ = try await harnessA.service.projectionRebuild(BurnBarProjectionRebuildRequest(projectionNames: []))
+        let snapshotASecondRebuild = try await capturePublicProjectionSurface(
+            service: harnessA.service,
+            projectSlug: "apollo"
+        )
+        XCTAssertEqual(
+            snapshotASecondRebuild,
+            snapshotA,
+            "VAL-GOV-008: repeated rebuilds over duplicate/out-of-order events must be idempotent"
+        )
+    }
+
+    func testVAL_CROSS_004_DaemonLifecycleApprovalRecoveryAndClosureFieldsStayDeterministic() async throws {
+        let harness = try makeHarnessWithStore(name: "val-cross-004-daemon-parity")
+        let baseline = Date(timeIntervalSince1970: 1_710_630_000)
+        let missionID = BurnBarMissionID(rawValue: "mission-val-cross-004")
+
+        let mission = BurnBarMissionSnapshot(
+            id: missionID,
+            projectSlug: "apollo",
+            title: "Cross-surface deterministic parity",
+            summary: "Lifecycle, approval, recovery, and closure state should remain deterministic.",
+            status: .inProgress,
+            recommendation: .review,
+            createdAt: baseline,
+            updatedAt: baseline.addingTimeInterval(60),
+            approval: BurnBarMissionApprovalSnapshot(
+                approved: true,
+                approvedAt: baseline.addingTimeInterval(30),
+                approvedBy: "operator"
+            ),
+            packets: [
+                BurnBarMissionPacketSnapshot(
+                    id: BurnBarMissionPacketID(rawValue: "packet-val-cross-004"),
+                    missionID: missionID,
+                    workerName: "review-worker",
+                    objective: "Ship deterministic parity",
+                    status: .running,
+                    runID: BurnBarRunID(rawValue: "run-val-cross-004"),
+                    dispatchedAt: baseline.addingTimeInterval(45)
+                )
+            ],
+            takeoverHistory: [
+                BurnBarAutoTakeoverRecord(
+                    id: "takeover-val-cross-004",
+                    projectSlug: "apollo",
+                    missionID: missionID,
+                    sourceRunID: BurnBarRunID(rawValue: "run-source"),
+                    takeoverRunID: BurnBarRunID(rawValue: "run-takeover"),
+                    status: .completed,
+                    reason: "stalled_run",
+                    createdAt: baseline.addingTimeInterval(20),
+                    updatedAt: baseline.addingTimeInterval(50),
+                    metadata: ["reason_code": .string("RECOVERY_STALLED_RUN")]
+                )
+            ],
+            metadata: [
+                "team_owner_id": .string("alice"),
+                "team_assignee_id": .string("review-worker"),
+                "role_can_approve": .bool(false),
+                "role_can_transfer": .bool(true),
+                "role_can_answer_closure": .bool(true),
+                "audit_event_id": .string("audit-val-cross-004"),
+                "audit_summary": .string("mission parity snapshot emitted")
+            ]
+        )
+
+        _ = try await harness.store.persistMissionSnapshot(
+            mission,
+            eventType: "mission_parity_seeded",
+            summary: "Seeded parity mission"
+        )
+        _ = try await harness.service.questionCreate(
+            BurnBarQuestionCreateRequest(
+                question: BurnBarPendingQuestionSnapshot(
+                    id: BurnBarQuestionID(rawValue: "question-val-cross-004"),
+                    projectSlug: "apollo",
+                    title: "Approve closure parity",
+                    prompt: "Should closure proceed after parity checks?",
+                    stageLabel: "Mission Closure",
+                    status: .pending,
+                    priority: .high,
+                    askedAt: baseline.addingTimeInterval(70),
+                    metadata: [
+                        "mission_id": .string(missionID.rawValue),
+                        "question_kind": .string("mission_closure_approval"),
+                        "closure_state": .string("awaiting_approval")
+                    ]
+                )
+            )
+        )
+
+        let before = try await capturePublicProjectionSurface(service: harness.service, projectSlug: "apollo")
+        _ = try await harness.service.projectionRebuild(BurnBarProjectionRebuildRequest(projectionNames: []))
+        let after = try await capturePublicProjectionSurface(service: harness.service, projectSlug: "apollo")
+
+        XCTAssertEqual(
+            after,
+            before,
+            "VAL-CROSS-004: daemon canonical lifecycle/approval/recovery/closure fields must remain deterministic after projection rebuild"
+        )
+
+        guard let projectedMission = after.missions.first(where: { $0.id == missionID }) else {
+            XCTFail("Expected seeded mission in daemon projection snapshot.")
+            return
+        }
+        XCTAssertEqual(projectedMission.status, .inProgress)
+        XCTAssertEqual(projectedMission.approval.approved, true)
+        XCTAssertEqual(projectedMission.takeoverHistory?.count, 1)
+
+        let closureQuestions = after.questions.filter {
+            stringValue($0.metadata["mission_id"]) == missionID.rawValue
+                && stringValue($0.metadata["question_kind"]) == "mission_closure_approval"
+                && $0.status == .pending
+        }
+        XCTAssertEqual(closureQuestions.count, 1)
+    }
+
+    func testVAL_CROSS_011_DaemonTeamCollaborationRailsPreserveOwnershipRoleAndAuditParity() async throws {
+        let harness = try makeHarness(name: "val-cross-011-daemon-team-rails")
+        let baseline = Date(timeIntervalSince1970: 1_710_640_000)
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+
+        let created = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "apollo",
+                title: "Team collaboration parity mission",
+                summary: "Ownership transfer metadata should remain consistent.",
+                createdBy: "operator",
+                recommendation: .review
+            )
+        )
+        let missionID = created.mission.id
+
+        _ = try await harness.service.missionRecordResult(
+            BurnBarMissionRecordResultRequest(
+                missionID: missionID,
+                result: BurnBarMissionResultSnapshot(
+                    id: BurnBarMissionResultID(rawValue: "result-cross-011-initial"),
+                    missionID: missionID,
+                    packetID: nil,
+                    runID: nil,
+                    status: .partial,
+                    summary: "Ownership assigned to alice",
+                    detail: "Initial team-collaboration metadata emitted by mission runtime.",
+                    burnDelta: 0.0,
+                    createdAt: baseline,
+                    metadata: [
+                        "team_owner_id": .string("alice"),
+                        "team_assignee_id": .string("worker-a"),
+                        "role_can_approve": .bool(true),
+                        "role_can_transfer": .bool(true),
+                        "role_can_answer_closure": .bool(true),
+                        "audit_event_id": .string("audit-transfer-1"),
+                        "audit_summary": .string("ownership assigned to alice")
+                    ]
+                )
+            )
+        )
+        _ = try await harness.service.missionRecordResult(
+            BurnBarMissionRecordResultRequest(
+                missionID: missionID,
+                result: BurnBarMissionResultSnapshot(
+                    id: BurnBarMissionResultID(rawValue: "result-cross-011-transfer"),
+                    missionID: missionID,
+                    packetID: nil,
+                    runID: nil,
+                    status: .partial,
+                    summary: "Ownership transferred to bob",
+                    detail: "Ownership transferred from alice to bob for closure operations.",
+                    burnDelta: 0.0,
+                    createdAt: baseline.addingTimeInterval(120),
+                    metadata: [
+                        "team_owner_id": .string("bob"),
+                        "team_assignee_id": .string("worker-b"),
+                        "role_can_approve": .bool(false),
+                        "role_can_transfer": .bool(true),
+                        "role_can_answer_closure": .bool(true),
+                        "audit_event_id": .string("audit-transfer-2"),
+                        "audit_summary": .string("ownership transferred from alice to bob"),
+                        "audit_reason_code": .string("OWNERSHIP_TRANSFER_APPROVED")
+                    ]
+                )
+            )
+        )
+
+        let missions = try await harness.service.missionsList(
+            BurnBarMissionListRequest(
+                projectSlug: "apollo",
+                statuses: BurnBarMissionStatus.allCases,
+                limit: 50
+            )
+        )
+        guard let projected = missions.missions.first(where: { $0.id == missionID }) else {
+            XCTFail("Expected mission to exist in daemon mission projection.")
+            return
+        }
+
+        XCTAssertEqual(stringValue(projected.metadata["team_owner_id"]), "bob")
+        XCTAssertEqual(stringValue(projected.metadata["team_assignee_id"]), "worker-b")
+        XCTAssertEqual(boolValue(projected.metadata["role_can_approve"]), false)
+        XCTAssertEqual(boolValue(projected.metadata["role_can_transfer"]), true)
+        XCTAssertEqual(boolValue(projected.metadata["role_can_answer_closure"]), true)
+        XCTAssertEqual(stringValue(projected.metadata["audit_event_id"]), "audit-transfer-2")
+        XCTAssertEqual(stringValue(projected.metadata["audit_summary"]), "ownership transferred from alice to bob")
+
+        let summary = try await harness.service.controllerSummary(
+            BurnBarControllerSummaryRequest(
+                projectSlug: "apollo",
+                includeRecentEvents: true,
+                includeProjectionStatus: false
+            )
+        )
+        let teamEvents = summary.summary.recentEvents
+            .filter {
+                $0.eventType == "mission_result_recorded"
+                    && $0.projectSlug == "apollo"
+                    && ($0.summary.contains("Ownership") || ($0.detail?.contains("Ownership") == true))
+            }
+            .sorted { $0.sequence < $1.sequence }
+        XCTAssertGreaterThanOrEqual(teamEvents.count, 2)
+        XCTAssertEqual(teamEvents.last?.summary, "Ownership transferred to bob")
+    }
+
     func testVAL_CROSS_002_ClosureEndsInDoneOrOnePendingApprovalQuestion() async throws {
         let harness = try makeHarness(name: "val-cross-002-closure")
 
@@ -4493,6 +4970,129 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             executionReadinessGate: executionReadinessGate
         )
         return (service, store, rootURL)
+    }
+
+    private func makeSeededHarness(
+        name: String,
+        events: [BurnBarControllerEvent],
+        transport: BurnBarMissionControlTransport = .live(),
+        executionReadinessGate: BurnBarExecutionReadinessGate? = nil
+    ) throws -> (service: BurnBarMissionControlService, rootURL: URL) {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-mission-control-\(name)-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        let eventsFileURL = rootURL.appendingPathComponent("controller-events.jsonl")
+        try writeControllerEvents(events, to: eventsFileURL)
+
+        let store = BurnBarMissionControlStore(
+            eventsFileURL: eventsFileURL,
+            projectionFileURL: rootURL.appendingPathComponent("controller-projection.json"),
+            logger: BurnBarDaemonLogger(category: "mission-control-tests")
+        )
+        let service = BurnBarMissionControlService(
+            store: store,
+            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
+            transport: transport,
+            activitySnapshotURL: nil,
+            reviewRunLauncher: nil,
+            runSnapshotLookup: nil,
+            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl"),
+            executionReadinessGate: executionReadinessGate
+        )
+        return (service, rootURL)
+    }
+
+    private func writeControllerEvents(
+        _ events: [BurnBarControllerEvent],
+        to url: URL
+    ) throws {
+        let directory = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let encoder = JSONEncoder()
+        var data = Data()
+        for event in events {
+            data.append(try encoder.encode(event))
+            data.append(Data([0x0A]))
+        }
+        try data.write(to: url, options: .atomic)
+    }
+
+    private struct BurnBarPublicProjectionSurfaceSnapshot: Equatable {
+        let counts: BurnBarControllerCounts
+        let missions: [BurnBarMissionSnapshot]
+        let questions: [BurnBarPendingQuestionSnapshot]
+        let followups: [CanonicalFollowup]
+    }
+
+    private struct CanonicalFollowup: Equatable {
+        let id: BurnBarFollowupID
+        let projectSlug: String
+        let questionID: BurnBarQuestionID?
+        let title: String
+        let summary: String
+        let stageLabel: String?
+        let status: BurnBarFollowupStatus
+        let kind: BurnBarFollowupKind
+        let createdAt: Date
+        let metadata: BurnBarMetadata
+    }
+
+    private func capturePublicProjectionSurface(
+        service: BurnBarMissionControlService,
+        projectSlug: String
+    ) async throws -> BurnBarPublicProjectionSurfaceSnapshot {
+        let summary = try await service.controllerSummary(
+            BurnBarControllerSummaryRequest(
+                projectSlug: projectSlug,
+                includeRecentEvents: false,
+                includeProjectionStatus: false
+            )
+        )
+        let questions = try await service.questionsList(
+            BurnBarQuestionsListRequest(
+                projectSlug: projectSlug,
+                statuses: BurnBarPendingQuestionStatus.allCases,
+                limit: 500
+            )
+        )
+        let followups = try await service.followupsList(
+            BurnBarFollowupsListRequest(
+                projectSlug: projectSlug,
+                statuses: BurnBarFollowupStatus.allCases,
+                limit: 500
+            )
+        )
+        let missions = try await service.missionsList(
+            BurnBarMissionListRequest(
+                projectSlug: projectSlug,
+                statuses: BurnBarMissionStatus.allCases,
+                limit: 500
+            )
+        )
+
+        return BurnBarPublicProjectionSurfaceSnapshot(
+            counts: summary.summary.counts,
+            missions: missions.missions.sorted { $0.id.rawValue < $1.id.rawValue },
+            questions: questions.questions.sorted { $0.id.rawValue < $1.id.rawValue },
+            followups: followups.followups
+                .sorted { $0.id.rawValue < $1.id.rawValue }
+                .map { followup in
+                    CanonicalFollowup(
+                        id: followup.id,
+                        projectSlug: followup.projectSlug,
+                        questionID: followup.questionID,
+                        title: followup.title,
+                        summary: followup.summary,
+                        stageLabel: followup.stageLabel,
+                        status: followup.status,
+                        kind: followup.kind,
+                        createdAt: followup.createdAt,
+                        metadata: followup.metadata
+                    )
+                }
+        )
     }
 
     private func writeUsageRecord(_ record: BurnBarUsageRecord, to url: URL) throws {

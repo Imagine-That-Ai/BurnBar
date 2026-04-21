@@ -649,6 +649,11 @@ struct OpenBurnBarControllerMissionRecord: Identifiable, Codable, Equatable, Sen
     let summary: String
     let state: OpenBurnBarMissionLifecycle
     let approval: OpenBurnBarMissionApprovalState
+    let ownerPrincipalID: String?
+    let assigneePrincipalID: String?
+    let roleEligibility: OpenBurnBarControllerMissionRoleEligibility
+    let latestAuditEventID: String?
+    let latestAuditSummary: String?
     let packetSummary: String?
     let latestResultSummary: String?
     let latestResultDetail: String?
@@ -672,6 +677,11 @@ struct OpenBurnBarControllerMissionRecord: Identifiable, Codable, Equatable, Sen
         summary: String,
         state: OpenBurnBarMissionLifecycle,
         approval: OpenBurnBarMissionApprovalState,
+        ownerPrincipalID: String? = nil,
+        assigneePrincipalID: String? = nil,
+        roleEligibility: OpenBurnBarControllerMissionRoleEligibility = .none,
+        latestAuditEventID: String? = nil,
+        latestAuditSummary: String? = nil,
         packetSummary: String?,
         latestResultSummary: String?,
         latestResultDetail: String?,
@@ -694,6 +704,11 @@ struct OpenBurnBarControllerMissionRecord: Identifiable, Codable, Equatable, Sen
         self.summary = summary
         self.state = state
         self.approval = approval
+        self.ownerPrincipalID = ownerPrincipalID
+        self.assigneePrincipalID = assigneePrincipalID
+        self.roleEligibility = roleEligibility
+        self.latestAuditEventID = latestAuditEventID
+        self.latestAuditSummary = latestAuditSummary
         self.packetSummary = packetSummary
         self.latestResultSummary = latestResultSummary
         self.latestResultDetail = latestResultDetail
@@ -709,6 +724,84 @@ struct OpenBurnBarControllerMissionRecord: Identifiable, Codable, Equatable, Sen
         self.burnTokens = burnTokens
         self.updatedAt = updatedAt
         self.prLinkage = prLinkage
+    }
+}
+
+struct OpenBurnBarControllerMissionRoleEligibility: Codable, Equatable, Sendable {
+    let canApprove: Bool
+    let canTransferOwnership: Bool
+    let canAnswerClosureQuestion: Bool
+
+    static let none = OpenBurnBarControllerMissionRoleEligibility(
+        canApprove: false,
+        canTransferOwnership: false,
+        canAnswerClosureQuestion: false
+    )
+}
+
+extension OpenBurnBarControllerMissionRecord {
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case projectName
+        case title
+        case summary
+        case state
+        case approval
+        case ownerPrincipalID
+        case assigneePrincipalID
+        case roleEligibility
+        case latestAuditEventID
+        case latestAuditSummary
+        case packetSummary
+        case latestResultSummary
+        case latestResultDetail
+        case latestResultRunID
+        case activeWorkerName
+        case activeRunID
+        case packetRunCount
+        case latestTakeoverState
+        case latestTakeoverReason
+        case latestTakeoverRunID
+        case takeoverCount
+        case burnCostUSD
+        case burnTokens
+        case updatedAt
+        case prLinkage
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(String.self, forKey: .id),
+            projectName: try container.decode(String.self, forKey: .projectName),
+            title: try container.decode(String.self, forKey: .title),
+            summary: try container.decode(String.self, forKey: .summary),
+            state: try container.decode(OpenBurnBarMissionLifecycle.self, forKey: .state),
+            approval: try container.decode(OpenBurnBarMissionApprovalState.self, forKey: .approval),
+            ownerPrincipalID: try container.decodeIfPresent(String.self, forKey: .ownerPrincipalID),
+            assigneePrincipalID: try container.decodeIfPresent(String.self, forKey: .assigneePrincipalID),
+            roleEligibility: try container.decodeIfPresent(
+                OpenBurnBarControllerMissionRoleEligibility.self,
+                forKey: .roleEligibility
+            ) ?? .none,
+            latestAuditEventID: try container.decodeIfPresent(String.self, forKey: .latestAuditEventID),
+            latestAuditSummary: try container.decodeIfPresent(String.self, forKey: .latestAuditSummary),
+            packetSummary: try container.decodeIfPresent(String.self, forKey: .packetSummary),
+            latestResultSummary: try container.decodeIfPresent(String.self, forKey: .latestResultSummary),
+            latestResultDetail: try container.decodeIfPresent(String.self, forKey: .latestResultDetail),
+            latestResultRunID: try container.decodeIfPresent(String.self, forKey: .latestResultRunID),
+            activeWorkerName: try container.decodeIfPresent(String.self, forKey: .activeWorkerName),
+            activeRunID: try container.decodeIfPresent(String.self, forKey: .activeRunID),
+            packetRunCount: try container.decode(Int.self, forKey: .packetRunCount),
+            latestTakeoverState: try container.decodeIfPresent(OpenBurnBarControllerTakeoverState.self, forKey: .latestTakeoverState),
+            latestTakeoverReason: try container.decodeIfPresent(String.self, forKey: .latestTakeoverReason),
+            latestTakeoverRunID: try container.decodeIfPresent(String.self, forKey: .latestTakeoverRunID),
+            takeoverCount: try container.decode(Int.self, forKey: .takeoverCount),
+            burnCostUSD: try container.decode(Double.self, forKey: .burnCostUSD),
+            burnTokens: try container.decode(Int.self, forKey: .burnTokens),
+            updatedAt: try container.decode(Date.self, forKey: .updatedAt),
+            prLinkage: try container.decodeIfPresent(OpenBurnBarControllerMissionPRLinkage.self, forKey: .prLinkage)
+        )
     }
 }
 

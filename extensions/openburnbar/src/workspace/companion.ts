@@ -254,6 +254,14 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
     }
 
     const cwd = request.cwd ? this.cwdFor(request.cwd) : this.defaultWorkspaceCwd();
+    const confirmed = await this.api.confirmTerminalCommand(request.command, cwd);
+    if (!confirmed) {
+      throw new OpenBurnBarWorkspaceRpcError(
+        'TERMINAL_CANCELLED',
+        'Terminal command execution was cancelled by the operator.'
+      );
+    }
+
     const terminal = this.api.createTerminal({
       name: request.name ?? 'OpenBurnBar',
       cwd

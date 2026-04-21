@@ -167,7 +167,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             presentedAnchor = (anchorId, anchorProject)
         }
 
-        let disabledView = try disabledRow.inspect()
+        let disabledView = try disabledRow.environment(SettingsManager.shared).inspect()
         XCTAssertNoThrow(disabledView, "Disabled row should render without crashing")
 
         // Row should be disabled when indexing is off
@@ -184,7 +184,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             presentedAnchor = (anchorId, anchorProject)
         }
 
-        let enabledView = try enabledRow.inspect()
+        let enabledView = try enabledRow.environment(SettingsManager.shared).inspect()
         XCTAssertNoThrow(enabledView, "Enabled row should render without crashing")
         XCTAssertTrue(SettingsManager.shared.conversationIndexingEnabled)
         XCTAssertNotNil(conversation)
@@ -199,7 +199,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             presentedAnchor = (anchorId, anchorProject)
         }
 
-        let nilConvView = try nilConvRow.inspect()
+        let nilConvView = try nilConvRow.environment(SettingsManager.shared).inspect()
         XCTAssertNoThrow(nilConvView, "Row with nil conversation should render without crashing")
         // With nil conversation, the button is disabled, so we verify the callback was not called
         // Note: We can't tap a disabled button, so we just verify state
@@ -253,7 +253,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             presentedAnchor = (anchorId, anchorProject)
         }
 
-        let view = try row.inspect()
+        let view = try row.environment(SettingsManager.shared).inspect()
         XCTAssertNoThrow(view, "ContextPackRow should render without crashing")
     }
 
@@ -295,7 +295,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         }
 
         // Tap the button
-        let view = try row.inspect()
+        let view = try row.environment(SettingsManager.shared).inspect()
         try view.find(ViewType.Button.self).tap()
 
         // Verify callback was invoked with correct values
@@ -343,7 +343,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
                 capturedAnchor = anchorId
             }
 
-            let view = try row.inspect()
+            let view = try row.environment(SettingsManager.shared).inspect()
             try view.find(ViewType.Button.self).tap()
 
             XCTAssertEqual(capturedAnchor, expectedStableId, "[\(provider.rawValue)] Anchor ID should match stableId")
@@ -385,7 +385,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             capturedProject = anchorProject
         }
 
-        let view = try row.inspect()
+        let view = try row.environment(SettingsManager.shared).inspect()
         try view.find(ViewType.Button.self).tap()
 
         XCTAssertEqual(capturedProject, projectName, "Anchor project should match session project")
@@ -417,7 +417,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         )
 
         // Should not crash
-        let inspectedView = try detailView.inspect()
+        let inspectedView = try detailView.environment(SettingsManager.shared).inspect()
         XCTAssertNoThrow(inspectedView, "SessionDetailView should render without crashing even with nil conversation")
 
         // Row should be hidden because conversation is nil
@@ -477,7 +477,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             anchorA = (id, proj)
         }
 
-        let viewA = try rowA.inspect()
+        let viewA = try rowA.environment(SettingsManager.shared).inspect()
         try viewA.find(ViewType.Button.self).tap()
 
         XCTAssertEqual(anchorA.0, stableIdA)
@@ -493,7 +493,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             anchorB = (id, proj)
         }
 
-        let viewB = try rowB.inspect()
+        let viewB = try rowB.environment(SettingsManager.shared).inspect()
         try viewB.find(ViewType.Button.self).tap()
 
         XCTAssertEqual(anchorB.0, stableIdB)
@@ -579,7 +579,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
                 capturedAnchor = id
             }
 
-            let view = try row.inspect()
+            let view = try row.environment(SettingsManager.shared).inspect()
             try view.find(ViewType.Button.self).tap()
 
             XCTAssertEqual(capturedAnchor, stableId, "[\(provider.rawValue)] Anchor should match stableId")
@@ -628,7 +628,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             anchor1 = (id, proj)
         }
 
-        let view1 = try row1.inspect()
+        let view1 = try row1.environment(SettingsManager.shared).inspect()
         try view1.find(ViewType.Button.self).tap()
 
         XCTAssertEqual(anchor1.0, stableId1)
@@ -653,7 +653,7 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
             anchor2 = (id, proj)
         }
 
-        let view2 = try row2.inspect()
+        let view2 = try row2.environment(SettingsManager.shared).inspect()
         try view2.find(ViewType.Button.self).tap()
 
         // Should be anchored to session2, not session1

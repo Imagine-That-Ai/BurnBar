@@ -61,24 +61,37 @@ public actor BurnBarMissionControlService {
 
     public func startBackgroundLoops() {
         guard notificationLoopTask == nil else { return }
-        notificationLoopTask = Task.detached(priority: .background) { [service = self, logger] in
-            while !Task.isCancelled {
-                do {
-                    try await service.processTransportCycle(now: Date())
-                } catch {
-                    logger.error(
-                        "mission_control_notification_loop_failed",
-                        metadata: ["error": error.localizedDescription]
-                    )
-                }
-                try? await Task.sleep(nanoseconds: 60_000_000_000)
-            }
+        notificationLoopTask = Task(priority: .background) { [service = self] in
+            await service.runNotificationLoop()
         }
     }
 
-    public func stopBackgroundLoops() {
-        notificationLoopTask?.cancel()
+    public func stopBackgroundLoops() async {
+        let task = notificationLoopTask
         notificationLoopTask = nil
+        task?.cancel()
+        _ = await task?.result
+    }
+
+    private func runNotificationLoop() async {
+        while !Task.isCancelled {
+            do {
+                try await processTransportCycle(now: Date())
+            } catch is CancellationError {
+                break
+            } catch {
+                logger.error(
+                    "mission_control_notification_loop_failed",
+                    metadata: ["error": error.localizedDescription]
+                )
+            }
+
+            do {
+                try await Task.sleep(nanoseconds: 60_000_000_000)
+            } catch {
+                break
+            }
+        }
     }
 
     func runTransportCycle(now: Date = Date()) async throws {

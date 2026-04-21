@@ -1,4 +1,5 @@
 import OpenBurnBarCore
+import Darwin
 import Foundation
 
 public enum BurnBarDaemonPaths {
@@ -86,26 +87,49 @@ public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
         self.authToken = authToken
     }
 
+    public var normalizedHost: String {
+        host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
     /// Whether the gateway bind address is loopback.
     public var isLoopback: Bool {
-        host == "127.0.0.1" || host == "localhost" || host == "::1"
+        normalizedHost == "127.0.0.1" || normalizedHost == "localhost" || normalizedHost == "::1"
     }
 
     /// Validates the configuration. Returns an error description if invalid.
     public var validationError: String? {
         if !isEnabled { return nil }
+        if normalizedHost.isEmpty {
+            return "Gateway host must not be empty."
+        }
         if port < 1 || port > 65535 {
             return "Gateway port must be between 1 and 65535."
+        }
+        if normalizedHost == "0.0.0.0" || normalizedHost == "::" {
+            return "Gateway wildcard bind addresses are not allowed. Use a specific interface address."
+        }
+        if !Self.isValidHost(normalizedHost) {
+            return "Gateway host '\(host)' is not a valid hostname or IP address."
         }
         if !isLoopback && (authToken ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "A non-loopback gateway bind address requires an auth token for security."
         }
         return nil
     }
+
+    private static func isValidHost(_ host: String) -> Bool {
+        if host == "localhost" || host == "::1" {
+            return true
+        }
+
+        var ipv4 = in_addr()
+        return inet_pton(AF_INET, host, &ipv4) == 1
+    }
 }
 
 public struct BurnBarDaemonConfiguration: Sendable {
     public let socketPath: String
+    public let socketAuthToken: String?
     public let daemonVersion: String
     public let catalog: BurnBarCatalog
     /// Read-only path to the OpenBurnBar app SQLite database (`openburnbar.sqlite`) for indexed search RPC.
@@ -115,12 +139,14 @@ public struct BurnBarDaemonConfiguration: Sendable {
 
     public init(
         socketPath: String = BurnBarDaemonPaths.defaultSocketPath,
+        socketAuthToken: String? = nil,
         daemonVersion: String = BurnBarDaemonVersion.current,
         catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog,
         indexDatabasePath: String? = nil,
         gateway: BurnBarGatewayConfiguration = BurnBarGatewayConfiguration()
     ) {
         self.socketPath = socketPath
+        self.socketAuthToken = socketAuthToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
         self.daemonVersion = daemonVersion
         self.catalog = catalog
         self.indexDatabasePath = indexDatabasePath

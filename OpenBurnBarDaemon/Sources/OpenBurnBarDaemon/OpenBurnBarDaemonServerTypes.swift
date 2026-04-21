@@ -37,11 +37,13 @@ enum BurnBarRPCErrorCode {
     static let invalidParams = -32602
     static let methodNotFound = -32601
     static let internalError = -32603
+    static let unauthorized = -32001
 }
 
 struct IncomingRequestEnvelope: Decodable {
     let id: String
     let method: String
+    let authToken: String?
 }
 
 struct BurnBarEmptyResult: Codable, Sendable {}

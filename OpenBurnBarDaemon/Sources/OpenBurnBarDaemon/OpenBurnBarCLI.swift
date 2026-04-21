@@ -15,14 +15,19 @@ public protocol BurnBarCLIClient: Sendable {
 
 public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
     public let socketURL: URL
+    public let authToken: String?
 
-    public init(socketURL: URL = BurnBarDaemonPaths.defaultSocketURL) {
+    public init(
+        socketURL: URL = BurnBarDaemonPaths.defaultSocketURL,
+        authToken: String? = nil
+    ) {
         self.socketURL = socketURL
+        self.authToken = authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
     }
 
     public func health() throws -> BurnBarHealthResponse {
         let envelope: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try send(
-            BurnBarRPCRequestEnvelope(method: .health)
+            BurnBarRPCRequestEnvelope(method: .health, authToken: authToken)
         )
         return try unwrap(envelope)
     }
@@ -31,6 +36,7 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
         let response: BurnBarControllerSummaryResponse = try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .controllerSummary,
+                authToken: authToken,
                 params: BurnBarControllerSummaryRequest(projectSlug: projectSlug)
             )
         )
@@ -41,6 +47,7 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
         let response: BurnBarQuestionsListResponse = try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .questionsList,
+                authToken: authToken,
                 params: BurnBarQuestionsListRequest(
                     projectSlug: projectSlug,
                     statuses: BurnBarPendingQuestionStatus.allCases,
@@ -55,6 +62,7 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
         let response: BurnBarFollowupsListResponse = try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .followupsList,
+                authToken: authToken,
                 params: BurnBarFollowupsListRequest(
                     projectSlug: projectSlug,
                     statuses: BurnBarFollowupStatus.allCases,
@@ -69,6 +77,7 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
         let response: BurnBarMissionListResponse = try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .missionsList,
+                authToken: authToken,
                 params: BurnBarMissionListRequest(
                     projectSlug: projectSlug,
                     statuses: BurnBarMissionStatus.allCases,
@@ -83,6 +92,7 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
         let response: BurnBarMissionMutationResponse = try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .missionApprove,
+                authToken: authToken,
                 params: BurnBarMissionApproveRequest(
                     missionID: id,
                     actor: "openburnbar-cli",
@@ -97,6 +107,7 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
         let response: BurnBarSimulatorListResponse = try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .simulatorList,
+                authToken: authToken,
                 params: BurnBarSimulatorListRequest(projectSlug: projectSlug, limit: 100)
             )
         )
@@ -107,6 +118,7 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
         let response: BurnBarSimulatorRunResponse = try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
                 method: .simulatorReplay,
+                authToken: authToken,
                 params: BurnBarSimulatorReplayRequest(runID: runID, includeEvents: true)
             )
         )

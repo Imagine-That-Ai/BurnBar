@@ -459,6 +459,11 @@ export interface BurnBarMissionRow {
   // Ownership and transfer tracking
   approved: boolean;
   approvedBy?: string;
+  ownerPrincipalID?: string;
+  assigneePrincipalID?: string;
+  roleEligibility: BurnBarMissionRoleEligibility;
+  latestAuditEventID?: string;
+  latestAuditSummary?: string;
   packetsCount: number;
   activePacketID?: string;
   takeoverCount: number;
@@ -467,6 +472,12 @@ export interface BurnBarMissionRow {
   // VAL-EXT-007: PR closure linkage and closure-question state parity.
   prLinkage?: BurnBarPRLinkageSnapshot;
   closureQuestionState: string;
+}
+
+export interface BurnBarMissionRoleEligibility {
+  canApprove: boolean;
+  canTransferOwnership: boolean;
+  canAnswerClosureQuestion: boolean;
 }
 
 export interface BurnBarMissionDetailRow {
@@ -551,6 +562,11 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         updatedAt: timestamp,
         source: 'projected',
         approved: false,
+        roleEligibility: {
+          canApprove: false,
+          canTransferOwnership: false,
+          canAnswerClosureQuestion: false
+        },
         packetsCount: 0,
         takeoverCount: 0,
         closureQuestionState: 'Unknown'
@@ -571,6 +587,11 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         updatedAt: timestamp,
         source: 'projected',
         approved: false,
+        roleEligibility: {
+          canApprove: false,
+          canTransferOwnership: false,
+          canAnswerClosureQuestion: false
+        },
         packetsCount: 0,
         takeoverCount: 0,
         closureQuestionState: 'Unknown'
@@ -591,6 +612,11 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         updatedAt: timestamp,
         source: 'projected',
         approved: false,
+        roleEligibility: {
+          canApprove: false,
+          canTransferOwnership: false,
+          canAnswerClosureQuestion: false
+        },
         packetsCount: 0,
         takeoverCount: 0,
         closureQuestionState: 'No closure question pending'
@@ -614,6 +640,7 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         mission.packets.some((packet) => packet.runID === run.runID)
       );
       const prLinkage = resolveMissionPRLinkage(mission);
+      const teamFields = extractTeamCollaborationFields(mission, activePacket);
 
       return {
         id: mission.id,
@@ -627,6 +654,11 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         source: 'daemon' as const,
         approved: mission.approval?.approved ?? false,
         approvedBy: mission.approval?.approvedBy,
+        ownerPrincipalID: teamFields.ownerPrincipalID,
+        assigneePrincipalID: teamFields.assigneePrincipalID,
+        roleEligibility: teamFields.roleEligibility,
+        latestAuditEventID: teamFields.latestAuditEventID,
+        latestAuditSummary: teamFields.latestAuditSummary,
         packetsCount: mission.packets.length,
         activePacketID: activePacket?.id,
         takeoverCount: mission.takeoverHistory?.length ?? 0,
@@ -673,6 +705,67 @@ function extractReadinessFailure(
     code: readiness.code as BurnBarReadinessReasonCode,
     detail: readiness.detail
   };
+}
+
+function extractTeamCollaborationFields(
+  mission: BurnBarMissionSnapshot,
+  activePacket?: BurnBarMissionPacketSnapshot
+): {
+  ownerPrincipalID?: string;
+  assigneePrincipalID?: string;
+  roleEligibility: BurnBarMissionRoleEligibility;
+  latestAuditEventID?: string;
+  latestAuditSummary?: string;
+} {
+  const metadata = mission.metadata ?? {};
+  const ownerPrincipalID =
+    metadataString(metadata, 'team_owner_id', 'owner_principal_id') ?? mission.approval?.approvedBy;
+  const assigneePrincipalID =
+    metadataString(metadata, 'team_assignee_id', 'assignee_principal_id') ?? activePacket?.workerName;
+
+  const roleEligibility: BurnBarMissionRoleEligibility = {
+    canApprove:
+      metadataBoolean(metadata, 'role_can_approve')
+      ?? (!(mission.approval?.approved ?? false) && mission.status === 'awaiting_approval'),
+    canTransferOwnership:
+      metadataBoolean(metadata, 'role_can_transfer')
+      ?? !['completed', 'failed', 'cancelled'].includes(mission.status),
+    canAnswerClosureQuestion:
+      metadataBoolean(metadata, 'role_can_answer_closure')
+      ?? mission.status === 'awaiting_approval'
+  };
+
+  return {
+    ownerPrincipalID,
+    assigneePrincipalID,
+    roleEligibility,
+    latestAuditEventID: metadataString(metadata, 'audit_event_id', 'last_audit_event_id'),
+    latestAuditSummary: metadataString(metadata, 'audit_summary', 'last_audit_summary')
+  };
+}
+
+function metadataString(
+  metadata: Record<string, unknown>,
+  ...keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+    }
+  }
+  return undefined;
+}
+
+function metadataBoolean(
+  metadata: Record<string, unknown>,
+  key: string
+): boolean | undefined {
+  const value = metadata[key];
+  return typeof value === 'boolean' ? value : undefined;
 }
 
 export function buildMissionDetailRows(state: OpenBurnBarState, missionId?: string): BurnBarMissionDetailRow[] {

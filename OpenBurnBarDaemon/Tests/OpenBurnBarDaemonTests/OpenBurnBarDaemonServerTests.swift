@@ -80,6 +80,35 @@ final class BurnBarDaemonServerTests: XCTestCase {
         await server.stop()
     }
 
+    func testDaemonSocketAuthRequiresMatchingToken() async throws {
+        let socketPath = makeSocketPath(name: "socket-auth")
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "socket-secret"
+            )
+        )
+
+        try await server.start()
+
+        let unauthorizedResponse: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try sendRequest(
+            BurnBarRPCRequestEnvelope(id: "unauthorized-health", method: .health),
+            socketPath: socketPath
+        )
+        XCTAssertNil(unauthorizedResponse.result)
+        XCTAssertEqual(unauthorizedResponse.error?.code, -32001)
+        XCTAssertEqual(unauthorizedResponse.error?.message, "Unauthorized OpenBurnBar RPC request.")
+
+        let authorizedResponse: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try sendRequest(
+            BurnBarRPCRequestEnvelope(id: "authorized-health", method: .health, authToken: "socket-secret"),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(authorizedResponse.result?.ok, true)
+        XCTAssertNil(authorizedResponse.error)
+
+        await server.stop()
+    }
+
     func testServerExposesRunConfigAndUsageRPCs() async throws {
         let socketPath = makeSocketPath(name: "run-rpc")
         let rootURL = FileManager.default.temporaryDirectory

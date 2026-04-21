@@ -190,9 +190,28 @@ describe("OpenBurnBar workspace RPC", () => {
 
     companion.dispose();
   });
+
+  it("requires explicit terminal confirmation before command execution", async () => {
+    const api = createFakeWorkspaceApi({ terminalConfirmation: false });
+    const companion = new OpenBurnBarWorkspaceCompanion(api);
+    const client = new OpenBurnBarWorkspaceRpcClient({
+      executeCommand: async (_command, request: BurnBarWorkspaceRpcRequest) => companion.handle(request)
+    });
+
+    await expect(client.runTerminal({ command: "npm test" })).rejects.toMatchObject<OpenBurnBarWorkspaceRpcError>({
+      code: "TERMINAL_CANCELLED"
+    });
+    expect(api.terminals).toHaveLength(0);
+
+    companion.dispose();
+  });
 });
 
-function createFakeWorkspaceApi(options: { isTrusted?: boolean; persistOnlyIfOpenedBeforeApply?: boolean } = {}): BurnBarWorkspaceApi & {
+function createFakeWorkspaceApi(options: {
+  isTrusted?: boolean;
+  persistOnlyIfOpenedBeforeApply?: boolean;
+  terminalConfirmation?: boolean;
+} = {}): BurnBarWorkspaceApi & {
   terminals: Array<FakeTerminal & BurnBarWorkspaceTerminal>;
 } {
   const files = new Map<string, string>([["file:///workspace/src/example.ts", "const value = 1;\nconsole.log(value);\n"]]);
@@ -264,6 +283,9 @@ function createFakeWorkspaceApi(options: { isTrusted?: boolean; persistOnlyIfOpe
         start: { line: startLine, character: startCharacter },
         end: { line: endLine, character: endCharacter }
       };
+    },
+    async confirmTerminalCommand() {
+      return options.terminalConfirmation ?? true;
     },
     createTerminal(options) {
       const terminal = new FakeTerminal(options.name, options.cwd);
