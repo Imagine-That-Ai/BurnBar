@@ -1210,6 +1210,62 @@ extension OpenBurnBarOperatingComposerTests {
             usageCosts: [2.0, 1.6]
         )
 
+        // Seed controller runtime mirror with questions to test the singleton invariant
+        // The seedProject function only seeds conversations and token usage, not controller runtime
+        let controllerRuntime = OpenBurnBarControllerRuntimeSnapshot(
+            source: .daemon,
+            updatedAt: now,
+            summary: OpenBurnBarControllerSummary(
+                headline: "1 pending question needs attention.",
+                detail: "Daemon-backed controller summary.",
+                pendingQuestions: 1,
+                unresolvedFollowups: 0,
+                openMissions: 1,
+                replayLabel: "Replay idle",
+                notificationLabel: "Local notifications armed"
+            ),
+            questions: [
+                OpenBurnBarControllerQuestion(
+                    id: "question-apollo-1",
+                    projectName: "Apollo",
+                    sessionID: "apollo-4",
+                    title: "Scope the approval sheet",
+                    prompt: "Should Apollo keep the current approval sheet scope?",
+                    stageLabel: "Operator Decision",
+                    evidenceHint: "Ship the approval sheet",
+                    state: .pending,
+                    priority: .high,
+                    sourceLabel: "Daemon controller runtime",
+                    createdAt: now.addingTimeInterval(-300),
+                    answeredAt: nil,
+                    answer: nil,
+                    selectedOptionID: nil,
+                    answerPlaceholder: "Record the operator call OpenBurnBar should carry forward…",
+                    suggestedOptions: [
+                        OpenBurnBarControllerQuestionOption(
+                            id: "proceed",
+                            title: "Proceed",
+                            detail: "Keep the current scope.",
+                            answer: "Proceed with the current approval sheet scope."
+                        ),
+                        OpenBurnBarControllerQuestionOption(
+                            id: "reset",
+                            title: "Reset",
+                            detail: "Change direction before shipping.",
+                            answer: "Reset the scope before shipping."
+                        )
+                    ],
+                    deepLink: nil,
+                    isUnread: true,
+                    notificationCount: 1
+                )
+            ],
+            followups: [],
+            missions: [],
+            recentEvents: []
+        )
+        try store.saveControllerRuntimeMirror(controllerRuntime)
+
         let layer = makeLayer(dataStore: store)
         let snapshot = layer.snapshot
 
