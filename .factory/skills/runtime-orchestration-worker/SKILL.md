@@ -32,32 +32,58 @@ None.
 
 ## Work Procedure
 1. **Identify branch** — Determine whether this is Branch A (daemon runtime) or Branch B (OpenBurnBarCore CLI-launch reliability). Check `When to Use This Skill` above.
-2. Map the assigned `fulfills` assertions to exact runtime behaviors and existing tests.
-3. Add failing tests first for run lifecycle, replay/restart safety, and reconciliation determinism.
-4. Implement runtime code with idempotency and append-only journal assumptions preserved.
-5. Verify no duplicate terminal results, no duplicate usage accounting, and stable takeover semantics.
-6. **Run focused validation commands — Branch A (daemon runtime):**
-   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarRunServiceTests`
-   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`
-   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarProviderRouterTests`
-   **Run focused validation commands — Branch B (CLI-launch reliability):**
-   - `swift test --package-path OpenBurnBarCore --filter CLILaunchInvokerTests`
-   - `./scripts/test-openburnbar-swift.sh`
-   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarRunServiceTests` (only if runtime integration exists)
+2. Map the assigned `fulfills` assertions to exact behaviors and existing tests for the selected branch.
+3. Execute **only one** branch track below. Do not apply Branch A runtime expectations to Branch B CLI-launch reliability work.
 
-   **⚠️ Handoff evidence requirement (enforced):** `followedProcedure=true` in the skillFeedback block of `EndFeatureRun` is only valid when **every required validator command for the applicable branch** has a corresponding entry in the handoff `verification.commandsRun` array. Each entry must include:
-   - `command`: the exact command string executed
-   - `exitCode`: the actual exit code (0 or non-zero)
-   - `observation`: specific, non-generic text describing which test cases ran and what they verified (not just "tests passed")
-   
-   A handoff with `followedProcedure=true` but missing evidence for any required validator surface is invalid and must be treated as a procedure deviation. List any validator surfaces that were not exercised as empty/omitted in the handoff if they genuinely do not apply to the feature.
+### Branch A — Daemon Runtime Track
+1. Add failing tests first for run lifecycle, replay/restart safety, and reconciliation determinism.
+2. Implement daemon runtime code with idempotency and append-only journal assumptions preserved.
+3. Verify no duplicate terminal results, no duplicate usage accounting, and stable takeover semantics.
+4. Run required validator commands from `.factory/services.yaml`:
+   - `commands.test_daemon_runtime` (`swift test --package-path OpenBurnBarDaemon --filter BurnBarRunServiceTests`)
+   - `commands.test_daemon_mission` (`swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`)
+   - `commands.test_router` (`swift test --package-path OpenBurnBarDaemon --filter BurnBarProviderRouterTests`)
+
+### Branch B — CLI-Launch Reliability Track
+1. Add failing tests first for CLI launch pipe behavior, deterministic read-loop handling, and launcher error/EOF stability (`CLILaunchInvokerTests`).
+2. Implement CLI-launch reliability fixes in `OpenBurnBarCore` (pipe read loop, stream framing, subprocess output handling) without introducing daemon-runtime assumptions.
+3. Verify deterministic output capture, stable EOF/termination handling, and no duplicate/dropped stream chunks under retryable subprocess conditions.
+4. Run required validator commands from `.factory/services.yaml`:
+   - `commands.test_core_cli_launch_invoker` (`swift test --package-path OpenBurnBarCore --filter CLILaunchInvokerTests`)
+   - `commands.test_swift_packages` (`scripts/test-openburnbar-swift.sh`)
+5. Run `commands.test_daemon_runtime` only when the CLI-launch change also introduces daemon runtime integration behavior; if omitted, call that out explicitly in handoff evidence/deviations.
+
+### ⚠️ Handoff Evidence Gate (Enforced)
+`followedProcedure=true` in the `skillFeedback` block of `EndFeatureRun` is valid only when **every required validator surface for the selected branch** has a corresponding entry in `verification.commandsRun`.
+
+**Required validator surfaces by branch:**
+- **Branch A required validator surfaces:** `commands.test_daemon_runtime`, `commands.test_daemon_mission`, `commands.test_router`
+- **Branch B required validator surfaces:** `commands.test_core_cli_launch_invoker`, `commands.test_swift_packages`
+- **Branch B conditional validator surface:** `commands.test_daemon_runtime` (required only when runtime integration exists)
+
+If any required validator surface is missing from handoff evidence, you MUST set `followedProcedure=false` and add a deviation entry identifying the omitted required validator surface(s) and why.
+
+Each required validator evidence entry must include:
+- `command`: the exact command string executed
+- `exitCode`: the actual exit code (0 or non-zero)
+- `observation`: specific, non-generic text describing which test cases ran and what they verified (not just "tests passed")
+
+### Command Alias Sync Rule (Prevent Source-of-Truth Drift)
+`.factory/services.yaml` is the command source of truth. Keep branch guidance and command aliases synchronized:
+- Reference alias names (`commands.*`) in handoffs and procedure checks.
+- If a required validator command changes, update `.factory/services.yaml` and this skill in the same commit.
+- Do not introduce branch validator commands in this skill without adding/updating the corresponding alias.
 
 ### Test Filter Guidance: Canonical vs. Assertion-Filter Commands
 
-**Canonical test commands** run all tests in a test class and are used for baseline validation:
-- `swift test --package-path OpenBurnBarDaemon --filter BurnBarRunServiceTests`
-- `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`
-- `swift test --package-path OpenBurnBarDaemon --filter BurnBarProviderRouterTests`
+**Canonical test commands** run the branch baseline surfaces and are used for baseline validation:
+- **Branch A canonical commands**
+  - `commands.test_daemon_runtime` → `swift test --package-path OpenBurnBarDaemon --filter BurnBarRunServiceTests`
+  - `commands.test_daemon_mission` → `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`
+  - `commands.test_router` → `swift test --package-path OpenBurnBarDaemon --filter BurnBarProviderRouterTests`
+- **Branch B canonical commands**
+  - `commands.test_core_cli_launch_invoker` → `swift test --package-path OpenBurnBarCore --filter CLILaunchInvokerTests`
+  - `commands.test_swift_packages` → `scripts/test-openburnbar-swift.sh`
 
 **Assertion-filter commands** run a specific subset of tests that verify a particular validation assertion (e.g., `VAL_EXEC_009`). These are supplemental and appropriate when:
 - A feature's `verificationSteps` explicitly require assertion-filter verification (e.g., `swift test --filter VAL_EXEC_009`)

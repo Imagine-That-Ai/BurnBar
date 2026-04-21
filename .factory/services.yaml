@@ -8,6 +8,7 @@ commands:
   test_daemon_rpc: swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests
   test_core_contracts: swift test --package-path OpenBurnBarCore --filter BurnBarMissionControlContractsTests
   test_core_cli_launch_invoker: swift test --package-path OpenBurnBarCore --filter CLILaunchInvokerTests
+  test_swift_packages: scripts/test-openburnbar-swift.sh
   test_router: swift test --package-path OpenBurnBarDaemon --filter BurnBarProviderRouterTests
   test_daemon_val_exec_009: swift test --package-path OpenBurnBarDaemon --filter VAL_EXEC_009
   test_app_operating: xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''
