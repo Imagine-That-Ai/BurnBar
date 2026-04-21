@@ -330,8 +330,18 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
     }
 
     func testMissionMutationRoundTrip_preservesPacketsResultsAndBurn() throws {
+        // VAL-GOV-007: Mission closure carries typed PR lifecycle linkage.
         let now = Date(timeIntervalSince1970: 1_710_000_200)
         let missionID = BurnBarMissionID(rawValue: "mission-1")
+        let prLinkage = BurnBarPRLinkageSnapshot(
+            repository: "Ajnunezg/BurnBar",
+            prNumberOrID: "42",
+            url: "https://github.com/Ajnunezg/BurnBar/pull/42",
+            state: .merged,
+            mergeCommitSHA: "abc123def",
+            mergedAt: now.addingTimeInterval(25),
+            closedAt: now.addingTimeInterval(30)
+        )
         let packet = BurnBarMissionPacketSnapshot(
             id: BurnBarMissionPacketID(rawValue: "packet-1"),
             missionID: missionID,
@@ -352,7 +362,8 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
             detail: "Waiting on provider quota confirmation.",
             burnDelta: 2.5,
             createdAt: now.addingTimeInterval(30),
-            evidenceRefs: ["event-99"]
+            evidenceRefs: ["event-99"],
+            prLinkage: prLinkage
         )
         let mission = BurnBarMissionSnapshot(
             id: missionID,
@@ -393,6 +404,7 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
                     updatedAt: now.addingTimeInterval(30)
                 )
             ],
+            prLinkage: prLinkage,
             metadata: ["cadence": .string("daily")]
         )
         let response = BurnBarMissionMutationResponse(
@@ -416,8 +428,32 @@ final class BurnBarMissionControlContractsTests: XCTestCase {
         XCTAssertEqual(decoded.mission.packets.first?.workerName, "planner")
         XCTAssertEqual(decoded.mission.results.first?.runID, BurnBarRunID(rawValue: "run-1"))
         XCTAssertEqual(decoded.mission.results.first?.burnDelta, 2.5)
+        XCTAssertEqual(decoded.mission.results.first?.prLinkage?.repository, "Ajnunezg/BurnBar")
+        XCTAssertEqual(decoded.mission.results.first?.prLinkage?.state, .merged)
+        XCTAssertEqual(decoded.mission.prLinkage?.prNumberOrID, "42")
+        XCTAssertEqual(decoded.mission.prLinkage?.mergeCommitSHA, "abc123def")
         XCTAssertEqual(decoded.mission.takeoverHistory?.first?.status, .completed)
         XCTAssertEqual(decoded.emittedEvent?.family, .mission)
+    }
+
+    func testVAL_GOV_007_ResultMetadataFallbackBuildsTypedPRLinkage() {
+        let result = BurnBarMissionResultSnapshot(
+            id: BurnBarMissionResultID(rawValue: "result-metadata"),
+            missionID: BurnBarMissionID(rawValue: "mission-metadata"),
+            status: .succeeded,
+            summary: "Connector reported PR opened.",
+            createdAt: Date(timeIntervalSince1970: 1_710_000_300),
+            metadata: [
+                "pr_repository": .string("Ajnunezg/BurnBar"),
+                "pr_number_or_id": .string("101"),
+                "pr_url": .string("https://github.com/Ajnunezg/BurnBar/pull/101"),
+                "pr_state": .string("opened")
+            ]
+        )
+
+        XCTAssertEqual(result.prLinkage?.repository, "Ajnunezg/BurnBar")
+        XCTAssertEqual(result.prLinkage?.prNumberOrID, "101")
+        XCTAssertEqual(result.prLinkage?.state, .opened)
     }
 
     func testNotificationAndSimulatorContracts_roundTrip() throws {

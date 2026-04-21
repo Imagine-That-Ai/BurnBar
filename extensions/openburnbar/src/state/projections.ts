@@ -5,7 +5,8 @@ import type {
   OpenBurnBarState,
   BurnBarUsageEvent,
   BurnBarMissionSnapshot,
-  BurnBarMissionPacketSnapshot
+  BurnBarMissionPacketSnapshot,
+  BurnBarPRLinkageSnapshot
 } from '../types';
 import type { BurnBarWorkspaceCapabilities } from '../workspace/types';
 
@@ -463,6 +464,9 @@ export interface BurnBarMissionRow {
   takeoverCount: number;
   // VAL-CROSS-009: Readiness failure for pre-dispatch execution failures
   readinessFailure?: BurnBarReadinessFailure;
+  // VAL-EXT-007: PR closure linkage and closure-question state parity.
+  prLinkage?: BurnBarPRLinkageSnapshot;
+  closureQuestionState: string;
 }
 
 export interface BurnBarMissionDetailRow {
@@ -548,7 +552,8 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         source: 'projected',
         approved: false,
         packetsCount: 0,
-        takeoverCount: 0
+        takeoverCount: 0,
+        closureQuestionState: 'Unknown'
       }
     ];
   }
@@ -567,7 +572,8 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         source: 'projected',
         approved: false,
         packetsCount: 0,
-        takeoverCount: 0
+        takeoverCount: 0,
+        closureQuestionState: 'Unknown'
       }
     ];
   }
@@ -586,7 +592,8 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         source: 'projected',
         approved: false,
         packetsCount: 0,
-        takeoverCount: 0
+        takeoverCount: 0,
+        closureQuestionState: 'No closure question pending'
       }
     ];
   }
@@ -606,6 +613,7 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
       const runForMission = state.daemonRuns.find((run) =>
         mission.packets.some((packet) => packet.runID === run.runID)
       );
+      const prLinkage = resolveMissionPRLinkage(mission);
 
       return {
         id: mission.id,
@@ -623,7 +631,9 @@ export function buildMissionRows(state: OpenBurnBarState): BurnBarMissionRow[] {
         activePacketID: activePacket?.id,
         takeoverCount: mission.takeoverHistory?.length ?? 0,
         // VAL-CROSS-009: Extract readiness failure from mission metadata if present
-        readinessFailure: extractReadinessFailure(mission.metadata)
+        readinessFailure: extractReadinessFailure(mission.metadata),
+        prLinkage,
+        closureQuestionState: closureQuestionStateForStatus(mission.status)
       };
     });
 }
@@ -727,8 +737,37 @@ export function buildMissionDetailRows(state: OpenBurnBarState, missionId?: stri
       id: 'approval',
       label: 'Approved',
       value: mission.approval?.approved ? `Yes by ${mission.approval.approvedBy ?? 'unknown'}` : 'Pending'
+    },
+    {
+      id: 'closure-question-state',
+      label: 'Closure question',
+      value: closureQuestionStateForStatus(mission.status)
     }
   ];
+
+  const prLinkage = resolveMissionPRLinkage(mission);
+  if (prLinkage) {
+    rows.push({
+      id: 'pr-linkage',
+      label: 'Pull request',
+      value: `${prLinkage.repository} #${prLinkage.prNumberOrID}`
+    });
+    rows.push({
+      id: 'pr-state',
+      label: 'PR state',
+      value: prLinkage.state
+    });
+    rows.push({
+      id: 'pr-url',
+      label: 'PR URL',
+      value: prLinkage.url
+    });
+    rows.push({
+      id: 'pr-merged',
+      label: 'PR merged',
+      value: prLinkage.state === 'merged' ? 'Yes' : 'No'
+    });
+  }
 
   if (mission.packets.length > 0) {
     rows.push({
@@ -904,8 +943,13 @@ function describeMissionNote(
   mission: BurnBarMissionSnapshot,
   activePacket?: BurnBarMissionPacketSnapshot
 ): string {
+  const prLinkage = resolveMissionPRLinkage(mission);
+
   if (mission.status === 'completed') {
     const completedPackets = mission.packets.filter((p) => p.status === 'completed').length;
+    if (prLinkage) {
+      return `Completed: ${completedPackets}/${mission.packets.length} packets done. PR ${prLinkage.state} (${prLinkage.prNumberOrID}).`;
+    }
     return `Completed: ${completedPackets}/${mission.packets.length} packets done.`;
   }
 
@@ -926,6 +970,143 @@ function describeMissionNote(
   }
 
   return `${mission.packets.length} packet(s), status: ${mission.status}`;
+}
+
+function closureQuestionStateForStatus(status: BurnBarMissionStatus): string {
+  switch (status) {
+  case 'awaiting_approval':
+    return 'Pending closure approval question';
+  case 'completed':
+    return 'No closure question pending';
+  case 'failed':
+  case 'cancelled':
+    return 'Closure unresolved';
+  case 'draft':
+  case 'approved':
+  case 'dispatching':
+  case 'in_progress':
+  case 'partially_completed':
+  default:
+    return 'Closure in progress';
+  }
+}
+
+function resolveMissionPRLinkage(mission: BurnBarMissionSnapshot): BurnBarPRLinkageSnapshot | undefined {
+  if (mission.prLinkage) {
+    return mission.prLinkage;
+  }
+
+  const latestResult = [...mission.results]
+    .sort((lhs, rhs) => Date.parse(rhs.createdAt) - Date.parse(lhs.createdAt))[0];
+  if (latestResult?.prLinkage) {
+    return latestResult.prLinkage;
+  }
+
+  return parsePRLinkageFromMetadata(mission.metadata);
+}
+
+function parsePRLinkageFromMetadata(
+  metadata?: Record<string, unknown>
+): BurnBarPRLinkageSnapshot | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+
+  const nested = asObject(metadata.pr_linkage) ?? asObject(metadata.prLinkage) ?? asObject(metadata.pull_request);
+  const source = nested ?? metadata;
+
+  const repository = asString(source.repository) ?? asString(source.pr_repository);
+  const prNumberOrID = asString(source.prNumberOrID) ?? asString(source.pr_number_or_id) ?? asString(source.pr_id);
+  const url = asString(source.url) ?? asString(source.pr_url);
+  if (!repository || !prNumberOrID || !url) {
+    return undefined;
+  }
+
+  const mergeCommitSHA = asString(source.mergeCommitSHA) ?? asString(source.pr_merge_commit_sha);
+  const mergedAt = asString(source.mergedAt) ?? asString(source.pr_merged_at);
+  const closedAt = asString(source.closedAt) ?? asString(source.pr_closed_at);
+  const mergedSignal =
+    (asBoolean(source.isMerged) ?? asBoolean(source.pr_is_merged) ?? false)
+    || Boolean(mergeCommitSHA)
+    || Boolean(mergedAt);
+  const state = normalizePRState(
+    asString(source.state) ?? asString(source.pr_state),
+    mergedSignal,
+    Boolean(closedAt)
+  );
+
+  return {
+    schemaVersion: asNumber(source.schemaVersion) ?? 1,
+    repository,
+    prNumberOrID,
+    url,
+    state,
+    mergeCommitSHA: mergeCommitSHA ?? undefined,
+    mergedAt: mergedAt ?? undefined,
+    closedAt: closedAt ?? undefined
+  };
+}
+
+function normalizePRState(
+  rawState: string | undefined,
+  mergedSignal: boolean,
+  closedSignal: boolean
+): BurnBarPRLinkageSnapshot['state'] {
+  const normalized = rawState?.trim().toLowerCase();
+  if (normalized === 'opened' || normalized === 'open') {
+    return 'opened';
+  }
+  if (normalized === 'merged') {
+    return 'merged';
+  }
+  if (normalized === 'closed') {
+    return mergedSignal ? 'merged' : 'closed';
+  }
+  if (mergedSignal) {
+    return 'merged';
+  }
+  if (closedSignal) {
+    return 'closed';
+  }
+  return 'opened';
+}
+
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+function asString(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+  return undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
 }
 
 function visibleModels(catalog?: BurnBarCatalog): Array<{ id: string }> {

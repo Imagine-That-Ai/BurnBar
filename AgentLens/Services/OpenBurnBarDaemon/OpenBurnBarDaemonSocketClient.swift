@@ -489,6 +489,28 @@ enum OpenBurnBarDaemonSocketClient {
             }.first
             let activePacket = mission.packets.first(where: { [.queued, .dispatched, .running].contains($0.status) }) ?? latestPacket
             let latestResult = mission.results.sorted(by: { $0.createdAt > $1.createdAt }).first
+            let missionPRLinkage = mission.prLinkage ?? latestResult?.prLinkage
+            let packetSummary = latestPacket.map { packet in
+                "\(packet.workerName): \(packet.objective)"
+            }
+            let burnTokens = mission.results.reduce(0) { partial, result in
+                partial
+                    + intValue(in: result.metadata["input_tokens"])
+                    + intValue(in: result.metadata["output_tokens"])
+                    + intValue(in: result.metadata["cache_read_tokens"])
+            }
+            let mappedPRLinkage = missionPRLinkage.map {
+                OpenBurnBarControllerMissionPRLinkage(
+                    repository: $0.repository,
+                    prNumberOrID: $0.prNumberOrID,
+                    url: $0.url,
+                    state: missionPRState(for: $0.state),
+                    isMerged: $0.isMerged,
+                    mergeCommitSHA: $0.mergeCommitSHA,
+                    mergedAt: $0.mergedAt,
+                    closedAt: $0.closedAt
+                )
+            }
             let latestTakeover = mission.takeoverHistory?
                 .sorted(by: { $0.updatedAt > $1.updatedAt })
                 .first
@@ -499,7 +521,7 @@ enum OpenBurnBarDaemonSocketClient {
                 summary: mission.summary,
                 state: missionLifecycle(for: mission.status),
                 approval: mission.approval.approved ? .approved : .pending,
-                packetSummary: latestPacket.map { "\($0.workerName): \($0.objective)" },
+                packetSummary: packetSummary,
                 latestResultSummary: latestResult?.summary,
                 latestResultDetail: latestResult?.detail,
                 latestResultRunID: latestResult?.runID?.rawValue,
@@ -511,13 +533,9 @@ enum OpenBurnBarDaemonSocketClient {
                 latestTakeoverRunID: latestTakeover?.takeoverRunID?.rawValue,
                 takeoverCount: mission.takeoverHistory?.count ?? 0,
                 burnCostUSD: mission.burnRecords.reduce(0) { $0 + $1.amount },
-                burnTokens: mission.results.reduce(0) { partial, result in
-                    partial
-                        + intValue(in: result.metadata["input_tokens"])
-                        + intValue(in: result.metadata["output_tokens"])
-                        + intValue(in: result.metadata["cache_read_tokens"])
-                },
-                updatedAt: mission.updatedAt
+                burnTokens: burnTokens,
+                updatedAt: mission.updatedAt,
+                prLinkage: mappedPRLinkage
             )
         }
 
@@ -535,7 +553,7 @@ enum OpenBurnBarDaemonSocketClient {
 
         let pendingQuestionCount = mappedQuestions.filter { $0.state == .pending }.count
         let unresolvedFollowupCount = mappedFollowups.filter { $0.state == .open }.count
-        let openMissionCount = mappedMissions.filter { $0.state != .completed }.count
+        let openMissionCount = mappedMissions.filter { $0.state != OpenBurnBarMissionLifecycle.completed }.count
 
         return OpenBurnBarControllerRuntimeSnapshot(
             source: .daemon,
@@ -686,6 +704,17 @@ enum OpenBurnBarDaemonSocketClient {
             return .blocked
         case .completed:
             return .completed
+        }
+    }
+
+    private static func missionPRState(for state: BurnBarPRLinkageState) -> OpenBurnBarControllerMissionPRState {
+        switch state {
+        case .opened:
+            return .opened
+        case .merged:
+            return .merged
+        case .closed:
+            return .closed
         }
     }
 

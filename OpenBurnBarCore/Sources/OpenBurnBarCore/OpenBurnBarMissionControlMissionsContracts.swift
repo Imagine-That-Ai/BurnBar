@@ -75,6 +75,228 @@ public struct BurnBarMissionPacketSnapshot: Codable, Hashable, Identifiable, Sen
     }
 }
 
+public enum BurnBarPRLinkageState: String, Codable, CaseIterable, Hashable, Sendable {
+    case opened
+    case merged
+    case closed
+}
+
+public struct BurnBarPRLinkageSnapshot: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let repository: String
+    public let prNumberOrID: String
+    public let url: String
+    public let state: BurnBarPRLinkageState
+    public let mergeCommitSHA: String?
+    public let mergedAt: Date?
+    public let closedAt: Date?
+
+    public var isMerged: Bool {
+        state == .merged || mergeCommitSHA?.isEmpty == false || mergedAt != nil
+    }
+
+    public init(
+        schemaVersion: Int = BurnBarPRLinkageSnapshot.currentSchemaVersion,
+        repository: String,
+        prNumberOrID: String,
+        url: String,
+        state: BurnBarPRLinkageState,
+        mergeCommitSHA: String? = nil,
+        mergedAt: Date? = nil,
+        closedAt: Date? = nil
+    ) {
+        self.schemaVersion = schemaVersion
+        self.repository = repository
+        self.prNumberOrID = prNumberOrID
+        self.url = url
+        self.state = state
+        self.mergeCommitSHA = mergeCommitSHA
+        self.mergedAt = mergedAt
+        self.closedAt = closedAt
+    }
+
+    public static func fromMetadata(_ metadata: BurnBarMetadata) -> BurnBarPRLinkageSnapshot? {
+        if let nested = nestedObject(
+            in: metadata,
+            keys: ["pr_linkage", "prLinkage", "pull_request", "pullRequest"]
+        ), let parsed = parseObject(nested) {
+            return parsed
+        }
+        return parseObject(metadata)
+    }
+
+    private static func parseObject(_ object: [String: BurnBarJSONValue]) -> BurnBarPRLinkageSnapshot? {
+        guard let repository = firstString(
+            in: object,
+            keys: ["repository", "repo", "pr_repository", "pull_request_repository"]
+        ),
+              let prNumberOrID = firstString(
+                  in: object,
+                  keys: ["prNumberOrID", "pr_number_or_id", "pr_number", "pr_id", "pull_request_id", "number"]
+              ),
+              let url = firstString(
+                  in: object,
+                  keys: ["url", "pr_url", "pull_request_url"]
+              ) else {
+            return nil
+        }
+
+        let mergeCommitSHA = firstString(
+            in: object,
+            keys: ["mergeCommitSHA", "merge_commit_sha", "pr_merge_commit_sha"]
+        )
+        let mergedAt = firstDate(
+            in: object,
+            keys: ["mergedAt", "merged_at", "pr_merged_at"]
+        )
+        let closedAt = firstDate(
+            in: object,
+            keys: ["closedAt", "closed_at", "pr_closed_at"]
+        )
+
+        let explicitState = firstString(
+            in: object,
+            keys: ["state", "pr_state", "pull_request_state"]
+        )
+        let mergedFlag = firstBool(
+            in: object,
+            keys: ["isMerged", "is_merged", "pr_is_merged", "merged"]
+        ) ?? false
+        let resolvedState = parseState(
+            explicitState,
+            mergedSignal: mergedFlag || mergedAt != nil || mergeCommitSHA?.isEmpty == false,
+            closedSignal: closedAt != nil
+        )
+
+        return BurnBarPRLinkageSnapshot(
+            schemaVersion: Int(firstNumber(in: object, keys: ["schemaVersion", "schema_version"]) ?? Double(currentSchemaVersion)),
+            repository: repository,
+            prNumberOrID: prNumberOrID,
+            url: url,
+            state: resolvedState,
+            mergeCommitSHA: mergeCommitSHA,
+            mergedAt: mergedAt,
+            closedAt: closedAt
+        )
+    }
+
+    private static func parseState(
+        _ rawValue: String?,
+        mergedSignal: Bool,
+        closedSignal: Bool
+    ) -> BurnBarPRLinkageState {
+        if let rawValue {
+            switch rawValue
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .replacingOccurrences(of: " ", with: "_") {
+            case "open", "opened":
+                return .opened
+            case "merged":
+                return .merged
+            case "closed":
+                return .closed
+            default:
+                break
+            }
+        }
+        if mergedSignal {
+            return .merged
+        }
+        if closedSignal {
+            return .closed
+        }
+        return .opened
+    }
+
+    private static func nestedObject(
+        in object: [String: BurnBarJSONValue],
+        keys: [String]
+    ) -> [String: BurnBarJSONValue]? {
+        for key in keys {
+            if case .object(let nested)? = object[key] {
+                return nested
+            }
+        }
+        return nil
+    }
+
+    private static func firstString(
+        in object: [String: BurnBarJSONValue],
+        keys: [String]
+    ) -> String? {
+        for key in keys {
+            guard let value = object[key] else { continue }
+            switch value {
+            case .string(let raw):
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty == false {
+                    return trimmed
+                }
+            case .number(let raw):
+                return String(raw)
+            default:
+                continue
+            }
+        }
+        return nil
+    }
+
+    private static func firstNumber(
+        in object: [String: BurnBarJSONValue],
+        keys: [String]
+    ) -> Double? {
+        for key in keys {
+            guard case .number(let raw)? = object[key] else { continue }
+            return raw
+        }
+        return nil
+    }
+
+    private static func firstBool(
+        in object: [String: BurnBarJSONValue],
+        keys: [String]
+    ) -> Bool? {
+        for key in keys {
+            guard let value = object[key] else { continue }
+            switch value {
+            case .bool(let raw):
+                return raw
+            case .number(let raw):
+                return raw != 0
+            default:
+                continue
+            }
+        }
+        return nil
+    }
+
+    private static func firstDate(
+        in object: [String: BurnBarJSONValue],
+        keys: [String]
+    ) -> Date? {
+        for key in keys {
+            guard let value = object[key] else { continue }
+            switch value {
+            case .number(let epoch):
+                return Date(timeIntervalSince1970: epoch)
+            case .string(let raw):
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let date = metadataDateFormatter.date(from: trimmed) {
+                    return date
+                }
+            default:
+                continue
+            }
+        }
+        return nil
+    }
+
+    private static let metadataDateFormatter = ISO8601DateFormatter()
+}
+
 public struct BurnBarMissionResultSnapshot: Codable, Hashable, Identifiable, Sendable {
     public let id: BurnBarMissionResultID
     public let missionID: BurnBarMissionID
@@ -86,6 +308,7 @@ public struct BurnBarMissionResultSnapshot: Codable, Hashable, Identifiable, Sen
     public let burnDelta: Double
     public let createdAt: Date
     public let evidenceRefs: [String]
+    public let prLinkage: BurnBarPRLinkageSnapshot?
     public let metadata: BurnBarMetadata
 
     public init(
@@ -99,6 +322,7 @@ public struct BurnBarMissionResultSnapshot: Codable, Hashable, Identifiable, Sen
         burnDelta: Double = 0,
         createdAt: Date,
         evidenceRefs: [String] = [],
+        prLinkage: BurnBarPRLinkageSnapshot? = nil,
         metadata: BurnBarMetadata = [:]
     ) {
         self.id = id
@@ -111,6 +335,7 @@ public struct BurnBarMissionResultSnapshot: Codable, Hashable, Identifiable, Sen
         self.burnDelta = burnDelta
         self.createdAt = createdAt
         self.evidenceRefs = evidenceRefs
+        self.prLinkage = prLinkage ?? BurnBarPRLinkageSnapshot.fromMetadata(metadata)
         self.metadata = metadata
     }
 }
@@ -166,6 +391,7 @@ public struct BurnBarMissionSnapshot: Codable, Hashable, Identifiable, Sendable 
     public let results: [BurnBarMissionResultSnapshot]
     public let burnRecords: [BurnBarMissionBurnRecord]
     public let takeoverHistory: [BurnBarAutoTakeoverRecord]?
+    public let prLinkage: BurnBarPRLinkageSnapshot?
     public let metadata: BurnBarMetadata
 
     public init(
@@ -182,6 +408,7 @@ public struct BurnBarMissionSnapshot: Codable, Hashable, Identifiable, Sendable 
         results: [BurnBarMissionResultSnapshot] = [],
         burnRecords: [BurnBarMissionBurnRecord] = [],
         takeoverHistory: [BurnBarAutoTakeoverRecord]? = nil,
+        prLinkage: BurnBarPRLinkageSnapshot? = nil,
         metadata: BurnBarMetadata = [:]
     ) {
         self.id = id
@@ -197,6 +424,16 @@ public struct BurnBarMissionSnapshot: Codable, Hashable, Identifiable, Sendable 
         self.results = results
         self.burnRecords = burnRecords
         self.takeoverHistory = takeoverHistory
+        self.prLinkage = prLinkage
+            ?? results
+            .sorted {
+                if $0.createdAt != $1.createdAt {
+                    return $0.createdAt < $1.createdAt
+                }
+                return $0.id.rawValue < $1.id.rawValue
+            }
+            .compactMap(\.prLinkage)
+            .last
         self.metadata = metadata
     }
 }

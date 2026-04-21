@@ -631,6 +631,7 @@ public actor BurnBarMissionControlStore {
             burnDelta: request.result.burnDelta,
             createdAt: request.result.createdAt,
             evidenceRefs: request.result.evidenceRefs,
+            prLinkage: request.result.prLinkage ?? BurnBarPRLinkageSnapshot.fromMetadata(request.result.metadata),
             metadata: request.result.metadata
         )
         let burnRecord = BurnBarMissionBurnRecord(
@@ -652,6 +653,11 @@ public actor BurnBarMissionControlStore {
         metadata["total_tokens"] = .number(Double(totalTokens))
         metadata["result_count"] = .number(Double(mergedResults.count))
         metadata["burn_record_count"] = .number(Double(mergedBurnRecords.count))
+        let reconciledPRLinkage = MissionControlMissionStateMerger.reconcilePRLinkage(
+            from: mergedResults,
+            fallback: existing.prLinkage
+        )
+        metadata = applyPRLinkageMetadata(metadata, prLinkage: reconciledPRLinkage)
         let updated = BurnBarMissionSnapshot(
             id: existing.id,
             projectSlug: existing.projectSlug,
@@ -666,6 +672,7 @@ public actor BurnBarMissionControlStore {
             results: mergedResults,
             burnRecords: mergedBurnRecords,
             takeoverHistory: existing.takeoverHistory,
+            prLinkage: reconciledPRLinkage,
             metadata: metadata
         )
 
@@ -1085,6 +1092,68 @@ public actor BurnBarMissionControlStore {
     private func metadataBool(_ value: BurnBarJSONValue?) -> Bool? {
         guard case .bool(let rawValue)? = value else { return nil }
         return rawValue
+    }
+
+    private func applyPRLinkageMetadata(
+        _ metadata: BurnBarMetadata,
+        prLinkage: BurnBarPRLinkageSnapshot?
+    ) -> BurnBarMetadata {
+        var updated = metadata
+        let keys = [
+            "pr_repository",
+            "pr_number_or_id",
+            "pr_url",
+            "pr_state",
+            "pr_is_merged",
+            "pr_merge_commit_sha",
+            "pr_merged_at",
+            "pr_closed_at",
+            "pr_linkage"
+        ]
+        for key in keys {
+            updated.removeValue(forKey: key)
+        }
+
+        guard let prLinkage else {
+            return updated
+        }
+
+        updated["pr_repository"] = .string(prLinkage.repository)
+        updated["pr_number_or_id"] = .string(prLinkage.prNumberOrID)
+        updated["pr_url"] = .string(prLinkage.url)
+        updated["pr_state"] = .string(prLinkage.state.rawValue)
+        updated["pr_is_merged"] = .bool(prLinkage.isMerged)
+        if let mergeCommitSHA = prLinkage.mergeCommitSHA?.trimmingCharacters(in: .whitespacesAndNewlines),
+           mergeCommitSHA.isEmpty == false {
+            updated["pr_merge_commit_sha"] = .string(mergeCommitSHA)
+        }
+        if let mergedAt = prLinkage.mergedAt {
+            updated["pr_merged_at"] = .string(mergedAt.ISO8601Format())
+        }
+        if let closedAt = prLinkage.closedAt {
+            updated["pr_closed_at"] = .string(closedAt.ISO8601Format())
+        }
+
+        var prObject: [String: BurnBarJSONValue] = [
+            "schemaVersion": .number(Double(prLinkage.schemaVersion)),
+            "repository": .string(prLinkage.repository),
+            "prNumberOrID": .string(prLinkage.prNumberOrID),
+            "url": .string(prLinkage.url),
+            "state": .string(prLinkage.state.rawValue),
+            "isMerged": .bool(prLinkage.isMerged)
+        ]
+        if let mergeCommitSHA = prLinkage.mergeCommitSHA?.trimmingCharacters(in: .whitespacesAndNewlines),
+           mergeCommitSHA.isEmpty == false {
+            prObject["mergeCommitSHA"] = .string(mergeCommitSHA)
+        }
+        if let mergedAt = prLinkage.mergedAt {
+            prObject["mergedAt"] = .string(mergedAt.ISO8601Format())
+        }
+        if let closedAt = prLinkage.closedAt {
+            prObject["closedAt"] = .string(closedAt.ISO8601Format())
+        }
+        updated["pr_linkage"] = .object(prObject)
+        return updated
     }
 
     private func followup(id: BurnBarFollowupID) -> BurnBarFollowupSnapshot? {

@@ -663,6 +663,81 @@ struct OpenBurnBarControllerMissionRecord: Identifiable, Codable, Equatable, Sen
     let burnCostUSD: Double
     let burnTokens: Int
     let updatedAt: Date
+    let prLinkage: OpenBurnBarControllerMissionPRLinkage?
+
+    init(
+        id: String,
+        projectName: String,
+        title: String,
+        summary: String,
+        state: OpenBurnBarMissionLifecycle,
+        approval: OpenBurnBarMissionApprovalState,
+        packetSummary: String?,
+        latestResultSummary: String?,
+        latestResultDetail: String?,
+        latestResultRunID: String?,
+        activeWorkerName: String?,
+        activeRunID: String?,
+        packetRunCount: Int,
+        latestTakeoverState: OpenBurnBarControllerTakeoverState?,
+        latestTakeoverReason: String?,
+        latestTakeoverRunID: String?,
+        takeoverCount: Int,
+        burnCostUSD: Double,
+        burnTokens: Int,
+        updatedAt: Date,
+        prLinkage: OpenBurnBarControllerMissionPRLinkage? = nil
+    ) {
+        self.id = id
+        self.projectName = projectName
+        self.title = title
+        self.summary = summary
+        self.state = state
+        self.approval = approval
+        self.packetSummary = packetSummary
+        self.latestResultSummary = latestResultSummary
+        self.latestResultDetail = latestResultDetail
+        self.latestResultRunID = latestResultRunID
+        self.activeWorkerName = activeWorkerName
+        self.activeRunID = activeRunID
+        self.packetRunCount = packetRunCount
+        self.latestTakeoverState = latestTakeoverState
+        self.latestTakeoverReason = latestTakeoverReason
+        self.latestTakeoverRunID = latestTakeoverRunID
+        self.takeoverCount = takeoverCount
+        self.burnCostUSD = burnCostUSD
+        self.burnTokens = burnTokens
+        self.updatedAt = updatedAt
+        self.prLinkage = prLinkage
+    }
+}
+
+enum OpenBurnBarControllerMissionPRState: String, Codable, Equatable, Sendable {
+    case opened
+    case merged
+    case closed
+
+    var label: String {
+        switch self {
+        case .opened:
+            return "Opened"
+        case .merged:
+            return "Merged"
+        case .closed:
+            return "Closed"
+        }
+    }
+}
+
+struct OpenBurnBarControllerMissionPRLinkage: Codable, Equatable, Sendable {
+    let repository: String
+    let prNumberOrID: String
+    let url: String
+    let state: OpenBurnBarControllerMissionPRState
+    let isMerged: Bool
+    let mergeCommitSHA: String?
+    let mergedAt: Date?
+    let closedAt: Date?
 }
 
 enum OpenBurnBarControllerNextActionBucket: String, Codable, Equatable, Sendable {

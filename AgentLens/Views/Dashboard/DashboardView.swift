@@ -980,6 +980,13 @@ struct DashboardView: View {
                             value: latestResult
                         )
                     }
+                    if let prLinkage = mission.prLinkage {
+                        runtimeLine(
+                            icon: "link",
+                            title: "Pull request",
+                            value: "\(prLinkage.repository) #\(prLinkage.prNumberOrID) • \(prLinkage.state.label)"
+                        )
+                    }
                     if let takeoverReason = mission.latestTakeoverReason?.trimmingCharacters(in: .whitespacesAndNewlines),
                        !takeoverReason.isEmpty {
                         runtimeLine(

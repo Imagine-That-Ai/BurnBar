@@ -51,6 +51,65 @@ enum MissionControlMissionStateMerger {
         return merged.values.sorted { $0.recordedAt < $1.recordedAt }
     }
 
+    static func reconcilePRLinkage(
+        from results: [BurnBarMissionResultSnapshot],
+        fallback: BurnBarPRLinkageSnapshot? = nil
+    ) -> BurnBarPRLinkageSnapshot? {
+        let sorted = results.sorted {
+            if $0.createdAt != $1.createdAt {
+                return $0.createdAt < $1.createdAt
+            }
+            return $0.id.rawValue < $1.id.rawValue
+        }
+
+        var reconciled = fallback
+        for result in sorted {
+            guard let incoming = result.prLinkage ?? BurnBarPRLinkageSnapshot.fromMetadata(result.metadata) else {
+                continue
+            }
+            reconciled = mergePRLinkage(current: reconciled, incoming: incoming)
+        }
+        return reconciled
+    }
+
+    private static func mergePRLinkage(
+        current: BurnBarPRLinkageSnapshot?,
+        incoming: BurnBarPRLinkageSnapshot
+    ) -> BurnBarPRLinkageSnapshot {
+        guard let current else {
+            return incoming
+        }
+        guard samePullRequest(lhs: current, rhs: incoming) else {
+            return incoming
+        }
+
+        let merged = current.isMerged || incoming.isMerged
+        let resolvedState: BurnBarPRLinkageState = merged ? .merged : incoming.state
+        let mergedAt = incoming.mergedAt ?? current.mergedAt
+        let closedAt = incoming.closedAt
+            ?? current.closedAt
+            ?? ((resolvedState == .closed || resolvedState == .merged) ? mergedAt : nil)
+
+        return BurnBarPRLinkageSnapshot(
+            schemaVersion: max(current.schemaVersion, incoming.schemaVersion),
+            repository: incoming.repository,
+            prNumberOrID: incoming.prNumberOrID,
+            url: incoming.url,
+            state: resolvedState,
+            mergeCommitSHA: incoming.mergeCommitSHA ?? current.mergeCommitSHA,
+            mergedAt: mergedAt,
+            closedAt: closedAt
+        )
+    }
+
+    private static func samePullRequest(
+        lhs: BurnBarPRLinkageSnapshot,
+        rhs: BurnBarPRLinkageSnapshot
+    ) -> Bool {
+        lhs.repository.caseInsensitiveCompare(rhs.repository) == .orderedSame
+            && lhs.prNumberOrID.caseInsensitiveCompare(rhs.prNumberOrID) == .orderedSame
+    }
+
     static func eventSort(lhs: BurnBarControllerEvent, rhs: BurnBarControllerEvent) -> Bool {
         if lhs.sequence == rhs.sequence {
             return lhs.recordedAt < rhs.recordedAt

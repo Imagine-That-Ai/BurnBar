@@ -845,6 +845,56 @@ describe('buildMissionRows', () => {
     expect(result[1].status).toBe('completed');
   });
 
+  // VAL-EXT-007: Mission row carries PR linkage + closure-question state for extension closure surfaces.
+  it('should project PR linkage and closure question state from mission snapshots', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-pr',
+        status: 'awaiting_approval',
+        prLinkage: {
+          schemaVersion: 1,
+          repository: 'Ajnunezg/BurnBar',
+          prNumberOrID: '42',
+          url: 'https://github.com/Ajnunezg/BurnBar/pull/42',
+          state: 'opened'
+        }
+      })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionRows(state);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].prLinkage?.repository).toBe('Ajnunezg/BurnBar');
+    expect(result[0].prLinkage?.prNumberOrID).toBe('42');
+    expect(result[0].prLinkage?.state).toBe('opened');
+    expect(result[0].closureQuestionState).toBe('Pending closure approval question');
+  });
+
+  // VAL-EXT-007: Metadata fallback keeps legacy daemon payloads projecting canonical PR state.
+  it('should derive PR linkage from metadata fallback keys', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-pr-metadata',
+        status: 'completed',
+        metadata: {
+          pr_repository: 'Ajnunezg/BurnBar',
+          pr_id: '420',
+          pr_url: 'https://github.com/Ajnunezg/BurnBar/pull/420',
+          pr_state: 'closed',
+          pr_merge_commit_sha: 'abc123def',
+          pr_merged_at: '2024-01-15T12:00:00Z'
+        }
+      })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionRows(state);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].prLinkage?.state).toBe('merged');
+    expect(result[0].prLinkage?.mergeCommitSHA).toBe('abc123def');
+    expect(result[0].closureQuestionState).toBe('No closure question pending');
+  });
+
   // VAL-EXT-008: matches daemon canonical ordering (updatedAt DESC, missionID ASC tie-break)
   it('should sort missions by updatedAt DESC with missionID ASC tie-break', () => {
     const missions: BurnBarMissionSnapshot[] = [
@@ -1052,6 +1102,32 @@ describe('buildMissionDetailRows', () => {
     const approvalRow = result.find(r => r.id === 'approval');
     expect(approvalRow?.value).toContain('Yes');
     expect(approvalRow?.value).toContain('alice');
+  });
+
+  // VAL-EXT-007: Mission detail rows include closure-question + PR lifecycle evidence.
+  it('should include closure question and PR linkage detail rows', () => {
+    const missions: BurnBarMissionSnapshot[] = [
+      createMockMission({
+        id: 'mission-pr-detail',
+        status: 'completed',
+        prLinkage: {
+          schemaVersion: 1,
+          repository: 'Ajnunezg/BurnBar',
+          prNumberOrID: '77',
+          url: 'https://github.com/Ajnunezg/BurnBar/pull/77',
+          state: 'merged',
+          mergeCommitSHA: 'fedcba987'
+        }
+      })
+    ];
+    const state = createMockState({ daemonMissions: missions });
+    const result = buildMissionDetailRows(state, 'mission-pr-detail');
+
+    expect(result.find(r => r.id === 'closure-question-state')?.value).toBe('No closure question pending');
+    expect(result.find(r => r.id === 'pr-linkage')?.value).toBe('Ajnunezg/BurnBar #77');
+    expect(result.find(r => r.id === 'pr-state')?.value).toBe('merged');
+    expect(result.find(r => r.id === 'pr-url')?.value).toBe('https://github.com/Ajnunezg/BurnBar/pull/77');
+    expect(result.find(r => r.id === 'pr-merged')?.value).toBe('Yes');
   });
 
   it('should show packets count and active packet', () => {

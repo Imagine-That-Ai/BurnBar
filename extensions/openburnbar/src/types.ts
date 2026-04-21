@@ -433,6 +433,18 @@ export type BurnBarMissionRecommendation = 'proceed' | 'review' | 'pause';
 export type BurnBarMissionPacketStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
 export type BurnBarMissionResultStatus = 'pending' | 'success' | 'failed' | 'partial';
 export type BurnBarAutoTakeoverStatus = 'requested' | 'in_progress' | 'completed' | 'declined' | 'failed';
+export type BurnBarPRLinkageState = 'opened' | 'merged' | 'closed';
+
+export interface BurnBarPRLinkageSnapshot {
+  schemaVersion: number;
+  repository: string;
+  prNumberOrID: string;
+  url: string;
+  state: BurnBarPRLinkageState;
+  mergeCommitSHA?: string;
+  mergedAt?: string;
+  closedAt?: string;
+}
 
 export interface BurnBarMissionApprovalSnapshot {
   approved: boolean;
@@ -464,6 +476,7 @@ export interface BurnBarMissionResultSnapshot {
   burnDelta: number;
   createdAt: string;
   evidenceRefs: string[];
+  prLinkage?: BurnBarPRLinkageSnapshot;
   metadata: Record<string, unknown>;
 }
 
@@ -502,6 +515,7 @@ export interface BurnBarMissionSnapshot {
   results: BurnBarMissionResultSnapshot[];
   burnRecords: BurnBarMissionBurnRecord[];
   takeoverHistory: BurnBarAutoTakeoverRecord[];
+  prLinkage?: BurnBarPRLinkageSnapshot;
   metadata: Record<string, unknown>;
 }
 

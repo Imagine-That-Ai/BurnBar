@@ -1427,6 +1427,115 @@ extension OpenBurnBarOperatingComposerTests {
         XCTAssertEqual(awaitingSnapshot.pendingQuestions.prefix(1).count, 1)
     }
 
+    /// VAL-CROSS-007 Evidence: Daemon PR lifecycle linkage maps into app brief/inbox mission runtime.
+    @MainActor
+    func testVAL_CROSS_007_DaemonPRLifecycleMapsIntoAppRuntimeMissionRecord() throws {
+        let now = Date(timeIntervalSince1970: 1_710_001_000)
+        let missionID = BurnBarMissionID(rawValue: "mission-apollo-pr")
+        let packet = BurnBarMissionPacketSnapshot(
+            id: BurnBarMissionPacketID(rawValue: "packet-pr"),
+            missionID: missionID,
+            workerName: "connector-worker",
+            objective: "Open and finalize release PR",
+            status: .completed,
+            runID: BurnBarRunID(rawValue: "run-pr"),
+            dispatchedAt: now,
+            completedAt: now.addingTimeInterval(30)
+        )
+        let openedResult = BurnBarMissionResultSnapshot(
+            id: BurnBarMissionResultID(rawValue: "result-pr-opened"),
+            missionID: missionID,
+            packetID: packet.id,
+            runID: packet.runID,
+            status: .succeeded,
+            summary: "Connector opened PR #42.",
+            detail: "PR opened for operator review.",
+            burnDelta: 0.2,
+            createdAt: now,
+            prLinkage: BurnBarPRLinkageSnapshot(
+                repository: "Ajnunezg/BurnBar",
+                prNumberOrID: "42",
+                url: "https://github.com/Ajnunezg/BurnBar/pull/42",
+                state: .opened
+            )
+        )
+        let mergedResult = BurnBarMissionResultSnapshot(
+            id: BurnBarMissionResultID(rawValue: "result-pr-merged"),
+            missionID: missionID,
+            packetID: packet.id,
+            runID: packet.runID,
+            status: .succeeded,
+            summary: "Connector reported PR merged.",
+            detail: "Merge commit abc123def landed on main.",
+            burnDelta: 0.3,
+            createdAt: now.addingTimeInterval(30),
+            prLinkage: BurnBarPRLinkageSnapshot(
+                repository: "Ajnunezg/BurnBar",
+                prNumberOrID: "42",
+                url: "https://github.com/Ajnunezg/BurnBar/pull/42",
+                state: .merged,
+                mergeCommitSHA: "abc123def",
+                mergedAt: now.addingTimeInterval(30),
+                closedAt: now.addingTimeInterval(30)
+            )
+        )
+        let mission = BurnBarMissionSnapshot(
+            id: missionID,
+            projectSlug: "apollo",
+            title: "Ship approval sheet",
+            summary: "PR lifecycle should propagate to operator runtime.",
+            status: .completed,
+            recommendation: .proceed,
+            createdAt: now,
+            updatedAt: now.addingTimeInterval(30),
+            approval: BurnBarMissionApprovalSnapshot(
+                approved: true,
+                approvedAt: now,
+                approvedBy: "operator"
+            ),
+            packets: [packet],
+            results: [openedResult, mergedResult],
+            burnRecords: [
+                BurnBarMissionBurnRecord(
+                    id: "burn-pr-1",
+                    label: "Connector",
+                    amount: 0.5,
+                    unit: "points",
+                    recordedAt: now.addingTimeInterval(30)
+                )
+            ]
+        )
+        let summary = BurnBarControllerSummary(
+            updatedAt: now.addingTimeInterval(30),
+            activeProjectSlug: "apollo",
+            counts: BurnBarControllerCounts(
+                projectCount: 1,
+                pendingQuestionCount: 0,
+                openFollowupCount: 0,
+                activeMissionCount: 1,
+                staleProjectCount: 0
+            ),
+            freshness: .fresh
+        )
+
+        let runtime = OpenBurnBarDaemonSocketClient.makeControllerRuntimeSnapshot(
+            summary: summary,
+            questions: [],
+            followups: [],
+            missions: [mission],
+            notificationHealth: BurnBarNotificationHealthSnapshot(checkedAt: now, channels: []),
+            simulatorRuns: []
+        )
+
+        let mappedMission = try XCTUnwrap(runtime.missions.first)
+        XCTAssertEqual(mappedMission.latestResultSummary, "Connector reported PR merged.")
+        XCTAssertEqual(mappedMission.prLinkage?.repository, "Ajnunezg/BurnBar")
+        XCTAssertEqual(mappedMission.prLinkage?.prNumberOrID, "42")
+        XCTAssertEqual(mappedMission.prLinkage?.state, .merged)
+        XCTAssertTrue(mappedMission.prLinkage?.isMerged == true)
+        XCTAssertEqual(mappedMission.prLinkage?.mergeCommitSHA, "abc123def")
+    }
+
     /// VAL-BRIEF-002 Evidence: Question ordering is deterministic by priority and createdAt
     @MainActor
     func testVAL_BRIEF_002_QuestionOrderingIsDeterministic() throws {
