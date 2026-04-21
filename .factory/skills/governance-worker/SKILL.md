@@ -22,11 +22,12 @@ None.
    - audit event durability/replay safety
 4. Ensure reason codes map consistently across daemon/app/extension surfaces.
 5. Run validation commands:
-   - `swift test --package-path OpenBurnBarCore --filter BurnBarMissionControlContractsTests`
-   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`
-   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests`
-   - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests"`
-   - `npm --prefix extensions/openburnbar run test:unit -- test/projections.test.ts test/extension.test.ts`
+   - `commands.test_core_contracts` (`swift test --package-path OpenBurnBarCore --filter BurnBarMissionControlContractsTests`)
+   - `commands.test_daemon_mission` (`swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`)
+   - `commands.test_daemon_rpc` (`swift test --package-path OpenBurnBarDaemon --filter BurnBarDaemonServerTests`)
+   - `commands.test_app_operating` (`xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`)
+   - `commands.test_extension_unit` (`npm --prefix extensions/openburnbar run test:unit -- test/projections.test.ts test/extension.test.ts`)
+   - Legacy selector guard: never use the old `AgentLensTests` operating-composer test selector; the active app target is `OpenBurnBarTests/OpenBurnBarOperatingComposerTests`.
 
    **Mission-scoped validation-contract path:** Each mission's validation contract lives at `{missionDir}/validation-contract.md` (e.g., `~/.factory/missions/{missionId}/validation-contract.md`). The canonical test filter names (e.g., `BurnBarMissionControlContractsTests`) are defined in `.factory/services.yaml` and match the actual XCTest target class names.
 
@@ -57,7 +58,7 @@ None.
         "observation": "Connector and server contract parity tests passed. Covers VAL-GOV-003."
       },
       {
-        "command": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -only-testing:\"OpenBurnBarTests/OpenBurnBarOperatingComposerTests\"",
+        "command": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -only-testing:\"OpenBurnBarTests/OpenBurnBarOperatingComposerTests\" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''",
         "exitCode": 0,
         "observation": "App surface governance UI tests passed."
       },

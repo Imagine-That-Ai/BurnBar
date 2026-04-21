@@ -15,6 +15,7 @@
 - Scope: mission authoring affordances, mission board, inbox triage, brief completeness, one-question top-level UX, re-entry controls, degraded runtime messaging.
 - Primary tool:
   - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`
+- Legacy selector guard: never use the old `AgentLensTests` operating-composer test selector; use `OpenBurnBarTests/OpenBurnBarOperatingComposerTests`.
 
 ### Surface MC-EXT: Extension bridge/operator surface
 - Scope: daemon connection lifecycle, arbitration/reconnect, mission parity, mission closure evidence, operator actions, extension-host integration.

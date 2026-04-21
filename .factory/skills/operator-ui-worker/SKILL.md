@@ -18,9 +18,10 @@ None.
 2. Write/adjust failing app tests first (active test targets only).
 3. Implement UI + operating layer changes with daemon-first behavior and explicit degraded-mode messaging.
 4. Validate deterministic ordering (next action, queue items, tie-breaks) and singleton top-level question card behavior.
-5. Run app and relevant daemon checks:
-   - `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests"`
-   - `swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`
+5. Run app and relevant daemon checks (from `.factory/services.yaml`):
+   - `commands.test_app_operating` (`xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination "platform=macOS,arch=arm64" -only-testing:"OpenBurnBarTests/OpenBurnBarOperatingComposerTests" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''`)
+   - `commands.test_daemon_mission` (`swift test --package-path OpenBurnBarDaemon --filter BurnBarMissionControlServiceTests`)
+   - Legacy selector guard: never use the old `AgentLensTests` operating-composer test selector; the active target is `OpenBurnBarTests/OpenBurnBarOperatingComposerTests`.
 6. Verify handoff commitId before finalizing:
    - Run `git rev-parse --verify <commitId>` to confirm commit exists
    - Run `git show --name-only <commitId>` to confirm the diff contains relevant feature files
@@ -35,7 +36,7 @@ None.
   "verification": {
     "commandsRun": [
       {
-        "command": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -only-testing:\"OpenBurnBarTests/OpenBurnBarOperatingComposerTests\"",
+        "command": "xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination \"platform=macOS,arch=arm64\" -only-testing:\"OpenBurnBarTests/OpenBurnBarOperatingComposerTests\" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM=''",
         "exitCode": 0,
         "observation": "All updated operating composer scenarios passed."
       }
