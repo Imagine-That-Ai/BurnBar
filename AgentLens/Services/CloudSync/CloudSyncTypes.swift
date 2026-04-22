@@ -21,6 +21,45 @@ protocol CloudSyncDomain: AnyObject {
     func sync() async
 }
 
+@MainActor
+protocol CloudSyncing: AnyObject {
+    var isSyncing: Bool { get }
+    var lastSyncDate: Date? { get }
+    var lastSyncError: String? { get }
+    var cloudTotalCost: Double? { get }
+    var lastCollaborationNotice: SharedArtifactCollaborationNotice? { get }
+
+    func uploadPending() async
+    func uploadPendingConversations() async
+    func uploadPendingChatThreads() async
+    func uploadPendingSessionLogs() async
+    func syncSharedArtifacts(maxRemoteArtifacts: Int) async
+    func downloadRemoteData(uid: String?) async
+    func updateLocalDeviceName(_ name: String) async
+    func fetchCloudTotal(uid: String?) async
+    func fetchCloudSessionLogs(limit: Int) async throws -> [ConversationRecord]
+    func fetchCloudSessionLogBody(docId: String) async throws -> String
+    func memorySyncBoundarySnapshot() -> OpenBurnBarMemorySyncBoundarySnapshot
+}
+
+extension CloudSyncing {
+    func syncSharedArtifacts() async {
+        await syncSharedArtifacts(maxRemoteArtifacts: 200)
+    }
+
+    func downloadRemoteData() async {
+        await downloadRemoteData(uid: nil)
+    }
+
+    func fetchCloudTotal() async {
+        await fetchCloudTotal(uid: nil)
+    }
+
+    func fetchCloudSessionLogs() async throws -> [ConversationRecord] {
+        try await fetchCloudSessionLogs(limit: 200)
+    }
+}
+
 // MARK: - Shared Sync State
 
 /// Shared backoff policy used across all sync domains.

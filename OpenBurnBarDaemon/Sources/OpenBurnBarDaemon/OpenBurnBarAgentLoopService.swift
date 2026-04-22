@@ -48,6 +48,7 @@ public struct BurnBarAgentLoopRequest: Sendable {
 
 public struct BurnBarAgentLoopService: Sendable {
     public let maxIterations: Int
+    private let logger = BurnBarDaemonLogger(category: "agent-loop")
 
     public init(maxIterations: Int = 8) {
         self.maxIterations = maxIterations
@@ -170,9 +171,17 @@ public struct BurnBarAgentLoopService: Sendable {
         request: BurnBarAgentLoopRequest
     ) -> BurnBarAgentLoopDecision? {
         guard let jsonObject = extractJSONObject(from: rawOutput),
-              let data = jsonObject.data(using: .utf8),
-              let parsed = try? JSONDecoder().decode(RawLoopDecision.self, from: data),
-              let action = BurnBarAgentLoopActionKind(rawValue: parsed.action) else {
+              let data = jsonObject.data(using: .utf8) else {
+            return nil
+        }
+        let parsed: RawLoopDecision
+        do {
+            parsed = try JSONDecoder().decode(RawLoopDecision.self, from: data)
+        } catch {
+            logger.silentFailure("decode_agent_loop_decision", error: error)
+            return nil
+        }
+        guard let action = BurnBarAgentLoopActionKind(rawValue: parsed.action) else {
             return nil
         }
 

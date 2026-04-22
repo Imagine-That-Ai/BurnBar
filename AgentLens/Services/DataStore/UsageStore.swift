@@ -5,7 +5,7 @@ import OpenBurnBarCore
 // MARK: - UsageStore
 
 /// Token-usage CRUD, sync helpers, refresh reads, and provider/model summary builders.
-final class UsageStore: @unchecked Sendable {
+final class UsageStore: Sendable {
     private let dbQueue: DatabaseQueue
 
     init(dbQueue: DatabaseQueue) {
@@ -145,8 +145,16 @@ final class UsageStore: @unchecked Sendable {
     // MARK: - Refresh
 
     func fetchAllUsage() throws -> [TokenUsage] {
+        try fetchRecentUsage(limit: Int.max)
+    }
+
+    func fetchRecentUsage(limit: Int) throws -> [TokenUsage] {
         try dbQueue.read { db -> [TokenUsage] in
-            let rows = try Row.fetchAll(db, sql: "SELECT * FROM token_usage ORDER BY startTime DESC")
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM token_usage ORDER BY startTime DESC LIMIT ?",
+                arguments: [limit]
+            )
             return rows.compactMap { row -> TokenUsage? in
                 guard let idString = row["id"] as? String,
                       let id = UUID(uuidString: idString),

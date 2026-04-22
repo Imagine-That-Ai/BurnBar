@@ -152,4 +152,25 @@ public struct BurnBarDaemonConfiguration: Sendable {
         self.indexDatabasePath = indexDatabasePath
         self.gateway = gateway
     }
+
+    /// Validates that required configuration is present.
+    /// The daemon refuses to start without a socket auth token to prevent
+    /// unauthenticated local processes from issuing RPC commands.
+    public enum ValidationError: Error, LocalizedError {
+        case missingSocketAuthToken
+
+        public var errorDescription: String? {
+            switch self {
+            case .missingSocketAuthToken:
+                return "Socket auth token is required. Provide it via --socket-auth-token TOKEN or OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN environment variable. The OpenBurnBar app automatically generates and passes a token."
+            }
+        }
+    }
+
+    /// Throws if the configuration is invalid (e.g., missing required auth token).
+    public func validate() throws {
+        guard let token = socketAuthToken, !token.isEmpty else {
+            throw ValidationError.missingSocketAuthToken
+        }
+    }
 }

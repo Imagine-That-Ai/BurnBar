@@ -983,4 +983,26 @@ final class BurnBarDaemonServerTests: XCTestCase {
 
         return address
     }
+
+    // MARK: - Configuration Validation (D09)
+
+    func testConfigurationValidate_throwsWhenSocketAuthTokenMissing() throws {
+        let config = BurnBarDaemonConfiguration(
+            socketPath: makeSocketPath(name: "validation"),
+            socketAuthToken: nil
+        )
+        XCTAssertThrowsError(try config.validate()) { error in
+            guard case BurnBarDaemonConfiguration.ValidationError.missingSocketAuthToken = error else {
+                return XCTFail("Expected missingSocketAuthToken, got \(error)")
+            }
+        }
+    }
+
+    func testConfigurationValidate_succeedsWhenSocketAuthTokenProvided() throws {
+        let config = BurnBarDaemonConfiguration(
+            socketPath: makeSocketPath(name: "validation"),
+            socketAuthToken: "test-auth-token"
+        )
+        XCTAssertNoThrow(try config.validate())
+    }
 }

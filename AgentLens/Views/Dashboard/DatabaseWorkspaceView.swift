@@ -1261,10 +1261,15 @@ struct DatabaseWorkspaceView: View {
                     if let document = indexedDocumentDetail(id: id) {
                         let chunks = indexedChunks(documentID: document.id)
                         let embeddedChunkCount = selectedEmbeddingVersion.flatMap {
-                            try? dataStore.countChunkEmbeddings(
-                                documentID: document.id,
-                                embeddingVersionID: $0.id
-                            )
+                            do {
+                                return try dataStore.countChunkEmbeddings(
+                                    documentID: document.id,
+                                    embeddingVersionID: $0.id
+                                )
+                            } catch {
+                                AppLogger.dataStore.silentFailure("countChunkEmbeddings", error: error)
+                                return nil
+                            }
                         }
 
                         inspectorSectionTitle("Index Record")

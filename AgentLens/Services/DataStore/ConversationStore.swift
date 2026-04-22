@@ -5,7 +5,7 @@ import OpenBurnBarCore
 // MARK: - ConversationStore
 
 /// Conversations, chat messages, FTS search, session logs, and CLI conversation helpers.
-final class ConversationStore {
+final class ConversationStore: Sendable {
     private let dbQueue: DatabaseQueue
 
     init(dbQueue: DatabaseQueue) {
@@ -776,7 +776,8 @@ final class ConversationStore {
         provider: AgentProvider?,
         projectName: String?,
         dateRange: ClosedRange<Date>?,
-        conversationSources: Set<ConversationSourceType>?
+        conversationSources: Set<ConversationSourceType>?,
+        limit: Int = 500
     ) throws -> [ConversationRecord] {
         try dbQueue.read { db -> [ConversationRecord] in
             var sql = """
@@ -807,7 +808,8 @@ final class ConversationStore {
                 sql += " AND c.sourceType IN (\(placeholders))"
                 args.append(contentsOf: rawVals)
             }
-            sql += " ORDER BY COALESCE(c.endTime, c.startTime, c.indexedAt) DESC"
+            sql += " ORDER BY COALESCE(c.endTime, c.startTime, c.indexedAt) DESC LIMIT ?"
+            args.append(limit)
 
             let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
             return rows.compactMap(Self.conversation(from:))

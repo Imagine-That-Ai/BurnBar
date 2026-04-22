@@ -84,6 +84,7 @@ public protocol BurnBarSwitcherProfileStoreProviding: SwitcherProfileStoreAdapte
 
 public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStoreProviding, @unchecked Sendable {
     private let dbQueue: DatabaseQueue
+    private let logger = BurnBarDaemonLogger(category: "switcher-profile-store")
 
     public init(databaseURL: URL = BurnBarDaemonPaths.supportDirectoryURL.appendingPathComponent("openburnbar.sqlite")) throws {
         self.dbQueue = try DatabaseQueue(path: databaseURL.path, configuration: Self.databaseConfiguration())
@@ -94,71 +95,108 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
     }
 
     public func fetchProfile(id: String) -> SwitcherProfileRecord? {
-        try? dbQueue.read { db in
-            let row = try Row.fetchOne(db, sql: "SELECT * FROM switcher_profiles WHERE id = ?", arguments: [id])
-            return row.flatMap(Self.profileRecord(from:))
+        do {
+            return try dbQueue.read { db in
+                let row = try Row.fetchOne(db, sql: "SELECT * FROM switcher_profiles WHERE id = ?", arguments: [id])
+                return row.flatMap(self.profileRecord(from:))
+            }
+        } catch {
+            logger.silentFailure("fetch_profile", error: error)
+            return nil
         }
     }
 
     public func fetchAllProfiles() -> [SwitcherProfileRecord] {
-        (try? dbQueue.read { db in
-            let rows = try Row.fetchAll(
-                db,
-                sql: "SELECT * FROM switcher_profiles ORDER BY sortKey ASC, createdAt ASC"
-            )
-            return rows.compactMap(Self.profileRecord(from:))
-        }) ?? []
+        do {
+            return try dbQueue.read { db in
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: "SELECT * FROM switcher_profiles ORDER BY sortKey ASC, createdAt ASC"
+                )
+                return rows.compactMap(self.profileRecord(from:))
+            }
+        } catch {
+            logger.silentFailure("fetch_all_profiles", error: error)
+            return []
+        }
     }
 
     public func fetchActiveProfileID() -> String? {
-        try? dbQueue.read { db in
-            let row = try Row.fetchOne(
-                db,
-                sql: """
-                    SELECT activeProfileID FROM switcher_active_profile
-                    ORDER BY activeProfileID IS NOT NULL DESC,
-                             COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
-                    LIMIT 1
-                """
-            )
-            let activeProfileID: String? = row?["activeProfileID"]
-            return activeProfileID
+        do {
+            return try dbQueue.read { db in
+                let row = try Row.fetchOne(
+                    db,
+                    sql: """
+                        SELECT activeProfileID FROM switcher_active_profile
+                        ORDER BY activeProfileID IS NOT NULL DESC,
+                                 COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
+                        LIMIT 1
+                    """
+                )
+                let activeProfileID: String? = row?["activeProfileID"]
+                return activeProfileID
+            }
+        } catch {
+            logger.silentFailure("fetch_active_profile_id", error: error)
+            return nil
         }
     }
 
     public func setActiveProfileID(_ profileID: String?) {
-        try? dbQueue.write { db in
-            try db.execute(sql: "DELETE FROM switcher_active_profile")
-            try db.execute(
-                sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
-                arguments: [profileID, Date()]
-            )
+        do {
+            try dbQueue.write { db in
+                try db.execute(sql: "DELETE FROM switcher_active_profile")
+                try db.execute(
+                    sql: "INSERT INTO switcher_active_profile (activeProfileID, updatedAt) VALUES (?, ?)",
+                    arguments: [profileID, Date()]
+                )
+            }
+        } catch {
+            logger.silentFailure("set_active_profile_id", error: error)
         }
     }
 
     public func updateProfile(_ profile: SwitcherProfileRecord) {
-        try? dbQueue.write { db in
-            try db.execute(
-                sql: """
-                UPDATE switcher_profiles
-                SET targetKind = ?,
-                    browserType = ?,
-                    browserMetadataJSON = ?,
-                    cliType = ?,
-                    cliMetadataJSON = ?,
-                    updatedAt = ?
-                WHERE id = ?
-                """,
-                arguments: [
-                    profile.targetKind.rawValue,
-                    profile.browserType?.rawValue,
-                    profile.browserMetadata.flatMap { try? Self.encode($0) },
-                    profile.cliType?.rawValue,
-                    profile.cliMetadata.flatMap { try? Self.encode($0) },
-                    Date(),
-                    profile.id
-                ]
-            )
+        let browserMetadataJSON: String?
+        do {
+            browserMetadataJSON = try profile.browserMetadata.map(Self.encode)
+        } catch {
+            logger.silentFailure("encode_browser_metadata", error: error)
+            browserMetadataJSON = nil
+        }
+        let cliMetadataJSON: String?
+        do {
+            cliMetadataJSON = try profile.cliMetadata.map(Self.encode)
+        } catch {
+            logger.silentFailure("encode_cli_metadata", error: error)
+            cliMetadataJSON = nil
+        }
+        do {
+            try dbQueue.write { db in
+                try db.execute(
+                    sql: """
+                    UPDATE switcher_profiles
+                    SET targetKind = ?,
+                        browserType = ?,
+                        browserMetadataJSON = ?,
+                        cliType = ?,
+                        cliMetadataJSON = ?,
+                        updatedAt = ?
+                    WHERE id = ?
+                    """,
+                    arguments: [
+                        profile.targetKind.rawValue,
+                        profile.browserType?.rawValue,
+                        browserMetadataJSON,
+                        profile.cliType?.rawValue,
+                        cliMetadataJSON,
+                        Date(),
+                        profile.id
+                    ]
+                )
+            }
+        } catch {
+            logger.silentFailure("update_profile", error: error)
         }
     }
 
@@ -168,7 +206,7 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
         return configuration
     }
 
-    private static func profileRecord(from row: Row) -> SwitcherProfileRecord? {
+    private func profileRecord(from row: Row) -> SwitcherProfileRecord? {
         guard
             let id: String = row["id"],
             let targetKindRaw: String = row["targetKind"],
@@ -202,12 +240,17 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
         )
     }
 
-    private static func decode<T: Decodable>(_ string: String?, as type: T.Type) -> T? {
+    private func decode<T: Decodable>(_ string: String?, as type: T.Type) -> T? {
         guard let string,
               let data = string.data(using: .utf8) else {
             return nil
         }
-        return try? JSONDecoder().decode(type, from: data)
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            logger.silentFailure("decode_profile_field", error: error)
+            return nil
+        }
     }
 
     private static func encode<T: Encodable>(_ value: T) throws -> String {
@@ -215,7 +258,7 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
         return String(data: data, encoding: .utf8) ?? "{}"
     }
 
-    private static func parseDate(_ value: Any?) -> Date? {
+    private func parseDate(_ value: Any?) -> Date? {
         if let date = value as? Date { return date }
         if let timeInterval = value as? TimeInterval {
             return Date(timeIntervalSince1970: timeInterval)
@@ -242,12 +285,18 @@ public protocol BurnBarSwitcherCredentialProviding: Sendable {
 
 public struct BurnBarSwitcherKeychainCredentialStore: BurnBarSwitcherCredentialProviding {
     public static let service = "com.openburnbar.switcher-auth"
+    private let logger = BurnBarDaemonLogger(category: "switcher-keychain")
 
     public init() {}
 
     public func apiKey(forProfileID profileID: String, cliType: SwitcherCLIProfileType) -> String? {
         let account = "switcher.\(profileID).\(cliType.rawValue).apiKey"
-        return try? keychainString(service: Self.service, account: account)
+        do {
+            return try keychainString(service: Self.service, account: account)
+        } catch {
+            logger.silentFailure("keychain_read", error: error)
+            return nil
+        }
     }
 
     private func keychainString(service: String, account: String) throws -> String? {

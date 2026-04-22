@@ -34,6 +34,7 @@ cleanup_derived_data() {
 }
 
 xcodebuild_log=""
+last_test_exit_code=0
 
 cleanup() {
     if [ -n "$xcodebuild_log" ]; then
@@ -57,31 +58,59 @@ xcodebuild_args=(
   -only-testing:"OpenBurnBarTests"
 )
 
+# Retry logic: attempt xcodebuild test up to 2 times.
+# The XCTest runner intermittently hangs on startup; a fresh derived-data
+# directory on retry usually resolves it. Only fall back to build-for-testing
+# after all test attempts are exhausted.
+max_test_attempts=2
+
+test_attempt=1
+while [ $test_attempt -le $max_test_attempts ]; do
+    if [ $test_attempt -gt 1 ]; then
+        echo "Retrying xcodebuild test (attempt $test_attempt of $max_test_attempts) with fresh derived data..."
+        cleanup_derived_data
+        derived_data_dir="$(mktemp -d "$repo_root/.derived-data/openburnbar-app-tests.XXXXXX")"
+        xcodebuild_args=(
+            -project "$repo_root/OpenBurnBar.xcodeproj"
+            -scheme "OpenBurnBar"
+            -destination "platform=macOS,arch=arm64"
+            -clonedSourcePackagesDirPath "$cache_dir"
+            -derivedDataPath "$derived_data_dir"
+            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_REQUIRED=NO
+            -only-testing:"OpenBurnBarTests"
+        )
+        xcodebuild_log="$(mktemp "$repo_root/.derived-data/openburnbar-app-tests-log.XXXXXX.log")"
+    else
+        xcodebuild_log="$(mktemp "$repo_root/.derived-data/openburnbar-app-tests-log.XXXXXX.log")"
+    fi
+
+    set +e
+    xcodebuild test "${xcodebuild_args[@]}" 2>&1 | tee "$xcodebuild_log"
+    last_test_exit_code=${PIPESTATUS[0]}
+    set -e
+
+    if [ "$last_test_exit_code" -eq 0 ]; then
+        exit 0
+    fi
+
+    if grep -Fq "test runner hung before establishing connection" "$xcodebuild_log"; then
+        echo "Detected XCTest runner startup hang on attempt $test_attempt."
+        test_attempt=$((test_attempt + 1))
+        continue
+    fi
+
+    # Test failed for a real reason (not the hang bug) — don't retry
+    exit "$last_test_exit_code"
+done
+
+# All retries exhausted
 if [[ "${CI:-}" == "true" ]]; then
-    # CI runners on Xcode 16 have intermittently unstable test-host startup.
-    # build-for-testing still validates compile/link/package integrity.
-    xcodebuild build-for-testing "${xcodebuild_args[@]}"
-    exit 0
+    echo "ERROR: All test attempts failed in CI. Running build-for-testing as compile safety net, but reporting failure."
+    xcodebuild build-for-testing "${xcodebuild_args[@]}" || true
+    exit 1
+else
+    echo "WARNING: All test attempts failed locally. Running build-for-testing as fallback."
+    xcodebuild build-for-testing "${xcodebuild_args[@]}" || true
+    exit "$last_test_exit_code"
 fi
-
-xcodebuild_log="$(mktemp "$repo_root/.derived-data/openburnbar-app-tests-log.XXXXXX.log")"
-
-set +e
-xcodebuild test "${xcodebuild_args[@]}" 2>&1 | tee "$xcodebuild_log"
-xcodebuild_exit=${PIPESTATUS[0]}
-set -e
-
-if [ "$xcodebuild_exit" -eq 0 ]; then
-    exit 0
-fi
-
-# Local non-CI runs intermittently fail with:
-# "The test runner hung before establishing connection."
-# Fall back to the CI build-for-testing path so validator behavior is deterministic.
-if grep -Fq "test runner hung before establishing connection" "$xcodebuild_log"; then
-    echo "Detected known local XCTest runner startup hang; retrying with CI-mode build-for-testing."
-    xcodebuild build-for-testing "${xcodebuild_args[@]}"
-    exit 0
-fi
-
-exit "$xcodebuild_exit"

@@ -108,9 +108,9 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
     }
 
     /// Inserts a usage row directly and refreshes the DataStore in-memory array.
-    private func insertAndRefresh(usage: TokenUsage, store: DataStore) throws {
+    private func insertAndRefresh(usage: TokenUsage, store: DataStore) async throws {
         try store.insert(usage)
-        store.refresh()
+        await store.refresh()
     }
 
     // MARK: - VAL-CROSS-001: Exact-first upgrade propagates end-to-end
@@ -118,7 +118,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
     /// Verifies that when a late exact usage row upgrades a prior estimate,
     /// the reporting surfaces (computed properties on DataStore) reflect the
     /// corrected values after refresh.
-    func test_lateExactUpgrade_propagatesToReportingSurfaces() throws {
+    func test_lateExactUpgrade_propagatesToReportingSurfaces() async throws {
         let store = try makeInMemoryStore()
         let sessionId = "cross-surface-upgrade-1"
         let baseDate = Date(timeIntervalSince1970: 1_743_000_000)
@@ -138,7 +138,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try insertAndRefresh(usage: estimateUsage, store: store)
+        try await insertAndRefresh(usage: estimateUsage, store: store)
 
         // Verify reporting reflects estimated values
         let estimateSummary = allUsageSummaries(store)
@@ -160,7 +160,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: exactUsage, store: store)
+        try await insertAndRefresh(usage: exactUsage, store: store)
 
         // Verify reporting now reflects exact values
         let exactSummary = allUsageSummaries(store)
@@ -220,7 +220,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try insertAndRefresh(usage: estimateUsage, store: store)
+        try await insertAndRefresh(usage: estimateUsage, store: store)
 
         let exactUsage = TokenUsage(
             provider: .claudeCode,
@@ -236,7 +236,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: exactUsage, store: store)
+        try await insertAndRefresh(usage: exactUsage, store: store)
 
         // Step 4: Run a sweep — should complete zero jobs since conversation content didn't change
         let secondReport = try await service.runSweep(maxJobs: 20)
@@ -252,7 +252,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
     }
 
     /// Verifies that after an exact upgrade, provider summaries reflect the corrected data.
-    func test_lateExactUpgrade_propagatesToProviderSummaries() throws {
+    func test_lateExactUpgrade_propagatesToProviderSummaries() async throws {
         let store = try makeInMemoryStore()
         let baseDate = Date(timeIntervalSince1970: 1_743_200_000)
 
@@ -271,7 +271,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try insertAndRefresh(usage: estimate1, store: store)
+        try await insertAndRefresh(usage: estimate1, store: store)
 
         // Insert another session for same provider
         let estimate2 = TokenUsage(
@@ -288,7 +288,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try insertAndRefresh(usage: estimate2, store: store)
+        try await insertAndRefresh(usage: estimate2, store: store)
 
         let summariesBefore = store.providerSummaries
         let claudeBefore = summariesBefore.first(where: { $0.provider == .claudeCode })
@@ -311,7 +311,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: exact1, store: store)
+        try await insertAndRefresh(usage: exact1, store: store)
 
         let summariesAfter = store.providerSummaries
         let claudeAfter = summariesAfter.first(where: { $0.provider == .claudeCode })
@@ -553,7 +553,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
 
     /// Verifies that both event and reconciliation paths produce the same canonical
     /// usage row totals when the same usage data flows through each path.
-    func test_eventPath_and_reconciliationPath_usageTotalsConverge() throws {
+    func test_eventPath_and_reconciliationPath_usageTotalsConverge() async throws {
         let baseDate = Date(timeIntervalSince1970: 1_743_800_000)
 
         // --- Path A: Event-driven (direct insert) ---
@@ -572,7 +572,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: usage1, store: storeA)
+        try await insertAndRefresh(usage: usage1, store: storeA)
 
         // --- Path B: Reconciliation (insert estimate, then upgrade via reconciliation) ---
         let storeB = try makeInMemoryStore()
@@ -590,7 +590,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try insertAndRefresh(usage: estimate, store: storeB)
+        try await insertAndRefresh(usage: estimate, store: storeB)
 
         // Reconciliation arrives with exact data
         let exact = TokenUsage(
@@ -607,7 +607,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: exact, store: storeB)
+        try await insertAndRefresh(usage: exact, store: storeB)
 
         // --- Convergence check ---
         let summaryA = allUsageSummaries(storeA)
@@ -628,7 +628,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
 
     /// Verifies that event-driven and reconciliation paths converge for multiple
     /// sessions with mixed exact/estimate provenance.
-    func test_multiSession_eventAndReconciliation_convergeToIdenticalTotals() throws {
+    func test_multiSession_eventAndReconciliation_convergeToIdenticalTotals() async throws {
         let baseDate = Date(timeIntervalSince1970: 1_743_900_000)
 
         let sessions: [(sessionId: String, provider: AgentProvider, model: String,
@@ -655,7 +655,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
                 provenanceConfidence: .exact,
                 estimatorVersion: ""
             )
-            try insertAndRefresh(usage: usage, store: storeA)
+            try await insertAndRefresh(usage: usage, store: storeA)
         }
 
         // Path B: estimate then exact reconciliation
@@ -675,7 +675,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
                 provenanceConfidence: .lowConfidenceEstimate,
                 estimatorVersion: "char-ratio-v1"
             )
-            try insertAndRefresh(usage: estimate, store: storeB)
+            try await insertAndRefresh(usage: estimate, store: storeB)
         }
         for s in sessions {
             let exact = TokenUsage(
@@ -692,7 +692,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
                 provenanceConfidence: .exact,
                 estimatorVersion: ""
             )
-            try insertAndRefresh(usage: exact, store: storeB)
+            try await insertAndRefresh(usage: exact, store: storeB)
         }
 
         // Convergence check
@@ -726,7 +726,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
 
     /// Verifies that provider summaries expose provenance/confidence metadata,
     /// distinguishing exact from fallback-derived values.
-    func test_providerSummaries_exposeProvenanceAndConfidence() throws {
+    func test_providerSummaries_exposeProvenanceAndConfidence() async throws {
         let store = try makeInMemoryStore()
         let baseDate = Date(timeIntervalSince1970: 1_744_000_000)
 
@@ -746,7 +746,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: exactUsage, store: store)
+        try await insertAndRefresh(usage: exactUsage, store: store)
 
         // Insert heuristic estimate usage
         let estimateUsage = TokenUsage(
@@ -764,7 +764,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try insertAndRefresh(usage: estimateUsage, store: store)
+        try await insertAndRefresh(usage: estimateUsage, store: store)
 
         // Verify provider summaries expose provenance
         let summaries = store.providerSummaries
@@ -790,7 +790,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
     }
 
     /// Verifies that model breakdowns within provider summaries expose provenance.
-    func test_modelBreakdown_exposesProvenancePerModel() throws {
+    func test_modelBreakdown_exposesProvenancePerModel() async throws {
         let store = try makeInMemoryStore()
         let baseDate = Date(timeIntervalSince1970: 1_744_100_000)
 
@@ -809,7 +809,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: exactUsage, store: store)
+        try await insertAndRefresh(usage: exactUsage, store: store)
 
         let estimateUsage = TokenUsage(
             provider: .claudeCode,
@@ -825,7 +825,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try insertAndRefresh(usage: estimateUsage, store: store)
+        try await insertAndRefresh(usage: estimateUsage, store: store)
 
         // Verify model breakdown exposes provenance
         let summaries = store.providerSummaries
@@ -853,7 +853,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
 
     /// Verifies that for a fixed fixture set, datastore evidence demonstrates
     /// deterministic confidence ordering and canonical selection.
-    func test_confidenceOrdering_deterministicSelection() throws {
+    func test_confidenceOrdering_deterministicSelection() async throws {
         let store = try makeInMemoryStore()
         let baseDate = Date(timeIntervalSince1970: 1_744_200_000)
 
@@ -872,7 +872,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try insertAndRefresh(usage: lowEstimate, store: store)
+        try await insertAndRefresh(usage: lowEstimate, store: store)
 
         let highEstimate = TokenUsage(
             provider: .claudeCode,
@@ -888,7 +888,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .highConfidenceEstimate,
             estimatorVersion: "cjk-aware-v1"
         )
-        try insertAndRefresh(usage: highEstimate, store: store)
+        try await insertAndRefresh(usage: highEstimate, store: store)
 
         let exact = TokenUsage(
             provider: .claudeCode,
@@ -904,7 +904,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: exact, store: store)
+        try await insertAndRefresh(usage: exact, store: store)
 
         // Verify canonical row is exact (highest confidence wins)
         guard let canonicalRow = try fetchCanonicalRow(queue: store.dbQueue, sessionId: "confidence-ordering-test") else {
@@ -928,7 +928,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
     }
 
     /// Verifies that for non-upgraded rows, confidence ordering is preserved correctly.
-    func test_confidenceOrdering_preservedForNonUpgradedRows() throws {
+    func test_confidenceOrdering_preservedForNonUpgradedRows() async throws {
         let store = try makeInMemoryStore()
         let baseDate = Date(timeIntervalSince1970: 1_744_300_000)
 
@@ -947,7 +947,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .highConfidenceEstimate,
             estimatorVersion: "cjk-aware-v2"
         )
-        try insertAndRefresh(usage: highEstimate, store: store)
+        try await insertAndRefresh(usage: highEstimate, store: store)
 
         // Insert another high confidence estimate (equal confidence, higher values)
         let anotherHighEstimate = TokenUsage(
@@ -964,7 +964,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .highConfidenceEstimate,
             estimatorVersion: "cjk-aware-v2"
         )
-        try insertAndRefresh(usage: anotherHighEstimate, store: store)
+        try await insertAndRefresh(usage: anotherHighEstimate, store: store)
 
         // Verify canonical row has the updated values (equal confidence allows update)
         guard let canonicalRow = try fetchCanonicalRow(queue: store.dbQueue, sessionId: "non-upgraded-session") else {
@@ -982,7 +982,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
     // MARK: - VAL-CROSS-010: Filter/window parity after exact upgrades
 
     /// Verifies that provider-filtered summaries update correctly after exact upgrades.
-    func test_filteredProviderSummary_parityAfterExactUpgrade() throws {
+    func test_filteredProviderSummary_parityAfterExactUpgrade() async throws {
         let store = try makeInMemoryStore()
         let baseDate = Date(timeIntervalSince1970: 1_744_400_000)
         let calendar = Calendar.current
@@ -1004,7 +1004,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try insertAndRefresh(usage: estimateUsage, store: store)
+        try await insertAndRefresh(usage: estimateUsage, store: store)
 
         // Get filtered summary before upgrade
         let summariesBefore = store.providerSummaries(in: dateRange)
@@ -1027,7 +1027,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: exactUsage, store: store)
+        try await insertAndRefresh(usage: exactUsage, store: store)
 
         // Get filtered summary after upgrade
         let summariesAfter = store.providerSummaries(in: dateRange)
@@ -1042,7 +1042,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
     }
 
     /// Verifies that time-window filtered summaries are parity-correct after exact upgrades.
-    func test_timeWindowFilteredSummary_parityAfterExactUpgrade() throws {
+    func test_timeWindowFilteredSummary_parityAfterExactUpgrade() async throws {
         let store = try makeInMemoryStore()
         let baseDate = Date(timeIntervalSince1970: 1_744_500_000)
         let calendar = Calendar.current
@@ -1065,7 +1065,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try insertAndRefresh(usage: estimateUsage, store: store)
+        try await insertAndRefresh(usage: estimateUsage, store: store)
 
         // Verify initial filtered summary
         let filteredBefore = store.providerSummaries(in: dateRange)
@@ -1088,7 +1088,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: exactUsage, store: store)
+        try await insertAndRefresh(usage: exactUsage, store: store)
 
         // Verify filtered summary after upgrade
         let filteredAfter = store.providerSummaries(in: dateRange)
@@ -1110,7 +1110,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
 
     /// Verifies that after an exact upgrade, provider/project/time-window filtered outputs
     /// and retrieval summaries are consistent (VAL-CROSS-010).
-    func test_filteredAndRetrievalSummaries_consistentAfterUpgrade() throws {
+    func test_filteredAndRetrievalSummaries_consistentAfterUpgrade() async throws {
         let store = try makeInMemoryStore()
         let baseDate = Date(timeIntervalSince1970: 1_744_600_000)
         let calendar = Calendar.current
@@ -1141,7 +1141,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
                 provenanceConfidence: s.exact ? .exact : .lowConfidenceEstimate,
                 estimatorVersion: s.exact ? "" : "char-ratio-v1"
             )
-            try insertAndRefresh(usage: usage, store: store)
+            try await insertAndRefresh(usage: usage, store: store)
         }
 
         // Get filtered summaries
@@ -1176,7 +1176,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
     /// Verifies that provider summaries with mixed exact + estimated rows correctly
     /// report hasEstimatedContributions=true rather than using dominant-row confidence.
     /// This is the core fix for m4-fix-provider-summary-mixed-provenance-semantics.
-    func test_mixedConfidenceAggregate_hasEstimatedContributions_reflectsMixedComposition() throws {
+    func test_mixedConfidenceAggregate_hasEstimatedContributions_reflectsMixedComposition() async throws {
         let store = try makeInMemoryStore()
         let baseDate = Date(timeIntervalSince1970: 1_745_000_000)
 
@@ -1195,7 +1195,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: exact1, store: store)
+        try await insertAndRefresh(usage: exact1, store: store)
 
         // Session 2: estimated data (same provider, same model)
         let estimate1 = TokenUsage(
@@ -1212,7 +1212,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .lowConfidenceEstimate,
             estimatorVersion: "char-ratio-v1"
         )
-        try insertAndRefresh(usage: estimate1, store: store)
+        try await insertAndRefresh(usage: estimate1, store: store)
 
         // Get provider summary
         let summaries = store.providerSummaries
@@ -1240,7 +1240,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
 
     /// Verifies that a provider summary with only exact rows correctly reports
     /// hasEstimatedContributions=false.
-    func test_allExactAggregate_hasEstimatedContributions_isFalse() throws {
+    func test_allExactAggregate_hasEstimatedContributions_isFalse() async throws {
         let store = try makeInMemoryStore()
         let baseDate = Date(timeIntervalSince1970: 1_745_100_000)
 
@@ -1259,7 +1259,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: exact1, store: store)
+        try await insertAndRefresh(usage: exact1, store: store)
 
         let exact2 = TokenUsage(
             provider: .claudeCode,
@@ -1275,7 +1275,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: exact2, store: store)
+        try await insertAndRefresh(usage: exact2, store: store)
 
         let summaries = store.providerSummaries
         let claudeSummary = summaries.first(where: { $0.provider == .claudeCode })
@@ -1295,7 +1295,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
     }
 
     /// Verifies that derived-exact rows do not trigger hasEstimatedContributions=true.
-    func test_derivedExactRows_doNotTrigger_hasEstimatedContributions() throws {
+    func test_derivedExactRows_doNotTrigger_hasEstimatedContributions() async throws {
         let store = try makeInMemoryStore()
         let baseDate = Date(timeIntervalSince1970: 1_745_200_000)
 
@@ -1314,7 +1314,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: exact, store: store)
+        try await insertAndRefresh(usage: exact, store: store)
 
         let derived = TokenUsage(
             provider: .cursor,
@@ -1330,7 +1330,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             provenanceConfidence: .derivedExact,
             estimatorVersion: ""
         )
-        try insertAndRefresh(usage: derived, store: store)
+        try await insertAndRefresh(usage: derived, store: store)
 
         let summaries = store.providerSummaries
         let cursorSummary = summaries.first(where: { $0.provider == .cursor })

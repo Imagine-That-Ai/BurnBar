@@ -3,20 +3,20 @@ import GRDB
 import OpenBurnBarCore
 
 extension DataStore {
-    func upsertSearchDocument(_ document: SearchDocumentRecord) throws {
+    nonisolated func upsertSearchDocument(_ document: SearchDocumentRecord) throws {
         try searchIndexStore.upsertDocument(document)
     }
 
-    func fetchSearchDocuments(limit: Int = 500) throws -> [SearchDocumentRecord] {
+    nonisolated func fetchSearchDocuments(limit: Int = 500) throws -> [SearchDocumentRecord] {
         try searchIndexStore.fetchDocuments(limit: limit)
     }
 
     /// Paginated document fetch using offset-based cursor.
-    func fetchSearchDocuments(limit: Int, offset: Int) throws -> [SearchDocumentRecord] {
+    nonisolated func fetchSearchDocuments(limit: Int, offset: Int) throws -> [SearchDocumentRecord] {
         try searchIndexStore.fetchDocuments(limit: limit, offset: offset)
     }
 
-    func fetchSearchDocuments(
+    nonisolated func fetchSearchDocuments(
         limit: Int = 500,
         provider: AgentProvider? = nil,
         projectName: String? = nil,
@@ -33,7 +33,7 @@ extension DataStore {
     }
 
     /// Paginated document fetch with filtering using offset-based cursor.
-    func fetchSearchDocuments(
+    nonisolated func fetchSearchDocuments(
         limit: Int,
         offset: Int,
         sourceKinds: [SearchSourceKind]?
@@ -48,19 +48,19 @@ extension DataStore {
         )
     }
 
-    func fetchSearchDocuments(ids: [String]) throws -> [SearchDocumentRecord] {
+    nonisolated func fetchSearchDocuments(ids: [String]) throws -> [SearchDocumentRecord] {
         try searchIndexStore.fetchDocuments(ids: ids)
     }
 
-    func fetchSearchDocument(id: String) throws -> SearchDocumentRecord? {
+    nonisolated func fetchSearchDocument(id: String) throws -> SearchDocumentRecord? {
         try searchIndexStore.fetchDocument(id: id)
     }
 
-    func fetchSearchDocuments(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchDocumentRecord] {
+    nonisolated func fetchSearchDocuments(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchDocumentRecord] {
         try searchIndexStore.fetchDocuments(sourceKind: sourceKind, sourceID: sourceID)
     }
 
-    func countSearchDocuments(
+    nonisolated func countSearchDocuments(
         provider: AgentProvider? = nil,
         projectName: String? = nil,
         sourceKinds: [SearchSourceKind]? = nil,
@@ -74,48 +74,48 @@ extension DataStore {
         )
     }
 
-    func countSearchChunks(
+    nonisolated func countSearchChunks(
         sourceKinds: [SearchSourceKind]? = nil,
         dateRange: ClosedRange<Date>? = nil
     ) throws -> Int {
         try searchIndexStore.countChunks(sourceKinds: sourceKinds, dateRange: dateRange)
     }
 
-    func countSearchChunks(documentID: String) throws -> Int {
+    nonisolated func countSearchChunks(documentID: String) throws -> Int {
         try searchIndexStore.countChunks(documentID: documentID)
     }
 
-    func replaceSearchChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) throws {
+    nonisolated func replaceSearchChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) throws {
         try searchIndexStore.replaceChunks(documentID: documentID, title: title, chunks: chunks)
     }
 
     /// Incrementally applies a chunk diff for a document.
     /// Compares new chunks against existing chunks by contentHash to minimize writes.
     /// Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
-    func applySearchChunkDiff(documentID: String, title: String, chunks: [SearchChunkRecord]) throws -> ChunkDiffResult {
+    nonisolated func applySearchChunkDiff(documentID: String, title: String, chunks: [SearchChunkRecord]) throws -> ChunkDiffResult {
         try searchIndexStore.applyChunkDiff(documentID: documentID, title: title, newChunks: chunks)
     }
 
     /// Fetches existing embeddings keyed by contentHash for a document.
     /// Returns a mapping of contentHash -> (chunkID, vectorBlob) for chunks
     /// that have embeddings for the given version.
-    func fetchEmbeddingByContentHash(documentID: String, embeddingVersionID: String) throws -> [String: (chunkID: String, vectorBlob: Data)] {
+    nonisolated func fetchEmbeddingByContentHash(documentID: String, embeddingVersionID: String) throws -> [String: (chunkID: String, vectorBlob: Data)] {
         try searchIndexStore.fetchEmbeddingByContentHash(documentID: documentID, embeddingVersionID: embeddingVersionID)
     }
 
-    func fetchSearchChunks(documentID: String) throws -> [SearchChunkRecord] {
+    nonisolated func fetchSearchChunks(documentID: String) throws -> [SearchChunkRecord] {
         try searchIndexStore.fetchChunks(documentID: documentID)
     }
 
-    func fetchSearchChunks(ids: [String]) throws -> [SearchChunkRecord] {
+    nonisolated func fetchSearchChunks(ids: [String]) throws -> [SearchChunkRecord] {
         try searchIndexStore.fetchChunks(ids: ids)
     }
 
-    func fetchSearchChunks(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchChunkRecord] {
+    nonisolated func fetchSearchChunks(sourceKind: SearchSourceKind, sourceID: String) throws -> [SearchChunkRecord] {
         try searchIndexStore.fetchChunks(sourceKind: sourceKind, sourceID: sourceID)
     }
 
-    func searchLexicalChunks(
+    nonisolated func searchLexicalChunks(
         ftsQuery: String,
         provider: AgentProvider? = nil,
         projectName: String? = nil,
@@ -142,12 +142,12 @@ extension DataStore {
         )
     }
 
-    func deleteSearchDocuments(sourceKind: SearchSourceKind, sourceID: String) throws {
+    nonisolated func deleteSearchDocuments(sourceKind: SearchSourceKind, sourceID: String) throws {
         try searchIndexStore.deleteDocuments(sourceKind: sourceKind, sourceID: sourceID)
     }
 
     /// Sums non-overlapping substring occurrence counts of each pattern in `conversations.fullText` (case-insensitive).
-    func countOccurrencesInConversationFullText(
+    nonisolated func countOccurrencesInConversationFullText(
         patterns: [String],
         provider: AgentProvider? = nil,
         projectName: String? = nil,
@@ -203,7 +203,7 @@ extension DataStore {
         return total
     }
 
-    func findConversationFullTextMatches(
+    nonisolated func findConversationFullTextMatches(
         patterns: [String],
         provider: AgentProvider? = nil,
         projectName: String? = nil,
@@ -274,7 +274,7 @@ extension DataStore {
         return results
     }
 
-    func countOccurrencesInConversationFullTextByProvider(
+    nonisolated func countOccurrencesInConversationFullTextByProvider(
         patterns: [String],
         projectName: String? = nil,
         dateRange: ClosedRange<Date>? = nil,
@@ -338,7 +338,7 @@ extension DataStore {
             }
     }
 
-    func scanConversationFullTextForCredentialExposure(
+    nonisolated func scanConversationFullTextForCredentialExposure(
         provider: AgentProvider? = nil,
         projectName: String? = nil,
         dateRange: ClosedRange<Date>? = nil,
@@ -397,7 +397,7 @@ extension DataStore {
         return CredentialExposureScanResult(totalMatches: totalMatches, jumpTargets: jumpTargets)
     }
 
-    private static func aggregateMatchSnippet(text: NSString, matchRange: NSRange, radius: Int = 120) -> String {
+    private static nonisolated func aggregateMatchSnippet(text: NSString, matchRange: NSRange, radius: Int = 120) -> String {
         let start = max(0, matchRange.location - radius)
         let end = min(text.length, matchRange.location + matchRange.length + radius)
         let snippetRange = NSRange(location: start, length: max(0, end - start))
@@ -414,7 +414,7 @@ extension DataStore {
         return prefix + compact + suffix
     }
 
-    private static let _credentialExposureRegexes: [NSRegularExpression]? = {
+    private static nonisolated let _credentialExposureRegexes: [NSRegularExpression]? = {
         let patterns = [
             #"(?i)\b[A-Z0-9_]*(?:API[_-]?KEY|ACCESS[_-]?TOKEN|TOKEN|SECRET|PASSWORD)\b\s*[:=]\s*["']?[A-Za-z0-9_\-./+=]{8,}"#,
             #"\bsk-[A-Za-z0-9]{16,}\b"#,
@@ -424,11 +424,11 @@ extension DataStore {
         return patterns.compactMap { try? NSRegularExpression(pattern: $0) }
     }()
 
-    private static var credentialExposureRegexes: [NSRegularExpression] {
+    private static nonisolated var credentialExposureRegexes: [NSRegularExpression] {
         _credentialExposureRegexes ?? []
     }
 
-    private static func nonOverlappingOccurrenceCount(of pattern: String, in lowercasedText: String) -> Int {
+    private static nonisolated func nonOverlappingOccurrenceCount(of pattern: String, in lowercasedText: String) -> Int {
         guard pattern.isEmpty == false, lowercasedText.isEmpty == false else { return 0 }
         var count = 0
         var searchStart = lowercasedText.startIndex
@@ -440,7 +440,7 @@ extension DataStore {
         return count
     }
 
-    private static func looksLikePlaceholderCredential(_ text: String) -> Bool {
+    private static nonisolated func looksLikePlaceholderCredential(_ text: String) -> Bool {
         let lower = text.lowercased()
         let placeholders = [
             "your-key", "your_key", "your key", "key-here", "placeholder",

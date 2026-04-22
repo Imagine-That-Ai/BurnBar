@@ -3,6 +3,9 @@
 # Usage:
 #   make install          Build Release .app and copy to /Applications
 #   make build            Build Release .app only (output in .derived-data)
+#   make test             Run all test suites
+#   make lint             Run SwiftLint
+#   make ci               Run lint + test (full CI check)
 #   make uninstall        Remove OpenBurnBar.app from /Applications
 #   make clean            Remove build artifacts
 
@@ -24,7 +27,7 @@ DAEMON_CORE_DYLIB := libOpenBurnBarCore.dylib
 # Built .app location inside DerivedData
 APP_BUNDLE = $(DERIVED_DATA)/Build/Products/$(CONFIG)/$(APP_NAME)
 
-.PHONY: preflight build install uninstall clean
+.PHONY: preflight build install uninstall clean test lint ci
 
 preflight:
 	@command -v xcodebuild >/dev/null 2>&1 || { echo "ERROR: xcodebuild not found. Install Xcode 16+ command line tools first."; exit 1; }
@@ -90,3 +93,15 @@ clean:
 	@echo "==> Cleaning build artifacts…"
 	rm -rf $(DERIVED_DATA) $(CACHE_DIR)
 	@echo "==> Clean."
+
+test: ## Run all test suites (Swift packages + app tests)
+	@echo "==> Running Swift package tests…"
+	@./scripts/test-openburnbar-swift.sh
+	@echo "==> Running app tests…"
+	@./scripts/test-openburnbar-app.sh
+
+lint: ## Run SwiftLint
+	@command -v swiftlint >/dev/null 2>&1 || { echo "WARNING: swiftlint not found; skipping lint."; exit 0; }
+	@swiftlint lint --quiet
+
+ci: lint test ## Full CI check (lint + test)

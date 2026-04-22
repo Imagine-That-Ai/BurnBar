@@ -2,11 +2,11 @@ import Foundation
 import OpenBurnBarCore
 
 extension DataStore {
-    func appendOperatingActionRecord(_ record: OpenBurnBarOperatingActionRecord) throws {
+    nonisolated func appendOperatingActionRecord(_ record: OpenBurnBarOperatingActionRecord) throws {
         try controlPlaneStore.appendOperatingActionRecord(record)
     }
 
-    func fetchOperatingActionRecords(
+    nonisolated func fetchOperatingActionRecords(
         projectName: String? = nil,
         actionKinds: [OpenBurnBarActionKind]? = nil,
         limit: Int = 100
@@ -18,31 +18,31 @@ extension DataStore {
         )
     }
 
-    func countOperatingActionRecords(
+    nonisolated func countOperatingActionRecords(
         projectName: String? = nil,
         actionKinds: [OpenBurnBarActionKind]? = nil
     ) throws -> Int {
         try controlPlaneStore.countOperatingActionRecords(projectName: projectName, actionKinds: actionKinds)
     }
 
-    func saveControllerRuntimeMirror(
+    nonisolated func saveControllerRuntimeMirror(
         _ snapshot: OpenBurnBarControllerRuntimeSnapshot,
         cacheKey: String = "latest"
     ) throws {
         try controlPlaneStore.saveControllerRuntimeMirror(snapshot, cacheKey: cacheKey)
     }
 
-    func fetchControllerRuntimeMirror(
+    nonisolated func fetchControllerRuntimeMirror(
         cacheKey: String = "latest"
     ) throws -> OpenBurnBarControllerRuntimeSnapshot? {
         try controlPlaneStore.fetchControllerRuntimeMirror(cacheKey: cacheKey)
     }
 
-    func localAuthoritySnapshot() throws -> OpenBurnBarLocalAuthoritySnapshot {
+    nonisolated func localAuthoritySnapshot() throws -> OpenBurnBarLocalAuthoritySnapshot {
         try controlPlaneStore.localAuthoritySnapshot()
     }
 
-    func mutateControllerRuntimeMirror(
+    nonisolated func mutateControllerRuntimeMirror(
         cacheKey: String = "latest",
         _ mutate: (inout OpenBurnBarControllerRuntimeSnapshot) -> Void
     ) throws {
@@ -50,7 +50,7 @@ extension DataStore {
     }
 
     @discardableResult
-    func answerControllerQuestion(
+    nonisolated func answerControllerQuestion(
         id: String,
         answer: String,
         selectedOptionID: String? = nil,
@@ -113,7 +113,7 @@ extension DataStore {
     }
 
     @discardableResult
-    func completeControllerFollowup(
+    nonisolated func completeControllerFollowup(
         id: String,
         cacheKey: String = "latest",
         completedAt: Date = Date()
@@ -150,7 +150,7 @@ extension DataStore {
     }
 
     @discardableResult
-    func snoozeControllerFollowup(
+    nonisolated func snoozeControllerFollowup(
         id: String,
         until: Date,
         cacheKey: String = "latest",
@@ -191,7 +191,7 @@ extension DataStore {
     }
 
     @discardableResult
-    func scheduleControllerFollowupCalendar(
+    nonisolated func scheduleControllerFollowupCalendar(
         id: String,
         title: String?,
         start: Date,

@@ -10,6 +10,7 @@ struct OpenBurnBarDaemonExecutable {
             arguments: Array(CommandLine.arguments.dropFirst()),
             environment: ProcessInfo.processInfo.environment
         )
+        try configuration.validate()
         let logger = BurnBarDaemonLogger(category: "process")
         let server = BurnBarDaemonServer(configuration: configuration, logger: logger)
 
@@ -116,7 +117,7 @@ private enum BurnBarDaemonCommandLine {
                       --gateway-host HOST          Gateway bind host (default 127.0.0.1)
                       --gateway-port PORT          Gateway port (default 8317)
                       --gateway-auth-token TOKEN   Bearer token for gateway auth
-                      --socket-auth-token TOKEN    Shared token required for daemon socket RPC
+                      --socket-auth-token TOKEN    (Required) Auth token for daemon socket RPC
 
                     Environment overrides:
                       OPENBURNBAR_DAEMON_SOCKET_PATH

@@ -6,7 +6,7 @@ import OpenBurnBarCore
 /// Protocol for cross-encoder style reranking of retrieval candidates.
 /// Implementations score query-document pairs to improve precision over
 /// bi-encoder cosine similarity alone.
-@MainActor
+
 protocol RetrievalRerankProviding: Sendable {
     /// Reranks the provided candidates for the given query.
     /// - Parameters:
@@ -25,7 +25,7 @@ protocol RetrievalRerankProviding: Sendable {
 
 /// A no-op reranker that returns candidates unchanged.
 /// Used as the default when reranking is disabled or unavailable.
-@MainActor
+
 final class NoOpRetrievalReranker: RetrievalRerankProviding {
     func rerank(
         query: String,
@@ -293,7 +293,7 @@ private enum CrossEncoderPromptBuilder {
 
 /// Uses an OpenAI-compatible Chat Completions endpoint to rerank candidates by
 /// scoring query-document relevance on a 0-1 scale.
-@MainActor
+
 final class OpenAICompatibleCrossEncoderReranker: RetrievalRerankProviding {
     private let apiKey: String
     private let requiresAPIKey: Bool
@@ -405,7 +405,7 @@ typealias OpenAICrossEncoderReranker = OpenAICompatibleCrossEncoderReranker
 
 // MARK: - CLI Reranker
 
-@MainActor
+
 final class CLICrossEncoderReranker: RetrievalRerankProviding {
     enum Provider {
         case codex
@@ -480,7 +480,7 @@ final class CLICrossEncoderReranker: RetrievalRerankProviding {
 
 // MARK: - Mock Reversing Reranker (for testing)
 
-@MainActor
+
 final class MockReversingReranker: RetrievalRerankProviding {
     func rerank(
         query: String,

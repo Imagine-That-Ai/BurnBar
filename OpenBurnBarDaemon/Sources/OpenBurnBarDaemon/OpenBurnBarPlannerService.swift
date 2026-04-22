@@ -45,6 +45,7 @@ public struct BurnBarPlannedRun: Sendable {
 }
 
 public struct BurnBarPlannerService {
+    private let logger = BurnBarDaemonLogger(category: "planner")
     public init() {}
 
     /// Plans from a raw run create request (backwards-compatible, no typed input validation).
@@ -167,7 +168,13 @@ public struct BurnBarPlannerService {
                 toolArguments: toolArguments
             )
         case .searchWorkspace:
-            let query = try? toolArguments?.decode(BurnBarSearchQueryPayload.self)
+            let query: BurnBarSearchQueryPayload?
+            do {
+                query = try toolArguments?.decode(BurnBarSearchQueryPayload.self)
+            } catch {
+                logger.silentFailure("decode_search_query_payload", error: error)
+                query = nil
+            }
             return BurnBarAgentIntent(
                 kind: .inspectWorkspace,
                 objective: request.prompt,

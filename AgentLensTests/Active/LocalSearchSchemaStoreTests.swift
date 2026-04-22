@@ -270,7 +270,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         XCTAssertEqual(failedJob.availableAt.timeIntervalSince1970, retryAt.timeIntervalSince1970, accuracy: 0.001)
     }
 
-    func test_databaseWorkspaceSnapshotBuilder_usesTruthfulCounts() throws {
+    func test_databaseWorkspaceSnapshotBuilder_usesTruthfulCounts() async throws {
         let store = try makeInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_742_200_000)
         let settings = SettingsManager.shared
@@ -610,7 +610,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             )
         )
 
-        let snapshot = DatabaseWorkspaceSnapshotBuilder.build(
+        let snapshot = await DatabaseWorkspaceSnapshotBuilder.build(
             from: store,
             settingsManager: settings
         )

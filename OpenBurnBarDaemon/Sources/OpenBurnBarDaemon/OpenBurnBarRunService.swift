@@ -745,10 +745,17 @@ public actor BurnBarRunService {
                     providerID: currentRoute.providerID,
                     slotID: currentRoute.credentialSlotID
                 )
-                if let fallbackRoute = try? await router.route(
-                    modelName: run.modelID,
-                    excludedRouteKeys: [excludedRouteKey]
-                ) {
+                let fallbackRoute: BurnBarProviderRoute?
+                do {
+                    fallbackRoute = try await router.route(
+                        modelName: run.modelID,
+                        excludedRouteKeys: [excludedRouteKey]
+                    )
+                } catch {
+                    logger.silentFailure("provider_failover_route", error: error)
+                    fallbackRoute = nil
+                }
+                if let fallbackRoute {
                     await router.markRouteFailure(currentRoute, error: error)
                     run.route = fallbackRoute
                     try await appendJournalEvent(
@@ -1287,10 +1294,16 @@ public actor BurnBarRunService {
         // Use scoreAndRankRoutes() instead of candidateRoutes() to ensure failover alternates
         // are ordered by scorecard composite score (capability, cost, latency, trust, policy-fit)
         // with deterministic tie-break, matching the primary route selection logic.
-        let ranking = (try? await router.scoreAndRankRoutes(
-            modelName: run.modelID,
-            excludedRouteKeys: attemptedRouteKeys
-        ))
+        let ranking: BurnBarRouteRankingResult?
+        do {
+            ranking = try await router.scoreAndRankRoutes(
+                modelName: run.modelID,
+                excludedRouteKeys: attemptedRouteKeys
+            )
+        } catch {
+            logger.silentFailure("score_and_rank_routes", error: error)
+            ranking = nil
+        }
         let additionalRoutes = ranking?.rankedRoutes.map { $0.route } ?? []
         candidateRoutes.append(contentsOf: additionalRoutes)
 

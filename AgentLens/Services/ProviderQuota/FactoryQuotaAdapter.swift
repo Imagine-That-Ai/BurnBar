@@ -1,17 +1,17 @@
 import Foundation
 
-@MainActor
+
 struct FactoryQuotaAdapter: ProviderQuotaAdapter {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         if let exactSnapshot = try? await fetchFactoryExactSnapshot(context: context) {
             return exactSnapshot
         }
-        return fetchFactoryEstimatedSnapshot(context: context)
+        return await fetchFactoryEstimatedSnapshot(context: context)
     }
 
     // MARK: - Estimated Snapshot
 
-    private func fetchFactoryEstimatedSnapshot(context: ProviderQuotaAdapterContext) -> ProviderQuotaSnapshot {
+    private func fetchFactoryEstimatedSnapshot(context: ProviderQuotaAdapterContext) async -> ProviderQuotaSnapshot {
         let tier = context.factoryPlanProvider()
         guard let cap = tier.monthlyTokenCap else {
             return unavailableSnapshot(
@@ -26,7 +26,9 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
         let nextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth) ?? now
         let monthRange = startOfMonth...nextMonth
-        let used = Double(context.dataStore.usages(for: .factory, in: monthRange).reduce(0) { $0 + $1.totalTokens })
+        let used = await MainActor.run {
+            Double(context.dataStore.usages(for: .factory, in: monthRange).reduce(0) { $0 + $1.totalTokens })
+        }
         let remaining = max(cap - used, 0)
         let usedPercent = cap > 0 ? (used / cap) * 100 : nil
 

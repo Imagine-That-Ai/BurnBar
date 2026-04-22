@@ -48,6 +48,7 @@
 		13B952DD60B1942A7B6AC5A5 /* RetrievalHealthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FAFD6C06941C87690FA444 /* RetrievalHealthService.swift */; };
 		1422CCE8161326D3AE594614 /* DashboardDeviceBreakdownCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 268AA26568D1DB700D2CBF28 /* DashboardDeviceBreakdownCard.swift */; };
 		160216BA5825A96D68F46BAB /* OpenBurnBarOperatingLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A0BE01C71E75D9DA07366C /* OpenBurnBarOperatingLayer.swift */; };
+		16972267D7F84664FB9BC534 /* OpenBurnBarDatabaseMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92E3C0CEE2456E43164E0D47 /* OpenBurnBarDatabaseMigrationTests.swift */; };
 		17800247A551736468D2DA77 /* ContextBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A728EAF6CE31DAD45A0C0AF3 /* ContextBuilder.swift */; };
 		191CFEA448CE8EF463BC7768 /* BackfillSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5F22C9CE159E05A17E6F2F8 /* BackfillSchedulerTests.swift */; };
 		1A93FD49F32A00CF8D3BAB33 /* OnboardingChatEngineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFEACED63B2425D334B5FAC4 /* OnboardingChatEngineView.swift */; };
@@ -602,6 +603,7 @@
 		922DC848CE4B5FEAAA64D503 /* CheckpointTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckpointTests.swift; sourceTree = "<group>"; };
 		924327A5B17F0833621D5AF2 /* TranscriptBlockParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptBlockParser.swift; sourceTree = "<group>"; };
 		92670B16F30BEBADD82D180D /* DataStore+ConversationAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DataStore+ConversationAccess.swift"; sourceTree = "<group>"; };
+		92E3C0CEE2456E43164E0D47 /* OpenBurnBarDatabaseMigrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OpenBurnBarDatabaseMigrationTests.swift; sourceTree = "<group>"; };
 		937796D6CE7DA75AF6013057 /* EmbeddingTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingTypes.swift; sourceTree = "<group>"; };
 		94251BF35FBE48895FAF7B1F /* OpenBurnBarCompactOperatingHomeCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarCompactOperatingHomeCard.swift; sourceTree = "<group>"; };
 		942562FBB30BF279E4F08C8C /* OpenBurnBarAuthoringReplayGoldenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarAuthoringReplayGoldenTests.swift; sourceTree = "<group>"; };
@@ -1253,6 +1255,7 @@
 				047CEF0267BCD11F9F8E9420 /* TokenUsageProvenanceTests.swift */,
 				9BB20EB48DFA90D2334CD879 /* UsageAggregationAndMoodBandTests.swift */,
 				73B02DCE145FBBDB6E03950C /* WorkflowInsightRollupServiceTests.swift */,
+				92E3C0CEE2456E43164E0D47 /* OpenBurnBarDatabaseMigrationTests.swift */,
 			);
 			name = Active;
 			path = AgentLensTests/Active;
@@ -1668,7 +1671,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				F7ED8DA2789DCAFECCAE84D3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
-				A79A828EA449A4EB80B4662C /* XCRemoteSwiftPackageReference "GRDB" */,
+				A79A828EA449A4EB80B4662C /* XCRemoteSwiftPackageReference "GRDB.swift" */,
 				E0CBA8F156DDCAF7E827B423 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				0E1D99B265AABACCACDA6E07 /* XCRemoteSwiftPackageReference "ViewInspector" */,
 				113BF79EDCC82484903F09CC /* XCLocalSwiftPackageReference "OpenBurnBarCore" */,
@@ -1887,6 +1890,7 @@
 				848EA231EEA32C3C08E94632 /* TokenUsageProvenanceTests.swift in Sources */,
 				79E3716595F2E8ED65F01648 /* UsageAggregationAndMoodBandTests.swift in Sources */,
 				F8D4C1B60D03AA9112548BE8 /* WorkflowInsightRollupServiceTests.swift in Sources */,
+				16972267D7F84664FB9BC534 /* OpenBurnBarDatabaseMigrationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2152,7 +2156,7 @@
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_26E25CBF-A5CF-4505-AE27-B7333074E403" /* OpenBurnBarCore */;
+			productRef = TEMP_26E25CBF-A5CF-4505-AE27-B7333074E403 /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -2559,7 +2563,7 @@
 				minimumVersion = 0.10.0;
 			};
 		};
-		A79A828EA449A4EB80B4662C /* XCRemoteSwiftPackageReference "GRDB" */ = {
+		A79A828EA449A4EB80B4662C /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/groue/GRDB.swift";
 			requirement = {
@@ -2601,7 +2605,7 @@
 		};
 		7795E740F7AE12FC6B8F1E10 /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A79A828EA449A4EB80B4662C /* XCRemoteSwiftPackageReference "GRDB" */;
+			package = A79A828EA449A4EB80B4662C /* XCRemoteSwiftPackageReference "GRDB.swift" */;
 			productName = GRDB;
 		};
 		7E2C1D6895DEDB7A59CECE36 /* ViewInspector */ = {
@@ -2624,7 +2628,7 @@
 		};
 		D15A9A82A7B55AEE21F5D4C7 /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A79A828EA449A4EB80B4662C /* XCRemoteSwiftPackageReference "GRDB" */;
+			package = A79A828EA449A4EB80B4662C /* XCRemoteSwiftPackageReference "GRDB.swift" */;
 			productName = GRDB;
 		};
 		E239813A07DE9AF832F4EF34 /* GoogleSignIn */ = {
@@ -2632,7 +2636,7 @@
 			package = E0CBA8F156DDCAF7E827B423 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignIn;
 		};
-		"TEMP_26E25CBF-A5CF-4505-AE27-B7333074E403" /* OpenBurnBarCore */ = {
+		TEMP_26E25CBF-A5CF-4505-AE27-B7333074E403 /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};

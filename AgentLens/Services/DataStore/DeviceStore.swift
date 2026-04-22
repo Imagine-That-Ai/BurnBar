@@ -5,7 +5,7 @@ import OpenBurnBarCore
 // MARK: - DeviceStore
 
 /// Device CRUD and per-device usage summaries.
-final class DeviceStore {
+final class DeviceStore: Sendable {
     private let dbQueue: DatabaseQueue
 
     init(dbQueue: DatabaseQueue) {

@@ -62,7 +62,7 @@ enum RemoteSyncCollectionKind: String, CaseIterable {
 /// - Advances ONLY after successful sync transaction commit (VAL-PERSIST-010)
 /// - Per-account scope prevents cross-account pollution (VAL-PERSIST-011)
 /// - Per-collection kind allows independent sync cursors
-final class RemoteSyncWatermarkStore {
+final class RemoteSyncWatermarkStore: Sendable {
     private let dbQueue: DatabaseQueue
 
     init(dbQueue: DatabaseQueue) {

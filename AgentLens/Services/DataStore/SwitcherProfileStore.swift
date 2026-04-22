@@ -51,7 +51,7 @@ public struct LogEmitter: @unchecked Sendable {
 /// - Logs include profile IDs and non-sensitive state only
 /// - No secrets, tokens, or auth data appear in any log output
 /// - LogEmitter supports test capture for deterministic interception
-public final class SwitcherProfileStore {
+public final class SwitcherProfileStore: Sendable {
     private let dbQueue: DatabaseQueue
     private let logEmitter: LogEmitter
 

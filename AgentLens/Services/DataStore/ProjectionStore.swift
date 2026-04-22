@@ -5,7 +5,7 @@ import OpenBurnBarCore
 // MARK: - ProjectionStore
 
 /// Projection jobs, embedding models/versions, chunk embeddings, and retrieval health.
-final class ProjectionStore {
+final class ProjectionStore: Sendable {
     private let dbQueue: DatabaseQueue
 
     init(dbQueue: DatabaseQueue) {

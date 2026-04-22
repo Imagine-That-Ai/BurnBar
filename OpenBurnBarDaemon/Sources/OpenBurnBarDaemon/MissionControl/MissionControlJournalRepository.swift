@@ -58,11 +58,21 @@ struct MissionControlJournalRepository {
     }
 
     func loadProjectionFromDiskIfPresent(decoder: JSONDecoder) throws -> BurnBarMissionControlProjectionFile? {
-        guard FileManager.default.fileExists(atPath: projectionFileURL.path),
-              let data = try? Data(contentsOf: projectionFileURL),
-              let decoded = try? decoder.decode(BurnBarMissionControlProjectionFile.self, from: data) else {
+        guard FileManager.default.fileExists(atPath: projectionFileURL.path) else {
             return nil
         }
-        return decoded
+        let data: Data
+        do {
+            data = try Data(contentsOf: projectionFileURL)
+        } catch {
+            logger.silentFailure("load_projection_data", error: error)
+            return nil
+        }
+        do {
+            return try decoder.decode(BurnBarMissionControlProjectionFile.self, from: data)
+        } catch {
+            logger.silentFailure("decode_projection", error: error)
+            return nil
+        }
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-@MainActor
+
 struct CursorQuotaAdapter: ProviderQuotaAdapter {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         if let cookieHeader = resolveCursorCookieHeader(context: context) {
@@ -21,55 +21,59 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
                 }
             } catch let error as QuotaServiceError {
                 if case .httpStatus(_, let code) = error, code == 401 || code == 403 {
-                    return fallbackCursorEstimate(
+                    return await fallbackCursorEstimate(
                         message: "Cursor rejected the configured cookie header. Refresh the session cookie from cursor.com and try again."
                     )
                 }
-                return fallbackCursorEstimate(
+                return await fallbackCursorEstimate(
                     message: error.localizedDescription
                 )
             } catch {
-                return fallbackCursorEstimate(
+                return await fallbackCursorEstimate(
                     message: "Cursor web quota fetch failed. OpenBurnBar is showing recent routed-token estimates instead."
                 )
             }
         }
 
-        return fallbackCursorEstimate(
+        return await fallbackCursorEstimate(
             message: "Add a Cursor cookie header to fetch billing-cycle quota. OpenBurnBar can still estimate routed tokens from the local connector."
         )
     }
 
     // MARK: - Cursor Helpers
 
-    private func fallbackCursorEstimate(message: String) -> ProviderQuotaSnapshot {
-        let cursorManager = CursorConnectorManager.shared
-        let isConnected = cursorManager.config.isEnabled
-        let statusMessage: String
-        var buckets: [ProviderQuotaBucket] = []
+    private func fallbackCursorEstimate(message: String) async -> ProviderQuotaSnapshot {
+        let (isConnected, statusMessage, buckets) = await MainActor.run {
+            let cursorManager = CursorConnectorManager.shared
+            let isConnected = cursorManager.config.isEnabled
+            let statusMessage: String
+            var buckets: [ProviderQuotaBucket] = []
 
-        if isConnected {
-            statusMessage = "\(message) Connector active · \(cursorManager.config.exposedModels.count) model(s) routed."
-            let events = cursorManager.recentUsageEvents
-            let totalTokens = events.reduce(0) { $0 + $1.totalTokens }
+            if isConnected {
+                statusMessage = "\(message) Connector active · \(cursorManager.config.exposedModels.count) model(s) routed."
+                let events = cursorManager.recentUsageEvents
+                let totalTokens = events.reduce(0) { $0 + $1.totalTokens }
 
-            if totalTokens > 0 {
-                let bucket = ProviderQuotaBucket(
-                    key: "cursor-session-estimate",
-                    label: "Recent routed tokens",
-                    windowKind: .rollingHours,
-                    usedValue: Double(totalTokens),
-                    limitValue: nil,
-                    remainingValue: nil,
-                    usedPercent: nil,
-                    resetsAt: nil,
-                    unit: .tokens,
-                    isEstimated: true
-                )
-                buckets = [bucket]
+                if totalTokens > 0 {
+                    let bucket = ProviderQuotaBucket(
+                        key: "cursor-session-estimate",
+                        label: "Recent routed tokens",
+                        windowKind: .rollingHours,
+                        usedValue: Double(totalTokens),
+                        limitValue: nil,
+                        remainingValue: nil,
+                        usedPercent: nil,
+                        resetsAt: nil,
+                        unit: .tokens,
+                        isEstimated: true
+                    )
+                    buckets = [bucket]
+                }
+            } else {
+                statusMessage = message
             }
-        } else {
-            statusMessage = message
+
+            return (isConnected, statusMessage, buckets)
         }
 
         return ProviderQuotaSnapshot(

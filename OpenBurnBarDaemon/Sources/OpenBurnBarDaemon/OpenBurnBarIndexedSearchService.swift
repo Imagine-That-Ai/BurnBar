@@ -11,6 +11,9 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
     private let dbQueue = DispatchQueue(label: "com.openburnbar.daemon.indexed-search.sqlite")
     private let logger: BurnBarDaemonLogger
     private let semanticConfig: BurnBarSemanticSearchConfig
+    private let vectorIndex = BurnBarSignpostVectorIndex()
+    private var cachedIndexFingerprint: String?
+    private var cachedIndexVersionID: String?
 
     init(
         databasePath: String,
@@ -253,13 +256,17 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
                 ))
             } else if semanticResults[ranked.chunkID] != nil {
                 // Semantic-only hit - need to fetch metadata
-                if let enriched = try? enrichSemanticHit(
-                    chunkID: ranked.chunkID,
-                    fusedScore: ranked.fusedScore,
-                    hitSource: ranked.hitSource,
-                    filters: filters
-                ) {
-                    hits.append(enriched)
+                do {
+                    if let enriched = try enrichSemanticHit(
+                        chunkID: ranked.chunkID,
+                        fusedScore: ranked.fusedScore,
+                        hitSource: ranked.hitSource,
+                        filters: filters
+                    ) {
+                        hits.append(enriched)
+                    }
+                } catch {
+                    logger.silentFailure("enrich_semantic_hit", error: error)
                 }
             }
         }
@@ -373,17 +380,56 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
             return []
         }
 
-        // Build query for embeddings with optional filtering
-        var sql = """
-            SELECT e.chunkID, e.vectorBlob
-            FROM chunk_embeddings AS e
-            JOIN search_chunks AS c ON c.id = e.chunkID
-            JOIN search_documents AS d ON d.id = c.documentID
-            WHERE e.embeddingVersionID = ?
-            """
-        var args: [SQLiteBindValue] = [.text(targetVersionID)]
+        // Ensure the in-memory ANN index is warm for this version
+        try refreshVectorIndexIfNeeded(
+            versionID: targetVersionID,
+            expectedDimension: expectedDimension,
+            metric: metric
+        )
 
-        // Apply filters
+        // ANN lookup: get a generous candidate pool so filtering doesn't starve results
+        let annLimit = min(limit * semanticConfig.maxCandidates, limit * 10)
+        let annCandidates = vectorIndex.candidates(for: queryEmbedding, limit: max(annLimit, limit))
+        guard annCandidates.isEmpty == false else { return [] }
+
+        let candidateChunkIDs = annCandidates.map { $0.chunkID }
+
+        // Fetch metadata and apply filters in SQL for the candidate set only
+        let filtered = try fetchFilteredCandidates(
+            chunkIDs: candidateChunkIDs,
+            filters: filters
+        )
+
+        // The ANN index already returns exact scores; filter and sort.
+        let filteredSet = Set(filtered)
+        var scored = annCandidates.filter { filteredSet.contains($0.chunkID) }
+        scored.sort {
+            if $0.score == $1.score {
+                return $0.chunkID < $1.chunkID
+            }
+            return $0.score > $1.score
+        }
+        let topK = Array(scored.prefix(limit))
+        return topK.enumerated().map { index, candidate in
+            BurnBarSemanticCandidate(chunkID: candidate.chunkID, score: candidate.score, rank: index + 1)
+        }
+    }
+
+    private func fetchFilteredCandidates(
+        chunkIDs: [String],
+        filters: SearchFilters
+    ) throws -> [String] {
+        guard db != nil, chunkIDs.isEmpty == false else { return [] }
+
+        let placeholders = Array(repeating: "?", count: chunkIDs.count).joined(separator: ", ")
+        var sql = """
+            SELECT c.id
+            FROM search_chunks AS c
+            JOIN search_documents AS d ON d.id = c.documentID
+            WHERE c.id IN (\(placeholders))
+            """
+        var args: [SQLiteBindValue] = chunkIDs.map { .text($0) }
+
         if let providerRaw = filters.providerRaw, !providerRaw.isEmpty {
             sql += " AND d.provider = ?"
             args.append(.text(providerRaw))
@@ -404,32 +450,82 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
             defer { sqlite3_finalize(statement) }
             try bind(args, to: statement)
 
-            var entries: [SemanticEmbeddingEntry] = []
-            entries.reserveCapacity(1000)
+            var results: [String] = []
+            results.reserveCapacity(chunkIDs.count)
+            while sqlite3_step(statement) == SQLITE_ROW {
+                if let id = stringColumn(statement, index: 0) {
+                    results.append(id)
+                }
+            }
+            return results
+        }
+    }
 
+    private func refreshVectorIndexIfNeeded(
+        versionID: String,
+        expectedDimension: Int?,
+        metric: BurnBarEmbeddingDistanceMetric
+    ) throws {
+        guard db != nil else { return }
+
+        // Compute fingerprint: versionID + count + max(updatedAt)
+        let fingerprint = try dbQueue.sync { () -> String in
+            let sql = """
+                SELECT COUNT(*) AS cnt, MAX(updatedAt) AS maxUpdated
+                FROM chunk_embeddings
+                WHERE embeddingVersionID = ?
+                """
+            guard let stmt = try prepareStatement(sql: sql) else { return "" }
+            defer { sqlite3_finalize(stmt) }
+            try bind([.text(versionID)], to: stmt)
+            guard sqlite3_step(stmt) == SQLITE_ROW else { return "" }
+            let count = Int(sqlite3_column_int64(stmt, 0))
+            let maxUpdated = Int64(sqlite3_column_int64(stmt, 1))
+            return "\(versionID)|\(count)|\(maxUpdated)"
+        }
+
+        guard fingerprint != cachedIndexFingerprint else { return }
+
+        // Load all embeddings for this version (unfiltered) and rebuild the index
+        let sql = """
+            SELECT chunkID, vectorBlob
+            FROM chunk_embeddings
+            WHERE embeddingVersionID = ?
+            """
+        let entries: [BurnBarVectorIndexEntry] = try dbQueue.sync {
+            guard let statement = try prepareStatement(sql: sql) else { return [] }
+            defer { sqlite3_finalize(statement) }
+            try bind([.text(versionID)], to: statement)
+
+            var results: [BurnBarVectorIndexEntry] = []
+            results.reserveCapacity(1000)
             while sqlite3_step(statement) == SQLITE_ROW {
                 guard let chunkID = stringColumn(statement, index: 0) else { continue }
                 guard let blobPtr = sqlite3_column_blob(statement, 1) else { continue }
                 let blobSize = sqlite3_column_bytes(statement, 1)
                 let blobData = Data(bytes: blobPtr, count: Int(blobSize))
-
                 if let vector = BurnBarVectorBlobCodec.decode(blobData) {
-                    // Validate dimension if specified
                     if let expected = expectedDimension, vector.count != expected {
                         continue
                     }
-                    entries.append(SemanticEmbeddingEntry(chunkID: chunkID, vector: vector))
+                    results.append(BurnBarVectorIndexEntry(chunkID: chunkID, vector: vector))
                 }
             }
-
-            // Brute-force top-k search
-            return computeTopKCandidates(
-                queryEmbedding: queryEmbedding,
-                entries: entries,
-                metric: metric,
-                limit: limit
-            )
+            return results
         }
+
+        vectorIndex.rebuild(entries: entries, distanceMetric: metric)
+        cachedIndexFingerprint = fingerprint
+        cachedIndexVersionID = versionID
+
+        logger.debug(
+            "semantic_index_rebuilt",
+            metadata: [
+                "version_id": versionID,
+                "entry_count": "\(entries.count)",
+                "fingerprint": fingerprint
+            ]
+        )
     }
 
     private func resolveActiveEmbeddingVersion() throws -> String? {

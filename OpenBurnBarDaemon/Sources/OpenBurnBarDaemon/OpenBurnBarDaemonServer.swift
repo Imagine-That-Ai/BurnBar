@@ -12,7 +12,7 @@ public actor BurnBarDaemonServer {
     private let usageRecorder: BurnBarUsageRecorder
     private let clientRegistry: BurnBarClientRegistry
     private let runService: BurnBarRunService
-    private let missionControlService: BurnBarMissionControlService
+    private let missionControlService: any BurnBarMissionControlServing
     private let indexedSearch: BurnBarIndexedSearchService?
     private let gatewayServer: BurnBarHTTPGatewayServer?
     private var listenerFileDescriptor: Int32?
@@ -25,7 +25,7 @@ public actor BurnBarDaemonServer {
         usageRecorder: BurnBarUsageRecorder? = nil,
         clientRegistry: BurnBarClientRegistry? = nil,
         runService: BurnBarRunService? = nil,
-        missionControlService: BurnBarMissionControlService? = nil
+        missionControlService: (any BurnBarMissionControlServing)? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
@@ -981,7 +981,12 @@ public actor BurnBarDaemonServer {
             )
             // Return a minimal valid response
             let fallback = ["error": ["code": code, "message": "Internal encoding error"]] as [String: Any]
-            return (try? JSONSerialization.data(withJSONObject: fallback)) ?? Data()
+            do {
+                return try JSONSerialization.data(withJSONObject: fallback)
+            } catch {
+                logger.silentFailure("encode_fallback_error_response", error: error)
+                return Data()
+            }
         }
     }
 

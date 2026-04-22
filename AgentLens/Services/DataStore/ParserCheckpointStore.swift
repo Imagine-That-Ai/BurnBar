@@ -35,7 +35,7 @@ struct ParserCheckpointRecord: Codable, FetchableRecord, PersistableRecord {
 ///
 /// The checkpoint token encodes parser-specific progress state (e.g., last processed file path,
 /// file offset, or session ID). The exact format depends on the parser implementation.
-final class ParserCheckpointStore {
+final class ParserCheckpointStore: Sendable {
     private let dbQueue: DatabaseQueue
 
     init(dbQueue: DatabaseQueue) {

@@ -44,7 +44,7 @@ private struct SemanticRetrievalHealthDetails: Codable {
 
 /// Provider that uses vector similarity for semantic search.
 /// Manages ANN/exact backends and handles embedding resolution.
-@MainActor
+
 final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
     private struct ActiveEmbeddingSelection {
         let model: EmbeddingModelRecord

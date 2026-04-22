@@ -164,6 +164,97 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         XCTAssertEqual(backend.deleteCount(for: service, account: "minimax"), 1)
     }
 
+    // MARK: - Keychain Migration Data-Loss Protection (D12)
+
+    func test_load_keychainWriteFails_retainsLegacyDefaultsKey() throws {
+        let suiteName = "com.openburnbar.tests.settings.migration-fail.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            return XCTFail("Could not create isolated defaults suite")
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        // Seed a legacy value in UserDefaults
+        defaults.set("legacy-secret-value", forKey: "openClawBearerToken")
+
+        let backend = FailingWriteKeychainBackend()
+        let keychain = KeychainStore(
+            service: "tests.failing.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: backend
+        )
+        let persistence = SettingsSecretPersistence(defaults: defaults, keychain: keychain)
+
+        let result = persistence.load(
+            account: OpenBurnBarIdentity.openClawBearerTokenAccount,
+            legacyDefaultsKey: "openClawBearerToken"
+        )
+
+        // The legacy value is still returned
+        XCTAssertEqual(result, "legacy-secret-value")
+        // The legacy UserDefaults key must NOT be deleted when Keychain write fails
+        XCTAssertEqual(defaults.string(forKey: "openClawBearerToken"), "legacy-secret-value")
+    }
+
+    func test_persist_keychainWriteFails_retainsLegacyDefaultsKey() throws {
+        let suiteName = "com.openburnbar.tests.settings.persist-fail.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            return XCTFail("Could not create isolated defaults suite")
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        // Seed a legacy value so there's something to protect
+        defaults.set("legacy-persist-value", forKey: "hermesBearerToken")
+
+        let backend = FailingWriteKeychainBackend()
+        let keychain = KeychainStore(
+            service: "tests.failing-persist.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: backend
+        )
+        let persistence = SettingsSecretPersistence(defaults: defaults, keychain: keychain)
+
+        persistence.persist(
+            "new-hermes-token",
+            account: OpenBurnBarIdentity.hermesBearerTokenAccount,
+            legacyDefaultsKey: "hermesBearerToken"
+        )
+
+        // The legacy UserDefaults key must NOT be deleted when Keychain write fails
+        XCTAssertEqual(defaults.string(forKey: "hermesBearerToken"), "legacy-persist-value")
+    }
+
+    func test_load_keychainVerificationFails_retainsLegacyDefaultsKey() throws {
+        let suiteName = "com.openburnbar.tests.settings.verify-fail.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            return XCTFail("Could not create isolated defaults suite")
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        // Seed a legacy value in UserDefaults
+        defaults.set("legacy-verify-value", forKey: "gatewayAuthToken")
+
+        let backend = VerificationMismatchKeychainBackend()
+        let keychain = KeychainStore(
+            service: "tests.verify-mismatch.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: backend
+        )
+        let persistence = SettingsSecretPersistence(defaults: defaults, keychain: keychain)
+
+        let result = persistence.load(
+            account: OpenBurnBarIdentity.gatewayAuthTokenAccount,
+            legacyDefaultsKey: "gatewayAuthToken"
+        )
+
+        // The legacy value is still returned
+        XCTAssertEqual(result, "legacy-verify-value")
+        // The legacy UserDefaults key must NOT be deleted when Keychain verification mismatches
+        XCTAssertEqual(defaults.string(forKey: "gatewayAuthToken"), "legacy-verify-value")
+    }
+
 }
 
 private final class SettingsManagerTestKeychainBackend: KeychainStoreBackend {
@@ -240,6 +331,43 @@ private final class AlwaysInteractionLockedTestKeychainBackend: KeychainStoreBac
             return nil
         }
         return storage[service]?[account]
+    }
+
+    func delete(service: String, account: String) throws {
+        storage[service]?[account] = nil
+    }
+}
+
+/// A KeychainStore backend that always fails on `set` and `delete`,
+/// simulating a locked or inaccessible Keychain.
+private final class FailingWriteKeychainBackend: KeychainStoreBackend {
+    private var storage: [String: [String: Data]] = [:]
+
+    func set(_: Data, service: String, account: String) throws {
+        throw KeychainStoreError.unhandled(errSecIO)
+    }
+
+    func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
+        storage[service]?[account]
+    }
+
+    func delete(service _: String, account _: String) throws {
+        throw KeychainStoreError.unhandled(errSecIO)
+    }
+}
+
+/// A KeychainStore backend that accepts writes but returns a different value on read,
+/// simulating a verification mismatch after migration.
+private final class VerificationMismatchKeychainBackend: KeychainStoreBackend {
+    private var storage: [String: [String: Data]] = [:]
+
+    func set(_ value: Data, service: String, account: String) throws {
+        // Store a *different* value to simulate verification mismatch
+        storage[service, default: [:]][account] = "mismatched-value".data(using: .utf8) ?? value
+    }
+
+    func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
+        storage[service]?[account]
     }
 
     func delete(service: String, account: String) throws {

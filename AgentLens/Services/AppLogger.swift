@@ -68,6 +68,21 @@ public struct AppLogger: Sendable {
         logger.warning("Silent failure: \(Self.format(event: operation, metadata: metadata), privacy: .public)")
     }
     
+    /// Execute a throwing expression, logging failures silently and returning a fallback value.
+    /// Replaces `try? expr` patterns where failure should be tracked.
+    public func silently<T>(
+        _ operation: String,
+        _ body: @autoclosure () throws -> T,
+        fallback: T
+    ) -> T {
+        do {
+            return try body()
+        } catch {
+            silentFailure(operation, error: error)
+            return fallback
+        }
+    }
+    
     // MARK: - Formatting
     
     private static func format(event: String, metadata: [String: String]) -> String {

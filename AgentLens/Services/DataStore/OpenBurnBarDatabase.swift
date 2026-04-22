@@ -11,7 +11,7 @@ import OpenBurnBarCore
 /// Stores receive a `DatabaseQueue` reference; this type additionally provides
 /// a single migration entry-point and shared codecs so that each store file
 /// stays focused on domain SQL.
-final class OpenBurnBarDatabase {
+final class OpenBurnBarDatabase: Sendable {
     let dbQueue: DatabaseQueue
 
     init(databaseQueue: DatabaseQueue) {
@@ -21,6 +21,103 @@ final class OpenBurnBarDatabase {
     /// Run all registered migrations in order.
     func runMigrations() throws {
         try Self.migrator.migrate(dbQueue)
+    }
+
+    // MARK: - Safe Migrations (Integrity Check + Backup)
+
+    enum OpenBurnBarDatabaseError: Error {
+        case integrityCheckFailed(details: String)
+        case backupFailed(underlying: Error)
+    }
+
+    /// Run integrity check, backup, then migrate.
+    /// Skips backup for in-memory databases (tests).
+    func runMigrationsSafely() throws {
+        try runIntegrityCheck()
+        try createBackupIfNeeded()
+        try Self.migrator.migrate(dbQueue)
+    }
+
+    private func runIntegrityCheck() throws {
+        let result = try dbQueue.read { db -> String in
+            try String.fetchOne(db, sql: "PRAGMA integrity_check") ?? "unknown"
+        }
+        guard result == "ok" else {
+            AppLogger.dataStore.error("Database integrity check failed", metadata: ["details": result])
+            throw OpenBurnBarDatabaseError.integrityCheckFailed(details: result)
+        }
+    }
+
+    private var isInMemoryDatabase: Bool {
+        let path = dbQueue.path
+        return path == ":memory:" || path.hasPrefix("file:")
+    }
+
+    private func createBackupIfNeeded() throws {
+        guard !isInMemoryDatabase else { return }
+
+        let dbPath = dbQueue.path
+        let dbURL = URL(fileURLWithPath: dbPath)
+        let supportDir = dbURL.deletingLastPathComponent()
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyyMMdd-HHmmss"
+        let timestamp = dateFormatter.string(from: Date())
+        let backupName = "\(dbURL.lastPathComponent).backup.\(timestamp)"
+        let backupURL = supportDir.appendingPathComponent(backupName)
+
+        // Ensure the database file actually exists before backing up
+        guard FileManager.default.fileExists(atPath: dbPath) else { return }
+
+        let destinationQueue: DatabaseQueue
+        do {
+            destinationQueue = try DatabaseQueue(path: backupURL.path)
+        } catch {
+            AppLogger.dataStore.silentFailure("Database backup: failed to open destination queue", error: error)
+            throw OpenBurnBarDatabaseError.backupFailed(underlying: error)
+        }
+        defer {
+            _ = destinationQueue
+        }
+
+        do {
+            try dbQueue.backup(to: destinationQueue)
+            AppLogger.dataStore.info("Database backup created", metadata: ["path": backupURL.path])
+        } catch {
+            AppLogger.dataStore.silentFailure("Database backup: backup operation failed", error: error)
+            throw OpenBurnBarDatabaseError.backupFailed(underlying: error)
+        }
+
+        pruneOldBackups(in: supportDir, keeping: 5)
+    }
+
+    private func pruneOldBackups(in directory: URL, keeping max: Int) {
+        let fileManager = FileManager.default
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: []
+        ) else { return }
+
+        let backups = contents
+            .filter { $0.lastPathComponent.contains(".backup.") }
+            .compactMap { url -> (url: URL, date: Date)? in
+                guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
+                      let date = values.contentModificationDate else { return nil }
+                return (url, date)
+            }
+            .sorted { $0.date > $1.date }
+
+        guard backups.count > max else { return }
+
+        for item in backups[max...] {
+            do {
+                try fileManager.removeItem(at: item.url)
+                AppLogger.dataStore.info("Pruned old database backup", metadata: ["path": item.url.path])
+            } catch {
+                AppLogger.dataStore.silentFailure("Prune old database backup failed", error: error)
+            }
+        }
     }
 
     // MARK: - Migrator

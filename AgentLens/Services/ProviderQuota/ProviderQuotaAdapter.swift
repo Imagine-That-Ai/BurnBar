@@ -1,6 +1,6 @@
 import Foundation
 
-@MainActor
+
 protocol ProviderQuotaAdapter {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot
 }
@@ -18,8 +18,8 @@ struct ProviderQuotaAdapterContext {
     let factoryPlanProvider: () -> FactoryQuotaPlanTier
     let claudeBridgeStatus: ClaudeQuotaBridgeStatus
     let codexRolloutScanCache: CodexRolloutScanCache
-    let updateCodexRolloutScanCache: @MainActor (CodexRolloutScanCache, Bool) -> Void
-    let refreshClaudeBridgeStatus: @MainActor () -> ClaudeQuotaBridgeStatus
+    let updateCodexRolloutScanCache: (CodexRolloutScanCache, Bool) -> Void
+    let refreshClaudeBridgeStatus: () -> ClaudeQuotaBridgeStatus
 
     /// Pre-resolved API keys (read from ProviderAPIKeyStore on the main actor before dispatch).
     let resolvedAPIKeys: [String: String?]

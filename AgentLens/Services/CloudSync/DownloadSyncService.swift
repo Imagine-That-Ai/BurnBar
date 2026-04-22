@@ -310,19 +310,23 @@ final class DownloadSyncService: CloudSyncDomain {
                 sourceID: id,
                 sourceVersionID: ""
             )
-            try? context.dataStore.enqueueProjectionJob(
-                ProjectionJobRecord(
-                    id: jobId,
-                    jobType: .reproject,
-                    sourceKind: .conversation,
-                    sourceID: id,
-                    sourceVersionID: "",
-                    status: .queued,
-                    priority: 0,
-                    createdAt: Date(),
-                    updatedAt: Date()
+            do {
+                try context.dataStore.enqueueProjectionJob(
+                    ProjectionJobRecord(
+                        id: jobId,
+                        jobType: .reproject,
+                        sourceKind: .conversation,
+                        sourceID: id,
+                        sourceVersionID: "",
+                        status: .queued,
+                        priority: 0,
+                        createdAt: Date(),
+                        updatedAt: Date()
+                    )
                 )
-            )
+            } catch {
+                AppLogger.dataStore.silentFailure("enqueueProjectionJob", error: error)
+            }
         }
     }
 }

@@ -135,7 +135,6 @@ enum DatabaseWorkspaceSelection: Equatable, Hashable {
 
 // MARK: - Snapshot Builder
 
-@MainActor
 final class DatabaseWorkspaceSnapshotBuilder {
 
     static func build(
@@ -143,7 +142,7 @@ final class DatabaseWorkspaceSnapshotBuilder {
         settingsManager: SettingsManager,
         accountManager: AccountManager? = nil,
         cloudSyncService: CloudSyncService? = nil
-    ) -> DatabaseWorkspaceSnapshot {
+    ) async -> DatabaseWorkspaceSnapshot {
         var snap = DatabaseWorkspaceSnapshot()
 
         func capture<T>(
@@ -167,7 +166,13 @@ final class DatabaseWorkspaceSnapshotBuilder {
         }
 
         // Corpus
-        let usages = dataStore.usages
+        let (usages, providerSummaries, modelSummaries, indexingEnabled) = await MainActor.run {
+            let usages = dataStore.usages
+            let providerSummaries = dataStore.providerSummaries
+            let modelSummaries = dataStore.modelSummaries(in: nil)
+            let indexingEnabled = settingsManager.conversationIndexingEnabled
+            return (usages, providerSummaries, modelSummaries, indexingEnabled)
+        }
         snap.totalSessions = usages.count
         snap.totalCostAllTime = usages.reduce(0) { $0 + $1.cost }
         snap.totalTokensAllTime = usages.reduce(0) { $0 + $1.totalTokens }
@@ -179,11 +184,11 @@ final class DatabaseWorkspaceSnapshotBuilder {
         snap.recentSessions = Array(usages.sorted { $0.startTime > $1.startTime }.prefix(20))
 
         // Provider/model summaries
-        snap.providerSummaries = dataStore.providerSummaries
-        snap.modelSummaries = dataStore.modelSummaries(in: nil)
+        snap.providerSummaries = providerSummaries
+        snap.modelSummaries = modelSummaries
 
         // Indexing
-        snap.indexingEnabled = settingsManager.conversationIndexingEnabled
+        snap.indexingEnabled = indexingEnabled
 
         // Search/index coverage
         capture(metric: .indexedDocuments, context: "document_count", assign: { snap.indexedDocuments = $0 }) {
@@ -259,10 +264,12 @@ final class DatabaseWorkspaceSnapshotBuilder {
         capture(metric: .retrievalHealth, context: "retrieval_health", assign: { snap.retrievalHealth = $0 }) {
             try dataStore.fetchRetrievalHealth()
         }
-        snap.retrievalSystemHealth = RetrievalHealthService(dataStore: dataStore).snapshot(
-            indexingEnabled: settingsManager.conversationIndexingEnabled,
-            sharedFeaturesAvailable: accountManager?.isSignedIn ?? false
-        )
+        snap.retrievalSystemHealth = await Task { @MainActor in
+            RetrievalHealthService(dataStore: dataStore).snapshot(
+                indexingEnabled: settingsManager.conversationIndexingEnabled,
+                sharedFeaturesAvailable: accountManager?.isSignedIn ?? false
+            )
+        }.value
 
         // Embeddings
         capture(metric: .embeddingModels, context: "embedding_models", assign: { snap.embeddingModelRecords = $0 }) {
@@ -282,7 +289,7 @@ final class DatabaseWorkspaceSnapshotBuilder {
         }
 
         // Freshness
-        snap.lastRefresh = dataStore.lastRefresh
+        snap.lastRefresh = await MainActor.run { dataStore.lastRefresh }
         snap.snapshotBuiltAt = Date()
         snap.contentVersion = makeContentVersion(from: snap)
 

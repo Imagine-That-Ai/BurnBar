@@ -5,7 +5,7 @@ import OpenBurnBarCore
 // MARK: - SearchIndexStore
 
 /// Search documents, chunks, FTS-based lexical search, and document-level deletion.
-final class SearchIndexStore {
+final class SearchIndexStore: Sendable {
     private let dbQueue: DatabaseQueue
 
     init(dbQueue: DatabaseQueue) {

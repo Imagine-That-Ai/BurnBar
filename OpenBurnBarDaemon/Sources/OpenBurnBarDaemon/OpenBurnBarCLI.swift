@@ -255,6 +255,7 @@ public struct BurnBarCLIRunner {
     public let client: any BurnBarCLIClient
     public let shellExecutor: any BurnBarCLIShellExecuting
     public let shellShimInstaller: any BurnBarCLIShellShimInstalling
+    private let logger = BurnBarDaemonLogger(category: "cli-runner")
 
     public init(
         client: any BurnBarCLIClient,
@@ -263,9 +264,11 @@ public struct BurnBarCLIRunner {
     ) {
         self.client = client
         let profileStore: any BurnBarSwitcherProfileStoreProviding
-        if let sqliteStore = try? BurnBarSwitcherSQLiteProfileStore() {
+        do {
+            let sqliteStore = try BurnBarSwitcherSQLiteProfileStore()
             profileStore = sqliteStore
-        } else {
+        } catch {
+            logger.silentFailure("sqlite_profile_store_init", error: error)
             profileStore = BurnBarEmptySwitcherProfileStore()
         }
         self.shellExecutor = shellExecutor ?? BurnBarCLIShellExecutor(profileStore: profileStore)

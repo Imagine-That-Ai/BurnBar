@@ -136,17 +136,19 @@ enum OpenBurnBarChatEvidenceFormatting {
 enum ContextBuilder {
     private static let maxPromptChars = 6_000
 
-    @MainActor
     static func buildSystemPrompt(
         from dataStore: DataStore,
         intelligenceService: SearchService? = nil
-    ) -> String {
+    ) async -> String {
         let calendar = Calendar.current
         let now = Date()
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
-        let retrieval = intelligenceService ?? SearchService.makeConversationSearchService(dataStore: dataStore)
+        let retrieval = await MainActor.run {
+            intelligenceService ?? SearchService.makeConversationSearchService(dataStore: dataStore)
+        }
 
-        let recentUsages = dataStore.usages
+        let allUsages = await MainActor.run { dataStore.usages }
+        let recentUsages = allUsages
             .filter { $0.startTime >= weekAgo }
             .sorted { $0.startTime > $1.startTime }
 
@@ -156,7 +158,7 @@ enum ContextBuilder {
         lines.append("")
         lines.append("## Recent work (last 7 days)")
 
-        let conversations = retrieval.recentConversations(limit: 80)
+        let conversations = await MainActor.run { retrieval.recentConversations(limit: 80) }
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
 
         for usage in recentUsages.prefix(24) {
@@ -173,7 +175,7 @@ enum ContextBuilder {
         lines.append("")
         lines.append("## This week's token spend")
 
-        let weekUsages = dataStore.usages.filter { $0.startTime >= weekAgo }
+        let weekUsages = allUsages.filter { $0.startTime >= weekAgo }
         var modelCost: [String: Double] = [:]
         var projectCost: [String: Double] = [:]
         for u in weekUsages {
@@ -192,7 +194,7 @@ enum ContextBuilder {
         lines.append("")
         lines.append("## Where you left off")
 
-        if let latest = retrieval.latestConversation(in: conversations), !latest.lastAssistantMessage.isEmpty {
+        if let latest = await MainActor.run { retrieval.latestConversation(in: conversations) }, !latest.lastAssistantMessage.isEmpty {
             lines.append(latest.lastAssistantMessage)
         } else {
             lines.append("(No recent assistant message indexed yet.)")
@@ -213,14 +215,15 @@ enum ContextBuilder {
     }
 
     /// Dashboard chat: OpenBurnBar data analyst persona, index health, and non-exhaustive usage rollups. Does not include per-message retrieval (append `OpenBurnBarChatEvidenceFormatting.formatPack` separately).
-    @MainActor
     static func buildDatabaseAnalystSystemPrompt(
         from dataStore: DataStore,
         intelligenceService: SearchService? = nil,
         indexingEnabled: Bool,
         health: RetrievalSystemHealthSnapshot
-    ) -> String {
-        let retrieval = intelligenceService ?? SearchService.makeConversationSearchService(dataStore: dataStore)
+    ) async -> String {
+        let retrieval = await MainActor.run {
+            intelligenceService ?? SearchService.makeConversationSearchService(dataStore: dataStore)
+        }
         let calendar = Calendar.current
         let now = Date()
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
@@ -279,11 +282,12 @@ enum ContextBuilder {
             "High-level usage from OpenBurnBar tables—**not** a substitute for retrieved excerpts. Use for spend/time questions when retrieval is thin."
         )
 
-        let recentUsages = dataStore.usages
+        let allUsages = await MainActor.run { dataStore.usages }
+        let recentUsages = allUsages
             .filter { $0.startTime >= weekAgo }
             .sorted { $0.startTime > $1.startTime }
 
-        let conversations = retrieval.recentConversations(limit: 80)
+        let conversations = await MainActor.run { retrieval.recentConversations(limit: 80) }
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
 
         lines.append("")
@@ -301,7 +305,7 @@ enum ContextBuilder {
 
         lines.append("")
         lines.append("### This week’s token spend (approximate mix)")
-        let weekUsages = dataStore.usages.filter { $0.startTime >= weekAgo }
+        let weekUsages = allUsages.filter { $0.startTime >= weekAgo }
         var modelCost: [String: Double] = [:]
         var projectCost: [String: Double] = [:]
         for u in weekUsages {
@@ -319,7 +323,7 @@ enum ContextBuilder {
 
         lines.append("")
         lines.append("### Latest indexed assistant line (may be unrelated to the user question)")
-        if let latest = retrieval.latestConversation(in: conversations), !latest.lastAssistantMessage.isEmpty {
+        if let latest = await MainActor.run { retrieval.latestConversation(in: conversations) }, !latest.lastAssistantMessage.isEmpty {
             lines.append(latest.lastAssistantMessage)
         } else {
             lines.append("(None yet.)")
