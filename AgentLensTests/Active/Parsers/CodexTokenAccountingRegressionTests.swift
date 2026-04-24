@@ -55,7 +55,10 @@ final class CodexTokenAccountingRegressionTests: XCTestCase {
         XCTAssertEqual(usage.inputTokens, 120)
         XCTAssertEqual(usage.cacheReadTokens, 40)
         XCTAssertEqual(usage.outputTokens, 16)
-        XCTAssertEqual(usage.totalTokens, 136)
+        // `totalTokens` uses `billedTotalTokens = input + output + cacheCreation + cacheRead + reasoning`,
+        // so the billed total is 120 + 16 + 40 = 176 (the cached bucket is billed at a discount by the
+        // provider but is still part of the billed token count).
+        XCTAssertEqual(usage.totalTokens, 176)
     }
 
     func test_codexParser_accumulatesLastTokenUsageWhenTotalsAreUnavailable() async throws {
@@ -88,7 +91,7 @@ final class CodexTokenAccountingRegressionTests: XCTestCase {
         XCTAssertEqual(usage.inputTokens, 120)
         XCTAssertEqual(usage.cacheReadTokens, 40)
         XCTAssertEqual(usage.outputTokens, 16)
-        XCTAssertEqual(usage.totalTokens, 136)
+        XCTAssertEqual(usage.totalTokens, 176)
     }
 
     /// VAL-TOKEN-010: Partial token_count maps (missing input_tokens/output_tokens) must NOT
@@ -126,7 +129,7 @@ final class CodexTokenAccountingRegressionTests: XCTestCase {
         XCTAssertEqual(usage.inputTokens, 120)
         XCTAssertEqual(usage.cacheReadTokens, 40)
         XCTAssertEqual(usage.outputTokens, 16)
-        XCTAssertEqual(usage.totalTokens, 136)
+        XCTAssertEqual(usage.totalTokens, 176)
     }
 
     // MARK: - Unit Tests for TokenExtractionUtility

@@ -112,7 +112,6 @@ final class OpenBurnBarSearchIntegrationHarness {
         semanticBackend: VectorBackendKind = .ann,
         exactRerankEnabled: Bool = true,
         exactRerankLimit: Int = 320,
-        annCandidateMultiplier: Int = 6,
         sharedAccessContext: SharedArtifactAccessContext? = nil
     ) -> SearchService {
         let semanticProvider: SemanticCandidateProviding?
@@ -123,7 +122,6 @@ final class OpenBurnBarSearchIntegrationHarness {
                 backend: semanticBackend,
                 exactRerankEnabled: exactRerankEnabled,
                 exactRerankLimit: exactRerankLimit,
-                annCandidateMultiplier: annCandidateMultiplier,
                 nowProvider: { [clock] in clock.now() }
             )
         } else {
@@ -683,7 +681,7 @@ enum OpenBurnBarFakeEmbedderError: LocalizedError {
     }
 }
 
-/// Test seam is mutated by single-test flows; mark unchecked to avoid noisy Swift 6 sendability warnings.
+// AUDIT(@unchecked Sendable): Test-only mock; mutable vars set single-threaded before embedder runs.
 final class OpenBurnBarFakeEmbedder: ChunkEmbeddingProviding, @unchecked Sendable {
     private let deterministicEmbedder: DeterministicFakeEmbeddingProvider
     var failAll = false

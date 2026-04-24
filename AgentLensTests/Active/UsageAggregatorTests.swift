@@ -1348,8 +1348,11 @@ final class ParseResultTests: XCTestCase {
     }
 
     func test_sendable() {
+        // ParseResult is declared `Sendable`. Compile-time cross-actor passing verifies this;
+        // runtime introspection would only duplicate what the type system already guarantees.
         let result = ParseResult(usages: [], conversations: [])
-        XCTAssertTrue(result.sendable)
+        func requireSendable<T: Sendable>(_: T) {}
+        requireSendable(result)
     }
 }
 
@@ -1398,6 +1401,7 @@ final class ProviderUsageRecordTests: XCTestCase {
 
 // MARK: - Mock Parser for Testing
 
+// AUDIT(@unchecked Sendable): Test-only mock; mutable vars are set single-threaded before parse().
 private final class MockParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider
     var parseResult = ParseResult(usages: [], conversations: [])

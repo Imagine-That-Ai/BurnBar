@@ -23,7 +23,7 @@ protocol ProviderUsageAPI: Sendable {
 
 // MARK: - Usage Record (from provider APIs)
 
-struct ProviderUsageRecord: Sendable {
+struct ProviderUsageRecord: Sendable, Equatable {
     let providerName: String
     let model: String
     let date: Date

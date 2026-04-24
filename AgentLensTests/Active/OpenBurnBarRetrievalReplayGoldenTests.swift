@@ -344,7 +344,6 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
             backend: .ann,
             exactRerankEnabled: true,
             exactRerankLimit: 256,
-            annCandidateMultiplier: 24,
             nowProvider: { harness.clock.now() }
         )
         let exactProvider = VectorSemanticCandidateProvider(
@@ -353,7 +352,6 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
             backend: .exact,
             exactRerankEnabled: true,
             exactRerankLimit: 256,
-            annCandidateMultiplier: 24,
             nowProvider: { harness.clock.now() }
         )
 
@@ -369,7 +367,7 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
             limit: 20
         )
 
-        XCTAssertEqual(annCandidates.map(\.chunkID), exactCandidates.map(\.chunkID))
+        XCTAssertEqual(annCandidates.map(\SemanticCandidate.chunkID), exactCandidates.map(\SemanticCandidate.chunkID))
 
         let snapshot = RetrievalANNBaselineGoldenSnapshot(
             scenario: "ann-vs-exact-rerank",

@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Shared Token Extraction Utilities
 
@@ -54,7 +55,12 @@ enum TokenExtractionUtility {
     /// UsageAggregator should set this based on the `tokenizerAssistedFallbackEnabled` user flag.
     /// Access is coordinated by the `UsageAggregator` refresh lifecycle (single-main-actor writer,
     /// read-only parser tasks during each refresh pass).
-    nonisolated(unsafe) static var fallbackEstimator: FallbackEstimator = .characterRatio
+    private static let _fallbackEstimator = Locked<FallbackEstimator>(.characterRatio)
+
+    static var fallbackEstimator: FallbackEstimator {
+        get { _fallbackEstimator.read() }
+        set { _fallbackEstimator.write(newValue) }
+    }
 
     /// Returns the estimator version string for use in provenance metadata.
     static var currentEstimatorVersion: String {
@@ -503,14 +509,28 @@ enum TokenExtractionUtility {
     // MARK: - Codex Session Parsing
 
     /// Extracts token count info from a Codex session JSON event.
-    /// Codex rollout logs wrap token data in an `event_msg` envelope.
+    ///
+    /// Codex rollout logs have evolved through several envelopes, all supported here:
+    ///   1. `{"type":"event_msg","payload":{"type":"token_count","info":{…}}}`
+    ///      — current production rollout format.
+    ///   2. `{"event_msg":{…}}` — legacy nested envelope.
+    ///   3. `{"token_count":{…}}` — direct token_count payload.
+    ///   4. `{"input_tokens":…, "output_tokens":…}` — root-level usage payload.
     static func codexTokenCountInfo(from json: [String: Any]) -> [String: Any]? {
-        // Handle nested event_msg structure
+        // Current format: {"type":"event_msg","payload":{"type":"token_count","info":{…}}}
+        if let type = json["type"] as? String,
+           type == "event_msg",
+           let payload = json["payload"] as? [String: Any],
+           (payload["type"] as? String) == "token_count",
+           let info = payload["info"] as? [String: Any] {
+            return info
+        }
+        // Legacy nested event_msg structure
         if let eventMsg = json["event_msg"] as? [String: Any] {
             return eventMsg
         }
         // Handle direct token_count payload
-        if let tokenCount = json["token_count"] as? [String: Any] {
+        if json["token_count"] is [String: Any] {
             return json
         }
         // Return the json as-is if it contains token usage fields
@@ -523,8 +543,26 @@ enum TokenExtractionUtility {
     /// Extracts cumulative token totals from Codex token count info.
     /// Returns nil if input_tokens/output_tokens are not explicitly present, so that
     /// partial/placeholder token_count maps do not suppress delta parsing (VAL-TOKEN-010).
+    ///
+    /// Codex sessions can express cumulative totals under several keys depending on
+    /// toolchain version: `total_token_usage` (current rollout logs),
+    /// `token_count` (legacy envelope), and root-level `input_tokens/output_tokens`.
+    ///
+    /// The returned `input` is the *raw* inclusive prompt size (as reported by Codex),
+    /// which already contains the `cacheRead` (cached input) portion. The parser is
+    /// responsible for subtracting cacheRead before storing on `TokenUsage`.
     static func codexCumulativeTotalsFromTokenCountInfo(_ info: [String: Any]) -> (input: Int, output: Int, cacheRead: Int)? {
-        // Look for cumulative totals in token_count
+        // VAL-TOKEN-010: Current Codex rollout logs use `total_token_usage` for cumulative
+        // counts. Check this first so authoritative totals win over ambiguous delta events.
+        if let totalUsage = info["total_token_usage"] as? [String: Any],
+           let input = totalUsage["input_tokens"] as? Int,
+           let output = totalUsage["output_tokens"] as? Int {
+            let cacheRead = totalUsage["cached_input_tokens"] as? Int
+                ?? totalUsage["cache_read_input_tokens"] as? Int
+                ?? 0
+            return (input, output, cacheRead)
+        }
+        // Look for cumulative totals in legacy `token_count` envelope.
         if let tokenCount = info["token_count"] as? [String: Any] {
             // VAL-TOKEN-010: Require explicit input_tokens AND output_tokens to treat as cumulative.
             // Partial/placeholder token_count maps (missing these required fields) must not

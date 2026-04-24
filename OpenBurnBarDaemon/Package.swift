@@ -17,15 +17,18 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../OpenBurnBarCore"),
-        .package(url: "https://github.com/groue/GRDB.swift", from: "6.29.3")
+        .package(url: "https://github.com/groue/GRDB.swift", from: "6.29.3"),
+        .package(url: "https://github.com/getsentry/sentry-cocoa", from: "8.0.0")
     ],
     targets: [
         .target(
             name: "OpenBurnBarDaemon",
             dependencies: [
                 .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
-                .product(name: "GRDB", package: "GRDB.swift")
-            ]
+                .product(name: "GRDB", package: "GRDB.swift"),
+                .product(name: "Sentry", package: "sentry-cocoa")
+            ],
+            linkerSettings: [.unsafeFlags(["-framework", "Network"])]
         ),
         .executableTarget(
             name: "OpenBurnBarDaemonExecutable",

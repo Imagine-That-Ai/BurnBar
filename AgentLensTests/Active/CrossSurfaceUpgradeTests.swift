@@ -40,7 +40,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
         return totalCompleted
     }
 
-    private func fetchCanonicalRow(queue: DatabaseQueue, sessionId: String) throws -> Row? {
+    private func fetchCanonicalRow(queue: any DatabaseWriter, sessionId: String) throws -> Row? {
         try queue.read { db in
             try Row.fetchOne(db, sql: """
                 SELECT * FROM token_usage
@@ -51,13 +51,13 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
     }
 
     /// Helper: fetch all canonical token_usage rows
-    private func fetchAllCanonicalRows(queue: DatabaseQueue) throws -> [Row] {
+    private func fetchAllCanonicalRows(queue: any DatabaseWriter) throws -> [Row] {
         try queue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM token_usage ORDER BY startTime DESC")
         }
     }
 
-    private func countCanonicalRows(queue: DatabaseQueue) throws -> Int {
+    private func countCanonicalRows(queue: any DatabaseWriter) throws -> Int {
         try queue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM token_usage") ?? 0
         }

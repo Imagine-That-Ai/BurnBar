@@ -1,6 +1,6 @@
 import Foundation
 
-enum ParserHealth {
+enum ParserHealth: Equatable {
     case healthy(sessionCount: Int)
     case empty
     case degraded(sessionCount: Int, error: String)

@@ -7,7 +7,7 @@ import GRDB
 /// Parses Copilot CLI sessions from ~/.copilot/session-state/*/events.jsonl.
 /// Post-Feb 2026 Copilot CLI persists assistant.usage and session.shutdown events with exact token counts.
 /// Falls back to CompactionProcessor log deltas for older CLI versions.
-final class CopilotParser: LogParser, @unchecked Sendable {
+final class CopilotParser: LogParser, Sendable {
     let provider: AgentProvider = .copilot
 
     func parse() async throws -> ParseResult {
@@ -327,7 +327,7 @@ private struct CopilotMetadataSummary {
 
 /// Parses Aider analytics JSONL logs for exact per-message token usage.
 /// Requires user to configure: `analytics-log: ~/.aider/analytics.jsonl` in .aider.conf.yml
-final class AiderParser: LogParser, @unchecked Sendable {
+final class AiderParser: LogParser, Sendable {
     let provider: AgentProvider = .aider
 
     func parse() async throws -> ParseResult {
@@ -498,7 +498,7 @@ private struct AiderSession {
 
 /// Parses Cursor's ai-code-tracking.db for code provenance data and model usage distribution.
 /// Token-level tracking requires the CursorConnector BYOK proxy.
-final class CursorParser: LogParser, @unchecked Sendable {
+final class CursorParser: LogParser, Sendable {
     let provider: AgentProvider = .cursor
 
     func parse() async throws -> ParseResult {
@@ -586,7 +586,7 @@ final class CursorParser: LogParser, @unchecked Sendable {
 
 /// Reads token usage from Codex's SQLite store and JSONL session files.
 /// Prefers exact token breakdowns from JSONL `token_count` events over the aggregate `tokens_used` in SQLite.
-final class CodexParser: LogParser, @unchecked Sendable {
+final class CodexParser: LogParser, Sendable {
     let provider: AgentProvider = .codex
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
@@ -803,15 +803,17 @@ final class CodexParser: LogParser, @unchecked Sendable {
             // VAL-TOKEN-010: Cumulative totals take precedence over delta events.
             // If we've already found cumulative totals, skip processing delta events.
             if let extracted = TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(info) {
-                // If we had previously accumulated delta values, replace with cumulative.
-                // This ensures cumulative > delta precedence for mixed logs.
+                // Codex reports `input_tokens` inclusive of `cached_input_tokens`.
+                // Subtract the cached portion so the non-cached input and cached
+                // buckets stay disjoint (VAL-TOKEN-002 / matches delta path below).
+                let nonCachedInput = max(extracted.input - extracted.cacheRead, 0)
                 if foundDelta {
-                    inputTokens = extracted.input
+                    inputTokens = nonCachedInput
                     outputTokens = extracted.output
                     cacheReadTokens = extracted.cacheRead
                     foundDelta = false
                 } else {
-                    inputTokens = extracted.input
+                    inputTokens = nonCachedInput
                     outputTokens = extracted.output
                     cacheReadTokens = extracted.cacheRead
                 }
@@ -914,7 +916,7 @@ private struct CodexSessionParserCache: Codable, Equatable {
 
 // MARK: - Model Filter Parser (for Zai/MiniMax which use Factory sessions)
 
-final class ModelFilterParser: LogParser, @unchecked Sendable {
+final class ModelFilterParser: LogParser, Sendable {
     let provider: AgentProvider
     private let modelPattern: String
     private let fileManager: FileManager
