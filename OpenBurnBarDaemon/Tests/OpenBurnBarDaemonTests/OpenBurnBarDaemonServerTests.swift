@@ -10,6 +10,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
         let server = BurnBarDaemonServer(
             configuration: BurnBarDaemonConfiguration(
                 socketPath: socketPath,
+                socketAuthToken: "test-token",
                 daemonVersion: "test-daemon"
             )
         )
@@ -18,7 +19,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: socketPath))
 
         let response: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try sendRequest(
-            BurnBarRPCRequestEnvelope(id: "health-1", method: .health),
+            BurnBarRPCRequestEnvelope(id: "health-1", method: .health, authToken: "test-token"),
             socketPath: socketPath
         )
 
@@ -41,12 +42,12 @@ final class BurnBarDaemonServerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: socketPath))
 
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath)
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token")
         )
         try await server.start()
 
         let response: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try sendRequest(
-            BurnBarRPCRequestEnvelope(id: "health-2", method: .health),
+            BurnBarRPCRequestEnvelope(id: "health-2", method: .health, authToken: "test-token"),
             socketPath: socketPath
         )
 
@@ -61,6 +62,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
         let server = BurnBarDaemonServer(
             configuration: BurnBarDaemonConfiguration(
                 socketPath: socketPath,
+                socketAuthToken: "test-token",
                 daemonVersion: "catalog-daemon"
             )
         )
@@ -68,7 +70,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
         try await server.start()
 
         let response: BurnBarRPCResponseEnvelope<BurnBarCatalogResponse> = try sendRequest(
-            BurnBarRPCRequestEnvelope(id: "catalog-1", method: .catalog),
+            BurnBarRPCRequestEnvelope(id: "catalog-1", method: .catalog, authToken: "test-token"),
             socketPath: socketPath
         )
 
@@ -142,7 +144,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
         )
 
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath),
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token"),
             logger: BurnBarDaemonLogger(category: "server-tests"),
             configStore: configStore,
             usageRecorder: usageRecorder,
@@ -159,6 +161,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "attach-1",
                 method: .clientAttach,
+                authToken: "test-token",
                 params: BurnBarClientAttachRequest(
                     clientID: clientID,
                     sessionID: sessionID,
@@ -191,6 +194,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "config-update-1",
                 method: .configUpdate,
+                authToken: "test-token",
                 params: BurnBarConfigUpdateRequest(snapshot: updatedSnapshot)
             ),
             socketPath: socketPath
@@ -201,6 +205,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "run-create-1",
                 method: .runCreate,
+                authToken: "test-token",
                 params: BurnBarRunCreateRequest(
                     clientID: clientID,
                     sessionID: sessionID,
@@ -221,6 +226,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "run-get-1",
                 method: .runGet,
+                authToken: "test-token",
                 params: BurnBarRunGetRequest(runID: runID, clientID: clientID)
             ),
             socketPath: socketPath
@@ -232,6 +238,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "approval-1",
                 method: .approvalRespond,
+                authToken: "test-token",
                 params: BurnBarApprovalRespondRequest(
                     response: BurnBarApprovalResponse(
                         approvalID: approvalID,
@@ -249,6 +256,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "usage-1",
                 method: .usageRecent,
+                authToken: "test-token",
                 params: BurnBarRecentUsageRequest(limit: 5)
             ),
             socketPath: socketPath
@@ -260,6 +268,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "run-create-workflow-1",
                 method: .runCreate,
+                authToken: "test-token",
                 params: BurnBarRunCreateRequest(
                     clientID: clientID,
                     sessionID: sessionID,
@@ -284,6 +293,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "run-poll-1",
                 method: .runPoll,
+                authToken: "test-token",
                 params: BurnBarRunPollRequest(
                     clientID: clientID,
                     sessionID: sessionID,
@@ -298,6 +308,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "workspace-execute-tool-1",
                 method: .workspaceExecuteTool,
+                authToken: "test-token",
                 params: BurnBarToolExecutionRequest(
                     clientID: clientID,
                     sessionID: sessionID,
@@ -313,6 +324,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "workspace-tool-result-1",
                 method: .workspaceToolResult,
+                authToken: "test-token",
                 params: BurnBarToolResultSubmissionRequest(
                     clientID: clientID,
                     sessionID: sessionID,
@@ -339,7 +351,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
     func testSearchQueryWithoutIndexDatabaseReturnsError() async throws {
         let socketPath = makeSocketPath(name: "search-no-db")
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, indexDatabasePath: nil)
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token", indexDatabasePath: nil)
         )
 
         try await server.start()
@@ -348,6 +360,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "search-1",
                 method: .searchQuery,
+                authToken: "test-token",
                 params: BurnBarSearchQueryRequest(query: "test query", resultLimit: 5)
             ),
             socketPath: socketPath
@@ -417,7 +430,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             logger: BurnBarDaemonLogger(category: "server-tests")
         )
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath),
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token"),
             logger: BurnBarDaemonLogger(category: "server-tests"),
             runService: runService
         )
@@ -425,7 +438,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
         try await server.start()
 
         let connectorGet: BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse> = try sendRequest(
-            BurnBarRPCRequestEnvelope(id: "connector-get-1", method: .connectorPlaneGet),
+            BurnBarRPCRequestEnvelope(id: "connector-get-1", method: .connectorPlaneGet, authToken: "test-token"),
             socketPath: socketPath
         )
         XCTAssertEqual(connectorGet.result?.snapshot.connectors.first?.kind, .github)
@@ -434,6 +447,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "connector-update-1",
                 method: .connectorConfigUpdate,
+                authToken: "test-token",
                 params: BurnBarConnectorConfigUpdateRequest(
                     config: BurnBarConnectorConfigMutation(
                         kind: .github,
@@ -453,6 +467,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "connector-action-1",
                 method: .connectorAction,
+                authToken: "test-token",
                 params: BurnBarConnectorActionRequest(kind: .github, action: .testConnection)
             ),
             socketPath: socketPath
@@ -461,7 +476,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
         XCTAssertTrue(connectorAction.result?.summary.contains("GitHub") == true)
 
         let browserGet: BurnBarRPCResponseEnvelope<BurnBarBrowserToolingResponse> = try sendRequest(
-            BurnBarRPCRequestEnvelope(id: "browser-get-1", method: .browserToolingGet),
+            BurnBarRPCRequestEnvelope(id: "browser-get-1", method: .browserToolingGet, authToken: "test-token"),
             socketPath: socketPath
         )
         XCTAssertEqual(browserGet.result?.snapshot.preferredEngine, .urlSession)
@@ -470,6 +485,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "browser-update-1",
                 method: .browserToolingUpdate,
+                authToken: "test-token",
                 params: BurnBarBrowserToolingUpdateRequest(
                     preferredEngine: .systemBrowser,
                     allowExternalNavigation: true,
@@ -489,6 +505,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "browser-action-1",
                 method: .browserAction,
+                authToken: "test-token",
                 params: BurnBarBrowserActionRequest(
                     action: .extractLinks,
                     url: "https://example.com",
@@ -557,7 +574,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             logger: BurnBarDaemonLogger(category: "server-tests")
         )
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath),
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token"),
             logger: BurnBarDaemonLogger(category: "server-tests"),
             runService: runService
         )
@@ -569,7 +586,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
         }
 
         let initialGet: BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse> = try sendRequest(
-            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-1", method: .connectorPlaneGet),
+            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-1", method: .connectorPlaneGet, authToken: "test-token"),
             socketPath: socketPath
         )
         XCTAssertEqual(try githubStatus(from: initialGet), .disabled)
@@ -578,6 +595,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "val-gov-003-update-1",
                 method: .connectorConfigUpdate,
+                authToken: "test-token",
                 params: BurnBarConnectorConfigUpdateRequest(
                     config: BurnBarConnectorConfigMutation(
                         kind: .github,
@@ -592,7 +610,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             socketPath: socketPath
         ) as BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse>
         let missingSecretGet: BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse> = try sendRequest(
-            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-2", method: .connectorPlaneGet),
+            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-2", method: .connectorPlaneGet, authToken: "test-token"),
             socketPath: socketPath
         )
         XCTAssertEqual(try githubStatus(from: missingSecretGet), .missingSecret)
@@ -601,6 +619,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "val-gov-003-update-2",
                 method: .connectorConfigUpdate,
+                authToken: "test-token",
                 params: BurnBarConnectorConfigUpdateRequest(
                     config: BurnBarConnectorConfigMutation(
                         kind: .github,
@@ -615,7 +634,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             socketPath: socketPath
         ) as BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse>
         let configuredGet: BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse> = try sendRequest(
-            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-3", method: .connectorPlaneGet),
+            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-3", method: .connectorPlaneGet, authToken: "test-token"),
             socketPath: socketPath
         )
         XCTAssertEqual(try githubStatus(from: configuredGet), .configured)
@@ -625,13 +644,14 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "val-gov-003-action-1",
                 method: .connectorAction,
+                authToken: "test-token",
                 params: BurnBarConnectorActionRequest(kind: .github, action: .testConnection)
             ),
             socketPath: socketPath
         )
         XCTAssertEqual(healthyAction.result?.ok, true)
         let healthyGet: BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse> = try sendRequest(
-            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-4", method: .connectorPlaneGet),
+            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-4", method: .connectorPlaneGet, authToken: "test-token"),
             socketPath: socketPath
         )
         XCTAssertEqual(try githubStatus(from: healthyGet), .healthy)
@@ -641,13 +661,14 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "val-gov-003-action-2",
                 method: .connectorAction,
+                authToken: "test-token",
                 params: BurnBarConnectorActionRequest(kind: .github, action: .testConnection)
             ),
             socketPath: socketPath
         )
         XCTAssertEqual(degradedAction.result?.ok, false)
         let degradedGet: BurnBarRPCResponseEnvelope<BurnBarConnectorPlaneResponse> = try sendRequest(
-            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-5", method: .connectorPlaneGet),
+            BurnBarRPCRequestEnvelope(id: "val-gov-003-get-5", method: .connectorPlaneGet, authToken: "test-token"),
             socketPath: socketPath
         )
         XCTAssertEqual(try githubStatus(from: degradedGet), .degraded)
@@ -658,7 +679,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
     func testServerExposesMissionControlRPCs() async throws {
         let socketPath = makeSocketPath(name: "mission-control")
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath)
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token")
         )
 
         try await server.start()
@@ -667,6 +688,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "controller-project-upsert-1",
                 method: .controllerProjectUpsert,
+                authToken: "test-token",
                 params: BurnBarControllerProjectUpsertRequest(
                     project: BurnBarReviewProjectSnapshot(
                         id: "project-luna",
@@ -692,6 +714,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "question-create-1",
                 method: .questionCreate,
+                authToken: "test-token",
                 params: BurnBarQuestionCreateRequest(
                     question: BurnBarPendingQuestionSnapshot(
                         id: questionID,
@@ -712,6 +735,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "followups-list-1",
                 method: .followupsList,
+                authToken: "test-token",
                 params: BurnBarFollowupsListRequest(projectSlug: "luna")
             ),
             socketPath: socketPath
@@ -723,6 +747,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "controller-summary-1",
                 method: .controllerSummary,
+                authToken: "test-token",
                 params: BurnBarControllerSummaryRequest(projectSlug: "luna")
             ),
             socketPath: socketPath
@@ -755,7 +780,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             executionReadinessGate: { _, _ in nil }
         )
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath),
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token"),
             logger: BurnBarDaemonLogger(category: "server-tests"),
             missionControlService: missionControlService
         )
@@ -766,6 +791,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "val-cross-015-project-upsert",
                 method: .controllerProjectUpsert,
+                authToken: "test-token",
                 params: BurnBarControllerProjectUpsertRequest(
                     project: BurnBarReviewProjectSnapshot(
                         id: "project-atlas",
@@ -790,6 +816,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "val-cross-015-mission-create",
                 method: .missionCreate,
+                authToken: "test-token",
                 params: BurnBarMissionCreateRequest(
                     projectSlug: "atlas",
                     title: "Dispatch integration smoke",
@@ -806,6 +833,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "val-cross-015-mission-approve",
                 method: .missionApprove,
+                authToken: "test-token",
                 params: BurnBarMissionApproveRequest(
                     missionID: missionID,
                     actor: "operator",
@@ -819,6 +847,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "val-cross-015-mission-dispatch",
                 method: .missionDispatchPacket,
+                authToken: "test-token",
                 params: BurnBarMissionDispatchPacketRequest(
                     missionID: missionID,
                     actor: "operator",
@@ -842,6 +871,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "val-cross-015-mission-get",
                 method: .missionGet,
+                authToken: "test-token",
                 params: BurnBarMissionGetRequest(missionID: missionID)
             ),
             socketPath: socketPath
@@ -985,6 +1015,41 @@ final class BurnBarDaemonServerTests: XCTestCase {
     }
 
     // MARK: - Configuration Validation (D09)
+
+    func testRateLimitingThrottlesExcessiveRequests() async throws {
+        let socketPath = makeSocketPath(name: "rate-limit")
+        let rateLimiter = BurnBarRateLimiter(
+            configuration: BurnBarRateLimitConfiguration(requestsPerSecond: 1, burstCapacity: 1)
+        )
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token"
+            ),
+            rateLimiter: rateLimiter
+        )
+
+        try await server.start()
+
+        // First request should be allowed
+        let allowed: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try sendRequest(
+            BurnBarRPCRequestEnvelope(id: "rl-1", method: .health, authToken: "test-token"),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(allowed.result?.ok, true)
+        XCTAssertNil(allowed.error)
+
+        // Second immediate request should be throttled
+        let throttled: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try sendRequest(
+            BurnBarRPCRequestEnvelope(id: "rl-2", method: .health, authToken: "test-token"),
+            socketPath: socketPath
+        )
+        XCTAssertNil(throttled.result)
+        XCTAssertEqual(throttled.error?.code, BurnBarRPCErrorCode.rateLimitExceeded)
+        XCTAssertTrue(throttled.error?.message.contains("Rate limit exceeded") == true)
+
+        await server.stop()
+    }
 
     func testConfigurationValidate_throwsWhenSocketAuthTokenMissing() throws {
         let config = BurnBarDaemonConfiguration(

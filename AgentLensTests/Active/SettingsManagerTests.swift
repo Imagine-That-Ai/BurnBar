@@ -32,12 +32,12 @@ final class SettingsManagerTests: XCTestCase {
         return directory
     }
 
-    override func tearDown() throws {
+    override func tearDown() {
         for directory in tempDirectories {
             try? FileManager.default.removeItem(at: directory)
         }
         tempDirectories.removeAll()
-        try super.tearDown()
+        super.tearDown()
     }
 
     // MARK: - Factory Methods
@@ -671,7 +671,7 @@ final class SettingsManagerTests: XCTestCase {
     func test_summaryMiniMaxModel_defaultValue() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
-        XCTAssertEqual(settings.summaryMiniMaxModel, "minimax-m2.7-highspeed")
+        XCTAssertEqual(settings.summaryMiniMaxModel, "gpt-5.5")
     }
 
     func test_summaryZaiModel_defaultValue() {
@@ -860,7 +860,7 @@ final class SettingsManagerTests: XCTestCase {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
 
-        XCTAssertEqual(settings.resolvedHermesChatModel(gatewayAdvertisedModel: "minimax-m2.7-highspeed"), "gpt-5.4-mini")
+        XCTAssertEqual(settings.resolvedHermesChatModel(gatewayAdvertisedModel: "minimax-m2.7-highspeed"), "gpt-5.5")
     }
 
     func test_resolvedHermesChatModel_usesHermesWhenNoSpecialCase() {

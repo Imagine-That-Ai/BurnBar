@@ -1241,6 +1241,10 @@ final class CLIBridge: ObservableObject {
 
     /// Models shown in chat UI and accepted by `codex exec -m` (normalized via `normalizedCodexModel`).
     nonisolated static let codexChatModelIDs: [String] = [
+        "gpt-5.5",
+        "gpt-5.5-mini",
+        "gpt-5.5-nano",
+        "gpt-5.5-pro",
         "gpt-5.4",
         "gpt-5.4-mini",
         "gpt-5.4-nano",
@@ -1253,7 +1257,7 @@ final class CLIBridge: ObservableObject {
         "gpt-5.1-codex-max"
     ]
 
-    nonisolated static func normalizedCodexModel(_ model: String, fallback: String = "gpt-5.4-mini") -> String {
+    nonisolated static func normalizedCodexModel(_ model: String, fallback: String = "gpt-5.5") -> String {
         let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedModel.isEmpty == false else { return fallback }
 
@@ -1266,7 +1270,7 @@ final class CLIBridge: ObservableObject {
         return fallback
     }
 
-    nonisolated static func codexArguments(prompt: String, model: String = "gpt-5.4-mini") -> [String] {
+    nonisolated static func codexArguments(prompt: String, model: String = "gpt-5.5") -> [String] {
         let normalizedModel = normalizedCodexModel(model)
         return [
             "exec",
@@ -1276,7 +1280,7 @@ final class CLIBridge: ObservableObject {
             "-m",
             normalizedModel,
             "-c",
-            #"model_reasoning_effort="medium""#,
+            #"model_reasoning_effort="high""#,
             sanitizedPrompt(prompt)
         ]
     }
@@ -1435,22 +1439,16 @@ enum CLIBridgeError: LocalizedError {
     }
 }
 
-private final class CLIBridgeQuotaSignalRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var detail: String?
+private final class CLIBridgeQuotaSignalRecorder: Sendable {
+    private let state = Locked<String?>(nil)
 
     func record(_ detail: String) {
-        lock.lock()
-        if self.detail == nil {
-            self.detail = detail
+        state.withLock { current in
+            if current == nil { current = detail }
         }
-        lock.unlock()
     }
 
     func snapshot() -> String? {
-        lock.lock()
-        let value = detail
-        lock.unlock()
-        return value
+        state.read()
     }
 }

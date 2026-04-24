@@ -83,6 +83,10 @@ struct OpenBurnBarAppPaths {
         supportDirectory.appendingPathComponent("codex_rollout_scan_cache.json")
     }
 
+    var vectorIndexesRootURL: URL {
+        supportDirectory.appendingPathComponent("VectorIndexes", isDirectory: true)
+    }
+
     var claudeCodeParserCacheURL: URL {
         supportDirectory.appendingPathComponent("claude_code_parser_cache.json")
     }

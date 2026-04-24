@@ -3,9 +3,16 @@ import Darwin
 import Dispatch
 import Foundation
 
+#if canImport(Sentry)
+import Sentry
+#endif
+
 @main
 struct OpenBurnBarDaemonExecutable {
     static func main() async throws {
+        #if canImport(Sentry)
+        configureSentryIfAvailable()
+        #endif
         let configuration = try BurnBarDaemonCommandLine.makeConfiguration(
             arguments: Array(CommandLine.arguments.dropFirst()),
             environment: ProcessInfo.processInfo.environment
@@ -168,6 +175,26 @@ private enum BurnBarDaemonCommandLineError: Error, LocalizedError {
     }
 }
 
+#if canImport(Sentry)
+private func configureSentryIfAvailable() {
+    guard let dsn = ProcessInfo.processInfo.environment["OPENBURNBAR_SENTRY_DSN"],
+          !dsn.trimmingCharacters(in: .whitespaces).isEmpty else {
+        return
+    }
+    SentrySDK.start { options in
+        options.dsn = dsn
+        options.environment = "daemon"
+        options.releaseName = "openburnbar-daemon@\(BurnBarDaemonVersion.current)"
+        options.enableTracing = false
+        #if DEBUG
+        options.debug = false
+        #endif
+    }
+}
+#endif
+
+// AUDIT(@unchecked Sendable): All stored properties are let; DispatchSourceSignal
+// is not formally Sendable but sources are immutable after init.
 private final class BurnBarSignalMonitor: @unchecked Sendable {
     private let queue: DispatchQueue
     private let continuation: AsyncStream<Int32>.Continuation

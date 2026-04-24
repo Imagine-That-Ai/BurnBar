@@ -4,7 +4,7 @@ import Foundation
 
 /// Parses Gemini CLI sessions from ~/.gemini/tmp/<project_hash>/chats/session-*.json (and .jsonl).
 /// Gemini CLI stores sessions with message_update records containing input_tokens, output_tokens, cached_tokens.
-final class GeminiCLIParser: LogParser, @unchecked Sendable {
+final class GeminiCLIParser: LogParser, Sendable {
     let provider: AgentProvider = .geminiCLI
 
     func parse() async throws -> ParseResult {

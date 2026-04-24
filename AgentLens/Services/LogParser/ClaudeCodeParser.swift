@@ -1,24 +1,13 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Claude Code Parser
 
-final class ClaudeCodeParser: LogParser, @unchecked Sendable {
+final class ClaudeCodeParser: LogParser, Sendable {
     let provider: AgentProvider = .claudeCode
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
     private let cacheURL: URL
-
-    nonisolated(unsafe) private static let iso8601Basic: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-
-    nonisolated(unsafe) private static let iso8601Fractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
 
     init(
         fileManager: FileManager = .default,
@@ -390,9 +379,7 @@ final class ClaudeCodeParser: LogParser, @unchecked Sendable {
 
     private static func parseTimestamp(_ raw: Any?) -> Date? {
         if let string = raw as? String {
-            if let parsed = iso8601Fractional.date(from: string) { return parsed }
-            if let parsed = iso8601Basic.date(from: string) { return parsed }
-            return nil
+            return ThreadSafeISO8601DateFormatter.parse(string)
         }
 
         let epoch: Double?

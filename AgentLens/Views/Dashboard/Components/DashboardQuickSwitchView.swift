@@ -1413,7 +1413,7 @@ struct DashboardQuickSwitchView: View {
 // MARK: - Profile Store Adapter for Dashboard
 
 /// Adapter that wraps SwitcherProfileStore for use with launch services.
-private final class DashboardSwitcherProfileAdapter: SwitcherProfileStoreAdapter, @unchecked Sendable {
+private final class DashboardSwitcherProfileAdapter: SwitcherProfileStoreAdapter, Sendable {
     private let store: SwitcherProfileStore
 
     init(store: SwitcherProfileStore) {

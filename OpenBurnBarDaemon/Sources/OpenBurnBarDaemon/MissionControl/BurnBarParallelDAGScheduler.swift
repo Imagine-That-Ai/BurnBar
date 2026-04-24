@@ -113,20 +113,15 @@ public actor BurnBarParallelDAGScheduler {
     public static let defaultMaxConcurrency = 4
 
     /// Tracks all active schedulers by mission ID.
-    private final class ActiveSchedulerRegistry: @unchecked Sendable {
-        private var schedulers: [BurnBarMissionID: BurnBarParallelDAGScheduler] = [:]
-        private let lock = NSLock()
+    private final class ActiveSchedulerRegistry: Sendable {
+        private let state = Locked<[BurnBarMissionID: BurnBarParallelDAGScheduler]>([:])
 
         func set(_ scheduler: BurnBarParallelDAGScheduler, for missionID: BurnBarMissionID) {
-            lock.lock()
-            defer { lock.unlock() }
-            schedulers[missionID] = scheduler
+            state.withLock { $0[missionID] = scheduler }
         }
 
         func scheduler(for missionID: BurnBarMissionID) -> BurnBarParallelDAGScheduler? {
-            lock.lock()
-            defer { lock.unlock() }
-            return schedulers[missionID]
+            state.withLock { $0[missionID] }
         }
     }
 

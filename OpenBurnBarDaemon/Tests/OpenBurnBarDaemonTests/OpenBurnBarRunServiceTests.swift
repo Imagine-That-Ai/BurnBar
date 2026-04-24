@@ -1501,7 +1501,9 @@ final class BurnBarRunServiceTests: XCTestCase {
         name: String,
         rootURL: URL? = nil,
         secretStore: BurnBarInMemorySecretStore? = nil,
-        providerExecutor: any BurnBarProviderExecuting = BurnBarStubProviderExecutor()
+        providerExecutor: any BurnBarProviderExecuting = BurnBarStubProviderExecutor(),
+        maxInMemoryRuns: Int = 200,
+        evictionPolicy: BurnBarRunRegistryEvictionPolicy = .maxCount(200)
     ) throws -> BurnBarRunServiceHarness {
         let rootURL = rootURL ?? FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-run-service-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -1533,6 +1535,8 @@ final class BurnBarRunServiceTests: XCTestCase {
             clientRegistry: clientRegistry,
             providerExecutor: providerExecutor,
             runJournal: runJournal,
+            maxInMemoryRuns: maxInMemoryRuns,
+            evictionPolicy: evictionPolicy,
             logger: BurnBarDaemonLogger(category: "run-service-tests")
         )
 
@@ -1545,6 +1549,226 @@ final class BurnBarRunServiceTests: XCTestCase {
             runService: runService,
             runJournal: runJournal
         )
+    }
+
+    func testEvictionPolicyNoneKeepsAllRunsInMemory() async throws {
+        let harness = try makeHarness(name: "eviction-none", maxInMemoryRuns: 10, evictionPolicy: .none)
+        let clientID = BurnBarClientID(rawValue: "client-eviction-none")
+        let sessionID = BurnBarSessionID(rawValue: "session-eviction-none")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Eviction None Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        var runIDs: [BurnBarRunID] = []
+        for i in 0..<15 {
+            let response = try await harness.runService.createRun(
+                BurnBarRunCreateRequest(
+                    clientID: clientID,
+                    sessionID: sessionID,
+                    prompt: "Run \(i)",
+                    modelID: "glm-5"
+                )
+            )
+            runIDs.append(response.runID)
+        }
+
+        let inMemoryCount = await harness.runService.runs.count
+        XCTAssertEqual(inMemoryCount, 15, "With .none policy, all 15 runs should remain in memory")
+    }
+
+    func testMaxCountEvictionRemovesOldestTerminalRuns() async throws {
+        let harness = try makeHarness(name: "eviction-maxcount", maxInMemoryRuns: 5, evictionPolicy: .maxCount(5))
+        let clientID = BurnBarClientID(rawValue: "client-eviction-maxcount")
+        let sessionID = BurnBarSessionID(rawValue: "session-eviction-maxcount")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Eviction MaxCount Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        var runIDs: [BurnBarRunID] = []
+        for i in 0..<10 {
+            let response = try await harness.runService.createRun(
+                BurnBarRunCreateRequest(
+                    clientID: clientID,
+                    sessionID: sessionID,
+                    prompt: "Eviction test prompt \(i)",
+                    modelID: "glm-5"
+                )
+            )
+            runIDs.append(response.runID)
+        }
+
+        let inMemoryCount = await harness.runService.runs.count
+        XCTAssertEqual(inMemoryCount, 5, "With maxCount(5), only 5 terminal runs should remain in memory")
+
+        // The oldest runs should have been evicted; the newest 5 should remain
+        for (index, runID) in runIDs.enumerated() {
+            let detail = try await harness.runService.getRun(
+                BurnBarRunGetRequest(runID: runID, clientID: clientID)
+            )
+            if index < 5 {
+                // Evicted run should be lazily restored
+                XCTAssertNotNil(detail.run, "Evicted run \(index) should be lazily restorable")
+            }
+            XCTAssertNotNil(detail.run, "Run \(index) should be retrievable")
+        }
+    }
+
+    func testActiveRunsAreNeverEvicted() async throws {
+        // Create a harness with a tiny limit and a provider executor that stalls
+        // so runs remain in a non-terminal phase.
+        let harness = try makeHarness(
+            name: "eviction-active-protected",
+            maxInMemoryRuns: 2,
+            evictionPolicy: .maxCount(2)
+        )
+        let clientID = BurnBarClientID(rawValue: "client-active-protected")
+        let sessionID = BurnBarSessionID(rawValue: "session-active-protected")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Active Protected Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        // Create a run that requires approval — it will stay in .awaitingApproval
+        let awaitingRun = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Stall me",
+                modelID: "glm-5",
+                metadata: ["requiresApproval": .bool(true)]
+            )
+        )
+        XCTAssertEqual(awaitingRun.phase, .awaitingApproval)
+
+        // Create two more terminal runs to exceed the limit
+        _ = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(clientID: clientID, sessionID: sessionID, prompt: "T1", modelID: "glm-5")
+        )
+        _ = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(clientID: clientID, sessionID: sessionID, prompt: "T2", modelID: "glm-5")
+        )
+
+        let inMemoryCount = await harness.runService.runs.count
+        // With maxCount(2), we have 3 total. The active run should be protected,
+        // and the oldest terminal run should be evicted.
+        XCTAssertEqual(inMemoryCount, 2, "Active run should be protected from eviction")
+
+        let detail = try await harness.runService.getRun(
+            BurnBarRunGetRequest(runID: awaitingRun.runID, clientID: clientID)
+        )
+        XCTAssertEqual(detail.run?.phase, .awaitingApproval, "Active run should still be in memory")
+    }
+
+    func testListRunsPaginationRespectsLimitAndOffset() async throws {
+        let harness = try makeHarness(name: "listruns-pagination", evictionPolicy: .none)
+        let clientID = BurnBarClientID(rawValue: "client-listruns-pagination")
+        let sessionID = BurnBarSessionID(rawValue: "session-listruns-pagination")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Pagination Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        var runIDs: [BurnBarRunID] = []
+        for i in 0..<5 {
+            let response = try await harness.runService.createRun(
+                BurnBarRunCreateRequest(
+                    clientID: clientID,
+                    sessionID: sessionID,
+                    prompt: "Run \(i)",
+                    modelID: "glm-5"
+                )
+            )
+            runIDs.append(response.runID)
+        }
+
+        let page1 = try await harness.runService.listRuns(
+            BurnBarRunListRequest(clientID: clientID, offset: 0, limit: 2)
+        )
+        XCTAssertEqual(page1.runs.count, 2)
+
+        let page2 = try await harness.runService.listRuns(
+            BurnBarRunListRequest(clientID: clientID, offset: 2, limit: 2)
+        )
+        XCTAssertEqual(page2.runs.count, 2)
+
+        let page3 = try await harness.runService.listRuns(
+            BurnBarRunListRequest(clientID: clientID, offset: 4, limit: 2)
+        )
+        XCTAssertEqual(page3.runs.count, 1)
+
+        // Verify ordering (newest first)
+        XCTAssertEqual(page1.runs.first?.runID, runIDs.last)
+        XCTAssertEqual(page3.runs.first?.runID, runIDs.first)
+    }
+
+    func testRetryRunWorksOnEvictedRun() async throws {
+        let harness = try makeHarness(name: "retry-evicted", maxInMemoryRuns: 2, evictionPolicy: .maxCount(2))
+        let clientID = BurnBarClientID(rawValue: "client-retry-evicted")
+        let sessionID = BurnBarSessionID(rawValue: "session-retry-evicted")
+
+        _ = await harness.clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Retry Evicted Controller",
+                supportedProtocolVersions: BurnBarProtocolVersion.supported
+            )
+        )
+        try await configureProvider(harness)
+
+        let failedRun = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                prompt: "Fail once",
+                modelID: "glm-5",
+                metadata: ["failUntilAttempt": .number(1)]
+            )
+        )
+        XCTAssertEqual(failedRun.phase, .failed)
+
+        // Create two more terminal runs to evict the failed one
+        _ = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(clientID: clientID, sessionID: sessionID, prompt: "T1", modelID: "glm-5")
+        )
+        _ = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(clientID: clientID, sessionID: sessionID, prompt: "T2", modelID: "glm-5")
+        )
+
+        let inMemoryCountBeforeRetry = await harness.runService.runs.count
+        XCTAssertEqual(inMemoryCountBeforeRetry, 2)
+
+        // Retry should lazily restore the evicted run and then retry it
+        let retriedDetail = try await harness.runService.retryRun(
+            BurnBarRunRetryRequest(runID: failedRun.runID, clientID: clientID)
+        )
+        XCTAssertEqual(retriedDetail.run?.phase, .completed)
     }
 
     private func configureProvider(_ harness: BurnBarRunServiceHarness) async throws {

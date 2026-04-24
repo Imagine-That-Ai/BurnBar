@@ -6,6 +6,8 @@
 #   make test             Run all test suites
 #   make lint             Run SwiftLint
 #   make ci               Run lint + test (full CI check)
+#   make release-checksums Compute SHA256/SHA512 checksums for built artifacts
+#   make sbom              Generate SPDX SBOM for current source tree
 #   make uninstall        Remove OpenBurnBar.app from /Applications
 #   make clean            Remove build artifacts
 
@@ -27,7 +29,7 @@ DAEMON_CORE_DYLIB := libOpenBurnBarCore.dylib
 # Built .app location inside DerivedData
 APP_BUNDLE = $(DERIVED_DATA)/Build/Products/$(CONFIG)/$(APP_NAME)
 
-.PHONY: preflight build install uninstall clean test lint ci
+.PHONY: preflight build install uninstall clean test lint ci release-checksums sbom
 
 preflight:
 	@command -v xcodebuild >/dev/null 2>&1 || { echo "ERROR: xcodebuild not found. Install Xcode 16+ command line tools first."; exit 1; }
@@ -105,3 +107,32 @@ lint: ## Run SwiftLint
 	@swiftlint lint --quiet
 
 ci: lint test ## Full CI check (lint + test)
+
+release-checksums: ## Compute SHA256/SHA512 checksums for release artifacts
+	@APP_PATH="$(DERIVED_DATA)/Build/Products/$(CONFIG)/$(APP_NAME)"; \
+	if [ ! -d "$$APP_PATH" ]; then \
+		echo "ERROR: Build not found at $$APP_PATH. Run 'make build' first."; \
+		exit 1; \
+	fi; \
+	echo "==> Computing checksums for built artifacts…"; \
+	echo ""; \
+	if [ -f "$$APP_PATH/../OpenBurnBar-$$(grep -m1 'MARKETING_VERSION' project.yml | sed 's/.*: *//;s/ *//;s/"//g')-macOS.dmg" ]; then \
+		DMG_FILE="$$APP_PATH/../OpenBurnBar-$$(grep -m1 'MARKETING_VERSION' project.yml | sed 's/.*: *//;s/ *//;s/"//g')-macOS.dmg"; \
+	else \
+		echo "No DMG found. Checksums will cover the .app bundle only."; \
+		DMG_FILE=""; \
+	fi; \
+	if [ -n "$$DMG_FILE" ] && [ -f "$$DMG_FILE" ]; then \
+		echo "DMG:"; \
+		shasum -a 256 "$$DMG_FILE"; \
+		shasum -a 512 "$$DMG_FILE"; \
+	fi; \
+	VERSION=$$(grep -m1 'MARKETING_VERSION' project.yml | sed 's/.*: *//;s/ *//;s/"//g'); \
+	python3 scripts/generate-sbom.py --version "$$VERSION" --repo-root . --output "checksums-v$$VERSION.txt" 2>/dev/null || true; \
+	echo ""; \
+	echo "Checksums computed. For signed release checksums, see the GitHub Release assets."
+
+sbom: ## Generate SPDX Software Bill of Materials
+	@VERSION=$$(grep -m1 'MARKETING_VERSION' project.yml | sed 's/.*: *//;s/ *//;s/"//g'); \
+	echo "==> Generating SBOM for v$$VERSION…"; \
+	python3 scripts/generate-sbom.py --version "$$VERSION" --repo-root .

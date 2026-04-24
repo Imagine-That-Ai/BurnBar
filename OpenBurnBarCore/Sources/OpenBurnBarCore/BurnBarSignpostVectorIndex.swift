@@ -39,12 +39,13 @@ public final class BurnBarSignpostVectorIndex: Sendable {
     private let bucketBits: Int
     private let candidateMultiplier: Int
     private let maxHammingDistance: Int
-    private let lock = NSLock()
-
-    private nonisolated(unsafe) var distanceMetric: BurnBarEmbeddingDistanceMetric = .cosine
-    private nonisolated(unsafe) var dimensions = 0
-    private nonisolated(unsafe) var buckets: [UInt64: [BurnBarVectorIndexEntry]] = [:]
-    private nonisolated(unsafe) var allEntries: [BurnBarVectorIndexEntry] = []
+    private struct IndexState {
+        var distanceMetric: BurnBarEmbeddingDistanceMetric = .cosine
+        var dimensions = 0
+        var buckets: [UInt64: [BurnBarVectorIndexEntry]] = [:]
+        var allEntries: [BurnBarVectorIndexEntry] = []
+    }
+    private let indexState = Locked(IndexState())
 
     /// Creates a new signpost vector index.
     /// - Parameters:
@@ -66,94 +67,97 @@ public final class BurnBarSignpostVectorIndex: Sendable {
         entries: [BurnBarVectorIndexEntry],
         distanceMetric: BurnBarEmbeddingDistanceMetric
     ) {
-        lock.lock()
-        defer { lock.unlock() }
+        let bucketBits = self.bucketBits
+        indexState.withLock { s in
+            s.distanceMetric = distanceMetric
+            s.dimensions = entries.first?.vector.count ?? 0
+            s.buckets.removeAll(keepingCapacity: true)
+            s.allEntries = entries.sorted { $0.chunkID < $1.chunkID }
 
-        self.distanceMetric = distanceMetric
-        self.dimensions = entries.first?.vector.count ?? 0
-        self.buckets.removeAll(keepingCapacity: true)
-        self.allEntries = entries.sorted { $0.chunkID < $1.chunkID }
-
-        for entry in allEntries {
-            guard dimensions == 0 || entry.vector.count == dimensions else { continue }
-            let sig = signature(for: entry.vector)
-            buckets[sig, default: []].append(entry)
+            for entry in s.allEntries {
+                guard s.dimensions == 0 || entry.vector.count == s.dimensions else { continue }
+                let sig = Self.computeSignature(for: entry.vector, bucketBits: bucketBits)
+                s.buckets[sig, default: []].append(entry)
+            }
         }
     }
 
     /// Returns the top-k candidates most similar to the query vector.
     public func candidates(for queryVector: [Float], limit: Int) -> [BurnBarVectorIndexCandidate] {
-        lock.lock()
-        defer { lock.unlock() }
+        let bucketBits = self.bucketBits
+        let candidateMultiplier = self.candidateMultiplier
+        let maxHammingDistance = self.maxHammingDistance
 
-        guard limit > 0, allEntries.isEmpty == false else { return [] }
-        guard dimensions == 0 || queryVector.count == dimensions else { return [] }
+        return indexState.withLock { s in
+            guard limit > 0, s.allEntries.isEmpty == false else { return [] }
+            guard s.dimensions == 0 || queryVector.count == s.dimensions else { return [] }
 
-        let sig = signature(for: queryVector)
-        let targetCount = min(allEntries.count, max(limit * candidateMultiplier, limit))
-        var selectedIDs: [String] = []
-        selectedIDs.reserveCapacity(targetCount)
-        var seen = Set<String>()
+            let sig = Self.computeSignature(for: queryVector, bucketBits: bucketBits)
+            let targetCount = min(s.allEntries.count, max(limit * candidateMultiplier, limit))
+            var selectedIDs: [String] = []
+            selectedIDs.reserveCapacity(targetCount)
+            var seen = Set<String>()
 
-        func appendBucket(_ key: UInt64) {
-            guard let entries = buckets[key], entries.isEmpty == false else { return }
-            for entry in entries {
-                guard seen.insert(entry.chunkID).inserted else { continue }
-                selectedIDs.append(entry.chunkID)
-                if selectedIDs.count >= targetCount { break }
-            }
-        }
-
-        appendBucket(sig)
-
-        if selectedIDs.count < targetCount, maxHammingDistance > 0 {
-            for distance in 1...maxHammingDistance {
-                for neighbor in neighbors(of: sig, distance: distance).sorted() {
-                    appendBucket(neighbor)
+            func appendBucket(_ key: UInt64) {
+                guard let entries = s.buckets[key], entries.isEmpty == false else { return }
+                for entry in entries {
+                    guard seen.insert(entry.chunkID).inserted else { continue }
+                    selectedIDs.append(entry.chunkID)
                     if selectedIDs.count >= targetCount { break }
                 }
-                if selectedIDs.count >= targetCount { break }
             }
-        }
 
-        if selectedIDs.count < limit {
-            for entry in allEntries {
-                guard seen.insert(entry.chunkID).inserted else { continue }
-                selectedIDs.append(entry.chunkID)
-                if selectedIDs.count >= targetCount { break }
+            appendBucket(sig)
+
+            if selectedIDs.count < targetCount, maxHammingDistance > 0 {
+                for distance in 1...maxHammingDistance {
+                    for neighbor in Self.neighbors(of: sig, distance: distance, bucketBits: bucketBits).sorted() {
+                        appendBucket(neighbor)
+                        if selectedIDs.count >= targetCount { break }
+                    }
+                    if selectedIDs.count >= targetCount { break }
+                }
             }
-        }
 
-        let selectedEntries = Dictionary(
-            uniqueKeysWithValues: allEntries.map { ($0.chunkID, $0) }
-        )
-        var scored: [BurnBarVectorIndexCandidate] = []
-        scored.reserveCapacity(selectedIDs.count)
-        for chunkID in selectedIDs {
-            guard let entry = selectedEntries[chunkID] else { continue }
-            let score = BurnBarVectorMath.similarity(
-                lhs: queryVector,
-                rhs: entry.vector,
-                metric: distanceMetric
+            if selectedIDs.count < limit {
+                for entry in s.allEntries {
+                    guard seen.insert(entry.chunkID).inserted else { continue }
+                    selectedIDs.append(entry.chunkID)
+                    if selectedIDs.count >= targetCount { break }
+                }
+            }
+
+            let selectedEntries = Dictionary(
+                uniqueKeysWithValues: s.allEntries.map { ($0.chunkID, $0) }
             )
-            guard score.isFinite else { continue }
-            scored.append(BurnBarVectorIndexCandidate(chunkID: entry.chunkID, score: score))
-        }
-
-        scored.sort {
-            if $0.score == $1.score {
-                return $0.chunkID < $1.chunkID
+            var scored: [BurnBarVectorIndexCandidate] = []
+            scored.reserveCapacity(selectedIDs.count)
+            for chunkID in selectedIDs {
+                guard let entry = selectedEntries[chunkID] else { continue }
+                let score = BurnBarVectorMath.similarity(
+                    lhs: queryVector,
+                    rhs: entry.vector,
+                    metric: s.distanceMetric
+                )
+                guard score.isFinite else { continue }
+                scored.append(BurnBarVectorIndexCandidate(chunkID: entry.chunkID, score: score))
             }
-            return $0.score > $1.score
+
+            scored.sort {
+                if $0.score == $1.score {
+                    return $0.chunkID < $1.chunkID
+                }
+                return $0.score > $1.score
+            }
+            if scored.count > limit {
+                return Array(scored.prefix(limit))
+            }
+            return scored
         }
-        if scored.count > limit {
-            return Array(scored.prefix(limit))
-        }
-        return scored
     }
 
     /// Computes the binary signature for a vector.
-    private func signature(for vector: [Float]) -> UInt64 {
+    private static func computeSignature(for vector: [Float], bucketBits: Int) -> UInt64 {
         guard vector.isEmpty == false else { return 0 }
         var signature: UInt64 = 0
         for bit in 0..<bucketBits {
@@ -166,14 +170,14 @@ public final class BurnBarSignpostVectorIndex: Sendable {
     }
 
     /// Maps a bit position to a stable dimension index using a hash permutation.
-    private func dimension(forBit bit: Int, dimensions: Int) -> Int {
+    private static func dimension(forBit bit: Int, dimensions: Int) -> Int {
         let prime = 2_147_483_647
         let raw = (bit * 73_856_093 + 19_349_663) % prime
         return raw % max(1, dimensions)
     }
 
     /// Generates all signatures at a given Hamming distance from the original.
-    private func neighbors(of signature: UInt64, distance: Int) -> [UInt64] {
+    private static func neighbors(of signature: UInt64, distance: Int, bucketBits: Int) -> [UInt64] {
         guard distance > 0 else { return [signature] }
         if distance == 1 {
             return (0..<bucketBits).map { bit in

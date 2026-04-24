@@ -6,9 +6,9 @@ import OpenBurnBarCore
 
 /// Operating action history and controller runtime cache.
 final class ControlPlaneStore: Sendable {
-    private let dbQueue: DatabaseQueue
+    private let dbQueue: any DatabaseWriter
 
-    init(dbQueue: DatabaseQueue) {
+    init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 

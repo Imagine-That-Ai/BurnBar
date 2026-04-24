@@ -987,14 +987,14 @@ struct ChatEngineModelMenu: View {
     private var menuOptions: [(id: String, title: String)] {
         switch controller.chatBackend {
         case .codex:
-            return [("", "Default (gpt-5.4-mini)")] + CLIBridge.codexChatModelIDs.map { ($0, $0) }
+            return [("", "Default (gpt-5.5)")] + CLIBridge.codexChatModelIDs.map { ($0, $0) }
         case .claude:
             return ChatEngineModelCatalog.claudeCode.map { id in
                 (id, id.isEmpty ? "Default (CLI profile)" : id)
             }
         case .hermes:
             var rows: [(String, String)] = [("", "Automatic")]
-            let pinned = ["hermes", "gpt-5.4-mini"]
+            let pinned = ["hermes", "gpt-5.5"]
             for p in pinned {
                 if !rows.contains(where: { $0.0.caseInsensitiveCompare(p) == .orderedSame }) {
                     rows.append((p, p))

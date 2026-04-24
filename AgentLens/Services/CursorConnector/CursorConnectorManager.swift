@@ -558,7 +558,7 @@ final class CursorConnectorManager {
             insertedAny = true
         }
         if insertedAny {
-            dataStore.refresh()
+            await dataStore.refresh()
         }
     }
 

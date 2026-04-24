@@ -72,16 +72,28 @@ final class SessionLogSyncService: CloudSyncDomain {
                 if let start = record.startTime { manifest["startTime"] = Timestamp(date: start) }
                 if let end = record.endTime { manifest["endTime"] = Timestamp(date: end) }
 
-                try await manifestRef.setData(manifest, merge: true)
+                try await withCloudSyncRetry(
+                    policy: context.retryPolicy,
+                    circuitBreaker: context.circuitBreaker,
+                    domain: "sessionLog.manifest"
+                ) {
+                    try await manifestRef.setData(manifest, merge: true)
+                }
 
                 // Write chunks as sub-documents
                 let chunksRef = manifestRef.collection("chunks")
                 for (idx, chunk) in chunks.enumerated() {
-                    try await chunksRef.document(String(idx)).setData([
-                        "index": idx,
-                        "body": chunk,
-                        "updatedAt": FieldValue.serverTimestamp()
-                    ], merge: true)
+                    try await withCloudSyncRetry(
+                        policy: context.retryPolicy,
+                        circuitBreaker: context.circuitBreaker,
+                        domain: "sessionLog.chunk"
+                    ) {
+                        try await chunksRef.document(String(idx)).setData([
+                            "index": idx,
+                            "body": chunk,
+                            "updatedAt": FieldValue.serverTimestamp()
+                        ], merge: true)
+                    }
                 }
             }
 

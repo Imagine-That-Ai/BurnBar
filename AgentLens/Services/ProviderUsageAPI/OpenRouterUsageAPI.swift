@@ -6,7 +6,7 @@ import Foundation
 /// Uses a standard API key (Bearer token).
 /// Endpoint: GET /api/v1/activity
 /// Returns daily aggregates by model/endpoint for the last 30 days.
-final class OpenRouterUsageAPI: ProviderUsageAPI, @unchecked Sendable {
+final class OpenRouterUsageAPI: ProviderUsageAPI, Sendable {
     let providerName = "OpenRouter"
     let authMethod: ProviderAuthMethod = .apiKey
 

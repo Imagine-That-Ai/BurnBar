@@ -32,7 +32,7 @@ enum KeychainStoreError: Error {
     case writeVerificationFailed
 }
 
-protocol KeychainStoreBackend {
+protocol KeychainStoreBackend: Sendable {
     func set(_ value: Data, service: String, account: String) throws
     func data(for service: String, account: String, allowUserInteraction: Bool) throws -> Data?
     func delete(service: String, account: String) throws
@@ -121,7 +121,7 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
     }
 }
 
-struct KeychainStore: @unchecked Sendable {
+struct KeychainStore: Sendable {
     private let service: String
     private let legacyServices: [String]
     private let backend: any KeychainStoreBackend

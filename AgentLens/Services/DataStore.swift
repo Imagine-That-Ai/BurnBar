@@ -8,7 +8,7 @@ import OpenBurnBarCore
 /// Actor that owns the database queue and all sub-stores.
 /// Heavy I/O and aggregation run here, off the main thread.
 actor DataStoreActor {
-    nonisolated let dbQueue: DatabaseQueue
+    nonisolated let dbQueue: any DatabaseWriter
     nonisolated let database: OpenBurnBarDatabase
     nonisolated let usageStore: UsageStore
     nonisolated let conversationStore: ConversationStore
@@ -22,7 +22,7 @@ actor DataStoreActor {
     nonisolated let switcherStore: SwitcherProfileStore
     nonisolated let backfillCursorStore: BackfillCursorStore
 
-    init(databaseQueue: DatabaseQueue, runMigrations: Bool = true) throws {
+    init(databaseQueue: any DatabaseWriter, runMigrations: Bool = true) throws {
         dbQueue = databaseQueue
         database = OpenBurnBarDatabase(databaseQueue: databaseQueue)
         usageStore = UsageStore(dbQueue: databaseQueue)
@@ -169,7 +169,7 @@ final class DataStore {
 
     let actor: DataStoreActor
 
-    nonisolated var dbQueue: DatabaseQueue { actor.dbQueue }
+    nonisolated var dbQueue: any DatabaseWriter { actor.dbQueue }
     nonisolated var database: OpenBurnBarDatabase { actor.database }
     nonisolated var usageStore: UsageStore { actor.usageStore }
     nonisolated var conversationStore: ConversationStore { actor.conversationStore }
@@ -285,12 +285,14 @@ final class DataStore {
     convenience init() throws {
         let appDir = try OpenBurnBarMigration.prepareSupportDirectory()
         let dbPath = appDir.appendingPathComponent(OpenBurnBarIdentity.databaseFileName).path
-        let queue = try DatabaseQueue(path: dbPath)
-        try self.init(databaseQueue: queue)
+        // DatabasePool enables concurrent reads (WAL mode) for read-heavy workloads
+        // like dashboard aggregation and search queries. Writes remain serialized.
+        let pool = try DatabasePool(path: dbPath)
+        try self.init(databaseQueue: pool)
     }
 
     init(
-        databaseQueue: DatabaseQueue,
+        databaseQueue: any DatabaseWriter,
         runMigrations: Bool = true,
         refreshOnInit: Bool = true
     ) throws {

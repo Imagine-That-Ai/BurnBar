@@ -6,9 +6,9 @@ import OpenBurnBarCore
 
 /// Conversations, chat messages, FTS search, session logs, and CLI conversation helpers.
 final class ConversationStore: Sendable {
-    private let dbQueue: DatabaseQueue
+    private let dbQueue: any DatabaseWriter
 
-    init(dbQueue: DatabaseQueue) {
+    init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 

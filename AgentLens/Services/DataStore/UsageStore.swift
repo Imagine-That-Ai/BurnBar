@@ -6,9 +6,9 @@ import OpenBurnBarCore
 
 /// Token-usage CRUD, sync helpers, refresh reads, and provider/model summary builders.
 final class UsageStore: Sendable {
-    private let dbQueue: DatabaseQueue
+    private let dbQueue: any DatabaseWriter
 
-    init(dbQueue: DatabaseQueue) {
+    init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 

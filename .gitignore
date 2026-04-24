@@ -65,6 +65,9 @@ xcuserdata/
 *.pem
 *.p12
 
+# Sentry — DSN is non-secret but keep local overrides out of source
+sentry.properties
+
 # Firebase — never commit the real plist; drop it locally as GoogleService-Info.plist
 GoogleService-Info.plist
 

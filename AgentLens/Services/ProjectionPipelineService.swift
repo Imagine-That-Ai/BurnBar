@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // Projection queue flow (local-first):
 // conversations/source_artifacts
@@ -615,6 +616,9 @@ final class ProjectionPipelineService {
                 }
             }
 
+            if indexedCount > 0 {
+                try markVectorIndexSnapshotStale(now: now)
+            }
             return indexedCount
         } catch {
             try upsertSemanticProjectionHealth(
@@ -657,6 +661,33 @@ final class ProjectionPipelineService {
                 isActive: true,
                 createdAt: now,
                 updatedAt: now
+            )
+        )
+    }
+
+    private func markVectorIndexSnapshotStale(now: Date) throws {
+        let snapshotBackend = BurnBarPersistentVectorIndexFactory.defaultBackend()
+        let existing = try dataStore.fetchVectorIndexSnapshot(
+            embeddingVersionID: embeddingVersionID,
+            backendID: snapshotBackend.backendID
+        )
+        try dataStore.upsertVectorIndexSnapshot(
+            VectorIndexSnapshotRecord(
+                embeddingVersionID: embeddingVersionID,
+                backendID: snapshotBackend.backendID,
+                state: .stale,
+                fingerprint: existing?.fingerprint ?? "\(embeddingVersionID)|stale|\(Int(now.timeIntervalSince1970))",
+                dimensions: chunkEmbedder.descriptor.dimensions,
+                distanceMetric: chunkEmbedder.descriptor.distanceMetric,
+                vectorCount: try dataStore.countChunkEmbeddings(embeddingVersionID: embeddingVersionID),
+                storageRelativePath: existing?.storageRelativePath,
+                fileBytes: existing?.fileBytes ?? 0,
+                backendVersion: snapshotBackend.backendVersion,
+                errorCode: nil,
+                errorMessage: nil,
+                createdAt: existing?.createdAt ?? now,
+                updatedAt: now,
+                lastBuiltAt: existing?.lastBuiltAt
             )
         )
     }
@@ -788,6 +819,9 @@ final class ProjectionPipelineService {
             )
             reusedEmbeddingCount += 1
         }
+        if reusedEmbeddingCount > 0 {
+            try markVectorIndexSnapshotStale(now: now)
+        }
 
         // Embed only chunks whose content has no existing embedding.
         let chunksNeedingEmbedding = chunks.filter { chunk in
@@ -882,6 +916,9 @@ final class ProjectionPipelineService {
                 )
             )
             reusedEmbeddingCount += 1
+        }
+        if reusedEmbeddingCount > 0 {
+            try markVectorIndexSnapshotStale(now: now)
         }
 
         // Embed only chunks whose content has no existing embedding.

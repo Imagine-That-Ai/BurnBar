@@ -6,9 +6,9 @@ import OpenBurnBarCore
 
 /// Search documents, chunks, FTS-based lexical search, and document-level deletion.
 final class SearchIndexStore: Sendable {
-    private let dbQueue: DatabaseQueue
+    private let dbQueue: any DatabaseWriter
 
-    init(dbQueue: DatabaseQueue) {
+    init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 

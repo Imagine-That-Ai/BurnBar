@@ -156,6 +156,25 @@ extension DataStore {
         try projectionStore.fetchChunkEmbeddings(embeddingVersionID: embeddingVersionID)
     }
 
+    nonisolated func fetchChunkEmbeddings(
+        embeddingVersionID: String,
+        limit: Int,
+        offset: Int
+    ) throws -> [ChunkEmbeddingRecord] {
+        try projectionStore.fetchChunkEmbeddings(
+            embeddingVersionID: embeddingVersionID,
+            limit: limit,
+            offset: offset
+        )
+    }
+
+    nonisolated func fetchChunkEmbeddings(
+        chunkIDs: [String],
+        embeddingVersionID: String
+    ) throws -> [ChunkEmbeddingRecord] {
+        try projectionStore.fetchChunkEmbeddings(chunkIDs: chunkIDs, embeddingVersionID: embeddingVersionID)
+    }
+
     nonisolated func countChunkEmbeddings(
         chunkID: String? = nil,
         embeddingVersionID: String? = nil
@@ -168,6 +187,25 @@ extension DataStore {
         embeddingVersionID: String? = nil
     ) throws -> Int {
         try projectionStore.countChunkEmbeddings(documentID: documentID, embeddingVersionID: embeddingVersionID)
+    }
+
+    nonisolated func chunkEmbeddingVersionStats(embeddingVersionID: String) throws -> ChunkEmbeddingVersionStats {
+        try projectionStore.chunkEmbeddingVersionStats(embeddingVersionID: embeddingVersionID)
+    }
+
+    nonisolated func upsertVectorIndexSnapshot(_ snapshot: VectorIndexSnapshotRecord) throws {
+        try projectionStore.upsertVectorIndexSnapshot(snapshot)
+    }
+
+    nonisolated func fetchVectorIndexSnapshot(
+        embeddingVersionID: String,
+        backendID: String
+    ) throws -> VectorIndexSnapshotRecord? {
+        try projectionStore.fetchVectorIndexSnapshot(embeddingVersionID: embeddingVersionID, backendID: backendID)
+    }
+
+    nonisolated func fetchVectorIndexSnapshots(embeddingVersionID: String? = nil) throws -> [VectorIndexSnapshotRecord] {
+        try projectionStore.fetchVectorIndexSnapshots(embeddingVersionID: embeddingVersionID)
     }
 
     nonisolated func upsertRetrievalHealth(_ health: RetrievalHealthRecord) throws {

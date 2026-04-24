@@ -24,20 +24,14 @@ final class CLITerminalSessionSupervisorTests: XCTestCase {
     }
 }
 
-private final class SupervisorEventRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var events: [CLITerminalSessionEvent] = []
+private final class SupervisorEventRecorder: Sendable {
+    private let state = Locked<[CLITerminalSessionEvent]>([])
 
     func record(_ event: CLITerminalSessionEvent) {
-        lock.lock()
-        events.append(event)
-        lock.unlock()
+        state.withLock { $0.append(event) }
     }
 
     func snapshot() -> [CLITerminalSessionEvent] {
-        lock.lock()
-        let value = events
-        lock.unlock()
-        return value
+        state.read()
     }
 }

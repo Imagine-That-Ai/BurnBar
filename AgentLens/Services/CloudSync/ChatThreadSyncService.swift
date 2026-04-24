@@ -83,7 +83,13 @@ final class ChatThreadSyncService: CloudSyncDomain {
                 batch.setData(data, forDocument: docRef, merge: true)
             }
 
-            try await batch.commit()
+            try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "chatThread"
+            ) {
+                try await batch.commit()
+            }
             lastSyncDate = Date()
             lastSyncError = nil
         } catch {

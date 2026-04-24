@@ -4,7 +4,7 @@ import Foundation
 
 /// Attempts to discover and query Z.ai's usage/billing endpoints.
 /// These are speculative — the endpoints may not exist. Failures are silent.
-final class ZaiUsageProbe: ProviderUsageAPI, @unchecked Sendable {
+final class ZaiUsageProbe: ProviderUsageAPI, Sendable {
     let providerName = "Z.ai"
     let authMethod: ProviderAuthMethod = .apiKey
 
@@ -133,7 +133,7 @@ final class ZaiUsageProbe: ProviderUsageAPI, @unchecked Sendable {
 
 /// Attempts to discover and query MiniMax's usage/billing endpoints.
 /// Speculative — failures are silent.
-final class MiniMaxUsageProbe: ProviderUsageAPI, @unchecked Sendable {
+final class MiniMaxUsageProbe: ProviderUsageAPI, Sendable {
     let providerName = "MiniMax"
     let authMethod: ProviderAuthMethod = .apiKey
 

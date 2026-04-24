@@ -85,6 +85,12 @@ final class CloudSyncContext {
     let accountManager: AccountManager
     let settingsManager: SettingsManager
 
+    /// Shared circuit breaker for Firestore network calls.
+    let circuitBreaker = CloudSyncCircuitBreaker()
+
+    /// Shared retry policy for transient Firestore failures.
+    let retryPolicy = CloudSyncRetryPolicy()
+
     /// Firestore instance, guarded by Firebase availability checks.
     var db: Firestore { Firestore.firestore() }
 

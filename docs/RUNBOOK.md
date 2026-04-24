@@ -1,0 +1,344 @@
+# OpenBurnBar Incident Runbook
+
+On-call operational reference for diagnosing and resolving OpenBurnBar incidents.
+
+## Quick Reference
+
+| Component | Location | Logs |
+|-----------|----------|------|
+| macOS App | `/Applications/OpenBurnBar.app` | `~/Library/Logs/OpenBurnBar/` |
+| Daemon | `Contents/Helpers/OpenBurnBarDaemon` (in app bundle) | `~/Library/Logs/OpenBurnBar/daemon.log` |
+| Socket | `~/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock` | — |
+| Database | `~/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite` | — |
+| Extension | VS Code / Cursor extension host | Extension dev console |
+| Cloud sync | Firebase Console | Firestore logs |
+
+---
+
+## Incident 1: Daemon Not Starting
+
+### Symptoms
+- Menu bar shows "Daemon Unavailable"
+- Extension health view shows daemon as offline
+- `launchctl list | grep openburnbar` shows no entry or error exit code
+
+### Diagnosis
+
+```bash
+# Check if daemon process is running
+pgrep -fl OpenBurnBarDaemon
+
+# Check launchd registration
+launchctl list | grep openburnbar
+
+# Check socket existence
+ls -la ~/Library/Application\ Support/OpenBurnBar/openburnbar-daemon.sock
+
+# Check for stale PID files
+ls -la ~/Library/Application\ Support/OpenBurnBar/*.pid 2>/dev/null
+
+# Check recent daemon logs
+tail -50 ~/Library/Logs/OpenBurnBar/daemon.log
+
+# Try manual daemon start
+~/path/to/OpenBurnBarDaemon --socket-path ~/Library/Application\ Support/OpenBurnBar/openburnbar-daemon.sock --version
+```
+
+### Remediation
+
+1. **Stale socket**: Remove the stale socket file and relaunch
+   ```bash
+   rm ~/Library/Application\ Support/OpenBurnBar/openburnbar-daemon.sock
+   # Quit and relaunch OpenBurnBar
+   ```
+
+2. **Stale PID**: Remove PID lockout
+   ```bash
+   rm ~/Library/Application\ Support/OpenBurnBar/*.pid
+   # Quit and relaunch OpenBurnBar
+   ```
+
+3. **Launchd conflict**: Bootout and re-bootstrap
+   ```bash
+   launchctl bootout gui/$(id -u) ~/Library/Application\ Support/OpenBurnBar/com.openburnbar.daemon.plist 2>/dev/null
+   # Relaunch OpenBurnBar — it will re-register the daemon
+   ```
+
+4. **Complete restart**: Kill all OpenBurnBar processes
+   ```bash
+   pkill -f OpenBurnBarDaemon 2>/dev/null || true
+   pkill -f OpenBurnBar 2>/dev/null || true
+   sleep 2
+   open -a OpenBurnBar
+   ```
+
+### Verification
+- Menu bar popover shows daemon version and healthy status
+- `pgrep -fl OpenBurnBarDaemon` shows running process
+- Extension health view shows daemon as connected
+
+---
+
+## Incident 2: Database Corruption
+
+### Symptoms
+- App crashes on launch with SQLite error
+- Data does not appear (sessions, usage, etc.)
+- Console log shows `database disk image is malformed` or `integrity_check` failure
+
+### Diagnosis
+
+```bash
+# Check database integrity
+sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite "PRAGMA integrity_check;"
+
+# Check database size (should be > 0)
+du -h ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite
+
+# Check migration state
+sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite \
+  "SELECT identifier FROM grdb_migrations ORDER BY identifier;" 2>/dev/null
+
+# List available backups
+ls -lt ~/Library/Application\ Support/OpenBurnBar/Openburnbar.sqlite.backup-* 2>/dev/null
+ls -lt ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite.backup-* 2>/dev/null
+```
+
+### Remediation
+
+**Option A: Restore from automatic backup** (preferred)
+
+```bash
+# 1. Quit OpenBurnBar completely
+pkill -f OpenBurnBar
+
+# 2. Find most recent backup
+BACKUP=$(ls -t ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite.backup-* 2>/dev/null | head -1)
+
+# 3. Verify backup integrity
+sqlite3 "$BACKUP" "PRAGMA integrity_check;"
+# Must output: ok
+
+# 4. Save corrupted DB for analysis
+mv ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite \
+   ~/Desktop/openburnbar-corrupt-$(date +%Y%m%d-%H%M%S).sqlite
+
+# 5. Restore backup
+cp "$BACKUP" ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite
+
+# 6. Relaunch
+open -a OpenBurnBar
+```
+
+**Option B: Repair with SQLite dump**
+
+```bash
+# 1. Export data
+sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite ".dump" > /tmp/openburnbar-recovery.sql
+
+# 2. Create new database
+rm ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite
+sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite < /tmp/openburnbar-recovery.sql
+
+# 3. Relaunch — GRDB will run any missing migrations
+open -a OpenBurnBar
+```
+
+**Option C: Nuclear reset** (last resort — all local data lost)
+
+```bash
+mv ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite \
+   ~/Desktop/openburnbar-db-recovery-$(date +%Y%m%d).sqlite
+# OpenBurnBar will create a fresh database on next launch
+open -a OpenBurnBar
+```
+
+### Verification
+- `sqlite3 ... "PRAGMA integrity_check;"` returns `ok`
+- App launches without errors
+- Previous data is visible (Option A/B) or fresh state (Option C)
+
+---
+
+## Incident 3: Cloud Sync Failure
+
+### Symptoms
+- "Sync Error" badge in settings
+- Data appears on one device but not another
+- Firestore console shows permission denied or write errors
+
+### Diagnosis
+
+```bash
+# Check cloud sync settings
+defaults read com.openburnbar.app 2>/dev/null | grep -i sync
+
+# Check Firebase Auth state (app logs)
+grep -i "firebase\|firestore\|sync" ~/Library/Logs/OpenBurnBar/*.log | tail -30
+
+# Verify network connectivity to Firebase
+curl -s -o /dev/null -w "%{http_code}" https://firestore.googleapis.com/
+```
+
+### Remediation
+
+1. **Auth token expiry**: Sign out and sign back in
+   - Open Settings → Account → Sign Out → Sign In
+
+2. **Firestore rules mismatch**: Verify rules match expected schema
+   - Check Firebase Console → Firestore → Rules
+   - Rules should enforce `request.auth != null && request.auth.uid == resource.data.ownerUid`
+
+3. **Conflict resolution**: OpenBurnBar resolves sync conflicts against local state
+   - If stale data persists, try: Settings → Cloud Sync → Reset Sync State
+
+4. **Network issues**: Check firewall/proxy settings
+   - Firebase requires HTTPS to `*.googleapis.com`
+
+### Verification
+- Settings → Cloud Sync shows "Connected"
+- Data syncs between devices within 30 seconds
+- No sync errors in logs
+
+---
+
+## Incident 4: Extension Disconnect
+
+### Symptoms
+- Extension status bar shows "Disconnected" or "Daemon Offline"
+- Extension commands fail with connection errors
+- Health view shows version mismatch
+
+### Diagnosis
+
+```bash
+# Check if daemon is running and socket exists
+pgrep -fl OpenBurnBarDaemon
+ls -la ~/Library/Application\ Support/OpenBurnBar/openburnbar-daemon.sock
+
+# Test socket connectivity
+python3 -c "
+import socket, json
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect('$HOME/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock')
+s.sendall(json.dumps({'id': 'test', 'method': 'daemon.health'}).encode() + b'\n')
+print(s.recv(65536).decode())
+s.close()
+"
+
+# Check daemon version
+~/Library/Application\ Support/OpenBurnBar/OpenBurnBarDaemon --version 2>/dev/null || \
+  ls -la /Applications/OpenBurnBar.app/Contents/Helpers/OpenBurnBarDaemon
+```
+
+### Remediation
+
+1. **Socket missing**: Remove stale socket and restart daemon
+   ```bash
+   rm -f ~/Library/Application\ Support/OpenBurnBar/openburnbar-daemon.sock
+   # Restart OpenBurnBar app
+   ```
+
+2. **Version mismatch**: Update both extension and app to latest version
+   - Extension version must match daemon protocol version
+   - Check: Extension health view shows both versions
+
+3. **Workspace trust**: Ensure workspace is trusted for full functionality
+   - In VS Code/Cursor: Command Palette → "Workspace: Trust"
+   - Restricted mode limits extension capabilities
+
+4. **Restart extension**: Reload the VS Code/Cursor window
+   - Command Palette → "Developer: Reload Window"
+
+### Verification
+- Extension sidebar shows daemon as connected
+- Health view shows matching version numbers
+- `daemon.health` returns successful response
+
+---
+
+## Incident 5: Bad Release Detected
+
+See the full release rollback procedure in [RELEASE_ROLLBACK.md](RELEASE_ROLLBACK.md).
+
+### Quick Reference
+
+| Stage | Action |
+|-------|--------|
+| Prerelease (users can't download yet) | Mark release as draft on GitHub, fix and re-tag |
+| Published prerelease | Yank from Homebrew, publish hotfix tag |
+| Published stable | Publish hotfix tag, update Homebrew, notify users |
+
+---
+
+## Incident 6: Migration Failure on Launch
+
+### Symptoms
+- App crashes immediately on launch
+- Console log shows `GRDB.DatabaseError` or migration failure
+- `grdb_migrations` table is inconsistent with actual schema
+
+### Diagnosis
+
+```bash
+# Check crash logs
+ls -lt ~/Library/Logs/DiagnosticReports/OpenBurnBar* 2>/dev/null | head -5
+
+# Check database integrity
+sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite "PRAGMA integrity_check;"
+
+# Check which migrations have been applied
+sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite \
+  "SELECT identifier FROM grdb_migrations ORDER BY identifier;"
+
+# Compare with expected migrations in source
+grep "registerMigration" AgentLens/Services/DataStore/OpenBurnBarDatabase.swift | sed 's/.*"\(.*\)".*/\1/'
+```
+
+### Remediation
+
+1. **Check backup existence**:
+   ```bash
+   ls -lt ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite.backup-* | head -3
+   ```
+
+2. **Restore from backup** (see Database Corruption incident above)
+
+3. **Review specific migration**: Use the rollback helper
+   ```bash
+   scripts/rollback-migration.sh --list
+   scripts/rollback-migration.sh v34  # Check a specific migration
+   ```
+
+4. **Force re-migration** (safe-rerun migrations only):
+   ```bash
+   # Remove the failed migration record to let GRDB re-run it
+   sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite \
+     "DELETE FROM grdb_migrations WHERE identifier = 'vXX_name';"
+   # Relaunch app — GRDB will re-attempt the migration
+   ```
+
+5. **Nuclear reset** (see Database Corruption remediation)
+
+### Verification
+- App launches successfully
+- All expected migrations are in `grdb_migrations`
+- Data is intact (or acceptable data loss is acknowledged)
+
+---
+
+## Escalation Contacts
+
+| Role | Contact |
+|------|---------|
+| Maintainer | @Ajnunezg via GitHub |
+| Security | See [SECURITY.md](../SECURITY.md) for private reporting |
+
+## Post-Incident
+
+After resolving any incident:
+
+1. Document what happened in the commit message or incident notes
+2. If a bug was found, file a GitHub Issue with reproduction steps
+3. If the runbook was insufficient, update this document
+4. If a migration issue occurred, update `DATABASE_OPERATIONS.md` and the rollback script catalog

@@ -389,9 +389,9 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
                 "--ephemeral",
                 "--skip-git-repo-check",
                 "-m",
-                "gpt-5.4-mini",
+                "gpt-5.5",
                 "-c",
-                #"model_reasoning_effort="medium""#,
+                #"model_reasoning_effort="high""#,
                 "hello"
             ]
         )
@@ -408,7 +408,7 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
                 "-m",
                 "gpt-5.4",
                 "-c",
-                #"model_reasoning_effort="medium""#,
+                #"model_reasoning_effort="high""#,
                 "hello"
             ]
         )
@@ -423,9 +423,9 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
                 "--ephemeral",
                 "--skip-git-repo-check",
                 "-m",
-                "gpt-5.4-mini",
+                "gpt-5.5",
                 "-c",
-                #"model_reasoning_effort="medium""#,
+                #"model_reasoning_effort="high""#,
                 "hello"
             ]
         )

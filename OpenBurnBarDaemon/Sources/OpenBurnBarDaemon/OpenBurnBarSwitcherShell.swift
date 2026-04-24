@@ -82,15 +82,15 @@ public protocol BurnBarCLIShellExecuting: Sendable {
 
 public protocol BurnBarSwitcherProfileStoreProviding: SwitcherProfileStoreAdapter {}
 
-public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStoreProviding, @unchecked Sendable {
-    private let dbQueue: DatabaseQueue
+public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStoreProviding, Sendable {
+    private let dbQueue: any DatabaseWriter
     private let logger = BurnBarDaemonLogger(category: "switcher-profile-store")
 
     public init(databaseURL: URL = BurnBarDaemonPaths.supportDirectoryURL.appendingPathComponent("openburnbar.sqlite")) throws {
-        self.dbQueue = try DatabaseQueue(path: databaseURL.path, configuration: Self.databaseConfiguration())
+        self.dbQueue = try DatabasePool(path: databaseURL.path, configuration: Self.databaseConfiguration())
     }
 
-    public init(dbQueue: DatabaseQueue) {
+    public init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 
@@ -448,7 +448,7 @@ public struct BurnBarScriptTerminalRunner: BurnBarCLITerminalRunning {
     }
 }
 
-public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, @unchecked Sendable {
+public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
     private let profileStore: any BurnBarSwitcherProfileStoreProviding
     private let credentialStore: any BurnBarSwitcherCredentialProviding
     private let terminalRunner: any BurnBarCLITerminalRunning
@@ -638,6 +638,7 @@ public protocol BurnBarCLIShellShimInstalling: Sendable {
     func installShims(invokedExecutablePath: String) throws -> BurnBarCLIShellShimInstallResult
 }
 
+// AUDIT(@unchecked Sendable): FileManager is thread-safe but not formally Sendable.
 public struct BurnBarCLIShellShimInstaller: BurnBarCLIShellShimInstalling, @unchecked Sendable {
     public static let defaultInstallDirectory = BurnBarDaemonPaths.supportDirectoryURL
         .appendingPathComponent("bin", isDirectory: true)
@@ -678,22 +679,16 @@ public struct BurnBarCLIShellShimInstaller: BurnBarCLIShellShimInstalling, @unch
     }
 }
 
-private final class BurnBarThreadSafeQuotaRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var detail: String?
+private final class BurnBarThreadSafeQuotaRecorder: Sendable {
+    private let state = Locked<String?>(nil)
 
     func record(_ detail: String) {
-        lock.lock()
-        if self.detail == nil {
-            self.detail = detail
+        state.withLock { current in
+            if current == nil { current = detail }
         }
-        lock.unlock()
     }
 
     func snapshot() -> String? {
-        lock.lock()
-        let value = detail
-        lock.unlock()
-        return value
+        state.read()
     }
 }

@@ -51,7 +51,13 @@ final class ConversationSyncService: CloudSyncDomain {
                 batch.setData(data, forDocument: docRef, merge: true)
             }
 
-            try await batch.commit()
+            try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "conversation"
+            ) {
+                try await batch.commit()
+            }
 
             let ids = unsynced.map(\.id)
             try context.dataStore.markConversationsSynced(ids: ids)

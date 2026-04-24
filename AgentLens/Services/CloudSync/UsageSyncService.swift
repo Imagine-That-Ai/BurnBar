@@ -49,7 +49,13 @@ final class UsageSyncService: CloudSyncDomain {
                 batch.setData(data, forDocument: docRef, merge: true)
             }
 
-            try await batch.commit()
+            try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "usage"
+            ) {
+                try await batch.commit()
+            }
 
             let syncedIds = unsynced.map { $0.id }
             try context.dataStore.markSynced(ids: syncedIds)

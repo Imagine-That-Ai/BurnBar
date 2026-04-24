@@ -94,6 +94,10 @@ struct CrossEncoderModelOption: Identifiable, Hashable {
 enum CrossEncoderCatalog {
     private static let modelsByProvider: [CrossEncoderProviderID: [CrossEncoderModelOption]] = [
         .codexCLI: [
+            CrossEncoderModelOption(id: "gpt-5.5", displayName: "GPT-5.5"),
+            CrossEncoderModelOption(id: "gpt-5.5-mini", displayName: "GPT-5.5 Mini"),
+            CrossEncoderModelOption(id: "gpt-5.5-nano", displayName: "GPT-5.5 Nano"),
+            CrossEncoderModelOption(id: "gpt-5.5-pro", displayName: "GPT-5.5 Pro"),
             CrossEncoderModelOption(id: "gpt-5.4", displayName: "GPT-5.4"),
             CrossEncoderModelOption(id: "gpt-5.4-mini", displayName: "GPT-5.4 Mini"),
             CrossEncoderModelOption(id: "gpt-5.4-nano", displayName: "GPT-5.4 Nano"),

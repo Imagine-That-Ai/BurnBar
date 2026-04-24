@@ -969,40 +969,34 @@ public struct CLILaunchInvoker {
     }
 }
 
-private final class QuotaSignalRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var detail: String?
+private final class QuotaSignalRecorder: Sendable {
+    private let state = Locked<String?>(nil)
 
     func record(_ detail: String) {
-        lock.lock()
-        if self.detail == nil {
-            self.detail = detail
+        state.withLock { current in
+            if current == nil { current = detail }
         }
-        lock.unlock()
     }
 
     func snapshot() -> String? {
-        lock.lock()
-        let value = detail
-        lock.unlock()
-        return value
+        state.read()
     }
 }
 
-private final class LaunchObservationCleanup: @unchecked Sendable {
-    private let lock = NSLock()
-    private var didCleanup = false
-    private let action: () -> Void
+private final class LaunchObservationCleanup: Sendable {
+    private let didCleanup = Locked(false)
+    private let action: @Sendable () -> Void
 
-    init(action: @escaping () -> Void) {
+    init(action: @escaping @Sendable () -> Void) {
         self.action = action
     }
 
     func perform() {
-        lock.lock()
-        let shouldRun = !didCleanup
-        didCleanup = true
-        lock.unlock()
+        let shouldRun = didCleanup.withLock { flag -> Bool in
+            guard !flag else { return false }
+            flag = true
+            return true
+        }
 
         guard shouldRun else { return }
         action()
@@ -1066,7 +1060,7 @@ public enum CLILaunchServiceEvent: Equatable, Sendable {
 /// - No shell interpolation in argument construction
 /// - Typed errors for all failure modes
 /// - Serialized launches via coordinator
-public final class SwitcherCLILAunchService: @unchecked Sendable {
+public final class SwitcherCLILAunchService: Sendable {
     private let profileStore: SwitcherProfileStoreAdapter
     private let coordinator: CLILaunchCoordinator
     private let fallbackPlanner: any CLIFallbackPlanning

@@ -2,6 +2,7 @@ name: OpenBurnBar Release
 
 permissions:
   contents: write
+  id-token: write
 
 on:
   push:
@@ -13,6 +14,10 @@ on:
         description: "Existing v* tag to release (for manual reruns)"
         required: true
         type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   SCHEME: OpenBurnBar
@@ -359,6 +364,83 @@ jobs:
           echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
 
+      - name: Compute artifact checksums
+        id: checksums
+        env:
+          DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
+          ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          CHECKSUMS_FILE="$RUNNER_TEMP/checksums-v${VERSION}.txt"
+
+          echo "# OpenBurnBar v${VERSION} release checksums" > "$CHECKSUMS_FILE"
+          echo "# Generated at $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$CHECKSUMS_FILE"
+          echo "# Commit: $(git rev-parse HEAD)" >> "$CHECKSUMS_FILE"
+          echo "" >> "$CHECKSUMS_FILE"
+
+          sha256sum "$DMG_PATH" >> "$CHECKSUMS_FILE"
+          sha512sum "$DMG_PATH" >> "$CHECKSUMS_FILE"
+          sha256sum "$ZIP_PATH" >> "$CHECKSUMS_FILE"
+          sha512sum "$ZIP_PATH" >> "$CHECKSUMS_FILE"
+
+          cat "$CHECKSUMS_FILE"
+
+          echo "checksums_path=$CHECKSUMS_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Sign checksums (release provenance)
+        id: sign-checksums
+        env:
+          CHECKSUMS_PATH: ${{ steps.checksums.outputs.checksums_path }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          VERSION: ${{ steps.version.outputs.version }}
+        if: env.RELEASE_SIGNING_KEY != ''
+        run: |
+          # Import the GPG signing key
+          echo "$RELEASE_SIGNING_KEY" | base64 --decode | gpg --import --batch --passphrase ""
+
+          # Create a detached signature for the checksums file
+          gpg --batch --yes --detach-sign --armor \
+            --local-user "OpenBurnBar Release" \
+            "$CHECKSUMS_PATH"
+
+          echo "sig_path=${CHECKSUMS_PATH}.asc" >> "$GITHUB_OUTPUT"
+          echo "Checksums signed successfully."
+
+      - name: Generate SBOM
+        id: sbom
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          SBOM_FILE="$RUNNER_TEMP/sbom-v${VERSION}.spdx.json"
+
+          python3 scripts/generate-sbom.py \
+            --version "$VERSION" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --output "$SBOM_FILE"
+
+          echo "sbom_path=$SBOM_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Write release metadata
+        id: metadata
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+        run: |
+          METADATA_FILE="$RUNNER_TEMP/release-metadata.json"
+
+          cat > "$METADATA_FILE" <<EOF
+          {
+            "version": "${VERSION}",
+            "tag": "${TAG_NAME}",
+            "commit": "$(git rev-parse HEAD)",
+            "build_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "runner_os": "macos-15"
+          }
+          EOF
+
+          echo "metadata_path=$METADATA_FILE" >> "$GITHUB_OUTPUT"
+          cat "$METADATA_FILE"
+
       - name: Publish prerelease assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -366,14 +448,24 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
           ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
+          CHECKSUMS_PATH: ${{ steps.checksums.outputs.checksums_path }}
+          SIG_PATH: ${{ steps.sign-checksums.outputs.sig_path }}
+          SBOM_PATH: ${{ steps.sbom.outputs.sbom_path }}
+          METADATA_PATH: ${{ steps.metadata.outputs.metadata_path }}
         run: |
+          ASSETS=("$DMG_PATH" "$ZIP_PATH" "$CHECKSUMS_PATH" "$SBOM_PATH" "$METADATA_PATH")
+
+          # Include GPG signature if it was created
+          if [[ -n "${SIG_PATH:-}" && -f "$SIG_PATH" ]]; then
+            ASSETS+=("$SIG_PATH")
+          fi
+
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" "$DMG_PATH" "$ZIP_PATH" --clobber
+            gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$TAG_NAME" --title "OpenBurnBar $VERSION" --prerelease --latest=false
           else
             gh release create "$TAG_NAME" \
-              "$DMG_PATH" \
-              "$ZIP_PATH" \
+              "${ASSETS[@]}" \
               --title "OpenBurnBar $VERSION" \
               --prerelease \
               --notes-file CHANGELOG.md

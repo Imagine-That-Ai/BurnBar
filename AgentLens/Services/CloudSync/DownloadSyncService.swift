@@ -39,7 +39,7 @@ final class DownloadSyncService: CloudSyncDomain {
         enqueueProjectionForRemoteConversations(newConversationIds)
 
         lastSyncDate = Date()
-        await MainActor.run { context.dataStore.refresh() }
+        await context.dataStore.refresh()
     }
 
     /// Updates the local device name in Firestore (called from Settings).
@@ -57,15 +57,27 @@ final class DownloadSyncService: CloudSyncDomain {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
 
         do {
-            try await devicesRef.document(localDeviceId).setData([
-                "deviceName": localName, "platform": "macOS",
-                "lastActiveAt": FieldValue.serverTimestamp(), "appVersion": version,
-                "hardwareModel": DeviceHardwareIcon.localHardwareModel
-            ], merge: true)
+            try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "download.deviceRegistry.write"
+            ) {
+                try await devicesRef.document(localDeviceId).setData([
+                    "deviceName": localName, "platform": "macOS",
+                    "lastActiveAt": FieldValue.serverTimestamp(), "appVersion": version,
+                    "hardwareModel": DeviceHardwareIcon.localHardwareModel
+                ], merge: true)
+            }
         } catch { /* non-fatal */ }
 
         do {
-            let snapshot = try await devicesRef.getDocuments()
+            let snapshot = try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "download.deviceRegistry.read"
+            ) {
+                try await devicesRef.getDocuments()
+            }
             for doc in snapshot.documents {
                 let data = doc.data()
                 let device = DeviceRecord(
@@ -118,7 +130,13 @@ final class DownloadSyncService: CloudSyncDomain {
             if watermark > cutoff {
                 query = query.whereField("updatedAt", isGreaterThan: Timestamp(date: watermark))
             }
-            let snapshot = try await query.getDocuments()
+            let snapshot = try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "download.usage"
+            ) {
+                try await query.getDocuments()
+            }
             let devices = try context.dataStore.fetchDevices()
             let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.deviceId, $0.deviceName) })
 
@@ -201,7 +219,13 @@ final class DownloadSyncService: CloudSyncDomain {
                 query = context.db.collection("users").document(uid).collection("conversations")
                     .order(by: "updatedAt", descending: true).limit(to: 500)
             }
-            let snapshot = try await query.getDocuments()
+            let snapshot = try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "download.conversations"
+            ) {
+                try await query.getDocuments()
+            }
             let devices = try context.dataStore.fetchDevices()
             let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.deviceId, $0.deviceName) })
 
@@ -258,10 +282,16 @@ final class DownloadSyncService: CloudSyncDomain {
             let devicePrefix = String(conversationId[conversationId.startIndex..<colonIdx])
 
             do {
-                let snapshot = try await logsRef
-                    .whereField("deviceId", isEqualTo: devicePrefix)
-                    .limit(to: 200)
-                    .getDocuments()
+                let snapshot = try await withCloudSyncRetry(
+                    policy: context.retryPolicy,
+                    circuitBreaker: context.circuitBreaker,
+                    domain: "download.sessionLogBodies"
+                ) {
+                    try await logsRef
+                        .whereField("deviceId", isEqualTo: devicePrefix)
+                        .limit(to: 200)
+                        .getDocuments()
+                }
 
                 for doc in snapshot.documents {
                     let data = doc.data()
@@ -284,14 +314,20 @@ final class DownloadSyncService: CloudSyncDomain {
     func fetchCloudSessionLogBody(docId: String) async throws -> String {
         guard context.accountManager.isFirebaseAvailable, let uid = context.currentUID else { return "" }
 
-        let snapshot = try await context.db
-            .collection("users")
-            .document(uid)
-            .collection("session_logs")
-            .document(docId)
-            .collection("chunks")
-            .order(by: "index")
-            .getDocuments()
+        let snapshot = try await withCloudSyncRetry(
+            policy: context.retryPolicy,
+            circuitBreaker: context.circuitBreaker,
+            domain: "download.sessionLogChunks"
+        ) {
+            try await context.db
+                .collection("users")
+                .document(uid)
+                .collection("session_logs")
+                .document(docId)
+                .collection("chunks")
+                .order(by: "index")
+                .getDocuments()
+        }
 
         return snapshot.documents
             .compactMap { $0.data()["body"] as? String }

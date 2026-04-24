@@ -39,19 +39,19 @@ struct DatabaseWorkspaceView: View {
         .background(Color.clear)
         .task { await runRefreshLoop() }
         .task(id: atlasRefreshKey) { await refreshAtlasRowsIfNeeded() }
-        .onChange(of: dataStore.usages.count) { _, _ in rebuildSnapshot() }
-        .onChange(of: dataStore.lastRefresh) { _, _ in rebuildSnapshot() }
-        .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in rebuildSnapshot() }
+        .onChange(of: dataStore.usages.count) { _, _ in Task { @MainActor in await rebuildSnapshot() } }
+        .onChange(of: dataStore.lastRefresh) { _, _ in Task { @MainActor in await rebuildSnapshot() } }
+        .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in Task { @MainActor in await rebuildSnapshot() } }
         .onChange(of: settingsManager.preferredIndexEmbeddingVersionID) { _, _ in
-            rebuildSnapshot()
+            Task { @MainActor in await rebuildSnapshot() }
             Task { await refreshAtlasRowsIfNeeded() }
         }
-        .onChange(of: accountManager.isSignedIn) { _, _ in rebuildSnapshot() }
+        .onChange(of: accountManager.isSignedIn) { _, _ in Task { @MainActor in await rebuildSnapshot() } }
     }
 
     @MainActor
-    private func rebuildSnapshot() {
-        snapshot = DatabaseWorkspaceSnapshotBuilder.build(
+    private func rebuildSnapshot() async {
+        snapshot = await DatabaseWorkspaceSnapshotBuilder.build(
             from: dataStore,
             settingsManager: settingsManager,
             accountManager: accountManager,
@@ -61,11 +61,11 @@ struct DatabaseWorkspaceView: View {
 
     @MainActor
     private func runRefreshLoop() async {
-        rebuildSnapshot()
+        await rebuildSnapshot()
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(8))
             guard Task.isCancelled == false else { break }
-            rebuildSnapshot()
+            await rebuildSnapshot()
         }
     }
 

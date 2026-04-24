@@ -193,11 +193,27 @@ public struct BurnBarSemanticSearchConfig: Sendable {
     public let rrfK: Double
     /// Whether semantic search is enabled.
     public let enabled: Bool
+    /// HNSW max connections per layer (M parameter).
+    public let hnswM: Int
+    /// HNSW build-time beam width (efConstruction).
+    public let hnswEfConstruction: Int
+    /// HNSW query-time beam width (efSearch).
+    public let hnswEfSearch: Int
 
-    public init(maxCandidates: Int = 200, rrfK: Double = 60.0, enabled: Bool = true) {
+    public init(
+        maxCandidates: Int = 200,
+        rrfK: Double = 60.0,
+        enabled: Bool = true,
+        hnswM: Int = 16,
+        hnswEfConstruction: Int = 200,
+        hnswEfSearch: Int = 64
+    ) {
         self.maxCandidates = maxCandidates
         self.rrfK = rrfK
         self.enabled = enabled
+        self.hnswM = hnswM
+        self.hnswEfConstruction = hnswEfConstruction
+        self.hnswEfSearch = hnswEfSearch
     }
 
     /// Default configuration optimized for daemon use.

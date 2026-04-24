@@ -53,8 +53,8 @@ final class CLIBridgeTests: XCTestCase {
         let args = CLIBridge.codexArguments(prompt: "test")
         XCTAssertTrue(args.contains("exec"))
         XCTAssertTrue(args.contains("--json"))
-        // Default model should be gpt-5.4-mini
-        XCTAssertTrue(args.contains("gpt-5.4-mini"))
+        // Default model should be gpt-5.5
+        XCTAssertTrue(args.contains("gpt-5.5"))
     }
 
     func test_cliBridge_codexArguments_useExplicitModelWhenProvided() {
@@ -64,14 +64,14 @@ final class CLIBridgeTests: XCTestCase {
 
     func test_cliBridge_codexArguments_fallbackToSupportedModelWhenInvalidModelProvided() {
         let args = CLIBridge.codexArguments(prompt: "test", model: "MiniMax-M2.7-highspeed")
-        XCTAssertTrue(args.contains("gpt-5.4-mini"))
+        XCTAssertTrue(args.contains("gpt-5.5"))
         XCTAssertFalse(args.contains("MiniMax-M2.7-highspeed"))
     }
 
     func test_settingsManager_resolvedHermesChatModel_minimaxAdvertised_usesCodexCompatibleDefault() {
         XCTAssertEqual(
             SettingsManager.resolvedHermesChatModel(override: "", gatewayAdvertisedModel: "MiniMax-M2.7-highspeed"),
-            "gpt-5.4-mini"
+            "gpt-5.5"
         )
     }
 
@@ -98,7 +98,7 @@ final class CLIBridgeTests: XCTestCase {
 
     func test_cliBridge_codexArguments_includesReasoningEffort() {
         let args = CLIBridge.codexArguments(prompt: "test")
-        XCTAssertTrue(args.contains(#"model_reasoning_effort="medium""#))
+        XCTAssertTrue(args.contains(#"model_reasoning_effort="high""#))
     }
 
     // MARK: - User Managed Search Directories Tests

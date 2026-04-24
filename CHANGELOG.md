@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Architecture:** Decomposed `OpenBurnBarContracts.swift` (1385 lines) into 7 domain-specific files under `Contracts/` — RPC, Run, Tool, Approval, Provider, Connector, Client, and Event contracts. No import changes needed; all types remain in the same `OpenBurnBarCore` target.
+- **Architecture:** Decomposed `BurnBarRunService` (1428 lines) into a focused facade (487 lines) plus extension files for lifecycle, execution, and tool dispatch. Extracted connector/browser passthroughs into `BurnBarToolingProxyService`.
+- **Architecture:** Decomposed `OpenBurnBarDaemonManager` (1784 lines) into a lean core (387 lines) plus extension files for lifecycle, provider config, controller, operational plane, and activity snapshots. Extracted notification relay, binary resolver, and usage sync service into standalone files.
+
+### Added
+- Release provenance: `scripts/tag-release.sh` for validated, annotated git tag creation with semver and CHANGELOG checks
+- Release provenance: SHA256/SHA512 checksums generation in the release workflow (`checksums-v*.txt`)
+- Release provenance: Optional GPG detached signature for checksums (`RELEASE_SIGNING_KEY` secret)
+- Release provenance: SPDX Software Bill of Materials generation (`scripts/generate-sbom.py`)
+- Release provenance: Release metadata JSON (version, commit, build timestamp) uploaded as release asset
+- Release provenance: Concurrency guard on release workflow to prevent double-publish
+- Homebrew: `scripts/update-homebrew.sh` for post-release cask SHA update
+- Homebrew: `sha256 :no_check` replaced with placeholder hash in cask formula
+- Makefile: `make release-checksums` and `make sbom` targets
+- Operations: `docs/RUNBOOK.md` — on-call incident response runbook (6 incident types)
+- Operations: `docs/DATABASE_OPERATIONS.md` — migration catalog, rollback strategies, drill procedures
+- Operations: `docs/RELEASE_ROLLBACK.md` — release rollback decision tree and hotfix procedures
+- Operations: `scripts/rollback-migration.sh` — local database rollback inspection tool with safety classifications
+- Docs: `docs/RELEASE_MACOS.md` updated with provenance, SBOM, checksums, and GPG verification documentation
+
 ## [0.1.2-beta.12] - 2026-04-18
 
 ### Fixed

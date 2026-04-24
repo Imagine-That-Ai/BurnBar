@@ -2,6 +2,7 @@ import Foundation
 @testable import OpenBurnBar
 
 /// Testable wrapper for FactoryDroidParser that allows injecting test paths.
+// AUDIT(@unchecked Sendable): FileManager is thread-safe but not formally Sendable.
 final class TestableFactoryDroidParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .factory
     private let fileManager: FileManager

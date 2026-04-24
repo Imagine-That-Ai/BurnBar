@@ -1,7 +1,12 @@
 import AppKit
 import FirebaseCore
+import FirebaseAppCheck
 import GoogleSignIn
 import SwiftUI
+
+#if canImport(Sentry)
+import Sentry
+#endif
 
 private enum OpenBurnBarRuntime {
     static var isRunningTests: Bool {
@@ -323,6 +328,7 @@ struct OpenBurnBarApp: App {
     init() {
         if !OpenBurnBarRuntime.isRunningTests {
             Self.configureFirebaseIfAvailable()
+            Self.configureSentryIfAvailable()
         }
         OpenBurnBarMigration.migrateUserDefaults()
         _ = try? OpenBurnBarMigration.prepareSupportDirectory()
@@ -381,6 +387,11 @@ struct OpenBurnBarApp: App {
               let options = FirebaseOptions(contentsOfFile: path) else {
             return
         }
+
+        // Configure App Check before FirebaseApp.configure()
+        let providerFactory = OpenBurnBarAppCheckProviderFactory()
+        AppCheck.setAppCheckProviderFactory(providerFactory)
+
         FirebaseApp.configure(options: options)
         didConfigureFirebase = true
         if let clientID = FirebaseApp.app()?.options.clientID {
@@ -388,6 +399,45 @@ struct OpenBurnBarApp: App {
         }
         AccountManager.shared.onFirebaseConfigured()
     }
+
+    /// Initialize Sentry crash reporting if a DSN is available.
+    /// The DSN is read from the `sentry.dsn` key in Info.plist (injected via
+    /// CI for internal builds). If absent, Sentry remains disabled silently.
+    #if canImport(Sentry)
+    @MainActor
+    private static func configureSentryIfAvailable() {
+        guard let dsn = Bundle.main.object(forInfoDictionaryKey: "sentry.dsn") as? String,
+              !dsn.trimmingCharacters(in: .whitespaces).isEmpty else {
+            // No DSN configured — crash reporting remains disabled silently.
+            return
+        }
+        SentrySDK.start { options in
+            options.dsn = dsn
+            options.environment = "app"
+            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+            options.releaseName = "openburnbar@\(version)"
+            options.enableTracing = false
+            options.enableAutoSessionTracking = true
+            #if DEBUG
+            options.debug = false
+            #endif
+        }
+
+        // Set an anonymized user ID so Sentry can correlate crashes per install
+        // without collecting any personally identifiable information.
+        let user = User()
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.openburnbar.app"
+        let vendorSeed = (bundleID + NSFullUserName()).data(using: .utf8) ?? Data()
+        let anonymizedID = vendorSeed.map { String(format: "%02x", $0) }.joined().prefix(32)
+        user.userId = String(anonymizedID)
+        SentrySDK.setUser(user)
+    }
+    #else
+    @MainActor
+    private static func configureSentryIfAvailable() {
+        // Sentry SDK not linked — skip silently.
+    }
+    #endif
 
     @MainActor
     private func installCommandRouter() {

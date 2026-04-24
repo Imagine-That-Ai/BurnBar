@@ -72,7 +72,7 @@ struct ChatGatewaySettingsView: View {
                 SecureField("Same token as API_SERVER_KEY (leave empty if you didn't set one)", text: $settingsManager.hermesBearerToken)
                     .textFieldStyle(.roundedBorder)
 
-                Text("Optional chat model id for the gateway (same as the JSON `model` field). Leave empty to let OpenBurnBar choose: if the gateway lists MiniMax but you use Codex with a ChatGPT account, OpenBurnBar sends a Codex-supported model instead (e.g. gpt-5.4-mini). Set only if you need a specific id.")
+                Text("Optional chat model id for the gateway (same as the JSON `model` field). Leave empty to let OpenBurnBar choose: if the gateway lists MiniMax but you use Codex with a ChatGPT account, OpenBurnBar sends a Codex-supported model instead (e.g. gpt-5.5). Set only if you need a specific id.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

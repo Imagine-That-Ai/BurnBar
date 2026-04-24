@@ -4,7 +4,7 @@ import Foundation
 
 /// FactoryDroidParser extracts token usage from Factory Droid sessions and categorizes
 /// them by the underlying model provider (MiniMax, Z.ai, Claude, etc.)
-final class FactoryDroidParser: LogParser, @unchecked Sendable {
+final class FactoryDroidParser: LogParser, Sendable {
     let provider: AgentProvider = .factory
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths

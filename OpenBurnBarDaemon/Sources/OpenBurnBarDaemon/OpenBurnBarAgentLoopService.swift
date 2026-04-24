@@ -277,18 +277,4 @@ private struct RawLoopDecision: Codable {
     let message: String?
 }
 
-private extension BurnBarJSONValue {
-    func objectValue() -> [String: BurnBarJSONValue]? {
-        guard case .object(let value) = self else {
-            return nil
-        }
-        return value
-    }
 
-    func stringValue() -> String? {
-        guard case .string(let value) = self else {
-            return nil
-        }
-        return value
-    }
-}

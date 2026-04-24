@@ -16,6 +16,10 @@ final class SearchServiceTests: XCTestCase {
         var shouldThrow = false
         var throwError = SearchServiceError.semanticProviderUnavailable
 
+        init(responses: [String: [SemanticCandidate]] = [:]) {
+            self.responses = responses
+        }
+
         func semanticCandidates(for query: String, filters: RetrievalFilters, limit: Int) async throws -> [SemanticCandidate] {
             if shouldThrow { throw throwError }
             return Array((responses[query] ?? []).prefix(max(0, limit)))
@@ -26,8 +30,16 @@ final class SearchServiceTests: XCTestCase {
     private final class StubCrossEncoderReranker: RetrievalRerankProviding {
         var reorderResults: Bool = false
         var reorderLimit: Int = 10
+        var shouldThrow = false
+        var throwError: Error = SearchServiceError.semanticProviderUnavailable
+
+        init(reorderResults: Bool = false, reorderLimit: Int = 10) {
+            self.reorderResults = reorderResults
+            self.reorderLimit = reorderLimit
+        }
 
         func rerank(query: String, candidates: [RetrievalResult], limit: Int) async throws -> [RetrievalResult] {
+            if shouldThrow { throw throwError }
             guard reorderResults else { return candidates }
             let lim = min(limit, candidates.count)
             // Move last item to first position to verify reordering happened
@@ -61,7 +73,7 @@ final class SearchServiceTests: XCTestCase {
                 provider: "openai",
                 modelName: "text-embedding-3-small",
                 dimensions: 1536,
-                distanceMetric: "cosine",
+                distanceMetric: .cosine,
                 createdAt: base,
                 updatedAt: base
             )
@@ -427,7 +439,7 @@ final class SearchServiceTests: XCTestCase {
         let results = await service.retrieve(
             RetrievalQuery(
                 text: "content",
-                filters: RetrievalFilters(ownership: .personal, artifactTypes: [.conversation, .sharedArtifact])
+                filters: RetrievalFilters(artifactTypes: [.conversation, .sharedArtifact], ownership: .personal)
             )
         )
 
@@ -735,11 +747,29 @@ final class SearchServiceTests: XCTestCase {
             sourceType: .providerLog
         )
         // Override endTime to be old
-        var mutableConv = oldConv
-        mutableConv.endTime = oldSession
+        let oldConvWithEndTime = ConversationRecord(
+            id: oldConv.id,
+            provider: oldConv.provider,
+            sessionId: oldConv.sessionId,
+            projectName: oldConv.projectName,
+            startTime: oldConv.startTime,
+            endTime: oldSession,
+            messageCount: oldConv.messageCount,
+            userWordCount: oldConv.userWordCount,
+            assistantWordCount: oldConv.assistantWordCount,
+            keyFiles: oldConv.keyFiles,
+            keyCommands: oldConv.keyCommands,
+            keyTools: oldConv.keyTools,
+            inferredTaskTitle: oldConv.inferredTaskTitle,
+            lastAssistantMessage: oldConv.lastAssistantMessage,
+            fullText: oldConv.fullText,
+            indexedAt: oldConv.indexedAt,
+            fileModifiedAt: oldConv.fileModifiedAt,
+            sourceType: oldConv.sourceType
+        )
 
-        try store.upsertConversation(mutableConv)
-        try store.enqueueConversationProjectionJob(conversationID: mutableConv.id, jobType: .project, now: base)
+        try store.upsertConversation(oldConvWithEndTime)
+        try store.enqueueConversationProjectionJob(conversationID: oldConvWithEndTime.id, jobType: .project, now: base)
         _ = try await projector.runSweep(maxJobs: 20)
 
         let service = SearchService(dataStore: store, nowProvider: { base })
@@ -1111,26 +1141,48 @@ final class SearchServiceTests: XCTestCase {
         let base = Date(timeIntervalSince1970: 1_743_040_000)
 
         // Conv A: starts earlier but ends later
-        var convA = makeConversation(
+        let convA = ConversationRecord(
             id: "conv-a",
             provider: .claudeCode,
+            sessionId: "session-conv-a",
             projectName: "LatestTest",
+            startTime: base.addingTimeInterval(-50).addingTimeInterval(-120),
+            endTime: base,
+            messageCount: 6,
+            userWordCount: 48,
+            assistantWordCount: 76,
+            keyFiles: ["SearchService.swift"],
+            keyCommands: ["swift test"],
+            keyTools: ["Read", "Edit"],
+            inferredTaskTitle: "Test conv-a",
+            lastAssistantMessage: "Done",
             fullText: "Conversation A.",
             indexedAt: base.addingTimeInterval(-50),
+            fileModifiedAt: base.addingTimeInterval(-50),
             sourceType: .providerLog
         )
-        convA.endTime = base // ends at base
 
         // Conv B: starts at base but ends earlier
-        var convB = makeConversation(
+        let convB = ConversationRecord(
             id: "conv-b",
             provider: .claudeCode,
+            sessionId: "session-conv-b",
             projectName: "LatestTest",
+            startTime: base.addingTimeInterval(-120),
+            endTime: base.addingTimeInterval(-10),
+            messageCount: 6,
+            userWordCount: 48,
+            assistantWordCount: 76,
+            keyFiles: ["SearchService.swift"],
+            keyCommands: ["swift test"],
+            keyTools: ["Read", "Edit"],
+            inferredTaskTitle: "Test conv-b",
+            lastAssistantMessage: "Done",
             fullText: "Conversation B.",
             indexedAt: base,
+            fileModifiedAt: base,
             sourceType: .providerLog
         )
-        convB.endTime = base.addingTimeInterval(-10) // ends earlier
 
         try store.upsertConversation(convA)
         try store.upsertConversation(convB)
@@ -1348,8 +1400,8 @@ final class SearchServiceTests: XCTestCase {
             RetrievalQuery(
                 text: "visibility",
                 filters: RetrievalFilters(
-                    ownership: .personal,
-                    artifactTypes: [.conversation]
+                    artifactTypes: [.conversation],
+                    ownership: .personal
                 )
             )
         )

@@ -89,7 +89,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
                 recordControllerReviewRun: { _, run in
                     BurnBarControllerReviewRunRecordResponse(
                         run: run,
-                        summary: OpenBurnBarControllerSummary(
+                        summary: BurnBarControllerSummary(
                             updatedAt: Date(),
                             activeProjectSlug: run.projectSlug,
                             counts: BurnBarControllerCounts(
@@ -157,7 +157,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
                     XCTFail("Controller review run RPC should not be called when the daemon is unavailable")
                     return BurnBarControllerReviewRunRecordResponse(
                         run: run,
-                        summary: OpenBurnBarControllerSummary(
+                        summary: BurnBarControllerSummary(
                             updatedAt: Date(),
                             counts: BurnBarControllerCounts(
                                 projectCount: 0,
@@ -233,7 +233,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
                 recordControllerReviewRun: { _, run in
                     BurnBarControllerReviewRunRecordResponse(
                         run: run,
-                        summary: OpenBurnBarControllerSummary(
+                        summary: BurnBarControllerSummary(
                             updatedAt: Date(),
                             counts: BurnBarControllerCounts(
                                 projectCount: 0,
@@ -300,7 +300,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
                 recordControllerReviewRun: { _, run in
                     BurnBarControllerReviewRunRecordResponse(
                         run: run,
-                        summary: OpenBurnBarControllerSummary(
+                        summary: BurnBarControllerSummary(
                             updatedAt: Date(),
                             counts: BurnBarControllerCounts(
                                 projectCount: 0,
@@ -447,7 +447,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
                 recordControllerReviewRun: { _, run in
                     BurnBarControllerReviewRunRecordResponse(
                         run: run,
-                        summary: OpenBurnBarControllerSummary(
+                        summary: BurnBarControllerSummary(
                             updatedAt: Date(),
                             counts: BurnBarControllerCounts(
                                 projectCount: 1,
@@ -483,7 +483,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         let daemonQuestionID = BurnBarQuestionID(rawValue: "question-operator")
 
         let snapshot = OpenBurnBarDaemonSocketClient.makeControllerRuntimeSnapshot(
-            summary: OpenBurnBarControllerSummary(
+            summary: BurnBarControllerSummary(
                 updatedAt: now,
                 counts: BurnBarControllerCounts(
                     projectCount: 1,

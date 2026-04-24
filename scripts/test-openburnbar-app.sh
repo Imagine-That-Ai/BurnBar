@@ -58,6 +58,13 @@ xcodebuild_args=(
   -only-testing:"OpenBurnBarTests"
 )
 
+if [[ "${OPENBURNBAR_ENABLE_COVERAGE:-}" == "YES" ]]; then
+  xcodebuild_args+=(-enableCodeCoverage YES)
+  xcresult_path="$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult"
+  rm -rf "$xcresult_path"
+  xcodebuild_args+=(-resultBundlePath "$xcresult_path")
+fi
+
 # Retry logic: attempt xcodebuild test up to 2 times.
 # The XCTest runner intermittently hangs on startup; a fresh derived-data
 # directory on retry usually resolves it. Only fall back to build-for-testing

@@ -365,4 +365,21 @@ struct DashboardView: View {
             )
         }
     }
+
+    // MARK: - Stubs for missing view helpers (pre-existing build gap)
+
+    private func autoExpandTimeRangeIfNeeded() {}
+    private func refreshSessionLogJumpLookup() {}
+
+    @ViewBuilder
+    private var dashboardWorkspaceNavStrip: some View {
+        EmptyView()
+    }
+
+    @ViewBuilder
+    private var overviewView: some View {
+        EmptyView()
+    }
+
+    private func openSessionLogs(_ target: ConversationJumpTarget) {}
 }

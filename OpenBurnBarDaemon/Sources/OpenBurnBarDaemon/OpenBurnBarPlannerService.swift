@@ -448,13 +448,6 @@ private func parentDirectory(of path: String) -> String? {
 }
 
 private extension Dictionary where Key == String, Value == BurnBarJSONValue {
-    func stringValue(forKey key: String) -> String? {
-        guard case .string(let value)? = self[key] else {
-            return nil
-        }
-        return value
-    }
-
     func toolKindValue(forKey key: String) -> BurnBarToolKind? {
         guard let rawValue = stringValue(forKey: key) else {
             return nil

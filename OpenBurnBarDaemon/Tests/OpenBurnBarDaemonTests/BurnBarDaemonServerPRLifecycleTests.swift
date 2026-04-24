@@ -6,7 +6,7 @@ final class BurnBarDaemonServerTestsPRLifecycle: XCTestCase {
     func testVAL_CROSS_007_DaemonRPCReconcilesPRLifecycleTransitions() async throws {
         let socketPath = makeSocketPath(name: "pr-lifecycle")
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath)
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token")
         )
 
         try await server.start()
@@ -20,6 +20,7 @@ final class BurnBarDaemonServerTestsPRLifecycle: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "mission-create-pr-1",
                 method: .missionCreate,
+                authToken: "test-token",
                 params: BurnBarMissionCreateRequest(
                     projectSlug: "apollo",
                     title: "Ship PR lifecycle parity",
@@ -37,6 +38,7 @@ final class BurnBarDaemonServerTestsPRLifecycle: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "mission-result-opened-1",
                 method: .missionRecordResult,
+                authToken: "test-token",
                 params: BurnBarMissionRecordResultRequest(
                     missionID: missionID,
                     result: BurnBarMissionResultSnapshot(
@@ -66,6 +68,7 @@ final class BurnBarDaemonServerTestsPRLifecycle: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "mission-result-merged-1",
                 method: .missionRecordResult,
+                authToken: "test-token",
                 params: BurnBarMissionRecordResultRequest(
                     missionID: missionID,
                     result: BurnBarMissionResultSnapshot(
@@ -92,6 +95,7 @@ final class BurnBarDaemonServerTestsPRLifecycle: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "mission-result-closed-1",
                 method: .missionRecordResult,
+                authToken: "test-token",
                 params: BurnBarMissionRecordResultRequest(
                     missionID: missionID,
                     result: BurnBarMissionResultSnapshot(
@@ -129,6 +133,7 @@ final class BurnBarDaemonServerTestsPRLifecycle: XCTestCase {
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "mission-get-\(id.rawValue)",
                 method: .missionGet,
+                authToken: "test-token",
                 params: BurnBarMissionGetRequest(missionID: id)
             ),
             socketPath: socketPath

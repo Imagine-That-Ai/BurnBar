@@ -2,6 +2,7 @@ import Foundation
 @testable import OpenBurnBar
 
 /// Testable wrapper for CodexParser that allows injecting test paths.
+// AUDIT(@unchecked Sendable): FileManager is thread-safe but not formally Sendable.
 final class TestableCodexParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .codex
     private let fileManager: FileManager

@@ -1,6 +1,7 @@
 import Foundation
 @testable import OpenBurnBar
 
+// AUDIT(@unchecked Sendable): FileManager is thread-safe but not formally Sendable.
 final class TestableClaudeCodeParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .claudeCode
     private let fileManager: FileManager

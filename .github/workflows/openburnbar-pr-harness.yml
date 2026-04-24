@@ -49,13 +49,69 @@ jobs:
         run: npm ci --prefix extensions/openburnbar
 
       - name: Run OpenBurnBar Swift tests
-        run: ./scripts/test-openburnbar-swift.sh
+        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
 
       - name: Run OpenBurnBar app tests
-        run: ./scripts/test-openburnbar-app.sh
+        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
+
+      - name: Extract code coverage
+        if: always()
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" ]; then
+            ./scripts/extract-coverage.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-coverage.json" || true
+          else
+            echo '{"summary":{"percent":0.0,"executableLines":0,"coveredLines":0},"targets":[]}' > "$GITHUB_WORKSPACE/openburnbar-coverage.json"
+          fi
+
+      - name: Compute diff coverage
+        if: github.event_name == 'pull_request'
+        run: ./scripts/diff-coverage.sh origin/main "$GITHUB_WORKSPACE/openburnbar-coverage.json" > "$GITHUB_WORKSPACE/openburnbar-diff-coverage.json"
+
+      - name: Post coverage summary
+        if: always()
+        run: |
+          {
+            echo "### Code Coverage"
+            echo ""
+            if [ -f "$GITHUB_WORKSPACE/openburnbar-coverage.json" ]; then
+              total_pct=$(jq -r '.summary.percent // 0' "$GITHUB_WORKSPACE/openburnbar-coverage.json")
+              total_exc=$(jq -r '.summary.executableLines // 0' "$GITHUB_WORKSPACE/openburnbar-coverage.json")
+              total_hit=$(jq -r '.summary.coveredLines // 0' "$GITHUB_WORKSPACE/openburnbar-coverage.json")
+              echo "Overall coverage: **${total_pct}%** (${total_hit}/${total_exc} lines)"
+              echo ""
+            fi
+            diff_cov="$GITHUB_WORKSPACE/openburnbar-diff-coverage.json"
+            if [ -f "$diff_cov" ]; then
+              threshold=$(jq -r '.diffCoverage.threshold // 80' "$diff_cov")
+              percent=$(jq -r '.diffCoverage.percent // 0.0' "$diff_cov")
+              passed=$(jq -r '.diffCoverage.passed // false' "$diff_cov")
+              files=$(jq -r '.diffCoverage.changedFiles // 0' "$diff_cov")
+              lines=$(jq -r '.diffCoverage.changedLines // 0' "$diff_cov")
+              echo "Diff coverage: **${percent}%** (threshold: ${threshold}%)"
+              echo "Changed files: ${files} | Changed executable lines: ${lines}"
+              if [ "$passed" = "true" ]; then
+                echo "Status: passed"
+              else
+                echo "Status: failed — new code coverage below threshold"
+              fi
+              echo ""
+              echo "| File | Executable | Covered | % |"
+              echo "|------|-----------|---------|---|"
+              jq -r '.details[] | "| \(.file) | \(.executableLines) | \(.coveredLines) | \(.percent) |"' "$diff_cov" | head -50
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage artifacts
+        if: always() && !env.ACT
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-data
+          path: |
+            openburnbar-coverage.json
+            openburnbar-diff-coverage.json
 
       - name: Run OpenBurnBar retrieval replay evals
         run: ./scripts/test-openburnbar-retrieval-evals.sh

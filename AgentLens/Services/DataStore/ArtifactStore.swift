@@ -6,9 +6,9 @@ import OpenBurnBarCore
 
 /// Source artifacts, shared-artifact sync state, permissions, and audit rows.
 final class ArtifactStore: Sendable {
-    private let dbQueue: DatabaseQueue
+    private let dbQueue: any DatabaseWriter
 
-    init(dbQueue: DatabaseQueue) {
+    init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 

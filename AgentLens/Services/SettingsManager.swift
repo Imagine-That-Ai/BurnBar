@@ -709,7 +709,7 @@ final class SettingsManager {
         }
         self.summaryOpenRouterPrimaryModel = defaults.string(forKey: "summaryOpenRouterPrimaryModel") ?? "qwen/qwen3.5-9b"
         self.summaryOpenRouterFallbackModel = defaults.string(forKey: "summaryOpenRouterFallbackModel") ?? "openai/gpt-5-nano"
-        self.summaryMiniMaxModel = defaults.string(forKey: "summaryMiniMaxModel") ?? "minimax-m2.7-highspeed"
+        self.summaryMiniMaxModel = defaults.string(forKey: "summaryMiniMaxModel") ?? "gpt-5.5"
         self.summaryZaiModel = defaults.string(forKey: "summaryZaiModel") ?? "glm-5-turbo"
         self.summaryLocalModel = defaults.string(forKey: "summaryLocalModel") ?? "qwen3.5:9b"
         self.summaryLocalBaseURL = defaults.string(forKey: "summaryLocalBaseURL") ?? "http://127.0.0.1:11434"
@@ -927,7 +927,7 @@ final class SettingsManager {
         defaults.set(tokenizerAssistedFallbackEnabled, forKey: "tokenizerAssistedFallbackEnabled")
     }
 
-    private static func decodeJSONStringArray(_ json: String) -> [String] {
+    static func decodeJSONStringArray(_ json: String) -> [String] {
         guard let data = json.data(using: .utf8),
               let decoded = try? JSONDecoder().decode([String].self, from: data) else {
             return []
@@ -935,7 +935,7 @@ final class SettingsManager {
         return decoded.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
     }
 
-    private static func encodeJSONStringArray(_ values: [String]) -> String {
+    static func encodeJSONStringArray(_ values: [String]) -> String {
         let normalized = values
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -984,7 +984,7 @@ final class SettingsManager {
             return "hermes"
         }
         if advertised.range(of: "minimax", options: .caseInsensitive) != nil {
-            return CLIBridge.normalizedCodexModel("gpt-5.4-mini")
+            return CLIBridge.normalizedCodexModel("gpt-5.5")
         }
         return "hermes"
     }

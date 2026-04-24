@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 @MainActor
@@ -1012,7 +1013,12 @@ private final class TestKeychainBackend: KeychainStoreBackend {
 
 private final class StubURLProtocol: URLProtocol {
     /// Test-only global seam intentionally mutable across test setup/teardown.
-    nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let _requestHandler = Locked<(@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
+
+    static var requestHandler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get { _requestHandler.read() }
+        set { _requestHandler.write(newValue) }
+    }
 
     override class func canInit(with request: URLRequest) -> Bool {
         true

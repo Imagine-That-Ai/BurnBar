@@ -6,11 +6,11 @@ import OpenBurnBarCore
 
 /// A closure-based log emitter that can capture log output.
 /// This enables deterministic interception of production log output in tests.
-public struct LogEmitter: @unchecked Sendable {
+public struct LogEmitter: Sendable {
     /// The underlying logger for production use
     private let logger: AppLogger
     /// Optional capture closure for test interception
-    private let captureHandler: ((String) -> Void)?
+    private let captureHandler: (@Sendable (String) -> Void)?
 
     /// Creates a log emitter for production use (no capture).
     public init() {
@@ -20,7 +20,7 @@ public struct LogEmitter: @unchecked Sendable {
 
     /// Creates a log emitter with a capture handler for test use.
     /// The capture handler receives all log messages for verification.
-    internal init(captureHandler: @escaping (String) -> Void) {
+    internal init(captureHandler: @escaping @Sendable (String) -> Void) {
         self.logger = AppLogger(category: "switcher")
         self.captureHandler = captureHandler
     }
@@ -52,17 +52,17 @@ public struct LogEmitter: @unchecked Sendable {
 /// - No secrets, tokens, or auth data appear in any log output
 /// - LogEmitter supports test capture for deterministic interception
 public final class SwitcherProfileStore: Sendable {
-    private let dbQueue: DatabaseQueue
+    private let dbQueue: any DatabaseWriter
     private let logEmitter: LogEmitter
 
-    public init(dbQueue: DatabaseQueue) {
+    public init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
         self.logEmitter = LogEmitter()
     }
 
     /// Internal initializer for test injection of log emitter.
     /// Allows tests to capture log output for verification.
-    internal init(dbQueue: DatabaseQueue, logEmitter: LogEmitter) {
+    internal init(dbQueue: any DatabaseWriter, logEmitter: LogEmitter) {
         self.dbQueue = dbQueue
         self.logEmitter = logEmitter
     }

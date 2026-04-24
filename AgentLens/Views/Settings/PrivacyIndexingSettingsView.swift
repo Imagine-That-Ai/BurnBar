@@ -458,7 +458,14 @@ struct PrivacyIndexingSettingsView: View {
 
     private var embeddingDetailText: String {
         if retrievalHealthSnapshot.semanticPipeline.indexedVectorCount > 0 {
-            return "\(retrievalHealthSnapshot.semanticPipeline.indexedVectorCount) vectors are available for semantic ranking."
+            var parts = ["\(retrievalHealthSnapshot.semanticPipeline.indexedVectorCount) vectors are available for semantic ranking."]
+            if let state = retrievalHealthSnapshot.semanticPipeline.snapshotState, state.isEmpty == false {
+                parts.append("Snapshot: \(state).")
+            }
+            if let bytes = retrievalHealthSnapshot.semanticPipeline.snapshotFileBytes, bytes > 0 {
+                parts.append("Disk: \(formatBytes(bytes)).")
+            }
+            return parts.joined(separator: " ")
         }
         return "Semantic ranking is waiting for chunk embeddings."
     }

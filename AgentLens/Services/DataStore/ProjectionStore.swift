@@ -6,9 +6,9 @@ import OpenBurnBarCore
 
 /// Projection jobs, embedding models/versions, chunk embeddings, and retrieval health.
 final class ProjectionStore: Sendable {
-    private let dbQueue: DatabaseQueue
+    private let dbQueue: any DatabaseWriter
 
-    init(dbQueue: DatabaseQueue) {
+    init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 
@@ -538,6 +538,157 @@ final class ProjectionStore: Sendable {
         }
     }
 
+    func fetchChunkEmbeddings(
+        embeddingVersionID: String,
+        limit: Int,
+        offset: Int
+    ) throws -> [ChunkEmbeddingRecord] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT * FROM chunk_embeddings
+                WHERE embeddingVersionID = ?
+                ORDER BY chunkID ASC
+                LIMIT ? OFFSET ?
+                """,
+                arguments: [embeddingVersionID, limit, offset]
+            )
+            return rows.compactMap(Self.chunkEmbedding(from:))
+        }
+    }
+
+    func fetchChunkEmbeddings(
+        chunkIDs: [String],
+        embeddingVersionID: String
+    ) throws -> [ChunkEmbeddingRecord] {
+        guard chunkIDs.isEmpty == false else { return [] }
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT *
+                FROM chunk_embeddings
+                WHERE embeddingVersionID = ?
+                  AND chunkID IN (\(OpenBurnBarDatabase.sqlPlaceholders(count: chunkIDs.count)))
+                ORDER BY chunkID ASC
+                """,
+                arguments: StatementArguments([embeddingVersionID] + chunkIDs)
+            )
+            return rows.compactMap(Self.chunkEmbedding(from:))
+        }
+    }
+
+    func chunkEmbeddingVersionStats(embeddingVersionID: String) throws -> ChunkEmbeddingVersionStats {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*) AS vectorCount, MAX(updatedAt) AS newestUpdatedAt
+                FROM chunk_embeddings
+                WHERE embeddingVersionID = ?
+                """,
+                arguments: [embeddingVersionID]
+            )
+            return ChunkEmbeddingVersionStats(
+                embeddingVersionID: embeddingVersionID,
+                vectorCount: Int((row?["vectorCount"] as? Int64) ?? 0),
+                newestUpdatedAt: OpenBurnBarDatabase.parseDateValue(row?["newestUpdatedAt"])
+            )
+        }
+    }
+
+    // MARK: - Vector Index Snapshots
+
+    func upsertVectorIndexSnapshot(_ snapshot: VectorIndexSnapshotRecord) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO vector_index_snapshots (
+                    embeddingVersionID, backendID, state, fingerprint, dimensions, distanceMetric,
+                    vectorCount, storageRelativePath, fileBytes, backendVersion, errorCode, errorMessage,
+                    createdAt, updatedAt, lastBuiltAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(embeddingVersionID, backendID) DO UPDATE SET
+                    state = excluded.state,
+                    fingerprint = excluded.fingerprint,
+                    dimensions = excluded.dimensions,
+                    distanceMetric = excluded.distanceMetric,
+                    vectorCount = excluded.vectorCount,
+                    storageRelativePath = excluded.storageRelativePath,
+                    fileBytes = excluded.fileBytes,
+                    backendVersion = excluded.backendVersion,
+                    errorCode = excluded.errorCode,
+                    errorMessage = excluded.errorMessage,
+                    updatedAt = excluded.updatedAt,
+                    lastBuiltAt = excluded.lastBuiltAt
+                """,
+                arguments: [
+                    snapshot.embeddingVersionID,
+                    snapshot.backendID,
+                    snapshot.state.rawValue,
+                    snapshot.fingerprint,
+                    snapshot.dimensions,
+                    snapshot.distanceMetric.rawValue,
+                    snapshot.vectorCount,
+                    snapshot.storageRelativePath,
+                    snapshot.fileBytes,
+                    snapshot.backendVersion,
+                    snapshot.errorCode,
+                    snapshot.errorMessage,
+                    snapshot.createdAt,
+                    snapshot.updatedAt,
+                    snapshot.lastBuiltAt
+                ]
+            )
+        }
+    }
+
+    func fetchVectorIndexSnapshot(
+        embeddingVersionID: String,
+        backendID: String
+    ) throws -> VectorIndexSnapshotRecord? {
+        try dbQueue.read { db in
+            try Row.fetchOne(
+                db,
+                sql: """
+                SELECT *
+                FROM vector_index_snapshots
+                WHERE embeddingVersionID = ? AND backendID = ?
+                """,
+                arguments: [embeddingVersionID, backendID]
+            ).flatMap(Self.vectorIndexSnapshot(from:))
+        }
+    }
+
+    func fetchVectorIndexSnapshots(embeddingVersionID: String?) throws -> [VectorIndexSnapshotRecord] {
+        try dbQueue.read { db in
+            let rows: [Row]
+            if let embeddingVersionID, embeddingVersionID.isEmpty == false {
+                rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT *
+                    FROM vector_index_snapshots
+                    WHERE embeddingVersionID = ?
+                    ORDER BY backendID ASC
+                    """,
+                    arguments: [embeddingVersionID]
+                )
+            } else {
+                rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT *
+                    FROM vector_index_snapshots
+                    ORDER BY embeddingVersionID ASC, backendID ASC
+                    """
+                )
+            }
+            return rows.compactMap(Self.vectorIndexSnapshot(from:))
+        }
+    }
+
     // MARK: - Retrieval Health
 
     func upsertRetrievalHealth(_ health: RetrievalHealthRecord) throws {
@@ -594,6 +745,7 @@ final class ProjectionStore: Sendable {
             "embedding_models",
             "embedding_versions",
             "chunk_embeddings",
+            "vector_index_snapshots",
             "retrieval_health",
             "artifact_permissions",
             "audit_events",
@@ -612,6 +764,7 @@ final class ProjectionStore: Sendable {
             "embedding_versions_identity_idx",
             "embedding_versions_active_idx",
             "chunk_embeddings_version_lookup_idx",
+            "vector_index_snapshots_state_idx",
             "artifact_permissions_principal_lookup_idx",
             "artifact_permissions_source_lookup_idx",
             "audit_events_source_time_idx",
@@ -769,6 +922,46 @@ final class ProjectionStore: Sendable {
             vectorBlob: vectorBlob,
             createdAt: createdAt,
             updatedAt: updatedAt
+        )
+    }
+
+    static func vectorIndexSnapshot(from row: Row) -> VectorIndexSnapshotRecord? {
+        guard
+            let embeddingVersionID = row["embeddingVersionID"] as? String,
+            let backendID = row["backendID"] as? String,
+            let stateRaw = row["state"] as? String,
+            let state = VectorIndexSnapshotState(rawValue: stateRaw),
+            let fingerprint = row["fingerprint"] as? String,
+            let distanceMetricRaw = row["distanceMetric"] as? String,
+            let distanceMetric = EmbeddingDistanceMetric(rawValue: distanceMetricRaw),
+            let backendVersion = row["backendVersion"] as? String
+        else {
+            return nil
+        }
+
+        let dimensions = (row["dimensions"] as? Int) ?? Int(row["dimensions"] as? Int64 ?? 0)
+        let vectorCount = (row["vectorCount"] as? Int) ?? Int(row["vectorCount"] as? Int64 ?? 0)
+        let fileBytes = (row["fileBytes"] as? Int64) ?? Int64(row["fileBytes"] as? Int ?? 0)
+        let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date()
+        let updatedAt = OpenBurnBarDatabase.parseDateValue(row["updatedAt"]) ?? createdAt
+        let lastBuiltAt = OpenBurnBarDatabase.parseDateValue(row["lastBuiltAt"])
+
+        return VectorIndexSnapshotRecord(
+            embeddingVersionID: embeddingVersionID,
+            backendID: backendID,
+            state: state,
+            fingerprint: fingerprint,
+            dimensions: dimensions,
+            distanceMetric: distanceMetric,
+            vectorCount: vectorCount,
+            storageRelativePath: row["storageRelativePath"] as? String,
+            fileBytes: fileBytes,
+            backendVersion: backendVersion,
+            errorCode: row["errorCode"] as? String,
+            errorMessage: row["errorMessage"] as? String,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            lastBuiltAt: lastBuiltAt
         )
     }
 

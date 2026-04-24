@@ -63,9 +63,9 @@ enum RemoteSyncCollectionKind: String, CaseIterable {
 /// - Per-account scope prevents cross-account pollution (VAL-PERSIST-011)
 /// - Per-collection kind allows independent sync cursors
 final class RemoteSyncWatermarkStore: Sendable {
-    private let dbQueue: DatabaseQueue
+    private let dbQueue: any DatabaseWriter
 
-    init(dbQueue: DatabaseQueue) {
+    init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 
@@ -172,7 +172,7 @@ final class RemoteSyncWatermarkStore: Sendable {
 ///
 /// VAL-PERSIST-010: Watermark advances only after successful commit.
 final class AtomicRemoteSyncTransaction {
-    private let dbQueue: DatabaseQueue
+    private let dbQueue: any DatabaseWriter
     private let watermarkStore: RemoteSyncWatermarkStore
     private let accountUid: String
     private let collectionKind: RemoteSyncCollectionKind
@@ -182,7 +182,7 @@ final class AtomicRemoteSyncTransaction {
     private var isCommitted: Bool = false
 
     init(
-        dbQueue: DatabaseQueue,
+        dbQueue: any DatabaseWriter,
         watermarkStore: RemoteSyncWatermarkStore,
         accountUid: String,
         collectionKind: RemoteSyncCollectionKind

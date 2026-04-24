@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Claude-format JSONL conversation extraction
 
@@ -20,18 +21,6 @@ final class ClaudeConversationAccumulator {
     private(set) var endTime: Date?
 
     private let titleMax = 120
-
-    nonisolated(unsafe) private static let iso8601Basic: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-
-    nonisolated(unsafe) private static let iso8601Fractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
 
     func ingest(jsonLine: [String: Any]) {
         applyTimeline(from: jsonLine)
@@ -85,9 +74,7 @@ final class ClaudeConversationAccumulator {
     }
 
     private static func parseFlexibleISO8601(_ s: String) -> Date? {
-        if let d = iso8601Fractional.date(from: s) { return d }
-        if let d = iso8601Basic.date(from: s) { return d }
-        return nil
+        ThreadSafeISO8601DateFormatter.parse(s)
     }
 
     /// Interprets JSON numeric timestamps as seconds or milliseconds since 1970.

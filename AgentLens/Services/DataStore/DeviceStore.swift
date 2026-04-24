@@ -6,9 +6,9 @@ import OpenBurnBarCore
 
 /// Device CRUD and per-device usage summaries.
 final class DeviceStore: Sendable {
-    private let dbQueue: DatabaseQueue
+    private let dbQueue: any DatabaseWriter
 
-    init(dbQueue: DatabaseQueue) {
+    init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 
