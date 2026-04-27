@@ -26,9 +26,8 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
         let nextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth) ?? now
         let monthRange = startOfMonth...nextMonth
-        let used = await MainActor.run {
-            Double(context.dataStore.usages(for: .factory, in: monthRange).reduce(0) { $0 + $1.totalTokens })
-        }
+        let allUsages = (try? await context.dataStoreActor.fetchAllUsage()) ?? []
+        let used = Double(allUsages.filter { $0.provider == .factory && $0.startTime >= monthRange.lowerBound && $0.startTime <= monthRange.upperBound }.reduce(0) { $0 + $1.totalTokens })
         let remaining = max(cap - used, 0)
         let usedPercent = cap > 0 ? (used / cap) * 100 : nil
 

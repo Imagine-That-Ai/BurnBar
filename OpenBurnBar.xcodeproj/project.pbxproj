@@ -36,6 +36,7 @@
 		0D2AD5F9C029923A5EEEBAC4 /* DashboardSidebarComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60B52A7E887299692C5BD50 /* DashboardSidebarComponents.swift */; };
 		0D463BB646BAB7F18B301151 /* ContextPackExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217FC40F07BA5583CD430A29 /* ContextPackExportTests.swift */; };
 		0D4E56581D55986F17D1F8E1 /* OpenBurnBarConnectorSecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7AD97848EEB1063D5AA7BF /* OpenBurnBarConnectorSecretStore.swift */; };
+		0D4F295D586687DCB08BC44A /* QuotaRefreshActor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4273C28B33EF41A099966C09 /* QuotaRefreshActor.swift */; };
 		0DE26600775B6CA96A3B6664 /* LocalMetricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A67224E60A68DDF632014874 /* LocalMetricsView.swift */; };
 		0E4FE311062AE136DC1C8F98 /* ProviderQuotaSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA81DD6D3F03D1A8A7A3B414 /* ProviderQuotaSnapshotStore.swift */; };
 		0E871E01C5E13D4DDFCE497E /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F620BAA0FABBB67BFD16710 /* SessionDetailView.swift */; };
@@ -170,6 +171,7 @@
 		601643D1FD373A0645E4DFD6 /* PopoverQuickSwitchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AB6EE338EFA834B39EBFF1D /* PopoverQuickSwitchView.swift */; };
 		60A5140728B0BB337939CDEC /* OpenBurnBarClientRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E0C1F6A57B32AC05B8AEB22 /* OpenBurnBarClientRegistry.swift */; };
 		6111DDFF49A9560566C56E7D /* OpenBurnBarCompactOperatingHomeCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94251BF35FBE48895FAF7B1F /* OpenBurnBarCompactOperatingHomeCard.swift */; };
+		627D5129804F77F7D83C560E /* SummaryWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A69754A69EB4EE96EF52F183 /* SummaryWorker.swift */; };
 		62B1823351BB49A15B03CD17 /* ProjectionChunkerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 394C1FDF44D6026D2162A5B5 /* ProjectionChunkerTests.swift */; };
 		62DF1D7777DDAC1B3CD534DA /* DashboardToolbarContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B742694C1CBBF8098C0D9C82 /* DashboardToolbarContent.swift */; };
 		62EE81644D1C632A0B48A9F4 /* OpenBurnBarAppCheckProviderFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27A2C20E79A5C06CC4C3AAAE /* OpenBurnBarAppCheckProviderFactory.swift */; };
@@ -274,6 +276,7 @@
 		9D5168286DD8A575BE5E2D0B /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6803E405A63F89FF4F0B0633 /* Formatting.swift */; };
 		9D9AA928BF4AAE85D5978E48 /* DailyDigestManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A9D269FE2712CEBCD15527B /* DailyDigestManagerTests.swift */; };
 		9E0C1379094F5D9597997DFB /* SwitcherDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB82E20E417E4217AE59836 /* SwitcherDiscoveryService.swift */; };
+		9E20B62A40E1091C3D8CD546 /* RefreshOrchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E06A51B6CCC12389C69A9463 /* RefreshOrchestrator.swift */; };
 		9E5D17624BDFE6A3F5A00352 /* UsageSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6A98083AE6B10C70E3811BE /* UsageSyncService.swift */; };
 		9EB49B3080832462B5803395 /* BurnBarRateLimiter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32F38004003A536B543A72BE /* BurnBarRateLimiter.swift */; };
 		9F5C55C605AB4E372DD5C96C /* BurnBarRunService+ToolDispatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A8C92D95F2D731E0FFE2AFF /* BurnBarRunService+ToolDispatch.swift */; };
@@ -423,6 +426,7 @@
 		F54A3264569CA26F5B9B9581 /* SwitcherOnboardingDoneStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9476124701CFC78FE9E6696C /* SwitcherOnboardingDoneStep.swift */; };
 		F5E4A24AB2ACB73B5DBB0E54 /* BufferedLineSequenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B08A5CA69CE9C28AB2F53747 /* BufferedLineSequenceTests.swift */; };
 		F64798A06D56155D9CE2BF79 /* DataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8F229401528AAEA6BBD0DBE /* DataStore.swift */; };
+		F64798A06D56155D9CE2BF7A /* DataStoreCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8F229401528AAEA6BBD0DBF /* DataStoreCoordinator.swift */; };
 		F6B6B3EBD03450E57D9414D1 /* OpenBurnBarCore in Frameworks */ = {isa = PBXBuildFile; productRef = 2DEED14BFE28AEC0B0BDD7CA /* OpenBurnBarCore */; };
 		F85F01E1DB512405EB88236D /* SwitcherOnboardingWelcomeStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 716BCE0FE0C911F04F6B56FA /* SwitcherOnboardingWelcomeStep.swift */; };
 		F897CC526BD2FB184A5F5BAE /* RetrievalHealthTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08CA0EBBD87EAFAD4FAE258F /* RetrievalHealthTypes.swift */; };
@@ -581,6 +585,7 @@
 		402EBEDE08E66A1F8A31BCB5 /* TestableCodexParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestableCodexParser.swift; sourceTree = "<group>"; };
 		40584EF1755646F1C23999C1 /* RetrievalQueryTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetrievalQueryTypes.swift; sourceTree = "<group>"; };
 		40CA8A85C922A5AE09E8BC9F /* InsightCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightCardView.swift; sourceTree = "<group>"; };
+		4273C28B33EF41A099966C09 /* QuotaRefreshActor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaRefreshActor.swift; sourceTree = "<group>"; };
 		42E5B6AA30134697E7725164 /* LogParserProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogParserProtocol.swift; sourceTree = "<group>"; };
 		43CA51894D76AB1F3C9B7B00 /* SourceArtifactStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceArtifactStoreTests.swift; sourceTree = "<group>"; };
 		440B5DB6483C144E3633C154 /* ProviderQuotaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaService.swift; sourceTree = "<group>"; };
@@ -740,6 +745,7 @@
 		A4DD6F8170EFC8400059992D /* DataStore+ControlPlaneAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DataStore+ControlPlaneAccess.swift"; sourceTree = "<group>"; };
 		A64279A8E26CCE271D228AA6 /* OpenBurnBarDaemonManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarDaemonManager.swift; sourceTree = "<group>"; };
 		A67224E60A68DDF632014874 /* LocalMetricsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMetricsView.swift; sourceTree = "<group>"; };
+		A69754A69EB4EE96EF52F183 /* SummaryWorker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryWorker.swift; sourceTree = "<group>"; };
 		A728EAF6CE31DAD45A0C0AF3 /* ContextBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBuilder.swift; sourceTree = "<group>"; };
 		A824B975E510EBC86FAACC4B /* FactoryDroidParserIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactoryDroidParserIntegrationTests.swift; sourceTree = "<group>"; };
 		A86596B85F21103F9A9F9ED7 /* OpenBurnBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenBurnBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -805,7 +811,8 @@
 		C79C7BF41921CFA7915E3E0B /* BurnBarRunService+Execution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BurnBarRunService+Execution.swift"; sourceTree = "<group>"; };
 		C79EA0238C1438D91B46A759 /* OpenBurnBarCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarCLI.swift; sourceTree = "<group>"; };
 		C7D93834C928450CDF9933FB /* DashboardSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSidebarView.swift; sourceTree = "<group>"; };
-		C8F229401528AAEA6BBD0DBE /* DataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStore.swift; sourceTree = "<group>"; };
+		C8F229401528AAEA6BBD0DBE /* DataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStore/DataStore.swift; sourceTree = "<group>"; };
+		C8F229401528AAEA6BBD0DBF /* DataStoreCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStore/DataStoreCoordinator.swift; sourceTree = "<group>"; };
 		CA1E34836ADB475D8A76353C /* ChatGatewaySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGatewaySettingsView.swift; sourceTree = "<group>"; };
 		CA692F1DE5C43C006427D9B6 /* OpenBurnBarIndexedSearchServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarIndexedSearchServiceTests.swift; sourceTree = "<group>"; };
 		CAAA8506BBCF5F3956DD7A2F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -841,6 +848,7 @@
 		DD40DE341024168C7CE81596 /* BackfillCursorStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackfillCursorStore.swift; sourceTree = "<group>"; };
 		DE8198EF607520462A4FC463 /* TestableClaudeCodeParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestableClaudeCodeParser.swift; sourceTree = "<group>"; };
 		DED248DDFB578CD7B88CC8DE /* LocalMetricsAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMetricsAggregator.swift; sourceTree = "<group>"; };
+		E06A51B6CCC12389C69A9463 /* RefreshOrchestrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefreshOrchestrator.swift; sourceTree = "<group>"; };
 		E0F0C614CF08FB09A79D2DB6 /* ContextPackDashboardSurfaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextPackDashboardSurfaceTests.swift; sourceTree = "<group>"; };
 		E12B438F0635692EE3E1BEA0 /* EmbeddingProviderProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingProviderProtocol.swift; sourceTree = "<group>"; };
 		E1597C5A76F003D0179ECED1 /* CrossEncoderConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossEncoderConfiguration.swift; sourceTree = "<group>"; };
@@ -1135,6 +1143,7 @@
 				440B5DB6483C144E3633C154 /* ProviderQuotaService.swift */,
 				EA81DD6D3F03D1A8A7A3B414 /* ProviderQuotaSnapshotStore.swift */,
 				32450E00EE48DECF70532353 /* ProviderQuotaTypes.swift */,
+				4273C28B33EF41A099966C09 /* QuotaRefreshActor.swift */,
 				A9848EB8A189DD55F67AA267 /* ZAIQuotaAdapter.swift */,
 			);
 			path = ProviderQuota;
@@ -1359,6 +1368,7 @@
 				19AE61CB1273F74B88D4D050 /* SummaryCostEstimator.swift */,
 				D21286B250435F313A0D023D /* SummaryLLMClient.swift */,
 				15EDAB12437E0BAE61D27478 /* SummaryQueueItem.swift */,
+				A69754A69EB4EE96EF52F183 /* SummaryWorker.swift */,
 				CD5334A8CDFC4FDC23956AF0 /* UsageAggregationPolicies.swift */,
 			);
 			path = UsageAggregation;
@@ -1577,6 +1587,7 @@
 				A0A54F594D8698C41B0BA694 /* DailyDigestManager.swift */,
 				1C44496E82E3EC63C1D499B1 /* DatabaseWorkspaceSnapshotBuilder.swift */,
 				C8F229401528AAEA6BBD0DBE /* DataStore.swift */,
+				C8F229401528AAEA6BBD0DBF /* DataStoreCoordinator.swift */,
 				B418781F2DF2EA1E4434FDF1 /* HermesDataFolder.swift */,
 				F1075024DBE68364F8C7D2D3 /* ICloudSessionMirrorService.swift */,
 				FBFB7FE795BCD0E4705649DB /* InsightEngine.swift */,
@@ -1587,6 +1598,7 @@
 				874A44FF202854D1EC3838F8 /* OpenBurnBarChatWorkspaceConfigurator.swift */,
 				19DB6649FEAB8468DFB56B91 /* OpenBurnBarIdentity.swift */,
 				6456285BFCA6A6CD0029380F /* ProjectionPipelineService.swift */,
+				E06A51B6CCC12389C69A9463 /* RefreshOrchestrator.swift */,
 				FF0BC832DD4F6C22F0FC801C /* SearchService.swift */,
 				85BC762B488DDB41A77183EB /* SessionLogMarkdownFormatter.swift */,
 				51F28E56250CF502142A5EB0 /* SettingsManager.swift */,
@@ -2274,6 +2286,7 @@
 				B71B668BC78566A2EC018F6C /* DataStore+SearchAccess.swift in Sources */,
 				A050142D1B4EC67B5D9806F2 /* DataStore+UsageAccess.swift in Sources */,
 				F64798A06D56155D9CE2BF79 /* DataStore.swift in Sources */,
+				F64798A06D56155D9CE2BF7A /* DataStoreCoordinator.swift in Sources */,
 				893C9D01D8C67984B0EFCD5A /* DataStoreTypes.swift in Sources */,
 				C255EE4B7E0173A7C8307127 /* DatabaseWorkspaceSnapshotBuilder.swift in Sources */,
 				BFE2EAD4A654CFE385EE27C1 /* DatabaseWorkspaceView.swift in Sources */,
@@ -2395,6 +2408,8 @@
 				C57DCA0F94E8860A4BD3AF88 /* ProviderTheme.swift in Sources */,
 				56DFC307AFBAC9DE248434ED /* ProviderUsageAPIService.swift in Sources */,
 				D5AB4DE338C4CC7EC01F5666 /* ProvidersSettingsView.swift in Sources */,
+				0D4F295D586687DCB08BC44A /* QuotaRefreshActor.swift in Sources */,
+				9E20B62A40E1091C3D8CD546 /* RefreshOrchestrator.swift in Sources */,
 				4530979D4A684CE9DA01FF43 /* RemoteSyncWatermarkStore.swift in Sources */,
 				13B952DD60B1942A7B6AC5A5 /* RetrievalHealthService.swift in Sources */,
 				F897CC526BD2FB184A5F5BAE /* RetrievalHealthTypes.swift in Sources */,
@@ -2418,6 +2433,7 @@
 				57B3F9E536B09E03D6625A3C /* SummaryCostEstimator.swift in Sources */,
 				A8472166CA8E1BD054497697 /* SummaryLLMClient.swift in Sources */,
 				4CC0C07A3D0B7AFCD4DE9342 /* SummaryQueueItem.swift in Sources */,
+				627D5129804F77F7D83C560E /* SummaryWorker.swift in Sources */,
 				D0A469C3F54AEC9BC59FED73 /* SwitcherAuthStore.swift in Sources */,
 				600E2DC13627A633554E8688 /* SwitcherCLIAuthCoordinator.swift in Sources */,
 				FAB18A810B0C74E9A5B91936 /* SwitcherCLIFallbackPlanner.swift in Sources */,
@@ -2469,7 +2485,7 @@
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_FF89D9EC-6E30-4AD7-8F27-2DC77D7C3C75" /* OpenBurnBarCore */;
+			productRef = "TEMP_A85ECEBB-0C02-4966-9453-412834938878" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -2965,7 +2981,7 @@
 			package = F7ED8DA2789DCAFECCAE84D3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAppCheck;
 		};
-		"TEMP_FF89D9EC-6E30-4AD7-8F27-2DC77D7C3C75" /* OpenBurnBarCore */ = {
+		"TEMP_A85ECEBB-0C02-4966-9453-412834938878" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};

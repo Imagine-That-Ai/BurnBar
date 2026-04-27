@@ -144,6 +144,9 @@ final class CursorConnectorManager {
             try validateConfiguration()
             try ensureSupportDirectory()
             refreshSystemHealth()
+            // Generate a fresh rotation token for each session to invalidate any
+            // tokens that may have been exposed in previous sessions.
+            try generateRotationToken()
             try writeProxyScript()
             try writeProxyConfig()
             try await startProxy()
@@ -278,6 +281,14 @@ final class CursorConnectorManager {
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: supportDirectory.path)
     }
 
+    private func generateRotationToken() throws {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+            throw NSError(domain: "CursorConnector", code: 16, userInfo: [NSLocalizedDescriptionKey: "Failed to generate rotation token"])
+        }
+        config.tunnel.tunnelRotationToken = bytes.map { String(format: "%02x", $0) }.joined()
+    }
+
     private func writeProxyConfig() throws {
         struct RouteEntry: Codable {
             let provider: String
@@ -306,6 +317,11 @@ final class CursorConnectorManager {
         let payload: [String: Any] = [
             "port": Int(config.preferredPort),
             "session_token": sessionToken,
+            // Bearer token for proxy auth — required on all non-health endpoints.
+            // Regenerated on every connect; Cursor stores session_token separately.
+            "tunnel_rotation_token": config.tunnel.tunnelRotationToken ?? "",
+            "rate_limit_requests": config.tunnel.tunnelRateLimitRequests,
+            "rate_limit_window": config.tunnel.tunnelRateLimitWindow,
             "routes": routes.mapValues { [
                 "provider": $0.provider,
                 "base_url": $0.baseURL,
@@ -394,9 +410,26 @@ final class CursorConnectorManager {
         guard let url = URL(string: base + "/models") else {
             throw NSError(domain: "CursorConnector", code: 4, userInfo: [NSLocalizedDescriptionKey: "Invalid tunnel URL: \(base)"])
         }
-        let (data, response) = try await URLSession.shared.data(from: url)
+
+        // Step 1: Unauthenticated request — must be rejected (401).
+        // This verifies the tunnel is not publicly accessible without auth.
+        let (unauthData, unauthResponse) = try await URLSession.shared.data(from: url)
+        if let unauthHTTP = unauthResponse as? HTTPURLResponse, unauthHTTP.statusCode == 200 {
+            // Endpoint accepted an unauthenticated request — auth is not enforced.
+            throw NSError(domain: "CursorConnector", code: 9, userInfo: [
+                NSLocalizedDescriptionKey: "Tunnel authentication is not enforced. The public endpoint accepted an unauthenticated request. Do not use this tunnel. Reconnect to get a new tunnel URL."
+            ])
+        }
+
+        // Step 2: Authenticated request with bearer token — must succeed.
+        guard let bearerToken = config.tunnel.tunnelRotationToken else {
+            throw NSError(domain: "CursorConnector", code: 4, userInfo: [NSLocalizedDescriptionKey: "Tunnel rotation token is missing"])
+        }
+        var authRequest = URLRequest(url: url)
+        authRequest.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: authRequest)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw NSError(domain: "CursorConnector", code: 5, userInfo: [NSLocalizedDescriptionKey: "Public endpoint verification failed"])
+            throw NSError(domain: "CursorConnector", code: 5, userInfo: [NSLocalizedDescriptionKey: "Public endpoint verification failed (authenticated)"])
         }
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let modelObjects = object?["data"] as? [[String: Any]] ?? []
@@ -960,7 +993,7 @@ final class CursorConnectorManager {
     static func proxyScript() -> String {
         """
         #!/usr/bin/env python3
-        import json, ssl, subprocess, sys, uuid, datetime
+        import json, ssl, subprocess, sys, uuid, datetime, time, threading
         from http import HTTPStatus
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
         from urllib.error import HTTPError, URLError
@@ -1302,6 +1335,40 @@ final class CursorConnectorManager {
                 f.write(json.dumps(event) + "\\n")
 
         SESSION_TOKEN = load_config().get("session_token", "")
+        TUNNEL_ROTATION_TOKEN = load_config().get("tunnel_rotation_token", "")
+        RATE_LIMIT_REQUESTS = int(load_config().get("rate_limit_requests", 100) or 100)
+        RATE_LIMIT_WINDOW = int(load_config().get("rate_limit_window", 60) or 60)
+
+        # Sliding-window rate limiter: {client_ip: [(timestamp, count), ...]}
+        _rate_limit_lock = threading.Lock()
+        _rate_limit_state = {}
+
+        def _rate_limit_check(client_ip):
+            # Returns (allowed, current_count). thread-safe.
+            now = time.time()
+            window_start = now - RATE_LIMIT_WINDOW
+            with _rate_limit_lock:
+                entries = _rate_limit_state.get(client_ip, [])
+                # Prune old entries
+                entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
+                total = sum(cnt for _, cnt in entries)
+                if total >= RATE_LIMIT_REQUESTS:
+                    _rate_limit_state[client_ip] = entries
+                    return False, total
+                return True, total
+
+        def _rate_limit_record(client_ip, request_size=1):
+            # Record a request for rate limiting. thread-safe.
+            now = time.time()
+            with _rate_limit_lock:
+                entries = _rate_limit_state.get(client_ip, [])
+                entries.append((now, request_size))
+                _rate_limit_state[client_ip] = entries
+
+        def _get_client_ip():
+            # Returns the client IP from the thread, or "unknown".
+            t = threading.current_thread()
+            return getattr(t, 'client_ip', "unknown")
 
         class Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
@@ -1318,20 +1385,39 @@ final class CursorConnectorManager {
                 self.wfile.write(body)
 
             def check_auth(self):
-                if not SESSION_TOKEN:
-                    return True
-                auth = self.headers.get("Authorization", "")
-                if auth == f"Bearer {SESSION_TOKEN}":
-                    return True
-                # Also accept as query param for health checks
+                # Always allow health checks without auth (needed for startup verification).
                 if self.path in ("/health", "/healthz"):
                     return True
-                self.send_json(HTTPStatus.UNAUTHORIZED, {"error": {"message": "unauthorized"}})
-                return False
+
+                # Enforce bearer token auth for all other endpoints.
+                # Health checks are the only public endpoints.
+                if TUNNEL_ROTATION_TOKEN:
+                    auth = self.headers.get("Authorization", "")
+                    if auth != f"Bearer {TUNNEL_ROTATION_TOKEN}":
+                        self.send_json(HTTPStatus.UNAUTHORIZED, {"error": {"message": "unauthorized"}})
+                        return False
+
+                # Rate limiting on all requests (including health checks).
+                client_ip = self.client_address[0] if self.client_address else "unknown"
+                allowed, current = _rate_limit_check(client_ip)
+                if not allowed:
+                    retry_after = str(RATE_LIMIT_WINDOW)
+                    self.send_response(HTTPStatus.TOO_MANY_REQUESTS)
+                    self.send_header("Retry-After", retry_after)
+                    self.send_header("X-RateLimit-Limit", str(RATE_LIMIT_REQUESTS))
+                    self.send_header("X-RateLimit-Remaining", "0")
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return False
+
+                return True
 
             def do_GET(self):
                 if not self.check_auth():
                     return
+                # Record request for rate limiting after successful auth.
+                _rate_limit_record(self.client_address[0] if self.client_address else "unknown")
                 config = load_config()
                 if self.path in ("/health", "/healthz"):
                     self.send_json(HTTPStatus.OK, {"ok": True})
@@ -1345,6 +1431,8 @@ final class CursorConnectorManager {
             def do_POST(self):
                 if not self.check_auth():
                     return
+                # Record request for rate limiting after successful auth.
+                _rate_limit_record(self.client_address[0] if self.client_address else "unknown")
                 config = load_config()
                 is_chat = self.path.startswith("/v1/chat/completions")
                 is_responses = self.path.startswith("/v1/responses")

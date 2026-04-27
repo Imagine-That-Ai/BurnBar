@@ -1,9 +1,13 @@
 name: CodeQL
 
-# Daily CodeQL scan + on every push/PR. Replaces GitHub's default CodeQL setup
-# (which only runs weekly). To activate this workflow, switch the repo's
-# code-scanning configuration from "Default setup" to "Advanced setup" in
-# Settings → Code security → Code scanning → CodeQL analysis.
+# Daily CodeQL scan + on every push/PR. Covers:
+#   - Swift (AgentLens, OpenBurnBarDaemon, OpenBurnBarCore) — security + correctness
+#   - JavaScript/TypeScript (VS Code extension)
+#   - Python (CI helpers, build scripts)
+#
+# Swift is built with xcodebuild before analysis to ensure full symbol resolution.
+# To activate this workflow, switch the repo's code-scanning configuration from
+# "Default setup" to "Advanced setup" in Settings → Code security → Code scanning.
 #
 # Copilot Autofix runs automatically on the resulting alerts when enabled in
 # the same settings page; it proposes fix commits you can land via a single
@@ -37,6 +41,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Swift coverage: the app, daemon, and core frameworks.
+          # autobuild is sufficient for security queries; we use manual xcodebuild
+          # for more complete symbol resolution.
+          - language: swift
+            build-mode: manual
           - language: javascript-typescript
             build-mode: none
           - language: python
@@ -45,6 +54,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Swift build — resolves packages and compiles all targets (AgentLens app,
+      # OpenBurnBarDaemon, OpenBurnBarCore). Running this before CodeQL init+analyze
+      # ensures the autobuild detector finds the Swift toolchain and project.
+      - name: Build Swift (CodeQL)
+        run: |
+          xcodebuild -project OpenBurnBar.xcodeproj \
+            -scheme OpenBurnBar \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath .codeql-derived-data \
+            build
+        if: matrix.language == 'swift'
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3

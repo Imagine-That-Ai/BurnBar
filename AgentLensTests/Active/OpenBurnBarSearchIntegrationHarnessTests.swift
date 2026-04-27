@@ -34,7 +34,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         )
     }
 
-    func test_fileRootFixtures_discoverOnlyRegisteredRoots() throws {
+    func test_fileRootFixtures_discoverOnlyRegisteredRoots() async throws {
         let harness = try OpenBurnBarSearchIntegrationHarness(name: "discovery-fixtures")
         defer { harness.cleanup() }
 
@@ -49,7 +49,7 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         let (service, _) = harness.makeDiscoveryService(
             registeredRoots: [harness.fileRoots.registeredProjectRootURL]
         )
-        let report = try service.discoverAndIngest()
+        let report = try await service.discoverAndIngest()
 
         XCTAssertEqual(report.discoveredArtifacts, 2)
         XCTAssertEqual(report.insertedArtifacts, 2)

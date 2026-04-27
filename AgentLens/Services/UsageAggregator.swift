@@ -9,6 +9,7 @@ final class UsageAggregator {
     private let dataStore: DataStore
     private let parsers: [AgentProvider: any LogParser]
     private weak var cloudSync: CloudSyncService?
+    private weak var cloudSyncCoordinator: CloudSyncCoordinator?
     private weak var sessionMirror: ICloudSessionMirrorService?
     private let settingsManager: SettingsManager
     private let providerAPIKeyStore: ProviderAPIKeyStore
@@ -16,6 +17,7 @@ final class UsageAggregator {
     private let quotaService: ProviderQuotaService
     private let artifactDiscoveryService: ArtifactDiscoveryService
     private let projectionPipelineServiceOverride: ProjectionPipelineService?
+    private let refreshOrchestrator: RefreshOrchestrator
 
     /// The auto-summary subsystem. Views can observe summary progress via
     /// this property (e.g. `aggregator.summaryEngine.isSummarizing`).
@@ -51,6 +53,7 @@ final class UsageAggregator {
     init(
         dataStore: DataStore,
         cloudSync: CloudSyncService? = nil,
+        cloudSyncCoordinator: CloudSyncCoordinator? = nil,
         sessionMirror: ICloudSessionMirrorService? = nil,
         settingsManager: SettingsManager = .shared,
         usageAPIService: ProviderUsageAPIService? = nil,
@@ -63,15 +66,25 @@ final class UsageAggregator {
     ) {
         self.dataStore = dataStore
         self.cloudSync = cloudSync
+        self.cloudSyncCoordinator = cloudSyncCoordinator
         self.sessionMirror = sessionMirror
         self.settingsManager = settingsManager
         self.usageAPIService = usageAPIService ?? ProviderUsageAPIService(keyStore: providerAPIKeyStore)
         self.providerAPIKeyStore = providerAPIKeyStore
         self.quotaService = quotaService
         self.artifactDiscoveryService = artifactDiscoveryService
-            ?? ArtifactDiscoveryService(dataStore: dataStore, settingsProvider: settingsManager)
+            ?? ArtifactDiscoveryService(dataStoreActor: dataStore.actor, settingsProvider: settingsManager)
         self.projectionPipelineServiceOverride = projectionPipelineService
         self.parsers = parserOverrides ?? ParserRegistry.defaultParsers()
+        self.refreshOrchestrator = RefreshOrchestrator(
+            dataStore: dataStore,
+            settingsManager: settingsManager,
+            cloudSyncCoordinator: cloudSyncCoordinator,
+            cloudSync: cloudSync,
+            sessionMirror: sessionMirror,
+            quotaService: quotaService,
+            usageAPIService: usageAPIService
+        )
         self.summaryEngine = summaryEngine ?? AutoSummaryEngine(
             dataStore: dataStore,
             settingsManager: settingsManager,
@@ -100,10 +113,13 @@ final class UsageAggregator {
             ? .tokenizerAssisted
             : .characterRatio
 
+        // Data retention: purge expired rows once per launch.
+        await refreshOrchestrator.runRetentionPurgeIfNeeded()
+
         let refreshStartedAt = Date()
         let parsePhaseStartedAt = Date()
         var allUsages: [TokenUsage] = []
-        var indexedConversationChanges = 0
+        var allConversations: [ConversationRecord] = []
         var provisionalUsageMap = Dictionary(uniqueKeysWithValues: dataStore.usages.map { ($0.id, $0) })
 
         let parserEntries = parsers.sorted { $0.key.rawValue < $1.key.rawValue }
@@ -113,16 +129,7 @@ final class UsageAggregator {
                 let usages = result.usages
                 var providerHealth: ParserHealth = usages.isEmpty ? .empty : .healthy(sessionCount: usages.count)
                 allUsages.append(contentsOf: usages)
-                if settingsManager.conversationIndexingEnabled {
-                    do {
-                        let indexingReport = try await ConversationIndexer.shared.index(result.conversations, in: dataStore)
-                        indexedConversationChanges += indexingReport.changedRecordCount
-                    } catch {
-                        let message = "Conversation indexing failed for \(provider.displayName): \(error.localizedDescription)"
-                        providerHealth = .degraded(sessionCount: usages.count, error: message)
-                        errors[provider] = message
-                    }
-                }
+                allConversations.append(contentsOf: result.conversations)
                 parserHealth[provider] = providerHealth
                 if usages.isEmpty == false {
                     for usage in usages {
@@ -137,6 +144,9 @@ final class UsageAggregator {
             }
         }
         let parsePhaseDuration = Date().timeIntervalSince(parsePhaseStartedAt)
+
+        // Index conversations off the main thread after parsing completes.
+        let indexedConversationChanges = await refreshOrchestrator.indexConversations(allConversations)
 
         // Store all usages and reload from SQLite so the in-memory array
         // includes both parser output and any chat-inserted rows.
@@ -161,19 +171,32 @@ final class UsageAggregator {
         // Advance backfill cursors only after successful persistence.
         // VAL-PERSIST-006 / VAL-PERSIST-007 / VAL-PERSIST-004
         if persistenceErrorMessage == nil {
-            await runScheduledBackfillIfNeeded()
+            await refreshOrchestrator.runScheduledBackfillIfNeeded(parsers: parsers)
         }
 
         // Unblock scan UI immediately after local parsing/persistence completes.
         isRefreshing = false
 
-        var pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
-        if pendingProjectionJobs >= ProjectionWorkerPolicy.backlogCompactionThreshold {
-            let removed = (try? dataStore.compactConversationProjectionBacklog()) ?? 0
-            if removed > 0 {
-                pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? pendingProjectionJobs
-            }
+        // Post-persistence phase runs off the main thread.
+        let postResult = await refreshOrchestrator.runPostPersistencePhase(
+            refreshStartedAt: refreshStartedAt,
+            allUsages: allUsages,
+            indexedConversationChanges: indexedConversationChanges,
+            parsePhaseDuration: parsePhaseDuration,
+            persistencePhaseDuration: persistencePhaseDuration
+        )
+
+        if let refreshedRecords = postResult.refreshedRecords {
+            dataStore.replaceUsages(refreshedRecords)
+            lastRefresh = Date()
         }
+
+        apiUsages = postResult.apiUsages
+        if let error = postResult.parserImportError, parserImportError == nil {
+            parserImportError = error
+        }
+
+        let pendingProjectionJobs = postResult.pendingProjectionJobs
         launchArtifactDiscoverySweep()
         if indexedConversationChanges > 0,
            pendingProjectionJobs < AutoSummaryPolicy.pauseWhenProjectionQueueExceeds {
@@ -183,31 +206,7 @@ final class UsageAggregator {
             launchProjectionSweep()
         }
 
-        // Fetch from provider billing APIs (complementary to log parsing)
-        let postPersistencePhaseStartedAt = Date()
-        let billingResult = await BillingRefreshCoordinator.reconcile(
-            dataStore: dataStore,
-            usageAPIService: usageAPIService,
-            allParsedUsages: allUsages,
-            persistAndReload: { [self] usages in try await persistAndReloadUsageRows(usages) },
-            deleteAndReload: { [self] prefix in try await deleteAndReloadUsageRows(sessionIDPrefix: prefix) }
-        )
-        apiUsages = billingResult.apiUsages
-        if let firstError = billingResult.errors.first, parserImportError == nil {
-            parserImportError = firstError
-        }
-
-        await quotaService.refreshIfNeeded(dataStore: dataStore)
-
-        // Upload unsynced rows to Firestore (no-op if not signed in)
-        await cloudSync?.uploadPending()
-        await cloudSync?.uploadPendingConversations()
-        await cloudSync?.uploadPendingSessionLogs()
-        await cloudSync?.syncSharedArtifacts()
-
-        await sessionMirror?.syncIfNeeded()
-
-        let postPersistencePhaseDuration = Date().timeIntervalSince(postPersistencePhaseStartedAt)
+        let postPersistencePhaseDuration = postResult.postPersistencePhaseDuration
         let totalDuration = Date().timeIntervalSince(refreshStartedAt)
         AppLogger.parser.info(
             "usage_refresh_timing",
@@ -219,7 +218,7 @@ final class UsageAggregator {
                 "providers_scanned": String(parserEntries.count),
                 "usage_rows": String(allUsages.count),
                 "indexed_changes": String(indexedConversationChanges),
-                "api_supplemental_rows": String(billingResult.supplementalUsages.count),
+                "api_supplemental_rows": String(postResult.supplementalUsageCount),
             ]
         )
     }
@@ -308,7 +307,9 @@ final class UsageAggregator {
         var indexedConversationChanges = 0
 
         do {
-            let result = try await parser.parse()
+            let result = try await Task.detached(priority: .utility) {
+                try await parser.parse()
+            }.value
             var providerHealth: ParserHealth = result.usages.isEmpty ? .empty : .healthy(sessionCount: result.usages.count)
             try dataStore.insert(result.usages)
             if settingsManager.conversationIndexingEnabled {
@@ -334,6 +335,7 @@ final class UsageAggregator {
             } catch {
                 parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
             }
+            // Category B: If job count fails, 0 is a safe fallback.
             let pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
             launchArtifactDiscoverySweep()
             if indexedConversationChanges > 0 {
@@ -456,7 +458,7 @@ private extension UsageAggregator {
 
     func runArtifactDiscoverySweep() async {
         do {
-            _ = try artifactDiscoveryService.discoverAndIngest()
+            _ = try await artifactDiscoveryService.discoverAndIngest()
         } catch {
             let now = Date()
             do {
@@ -478,35 +480,6 @@ private extension UsageAggregator {
         requestProjectionSweep()
     }
 
-    // MARK: - Scheduled Backfill
-
-    /// Runs scheduled historical backfill with bounded 7-day windows.
-    /// VAL-PERSIST-006 / VAL-PERSIST-007
-    func runScheduledBackfillIfNeeded() async {
-        let now = Date()
-
-        for provider in parsers.keys {
-            do {
-                guard let window = try dataStore.backfillCursorStore.nextBackfillWindow(
-                    for: provider,
-                    currentDate: now
-                ) else {
-                    continue
-                }
-
-                try dataStore.backfillCursorStore.advanceCursor(
-                    for: provider,
-                    newUpperBound: window.upperBound,
-                    earliestSourceDate: window.lowerBound
-                )
-            } catch {
-                let message = "Backfill cursor advance failed for \(provider.displayName): \(error.localizedDescription)"
-                if errors[provider] == nil {
-                    errors[provider] = message
-                }
-            }
-        }
-    }
 
     @discardableResult
     func runProjectionSweep() async -> Bool {
@@ -582,4 +555,5 @@ private extension UsageAggregator {
         guard let lastProjectionInsightRefreshAt else { return true }
         return Date().timeIntervalSince(lastProjectionInsightRefreshAt) >= ProjectionWorkerPolicy.insightRefreshCooldown
     }
+
 }

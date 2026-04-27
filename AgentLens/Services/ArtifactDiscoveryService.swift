@@ -4,7 +4,6 @@ import GRDB
 
 // MARK: - Artifact Discovery
 
-@MainActor
 protocol ArtifactDiscoverySettingsProviding: AnyObject {
     var artifactDiscoveryEnabled: Bool { get }
     var artifactDiscoveryRegisteredRoots: [String] { get }
@@ -122,20 +121,19 @@ struct ArtifactDiscoveryRules: Sendable {
     ]
 }
 
-@MainActor
-final class ArtifactDiscoveryService {
-    private let dataStore: DataStore
+actor ArtifactDiscoveryService {
+    private let dataStoreActor: DataStoreActor
     private let settingsProvider: any ArtifactDiscoverySettingsProviding
     private let fileManager: FileManager
     private let nowProvider: () -> Date
 
     init(
-        dataStore: DataStore,
+        dataStoreActor: DataStoreActor,
         settingsProvider: any ArtifactDiscoverySettingsProviding,
         fileManager: FileManager = .default,
         nowProvider: @escaping () -> Date = Date.init
     ) {
-        self.dataStore = dataStore
+        self.dataStoreActor = dataStoreActor
         self.settingsProvider = settingsProvider
         self.fileManager = fileManager
         self.nowProvider = nowProvider
@@ -284,7 +282,7 @@ final class ArtifactDiscoveryService {
                     updatedAt: now
                 )
 
-                let disposition = try dataStore.upsertSourceArtifact(artifact)
+                let disposition = try dataStoreActor.artifactStore.upsertSourceArtifact(artifact)
                 discoveredSourceIDs.insert(artifact.id)
                 report.discoveredArtifacts += 1
 
@@ -307,7 +305,7 @@ final class ArtifactDiscoveryService {
             }
         }
 
-        let existingArtifacts = try dataStore.fetchSourceArtifacts(
+        let existingArtifacts = try dataStoreActor.artifactStore.fetchSourceArtifacts(
             includeDeleted: false,
             rootPaths: nil,
             sourceKinds: [.skillDoc, .agentDoc]
@@ -316,7 +314,7 @@ final class ArtifactDiscoveryService {
         for existing in existingArtifacts {
             if registeredRootSet.contains(existing.rootPath) == false {
                 let now = nowProvider()
-                if try dataStore.markSourceArtifactDeleted(id: existing.id, deletedAt: now) {
+                if try dataStoreActor.artifactStore.markSourceArtifactDeleted(id: existing.id, deletedAt: now) {
                     report.deletedArtifacts += 1
                     try enqueueProjectionJob(for: existing, jobType: .purge, sourceVersionID: "deleted", now: now)
                     report.queuedJobs += 1
@@ -328,7 +326,7 @@ final class ArtifactDiscoveryService {
             guard discoveredSourceIDs.contains(existing.id) == false else { continue }
 
             let now = nowProvider()
-            if try dataStore.markSourceArtifactDeleted(id: existing.id, deletedAt: now) {
+            if try dataStoreActor.artifactStore.markSourceArtifactDeleted(id: existing.id, deletedAt: now) {
                 report.deletedArtifacts += 1
                 try enqueueProjectionJob(for: existing, jobType: .purge, sourceVersionID: "deleted", now: now)
                 report.queuedJobs += 1
@@ -348,7 +346,7 @@ final class ArtifactDiscoveryService {
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
 
-        try dataStore.upsertRetrievalHealth(
+        try dataStoreActor.projectionStore.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .discovery,
                 status: status,
@@ -380,7 +378,7 @@ final class ArtifactDiscoveryService {
         let jobID = projectionJobID(jobType: jobType, sourceID: artifact.id, sourceVersionID: sourceVersionID)
         let priority = (jobType == .purge) ? 2 : 10
 
-        try dataStore.enqueueProjectionJob(
+        try dataStoreActor.projectionStore.enqueueProjectionJob(
             ProjectionJobRecord(
                 id: jobID,
                 jobType: jobType,

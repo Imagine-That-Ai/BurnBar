@@ -18,6 +18,9 @@ struct AutoSummaryResult {
 ///
 /// Extracted from `UsageAggregator` to isolate the ~45 % of that file devoted
 /// to summarization into a focused, independently testable component.
+///
+/// Heavy work (LLM I/O and DB writes) is delegated to `SummaryWorker` so that
+/// this type can remain `@MainActor @Observable` for SwiftUI observation.
 @Observable
 @MainActor
 final class AutoSummaryEngine {
@@ -27,6 +30,7 @@ final class AutoSummaryEngine {
     private let settingsManager: SettingsManager
     private let llmClient: SummaryLLMClient
     private let keyResolver: SummaryAPIKeyResolver
+    private let worker: SummaryWorker
 
     /// Closure called when the engine needs the aggregator to trigger a
     /// projection sweep (avoids a circular reference back to UsageAggregator).
@@ -45,8 +49,6 @@ final class AutoSummaryEngine {
     // MARK: - Internal State
 
     private var hasCompletedInitialSummarySweep: Bool
-    private var localSummaryEndpointCooldownUntil: Date?
-    private var mlxSummaryEndpointCooldownUntil: Date?
     static let summaryFailureRetryCooldown: TimeInterval = 60 * 60
 
     // MARK: - Init
@@ -62,6 +64,11 @@ final class AutoSummaryEngine {
         self.settingsManager = settingsManager
         self.llmClient = llmClient
         self.keyResolver = SummaryAPIKeyResolver(providerAPIKeyStore: providerAPIKeyStore)
+        self.worker = SummaryWorker(
+            dataStoreActor: dataStore.actor,
+            llmClient: llmClient,
+            keyResolver: self.keyResolver
+        )
         self.hasCompletedInitialSummarySweep = settingsManager.summaryInitialSweepCompleted
         self.onRequestProjectionSweep = onRequestProjectionSweep
     }
@@ -125,6 +132,8 @@ final class AutoSummaryEngine {
         )) ?? 0
         summaryQueue = []
 
+        let settingsSnapshot = makeSettingsSnapshot()
+        let worker = self.worker
         var failedIDs = Set<String>()
         var loopsRemaining = 1
 
@@ -143,7 +152,7 @@ final class AutoSummaryEngine {
             if candidates.isEmpty { break }
 
             // Unified parallel pool -- local and cloud compete for the same slots.
-            // summarizeConversation already falls through the full provider list, so
+            // The worker already falls through the full provider list, so
             // sessions that miss local capacity naturally spill to cloud and vice versa.
             let maxConcurrent = effectiveAutoSummaryMaxConcurrency
 
@@ -154,12 +163,11 @@ final class AutoSummaryEngine {
                     if Task.isCancelled { break }
                     if let deadline, Date() >= deadline { break }
 
-                    await MainActor.run { markSummaryItemProcessing(conversation) }
+                    markSummaryItemProcessing(conversation)
 
                     if inFlight >= maxConcurrent, let (id, result) = await group.next() {
-                        await MainActor.run {
-                            recordParallelSummaryResult(id: id, result: result, failedIDs: &failedIDs)
-                        }
+                        if result == nil { failedIDs.insert(id) }
+                        recordParallelSummaryResult(id: id, result: result)
                         inFlight -= 1
                     }
 
@@ -167,17 +175,15 @@ final class AutoSummaryEngine {
                     if let deadline, Date() >= deadline { break }
 
                     let conv = conversation
-                    group.addTask { [weak self] in
-                        guard let self else { return (conv.id, nil) }
-                        return (conv.id, await self.summarizeConversation(conv))
+                    group.addTask {
+                        return (conv.id, await worker.summarizeAndStore(conv, settings: settingsSnapshot))
                     }
                     inFlight += 1
                 }
 
                 for await (id, result) in group {
-                    await MainActor.run {
-                        recordParallelSummaryResult(id: id, result: result, failedIDs: &failedIDs)
-                    }
+                    if result == nil { failedIDs.insert(id) }
+                    recordParallelSummaryResult(id: id, result: result)
                 }
             }
 
@@ -192,24 +198,18 @@ final class AutoSummaryEngine {
 
     // MARK: - Progress Tracking
 
-    /// Called from `withTaskGroup` via `MainActor.run` so queue / store updates stay on the main actor.
-    func recordParallelSummaryResult(id: String, result: AutoSummaryResult?, failedIDs: inout Set<String>) {
+    /// Updates observable queue state when a summary task finishes.
+    /// DB writes happen inside `SummaryWorker`; this method is lightweight UI-only.
+    func recordParallelSummaryResult(id: String, result: AutoSummaryResult?) {
         if let result {
-            try? dataStore.updateConversationSummary(
-                id: id, title: result.title, summary: result.summary,
-                provider: result.provider.rawValue, model: result.model,
-                runCostUSD: result.estimatedCostUSD
-            )
             if let idx = summaryQueue.firstIndex(where: { $0.id == id }) {
                 summaryQueue[idx].status = .done
                 summaryQueue[idx].provider = result.provider.rawValue
             }
         } else {
-            failedIDs.insert(id)
             if let idx = summaryQueue.firstIndex(where: { $0.id == id }) {
                 summaryQueue[idx].status = .failed
             }
-            try? dataStore.markConversationSummaryAttempt(id: id)
         }
         summaryProgressDone += 1
     }
@@ -231,191 +231,25 @@ final class AutoSummaryEngine {
             ? conversation.sessionId : conversation.inferredTaskTitle
     }
 
-    // MARK: - Summarize Single Conversation
+    // MARK: - Settings Snapshot
 
-    func summarizeConversation(_ conversation: ConversationRecord) async -> AutoSummaryResult? {
-        let prompt = ContextBuilder.summarizeSessionJSONPrompt(
-            fullText: conversation.fullText,
-            maxChars: effectiveAutoSummaryPromptChars
+    private func makeSettingsSnapshot() -> SummarySettingsSnapshot {
+        SummarySettingsSnapshot(
+            providerOrder: settingsManager.summaryProviderOrder,
+            localBaseURL: settingsManager.summaryLocalBaseURL,
+            localModel: settingsManager.summaryLocalModel,
+            mlxBaseURL: settingsManager.summaryMLXBaseURL,
+            mlxModel: settingsManager.summaryMLXModel,
+            minimaxModel: settingsManager.summaryMiniMaxModel,
+            openRouterPrimaryModel: settingsManager.summaryOpenRouterPrimaryModel,
+            openRouterFallbackModel: settingsManager.summaryOpenRouterFallbackModel,
+            zaiModel: settingsManager.summaryZaiModel,
+            requestTimeoutSeconds: settingsManager.summaryRequestTimeoutSeconds,
+            maxPromptChars: effectiveAutoSummaryPromptChars,
+            maxOutputTokens: effectiveAutoSummaryOutputTokens,
+            dailyCapUSD: settingsManager.summaryDailyCapUSD ?? 0,
+            retryCount: settingsManager.summaryRetryCount
         )
-
-        for provider in settingsManager.summaryProviderOrder {
-            switch provider {
-            case .local:
-                if let cooldown = localSummaryEndpointCooldownUntil, cooldown > Date() {
-                    continue
-                }
-                let (payload, shouldCooldown) = await llmClient.callOllama(
-                    baseURL: settingsManager.summaryLocalBaseURL,
-                    model: settingsManager.summaryLocalModel,
-                    prompt: prompt,
-                    timeout: settingsManager.summaryRequestTimeoutSeconds,
-                    maxOutputTokens: effectiveAutoSummaryOutputTokens
-                )
-                if shouldCooldown {
-                    localSummaryEndpointCooldownUntil = Date().addingTimeInterval(
-                        SummaryEndpointCooldownPolicy.localEndpointFailureCooldown
-                    )
-                }
-                if let payload {
-                    let clean = llmClient.sanitizeSummaryPayload(payload, fallbackTitle: conversation.inferredTaskTitle)
-                    if let clean {
-                        return AutoSummaryResult(
-                            title: clean.title,
-                            summary: clean.summary,
-                            provider: .local,
-                            model: settingsManager.summaryLocalModel,
-                            estimatedCostUSD: 0
-                        )
-                    }
-                }
-
-            case .mlx:
-                if let cooldown = mlxSummaryEndpointCooldownUntil, cooldown > Date() {
-                    continue
-                }
-                let base = settingsManager.summaryMLXBaseURL
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                guard !base.isEmpty, !settingsManager.summaryMLXModel.isEmpty else { continue }
-                if let result = await summarizeWithOpenAICompatibleProvider(
-                    provider: .mlx,
-                    baseURL: base + "/v1",
-                    apiKey: "",
-                    model: settingsManager.summaryMLXModel,
-                    prompt: prompt,
-                    fallbackTitle: conversation.inferredTaskTitle
-                ) {
-                    return result
-                }
-
-            case .minimax:
-                guard let key = keyResolver.resolveAPIKey(for: .minimax) else { continue }
-                let model = settingsManager.summaryMiniMaxModel
-                if let result = await summarizeWithOpenAICompatibleProvider(
-                    provider: .minimax,
-                    baseURL: "https://api.minimax.io/v1",
-                    apiKey: key,
-                    model: model,
-                    prompt: prompt,
-                    fallbackTitle: conversation.inferredTaskTitle
-                ) {
-                    return result
-                }
-
-            case .openrouter:
-                guard let key = keyResolver.resolveAPIKey(for: .openrouter) else { continue }
-                let models = [settingsManager.summaryOpenRouterPrimaryModel, settingsManager.summaryOpenRouterFallbackModel]
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
-
-                for model in models {
-                    if let result = await summarizeWithOpenAICompatibleProvider(
-                        provider: .openrouter,
-                        baseURL: "https://openrouter.ai/api/v1",
-                        apiKey: key,
-                        model: model,
-                        prompt: prompt,
-                        fallbackTitle: conversation.inferredTaskTitle,
-                        openRouterHeaders: true
-                    ) {
-                        return result
-                    }
-                }
-
-            case .zai:
-                guard let key = keyResolver.resolveAPIKey(for: .zai) else { continue }
-                let model = settingsManager.summaryZaiModel
-                if let result = await summarizeWithOpenAICompatibleProvider(
-                    provider: .zai,
-                    baseURL: "https://api.z.ai/api/coding/paas/v4",
-                    apiKey: key,
-                    model: model,
-                    prompt: prompt,
-                    fallbackTitle: conversation.inferredTaskTitle
-                ) {
-                    return result
-                }
-            }
-        }
-
-        return nil
-    }
-
-    // MARK: - OpenAI-Compatible Provider Wrapper
-
-    private func summarizeWithOpenAICompatibleProvider(
-        provider: SummaryProviderID,
-        baseURL: String,
-        apiKey: String,
-        model: String,
-        prompt: String,
-        fallbackTitle: String,
-        openRouterHeaders: Bool = false
-    ) async -> AutoSummaryResult? {
-        let requestTimeout = settingsManager.summaryRequestTimeoutSeconds
-        let outputTokens = effectiveAutoSummaryOutputTokens
-        let estimatedInputTokens = max(prompt.count / 4, 1)
-        let estimatedOutputTokens = max(outputTokens / 2, 100)
-        let estimatedCost = SummaryCostEstimator.estimateCostUSD(
-            provider: provider,
-            model: model,
-            inputTokens: estimatedInputTokens,
-            outputTokens: estimatedOutputTokens
-        )
-
-        if provider != .local, provider != .mlx {
-            let spentToday = (try? dataStore.summarySpendToday()) ?? 0
-            if SummaryCostEstimator.exceedsCloudDailyCap(
-                adding: estimatedCost,
-                dailyCapUSD: settingsManager.summaryDailyCapUSD,
-                spentTodayUSD: spentToday
-            ) {
-                return nil
-            }
-        }
-
-        let retryCount = max(settingsManager.summaryRetryCount, 0)
-        for _ in 0 ... retryCount {
-            if Task.isCancelled { return nil }
-            guard let body = await llmClient.callOpenAICompatibleCompletion(
-                baseURL: baseURL,
-                apiKey: apiKey,
-                model: model,
-                prompt: prompt,
-                timeout: requestTimeout,
-                maxOutputTokens: outputTokens,
-                includeOpenRouterHeaders: openRouterHeaders
-            ) else {
-                if provider == .mlx {
-                    mlxSummaryEndpointCooldownUntil = Date().addingTimeInterval(
-                        SummaryEndpointCooldownPolicy.localEndpointFailureCooldown
-                    )
-                }
-                continue
-            }
-
-            guard let payload = llmClient.parseSummaryPayload(from: body) else { continue }
-            let clean = llmClient.sanitizeSummaryPayload(payload, fallbackTitle: fallbackTitle)
-            guard let clean else { continue }
-
-            let outputEstimate = max((clean.title.count + clean.summary.count) / 4, 60)
-            let finalCost = SummaryCostEstimator.estimateCostUSD(
-                provider: provider,
-                model: model,
-                inputTokens: estimatedInputTokens,
-                outputTokens: outputEstimate
-            )
-
-            return AutoSummaryResult(
-                title: clean.title,
-                summary: clean.summary,
-                provider: provider,
-                model: model,
-                estimatedCostUSD: max(finalCost, 0)
-            )
-        }
-        return nil
     }
 
     // MARK: - Effective Settings

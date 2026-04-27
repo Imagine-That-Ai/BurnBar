@@ -1,7 +1,7 @@
 import Foundation
 
 
-protocol ProviderQuotaAdapter {
+protocol ProviderQuotaAdapter: Sendable {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot
 }
 
@@ -11,7 +11,7 @@ struct ProviderQuotaAdapterContext {
     let session: URLSession
     let environment: [String: String]
     let homeDirectoryURL: URL
-    let dataStore: DataStore
+    let dataStoreActor: DataStoreActor
     let snapshotStore: ProviderQuotaSnapshotStore
     let bridgeManager: ClaudeQuotaBridgeManager
     let miniMaxModeProvider: () -> MiniMaxQuotaMode
@@ -24,6 +24,8 @@ struct ProviderQuotaAdapterContext {
     /// Pre-resolved API keys (read from ProviderAPIKeyStore on the main actor before dispatch).
     let resolvedAPIKeys: [String: String?]
 }
+
+extension ProviderQuotaAdapterContext: @unchecked Sendable {}
 
 extension ProviderQuotaAdapter {
     func unavailableSnapshot(

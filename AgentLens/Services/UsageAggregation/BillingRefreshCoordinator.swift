@@ -15,6 +15,8 @@ enum BillingRefreshCoordinator {
         var supplementalUsages: [TokenUsage] = []
         /// Non-fatal error messages accumulated during the flow.
         var errors: [String] = []
+        /// Refreshed records from persistence so the caller can replace usages.
+        var refreshedRecords: [TokenUsage]?
     }
 
     /// Runs the full billing reconciliation pipeline:
@@ -26,36 +28,39 @@ enum BillingRefreshCoordinator {
     ///
     /// Each step that can fail appends to `Result.errors` without aborting
     /// the remaining steps.
-    @MainActor
-    static func reconcile(
-        dataStore: DataStore,
+    nonisolated static func reconcile(
+        dataStoreActor: DataStoreActor,
         usageAPIService: ProviderUsageAPIService?,
         allParsedUsages: [TokenUsage],
         persistAndReload: ([TokenUsage]) async throws -> [TokenUsage],
         deleteAndReload: (String) async throws -> [TokenUsage]
     ) async -> Result {
         var result = Result()
+        var refreshedRecords: [TokenUsage]?
 
         // 1. Clear prior API-reconciled rows
         do {
-            let refreshedRecords = try await deleteAndReload(
+            let records = try await deleteAndReload(
                 BillingUsageReconciliation.apiReconciliationSessionPrefix
             )
-            dataStore.replaceUsages(refreshedRecords)
+            refreshedRecords = records
         } catch {
             result.errors.append("Failed to clear prior API-reconciled usage rows: \(error.localizedDescription)")
         }
 
         guard let apiService = usageAPIService else {
             result.apiUsages = []
+            result.refreshedRecords = refreshedRecords
             return result
         }
 
         // 2. Rebuild API configurations
-        apiService.rebuildAPIs()
+        await MainActor.run { apiService.rebuildAPIs() }
 
-        guard !apiService.configuredProviders.isEmpty else {
+        let configuredProviders = await MainActor.run { apiService.configuredProviders }
+        guard !configuredProviders.isEmpty else {
             result.apiUsages = []
+            result.refreshedRecords = refreshedRecords
             return result
         }
 
@@ -67,7 +72,7 @@ enum BillingRefreshCoordinator {
         // VAL-CROSS-011: Use canonical multi-source baseline from database, not just parser output.
         let canonicalBaseline: [TokenUsage]
         do {
-            canonicalBaseline = try dataStore.usageStore.fetchAllUsage()
+            canonicalBaseline = try dataStoreActor.usageStore.fetchAllUsage()
         } catch {
             canonicalBaseline = allParsedUsages
             result.errors.append("Failed to fetch canonical usage baseline: \(error.localizedDescription)")
@@ -82,13 +87,14 @@ enum BillingRefreshCoordinator {
         // 6. Persist supplemental rows
         if !result.supplementalUsages.isEmpty {
             do {
-                let refreshedRecords = try await persistAndReload(result.supplementalUsages)
-                dataStore.replaceUsages(refreshedRecords)
+                let records = try await persistAndReload(result.supplementalUsages)
+                refreshedRecords = records
             } catch {
                 result.errors.append("Failed to store API-reconciled usage rows: \(error.localizedDescription)")
             }
         }
 
+        result.refreshedRecords = refreshedRecords
         return result
     }
 }

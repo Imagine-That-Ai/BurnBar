@@ -32,6 +32,11 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 60
+    outputs:
+      dmg_path: ${{ steps.dmg.outputs.dmg_path }}
+      dmg_name: ${{ steps.dmg.outputs.dmg_name }}
+      zip_path: ${{ steps.zip.outputs.zip_path }}
+      version: ${{ steps.version.outputs.version }}
     env:
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
       HAS_SIGNING_SECRETS: ${{ secrets.APPLE_TEAM_ID != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
@@ -441,30 +446,98 @@ jobs:
           echo "metadata_path=$METADATA_FILE" >> "$GITHUB_OUTPUT"
           cat "$METADATA_FILE"
 
+  smoke-test:
+    needs: build-and-release
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Download DMG artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-and-release.outputs.dmg_name }}
+          path: ${{ runner.temp }}
+
+      - name: Mount DMG
+        env:
+          DMG_PATH: ${{ needs.build-and-release.outputs.dmg_path }}
+        run: |
+          hdiutil attach "$DMG_PATH" \
+            -mountpoint /Volumes/OpenBurnBar \
+            -nobrowse
+
+      - name: Verify app launches and daemon starts
+        run: |
+          # Start the app in the background
+          open /Volumes/OpenBurnBar/OpenBurnBar.app
+          sleep 8
+
+          # Check the app process is running
+          if ! pgrep -x OpenBurnBar > /dev/null 2>&1; then
+            echo "::error::OpenBurnBar app failed to launch"
+            hdiutil detach /Volumes/OpenBurnBar -force 2>/dev/null || true
+            exit 1
+          fi
+
+          # Check the daemon Unix socket exists and is reachable
+          DAEMON_SOCKET="$HOME/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock"
+          for i in {1..10}; do
+            if [[ -S "$DAEMON_SOCKET" ]]; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ ! -S "$DAEMON_SOCKET" ]]; then
+            echo "::error::Daemon socket not found at $DAEMON_SOCKET after 20s"
+            hdiutil detach /Volumes/OpenBurnBar -force 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Smoke test passed: app launched, daemon socket active"
+
+      - name: Eject DMG
+        run: |
+          hdiutil detach /Volumes/OpenBurnBar -force 2>/dev/null || true
+
+  publish:
+    needs: [build-and-release, smoke-test]
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}
+          merge-multiple: true
+
       - name: Publish prerelease assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ steps.version.outputs.tag_name }}
-          VERSION: ${{ steps.version.outputs.version }}
-          DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
-          ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
-          CHECKSUMS_PATH: ${{ steps.checksums.outputs.checksums_path }}
-          SIG_PATH: ${{ steps.sign-checksums.outputs.sig_path }}
-          SBOM_PATH: ${{ steps.sbom.outputs.sbom_path }}
-          METADATA_PATH: ${{ steps.metadata.outputs.metadata_path }}
+          TAG_NAME: ${{ needs.build-and-release.outputs.version }}
+          VERSION: ${{ needs.build-and-release.outputs.version }}
+          DMG_PATH: ${{ needs.build-and-release.outputs.dmg_path }}
+          ZIP_PATH: ${{ needs.build-and-release.outputs.zip_path }}
         run: |
-          ASSETS=("$DMG_PATH" "$ZIP_PATH" "$CHECKSUMS_PATH" "$SBOM_PATH" "$METADATA_PATH")
+          # Checksums, SBOM, and metadata are also downloaded via merge-multiple
+          CHECKSUMS_PATH=$(ls "$RUNNER_TEMP"/checksums-v${VERSION}*.txt 2>/dev/null | head -1)
+          SBOM_PATH=$(ls "$RUNNER_TEMP"/*.spdx.json 2>/dev/null | head -1)
+          METADATA_PATH=$(ls "$RUNNER_TEMP"/release-metadata.json 2>/dev/null | head -1)
+          SIG_PATH=$(ls "$RUNNER_TEMP"/*.asc 2>/dev/null | head -1)
 
-          # Include GPG signature if it was created
-          if [[ -n "${SIG_PATH:-}" && -f "$SIG_PATH" ]]; then
-            ASSETS+=("$SIG_PATH")
-          fi
+          ASSETS=("$DMG_PATH" "$ZIP_PATH")
+          [[ -n "$CHECKSUMS_PATH" && -f "$CHECKSUMS_PATH" ]] && ASSETS+=("$CHECKSUMS_PATH")
+          [[ -n "$SBOM_PATH" && -f "$SBOM_PATH" ]] && ASSETS+=("$SBOM_PATH")
+          [[ -n "$METADATA_PATH" && -f "$METADATA_PATH" ]] && ASSETS+=("$METADATA_PATH")
+          [[ -n "$SIG_PATH" && -f "$SIG_PATH" ]] && ASSETS+=("$SIG_PATH")
 
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
-            gh release edit "$TAG_NAME" --title "OpenBurnBar $VERSION" --prerelease --latest=false
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            gh release upload "v${VERSION}" "${ASSETS[@]}" --clobber
+            gh release edit "v${VERSION}" --title "OpenBurnBar $VERSION" --prerelease --latest=false
           else
-            gh release create "$TAG_NAME" \
+            gh release create "v${VERSION}" \
               "${ASSETS[@]}" \
               --title "OpenBurnBar $VERSION" \
               --prerelease \

@@ -101,6 +101,13 @@ struct TunnelState: Codable, Hashable {
     var tunnelName: String
     var statusMessage: String
     var lastVerifiedAt: Date?
+    /// Rotatable bearer token used to authenticate requests to the proxy.
+    /// Regenerated on each connect to invalidate tokens from previous sessions.
+    var tunnelRotationToken: String?
+    /// Maximum requests per client IP per rate-limit window. Default 100.
+    var tunnelRateLimitRequests: Int
+    /// Rate-limit window in seconds. Default 60.
+    var tunnelRateLimitWindow: Int
 
     init(
         mode: TunnelMode = .quick,
@@ -108,7 +115,10 @@ struct TunnelState: Codable, Hashable {
         hostname: String = "",
         tunnelName: String = "openburnbar-cursor",
         statusMessage: String = "Not connected",
-        lastVerifiedAt: Date? = nil
+        lastVerifiedAt: Date? = nil,
+        tunnelRotationToken: String? = nil,
+        tunnelRateLimitRequests: Int = 100,
+        tunnelRateLimitWindow: Int = 60
     ) {
         self.mode = mode
         self.publicBaseURL = publicBaseURL
@@ -116,6 +126,9 @@ struct TunnelState: Codable, Hashable {
         self.tunnelName = tunnelName
         self.statusMessage = statusMessage
         self.lastVerifiedAt = lastVerifiedAt
+        self.tunnelRotationToken = tunnelRotationToken
+        self.tunnelRateLimitRequests = tunnelRateLimitRequests
+        self.tunnelRateLimitWindow = tunnelRateLimitWindow
     }
 }
 

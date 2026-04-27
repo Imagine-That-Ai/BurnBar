@@ -4,7 +4,7 @@ import OpenBurnBarCore
 @testable import OpenBurnBar
 @MainActor
 final class ArtifactDiscoveryServiceTests: XCTestCase {
-    func test_discovery_staysWithinRegisteredRootsAndKnownPatterns() throws {
+    func test_discovery_staysWithinRegisteredRootsAndKnownPatterns() async throws {
         let fileManager = FileManager.default
         let sandbox = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? fileManager.removeItem(at: sandbox) }
@@ -25,8 +25,8 @@ final class ArtifactDiscoveryServiceTests: XCTestCase {
             artifactDiscoveryEnabled: true,
             artifactDiscoveryRegisteredRoots: [approvedRoot.path]
         )
-        let service = ArtifactDiscoveryService(dataStore: store, settingsProvider: settings, fileManager: fileManager)
-        let report = try service.discoverAndIngest()
+        let service = ArtifactDiscoveryService(dataStoreActor: store.actor, settingsProvider: settings, fileManager: fileManager)
+        let report = try await service.discoverAndIngest()
 
         XCTAssertEqual(report.discoveredArtifacts, 2)
         XCTAssertEqual(report.insertedArtifacts, 2)
@@ -49,7 +49,7 @@ final class ArtifactDiscoveryServiceTests: XCTestCase {
         XCTAssertEqual(health?.status, .healthy)
     }
 
-    func test_discovery_marksMissingArtifactsDeleted_andQueuesPurge() throws {
+    func test_discovery_marksMissingArtifactsDeleted_andQueuesPurge() async throws {
         let fileManager = FileManager.default
         let sandbox = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? fileManager.removeItem(at: sandbox) }
@@ -65,11 +65,11 @@ final class ArtifactDiscoveryServiceTests: XCTestCase {
             artifactDiscoveryEnabled: true,
             artifactDiscoveryRegisteredRoots: [root.path]
         )
-        let service = ArtifactDiscoveryService(dataStore: store, settingsProvider: settings, fileManager: fileManager)
+        let service = ArtifactDiscoveryService(dataStoreActor: store.actor, settingsProvider: settings, fileManager: fileManager)
 
-        _ = try service.discoverAndIngest()
+        _ = try await service.discoverAndIngest()
         try fileManager.removeItem(at: agentsURL)
-        let secondRun = try service.discoverAndIngest()
+        let secondRun = try await service.discoverAndIngest()
 
         XCTAssertEqual(secondRun.deletedArtifacts, 1)
 

@@ -137,6 +137,7 @@ enum DatabaseWorkspaceSelection: Equatable, Hashable {
 
 final class DatabaseWorkspaceSnapshotBuilder {
 
+@MainActor
     static func build(
         from dataStore: DataStore,
         settingsManager: SettingsManager,
@@ -166,13 +167,10 @@ final class DatabaseWorkspaceSnapshotBuilder {
         }
 
         // Corpus
-        let (usages, providerSummaries, modelSummaries, indexingEnabled) = await MainActor.run {
-            let usages = dataStore.usages
-            let providerSummaries = dataStore.providerSummaries
-            let modelSummaries = dataStore.modelSummaries(in: nil)
-            let indexingEnabled = settingsManager.conversationIndexingEnabled
-            return (usages, providerSummaries, modelSummaries, indexingEnabled)
-        }
+        let usages = dataStore.usages
+        let providerSummaries = dataStore.providerSummaries
+        let modelSummaries = dataStore.modelSummaries(in: nil)
+        let indexingEnabled = settingsManager.conversationIndexingEnabled
         snap.totalSessions = usages.count
         snap.totalCostAllTime = usages.reduce(0) { $0 + $1.cost }
         snap.totalTokensAllTime = usages.reduce(0) { $0 + $1.totalTokens }
@@ -264,12 +262,10 @@ final class DatabaseWorkspaceSnapshotBuilder {
         capture(metric: .retrievalHealth, context: "retrieval_health", assign: { snap.retrievalHealth = $0 }) {
             try dataStore.fetchRetrievalHealth()
         }
-        snap.retrievalSystemHealth = await Task { @MainActor in
-            RetrievalHealthService(dataStore: dataStore).snapshot(
-                indexingEnabled: settingsManager.conversationIndexingEnabled,
-                sharedFeaturesAvailable: accountManager?.isSignedIn ?? false
-            )
-        }.value
+        snap.retrievalSystemHealth = RetrievalHealthService(dataStore: dataStore).snapshot(
+            indexingEnabled: settingsManager.conversationIndexingEnabled,
+            sharedFeaturesAvailable: accountManager?.isSignedIn ?? false
+        )
 
         // Embeddings
         capture(metric: .embeddingModels, context: "embedding_models", assign: { snap.embeddingModelRecords = $0 }) {
@@ -289,7 +285,7 @@ final class DatabaseWorkspaceSnapshotBuilder {
         }
 
         // Freshness
-        snap.lastRefresh = await MainActor.run { dataStore.lastRefresh }
+        snap.lastRefresh = dataStore.lastRefresh
         snap.snapshotBuiltAt = Date()
         snap.contentVersion = makeContentVersion(from: snap)
 

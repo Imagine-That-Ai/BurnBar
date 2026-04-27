@@ -4,25 +4,25 @@ import Foundation
 /// 1. `ProviderAPIKeyStore` (user-configured keys in the app)
 /// 2. Keychain (Cursor Connector bridge keys)
 /// 3. Environment variables
-@MainActor
 struct SummaryAPIKeyResolver {
     let providerAPIKeyStore: ProviderAPIKeyStore
 
-    func resolveAPIKey(for provider: SummaryProviderID) -> String? {
+    func resolveAPIKey(for provider: SummaryProviderID) async -> String? {
         let env = ProcessInfo.processInfo.environment
+        let store = providerAPIKeyStore
         switch provider {
         case .local, .mlx:
             return nil
         case .openrouter:
-            return nonEmpty(providerAPIKeyStore.apiKey(for: "openrouter"))
-                ?? nonEmpty(env["OPENROUTER_API_KEY"])
+            let key = await store.apiKey(for: "openrouter")
+            return nonEmpty(key) ?? nonEmpty(env["OPENROUTER_API_KEY"])
         case .minimax:
-            return nonEmpty(providerAPIKeyStore.apiKey(for: "minimax"))
-                ?? cursorConnectorKey(for: "provider.minimax.apiKey")
+            let key = await store.apiKey(for: "minimax")
+            return nonEmpty(key) ?? cursorConnectorKey(for: "provider.minimax.apiKey")
                 ?? nonEmpty(env["MINIMAX_API_KEY"])
         case .zai:
-            return nonEmpty(providerAPIKeyStore.apiKey(for: "zai"))
-                ?? cursorConnectorKey(for: "provider.zai.apiKey")
+            let key = await store.apiKey(for: "zai")
+            return nonEmpty(key) ?? cursorConnectorKey(for: "provider.zai.apiKey")
                 ?? nonEmpty(env["ZAI_API_KEY"])
         }
     }

@@ -263,13 +263,15 @@ final class UsageAggregatorTests: XCTestCase {
 
         let apiRecords = [
             ProviderUsageRecord(
-                provider: .factory,
-                sessionId: "s1",
+                providerName: "Factory",
+                model: "test-model",
+                date: Date(),
                 inputTokens: 100,
                 outputTokens: 50,
+                cacheReadTokens: 0,
+                cacheCreationTokens: 0,
                 costUSD: 0.01,
-                startTime: Date(),
-                endTime: Date()
+                requestCount: 1
             )
         ]
 
@@ -278,7 +280,7 @@ final class UsageAggregatorTests: XCTestCase {
                 provider: .factory,
                 sessionId: "s1",
                 projectName: "p",
-                model: "m",
+                model: "test-model",
                 inputTokens: 100,
                 outputTokens: 50,
                 costUSD: 0.01,
@@ -1361,37 +1363,40 @@ final class ParseResultTests: XCTestCase {
 final class ProviderUsageRecordTests: XCTestCase {
 
     func test_init_withRequiredParameters() {
-        let startTime = Date()
-        let endTime = Date().addingTimeInterval(3600)
+        let testDate = Date()
 
         let record = ProviderUsageRecord(
-            provider: .factory,
-            sessionId: "s1",
+            providerName: "Factory",
+            model: "test-model",
+            date: testDate,
             inputTokens: 1000,
             outputTokens: 500,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
             costUSD: 0.05,
-            startTime: startTime,
-            endTime: endTime
+            requestCount: 3
         )
 
-        XCTAssertEqual(record.provider, .factory)
-        XCTAssertEqual(record.sessionId, "s1")
+        XCTAssertEqual(record.providerName, "Factory")
+        XCTAssertEqual(record.model, "test-model")
+        XCTAssertEqual(record.date, testDate)
         XCTAssertEqual(record.inputTokens, 1000)
         XCTAssertEqual(record.outputTokens, 500)
         XCTAssertEqual(record.costUSD, 0.05)
-        XCTAssertEqual(record.startTime, startTime)
-        XCTAssertEqual(record.endTime, endTime)
+        XCTAssertEqual(record.requestCount, 3)
     }
 
     func test_init_defaultValues() {
         let record = ProviderUsageRecord(
-            provider: .factory,
-            sessionId: "s1",
+            providerName: "Factory",
+            model: "test-model",
+            date: Date(),
             inputTokens: 100,
             outputTokens: 50,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
             costUSD: 0.01,
-            startTime: Date(),
-            endTime: Date()
+            requestCount: 1
         )
 
         XCTAssertEqual(record.cacheCreationTokens, 0)
@@ -1435,13 +1440,15 @@ final class BillingUsageReconciliationTests: XCTestCase {
     func test_supplementalUsages_returnsEmptyWhenAllMatched() {
         let apiRecords = [
             ProviderUsageRecord(
-                provider: .factory,
-                sessionId: "s1",
+                providerName: "Factory",
+                model: "test-model",
+                date: Date(),
                 inputTokens: 100,
                 outputTokens: 50,
+                cacheReadTokens: 0,
+                cacheCreationTokens: 0,
                 costUSD: 0.01,
-                startTime: Date(),
-                endTime: Date()
+                requestCount: 1
             )
         ]
 
@@ -1450,7 +1457,7 @@ final class BillingUsageReconciliationTests: XCTestCase {
                 provider: .factory,
                 sessionId: "s1",
                 projectName: "p",
-                model: "m",
+                model: "test-model",
                 inputTokens: 100,
                 outputTokens: 50,
                 costUSD: 0.01,
@@ -1469,13 +1476,15 @@ final class BillingUsageReconciliationTests: XCTestCase {
     func test_supplementalUsages_returnsAPIOnlyWhenNoLocalMatch() {
         let apiRecords = [
             ProviderUsageRecord(
-                provider: .factory,
-                sessionId: "api-s1",
+                providerName: "Factory",
+                model: "test-model",
+                date: Date(),
                 inputTokens: 1000,
                 outputTokens: 500,
+                cacheReadTokens: 0,
+                cacheCreationTokens: 0,
                 costUSD: 0.05,
-                startTime: Date(),
-                endTime: Date()
+                requestCount: 1
             )
         ]
 
@@ -1486,29 +1495,32 @@ final class BillingUsageReconciliationTests: XCTestCase {
             existingUsages: existingUsages
         )
         XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.sessionId, "api-s1")
         XCTAssertTrue(result.first!.sessionId.hasPrefix(BillingUsageReconciliation.apiReconciliationSessionPrefix))
     }
 
     func test_supplementalUsages_handlesMultipleProviders() {
         let apiRecords = [
             ProviderUsageRecord(
-                provider: .factory,
-                sessionId: "s1",
+                providerName: "Factory",
+                model: "test-model",
+                date: Date(),
                 inputTokens: 100,
                 outputTokens: 50,
+                cacheReadTokens: 0,
+                cacheCreationTokens: 0,
                 costUSD: 0.01,
-                startTime: Date(),
-                endTime: Date()
+                requestCount: 1
             ),
             ProviderUsageRecord(
-                provider: .claudeCode,
-                sessionId: "s2",
+                providerName: "Anthropic",
+                model: "claude-4-sonnet",
+                date: Date(),
                 inputTokens: 200,
                 outputTokens: 100,
+                cacheReadTokens: 0,
+                cacheCreationTokens: 0,
                 costUSD: 0.02,
-                startTime: Date(),
-                endTime: Date()
+                requestCount: 2
             )
         ]
 
@@ -1517,7 +1529,7 @@ final class BillingUsageReconciliationTests: XCTestCase {
                 provider: .factory,
                 sessionId: "s1",
                 projectName: "p",
-                model: "m",
+                model: "test-model",
                 inputTokens: 100,
                 outputTokens: 50,
                 costUSD: 0.01,
@@ -1538,22 +1550,26 @@ final class BillingUsageReconciliationTests: XCTestCase {
     func test_supplementalUsages_withPartialOverlap() {
         let apiRecords = [
             ProviderUsageRecord(
-                provider: .factory,
-                sessionId: "s1",
+                providerName: "Factory",
+                model: "test-model",
+                date: Date(),
                 inputTokens: 100,
                 outputTokens: 50,
+                cacheReadTokens: 0,
+                cacheCreationTokens: 0,
                 costUSD: 0.01,
-                startTime: Date(),
-                endTime: Date()
+                requestCount: 1
             ),
             ProviderUsageRecord(
-                provider: .factory,
-                sessionId: "s2",
+                providerName: "Factory",
+                model: "test-model-2",
+                date: Date(),
                 inputTokens: 200,
                 outputTokens: 100,
+                cacheReadTokens: 0,
+                cacheCreationTokens: 0,
                 costUSD: 0.02,
-                startTime: Date(),
-                endTime: Date()
+                requestCount: 2
             )
         ]
 
@@ -1562,7 +1578,7 @@ final class BillingUsageReconciliationTests: XCTestCase {
                 provider: .factory,
                 sessionId: "s1",
                 projectName: "p",
-                model: "m",
+                model: "test-model",
                 inputTokens: 100,
                 outputTokens: 50,
                 costUSD: 0.01,
@@ -1576,7 +1592,7 @@ final class BillingUsageReconciliationTests: XCTestCase {
             existingUsages: existingUsages
         )
         XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.sessionId, "s2")
+        XCTAssertTrue(result.first!.sessionId.hasPrefix(BillingUsageReconciliation.apiReconciliationSessionPrefix))
     }
 }
 
