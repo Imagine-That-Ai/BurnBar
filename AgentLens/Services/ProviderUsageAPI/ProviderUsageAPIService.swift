@@ -162,6 +162,14 @@ final class ProviderUsageAPIService {
         apis.map(\.providerName)
     }
 
+    /// Rebuilds APIs and returns a snapshot of the active `ProviderUsageAPI` instances.
+    /// Call this on `@MainActor` before entering a background context so billing
+    /// reconciliation can run without main-actor hops.
+    func snapshotAPIs() -> [any ProviderUsageAPI] {
+        rebuildAPIs()
+        return apis
+    }
+
     /// Fetch usage from all configured provider APIs.
     func fetchAll(since: Date) async -> [ProviderUsageRecord] {
         guard !isFetching else { return [] }

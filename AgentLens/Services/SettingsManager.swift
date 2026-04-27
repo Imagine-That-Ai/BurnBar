@@ -221,6 +221,21 @@ final class SettingsManager {
         didSet { save() }
     }
 
+    /// When true, custom log paths are restricted to a set of known-safe roots.
+    /// Paths outside the known set fall back to the provider's default directory.
+    /// Default: true (safe default — protects against accidental sensitive-path exposure).
+    var restrictedLogAccess: Bool {
+        didSet { save() }
+    }
+
+    /// When true, the SQLite database is encrypted with SQLCipher (AES-256).
+    /// The encryption key is stored in the macOS Keychain. Requires the app to be
+    /// built with GRDBCipher (CocoaPods) for encryption to be active.
+    /// Default: false (no encryption — existing users are not migrated automatically).
+    var databaseEncryptionEnabled: Bool {
+        didSet { save() }
+    }
+
     /// Preferred embedding version for semantic indexing/search. Empty string = automatic active version.
     var preferredIndexEmbeddingVersionID: String {
         didSet { save() }
@@ -634,6 +649,16 @@ final class SettingsManager {
         } else {
             self.conversationIndexingEnabled = false
         }
+        if defaults.object(forKey: "restrictedLogAccess") != nil {
+            self.restrictedLogAccess = defaults.bool(forKey: "restrictedLogAccess")
+        } else {
+            self.restrictedLogAccess = true
+        }
+        if defaults.object(forKey: "databaseEncryptionEnabled") != nil {
+            self.databaseEncryptionEnabled = defaults.bool(forKey: "databaseEncryptionEnabled")
+        } else {
+            self.databaseEncryptionEnabled = false
+        }
         self.preferredIndexEmbeddingVersionID = defaults.string(forKey: "preferredIndexEmbeddingVersionID") ?? ""
         if
             let rawProvider = defaults.string(forKey: "indexEmbeddingProvider"),
@@ -846,6 +871,8 @@ final class SettingsManager {
         defaults.set(gatewayHost, forKey: "gatewayHost")
         defaults.set(gatewayPort, forKey: "gatewayPort")
         defaults.set(conversationIndexingEnabled, forKey: "conversationIndexingEnabled")
+        defaults.set(restrictedLogAccess, forKey: "restrictedLogAccess")
+        defaults.set(databaseEncryptionEnabled, forKey: "databaseEncryptionEnabled")
         defaults.set(preferredIndexEmbeddingVersionID, forKey: "preferredIndexEmbeddingVersionID")
         defaults.set(indexEmbeddingProvider.rawValue, forKey: "indexEmbeddingProvider")
         defaults.set(indexOpenAIModel, forKey: "indexOpenAIModel")
@@ -1025,7 +1052,7 @@ final class SettingsManager {
     }
 
     func pathExists(for provider: AgentProvider) -> Bool {
-        let path = logPaths[provider] ?? provider.logDirectory
+        let path = restrictedLogDirectory(for: provider)
         return candidatePaths(for: provider, configuredPath: path).contains {
             FileManager.default.fileExists(atPath: $0)
         }
@@ -1033,8 +1060,18 @@ final class SettingsManager {
 
     // MARK: - Path Resolution
 
+    /// Returns the log directory to use for the given provider, respecting
+    /// `restrictedLogAccess`. When restricted mode is on and the user's custom
+    /// path is not under a known-safe root, returns the provider's default path.
+    func restrictedLogDirectory(for provider: AgentProvider) -> String {
+        let validator = RestrictedLogPathValidator(restrictedMode: restrictedLogAccess)
+        let customPath = logPaths[provider]
+        let defaultPath = provider.logDirectory
+        return validator.resolvePath(customPath: customPath, providerDefault: defaultPath) ?? defaultPath
+    }
+
     func resolvedPath(for provider: AgentProvider) -> URL? {
-        let path = logPaths[provider] ?? provider.logDirectory
+        let path = restrictedLogDirectory(for: provider)
         let expandedPaths = candidatePaths(for: provider, configuredPath: path)
         if let existing = expandedPaths.first(where: { FileManager.default.fileExists(atPath: $0) }) {
             return URL(fileURLWithPath: existing)

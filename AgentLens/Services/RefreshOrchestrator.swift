@@ -53,6 +53,19 @@ actor RefreshOrchestrator {
         }
     }
 
+    func indexConversationsOffMain(_ conversations: [ConversationRecord], indexingEnabled: Bool) async -> Int {
+        guard !conversations.isEmpty, indexingEnabled else { return 0 }
+        do {
+            let indexingReport = try await Task { @MainActor in
+                try await ConversationIndexer.shared.index(conversations, in: dataStore)
+            }.value
+            return indexingReport.changedRecordCount
+        } catch {
+            AppLogger.dataStore.error("Conversation indexing failed: \(error.localizedDescription)")
+            return 0
+        }
+    }
+
     func runRetentionPurgeIfNeeded() async {
         // Retention purge not configured in current SettingsManager; no-op.
     }
@@ -153,6 +166,20 @@ actor RefreshOrchestrator {
         result.postPersistencePhaseDuration = Date().timeIntervalSince(postPersistencePhaseStartedAt)
 
         return result
+    }
+
+    /// Off-main-actor variant used by RefreshBackgroundWork.
+    func runPostPersistencePhaseOffMain(
+        allUsages: [TokenUsage],
+        snapshotAPIs: [any ProviderUsageAPI]
+    ) async -> PostPersistenceResult {
+        await runPostPersistencePhase(
+            refreshStartedAt: Date(),
+            allUsages: allUsages,
+            indexedConversationChanges: 0,
+            parsePhaseDuration: 0,
+            persistencePhaseDuration: 0
+        )
     }
 
     private static let retentionPurgeCacheKey = "data_retention_purge"

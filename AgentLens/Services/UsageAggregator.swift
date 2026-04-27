@@ -3,6 +3,13 @@ import GRDB
 
 // MARK: - Usage Aggregator
 
+/// Thin `@MainActor @Observable` facade that coordinates the refresh pipeline.
+///
+/// Heavy work (parsing 12+ providers, DB persistence, quota API calls,
+/// conversation indexing, cloud sync) runs off the main thread via
+/// `RefreshBackgroundWork` inside `Task.detached`.  This type only touches
+/// observable state on the main actor: setting `isRefreshing`, applying
+/// results to `DataStore`, and launching post-refresh side-effects.
 @Observable
 @MainActor
 final class UsageAggregator {
@@ -90,8 +97,6 @@ final class UsageAggregator {
             settingsManager: settingsManager,
             providerAPIKeyStore: providerAPIKeyStore
         )
-        // Wire the projection-sweep callback so the summary engine can
-        // request a projection sweep without a circular reference.
         self.summaryEngine.onRequestProjectionSweep = { [weak self] in
             self?.requestProjectionSweep()
         }
@@ -113,146 +118,86 @@ final class UsageAggregator {
             ? .tokenizerAssisted
             : .characterRatio
 
-        // Data retention: purge expired rows once per launch.
-        await refreshOrchestrator.runRetentionPurgeIfNeeded()
+        // Snapshot @MainActor state before entering background.
+        let existingUsages = dataStore.usages
+        let settings = RefreshSettingsSnapshot(
+            conversationIndexingEnabled: settingsManager.conversationIndexingEnabled,
+            snapshotAPIs: usageAPIService?.snapshotAPIs() ?? []
+        )
+        let parsers = self.parsers
+        let dataStore = self.dataStore
+        let orchestrator = self.refreshOrchestrator
 
         let refreshStartedAt = Date()
-        let parsePhaseStartedAt = Date()
-        var allUsages: [TokenUsage] = []
-        var allConversations: [ConversationRecord] = []
-        var provisionalUsageMap = Dictionary(uniqueKeysWithValues: dataStore.usages.map { ($0.id, $0) })
 
-        let parserEntries = parsers.sorted { $0.key.rawValue < $1.key.rawValue }
-        for (provider, parser) in parserEntries {
-            do {
-                let result = try await parseProviderOffMainActor(parser)
-                let usages = result.usages
-                var providerHealth: ParserHealth = usages.isEmpty ? .empty : .healthy(sessionCount: usages.count)
-                allUsages.append(contentsOf: usages)
-                allConversations.append(contentsOf: result.conversations)
-                parserHealth[provider] = providerHealth
-                if usages.isEmpty == false {
-                    for usage in usages {
-                        provisionalUsageMap[usage.id] = usage
-                    }
-                    dataStore.replaceUsages(Array(provisionalUsageMap.values))
-                    lastRefresh = Date()
-                }
-            } catch {
-                parserHealth[provider] = .failed(error: error.localizedDescription)
-                errors[provider] = error.localizedDescription
-            }
+        // Data retention: purge expired rows once per launch.
+        await orchestrator.runRetentionPurgeIfNeeded()
+
+        // ── Heavy work runs entirely off the main thread ─────────────
+        let result = await Task.detached(priority: .utility) {
+            await RefreshBackgroundWork.runFullRefresh(
+                parsers: parsers,
+                dataStore: dataStore,
+                orchestrator: orchestrator,
+                existingUsages: existingUsages,
+                settings: settings
+            )
+        }.value
+
+        // ── Apply results back on @MainActor ─────────────────────────
+        parserHealth = result.parserHealth
+        errors = result.errors
+
+        // Reload from DB so in-memory array is canonical.
+        if let refreshed = result.postPersistence.refreshedRecords {
+            dataStore.replaceUsages(refreshed)
+        } else {
+            await dataStore.refresh()
         }
-        let parsePhaseDuration = Date().timeIntervalSince(parsePhaseStartedAt)
+        lastRefresh = Date()
 
-        // Index conversations off the main thread after parsing completes.
-        let indexedConversationChanges = await refreshOrchestrator.indexConversations(allConversations)
-
-        // Store all usages and reload from SQLite so the in-memory array
-        // includes both parser output and any chat-inserted rows.
-        let persistencePhaseStartedAt = Date()
-        do {
-            let refreshedRecords = try await persistAndReloadUsageRows(allUsages)
-            dataStore.replaceUsages(refreshedRecords)
-            lastRefresh = Date()
-        } catch {
-            let message = "Failed to store imported usage rows: \(error.localizedDescription)"
-            parserImportError = message
-            persistenceErrorMessage = message
-        }
-        let persistencePhaseDuration = Date().timeIntervalSince(persistencePhaseStartedAt)
-
-        do {
-            try upsertParserImportHealth(importedUsageCount: allUsages.count, persistenceError: persistenceErrorMessage)
-        } catch {
-            parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
+        persistenceErrorMessage = result.persistenceErrorMessage
+        if let healthError = result.healthWriteError, parserImportError == nil {
+            parserImportError = healthError
         }
 
-        // Advance backfill cursors only after successful persistence.
-        // VAL-PERSIST-006 / VAL-PERSIST-007 / VAL-PERSIST-004
-        if persistenceErrorMessage == nil {
-            await refreshOrchestrator.runScheduledBackfillIfNeeded(parsers: parsers)
-        }
-
-        // Unblock scan UI immediately after local parsing/persistence completes.
         isRefreshing = false
 
-        // Post-persistence phase runs off the main thread.
-        let postResult = await refreshOrchestrator.runPostPersistencePhase(
-            refreshStartedAt: refreshStartedAt,
-            allUsages: allUsages,
-            indexedConversationChanges: indexedConversationChanges,
-            parsePhaseDuration: parsePhaseDuration,
-            persistencePhaseDuration: persistencePhaseDuration
-        )
-
-        if let refreshedRecords = postResult.refreshedRecords {
-            dataStore.replaceUsages(refreshedRecords)
+        let postResult = result.postPersistence
+        if let refreshed = postResult.refreshedRecords {
+            dataStore.replaceUsages(refreshed)
             lastRefresh = Date()
         }
 
         apiUsages = postResult.apiUsages
-        if let error = postResult.parserImportError, parserImportError == nil {
-            parserImportError = error
+        if let postError = postResult.parserImportError, parserImportError == nil {
+            parserImportError = postError
         }
 
         let pendingProjectionJobs = postResult.pendingProjectionJobs
         launchArtifactDiscoverySweep()
-        if indexedConversationChanges > 0,
+        if result.indexedConversationChanges > 0,
            pendingProjectionJobs < AutoSummaryPolicy.pauseWhenProjectionQueueExceeds {
             summaryEngine.launchAutoSummarySweep(indexedAfter: refreshStartedAt)
         }
-        if indexedConversationChanges > 0 || pendingProjectionJobs > 0 {
+        if result.indexedConversationChanges > 0 || pendingProjectionJobs > 0 {
             launchProjectionSweep()
         }
 
-        let postPersistencePhaseDuration = postResult.postPersistencePhaseDuration
         let totalDuration = Date().timeIntervalSince(refreshStartedAt)
         AppLogger.parser.info(
             "usage_refresh_timing",
             metadata: [
-                "parse_ms": Self.formatMilliseconds(parsePhaseDuration),
-                "persist_ms": Self.formatMilliseconds(persistencePhaseDuration),
-                "post_persist_ms": Self.formatMilliseconds(postPersistencePhaseDuration),
+                "parse_ms": Self.formatMilliseconds(result.parsePhaseDuration),
+                "persist_ms": Self.formatMilliseconds(result.persistencePhaseDuration),
+                "post_persist_ms": Self.formatMilliseconds(postResult.postPersistencePhaseDuration),
                 "total_ms": Self.formatMilliseconds(totalDuration),
-                "providers_scanned": String(parserEntries.count),
-                "usage_rows": String(allUsages.count),
-                "indexed_changes": String(indexedConversationChanges),
+                "providers_scanned": String(parsers.count),
+                "usage_rows": String(result.allUsages.count),
+                "indexed_changes": String(result.indexedConversationChanges),
                 "api_supplemental_rows": String(postResult.supplementalUsageCount),
             ]
         )
-    }
-
-    private func parseProviderOffMainActor(_ parser: any LogParser) async throws -> ParseResult {
-        try await Task.detached(priority: .utility) {
-            try await parser.parse()
-        }.value
-    }
-
-    private func persistAndReloadUsageRows(_ usages: [TokenUsage]) async throws -> [TokenUsage] {
-        guard usages.isEmpty == false else {
-            return try await reloadUsageRows()
-        }
-        let usageStore = dataStore.usageStore
-        return try await Task.detached(priority: .utility) {
-            try usageStore.insert(usages)
-            return try usageStore.fetchAllUsage()
-        }.value
-    }
-
-    private func deleteAndReloadUsageRows(sessionIDPrefix: String) async throws -> [TokenUsage] {
-        let usageStore = dataStore.usageStore
-        return try await Task.detached(priority: .utility) {
-            try usageStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
-            return try usageStore.fetchAllUsage()
-        }.value
-    }
-
-    private func reloadUsageRows() async throws -> [TokenUsage] {
-        let usageStore = dataStore.usageStore
-        return try await Task.detached(priority: .utility) {
-            try usageStore.fetchAllUsage()
-        }.value
     }
 
     private static func formatMilliseconds(_ seconds: TimeInterval) -> String {
@@ -303,60 +248,56 @@ final class UsageAggregator {
             ? .tokenizerAssisted
             : .characterRatio
 
+        // Snapshot @MainActor state before entering background.
+        let settings = RefreshSettingsSnapshot(
+            conversationIndexingEnabled: settingsManager.conversationIndexingEnabled,
+            snapshotAPIs: usageAPIService?.snapshotAPIs() ?? []
+        )
+        let dataStore = self.dataStore
+
         let refreshStartedAt = Date()
-        var indexedConversationChanges = 0
+
+        // ── Heavy work runs entirely off the main thread ─────────────
+        let result = await Task.detached(priority: .utility) {
+            await RefreshBackgroundWork.runSingleProviderRefresh(
+                provider: provider,
+                parser: parser,
+                dataStore: dataStore,
+                settings: settings
+            )
+        }.value
+
+        // ── Apply results back on @MainActor ─────────────────────────
+        parserHealth[provider] = result.health
+
+        if let error = result.error {
+            errors[provider] = error
+            parserImportError = error
+        } else {
+            errors.removeValue(forKey: provider)
+        }
+
+        await dataStore.refresh()
 
         do {
-            let result = try await Task.detached(priority: .utility) {
-                try await parser.parse()
-            }.value
-            var providerHealth: ParserHealth = result.usages.isEmpty ? .empty : .healthy(sessionCount: result.usages.count)
-            try dataStore.insert(result.usages)
-            if settingsManager.conversationIndexingEnabled {
-                do {
-                    let indexingReport = try await ConversationIndexer.shared.index(result.conversations, in: dataStore)
-                    indexedConversationChanges += indexingReport.changedRecordCount
-                } catch {
-                    let message = "Conversation indexing failed for \(provider.displayName): \(error.localizedDescription)"
-                    providerHealth = .degraded(sessionCount: result.usages.count, error: message)
-                    errors[provider] = message
-                }
-            }
-            parserHealth[provider] = providerHealth
-            await dataStore.refresh()
-            switch providerHealth {
-            case .degraded:
-                break
-            default:
-                errors.removeValue(forKey: provider)
-            }
-            do {
-                try upsertParserImportHealth(importedUsageCount: result.usages.count, persistenceError: nil)
-            } catch {
-                parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
-            }
-            // Category B: If job count fails, 0 is a safe fallback.
-            let pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
-            launchArtifactDiscoverySweep()
-            if indexedConversationChanges > 0 {
-                summaryEngine.launchAutoSummarySweep(indexedAfter: refreshStartedAt)
-            }
-            if indexedConversationChanges > 0 || pendingProjectionJobs > 0 {
-                launchProjectionSweep()
-            }
-            if ProviderQuotaService.supportedProviders.contains(provider) {
-                await quotaService.refresh(provider: provider, dataStore: dataStore)
-            }
+            try upsertParserImportHealth(
+                importedUsageCount: result.usages.count,
+                persistenceError: result.error
+            )
         } catch {
-            parserHealth[provider] = .failed(error: error.localizedDescription)
-            errors[provider] = error.localizedDescription
-            let message = "Provider refresh failed for \(provider.displayName): \(error.localizedDescription)"
-            parserImportError = message
-            do {
-                try upsertParserImportHealth(importedUsageCount: 0, persistenceError: message)
-            } catch {
-                parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
-            }
+            parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
+        }
+
+        let pendingProjectionJobs = (try? dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0
+        launchArtifactDiscoverySweep()
+        if result.indexedConversationChanges > 0 {
+            summaryEngine.launchAutoSummarySweep(indexedAfter: refreshStartedAt)
+        }
+        if result.indexedConversationChanges > 0 || pendingProjectionJobs > 0 {
+            launchProjectionSweep()
+        }
+        if ProviderQuotaService.supportedProviders.contains(provider) {
+            await quotaService.refresh(provider: provider, dataStore: dataStore)
         }
     }
 }

@@ -134,12 +134,24 @@ final class DataStoreCoordinator {
 
     // MARK: - Initialization
 
+    /// Creates the database pool. Reads `databaseEncryptionEnabled` directly from
+    /// UserDefaults so this can be called before SettingsManager is initialized.
+    private static func makeDatabasePool(path: String) throws -> DatabasePool {
+        let defaults = UserDefaults.standard
+        let encryptionEnabled = defaults.bool(forKey: "databaseEncryptionEnabled")
+        let encryptionKey: String? = encryptionEnabled
+            ? DatabaseEncryptionService.getOrCreateKey()
+            : nil
+        let config = DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
+        return try DatabasePool(path: path, configuration: config)
+    }
+
     convenience init() throws {
         let appDir = try OpenBurnBarMigration.prepareSupportDirectory()
         let dbPath = appDir.appendingPathComponent(OpenBurnBarIdentity.databaseFileName).path
         // DatabasePool enables concurrent reads (WAL mode) for read-heavy workloads
         // like dashboard aggregation and search queries. Writes remain serialized.
-        let pool = try DatabasePool(path: dbPath)
+        let pool = try Self.makeDatabasePool(path: dbPath)
         try self.init(databaseQueue: pool)
     }
 
