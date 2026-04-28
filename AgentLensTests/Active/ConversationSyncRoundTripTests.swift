@@ -1,5 +1,6 @@
 import XCTest
 import GRDB
+import FirebaseFirestore
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
@@ -7,7 +8,7 @@ import OpenBurnBarCore
 final class ConversationSyncRoundTripTests: XCTestCase {
     private var dataStore: DataStore!
     private var accountManager: FakeAccountManager!
-    private var settingsManager: FakeSettingsManager!
+    private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
     private var context: CloudSyncContext!
     private var conversationSync: ConversationSyncService!
@@ -16,7 +17,7 @@ final class ConversationSyncRoundTripTests: XCTestCase {
     override func setUp() async throws {
         dataStore = try makeDiscoveryInMemoryStore()
         accountManager = FakeAccountManager.makeSignedIn()
-        settingsManager = FakeSettingsManager()
+        settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
         fakeGateway = CloudSyncFirestoreFakeGateway()
         context = CloudSyncContext(
             dataStore: dataStore,
@@ -31,13 +32,14 @@ final class ConversationSyncRoundTripTests: XCTestCase {
     // MARK: - Write → Read Round Trip
 
     func test_conversationUpload_writesToFirestoreAndMarksSynced() async throws {
+        let now = Date()
         let record = ConversationRecord(
             id: "conv-1",
             provider: .claudeCode,
             sessionId: "session-1",
             projectName: "TestProject",
-            startTime: Date(timeIntervalSince1970: 1_700_000_000),
-            endTime: Date(timeIntervalSince1970: 1_700_000_100),
+            startTime: now,
+            endTime: now.addingTimeInterval(100),
             messageCount: 10,
             userWordCount: 100,
             assistantWordCount: 200,
@@ -49,15 +51,7 @@ final class ConversationSyncRoundTripTests: XCTestCase {
             fullText: "Full text here",
             fileModifiedAt: nil
         )
-        try dataStore.insertRemoteConversation(record)
-
-        // Mark as unsynced by manipulating the syncedAt column directly
-        try dataStore.dbQueue.write { db in
-            try db.execute(
-                sql: "UPDATE conversations SET syncedAt = NULL WHERE id = ?",
-                arguments: [record.id]
-            )
-        }
+        try dataStore.upsertConversation(record)
 
         let unsyncedBefore = try dataStore.fetchUnsyncedConversations(limit: 400)
         XCTAssertEqual(unsyncedBefore.count, 1)
@@ -79,7 +73,7 @@ final class ConversationSyncRoundTripTests: XCTestCase {
     func test_conversationDownload_readsRemoteConversationIntoLocalStore() async throws {
         let remoteDeviceId = "remote-device-2"
         let remoteDocPath = "users/test-uid-1/conversations/\(remoteDeviceId)_conv-remote-1"
-        let remoteUpdatedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let remoteUpdatedAt = Date().addingTimeInterval(-60) // recent enough to pass 90-day watermark
 
         fakeGateway.setDocumentData([
             "id": "conv-remote-1",
@@ -109,15 +103,13 @@ final class ConversationSyncRoundTripTests: XCTestCase {
 
         await downloadSync.sync()
 
-        let conversations = try dataStore.dbQueue.read { db in
-            try ConversationRecord.fetchAll(db)
-        }
+        let conversations = try dataStore.fetchConversations()
         let remoteConversations = conversations.filter { $0.isRemote }
         XCTAssertEqual(remoteConversations.count, 1)
 
         let remote = remoteConversations.first!
         XCTAssertEqual(remote.id, "\(remoteDeviceId):conv-remote-1")
-        XCTAssertEqual(remote.provider, .cursor)
+        XCTAssertEqual(remote.provider, AgentProvider.cursor)
         XCTAssertEqual(remote.sessionId, "remote-session-1")
         XCTAssertEqual(remote.messageCount, 42)
         XCTAssertEqual(remote.sourceDeviceId, remoteDeviceId)
@@ -126,14 +118,15 @@ final class ConversationSyncRoundTripTests: XCTestCase {
     }
 
     func test_conversationRoundTrip_downloadDoesNotOverwriteLocal() async throws {
+        let now = Date()
         // Insert a local conversation
-        let localRecord = ConversationRecord(
+        try dataStore.upsertConversation(ConversationRecord(
             id: "conv-1",
             provider: .factory,
             sessionId: "local-session",
             projectName: "LocalProject",
-            startTime: Date(timeIntervalSince1970: 1_700_000_000),
-            endTime: Date(timeIntervalSince1970: 1_700_000_100),
+            startTime: now,
+            endTime: now.addingTimeInterval(100),
             messageCount: 5,
             userWordCount: 50,
             assistantWordCount: 100,
@@ -144,18 +137,15 @@ final class ConversationSyncRoundTripTests: XCTestCase {
             lastAssistantMessage: "Local hello",
             fullText: "Local full text",
             fileModifiedAt: nil
-        )
-        try dataStore.insertRemoteConversation(localRecord)
+        ))
 
         // Upload it
-        try dataStore.dbQueue.write { db in
-            try db.execute(sql: "UPDATE conversations SET syncedAt = NULL WHERE id = ?", arguments: [localRecord.id])
-        }
         await conversationSync.sync()
 
         // Now simulate the same conversation coming back from remote with different data
         // Because local uses INSERT OR IGNORE, it should NOT overwrite
         let remoteDocPath = "users/test-uid-1/conversations/remote-device-2_conv-1"
+        let remoteUpdatedAt = now.addingTimeInterval(-60)
         fakeGateway.setDocumentData([
             "id": "conv-1",
             "deviceId": "remote-device-2",
@@ -171,28 +161,26 @@ final class ConversationSyncRoundTripTests: XCTestCase {
             "inferredTaskTitle": "Changed Task",
             "lastAssistantMessage": "Changed hello",
             "sourceType": ConversationSourceType.providerLog.rawValue,
-            "updatedAt": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_000)),
-            "startTime": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_000)),
-            "endTime": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_100))
+            "updatedAt": Timestamp(date: remoteUpdatedAt),
+            "startTime": Timestamp(date: remoteUpdatedAt),
+            "endTime": Timestamp(date: remoteUpdatedAt.addingTimeInterval(100))
         ], at: remoteDocPath)
 
         fakeGateway.setDocumentData([
             "deviceName": "Remote Studio",
             "platform": "macOS",
-            "lastActiveAt": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_000))
+            "lastActiveAt": Timestamp(date: remoteUpdatedAt)
         ], at: "users/test-uid-1/devices/remote-device-2")
 
         await downloadSync.sync()
 
-        let conversations = try dataStore.dbQueue.read { db in
-            try ConversationRecord.fetchAll(db)
-        }
+        let conversations = try dataStore.fetchConversations()
         // Should have both local and remote (remote gets stableId "remote-device-2:conv-1")
         XCTAssertEqual(conversations.count, 2)
 
         let local = conversations.first { $0.id == "conv-1" }
         XCTAssertNotNil(local)
-        XCTAssertEqual(local?.provider, .factory)
+        XCTAssertEqual(local?.provider, AgentProvider.factory)
         XCTAssertEqual(local?.messageCount, 5)
     }
 }

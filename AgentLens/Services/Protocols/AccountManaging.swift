@@ -11,8 +11,14 @@ protocol AccountManaging: AnyObject {
     var isCloudSyncEnabled: Bool { get }
     var deviceId: String { get }
     var currentUser: User? { get }
+    var currentUID: String? { get }
 }
 
 // MARK: - AccountManager Conformance
 
-extension AccountManager: AccountManaging {}
+extension AccountManager: AccountManaging {
+    var currentUID: String? {
+        guard isFirebaseAvailable, isSignedIn else { return nil }
+        return currentUser?.uid
+    }
+}

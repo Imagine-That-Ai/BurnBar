@@ -325,7 +325,7 @@ final class DownloadSyncService: CloudSyncDomain {
                 .collection("session_logs")
                 .document(docId)
                 .collection("chunks")
-                .order(by: "index")
+                .order(by: "index", descending: false)
                 .getDocuments()
         }
 

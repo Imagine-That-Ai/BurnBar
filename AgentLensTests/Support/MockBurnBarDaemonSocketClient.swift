@@ -8,7 +8,7 @@ import OpenBurnBarCore
 /// Test double conforming to `BurnBarDaemonSocketClientProtocol`.
 /// Every method has a configurable closure so tests can inject canned
 /// responses or thrown errors without a live daemon process.
-struct MockBurnBarDaemonSocketClient: BurnBarDaemonSocketClientProtocol {
+struct MockBurnBarDaemonSocketClient {
 
     var healthHandler: (URL) throws -> BurnBarHealthResponse = { _ in
         BurnBarHealthResponse(ok: true, daemonVersion: "mock", protocolVersion: BurnBarProtocolVersion.current, socketPath: nil)

@@ -1184,21 +1184,3 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertTrue(result.contains(.hermes))
     }
 }
-
-// MARK: - Test Keychain Backend
-
-private final class SettingsManagerTestKeychainBackend: KeychainStoreBackend {
-    private var storage: [String: [String: Data]] = [:]
-
-    func set(_ value: Data, service: String, account: String) throws {
-        storage[service, default: [:]][account] = value
-    }
-
-    func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
-        storage[service]?[account]
-    }
-
-    func delete(service: String, account: String) throws {
-        storage[service]?[account] = nil
-    }
-}

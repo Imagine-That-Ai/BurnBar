@@ -250,7 +250,7 @@ extension DatabaseEncryptionService {
         // GRDBCipher not available in this build — encryption cannot be enabled.
         // Log a warning so the user knows their data is NOT encrypted despite
         // having enabled the setting. This is a build-time configuration issue.
-        AppLogger.dataStore.warning("Database encryption enabled in settings but GRDBCipher is not available in this build. The database will NOT be encrypted. Ensure the app is built with the SQLCipher target to enable encryption.")
+        AppLogger.dataStore.error("Database encryption enabled in settings but GRDBCipher is not available in this build. The database will NOT be encrypted. Ensure the app is built with the SQLCipher target to enable encryption.")
         _ = key  // Suppress unused warning
         #endif
 

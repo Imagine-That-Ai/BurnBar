@@ -17,12 +17,19 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway {
     /// until it is consumed or cleared.
     var nextError: Error?
 
+    /// Number of batch commits that have been executed.
+    private(set) var batchCommitCount: Int = 0
+
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway {
         CloudSyncCollectionFakeGateway(store: store, path: collectionPath, nextError: { [weak self] in self?.nextError })
     }
 
     func batch() -> CloudSyncWriteBatchGateway {
-        CloudSyncWriteBatchFakeGateway(store: store, nextError: { [weak self] in self?.nextError })
+        CloudSyncWriteBatchFakeGateway(
+            store: store,
+            nextError: { [weak self] in self?.nextError },
+            onCommit: { [weak self] in self?.batchCommitCount += 1 }
+        )
     }
 
     /// Direct access to stored document data for test assertions.
@@ -334,11 +341,13 @@ private final class CloudSyncDocumentSnapshotFakeGateway: CloudSyncDocumentSnaps
 private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway {
     private let store: FakeDocumentStore
     private let nextError: () -> Error?
+    private let onCommit: (() -> Void)?
     private var pending: [(path: String, data: [String: Any], merge: Bool)] = []
 
-    init(store: FakeDocumentStore, nextError: @escaping () -> Error?) {
+    init(store: FakeDocumentStore, nextError: @escaping () -> Error?, onCommit: (() -> Void)? = nil) {
         self.store = store
         self.nextError = nextError
+        self.onCommit = onCommit
     }
 
     func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool) {
@@ -358,6 +367,7 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway {
             }
         }
         pending.removeAll()
+        onCommit?()
     }
 }
 

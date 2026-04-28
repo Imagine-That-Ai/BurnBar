@@ -76,6 +76,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         let databaseURL = URL(fileURLWithPath: databasePath)
         self.storageRootURL = databaseURL.deletingLastPathComponent().appendingPathComponent("VectorIndexes", isDirectory: true)
         self.storageNamespace = "daemon-" + databaseURL.lastPathComponent.replacingOccurrences(of: ".", with: "-")
+        cleanupOrphanSnapshots()
     }
 
     deinit {
@@ -158,6 +159,13 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
             semanticSearchPerformed: semanticPerformed,
             semanticHitCount: semanticCount
         )
+    }
+
+    func releaseSnapshot() {
+        dbQueue.sync {
+            snapshotContext = nil
+        }
+        logger.debug("snapshot_released", metadata: [:])
     }
 
     // MARK: - Hybrid Search Implementation
@@ -545,6 +553,19 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
             return
         }
 
+        if let record, record.state == "ready", record.fingerprint == fingerprint {
+            logger.debug(
+                "semantic_search_fallback",
+                metadata: [
+                    "reason": "snapshot_load_failed_or_oversized",
+                    "version_id": versionID,
+                    "fingerprint": fingerprint,
+                    "vector_count": "\(record.vectorCount)",
+                    "file_bytes": "\(record.fileBytes)"
+                ]
+            )
+        }
+
         let rebuilt = try rebuildSnapshot(
             versionID: versionID,
             metric: metric,
@@ -676,6 +697,58 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         }
     }
 
+    private func cleanupOrphanSnapshots() {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: storageRootURL.path) else { return }
+
+        // Collect all referenced relative paths from ready records
+        var referencedPaths = Set<String>()
+        do {
+            try dbQueue.sync {
+                let sql = "SELECT storageRelativePath FROM vector_index_snapshots WHERE state = 'ready'"
+                guard let stmt = try prepareStatement(sql: sql) else { return }
+                defer { sqlite3_finalize(stmt) }
+                while sqlite3_step(stmt) == SQLITE_ROW {
+                    if let path = stringColumn(stmt, index: 0) {
+                        referencedPaths.insert(path)
+                    }
+                }
+            }
+        } catch {
+            logger.silentFailure("orphan_snapshot_cleanup_query", error: error)
+            return
+        }
+
+        // Enumerate all directories under storageRootURL and identify snapshot directories
+        // by the presence of index.usearch + manifest.json. Remove any not referenced.
+        guard let enumerator = fileManager.enumerator(
+            at: storageRootURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        var toRemove: [URL] = []
+        for case let url as URL in enumerator {
+            guard url.hasDirectoryPath else { continue }
+            let hasIndex = fileManager.fileExists(atPath: url.appendingPathComponent("index.usearch").path)
+            let hasManifest = fileManager.fileExists(atPath: url.appendingPathComponent("manifest.json").path)
+            guard hasIndex && hasManifest else { continue }
+            let relativePath = url.path.replacingOccurrences(of: storageRootURL.path + "/", with: "")
+            guard referencedPaths.contains(relativePath) == false else { continue }
+            toRemove.append(url)
+        }
+
+        for url in toRemove {
+            let relativePath = url.path.replacingOccurrences(of: storageRootURL.path + "/", with: "")
+            do {
+                try fileManager.removeItem(at: url)
+                logger.debug("orphan_snapshot_removed", metadata: ["path": relativePath])
+            } catch {
+                logger.silentFailure("orphan_snapshot_remove", error: error)
+            }
+        }
+    }
+
     private func rebuildSnapshot(
         versionID: String,
         metric: BurnBarEmbeddingDistanceMetric,
@@ -738,6 +811,12 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
             }
 
             try writer.save(to: tempFiles.indexURL)
+            let quantization: BurnBarVectorQuantization?
+            if let hnswBackend = snapshotBackend as? BurnBarHNSWVectorIndexBackend {
+                quantization = hnswBackend.quantization
+            } else {
+                quantization = nil
+            }
             let manifest = BurnBarPersistentVectorIndexManifest(
                 backendID: snapshotBackend.backendID,
                 backendVersion: snapshotBackend.backendVersion,
@@ -746,7 +825,8 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
                 dimensions: stats.dimensions,
                 distanceMetric: metric,
                 vectorCount: stats.vectorCount,
-                builtAt: builtAt
+                builtAt: builtAt,
+                quantization: quantization
             )
             try BurnBarPersistentVectorIndexSnapshotIO.writeManifest(manifest, to: tempFiles.manifestURL)
             try BurnBarPersistentVectorIndexSnapshotIO.writeKeyMapping(keyByChunkID, to: tempFiles.keyMappingURL)
@@ -804,12 +884,60 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
     }
 
     private func loadSnapshotIfPresent(record: DaemonVectorIndexSnapshotRecord) throws -> BurnBarPersistentVectorIndexSnapshot? {
-        guard let relativePath = record.storageRelativePath, relativePath.isEmpty == false else { return nil }
+        guard let relativePath = record.storageRelativePath, relativePath.isEmpty == false else {
+            logger.debug("snapshot_load_skipped", metadata: ["reason": "missing_path", "version_id": record.embeddingVersionID])
+            return nil
+        }
         let files = BurnBarPersistentVectorIndexFiles(
             directoryURL: storageRootURL.appendingPathComponent(relativePath, isDirectory: true)
         )
-        guard FileManager.default.fileExists(atPath: files.indexURL.path) else { return nil }
-        return try BurnBarPersistentVectorIndexSnapshot.open(files: files, backend: snapshotBackend)
+        guard FileManager.default.fileExists(atPath: files.indexURL.path) else {
+            logger.debug("snapshot_load_skipped", metadata: ["reason": "missing_file", "version_id": record.embeddingVersionID])
+            return nil
+        }
+
+        // Memory budget enforcement
+        if let maxVectorCount = semanticConfig.maxVectorCount, record.vectorCount > maxVectorCount {
+            logger.warning(
+                "snapshot_load_rejected",
+                metadata: [
+                    "reason": "vector_count_exceeds_limit",
+                    "version_id": record.embeddingVersionID,
+                    "vector_count": "\(record.vectorCount)",
+                    "max_vector_count": "\(maxVectorCount)"
+                ]
+            )
+            return nil
+        }
+
+        let fileBytes = BurnBarPersistentVectorIndexSnapshotIO.fileByteCount(at: files.indexURL)
+        if let memoryBudgetMB = semanticConfig.memoryBudgetMB {
+            let budgetBytes = Int64(memoryBudgetMB) * 1_024 * 1_024
+            if fileBytes > budgetBytes {
+                logger.warning(
+                    "snapshot_load_rejected",
+                    metadata: [
+                        "reason": "memory_budget_exceeded",
+                        "version_id": record.embeddingVersionID,
+                        "file_bytes": "\(fileBytes)",
+                        "budget_mb": "\(memoryBudgetMB)"
+                    ]
+                )
+                return nil
+            }
+        }
+
+        let snapshot = try BurnBarPersistentVectorIndexSnapshot.open(files: files, backend: snapshotBackend)
+        logger.debug(
+            "snapshot_loaded",
+            metadata: [
+                "version_id": record.embeddingVersionID,
+                "vector_count": "\(record.vectorCount)",
+                "file_bytes": "\(fileBytes)",
+                "budget_mb": semanticConfig.memoryBudgetMB.map { "\($0)" } ?? "unlimited"
+            ]
+        )
+        return snapshot
     }
 
     private func fetchAllChunkIDs(versionID: String) throws -> [String] {

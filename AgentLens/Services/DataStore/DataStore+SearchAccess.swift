@@ -458,7 +458,7 @@ extension DataStore {
                         totalMatches += 1
                         if jumpTargets.count < boundedLimit {
                             let conversation = try dbQueue.read { db -> ConversationRecord? in
-                                ConversationStore.fetchConversationRow(db, id: item.id)
+                                try ConversationStore.fetchConversationRow(db, id: item.id)
                             }
                             guard let conversation = conversation else { continue }
                             jumpTargets.append(

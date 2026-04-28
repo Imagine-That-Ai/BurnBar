@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OpenBurnBarCore
 
 // MARK: - Quota Service
 

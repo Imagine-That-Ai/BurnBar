@@ -1,5 +1,6 @@
 import XCTest
 import GRDB
+import FirebaseFirestore
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
@@ -7,7 +8,7 @@ import OpenBurnBarCore
 final class UsageConflictResolutionTests: XCTestCase {
     private var dataStore: DataStore!
     private var accountManager: FakeAccountManager!
-    private var settingsManager: FakeSettingsManager!
+    private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
     private var context: CloudSyncContext!
     private var downloadSync: DownloadSyncService!
@@ -15,7 +16,7 @@ final class UsageConflictResolutionTests: XCTestCase {
     override func setUp() async throws {
         dataStore = try makeDiscoveryInMemoryStore()
         accountManager = FakeAccountManager.makeSignedIn()
-        settingsManager = FakeSettingsManager()
+        settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
         fakeGateway = CloudSyncFirestoreFakeGateway()
         context = CloudSyncContext(
             dataStore: dataStore,
@@ -69,17 +70,15 @@ final class UsageConflictResolutionTests: XCTestCase {
 
         await downloadSync.sync()
 
-        let allUsage = try dataStore.dbQueue.read { db in
-            try TokenUsage.fetchAll(db)
-        }
+        let allUsage = try dataStore.usageStore.fetchAllUsage()
         XCTAssertEqual(allUsage.count, 1)
 
         let result = allUsage.first!
         XCTAssertEqual(result.inputTokens, 200) // Updated
         XCTAssertEqual(result.outputTokens, 100) // Updated
         XCTAssertEqual(result.projectName, "RemoteProject") // Updated
-        XCTAssertEqual(result.provenanceConfidence, .exact) // Promoted
-        XCTAssertEqual(result.usageSource, .billingAPI) // Changed because strictly higher confidence
+        XCTAssertEqual(result.provenanceConfidence, UsageProvenanceConfidence.exact) // Promoted
+        XCTAssertEqual(result.usageSource, UsageSource.billingAPI) // Changed because strictly higher confidence
     }
 
     func test_remoteHighConfidenceEstimate_doesNotOverwriteLocalExact() async throws {
@@ -122,16 +121,14 @@ final class UsageConflictResolutionTests: XCTestCase {
 
         await downloadSync.sync()
 
-        let allUsage = try dataStore.dbQueue.read { db in
-            try TokenUsage.fetchAll(db)
-        }
+        let allUsage = try dataStore.usageStore.fetchAllUsage()
         XCTAssertEqual(allUsage.count, 1)
 
         let result = allUsage.first!
         XCTAssertEqual(result.inputTokens, 100) // Preserved
         XCTAssertEqual(result.outputTokens, 50) // Preserved
         XCTAssertEqual(result.projectName, "LocalProject") // Preserved
-        XCTAssertEqual(result.provenanceConfidence, .exact) // Preserved
+        XCTAssertEqual(result.provenanceConfidence, UsageProvenanceConfidence.exact) // Preserved
     }
 
     func test_remoteEqualConfidence_updatesValuesButPreservesUsageSource() async throws {
@@ -175,14 +172,12 @@ final class UsageConflictResolutionTests: XCTestCase {
 
         await downloadSync.sync()
 
-        let allUsage = try dataStore.dbQueue.read { db in
-            try TokenUsage.fetchAll(db)
-        }
+        let allUsage = try dataStore.usageStore.fetchAllUsage()
         XCTAssertEqual(allUsage.count, 1)
 
         let result = allUsage.first!
         XCTAssertEqual(result.inputTokens, 200) // Updated because equal confidence allows update
         XCTAssertEqual(result.outputTokens, 100) // Updated
-        XCTAssertEqual(result.usageSource, .providerLog) // Preserved because not strictly higher
+        XCTAssertEqual(result.usageSource, UsageSource.providerLog) // Preserved because not strictly higher
     }
 }

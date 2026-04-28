@@ -22,14 +22,14 @@ public struct BurnBarHNSWVectorIndexBackend: BurnBarPersistentVectorIndexBackend
         efConstruction: Int = 200,
         efSearch: Int = 64,
         backendID: String = "hnsw",
-        backendVersion: String = "1",
+        backendVersion: String? = nil,
         quantization: BurnBarVectorQuantization = .none
     ) {
         self.m = m
         self.efConstruction = efConstruction
         self.efSearch = efSearch
         self.backendID = backendID
-        self.backendVersion = backendVersion
+        self.backendVersion = backendVersion ?? (quantization == .none ? "1" : "2")
         self.quantization = quantization
     }
 
@@ -60,7 +60,7 @@ public struct BurnBarHNSWVectorIndexBackend: BurnBarPersistentVectorIndexBackend
 
 // MARK: - HNSW Format
 
-private enum BurnBarHNSWIndexFormat {
+internal enum BurnBarHNSWIndexFormat {
     /// "OBHI" – OpenBurnBar HNSW Index
     static let magic: UInt32 = 0x4F424849
     static let version: UInt32 = 1

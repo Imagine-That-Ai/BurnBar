@@ -152,8 +152,8 @@ final class CloudSyncCoordinator {
     // MARK: - Memory Boundary
 
     static func currentMemorySyncBoundary(
-        settingsManager: SettingsManager = .shared,
-        accountManager: AccountManager = .shared
+        settingsManager: any SettingsManagerProtocol = SettingsManager.shared,
+        accountManager: any AccountManaging = AccountManager.shared
     ) -> OpenBurnBarMemorySyncBoundarySnapshot {
         OpenBurnBarMemorySyncBoundarySnapshot(
             mode: .localFirstOptionalCloud,

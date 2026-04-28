@@ -154,6 +154,8 @@ final class DataStoreCoordinator {
         try dbQueue.write { db in
             try db.execute(sql: "PRAGMA journal_mode = WAL")
             try db.execute(sql: "PRAGMA wal_autocheckpoint = 1000")
+        }
+        try dbQueue.writeWithoutTransaction { db in
             try db.execute(sql: "PRAGMA synchronous = NORMAL")
         }
     }
@@ -197,7 +199,7 @@ final class DataStoreCoordinator {
             let records = try await actor.fetchRecentUsage(limit: 5000)
             replaceUsages(records)
         } catch {
-            AppLogger.dataStore.silentFailure("refresh_failed", underlying: error)
+            AppLogger.dataStore.silentFailure("refresh_failed", error: error)
         }
 
         isLoading = false

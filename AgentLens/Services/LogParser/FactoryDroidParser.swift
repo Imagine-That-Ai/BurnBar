@@ -376,6 +376,16 @@ final class FactoryDroidParser: LogParser, Sendable {
 
         return .factory
     }
+    private func compositeSignature(
+        jsonlFile: URL,
+        settingsFile: URL,
+        metadataFile: URL
+    ) -> CompositeFileSignature<FileSignature>? {
+        guard let jsonl = FileSignature(for: jsonlFile) else { return nil }
+        let settings = FileSignature(for: settingsFile)
+        let metadata = FileSignature(for: metadataFile)
+        return CompositeFileSignature(primary: jsonl, settings: settings, metadata: metadata)
+    }
 }
 
 private struct FactoryDroidCacheEntry: Codable, Equatable {

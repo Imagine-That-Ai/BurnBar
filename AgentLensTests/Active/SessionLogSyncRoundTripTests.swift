@@ -1,5 +1,6 @@
 import XCTest
 import GRDB
+import FirebaseFirestore
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
@@ -7,7 +8,7 @@ import OpenBurnBarCore
 final class SessionLogSyncRoundTripTests: XCTestCase {
     private var dataStore: DataStore!
     private var accountManager: FakeAccountManager!
-    private var settingsManager: FakeSettingsManager!
+    private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
     private var context: CloudSyncContext!
     private var sessionLogSync: SessionLogSyncService!
@@ -16,7 +17,8 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
     override func setUp() async throws {
         dataStore = try makeDiscoveryInMemoryStore()
         accountManager = FakeAccountManager.makeSignedIn()
-        settingsManager = FakeSettingsManager()
+        settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+        settingsManager.sessionLogCloudBackupEnabled = true
         fakeGateway = CloudSyncFirestoreFakeGateway()
         context = CloudSyncContext(
             dataStore: dataStore,
@@ -112,7 +114,7 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         let remoteConvId = "conv-remote-log"
         let docId = "\(remoteDeviceId)_\(remoteConvId)"
         let manifestPath = "users/test-uid-1/session_logs/\(docId)"
-        let updatedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let updatedAt = Date().addingTimeInterval(-60) // recent enough to pass 90-day watermark
 
         let body = "# Remote Session Log\n\nThis is the full markdown body."
 
@@ -134,8 +136,8 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             "lastAssistantMessage": "Remote msg",
             "sourceType": ConversationSourceType.providerLog.rawValue,
             "updatedAt": Timestamp(date: updatedAt),
-            "startTime": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_000)),
-            "endTime": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_100))
+            "startTime": Timestamp(date: updatedAt),
+            "endTime": Timestamp(date: updatedAt.addingTimeInterval(100))
         ], at: convDocPath)
 
         // Seed session log manifest and chunk
@@ -160,14 +162,12 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         fakeGateway.setDocumentData([
             "deviceName": "Remote Studio",
             "platform": "macOS",
-            "lastActiveAt": Timestamp(date: updatedAt)
+            "lastActiveAt": updatedAt
         ], at: "users/test-uid-1/devices/\(remoteDeviceId)")
 
         await downloadSync.sync()
 
-        let conversations = try dataStore.dbQueue.read { db in
-            try ConversationRecord.fetchAll(db)
-        }
+        let conversations = try await dataStore.fetchConversations()
         let remoteConversations = conversations.filter { $0.isRemote }
         XCTAssertEqual(remoteConversations.count, 1)
 

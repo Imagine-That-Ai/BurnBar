@@ -294,6 +294,12 @@ It parses headers by scanning for `\r\n\r\n`, manually extracts `Content-Length`
 
 **Risk:** At 500K chunks, this will OOM on consumer Macs. The index is reloaded on every refresh (`snapshotContext` is replaced). There is no on-demand paging or incremental loading.
 
+**Mitigation (2026-04-27):** Two independent defenses have been added:
+1. **Scalar Quantization (Float32 → UInt8):** Reduces per-vector storage by ~4× (~3KB → ~768 bytes for 768-dim embeddings) with minimal recall loss. Implemented in `BurnBarScalarQuantizer`/`BurnBarVectorQuantization` and integrated into the HNSW backend (`BurnBarHNSWVectorIndex.swift` format v2).
+2. **Configurable Memory Budget Cap:** `BurnBarSemanticSearchConfig.memoryBudgetMB` and `maxVectorCount` enforce an upper bound on resident index size at load time. If exceeded, `BurnBarIndexedSearchService.loadSnapshotIfPresent()` refuses to load the snapshot and automatically falls back to the existing streaming exact-search path (`streamingExactSemanticCandidates`).
+
+Old v1 `OBHI` index files remain readable indefinitely (backward compatibility). The conservative preset (`BurnBarSemanticSearchConfig.conservative`) sets a 256 MB bound.
+
 ### 4.2 N+1 Query Culture
 **Evidence (from `TECH_DEBT_STRATEGY.md` and code review):**
 - `SearchService` hydration: one `SELECT * FROM conversations` per hit

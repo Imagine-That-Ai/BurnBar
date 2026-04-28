@@ -478,6 +478,208 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
         for i in a.indices { scalarResult += a[i] * b[i] }
         XCTAssertEqual(simdResult, scalarResult, accuracy: 0.0001)
     }
+
+    // MARK: - Scalar Quantization
+
+    func test_quantizedIndex_saveLoadSearch_producesResults() throws {
+        let dims = 8
+        let vectors: [(key: UInt64, vector: [Float])] = [
+            (1, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            (2, [0.9, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            (3, [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        ]
+        let backend = BurnBarHNSWVectorIndexBackend(quantization: .scalarUInt8)
+        let dir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let files = BurnBarPersistentVectorIndexFiles(directoryURL: dir)
+
+        let writer = try backend.makeWritable(dimensions: dims, distanceMetric: .cosine)
+        try writer.reserve(vectors.count)
+        for (key, vec) in vectors {
+            try writer.add(key: key, vector: vec)
+        }
+        try writer.save(to: files.indexURL)
+
+        let reader = try backend.makeReadable(dimensions: dims, distanceMetric: .cosine)
+        try reader.load(from: files.indexURL)
+        let (keys, scores) = try reader.search(vector: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], limit: 2)
+
+        XCTAssertEqual(keys.count, 2)
+        XCTAssertEqual(keys[0], 1, "Exact match should be first")
+        XCTAssertGreaterThan(scores[0], scores[1], "First result should have higher similarity")
+    }
+
+    func test_quantizedIndex_recallAtLeast90Percent() throws {
+        let dims = 128
+        let numVectors = 1000
+        let numQueries = 20
+        let k = 10
+
+        var rng = SeededRNG(seed: 42)
+        var vectors: [(key: UInt64, vector: [Float])] = []
+        for i in 0 ..< numVectors {
+            let v = (0 ..< dims).map { _ in Float.random(in: -1 ... 1, using: &rng) }
+            vectors.append((UInt64(i + 1), v))
+        }
+
+        let quantizedBackend = BurnBarHNSWVectorIndexBackend(efSearch: 200, quantization: .scalarUInt8)
+        let exactBackend = BurnBarMappedPersistentVectorIndexBackend()
+
+        let qDir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: qDir) }
+        let qFiles = BurnBarPersistentVectorIndexFiles(directoryURL: qDir)
+        let qWriter = try quantizedBackend.makeWritable(dimensions: dims, distanceMetric: .cosine)
+        try qWriter.reserve(numVectors)
+        for (key, vec) in vectors {
+            try qWriter.add(key: key, vector: vec)
+        }
+        try qWriter.save(to: qFiles.indexURL)
+
+        let eDir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: eDir) }
+        let eFiles = BurnBarPersistentVectorIndexFiles(directoryURL: eDir)
+        let eWriter = try exactBackend.makeWritable(dimensions: dims, distanceMetric: .cosine)
+        try eWriter.reserve(numVectors)
+        for (key, vec) in vectors {
+            try eWriter.add(key: key, vector: vec)
+        }
+        try eWriter.save(to: eFiles.indexURL)
+
+        let qReader = try quantizedBackend.makeReadable(dimensions: dims, distanceMetric: .cosine)
+        try qReader.load(from: qFiles.indexURL)
+
+        let eReader = try exactBackend.makeReadable(dimensions: dims, distanceMetric: .cosine)
+        try eReader.load(from: eFiles.indexURL)
+
+        var totalRecall: Double = 0
+        for _ in 0 ..< numQueries {
+            let query = (0 ..< dims).map { _ in Float.random(in: -1 ... 1, using: &rng) }
+
+            let (exactKeys, _) = try eReader.search(vector: query, limit: k)
+            let (quantizedKeys, _) = try qReader.search(vector: query, limit: k)
+
+            let exactSet = Set(exactKeys)
+            let overlap = quantizedKeys.filter { exactSet.contains($0) }.count
+            totalRecall += Double(overlap) / Double(k)
+        }
+
+        let averageRecall = totalRecall / Double(numQueries)
+        XCTAssertGreaterThanOrEqual(averageRecall, 0.90, "Quantized HNSW recall@\(k) should be >= 90%, got \(averageRecall * 100)%")
+    }
+
+    func test_quantizedIndex_fileSizeReducedByAtLeast3x() throws {
+        // Use higher dimensions to dominate graph overhead and achieve >3x reduction
+        let dims = 512
+        let numVectors = 2000
+
+        var rng = SeededRNG(seed: 123)
+        var vectors: [(key: UInt64, vector: [Float])] = []
+        for i in 0 ..< numVectors {
+            let v = (0 ..< dims).map { _ in Float.random(in: -1 ... 1, using: &rng) }
+            vectors.append((UInt64(i + 1), v))
+        }
+
+        let floatBackend = BurnBarHNSWVectorIndexBackend(quantization: .none)
+        let quantizedBackend = BurnBarHNSWVectorIndexBackend(quantization: .scalarUInt8)
+
+        let fDir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: fDir) }
+        let fFiles = BurnBarPersistentVectorIndexFiles(directoryURL: fDir)
+        let fWriter = try floatBackend.makeWritable(dimensions: dims, distanceMetric: .cosine)
+        try fWriter.reserve(numVectors)
+        for (key, vec) in vectors {
+            try fWriter.add(key: key, vector: vec)
+        }
+        try fWriter.save(to: fFiles.indexURL)
+
+        let qDir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: qDir) }
+        let qFiles = BurnBarPersistentVectorIndexFiles(directoryURL: qDir)
+        let qWriter = try quantizedBackend.makeWritable(dimensions: dims, distanceMetric: .cosine)
+        try qWriter.reserve(numVectors)
+        for (key, vec) in vectors {
+            try qWriter.add(key: key, vector: vec)
+        }
+        try qWriter.save(to: qFiles.indexURL)
+
+        let floatSize = BurnBarPersistentVectorIndexSnapshotIO.fileByteCount(at: fFiles.indexURL)
+        let quantizedSize = BurnBarPersistentVectorIndexSnapshotIO.fileByteCount(at: qFiles.indexURL)
+
+        let ratio = Double(floatSize) / Double(quantizedSize)
+        XCTAssertGreaterThanOrEqual(ratio, 3.0, "Quantized index should be at least 3.0x smaller. Float: \(floatSize), Quantized: \(quantizedSize), ratio: \(ratio)")
+    }
+
+    func test_v1BackwardCompatibility_loadsAndSearches() throws {
+        // Build a v1 index by using a backend with .none quantization (forces version 1)
+        let vectors: [(key: UInt64, vector: [Float])] = [
+            (1, [1.0, 0.0, 0.0]),
+            (2, [0.9, 0.1, 0.0]),
+            (3, [0.0, 1.0, 0.0])
+        ]
+        let backend = BurnBarHNSWVectorIndexBackend(quantization: .none)
+        let dir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let files = BurnBarPersistentVectorIndexFiles(directoryURL: dir)
+
+        let writer = try backend.makeWritable(dimensions: 3, distanceMetric: .cosine)
+        try writer.reserve(vectors.count)
+        for (key, vec) in vectors {
+            try writer.add(key: key, vector: vec)
+        }
+        try writer.save(to: files.indexURL)
+
+        // Verify it's v1 by checking header
+        let data = try Data(contentsOf: files.indexURL)
+        let header = try BurnBarHNSWIndexFormat.parseHeader(from: data)
+        XCTAssertEqual(header.version, 1, "Non-quantized index should be v1")
+
+        // Load and search with a backend that defaults to .none
+        let reader = try backend.makeReadable(dimensions: 3, distanceMetric: .cosine)
+        try reader.load(from: files.indexURL)
+        let (keys, _) = try reader.search(vector: [1.0, 0.0, 0.0], limit: 2)
+
+        XCTAssertEqual(keys.count, 2)
+        XCTAssertEqual(keys[0], 1)
+    }
+
+    func test_v2Format_roundTrip() throws {
+        let vectors: [(key: UInt64, vector: [Float])] = [
+            (1, [1.0, 0.0, 0.0]),
+            (2, [0.8, 0.2, 0.0]),
+            (3, [0.0, 1.0, 0.0])
+        ]
+        let backend = BurnBarHNSWVectorIndexBackend(quantization: .scalarUInt8)
+        let dir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let files = BurnBarPersistentVectorIndexFiles(directoryURL: dir)
+
+        let writer = try backend.makeWritable(dimensions: 3, distanceMetric: .cosine)
+        try writer.reserve(vectors.count)
+        for (key, vec) in vectors {
+            try writer.add(key: key, vector: vec)
+        }
+        try writer.save(to: files.indexURL)
+
+        let data = try Data(contentsOf: files.indexURL)
+        let header = try BurnBarHNSWIndexFormat.parseHeader(from: data)
+        XCTAssertEqual(header.version, 2, "Quantized index should be v2")
+        XCTAssertEqual(header.quantizationType, 1, "Quantization type should be 1 for scalarUInt8")
+
+        let reader = try backend.makeReadable(dimensions: 3, distanceMetric: .cosine)
+        try reader.load(from: files.indexURL)
+        let (keys, scores) = try reader.search(vector: [1.0, 0.0, 0.0], limit: 2)
+
+        XCTAssertEqual(keys.count, 2)
+        XCTAssertEqual(keys[0], 1)
+        XCTAssertGreaterThan(scores[0], scores[1])
+    }
+
+    func test_backendVersion_reflectsQuantization() {
+        let noneBackend = BurnBarHNSWVectorIndexBackend(quantization: .none)
+        let quantizedBackend = BurnBarHNSWVectorIndexBackend(quantization: .scalarUInt8)
+        XCTAssertEqual(noneBackend.backendVersion, "1")
+        XCTAssertEqual(quantizedBackend.backendVersion, "2")
+    }
 }
 
 // MARK: - Seeded RNG for reproducible tests

@@ -109,7 +109,7 @@ final class CloudSyncCollectionLiveGateway: CloudSyncCollectionGateway {
 
 @MainActor
 final class CloudSyncDocumentLiveGateway: CloudSyncDocumentGateway {
-    private let reference: DocumentReference
+    let reference: DocumentReference
 
     init(reference: DocumentReference) {
         self.reference = reference

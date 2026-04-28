@@ -105,6 +105,16 @@ actor CloudSyncCircuitBreaker {
         consecutiveFailures = 0
         halfOpenSuccesses = 0
     }
+
+    /// Advance time for testing by shifting the open timestamp backward.
+    func advanceTime(by interval: TimeInterval) {
+        switch state {
+        case .open(let since):
+            state = .open(since: since.addingTimeInterval(-interval))
+        case .closed, .halfOpen:
+            break
+        }
+    }
 }
 
 // MARK: - Retry Policy

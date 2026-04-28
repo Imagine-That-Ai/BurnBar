@@ -83,7 +83,8 @@ final class BurnBarHNSWIntegrationTests: XCTestCase {
         let expectedBackend = BurnBarPersistentVectorIndexFactory.hnswBackend(
             m: customConfig.hnswM,
             efConstruction: customConfig.hnswEfConstruction,
-            efSearch: customConfig.hnswEfSearch
+            efSearch: customConfig.hnswEfSearch,
+            quantization: customConfig.quantization
         )
         XCTAssertEqual(expectedBackend.backendID, "hnsw")
 

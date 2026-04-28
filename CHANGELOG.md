@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **HNSW Scalar Quantization:** Float32 → UInt8 per-dimension uniform quantization reduces index size by ~4× with minimal recall loss. Asymmetric distance computation (query in Float32, corpus in UInt8) preserves >95% top-10 recall. (`BurnBarScalarQuantizer`, `BurnBarVectorQuantization`, `BurnBarHNSWVectorIndex.swift` format v2).
+- **HNSW Memory Budget Cap:** `BurnBarSemanticSearchConfig.memoryBudgetMB` and `maxVectorCount` enforce an upper bound on resident index size at load time. Oversized snapshots are rejected with structured telemetry and automatically fall back to streaming exact search (`streamingExactSemanticCandidates`). Includes conservative preset (256 MB) and `releaseSnapshot()` for explicit memory pressure response.
+- **Orphan Snapshot GC:** `BurnBarIndexedSearchService` cleans up unreferenced snapshot directories under `VectorIndexes/` on startup.
+- **Backward Compatibility:** v1 `OBHI` index files continue to load and search correctly without migration.
+
 ### Security
 - **Firebase:** Document and operational path for **App Check enforcement on Cloud Firestore** (Auth + owner-scoped rules are insufficient to block unauthenticated-app clients; enforcement is in the Firebase console). See [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md), [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), and header comments in [firestore.rules](firestore.rules).
 - **Local database:** App and daemon depend on **SQLCipher-enabled GRDB** via SPM (`SahebRoy92/GRDB-SQLCipher`, pinned). When database encryption is enabled, `PRAGMA key` and `PRAGMA cipher_version` are enforced so encryption is not a no-op. See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) and [docs/RUNBOOK.md](docs/RUNBOOK.md).

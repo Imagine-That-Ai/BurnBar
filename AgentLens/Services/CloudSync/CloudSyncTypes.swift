@@ -86,7 +86,7 @@ final class CloudSyncContext {
     let settingsManager: any SettingsManagerProtocol
 
     /// Shared circuit breaker for Firestore network calls.
-    let circuitBreaker = CloudSyncCircuitBreaker()
+    let circuitBreaker: CloudSyncCircuitBreaker
 
     /// Shared retry policy for transient Firestore failures.
     let retryPolicy = CloudSyncRetryPolicy()
@@ -100,7 +100,7 @@ final class CloudSyncContext {
     /// Computed Firebase UID, nil if unavailable.
     var currentUID: String? {
         guard accountManager.isFirebaseAvailable, accountManager.isSignedIn else { return nil }
-        return accountManager.currentUser?.uid
+        return accountManager.currentUID
     }
 
     /// Computed device ID.
@@ -120,12 +120,14 @@ final class CloudSyncContext {
         dataStore: DataStore,
         accountManager: any AccountManaging,
         settingsManager: any SettingsManagerProtocol,
-        firestoreGateway: CloudSyncFirestoreGateway = CloudSyncFirestoreLiveGateway()
+        firestoreGateway: CloudSyncFirestoreGateway = CloudSyncFirestoreLiveGateway(),
+        circuitBreaker: CloudSyncCircuitBreaker = CloudSyncCircuitBreaker()
     ) {
         self.dataStore = dataStore
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.firestoreGateway = firestoreGateway
+        self.circuitBreaker = circuitBreaker
     }
 }
 

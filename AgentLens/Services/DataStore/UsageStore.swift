@@ -51,7 +51,7 @@ final class UsageStore: Sendable {
                         reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
                         usageSource, sourceDeviceId, sourceDeviceName, isRemote, syncedAt,
                         provenanceMethod, provenanceConfidence, estimatorVersion
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, '')) DO UPDATE SET
                         projectName = excluded.projectName,
                         inputTokens = excluded.inputTokens,
@@ -133,7 +133,7 @@ final class UsageStore: Sendable {
                     usage.cacheReadTokens, usage.reasoningTokens, usage.totalTokens, usage.cost,
                     usage.startTime, usage.endTime, usage.createdAt,
                     usage.usageSource.rawValue,
-                    usage.sourceDeviceId, usage.sourceDeviceName, Date(),
+                    usage.sourceDeviceId, usage.sourceDeviceName, usage.isRemote, Date(),
                     usage.provenanceMethod.rawValue,
                     usage.provenanceConfidence.rawValue,
                     usage.estimatorVersion

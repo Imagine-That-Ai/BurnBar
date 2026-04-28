@@ -153,6 +153,7 @@ func makeTestKeychainStore() -> KeychainStore {
     )
 }
 
+@MainActor
 func makeSettingsManager(
     defaults: UserDefaults? = nil,
     controllerSecrets: KeychainStore? = nil,

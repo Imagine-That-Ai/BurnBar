@@ -1,5 +1,6 @@
 import XCTest
 import GRDB
+import FirebaseFirestore
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
@@ -7,7 +8,7 @@ import OpenBurnBarCore
 final class UsageSyncRoundTripTests: XCTestCase {
     private var dataStore: DataStore!
     private var accountManager: FakeAccountManager!
-    private var settingsManager: FakeSettingsManager!
+    private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
     private var context: CloudSyncContext!
     private var usageSync: UsageSyncService!
@@ -16,7 +17,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
     override func setUp() async throws {
         dataStore = try makeDiscoveryInMemoryStore()
         accountManager = FakeAccountManager.makeSignedIn()
-        settingsManager = FakeSettingsManager()
+        settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
         fakeGateway = CloudSyncFirestoreFakeGateway()
         context = CloudSyncContext(
             dataStore: dataStore,
@@ -69,7 +70,8 @@ final class UsageSyncRoundTripTests: XCTestCase {
         let remoteDeviceId = "remote-device-2"
         let remoteUsageId = UUID().uuidString
         let remoteDocPath = "users/test-uid-1/usage/\(remoteDeviceId)_\(remoteUsageId)"
-        let remoteUpdatedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let now = Date()
+        let remoteUpdatedAt = now
 
         fakeGateway.setDocumentData([
             "id": remoteUsageId,
@@ -86,8 +88,8 @@ final class UsageSyncRoundTripTests: XCTestCase {
             "usageSource": UsageSource.providerLog.rawValue,
             "totalTokens": 300,
             "cost": 0.015,
-            "startTime": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_000)),
-            "endTime": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_100)),
+            "startTime": Timestamp(date: now),
+            "endTime": Timestamp(date: now.addingTimeInterval(100)),
             "updatedAt": Timestamp(date: remoteUpdatedAt)
         ], at: remoteDocPath)
 
@@ -98,17 +100,32 @@ final class UsageSyncRoundTripTests: XCTestCase {
             "lastActiveAt": Timestamp(date: remoteUpdatedAt)
         ], at: "users/test-uid-1/devices/\(remoteDeviceId)")
 
+        // Debug: test query directly
+        let query = fakeGateway.collection("users").document("test-uid-1").collection("usage")
+            .whereField("startTime", isGreaterThan: Timestamp(date: Date().addingTimeInterval(-86400 * 91)))
+        let snapshot = try await query.getDocuments()
+        print("DEBUG: query document count = \(snapshot.documents.count)")
+        for doc in snapshot.documents {
+            print("DEBUG: query doc id = \(doc.documentID)")
+        }
+
         await downloadSync.sync()
 
-        // Verify local store contains the remote usage
-        let allUsage = try dataStore.dbQueue.read { db in
-            try TokenUsage.fetchAll(db)
+        // Debug: verify fake gateway state
+        let allDocs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        print("DEBUG: all docs = \(allDocs)")
+        print("DEBUG: doc count = \(allDocs.count)")
+        for (k, v) in allDocs {
+            print("DEBUG: doc key=\(k), startTime=\(v["startTime"] ?? "nil"), updatedAt=\(v["updatedAt"] ?? "nil")")
         }
+
+        // Verify local store contains the remote usage
+        let allUsage = try dataStore.usageStore.fetchAllUsage()
         let remoteUsages = allUsage.filter { $0.isRemote }
-        XCTAssertEqual(remoteUsages.count, 1)
+        XCTAssertEqual(remoteUsages.count, 1, "Expected 1 remote usage but found \(remoteUsages.count). All docs: \(allDocs.keys)")
 
         let remote = remoteUsages.first!
-        XCTAssertEqual(remote.provider, .cursor)
+        XCTAssertEqual(remote.provider, AgentProvider.cursor)
         XCTAssertEqual(remote.sessionId, "remote-session-1")
         XCTAssertEqual(remote.model, "gpt-4")
         XCTAssertEqual(remote.inputTokens, 200)
@@ -116,8 +133,8 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(remote.sourceDeviceId, remoteDeviceId)
         XCTAssertEqual(remote.sourceDeviceName, "Remote MacBook")
         XCTAssertTrue(remote.isRemote)
-        XCTAssertEqual(remote.provenanceMethod, .cloudSync)
-        XCTAssertEqual(remote.provenanceConfidence, .exact)
+        XCTAssertEqual(remote.provenanceMethod, UsageProvenanceMethod.cloudSync)
+        XCTAssertEqual(remote.provenanceConfidence, UsageProvenanceConfidence.exact)
     }
 
     func test_usageRoundTrip_uploadThenDownload_doesNotReImportOwnData() async throws {
@@ -137,9 +154,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         await downloadSync.sync()
 
         // Should not create a duplicate of our own data
-        let allUsage = try dataStore.dbQueue.read { db in
-            try TokenUsage.fetchAll(db)
-        }
+        let allUsage = try dataStore.usageStore.fetchAllUsage()
         XCTAssertEqual(allUsage.count, 1)
         XCTAssertFalse(allUsage[0].isRemote)
     }

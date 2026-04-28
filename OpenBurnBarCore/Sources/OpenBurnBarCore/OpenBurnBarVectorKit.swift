@@ -66,7 +66,10 @@ public struct BurnBarScalarQuantizerBuilder {
     }
 
     public func build() -> BurnBarScalarQuantizer {
-        let scales = zip(mins, maxs).map { max($1 - $0, Float(0)) / Float(255) }
+        let scales = zip(mins, maxs).map { min, max in
+            let range = max - min
+            return range.isFinite && range > 0 ? range / Float(255) : Float(0)
+        }
         return BurnBarScalarQuantizer(mins: mins, scales: scales)
     }
 }
@@ -318,6 +321,8 @@ public struct BurnBarSemanticSearchConfig: Sendable {
     public let hnswEfConstruction: Int
     /// HNSW query-time beam width (efSearch).
     public let hnswEfSearch: Int
+    /// Quantization strategy for vector storage.
+    public let quantization: BurnBarVectorQuantization
     /// Memory budget in MB for the in-memory vector index snapshot. nil = unlimited.
     public let memoryBudgetMB: Int?
     /// Maximum vector count allowed in a loaded snapshot. nil = unlimited.
@@ -330,6 +335,7 @@ public struct BurnBarSemanticSearchConfig: Sendable {
         hnswM: Int = 16,
         hnswEfConstruction: Int = 200,
         hnswEfSearch: Int = 64,
+        quantization: BurnBarVectorQuantization = .none,
         memoryBudgetMB: Int? = nil,
         maxVectorCount: Int? = nil
     ) {
@@ -339,6 +345,7 @@ public struct BurnBarSemanticSearchConfig: Sendable {
         self.hnswM = hnswM
         self.hnswEfConstruction = hnswEfConstruction
         self.hnswEfSearch = hnswEfSearch
+        self.quantization = quantization
         self.memoryBudgetMB = memoryBudgetMB
         self.maxVectorCount = maxVectorCount
     }

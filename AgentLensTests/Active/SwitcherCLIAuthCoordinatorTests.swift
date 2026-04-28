@@ -19,12 +19,12 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
         return directory
     }
 
-    override func tearDown() throws {
+    override func tearDown() {
         for directory in tempDirectories {
             try? FileManager.default.removeItem(at: directory)
         }
         tempDirectories.removeAll()
-        try super.tearDown()
+        super.tearDown()
     }
 
     // MARK: - Reconnect Result Tests
