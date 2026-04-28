@@ -1002,7 +1002,7 @@ struct ChatEngineModelMenu: View {
             }
             if let g = controller.hermesModelName?.trimmingCharacters(in: .whitespacesAndNewlines), !g.isEmpty {
                 if !rows.contains(where: { $0.0.caseInsensitiveCompare(g) == .orderedSame }) {
-                    rows.append((g, "Gateway: \(ChatSessionController.abbreviateChatModelName(g))"))
+                    rows.append((g, "Gateway: \(ChatModelStore.abbreviateChatModelName(g))"))
                 }
             }
             return rows

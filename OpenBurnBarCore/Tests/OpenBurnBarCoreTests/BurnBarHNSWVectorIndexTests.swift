@@ -439,6 +439,45 @@ final class BurnBarHNSWVectorIndexTests: XCTestCase {
         XCTAssertEqual(config.hnswEfConstruction, 400)
         XCTAssertEqual(config.hnswEfSearch, 128)
     }
+
+    // MARK: - SIMD Distance Accuracy
+
+    func test_simdDotProduct_matchesScalarDotProduct() {
+        let vector: [Float] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+        let simdResult = BurnBarVectorMath.simdDotProductF(lhs: vector, rhs: vector)
+        var scalarResult: Float = 0
+        for i in vector.indices { scalarResult += vector[i] * vector[i] }
+        XCTAssertEqual(simdResult, scalarResult, accuracy: 0.0001)
+    }
+
+    func test_simdEuclideanDistanceSq_matchesScalar() {
+        let a: [Float] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+        let b: [Float] = [8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0]
+        let simdResult = BurnBarVectorMath.simdEuclideanDistanceSqF(lhs: a, rhs: b)
+        var scalarResult: Float = 0
+        for i in a.indices {
+            let d = a[i] - b[i]
+            scalarResult += d * d
+        }
+        XCTAssertEqual(simdResult, scalarResult, accuracy: 0.0001)
+    }
+
+    func test_simdL2Normalized_producesUnitLength() {
+        let vector: [Float] = [3.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        let normalized = BurnBarVectorMath.simdL2Normalized(vector)
+        let lengthSq = normalized.map { $0 * $0 }.reduce(0, +)
+        XCTAssertEqual(lengthSq, 1.0, accuracy: 0.0001)
+    }
+
+    func test_simdFallback_forSmallVectors() {
+        // Vectors shorter than simdThreshold (8) should use scalar fallback
+        let a: [Float] = [1.0, 2.0, 3.0]
+        let b: [Float] = [4.0, 5.0, 6.0]
+        let simdResult = BurnBarVectorMath.simdDotProductF(lhs: a, rhs: b)
+        var scalarResult: Float = 0
+        for i in a.indices { scalarResult += a[i] * b[i] }
+        XCTAssertEqual(simdResult, scalarResult, accuracy: 0.0001)
+    }
 }
 
 // MARK: - Seeded RNG for reproducible tests

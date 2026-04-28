@@ -29,3 +29,33 @@ These SVGs include embedded comments noting they were created with Arrow by Quiv
 ## Dependencies
 
 OpenBurnBar depends on third-party packages through Swift Package Manager and npm. Their licenses and notices remain with their upstream projects.
+
+---
+
+## Dependency Risk Assessment
+
+### Critical Fork: GRDB-SQLCipher
+
+- **Source:** `https://github.com/SahebRoy92/GRDB-SQLCipher`
+- **Pin:** `exactVersion: 6.29.3`
+- **Risk:** Personal fork of upstream GRDB. If the fork becomes unmaintained,
+  security patches and Swift version updates may lag.
+- **Mitigation:**
+  1. Vendor the fork under the `OpenBurnBar` org if the project gains traction.
+  2. Upstream SQLCipher changes to official GRDB if API-compatible.
+  3. Monitor upstream GRDB releases quarterly.
+  4. Pin to a commit hash (not just version tag) for supply-chain security.
+
+### Firebase iOS SDK
+
+- **Source:** `https://github.com/firebase/firebase-ios-sdk`
+- **Pin:** `from: "11.0.0"` (semver-compatible)
+- **Risk:** Major version upgrades may break Auth or Firestore APIs.
+- **Mitigation:** Dependabot watches for updates; the PR harness validates on update.
+
+### Sentry Cocoa
+
+- **Source:** `https://github.com/getsentry/sentry-cocoa`
+- **Pin:** `from: "8.0.0"`
+- **Risk:** Crash-reporting SDK with native code; version skew may lose symbolication.
+- **Mitigation:** Pin to an exact version after validation; upload dSYMs in the release workflow.

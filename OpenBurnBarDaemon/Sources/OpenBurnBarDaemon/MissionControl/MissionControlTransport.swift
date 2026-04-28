@@ -55,7 +55,7 @@ public struct BurnBarMissionControlPerformanceGuardrails: Codable, Hashable, Sen
 public typealias BurnBarMissionControlReviewRunLauncher = @Sendable (
     _ prompt: String,
     _ modelID: String,
-    _ metadata: [String: BurnBarJSONValue]
+    _ metadata: BurnBarRunCreateMetadata
 ) async throws -> BurnBarRunCreateResponse
 
 public typealias BurnBarMissionControlRunSnapshotLookup = @Sendable (

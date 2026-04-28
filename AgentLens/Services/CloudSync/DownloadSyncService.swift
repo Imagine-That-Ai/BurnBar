@@ -45,14 +45,14 @@ final class DownloadSyncService: CloudSyncDomain {
     /// Updates the local device name in Firestore (called from Settings).
     func updateLocalDeviceName(_ name: String) async {
         guard context.accountManager.isFirebaseAvailable, let uid = context.currentUID else { return }
-        let devicesRef = context.db.collection("users").document(uid).collection("devices")
+        let devicesRef = context.firestoreGateway.collection("users").document(uid).collection("devices")
         try? await devicesRef.document(context.deviceId).setData(["deviceName": name], merge: true)
     }
 
     // MARK: - Device Registry
 
     private func syncDeviceRegistry(uid: String, localDeviceId: String) async {
-        let devicesRef = context.db.collection("users").document(uid).collection("devices")
+        let devicesRef = context.firestoreGateway.collection("users").document(uid).collection("devices")
         let localName = Host.current().localizedName ?? "This Mac"
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
 
@@ -125,7 +125,7 @@ final class DownloadSyncService: CloudSyncDomain {
         }
 
         do {
-            var query = context.db.collection("users").document(uid).collection("usage")
+            var query = context.firestoreGateway.collection("users").document(uid).collection("usage")
                 .whereField("startTime", isGreaterThan: Timestamp(date: cutoff))
             if watermark > cutoff {
                 query = query.whereField("updatedAt", isGreaterThan: Timestamp(date: watermark))
@@ -211,12 +211,12 @@ final class DownloadSyncService: CloudSyncDomain {
         }
 
         do {
-            var query: Query
+            var query: any CloudSyncQueryGateway
             if watermark > Date.distantPast {
-                query = context.db.collection("users").document(uid).collection("conversations")
+                query = context.firestoreGateway.collection("users").document(uid).collection("conversations")
                     .whereField("updatedAt", isGreaterThan: Timestamp(date: watermark)).limit(to: 500)
             } else {
-                query = context.db.collection("users").document(uid).collection("conversations")
+                query = context.firestoreGateway.collection("users").document(uid).collection("conversations")
                     .order(by: "updatedAt", descending: true).limit(to: 500)
             }
             let snapshot = try await withCloudSyncRetry(
@@ -274,7 +274,7 @@ final class DownloadSyncService: CloudSyncDomain {
     /// and updates their fullText so FTS can index them.
     private func downloadRemoteSessionLogBodies(uid: String, conversationIds: [String]) async {
         guard !conversationIds.isEmpty else { return }
-        let logsRef = context.db.collection("users").document(uid).collection("session_logs")
+        let logsRef = context.firestoreGateway.collection("users").document(uid).collection("session_logs")
 
         for conversationId in conversationIds.prefix(20) {
             guard let colonIdx = conversationId.firstIndex(of: ":"),
@@ -319,7 +319,7 @@ final class DownloadSyncService: CloudSyncDomain {
             circuitBreaker: context.circuitBreaker,
             domain: "download.sessionLogChunks"
         ) {
-            try await context.db
+            try await context.firestoreGateway
                 .collection("users")
                 .document(uid)
                 .collection("session_logs")

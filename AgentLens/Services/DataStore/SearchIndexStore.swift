@@ -629,7 +629,7 @@ final class SearchIndexStore: Sendable {
         }
 
         if let normalizedProject, normalizedProject.isEmpty == false {
-            clauses.append("d.projectName = ?")
+            clauses.append("LOWER(COALESCE(d.projectName, '')) = LOWER(?)")
             args.append(normalizedProject)
         }
 
@@ -882,7 +882,7 @@ final class SearchIndexStore: Sendable {
         }
 
         if let normalizedProjectName {
-            clauses.append("projectName = ?")
+            clauses.append("LOWER(COALESCE(projectName, '')) = LOWER(?)")
             args.append(normalizedProjectName)
         }
 

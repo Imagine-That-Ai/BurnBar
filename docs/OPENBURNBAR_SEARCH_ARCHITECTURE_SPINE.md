@@ -11,24 +11,36 @@ Working constraints:
 - `SearchService` remains the single app-facing search entrypoint during the transition.
 - `DataStore` is split into focused stores over one shared `DatabaseQueue`; it is not replaced with a second persistence stack.
 
-## Current implementation status on `main` (2026-03-24)
+## Current implementation status on `main` (2026-04-26)
 
-The search stack is now live behind existing app seams, with the physical `DataStore.swift` file still hosting multiple focused stores while extraction to dedicated files remains a follow-up.
+The search stack is live behind the seams below. Focused **store types** and database helpers live under [`AgentLens/Services/DataStore/`](../AgentLens/Services/DataStore/); `DataStore.swift` is the **façade/coordinator** over that directory (not a monolithic file anymore).
 
 - **Authoritative local rows:** `conversations` + `source_artifacts` remain local-first in SQLite.
 - **Derived retrieval substrate:** `search_documents`, `search_chunks`, `search_chunks_fts`, `projection_jobs`, `embedding_models`, `embedding_versions`, `chunk_embeddings`, `retrieval_health`.
 - **Shared/team model:** `shared_artifact_sync_state`, `artifact_permissions`, and `audit_events` are persisted locally and synced via `CloudSyncService`.
 - **Queue-driven indexing:** projection/rebuild/re-embed run via `ProjectionPipelineService.runSweep()` from `UsageAggregator`.
-- **Single retrieval entrypoint:** `SearchService.retrieve(...)` and `SearchService.search(...)` serve consumers with lexical-first hybrid retrieval.
+- **Single retrieval entrypoint:** `SearchService.retrieve(...)` and `SearchService.search(...)` serve consumers with lexical-first hybrid retrieval. There is **no** separate `AgentLens/Services/Retrieval/` module on disk; lexical/semantic/hybrid details are implemented **inside** `SearchService` + `DataStore` search access.
+
+## Diligence source map (doc → code)
+
+| Concept in this document | Where it is implemented in the repo today |
+| --- | --- |
+| Single search API for UI / context | [`AgentLens/Services/SearchService.swift`](../AgentLens/Services/SearchService.swift) — `retrieve`, `search` |
+| SQLite + store split | [`AgentLens/Services/DataStore.swift`](../AgentLens/Services/DataStore.swift), [`AgentLens/Services/DataStore/`](../AgentLens/Services/DataStore/) (e.g. `OpenBurnBarDatabase`, `*Store` types) |
+| Projection / embeddings queue | [`AgentLens/Services/ProjectionPipelineService.swift`](../AgentLens/Services/ProjectionPipelineService.swift) |
+| Lexical + semantic retrieval internals | `SearchService` + `DataStore+SearchAccess` and related `DataStore` methods — **not** `LexicalRetriever.swift` (that filename does not exist) |
+| Daemon-side indexed search (extension/daemon) | [`OpenBurnBarIndexedSearchService.swift`](../OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarIndexedSearchService.swift) — separate from AgentLens `SearchService` |
+| “Vector index” / ANN in shared core | [`BurnBarPersistentVectorIndex.swift`](../OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarPersistentVectorIndex.swift) (not a standalone `VectorIndex.swift` under a future `Retrieval/` folder) |
 
 ## Current module layout on `main`
 
 ```text
 AgentLens/Services/
-  DataStore.swift                    # observable coordinator over the focused stores in Services/DataStore/
+  DataStore.swift                    # façade over Services/DataStore/* stores + coordinator
+  DataStore/                         # OpenBurnBarDatabase, UsageStore, ConversationStore, SearchIndexStore, …
   ConversationIndexer.swift          # conversation source upsert + projection enqueue
   UsageAggregator.swift              # parser orchestration + discovery + projection sweep triggers
-  ProjectionPipelineService.swift    # queue lease/process/retry + chunking + embeddings + rebuild/re-embed
+  ProjectionPipelineService.swift   # queue lease/process/retry + chunking + embeddings + rebuild/re-embed
   SearchService.swift                # lexical + semantic retrieval, bounded rerank, degraded-mode health
   CloudSyncService.swift             # shared artifact sync, RBAC snapshots, audit events, conflicts
   InsightEngine.swift                # materialized workflow insight rollups + freshness health
@@ -39,7 +51,7 @@ AgentLens/Services/
 | Existing code | Keep | Attach new work here |
 | --- | --- | --- |
 | `AgentLens/Services/ConversationIndexer.swift` | Keep the unchanged-file short-circuit and conversation upsert flow. | After each successful upsert, enqueue projection work for the affected source artifact. |
-| `DataStore.upsertConversation(_:)`, `fetchConversation`, `fetchAllSessionLogs`, `searchConversationsFTS` | Keep current conversation/session authority until the new retrieval substrate is backfilled. | Split into `ConversationStore` + derived search stores behind the same `DatabaseQueue`. |
+| `DataStore.upsertConversation(_:)`, `fetchConversation`, `fetchAllSessionLogs`, `searchConversationsFTS` | Keep current conversation/session authority; much of the store split is now under `DataStore/`. | Further narrow APIs through `ConversationStore` + search stores behind the same `DatabaseQueue` as needed. |
 | `UsageAggregator.refreshAll()` / `refresh(provider:)` | Keep parser orchestration and local persistence flow. | Continue launching artifact discovery + `ProjectionPipelineService.runSweep()` from this seam; do not push indexing into views. |
 | `SearchService.search(...)` | Keep this as the only consumer-facing search API. | Keep hybrid retrieval internals behind `SearchService` so views never own bespoke ranking paths. |
 | `ContextBuilder.buildSystemPrompt(...)` | Keep prompt formatting responsibility here. | Replace direct `DataStore.fetchConversations(...)` reads with `SearchService.retrieve(...)`-backed context packs. |
@@ -47,67 +59,49 @@ AgentLens/Services/
 | `CloudSyncService` | Keep personal usage/session backup behavior. | Add a separate shared-artifact sync layer instead of making Firestore the search source. |
 | `SessionLogsView` | Keep reading source transcripts directly. | Add health/status consumption only; do not add retrieval logic here. |
 
-## Planned extraction layout (next store split step)
+## Shipped: `AgentLens/Services/DataStore/` (extraction in progress, not empty)
 
-Use the existing empty `AgentLens/Services/DataStore/` directory as the split point when extracting the focused stores out of `DataStore.swift`.
+The following **exist on `main`** as part of the store/database split (names may evolve; see the directory for the full list):
 
 ```text
 AgentLens/Services/DataStore/
-  BurnBarDatabase.swift
+  OpenBurnBarDatabase.swift
+  DataStoreCoordinator.swift
+  DataStoreTypes.swift
   UsageStore.swift
   ConversationStore.swift
-  SourceArtifactStore.swift
-  SearchDocumentStore.swift
-  SearchChunkStore.swift
-  ProjectionJobStore.swift
-  EmbeddingStore.swift
-  RetrievalHealthStore.swift
-  CollaborationStore.swift
-  AuditEventStore.swift
-
-AgentLens/Services/Artifacts/
-  RegisteredRootRegistry.swift
-  ArtifactDiscoveryRules.swift
-  ArtifactDiscoveryService.swift
-  ArtifactIngestService.swift
-  ArtifactChunker.swift
-
-AgentLens/Services/Projection/
-  ProjectionCoordinator.swift
-  ProjectionWorker.swift
-  ProjectionBackfillService.swift
-  RebuildService.swift
-  InsightRollupProjector.swift
-
-AgentLens/Services/Retrieval/
-  RetrievalService.swift
-  LexicalRetriever.swift
-  SemanticRetriever.swift
-  HybridSearchPlanner.swift
-  VectorIndex.swift
-  ExactVectorIndex.swift
-  ApproximateVectorIndex.swift
-
-AgentLens/Services/Collaboration/
-  SharedArtifactService.swift
-  SharedArtifactSyncService.swift
-  RBACPolicy.swift
-  ConflictResolver.swift
-  AuditService.swift
-
-AgentLens/Models/
-  SourceArtifactRecord.swift
-  ArtifactVersionRecord.swift
-  SearchDocumentRecord.swift
-  SearchChunkRecord.swift
-  ProjectionJobRecord.swift
-  EmbeddingModelRecord.swift
-  RetrievalHealthRecord.swift
-  ArtifactPermissionRecord.swift
-  AuditEventRecord.swift
+  ArtifactStore.swift
+  SearchIndexStore.swift
+  ProjectionStore.swift
+  ParserCheckpointStore.swift
+  BackfillCursorStore.swift
+  RemoteSyncWatermarkStore.swift
+  DeviceStore.swift
+  ControlPlaneStore.swift
+  SwitcherProfileStore.swift
+  DatabaseEncryptionService.swift
+  DataStore+*.swift                  # domain-specific access extensions
 ```
 
-`DataStore.swift` should become a façade/composition root during migration, not a permanently growing god object.
+`DataStore.swift` is the **façade/composition root** over these types and the shared `DatabaseQueue`.
+
+## Not implemented: optional future folder layout (roadmap only)
+
+The tree below is a **design target**, not a description of the repository. In particular, **`AgentLens/Services/Retrieval/`** with standalone `LexicalRetriever.swift`, `SemanticRetriever.swift`, `HybridSearchPlanner.swift`, and `*VectorIndex.swift` **does not exist**—retrieval logic remains in **`SearchService`** and **`DataStore`** as described above. There are no top-level **`OpenBurnBarIndex/`**, **`OpenBurnBarParsers/`**, or **`OpenBurnBarPersistence/`** package directories (these empty shells were removed 2026-04-28); daemon search lives under **`OpenBurnBarDaemon`**, index contracts under **`OpenBurnBarCore`**, and parsing remains integrated with `UsageAggregator` and related services.
+
+**Optional future extractions** (if the codebase outgrows current files):
+
+```text
+AgentLens/Services/Artifacts/        # not yet a dedicated subfolder; logic in UsageAggregator, etc.
+AgentLens/Services/Projection/     # still largely ProjectionPipelineService + ProjectionStore
+AgentLens/Services/Retrieval/        # NOT PRESENT — use SearchService + DataStore search paths
+
+AgentLens/Services/Collaboration/    # not yet; CloudSyncService covers shared-artifact flow today
+
+AgentLens/Models/                    # see AgentLens/Models/ for current record types
+```
+
+Retrieval, projection, and collaboration **subfolders** in this roadmap are organizational targets; today their responsibilities live in the files named above and in `ProjectionPipelineService` / `CloudSyncService` as appropriate.
 
 ## Source-of-truth model
 

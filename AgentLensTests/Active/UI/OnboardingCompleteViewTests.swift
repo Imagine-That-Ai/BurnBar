@@ -10,7 +10,7 @@ import GRDB
 final class OnboardingCompleteViewTests: XCTestCase {
 
     func test_rendersWithEmptyDataStore() throws {
-        let store = try! makeIsolatedStore()
+        let store = try makeIsolatedStore()
         let view = OnboardingCompleteView(
             dataStore: store,
             selectedProviders: [],
@@ -21,7 +21,7 @@ final class OnboardingCompleteViewTests: XCTestCase {
     }
 
     func test_rendersWithSelectedProviders() throws {
-        let store = try! makeIsolatedStore()
+        let store = try makeIsolatedStore()
         let view = OnboardingCompleteView(
             dataStore: store,
             selectedProviders: [.claudeCode, .factory],
@@ -32,7 +32,7 @@ final class OnboardingCompleteViewTests: XCTestCase {
     }
 
     func test_showsYoureAllSetWhenNoSessions() throws {
-        let store = try! makeIsolatedStore()
+        let store = try makeIsolatedStore()
         let view = OnboardingCompleteView(
             dataStore: store,
             selectedProviders: [],
@@ -44,7 +44,7 @@ final class OnboardingCompleteViewTests: XCTestCase {
     }
 
     func test_showsSessionCountWhenSessionsExist() throws {
-        let store = try! makeIsolatedStore()
+        let store = try makeIsolatedStore()
         let usages = ViewTestFixtures.makeWeekOfUsages()
         store.replaceUsages(usages)
         let view = OnboardingCompleteView(
@@ -58,7 +58,7 @@ final class OnboardingCompleteViewTests: XCTestCase {
     }
 
     func test_showsTrackingCountForSelectedProviders() throws {
-        let store = try! makeIsolatedStore()
+        let store = try makeIsolatedStore()
         let view = OnboardingCompleteView(
             dataStore: store,
             selectedProviders: [.claudeCode, .factory, .hermes],
@@ -70,7 +70,7 @@ final class OnboardingCompleteViewTests: XCTestCase {
     }
 
     func test_openDashboardCallbackFires() throws {
-        let store = try! makeIsolatedStore()
+        let store = try makeIsolatedStore()
         var dashboardFired = false
         let view = OnboardingCompleteView(
             dataStore: store,
@@ -88,7 +88,7 @@ final class OnboardingCompleteViewTests: XCTestCase {
     }
 
     func test_dismissCallbackFires() throws {
-        let store = try! makeIsolatedStore()
+        let store = try makeIsolatedStore()
         var dismissFired = false
         let view = OnboardingCompleteView(
             dataStore: store,
@@ -104,7 +104,7 @@ final class OnboardingCompleteViewTests: XCTestCase {
     }
 
     func test_showsCheckmarkIcon() throws {
-        let store = try! makeIsolatedStore()
+        let store = try makeIsolatedStore()
         let view = OnboardingCompleteView(
             dataStore: store,
             selectedProviders: [],

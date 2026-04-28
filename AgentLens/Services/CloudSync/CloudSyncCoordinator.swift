@@ -57,8 +57,8 @@ final class CloudSyncCoordinator {
     ///     and download sync. May be nil if those features are not needed.
     init(
         dataStore: DataStore,
-        accountManager: AccountManager,
-        settingsManager: SettingsManager,
+        accountManager: any AccountManaging,
+        settingsManager: any SettingsManagerProtocol,
         legacyCloudSync: CloudSyncService? = nil
     ) {
         self.context = CloudSyncContext(

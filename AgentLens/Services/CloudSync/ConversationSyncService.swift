@@ -41,8 +41,8 @@ final class ConversationSyncService: CloudSyncDomain {
                 return
             }
 
-            let batch = context.db.batch()
-            let collectionRef = context.db.collection("users").document(uid).collection("conversations")
+            let batch = context.firestoreGateway.batch()
+            let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("conversations")
 
             for record in unsynced {
                 let docId = "\(context.deviceId)_\(record.id)"

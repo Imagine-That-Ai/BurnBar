@@ -33,7 +33,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             appSupportRoot: appSupport
         )
 
-        await service.refresh(provider: .codex, dataStore: try! DataStore())
+        await service.refresh(provider: .codex, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .codex))
 
         XCTAssertEqual(snapshot.source, .localSession)
@@ -64,7 +64,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             appSupportRoot: appSupport
         )
 
-        await service.refresh(provider: .codex, dataStore: try! DataStore())
+        await service.refresh(provider: .codex, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .codex))
 
         XCTAssertEqual(snapshot.source, .localSession)
@@ -87,13 +87,13 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let first = makeService(home: home, appSupportRoot: appSupport)
-        await first.refresh(provider: .codex, dataStore: try! DataStore())
+        await first.refresh(provider: .codex, dataStore: try DataStore())
         XCTAssertTrue(FileManager.default.fileExists(atPath: paths.codexRolloutScanCacheURL.path))
 
         try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: rolloutURL.path)
 
         let second = makeService(home: home, appSupportRoot: appSupport)
-        await second.refresh(provider: .codex, dataStore: try! DataStore())
+        await second.refresh(provider: .codex, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(second.snapshot(for: .codex))
 
         XCTAssertEqual(snapshot.source, .localSession)
@@ -117,7 +117,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let service = makeService(home: home, appSupportRoot: appSupport)
 
-        await service.refresh(provider: .codex, dataStore: try! DataStore())
+        await service.refresh(provider: .codex, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .codex))
 
         XCTAssertEqual(snapshot.buckets.count, 1)
@@ -141,7 +141,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let service = makeService(home: home, appSupportRoot: appSupport)
 
-        await service.refresh(provider: .codex, dataStore: try! DataStore())
+        await service.refresh(provider: .codex, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .codex))
 
         XCTAssertEqual(snapshot.buckets.count, 2)
@@ -201,7 +201,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             environment: ["ANTHROPIC_API_KEY": "sk-ant-test"]
         )
 
-        await service.refresh(provider: .claudeCode, dataStore: try! DataStore())
+        await service.refresh(provider: .claudeCode, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
@@ -246,7 +246,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             environment: ["ANTHROPIC_API_KEY": "sk-ant-test"]
         )
 
-        await service.refresh(provider: .claudeCode, dataStore: try! DataStore())
+        await service.refresh(provider: .claudeCode, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
         XCTAssertEqual(snapshot.source, .localCLI)
@@ -266,7 +266,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             factoryPlanProvider: { .pro }
         )
 
-        let store = try! DataStore()
+        let store = try DataStore()
         let start = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date()
         store.replaceUsages([
             TokenUsage(
@@ -361,7 +361,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             factoryPlanProvider: { .pro }
         )
 
-        await service.refresh(provider: .factory, dataStore: try! DataStore())
+        await service.refresh(provider: .factory, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
 
         XCTAssertEqual(snapshot.source, .officialAPI)
@@ -392,7 +392,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             factoryPlanProvider: { .pro }
         )
 
-        let store = try! DataStore()
+        let store = try DataStore()
         await first.refreshAll(dataStore: store)
         XCTAssertTrue(FileManager.default.fileExists(atPath: paths.providerQuotaSnapshotsURL.path))
 
@@ -440,7 +440,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             miniMaxModeProvider: { .tokenPlan }
         )
 
-        await service.refresh(provider: .minimax, dataStore: try! DataStore())
+        await service.refresh(provider: .minimax, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
 
         XCTAssertEqual(snapshot.source, .officialAPI)
@@ -465,7 +465,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             miniMaxModeProvider: { .tokenPlan }
         )
 
-        await service.refresh(provider: .minimax, dataStore: try! DataStore())
+        await service.refresh(provider: .minimax, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
@@ -511,7 +511,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             miniMaxModeProvider: { .tokenPlan }
         )
 
-        await service.refresh(provider: .minimax, dataStore: try! DataStore())
+        await service.refresh(provider: .minimax, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
 
         XCTAssertEqual(snapshot.buckets.count, 2)
@@ -555,7 +555,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             miniMaxModeProvider: { .tokenPlan }
         )
 
-        await service.refresh(provider: .minimax, dataStore: try! DataStore())
+        await service.refresh(provider: .minimax, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
         let bucket = try XCTUnwrap(snapshot.primaryBucket)
 
@@ -605,7 +605,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             miniMaxModeProvider: { .tokenPlan }
         )
 
-        await service.refresh(provider: .minimax, dataStore: try! DataStore())
+        await service.refresh(provider: .minimax, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
 
         XCTAssertEqual(snapshot.buckets.count, 2)
@@ -673,7 +673,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             session: session
         )
 
-        await service.refresh(provider: .zai, dataStore: try! DataStore())
+        await service.refresh(provider: .zai, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .zai))
 
         XCTAssertEqual(snapshot.source, .officialAPI)
@@ -718,7 +718,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             session: session
         )
 
-        await service.refresh(provider: .zai, dataStore: try! DataStore())
+        await service.refresh(provider: .zai, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .zai))
 
         XCTAssertEqual(snapshot.source, .officialAPI)
@@ -747,7 +747,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             session: session
         )
 
-        await service.refresh(provider: .zai, dataStore: try! DataStore())
+        await service.refresh(provider: .zai, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .zai))
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
@@ -815,7 +815,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             session: session
         )
 
-        await service.refresh(provider: .cursor, dataStore: try! DataStore())
+        await service.refresh(provider: .cursor, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .cursor))
         let primary = try XCTUnwrap(snapshot.primaryBucket)
 
@@ -846,7 +846,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             session: session
         )
 
-        await service.refresh(provider: .cursor, dataStore: try! DataStore())
+        await service.refresh(provider: .cursor, dataStore: try DataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .cursor))
 
         XCTAssertEqual(snapshot.source, .unavailable)

@@ -101,12 +101,28 @@ extension OpenBurnBarDaemonManager {
     func writeLaunchAgentPlist() throws {
         let indexDbPath = OpenBurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
         let daemonSocketAuthToken = try rotateDaemonSocketAuthToken()
+
+        // SECURITY: Pass secrets via EnvironmentVariables, not ProgramArguments.
+        // CLI arguments are visible to any local user via `ps aux`, so the auth
+        // token and gateway auth token must be passed as environment variables
+        // which are only visible to processes in the same Mach bootstrap context.
         var programArguments = [
             paths.installedBinaryURL.path,
             "--socket-path", paths.socketURL.path,
-            "--index-database-path", indexDbPath,
-            "--socket-auth-token", daemonSocketAuthToken
+            "--index-database-path", indexDbPath
         ]
+
+        var environmentVariables: [String: String] = [
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": daemonSocketAuthToken
+        ]
+
+        // Propagate Sentry DSN to the daemon so crash reports are captured.
+        #if canImport(Sentry)
+        if let sentryDSN = Bundle.main.object(forInfoDictionaryKey: "sentry.dsn") as? String,
+           !sentryDSN.trimmingCharacters(in: .whitespaces).isEmpty {
+            environmentVariables["OPENBURNBAR_SENTRY_DSN"] = sentryDSN
+        }
+        #endif
 
         let settings = settingsManager
         if settings.gatewayEnabled {
@@ -115,13 +131,14 @@ extension OpenBurnBarDaemonManager {
             programArguments.append(contentsOf: ["--gateway-port", "\(settings.gatewayPort > 0 ? settings.gatewayPort : 8317)"])
             let gatewayAuthToken = settings.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
             if !gatewayAuthToken.isEmpty {
-                programArguments.append(contentsOf: ["--gateway-auth-token", gatewayAuthToken])
+                environmentVariables["OPENBURNBAR_GATEWAY_AUTH_TOKEN"] = gatewayAuthToken
             }
         }
 
         let plist: [String: Any] = [
             "Label": OpenBurnBarDaemonRuntimePaths.launchAgentLabel,
             "ProgramArguments": programArguments,
+            "EnvironmentVariables": environmentVariables,
             "RunAtLoad": true,
             "KeepAlive": true,
             "WorkingDirectory": paths.daemonDirectory.path,

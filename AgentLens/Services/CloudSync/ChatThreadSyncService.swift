@@ -44,8 +44,8 @@ final class ChatThreadSyncService: CloudSyncDomain {
             }
 
             let deviceId = context.deviceId
-            let batch = context.db.batch()
-            let collectionRef = context.db
+            let batch = context.firestoreGateway.batch()
+            let collectionRef = context.firestoreGateway
                 .collection("users")
                 .document(uid)
                 .collection("chat_threads")

@@ -18,7 +18,7 @@ This document describes the security boundaries, permissions, and trust model fo
 │         │  └────────────────────────┘                                        │
 │         │                                                                    │
 │         │  ┌────────────────────────┐                                        │
-│         ├──│  Local SQLite (GRDB)   │  canonical data store                  │
+│         ├──│  Local SQLite (GRDB)   │  canonical; optional SQLCipher at rest  │
 │         │  └────────────────────────┘                                        │
 │         │                                                                    │
 │         │  ┌────────────────────────┐    opt-in                              │
@@ -69,9 +69,10 @@ A local JSON-RPC server listening on a UNIX domain socket at `~/Library/Applicat
 
 | Threat | Mitigation | Residual risk |
 |---|---|---|
-| Local user impersonation via socket | Socket is filesystem-permission-protected; only the owning user can connect. | Another process running as the same user can send RPC calls. This is inherent to single-user UNIX socket IPC. |
+| Local user impersonation via socket | Socket is filesystem-permission-protected; only the owning user can connect. Auth token required on every RPC request. The auth token is passed via launchd `EnvironmentVariables` (not CLI arguments) to prevent `ps aux` exposure. | Another process running as the same user can send RPC calls. This is inherent to single-user UNIX socket IPC. |
 | Daemon compromise exposes Keychain secrets | Keychain items use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. Attacker with daemon code execution can read secrets for the current user. | Equivalent to any unsandboxed app running as that user. |
 | Malicious RPC input | Request size capped at 64 KB (`BurnBarDaemonServer.maxRequestBytes`). Typed Codable deserialization rejects malformed payloads. | No known injection vectors; RPC methods are enumerated, not dynamic dispatch. |
+| Daemon auth token leak via process listing | Auth token is passed via `EnvironmentVariables` in the launchd plist, not as a CLI argument. The plist file is written with `0o600` permissions (owner read/write only). | launchd plist is visible to the owning user. Other local users cannot read it. The plist path is `~/Library/LaunchAgents/` which has `0o755` directory permissions — a local admin could escalate. |
 
 ## Extension (VS Code / Cursor)
 
@@ -122,12 +123,21 @@ If the app is compromised, the attacker has full access to the user's home direc
 - App does not execute untrusted code
 - App is distributed via Developer ID signing (Gatekeeper + notarization provide an alternative security boundary)
 
+### Local database (GRDB and optional SQLCipher)
+
+- **Default:** The on-disk file at `~/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite` is a standard SQLite database opened via GRDB.
+- **Optional encryption:** When the user enables database encryption in Settings, production builds use **SQLCipher** (linked through the SPM `GRDB-SQLCipher` package in `project.yml`, aligned with the daemon’s GRDB pin). A `PRAGMA key` is applied on every connection; the key material is held in the Keychain (`DatabaseEncryptionService`). The app checks `PRAGMA cipher_version` and refuses to use a silent plaintext path when encryption is requested but the library is not SQLCipher.
+- **License:** SQLCipher is a community / commercial dual-licensed product; see [Zetetic’s SQLCipher licensing page](https://www.zetetic.net/sqlcipher/license/) for distribution terms. OpenBurnBar does not modify SQLCipher itself.
+- **Migration:** Toggling encryption on for an **existing** plaintext database is a destructive migration path: users should rely on in-app or documented backup/restore flows rather than only flipping the switch on an old file (see [RUNBOOK](RUNBOOK.md)).
+- **Key recovery:** If the Keychain entry is lost (macOS migration, Keychain reset, troubleshooting), the encryption key is automatically recovered from a deterministic on-disk file at `~/Library/Application Support/OpenBurnBar/.encryption-key-recovery`. The recovery file is stored with `0o600` permissions (owner read/write only) and contains a SHA-256 integrity check. On recovery, the key is re-imported into Keychain for subsequent launches. This prevents permanent data loss from Keychain loss events.
+
 ## Cloud Surfaces (Opt-In)
 
 ### Firebase
 
 - **Auth:** Google and Apple Sign-In via Firebase Auth. OAuth tokens managed by Firebase SDK.
-- **Firestore:** Owner-scoped rules: `users/{uid}/...` and `workspaces/workspace-{uid}/...` are readable/writable only by the authenticated owner. Basic size limits enforced.
+- **App Check (Firestore):** The macOS app initializes App Check before Firebase. **Production** projects must **enforce** App Check for **Cloud Firestore** in the Firebase console so traffic without a valid attestation is rejected; Auth alone is not a substitute (see [FIREBASE_APP_CHECK_ENFORCEMENT.md](FIREBASE_APP_CHECK_ENFORCEMENT.md)).
+- **Firestore:** Owner-scoped rules: `users/{uid}/...` and `workspaces/workspace-{uid}/...` are readable/writable only by the authenticated owner. Basic size limits enforced. Authorization is expressed in rules; **app attestation** is expected via console App Check enforcement.
 - **What syncs:** Usage rows, chat threads (for cross-device resume), and owner-scoped shared-artifact heads/revisions. Conversation metadata and full session-log backup are separately gated.
 - **Privacy note:** Synced data can include project directory names, model names, chat content, and (if backup is enabled) full session log bodies with prompts or code.
 

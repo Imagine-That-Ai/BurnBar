@@ -44,7 +44,7 @@ final class SessionLogSyncService: CloudSyncDomain {
                 return
             }
 
-            let logsRef = context.db.collection("users").document(uid).collection("session_logs")
+            let logsRef = context.firestoreGateway.collection("users").document(uid).collection("session_logs")
 
             for record in unsynced {
                 let markdown = SessionLogMarkdownFormatter.markdown(for: record)
@@ -119,7 +119,7 @@ final class SessionLogSyncService: CloudSyncDomain {
     }
 
     /// Splits a UTF-8 string into chunks each fitting within `maxBytes` bytes.
-    private static func chunkUTF8String(_ string: String, maxBytes: Int) -> [String] {
+    static func chunkUTF8String(_ string: String, maxBytes: Int) -> [String] {
         let data = Data(string.utf8)
         guard data.count > maxBytes else { return [string] }
 

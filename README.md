@@ -364,10 +364,11 @@ OpenBurnBar is a happy offline hermit by default. Cloud sync is for people who u
 
 **Pieces:**
 
-- **Primary store:** GRDB + SQLite — fast, local, yours
+- **Primary store:** GRDB + SQLite — fast, local, yours. **Optional at-rest encryption** uses SQLCipher (SPM `GRDB-SQLCipher`, pinned with the daemon); the encryption key lives in the Keychain. When encryption is on, the build must link SQLCipher — see [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) and [docs/RUNBOOK.md](docs/RUNBOOK.md). SQLCipher licensing: [Zetetic](https://www.zetetic.net/sqlcipher/license/).
 - **Sync store:** Firestore under `users/{uid}/` — `usage`, `chat_threads` (OpenBurnBar in-app chat thread metadata + truncated messages for cross-device resume), `conversations` (optional metadata backup), `session_logs` (+ `chunks` for full log backup when enabled)
 - **Shared artifact sync:** Firestore under `workspaces/workspace-{uid}/teams/team-default/artifacts/{artifactID}` plus `versions/{revisionID}` for the current source-release collaboration head/history path
 - **Auth:** Firebase Auth — **Google** and/or **Sign in with Apple**
+- **App Check:** The app initializes App Check before Firebase; **production** Firebase projects must **enforce** App Check for **Cloud Firestore** in the console (Auth + rules are not enough). See [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md).
 - **Device identity:** random UUID stored in local app defaults and migrated from legacy OpenBurnBar/AgentLens defaults keys
 - **iCloud mirror (optional):** copies parsed session log files into your **personal** iCloud Drive folder for the app (`Documents/OpenBurnBar/SessionMirror/...`). Independent of Firebase; see below.
 
@@ -408,9 +409,11 @@ service cloud.firestore {
 
    Paste into **Firebase Console → Firestore → Rules** and publish, or add `firestore.rules` to your Firebase CLI project and run `firebase deploy --only firestore:rules`. The checked-in rules intentionally keep the current shared-artifact path owner-scoped by default; broader multi-user team sharing will need a stricter project-specific policy later.
 
-4. Download `GoogleService-Info.plist` → `AgentLens/Resources/GoogleService-Info.plist` (gitignored; never commit). See `AgentLens/Resources/GoogleService-Info.plist.example` for the shape of the thing. In Xcode, use **File → Add Files to "OpenBurnBar"…**, select that plist, and check the **OpenBurnBar** target so it is copied into the app bundle.
-5. Configure the **Google Sign-In** URL scheme / OAuth client as Firebase/Google Cloud demand (the app ships `OpenBurnBar-Info.plist` entries for the bundled client; yours will differ in a fork).
-6. `xcodegen generate` and rebuild.
+4. **App Check for Firestore (production):** After reviewing [App Check metrics](https://firebase.google.com/docs/app-check/monitor-metrics), **enforce** App Check for **Cloud Firestore** in the Firebase console. Register your [CI debug token](docs/RELEASE_MACOS.md) in App Check if you use `FIREBASE_APP_CHECK_DEBUG_TOKEN` / `FirebaseAppCheckDebugToken`. See [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md).
+
+5. Download `GoogleService-Info.plist` → `AgentLens/Resources/GoogleService-Info.plist` (gitignored; never commit). See `AgentLens/Resources/GoogleService-Info.plist.example` for the shape of the thing. In Xcode, use **File → Add Files to "OpenBurnBar"…**, select that plist, and check the **OpenBurnBar** target so it is copied into the app bundle.
+6. Configure the **Google Sign-In** URL scheme / OAuth client as Firebase/Google Cloud demand (the app ships `OpenBurnBar-Info.plist` entries for the bundled client; yours will differ in a fork).
+7. `xcodegen generate` and rebuild.
 
 **Privacy:** synced payloads can include **project directory names**, **model names**, and **OpenBurnBar in-app chat thread content**. If you also enable conversation/session-log backup, synced data can additionally include conversation metadata and full Markdown session-log bodies that may contain prompts or code snippets. You can disable sync in **Settings → Account** without sacrificing local history.
 
@@ -423,7 +426,7 @@ Use this when you want session logs in **your** Apple ID’s iCloud storage inst
 - **Apple Developer:** Enable **iCloud** for the macOS app ID `com.openburnbar.app` with **iCloud Documents** and container `iCloud.com.openburnbar.app`, matching [AgentLens/Resources/OpenBurnBar.entitlements](AgentLens/Resources/OpenBurnBar.entitlements).
 - **Privacy:** mirrored files can contain paths, prompts, and code snippets. They are **not** uploaded to OpenBurnBar-operated Firebase storage by this feature (they sync through Apple’s iCloud like any other document).
 - **Conflicts:** editing the same mirrored file on two Macs can produce iCloud “conflict” copies; OpenBurnBar does not merge those automatically.
-- **“Missing or insufficient permissions”:** if this appears during **Firestore** sync or dashboard refresh, update your Firestore security rules for the signed-in user. If it appears only when **mirroring to iCloud**, the Mac build usually needs the **iCloud Documents** capability and matching **provisioning profile** for container `iCloud.com.openburnbar.app` (see Apple Developer → Identifiers → your App ID).
+- **“Missing or insufficient permissions”:** if this appears during **Firestore** sync or dashboard refresh, update your Firestore security rules for the signed-in user, confirm **App Check enforcement** and a registered [debug token](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md) for CI/local builds, and that the app bundle includes App Check (see [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md)). If it appears only when **mirroring to iCloud**, the Mac build usually needs the **iCloud Documents** capability and matching **provisioning profile** for container `iCloud.com.openburnbar.app` (see Apple Developer → Identifiers → your App ID).
 
 ---
 

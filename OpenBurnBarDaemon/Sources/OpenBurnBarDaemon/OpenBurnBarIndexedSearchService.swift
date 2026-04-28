@@ -69,7 +69,8 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         self.snapshotBackend = snapshotBackend ?? BurnBarPersistentVectorIndexFactory.hnswBackend(
             m: semanticConfig.hnswM,
             efConstruction: semanticConfig.hnswEfConstruction,
-            efSearch: semanticConfig.hnswEfSearch
+            efSearch: semanticConfig.hnswEfSearch,
+            quantization: semanticConfig.quantization
         )
         self.snapshotPageSize = max(1, snapshotPageSize)
         let databaseURL = URL(fileURLWithPath: databasePath)

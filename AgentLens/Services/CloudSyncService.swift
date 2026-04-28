@@ -108,12 +108,14 @@ final class CloudSyncService {
 
         isSyncing = true
         lastSyncError = nil
+        let start = Date()
 
         do {
             let unsynced = try dataStore.fetchUnsynced()
             guard !unsynced.isEmpty else {
                 isSyncing = false
                 lastSyncDate = Date()
+                TelemetryService.shared.record(feature: .cloudSync, outcome: .success, durationMs: Int(Date().timeIntervalSince(start) * 1000))
                 return
             }
 
@@ -138,9 +140,11 @@ final class CloudSyncService {
             lastSyncDate = Date()
             lastSyncError = nil
 
+            TelemetryService.shared.record(feature: .cloudSync, outcome: .success, durationMs: Int(Date().timeIntervalSince(start) * 1000))
             await downloadRemoteData(uid: uid)
             await fetchCloudTotal(uid: uid)
         } catch {
+            TelemetryService.shared.record(feature: .cloudSync, outcome: .failure, durationMs: Int(Date().timeIntervalSince(start) * 1000))
             recordSyncError(error)
         }
 

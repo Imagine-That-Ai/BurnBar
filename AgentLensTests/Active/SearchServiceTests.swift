@@ -1102,7 +1102,7 @@ final class SearchServiceTests: XCTestCase {
 
         let service = SearchService(dataStore: store, nowProvider: { base })
 
-        let recent = service.recentConversations(limit: 5)
+        let recent = await service.recentConversations(limit: 5)
         XCTAssertLessThanOrEqual(recent.count, 5)
     }
 
@@ -1132,7 +1132,7 @@ final class SearchServiceTests: XCTestCase {
 
         let service = SearchService(dataStore: store, nowProvider: { base })
 
-        let latest = service.latestConversation()
+        let latest = await service.latestConversation()
         XCTAssertEqual(latest?.id, newer.id)
     }
 
@@ -1188,7 +1188,7 @@ final class SearchServiceTests: XCTestCase {
         try store.upsertConversation(convB)
 
         let service = SearchService(dataStore: store, nowProvider: { base })
-        let latest = service.latestConversation()
+        let latest = await service.latestConversation()
         XCTAssertEqual(latest?.id, convA.id)
     }
 
@@ -1328,7 +1328,7 @@ final class SearchServiceTests: XCTestCase {
         let service = SearchService(dataStore: store, nowProvider: { base })
         let result = await service.runBurnBarQuery(RetrievalQuery(text: "how many times have I used deployment"))
 
-        XCTAssertFalse(result.retrievalResults.isEmpty || result.retrievalResults.isEmpty == false)
+        XCTAssertFalse(result.retrievalResults.isEmpty)
     }
 
     func test_runBurnBarQuery_timeWindowInferred() async throws {
@@ -1373,7 +1373,8 @@ final class SearchServiceTests: XCTestCase {
         )
 
         // Verify the property is accessible
-        XCTAssertNil(service.lastHealthWriteError)
+        let healthError = await service.lastHealthWriteError
+        XCTAssertNil(healthError)
     }
 
     // MARK: - Visibility Scope Tests
@@ -1560,7 +1561,7 @@ final class SearchServiceTests: XCTestCase {
             id: "conv-token-match",
             provider: .claudeCode,
             projectName: "TokenCoverageTest",
-            fullText: "Some general content without specific keywords in the body.",
+            fullText: "Some general content. token coverage appears in the body for FTS.",
             indexedAt: base,
             sourceType: .providerLog
         )

@@ -27,35 +27,35 @@ final class UsageAggregatorTests: XCTestCase {
 
     // MARK: - Initialization Tests
 
-    func test_init_setsDefaultParsers() {
-        let aggregator = UsageAggregator(dataStore: try! makeTestDataStore())
+    func test_init_setsDefaultParsers() throws {
+        let aggregator = UsageAggregator(dataStore: try makeTestDataStore())
         XCTAssertFalse(aggregator.isRefreshing)
         XCTAssertFalse(aggregator.isSummarizing)
         XCTAssertEqual(aggregator.errors, [:])
         XCTAssertEqual(aggregator.parserHealth, [:])
     }
 
-    func test_init_withParserOverrides_usesOverrides() {
+    func test_init_withParserOverrides_usesOverrides() throws {
         let overrideParser = MockParser(provider: .factory)
         let aggregator = UsageAggregator(
-            dataStore: try! makeTestDataStore(),
+            dataStore: try makeTestDataStore(),
             parserOverrides: [.factory: overrideParser]
         )
         XCTAssertFalse(aggregator.isRefreshing)
     }
 
-    func test_init_persistenceErrorMessage_isNil() {
-        let aggregator = UsageAggregator(dataStore: try! makeTestDataStore())
+    func test_init_persistenceErrorMessage_isNil() throws {
+        let aggregator = UsageAggregator(dataStore: try makeTestDataStore())
         XCTAssertNil(aggregator.persistenceErrorMessage)
     }
 
-    func test_init_apiUsages_isEmpty() {
-        let aggregator = UsageAggregator(dataStore: try! makeTestDataStore())
+    func test_init_apiUsages_isEmpty() throws {
+        let aggregator = UsageAggregator(dataStore: try makeTestDataStore())
         XCTAssertEqual(aggregator.apiUsages, [])
     }
 
-    func test_init_lastRefresh_isNil() {
-        let aggregator = UsageAggregator(dataStore: try! makeTestDataStore())
+    func test_init_lastRefresh_isNil() throws {
+        let aggregator = UsageAggregator(dataStore: try makeTestDataStore())
         XCTAssertNil(aggregator.lastRefresh)
     }
 
@@ -249,16 +249,16 @@ final class UsageAggregatorTests: XCTestCase {
 
     // MARK: - Test Helper Methods
 
-    func test_computeSupplementalUsages_returnsEmptyWhenNoRecords() {
-        let dataStore = try! makeTestDataStore()
+    func test_computeSupplementalUsages_returnsEmptyWhenNoRecords() throws {
+        let dataStore = try makeTestDataStore()
         let aggregator = makeTestAggregator(dataStore: dataStore)
 
         let result = aggregator.computeSupplementalUsages(from: [], existingUsages: [])
         XCTAssertEqual(result, [])
     }
 
-    func test_computeSupplementalUsages_returnsEmptyWhenAllMatched() {
-        let dataStore = try! makeTestDataStore()
+    func test_computeSupplementalUsages_returnsEmptyWhenAllMatched() throws {
+        let dataStore = try makeTestDataStore()
         let aggregator = makeTestAggregator(dataStore: dataStore)
 
         let apiRecords = [
@@ -293,22 +293,22 @@ final class UsageAggregatorTests: XCTestCase {
         XCTAssertTrue(result.isEmpty)
     }
 
-    func test_costDeltaExceedsEpsilon_returnsFalseWhenDeltaIsZero() {
+    func test_costDeltaExceedsEpsilon_returnsFalseWhenDeltaIsZero() throws {
         let result = UsageAggregator.costDeltaExceedsEpsilon(localCost: 1.0, apiCost: 1.0)
         XCTAssertFalse(result)
     }
 
-    func test_costDeltaExceedsEpsilon_returnsFalseWhenDeltaIsBelowEpsilon() {
+    func test_costDeltaExceedsEpsilon_returnsFalseWhenDeltaIsBelowEpsilon() throws {
         let result = UsageAggregator.costDeltaExceedsEpsilon(localCost: 1.0, apiCost: 1.0 + 1e-10)
         XCTAssertFalse(result)
     }
 
-    func test_costDeltaExceedsEpsilon_returnsTrueWhenDeltaExceedsEpsilon() {
+    func test_costDeltaExceedsEpsilon_returnsTrueWhenDeltaExceedsEpsilon() throws {
         let result = UsageAggregator.costDeltaExceedsEpsilon(localCost: 1.0, apiCost: 1.1)
         XCTAssertTrue(result)
     }
 
-    func test_costDeltaExceedsEpsilon_handlesNegativeDelta() {
+    func test_costDeltaExceedsEpsilon_handlesNegativeDelta() throws {
         // When apiCost < localCost, missingCost = max(0, negative) = 0
         let result = UsageAggregator.costDeltaExceedsEpsilon(localCost: 1.1, apiCost: 1.0)
         XCTAssertFalse(result)
@@ -349,7 +349,7 @@ final class UsageAggregatorTests: XCTestCase {
 
 final class TokenExtractionUtilityTests: XCTestCase {
 
-    func test_extractUsageTokens_withStandardFields() {
+    func test_extractUsageTokens_withStandardFields() throws {
         let usage: [String: Any] = [
             "input_tokens": 100,
             "output_tokens": 50,
@@ -366,7 +366,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertFalse(result.hasNoExplicitBuckets)
     }
 
-    func test_extractUsageTokens_withCamelCaseFields() {
+    func test_extractUsageTokens_withCamelCaseFields() throws {
         let usage: [String: Any] = [
             "inputTokens": 200,
             "outputTokens": 100,
@@ -382,7 +382,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result.cacheRead, 20)
     }
 
-    func test_extractUsageTokens_withNestedObjects() {
+    func test_extractUsageTokens_withNestedObjects() throws {
         let usage: [String: Any] = [
             "prompt_tokens": 150,
             "completion_tokens": 75,
@@ -396,7 +396,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result.cacheRead, 30)
     }
 
-    func test_extractUsageTokens_withNoExplicitBuckets_hasNoExplicitBucketsIsTrue() {
+    func test_extractUsageTokens_withNoExplicitBuckets_hasNoExplicitBucketsIsTrue() throws {
         let usage: [String: Any] = [:]
 
         let result = TokenExtractionUtility.extractUsageTokens(usage)
@@ -406,7 +406,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertTrue(result.hasNoExplicitBuckets)
     }
 
-    func test_extractUsageTokens_withOnlyTotalTokens_derivesPrimaryBuckets() {
+    func test_extractUsageTokens_withOnlyTotalTokens_derivesPrimaryBuckets() throws {
         let usage: [String: Any] = [
             "total_tokens": 200,
             "input_tokens": 150,
@@ -422,7 +422,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result.cacheRead, 10)
     }
 
-    func test_extractUsageTokens_normalizesFromTotal() {
+    func test_extractUsageTokens_normalizesFromTotal() throws {
         let usage: [String: Any] = [
             "total_tokens": 300,
             // No input or output explicitly
@@ -434,7 +434,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertTrue(result.input > 0 || result.output > 0)
     }
 
-    func test_extractUsageTokens_preservesZeroValues() {
+    func test_extractUsageTokens_preservesZeroValues() throws {
         let usage: [String: Any] = [
             "input_tokens": 0,
             "output_tokens": 0
@@ -446,7 +446,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result.output, 0)
     }
 
-    func test_extractUsageTokens_handlesStringValues() {
+    func test_extractUsageTokens_handlesStringValues() throws {
         let usage: [String: Any] = [
             "input_tokens": "100",
             "output_tokens": "50"
@@ -458,7 +458,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result.output, 50)
     }
 
-    func test_extractUsageTokens_handlesDoubleValues() {
+    func test_extractUsageTokens_handlesDoubleValues() throws {
         let usage: [String: Any] = [
             "input_tokens": 100.7,
             "output_tokens": 50.3
@@ -470,7 +470,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result.output, 50)
     }
 
-    func test_extractUsageTokens_handlesReasoningTokens() {
+    func test_extractUsageTokens_handlesReasoningTokens() throws {
         let usage: [String: Any] = [
             "input_tokens": 100,
             "output_tokens": 50,
@@ -482,7 +482,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result.reasoningTokens, 25)
     }
 
-    func test_extractUsageTokens_reasoningTokensSeparatelyBilled() {
+    func test_extractUsageTokens_reasoningTokensSeparatelyBilled() throws {
         let usage: [String: Any] = [
             "input_tokens": 100,
             "output_tokens": 50,
@@ -495,7 +495,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result.output, 50) // Output is not inflated
     }
 
-    func test_hasExplicitPrimaryBucket_withBothBuckets_returnsTrue() {
+    func test_hasExplicitPrimaryBucket_withBothBuckets_returnsTrue() throws {
         let usage: [String: Any] = [
             "input_tokens": 100,
             "output_tokens": 50
@@ -506,7 +506,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertTrue(result.hasExplicitPrimaryBucket)
     }
 
-    func test_hasExplicitPrimaryBucket_withOnlyInput_returnsTrue() {
+    func test_hasExplicitPrimaryBucket_withOnlyInput_returnsTrue() throws {
         let usage: [String: Any] = [
             "input_tokens": 100
         ]
@@ -516,7 +516,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertTrue(result.hasExplicitPrimaryBucket)
     }
 
-    func test_hasExplicitPrimaryBucket_withNoPrimaryBuckets_returnsFalse() {
+    func test_hasExplicitPrimaryBucket_withNoPrimaryBuckets_returnsFalse() throws {
         let usage: [String: Any] = [
             "cache_creation_input_tokens": 50
         ]
@@ -528,28 +528,28 @@ final class TokenExtractionUtilityTests: XCTestCase {
 
     // MARK: - Content Metrics Tests
 
-    func test_contentMetrics_withSimpleString() {
+    func test_contentMetrics_withSimpleString() throws {
         let result = TokenExtractionUtility.contentMetrics(from: "Hello world")
 
         XCTAssertEqual(result.visibleChars, 11)
         XCTAssertEqual(result.reasoningChars, 0)
     }
 
-    func test_contentMetrics_withEmptyString() {
+    func test_contentMetrics_withEmptyString() throws {
         let result = TokenExtractionUtility.contentMetrics(from: "")
 
         XCTAssertEqual(result.visibleChars, 0)
         XCTAssertEqual(result.reasoningChars, 0)
     }
 
-    func test_contentMetrics_withWhitespaceOnly() {
+    func test_contentMetrics_withWhitespaceOnly() throws {
         let result = TokenExtractionUtility.contentMetrics(from: "   \n\t  ")
 
         XCTAssertEqual(result.visibleChars, 0)
         XCTAssertEqual(result.reasoningChars, 0)
     }
 
-    func test_contentMetrics_withNestedArrays() {
+    func test_contentMetrics_withNestedArrays() throws {
         let content: [String: Any] = [
             "messages": [
                 ["role": "user", "content": "Hello"],
@@ -562,21 +562,21 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result.visibleChars, 22) // "Hello" + "Hi there"
     }
 
-    func test_contentMetrics_withSignatureKey_marksAsReasoning() {
+    func test_contentMetrics_withSignatureKey_marksAsReasoning() throws {
         let result = TokenExtractionUtility.contentMetrics(from: "abc123", key: "signature")
 
         XCTAssertEqual(result.visibleChars, 0)
         XCTAssertEqual(result.reasoningChars, 6)
     }
 
-    func test_contentMetrics_withIgnoredKeys() {
+    func test_contentMetrics_withIgnoredKeys() throws {
         let result = TokenExtractionUtility.contentMetrics(from: "test", key: "type")
 
         XCTAssertEqual(result.visibleChars, 0)
         XCTAssertEqual(result.reasoningChars, 0)
     }
 
-    func test_contentMetrics_withPreviewLineMarker_expandsCount() {
+    func test_contentMetrics_withPreviewLineMarker_expandsCount() throws {
         let text = """
         func example() {
             // Showing lines 1-10 of 100 total lines
@@ -592,7 +592,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
 
     // MARK: - Fallback Estimation Tests
 
-    func test_estimateFallbackTokens_characterRatio_estimatesInputAndOutput() {
+    func test_estimateFallbackTokens_characterRatio_estimatesInputAndOutput() throws {
         let result = TokenExtractionUtility.estimateFallbackTokens(
             userVisibleChars: 1000,
             assistantVisibleChars: 500,
@@ -605,7 +605,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertTrue(result.output > 0)
     }
 
-    func test_estimateFallbackTokens_withZeroChars_returnsZero() {
+    func test_estimateFallbackTokens_withZeroChars_returnsZero() throws {
         let result = TokenExtractionUtility.estimateFallbackTokens(
             userVisibleChars: 0,
             assistantVisibleChars: 0,
@@ -618,25 +618,25 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result.output, 0)
     }
 
-    func test_estimatedTokenCount_withPositiveChars_returnsRoundedUp() {
+    func test_estimatedTokenCount_withPositiveChars_returnsRoundedUp() throws {
         let result = TokenExtractionUtility.estimatedTokenCount(for: 100, charsPerToken: 3.35)
 
         XCTAssertEqual(result, 30) // 100/3.35 ≈ 29.85, rounded up to 30
     }
 
-    func test_estimatedTokenCount_withZeroChars_returnsZero() {
+    func test_estimatedTokenCount_withZeroChars_returnsZero() throws {
         let result = TokenExtractionUtility.estimatedTokenCount(for: 0, charsPerToken: 3.35)
         XCTAssertEqual(result, 0)
     }
 
-    func test_charsPerToken_forEnglishText_returnsDefaultRatio() {
+    func test_charsPerToken_forEnglishText_returnsDefaultRatio() throws {
         let text = "This is a typical English sentence with common words."
         let ratio = TokenExtractionUtility.charsPerToken(for: text)
 
         XCTAssertEqual(ratio, 3.35)
     }
 
-    func test_charsPerToken_forCJKText_returnsLowerRatio() {
+    func test_charsPerToken_forCJKText_returnsLowerRatio() throws {
         var cjkText = ""
         for _ in 0..<100 {
             cjkText += "你好"
@@ -647,14 +647,14 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(ratio, 1.5) // CJK ratio
     }
 
-    func test_charsPerToken_forEmptyString_returnsDefaultRatio() {
+    func test_charsPerToken_forEmptyString_returnsDefaultRatio() throws {
         let ratio = TokenExtractionUtility.charsPerToken(for: "")
         XCTAssertEqual(ratio, 3.35)
     }
 
     // MARK: - Model Detection Tests
 
-    func test_detectModelHint_withModelAnnotation() {
+    func test_detectModelHint_withModelAnnotation() throws {
         let content = "Using model: claude-3-5-sonnet for this task"
 
         let result = TokenExtractionUtility.detectModelHint(from: content)
@@ -662,7 +662,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result, "claude-3-5-sonnet")
     }
 
-    func test_detectModelHint_withoutModelAnnotation() {
+    func test_detectModelHint_withoutModelAnnotation() throws {
         let content = "This is just some content without model info"
 
         let result = TokenExtractionUtility.detectModelHint(from: content)
@@ -670,7 +670,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertNil(result)
     }
 
-    func test_detectModelHint_withArrayContent() {
+    func test_detectModelHint_withArrayContent() throws {
         let content: [Any] = [
             "Hello",
             "Using model: gpt-5 for inference",
@@ -682,7 +682,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result, "gpt-5")
     }
 
-    func test_detectModelHint_withNestedDict() {
+    func test_detectModelHint_withNestedDict() throws {
         let content: [String: Any] = [
             "outer": [
                 "inner": "model: custom-model-name here"
@@ -696,61 +696,61 @@ final class TokenExtractionUtilityTests: XCTestCase {
 
     // MARK: - Model Name Normalization Tests
 
-    func test_normalizeModelName_stripsCustomPrefix() {
+    func test_normalizeModelName_stripsCustomPrefix() throws {
         XCTAssertEqual(TokenExtractionUtility.normalizeModelName("custom:claude-3-5-sonnet"), "claude-3-5-sonnet")
     }
 
-    func test_normalizeModelName_keepsUnprefixedName() {
+    func test_normalizeModelName_keepsUnprefixedName() throws {
         XCTAssertEqual(TokenExtractionUtility.normalizeModelName("claude-3-5-sonnet"), "claude-3-5-sonnet")
     }
 
-    func test_normalizeModelKey_normalizesToLowercase() {
+    func test_normalizeModelKey_normalizesToLowercase() throws {
         XCTAssertEqual(TokenExtractionUtility.normalizeModelKey("Custom:Model-Name"), "model-name")
     }
 
-    func test_normalizeModelKey_trimsWhitespace() {
+    func test_normalizeModelKey_trimsWhitespace() throws {
         XCTAssertEqual(TokenExtractionUtility.normalizeModelKey("  model-name  "), "model-name")
     }
 
     // MARK: - First Int Value Tests
 
-    func test_firstIntValue_withDirectValue() {
+    func test_firstIntValue_withDirectValue() throws {
         let dict: [String: Any] = ["value": 42]
         let result = TokenExtractionUtility.firstIntValue(in: dict, paths: [["value"]])
         XCTAssertEqual(result, 42)
     }
 
-    func test_firstIntValue_withNestedPath() {
+    func test_firstIntValue_withNestedPath() throws {
         let dict: [String: Any] = ["outer": ["inner": 100]]
         let result = TokenExtractionUtility.firstIntValue(in: dict, paths: [["outer", "inner"]])
         XCTAssertEqual(result, 100)
     }
 
-    func test_firstIntValue_withMultiplePaths_returnsFirstMatch() {
+    func test_firstIntValue_withMultiplePaths_returnsFirstMatch() throws {
         let dict: [String: Any] = ["a": 1, "b": 2]
         let result = TokenExtractionUtility.firstIntValue(in: dict, paths: [["a"], ["b"]])
         XCTAssertEqual(result, 1)
     }
 
-    func test_firstIntValue_withNoMatch_returnsNil() {
+    func test_firstIntValue_withNoMatch_returnsNil() throws {
         let dict: [String: Any] = ["a": "string"]
         let result = TokenExtractionUtility.firstIntValue(in: dict, paths: [["a"]])
         XCTAssertNil(result)
     }
 
-    func test_firstIntValue_withInt64Value() {
+    func test_firstIntValue_withInt64Value() throws {
         let dict: [String: Any] = ["value": Int64(42)]
         let result = TokenExtractionUtility.firstIntValue(in: dict, paths: [["value"]])
         XCTAssertEqual(result, 42)
     }
 
-    func test_firstIntValue_withDoubleValue() {
+    func test_firstIntValue_withDoubleValue() throws {
         let dict: [String: Any] = ["value": 42.7]
         let result = TokenExtractionUtility.firstIntValue(in: dict, paths: [["value"]])
         XCTAssertEqual(result, 43)
     }
 
-    func test_firstIntValue_withStringValue() {
+    func test_firstIntValue_withStringValue() throws {
         let dict: [String: Any] = ["value": "42"]
         let result = TokenExtractionUtility.firstIntValue(in: dict, paths: [["value"]])
         XCTAssertEqual(result, 42)
@@ -758,7 +758,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
 
     // MARK: - Codex Token Count Info Tests
 
-    func test_codexTokenCountInfo_withEventMsg() {
+    func test_codexTokenCountInfo_withEventMsg() throws {
         let json: [String: Any] = [
             "event_msg": [
                 "token_count": ["input_tokens": 100, "output_tokens": 50]
@@ -769,7 +769,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertNotNil(result)
     }
 
-    func test_codexTokenCountInfo_withDirectTokenCount() {
+    func test_codexTokenCountInfo_withDirectTokenCount() throws {
         let json: [String: Any] = [
             "token_count": ["input_tokens": 100, "output_tokens": 50]
         ]
@@ -778,7 +778,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertNotNil(result)
     }
 
-    func test_codexTokenCountInfo_withRootLevelTokens() {
+    func test_codexTokenCountInfo_withRootLevelTokens() throws {
         let json: [String: Any] = [
             "input_tokens": 100,
             "output_tokens": 50
@@ -788,7 +788,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertNotNil(result)
     }
 
-    func test_codexCumulativeTotalsFromTokenCountInfo_withValidTotals() {
+    func test_codexCumulativeTotalsFromTokenCountInfo_withValidTotals() throws {
         let info: [String: Any] = [
             "token_count": [
                 "input_tokens": 200,
@@ -803,7 +803,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertEqual(result?.cacheRead, 50)
     }
 
-    func test_codexCumulativeTotalsFromTokenCountInfo_withPartialData_returnsNil() {
+    func test_codexCumulativeTotalsFromTokenCountInfo_withPartialData_returnsNil() throws {
         let info: [String: Any] = [
             "token_count": [
                 "input_tokens": 200
@@ -815,7 +815,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
         XCTAssertNil(result)
     }
 
-    func test_codexCumulativeTotalsFromTokenCountInfo_withRootLevel() {
+    func test_codexCumulativeTotalsFromTokenCountInfo_withRootLevel() throws {
         let info: [String: Any] = [
             "input_tokens": 300,
             "output_tokens": 150,
@@ -833,7 +833,7 @@ final class TokenExtractionUtilityTests: XCTestCase {
 
 final class TimestampNormalizationTests: XCTestCase {
 
-    func test_date_fromEpoch_withSeconds() {
+    func test_date_fromEpoch_withSeconds() throws {
         let date = TimestampNormalizationUtility.date(fromEpoch: 1704067200) // 2024-01-01 00:00:00 UTC
 
         XCTAssertNotNil(date)
@@ -844,7 +844,7 @@ final class TimestampNormalizationTests: XCTestCase {
         XCTAssertEqual(components.day, 1)
     }
 
-    func test_date_fromEpoch_withMilliseconds() {
+    func test_date_fromEpoch_withMilliseconds() throws {
         let date = TimestampNormalizationUtility.date(fromEpoch: 1704067200000) // Converted to seconds
 
         XCTAssertNotNil(date)
@@ -853,7 +853,7 @@ final class TimestampNormalizationTests: XCTestCase {
         XCTAssertEqual(components.year, 2024)
     }
 
-    func test_date_fromEpoch_withNegativeEpoch() {
+    func test_date_fromEpoch_withNegativeEpoch() throws {
         let date = TimestampNormalizationUtility.date(fromEpoch: -86400) // 1970-01-01 00:00:00 minus 1 day
 
         XCTAssertNotNil(date)
@@ -862,34 +862,34 @@ final class TimestampNormalizationTests: XCTestCase {
         XCTAssertEqual(components.year, 1969)
     }
 
-    func test_date_fromEpoch_withFallback() {
+    func test_date_fromEpoch_withFallback() throws {
         let fallback = Date(timeIntervalSince1970: 0)
         let date = TimestampNormalizationUtility.date(fromEpoch: nil, fallback: fallback)
 
         XCTAssertEqual(date, fallback)
     }
 
-    func test_normalizedEpochSeconds_withValidSeconds() {
+    func test_normalizedEpochSeconds_withValidSeconds() throws {
         let result = TimestampNormalizationUtility.normalizedEpochSeconds(1704067200)
         XCTAssertEqual(result, 1704067200)
     }
 
-    func test_normalizedEpochSeconds_withMilliseconds_convertsToSeconds() {
+    func test_normalizedEpochSeconds_withMilliseconds_convertsToSeconds() throws {
         let result = TimestampNormalizationUtility.normalizedEpochSeconds(1704067200000)
         XCTAssertEqual(result, 1704067200)
     }
 
-    func test_normalizedEpochSeconds_withTooLargeValue_returnsNil() {
+    func test_normalizedEpochSeconds_withTooLargeValue_returnsNil() throws {
         let result = TimestampNormalizationUtility.normalizedEpochSeconds(1e15)
         XCTAssertNil(result)
     }
 
-    func test_normalizedEpochSeconds_withInfiniteValue_returnsNil() {
+    func test_normalizedEpochSeconds_withInfiniteValue_returnsNil() throws {
         let result = TimestampNormalizationUtility.normalizedEpochSeconds(Double.infinity)
         XCTAssertNil(result)
     }
 
-    func test_firestoreSafeDate_withValidDate() {
+    func test_firestoreSafeDate_withValidDate() throws {
         let input = Date(timeIntervalSince1970: 1704067200)
         let result = TimestampNormalizationUtility.firestoreSafeDate(input)
         XCTAssertEqual(result.timeIntervalSince1970, input.timeIntervalSince1970)
@@ -900,28 +900,28 @@ final class TimestampNormalizationTests: XCTestCase {
 
 final class ModelPricingTests: XCTestCase {
 
-    func test_lookup_returnsValidPricing() {
+    func test_lookup_returnsValidPricing() throws {
         let pricing = ModelPricing.lookup(model: "claude-3-5-sonnet")
 
         XCTAssertGreaterThan(pricing.inputPerMToken, 0)
         XCTAssertGreaterThan(pricing.outputPerMToken, 0)
     }
 
-    func test_lookup_unknownModel_returnsFallback() {
+    func test_lookup_unknownModel_returnsFallback() throws {
         let pricing = ModelPricing.lookup(model: "unknown-model-xyz")
 
         XCTAssertEqual(pricing.inputPerMToken, 2.5) // Fallback value
         XCTAssertEqual(pricing.outputPerMToken, 10) // Fallback value
     }
 
-    func test_cost_withAllZeros_returnsZero() {
+    func test_cost_withAllZeros_returnsZero() throws {
         let pricing = ModelPricing.lookup(model: "test")
         let cost = pricing.cost(inputTokens: 0, outputTokens: 0)
 
         XCTAssertEqual(cost, 0)
     }
 
-    func test_cost_withInputTokensOnly() {
+    func test_cost_withInputTokensOnly() throws {
         let pricing = ModelPricing(inputPerMToken: 3.0, outputPerMToken: 15.0, cacheReadPerMToken: 0.5)
 
         let cost = pricing.cost(inputTokens: 1_000_000, outputTokens: 0)
@@ -929,7 +929,7 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(cost, 3.0, accuracy: 0.001)
     }
 
-    func test_cost_withOutputTokensOnly() {
+    func test_cost_withOutputTokensOnly() throws {
         let pricing = ModelPricing(inputPerMToken: 3.0, outputPerMToken: 15.0, cacheReadPerMToken: 0.5)
 
         let cost = pricing.cost(inputTokens: 0, outputTokens: 1_000_000)
@@ -937,7 +937,7 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(cost, 15.0, accuracy: 0.001)
     }
 
-    func test_cost_withAllTokenTypes() {
+    func test_cost_withAllTokenTypes() throws {
         let pricing = ModelPricing(inputPerMToken: 3.0, outputPerMToken: 15.0, cacheReadPerMToken: 0.5)
 
         let cost = pricing.cost(
@@ -952,7 +952,7 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(cost, 11.25, accuracy: 0.001)
     }
 
-    func test_cost_withPartialTokens() {
+    func test_cost_withPartialTokens() throws {
         let pricing = ModelPricing(inputPerMToken: 3.0, outputPerMToken: 15.0, cacheReadPerMToken: 0.5)
 
         let cost = pricing.cost(inputTokens: 500_000, outputTokens: 250_000)
@@ -961,7 +961,7 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(cost, 5.25, accuracy: 0.001)
     }
 
-    func test_cost_cacheCreationBilledAtInputRate() {
+    func test_cost_cacheCreationBilledAtInputRate() throws {
         let pricing = ModelPricing(inputPerMToken: 3.0, outputPerMToken: 15.0, cacheReadPerMToken: 0.5)
 
         let cost = pricing.cost(
@@ -973,7 +973,7 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(cost, 3.0, accuracy: 0.001)
     }
 
-    func test_cost_cacheReadHasSeparateRate() {
+    func test_cost_cacheReadHasSeparateRate() throws {
         let pricing = ModelPricing(inputPerMToken: 3.0, outputPerMToken: 15.0, cacheReadPerMToken: 0.5)
 
         let cost = pricing.cost(
@@ -990,7 +990,7 @@ final class ModelPricingTests: XCTestCase {
 
 final class ParserHealthTests: XCTestCase {
 
-    func test_parserHealth_healthy() {
+    func test_parserHealth_healthy() throws {
         let health = ParserHealth.healthy(sessionCount: 5)
 
         if case .healthy(let count) = health {
@@ -1000,7 +1000,7 @@ final class ParserHealthTests: XCTestCase {
         }
     }
 
-    func test_parserHealth_empty() {
+    func test_parserHealth_empty() throws {
         let health = ParserHealth.empty
 
         if case .empty = health {
@@ -1010,7 +1010,7 @@ final class ParserHealthTests: XCTestCase {
         }
     }
 
-    func test_parserHealth_degraded() {
+    func test_parserHealth_degraded() throws {
         let health = ParserHealth.degraded(sessionCount: 3, error: "Test error")
 
         if case .degraded(let count, let error) = health {
@@ -1021,7 +1021,7 @@ final class ParserHealthTests: XCTestCase {
         }
     }
 
-    func test_parserHealth_failed() {
+    func test_parserHealth_failed() throws {
         let health = ParserHealth.failed(error: "Critical error")
 
         if case .failed(let error) = health {
@@ -1031,57 +1031,57 @@ final class ParserHealthTests: XCTestCase {
         }
     }
 
-    func test_parserHealth_statusLabel_healthy() {
+    func test_parserHealth_statusLabel_healthy() throws {
         let health = ParserHealth.healthy(sessionCount: 5)
         XCTAssertEqual(health.statusLabel, "healthy")
     }
 
-    func test_parserHealth_statusLabel_empty() {
+    func test_parserHealth_statusLabel_empty() throws {
         let health = ParserHealth.empty
         XCTAssertEqual(health.statusLabel, "empty")
     }
 
-    func test_parserHealth_statusLabel_degraded() {
+    func test_parserHealth_statusLabel_degraded() throws {
         let health = ParserHealth.degraded(sessionCount: 3, error: "Test")
         XCTAssertEqual(health.statusLabel, "degraded")
     }
 
-    func test_parserHealth_statusLabel_failed() {
+    func test_parserHealth_statusLabel_failed() throws {
         let health = ParserHealth.failed(error: "Error")
         XCTAssertEqual(health.statusLabel, "failed")
     }
 
-    func test_parserHealth_sessionCount_healthy() {
+    func test_parserHealth_sessionCount_healthy() throws {
         let health = ParserHealth.healthy(sessionCount: 10)
         XCTAssertEqual(health.sessionCount, 10)
     }
 
-    func test_parserHealth_sessionCount_empty() {
+    func test_parserHealth_sessionCount_empty() throws {
         let health = ParserHealth.empty
         XCTAssertEqual(health.sessionCount, 0)
     }
 
-    func test_parserHealth_sessionCount_degraded() {
+    func test_parserHealth_sessionCount_degraded() throws {
         let health = ParserHealth.degraded(sessionCount: 5, error: "Test")
         XCTAssertEqual(health.sessionCount, 5)
     }
 
-    func test_parserHealth_sessionCount_failed() {
+    func test_parserHealth_sessionCount_failed() throws {
         let health = ParserHealth.failed(error: "Test")
         XCTAssertEqual(health.sessionCount, 0)
     }
 
-    func test_parserHealth_errorMessage_healthy() {
+    func test_parserHealth_errorMessage_healthy() throws {
         let health = ParserHealth.healthy(sessionCount: 5)
         XCTAssertNil(health.errorMessage)
     }
 
-    func test_parserHealth_errorMessage_degraded() {
+    func test_parserHealth_errorMessage_degraded() throws {
         let health = ParserHealth.degraded(sessionCount: 5, error: "Degraded error")
         XCTAssertEqual(health.errorMessage, "Degraded error")
     }
 
-    func test_parserHealth_errorMessage_failed() {
+    func test_parserHealth_errorMessage_failed() throws {
         let health = ParserHealth.failed(error: "Failed error")
         XCTAssertEqual(health.errorMessage, "Failed error")
     }
@@ -1091,7 +1091,7 @@ final class ParserHealthTests: XCTestCase {
 
 final class TokenUsageTests: XCTestCase {
 
-    func test_init_withRequiredParameters() {
+    func test_init_withRequiredParameters() throws {
         let usage = TokenUsage(
             provider: .factory,
             sessionId: "s1",
@@ -1113,7 +1113,7 @@ final class TokenUsageTests: XCTestCase {
         XCTAssertEqual(usage.costUSD, 0.05)
     }
 
-    func test_init_defaultValues() {
+    func test_init_defaultValues() throws {
         let usage = TokenUsage(
             provider: .factory,
             sessionId: "s1",
@@ -1133,7 +1133,7 @@ final class TokenUsageTests: XCTestCase {
         XCTAssertEqual(usage.provenanceConfidence, .unknown)
     }
 
-    func test_totalTokens_calculation() {
+    func test_totalTokens_calculation() throws {
         let usage = TokenUsage(
             provider: .factory,
             sessionId: "s1",
@@ -1152,7 +1152,7 @@ final class TokenUsageTests: XCTestCase {
         XCTAssertEqual(usage.totalTokens, 200) // 100 + 50 + 25 + 10 + 15
     }
 
-    func test_totalTokens_withAllZeros() {
+    func test_totalTokens_withAllZeros() throws {
         let usage = TokenUsage(
             provider: .factory,
             sessionId: "s1",
@@ -1168,7 +1168,7 @@ final class TokenUsageTests: XCTestCase {
         XCTAssertEqual(usage.totalTokens, 0)
     }
 
-    func test_duration_calculation() {
+    func test_duration_calculation() throws {
         let start = Date(timeIntervalSince1970: 1000)
         let end = Date(timeIntervalSince1970: 3700) // 1 hour later
 
@@ -1187,7 +1187,7 @@ final class TokenUsageTests: XCTestCase {
         XCTAssertEqual(usage.duration, 2700, accuracy: 0.001)
     }
 
-    func test_intersects_withDateRange_containingSession() {
+    func test_intersects_withDateRange_containingSession() throws {
         let start = Date(timeIntervalSince1970: 1000)
         let end = Date(timeIntervalSince1970: 2000)
 
@@ -1207,7 +1207,7 @@ final class TokenUsageTests: XCTestCase {
         XCTAssertTrue(usage.intersects(dateRange: range))
     }
 
-    func test_intersects_withDateRange_beforeSession() {
+    func test_intersects_withDateRange_beforeSession() throws {
         let start = Date(timeIntervalSince1970: 3000)
         let end = Date(timeIntervalSince1970: 4000)
 
@@ -1227,7 +1227,7 @@ final class TokenUsageTests: XCTestCase {
         XCTAssertFalse(usage.intersects(dateRange: range))
     }
 
-    func test_intersects_withDateRange_overlappingStart() {
+    func test_intersects_withDateRange_overlappingStart() throws {
         let start = Date(timeIntervalSince1970: 1000)
         let end = Date(timeIntervalSince1970: 2000)
 
@@ -1247,7 +1247,7 @@ final class TokenUsageTests: XCTestCase {
         XCTAssertTrue(usage.intersects(dateRange: range))
     }
 
-    func test_intersects_withDateRange_overlappingEnd() {
+    func test_intersects_withDateRange_overlappingEnd() throws {
         let start = Date(timeIntervalSince1970: 3000)
         let end = Date(timeIntervalSince1970: 4000)
 
@@ -1267,7 +1267,7 @@ final class TokenUsageTests: XCTestCase {
         XCTAssertTrue(usage.intersects(dateRange: range))
     }
 
-    func test_billedTotalTokens_withAllPositiveValues() {
+    func test_billedTotalTokens_withAllPositiveValues() throws {
         let total = TokenUsage.billedTotalTokens(
             input: 100,
             output: 50,
@@ -1278,7 +1278,7 @@ final class TokenUsageTests: XCTestCase {
         XCTAssertEqual(total, 190)
     }
 
-    func test_billedTotalTokens_withNegativeValues_treatedAsZero() {
+    func test_billedTotalTokens_withNegativeValues_treatedAsZero() throws {
         let total = TokenUsage.billedTotalTokens(
             input: -100,
             output: -50,
@@ -1289,7 +1289,7 @@ final class TokenUsageTests: XCTestCase {
         XCTAssertEqual(total, 40) // 0 + 0 + 25 + 10 + 5
     }
 
-    func test_equality_withSameValues() {
+    func test_equality_withSameValues() throws {
         let date = Date()
         let usage1 = TokenUsage(
             id: UUID(),
@@ -1324,14 +1324,14 @@ final class TokenUsageTests: XCTestCase {
 
 final class ParseResultTests: XCTestCase {
 
-    func test_init_withEmptyArrays() {
+    func test_init_withEmptyArrays() throws {
         let result = ParseResult(usages: [], conversations: [])
 
         XCTAssertEqual(result.usages, [])
         XCTAssertEqual(result.conversations, [])
     }
 
-    func test_init_withUsages() {
+    func test_init_withUsages() throws {
         let usage = TokenUsage(
             provider: .factory,
             sessionId: "s1",
@@ -1349,7 +1349,7 @@ final class ParseResultTests: XCTestCase {
         XCTAssertEqual(result.usages.first?.sessionId, "s1")
     }
 
-    func test_sendable() {
+    func test_sendable() throws {
         // ParseResult is declared `Sendable`. Compile-time cross-actor passing verifies this;
         // runtime introspection would only duplicate what the type system already guarantees.
         let result = ParseResult(usages: [], conversations: [])
@@ -1362,7 +1362,7 @@ final class ParseResultTests: XCTestCase {
 
 final class ProviderUsageRecordTests: XCTestCase {
 
-    func test_init_withRequiredParameters() {
+    func test_init_withRequiredParameters() throws {
         let testDate = Date()
 
         let record = ProviderUsageRecord(
@@ -1386,7 +1386,7 @@ final class ProviderUsageRecordTests: XCTestCase {
         XCTAssertEqual(record.requestCount, 3)
     }
 
-    func test_init_defaultValues() {
+    func test_init_defaultValues() throws {
         let record = ProviderUsageRecord(
             providerName: "Factory",
             model: "test-model",
@@ -1429,7 +1429,7 @@ private final class MockParser: LogParser, @unchecked Sendable {
 
 final class BillingUsageReconciliationTests: XCTestCase {
 
-    func test_supplementalUsages_returnsEmptyWhenNoAPIRecords() {
+    func test_supplementalUsages_returnsEmptyWhenNoAPIRecords() throws {
         let result = BillingUsageReconciliation.supplementalUsages(
             from: [],
             existingUsages: []
@@ -1437,7 +1437,7 @@ final class BillingUsageReconciliationTests: XCTestCase {
         XCTAssertEqual(result, [])
     }
 
-    func test_supplementalUsages_returnsEmptyWhenAllMatched() {
+    func test_supplementalUsages_returnsEmptyWhenAllMatched() throws {
         let apiRecords = [
             ProviderUsageRecord(
                 providerName: "Factory",
@@ -1473,7 +1473,7 @@ final class BillingUsageReconciliationTests: XCTestCase {
         XCTAssertTrue(result.isEmpty)
     }
 
-    func test_supplementalUsages_returnsAPIOnlyWhenNoLocalMatch() {
+    func test_supplementalUsages_returnsAPIOnlyWhenNoLocalMatch() throws {
         let apiRecords = [
             ProviderUsageRecord(
                 providerName: "Factory",
@@ -1498,7 +1498,7 @@ final class BillingUsageReconciliationTests: XCTestCase {
         XCTAssertTrue(result.first!.sessionId.hasPrefix(BillingUsageReconciliation.apiReconciliationSessionPrefix))
     }
 
-    func test_supplementalUsages_handlesMultipleProviders() {
+    func test_supplementalUsages_handlesMultipleProviders() throws {
         let apiRecords = [
             ProviderUsageRecord(
                 providerName: "Factory",
@@ -1547,7 +1547,7 @@ final class BillingUsageReconciliationTests: XCTestCase {
         XCTAssertEqual(result.first?.provider, .claudeCode)
     }
 
-    func test_supplementalUsages_withPartialOverlap() {
+    func test_supplementalUsages_withPartialOverlap() throws {
         let apiRecords = [
             ProviderUsageRecord(
                 providerName: "Factory",
@@ -1600,21 +1600,21 @@ final class BillingUsageReconciliationTests: XCTestCase {
 
 final class ConversationRecordTests: XCTestCase {
 
-    func test_stableId_generatesConsistentId() {
+    func test_stableId_generatesConsistentId() throws {
         let id1 = ConversationRecord.stableId(provider: .factory, sessionId: "s1")
         let id2 = ConversationRecord.stableId(provider: .factory, sessionId: "s1")
 
         XCTAssertEqual(id1, id2)
     }
 
-    func test_stableId_differentProvidersProduceDifferentIds() {
+    func test_stableId_differentProvidersProduceDifferentIds() throws {
         let id1 = ConversationRecord.stableId(provider: .factory, sessionId: "s1")
         let id2 = ConversationRecord.stableId(provider: .claudeCode, sessionId: "s1")
 
         XCTAssertNotEqual(id1, id2)
     }
 
-    func test_stableId_differentSessionsProduceDifferentIds() {
+    func test_stableId_differentSessionsProduceDifferentIds() throws {
         let id1 = ConversationRecord.stableId(provider: .factory, sessionId: "s1")
         let id2 = ConversationRecord.stableId(provider: .factory, sessionId: "s2")
 
@@ -1626,7 +1626,7 @@ final class ConversationRecordTests: XCTestCase {
 
 final class SummaryQueueItemTests: XCTestCase {
 
-    func test_init_withRequiredParameters() {
+    func test_init_withRequiredParameters() throws {
         let item = SummaryQueueItem(
             id: "test-id",
             title: "Test Title",
@@ -1640,7 +1640,7 @@ final class SummaryQueueItemTests: XCTestCase {
         XCTAssertNil(item.provider)
     }
 
-    func test_status_transitions() {
+    func test_status_transitions() throws {
         var item = SummaryQueueItem(id: "s1", title: "t", status: .pending, provider: nil)
 
         item.status = .processing

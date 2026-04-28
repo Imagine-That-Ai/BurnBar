@@ -136,14 +136,26 @@ final class DataStoreCoordinator {
 
     /// Creates the database pool. Reads `databaseEncryptionEnabled` directly from
     /// UserDefaults so this can be called before SettingsManager is initialized.
+    /// Enables WAL mode for better read concurrency and write performance.
     private static func makeDatabasePool(path: String) throws -> DatabasePool {
         let defaults = UserDefaults.standard
         let encryptionEnabled = defaults.bool(forKey: "databaseEncryptionEnabled")
         let encryptionKey: String? = encryptionEnabled
-            ? DatabaseEncryptionService.getOrCreateKey()
+            ? DatabaseEncryptionService.getOrCreateKey(recoveryURL: DatabaseEncryptionService.defaultRecoveryURL)
             : nil
         let config = DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
         return try DatabasePool(path: path, configuration: config)
+    }
+
+    /// Post-open WAL mode configuration (idempotent).
+    /// WAL is automatically enabled by GRDB's DatabasePool, but we explicitly
+    /// tune the checkpoint threshold for our workload.
+    private static func configureWALMode(_ dbQueue: any DatabaseWriter) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "PRAGMA journal_mode = WAL")
+            try db.execute(sql: "PRAGMA wal_autocheckpoint = 1000")
+            try db.execute(sql: "PRAGMA synchronous = NORMAL")
+        }
     }
 
     convenience init() throws {
@@ -152,6 +164,7 @@ final class DataStoreCoordinator {
         // DatabasePool enables concurrent reads (WAL mode) for read-heavy workloads
         // like dashboard aggregation and search queries. Writes remain serialized.
         let pool = try Self.makeDatabasePool(path: dbPath)
+        try Self.configureWALMode(pool)
         try self.init(databaseQueue: pool)
     }
 
@@ -184,7 +197,7 @@ final class DataStoreCoordinator {
             let records = try await actor.fetchRecentUsage(limit: 5000)
             replaceUsages(records)
         } catch {
-            print("DataStore: Failed to refresh data: \(error)")
+            AppLogger.dataStore.silentFailure("refresh_failed", underlying: error)
         }
 
         isLoading = false

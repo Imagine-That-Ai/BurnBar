@@ -5594,12 +5594,12 @@ private actor ReviewLauncherRecorder {
     struct Launch: Sendable {
         let prompt: String
         let modelID: String
-        let metadata: [String: BurnBarJSONValue]
+        let metadata: BurnBarRunCreateMetadata
     }
 
     private(set) var launches: [Launch] = []
 
-    func record(prompt: String, modelID: String, metadata: [String: BurnBarJSONValue]) {
+    func record(prompt: String, modelID: String, metadata: BurnBarRunCreateMetadata) {
         launches.append(Launch(prompt: prompt, modelID: modelID, metadata: metadata))
     }
 }

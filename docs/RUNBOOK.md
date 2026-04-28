@@ -158,6 +158,8 @@ open -a OpenBurnBar
 - App launches without errors
 - Previous data is visible (Option A/B) or fresh state (Option C)
 
+**SQLCipher / encrypted database:** If **database encryption** is enabled in Settings, the file is not a vanilla SQLite file; `sqlite3` and `PRAGMA integrity_check` from the system CLI will not open it without the SQLCipher key. Use the in-app path or a SQLCipher-enabled tool. If the app logs `cipher_version` empty or `DatabaseEncryptionError`, verify you are running a build that links `GRDB-SQLCipher` (see `project.yml`); custom local builds that substitute plain GRDB cannot satisfy encryption. Recovery options are the same in principle (restore a backup) but the backup file must be the encrypted file plus the same Keychain key.
+
 ---
 
 ## Incident 3: Cloud Sync Failure
@@ -187,12 +189,17 @@ curl -s -o /dev/null -w "%{http_code}" https://firestore.googleapis.com/
 
 2. **Firestore rules mismatch**: Verify rules match expected schema
    - Check Firebase Console → Firestore → Rules
-   - Rules should enforce `request.auth != null && request.auth.uid == resource.data.ownerUid`
+   - Use the same logic as the checked-in [firestore.rules](../firestore.rules) (owner-scoped `users/{uid}/...` and shared-artifact paths)
 
-3. **Conflict resolution**: OpenBurnBar resolves sync conflicts against local state
+3. **App Check / `PERMISSION_DENIED` after policy changes**
+   - If **App Check** was recently **enforced** for Firestore, confirm the macOS app is a build that initializes App Check before Firebase, and (for CI or plist-injected debug) that the [debug token is registered](FIREBASE_APP_CHECK_ENFORCEMENT.md) in Firebase **App Check**.
+   - Symptom: sync works in older builds or before enforcement, fails with permission denied after enforcement.
+   - See [FIREBASE_APP_CHECK_ENFORCEMENT.md](FIREBASE_APP_CHECK_ENFORCEMENT.md).
+
+4. **Conflict resolution**: OpenBurnBar resolves sync conflicts against local state
    - If stale data persists, try: Settings → Cloud Sync → Reset Sync State
 
-4. **Network issues**: Check firewall/proxy settings
+5. **Network issues**: Check firewall/proxy settings
    - Firebase requires HTTPS to `*.googleapis.com`
 
 ### Verification

@@ -1,3 +1,20 @@
+// MARK: - Mission Control Scope Note
+//
+// Mission Control provides project/question/followup/mission CRUD for daemon-managed
+// AI runs. This is experimental infrastructure built ahead of user validation.
+//
+// If you are reading this during a refactor: consider whether Mission Control
+// complexity is justified by active user demand. The core OpenBurnBar value
+// proposition is token usage tracking; Mission Control is a secondary surface.
+//
+// Before expanding Mission Control, validate:
+//   1. Are users actively creating missions through the UI?
+//   2. Does the mission approval flow reduce error rates vs. direct execution?
+//   3. Is the operational burden of maintaining Mission Control < value delivered?
+//
+// If the answer to any is "no" or "unknown", deprioritize Mission Control expansion
+// and invest in core tracking, search, and sync reliability instead.
+
 import OpenBurnBarCore
 import Foundation
 
@@ -275,12 +292,14 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
 
         let launchedRun: BurnBarRunCreateResponse?
         if let reviewRunLauncher {
-            let metadata = request.packet.metadata.merging([
-                "missionExecution": .bool(true),
-                "mission_id": .string(mission.id.rawValue),
-                "mission_packet_id": .string(request.packet.id.rawValue),
-                "project_slug": .string(mission.projectSlug)
-            ]) { _, new in new }
+            let metadata = BurnBarRunCreateMetadata(
+                request.packet.metadata.merging([
+                    "missionExecution": .bool(true),
+                    "mission_id": .string(mission.id.rawValue),
+                    "mission_packet_id": .string(request.packet.id.rawValue),
+                    "project_slug": .string(mission.projectSlug)
+                ]) { _, new in new }
+            )
             launchedRun = try await reviewRunLauncher(
                 buildMissionPacketPrompt(mission: mission, packet: request.packet),
                 missionExecutionModelID(for: mission, packet: request.packet),
@@ -1036,13 +1055,15 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
             let takeoverRun = try await reviewRunLauncher(
                 buildAutoTakeoverPrompt(mission: currentMission, packet: packet, snapshot: sourceSnapshot),
                 missionExecutionModelID(for: currentMission, packet: packet),
-                packet.metadata.merging([
-                    "autoTakeover": .bool(true),
-                    "missionExecution": .bool(true),
-                    "mission_id": .string(currentMission.id.rawValue),
-                    "mission_packet_id": .string(packet.id.rawValue),
-                    "source_run_id": .string(sourceRunID.rawValue)
-                ]) { _, new in new }
+                BurnBarRunCreateMetadata(
+                    packet.metadata.merging([
+                        "autoTakeover": .bool(true),
+                        "missionExecution": .bool(true),
+                        "mission_id": .string(currentMission.id.rawValue),
+                        "mission_packet_id": .string(packet.id.rawValue),
+                        "source_run_id": .string(sourceRunID.rawValue)
+                    ]) { _, new in new }
+                )
             )
 
             let takeoverReason = autoTakeoverReason(for: sourceSnapshot, now: now)
@@ -1214,11 +1235,13 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
             launchedRun = try await reviewRunLauncher(
                 buildReviewPrompt(for: project, cadence: cadence),
                 project.reviewModelID ?? "glm-5",
-                metadata.merging([
-                    "controller_project_slug": .string(projectSlug),
-                    "controller_review_cadence": .string(cadence.rawValue),
-                    "controller_review_origin": .string(origin.rawValue)
-                ]) { _, new in new }
+                BurnBarRunCreateMetadata(
+                    metadata.merging([
+                        "controller_project_slug": .string(projectSlug),
+                        "controller_review_cadence": .string(cadence.rawValue),
+                        "controller_review_origin": .string(origin.rawValue)
+                    ]) { _, new in new }
+                )
             )
         } else {
             launchedRun = nil

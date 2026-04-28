@@ -1064,13 +1064,13 @@ public final class SwitcherCLILAunchService: Sendable {
     private let profileStore: SwitcherProfileStoreAdapter
     private let coordinator: CLILaunchCoordinator
     private let fallbackPlanner: any CLIFallbackPlanning
-    private let eventHandler: (@MainActor (CLILaunchServiceEvent) -> Void)?
+    private let eventHandler: (@MainActor @Sendable (CLILaunchServiceEvent) -> Void)?
 
     /// Creates a new CLI launch service.
     public init(
         profileStore: SwitcherProfileStoreAdapter,
         fallbackPlanner: any CLIFallbackPlanning = DefaultCLIFallbackPlanner(),
-        eventHandler: (@MainActor (CLILaunchServiceEvent) -> Void)? = nil
+        eventHandler: (@MainActor @Sendable (CLILaunchServiceEvent) -> Void)? = nil
     ) {
         self.profileStore = profileStore
         self.coordinator = CLILaunchCoordinator()

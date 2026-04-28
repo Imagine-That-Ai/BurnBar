@@ -142,6 +142,7 @@ final class ProviderQuotaService {
         guard Self.supportedProviders.contains(provider) else { return }
         activeProviders.insert(provider)
         defer { activeProviders.remove(provider) }
+        let start = Date()
 
         do {
             let context = makeContext(dataStore: dataStore)
@@ -153,7 +154,11 @@ final class ProviderQuotaService {
             if provider == .claudeCode {
                 refreshClaudeBridgeStatus()
             }
+            TelemetryService.shared.record(feature: .providerQuotaRefresh, outcome: .success, durationMs: Int(Date().timeIntervalSince(start) * 1000))
+            OpenBurnBarMetrics.counter(name: "quota_refresh_success", labels: ["provider": provider.rawValue])
         } catch {
+            TelemetryService.shared.record(feature: .providerQuotaRefresh, outcome: .failure, durationMs: Int(Date().timeIntervalSince(start) * 1000))
+            OpenBurnBarMetrics.counter(name: "quota_refresh_failure", labels: ["provider": provider.rawValue])
             errors[provider] = error.localizedDescription
             if snapshotsByProvider[provider] == nil {
                 snapshotsByProvider[provider] = ProviderQuotaSnapshot(

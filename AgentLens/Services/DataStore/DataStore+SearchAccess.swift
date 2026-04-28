@@ -222,12 +222,61 @@ extension DataStore {
         let boundedLimit = max(1, min(limit, 200))
         guard cleanedPatterns.isEmpty == false else { return [] }
 
-        let conversations = try conversationStore.fetchConversationsForTranscriptScan(
-            provider: provider,
-            projectName: projectName,
-            dateRange: dateRange,
-            conversationSources: conversationSources
-        )
+        // Phase 1: SQL prefilter — only materialise IDs for rows that actually contain a pattern.
+        let candidateIDs = try dbQueue.read { db -> [String] in
+            var instrConditions: [String] = []
+            var args: [any DatabaseValueConvertible] = []
+            for pattern in cleanedPatterns {
+                instrConditions.append("INSTR(LOWER(COALESCE(c.fullText,'')), ?) > 0")
+                args.append(pattern)
+            }
+            var sql = """
+            SELECT DISTINCT c.id
+            FROM conversations AS c
+            WHERE (\(instrConditions.joined(separator: " OR ")))
+            """
+            if let provider {
+                sql += " AND c.provider = ?"
+                args.append(provider.rawValue)
+            }
+            if let projectName {
+                sql += " AND c.projectName = ?"
+                args.append(projectName)
+            }
+            if let range = dateRange {
+                sql += """
+                 AND COALESCE(c.endTime, c.startTime, c.fileModifiedAt, c.indexedAt) >= ?
+                 AND COALESCE(c.startTime, c.endTime, c.fileModifiedAt, c.indexedAt) <= ?
+                """
+                args.append(range.lowerBound)
+                args.append(range.upperBound)
+            }
+            if let sources = conversationSources, sources.isEmpty == false {
+                let rawValues = sources.map(\.rawValue)
+                let placeholders = Array(repeating: "?", count: rawValues.count).joined(separator: ", ")
+                sql += " AND c.sourceType IN (\(placeholders))"
+                args.append(contentsOf: rawValues)
+            }
+            sql += " ORDER BY COALESCE(c.endTime, c.startTime, c.indexedAt) DESC LIMIT ?"
+            args.append(boundedLimit * 3)
+
+            let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
+            return rows.compactMap { $0["id"] as? String }
+        }
+
+        guard !candidateIDs.isEmpty else { return [] }
+
+        // Phase 2: Fetch full records only for the candidate IDs.
+        let conversations = try dbQueue.read { db -> [ConversationRecord] in
+            let placeholders = Array(repeating: "?", count: candidateIDs.count).joined(separator: ", ")
+            let sql = """
+            SELECT * FROM conversations
+            WHERE id IN (\(placeholders))
+            ORDER BY COALESCE(endTime, startTime, indexedAt) DESC
+            """
+            let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(candidateIDs))
+            return rows.compactMap(ConversationStore.conversation(from:))
+        }
 
         var results: [ConversationJumpTarget] = []
         var seen = Set<String>()
@@ -290,41 +339,61 @@ extension DataStore {
         .sorted()
         guard cleanedPatterns.isEmpty == false else { return [] }
 
-        let conversations = try conversationStore.fetchConversationsForTranscriptScan(
-            provider: nil,
-            projectName: projectName,
-            dateRange: dateRange,
-            conversationSources: conversationSources
-        )
+        return try dbQueue.read { db -> [ConversationProviderOccurrence] in
+            var occurrenceExprs: [String] = []
+            var instrConditions: [String] = []
+            var args: [any DatabaseValueConvertible] = []
 
-        struct MutableProviderCount {
-            var occurrenceCount = 0
-            var conversationCount = 0
-        }
-
-        var grouped: [AgentProvider: MutableProviderCount] = [:]
-        for conversation in conversations {
-            let lower = conversation.fullText.lowercased()
-            guard lower.isEmpty == false else { continue }
-
-            var conversationOccurrences = 0
             for pattern in cleanedPatterns {
-                conversationOccurrences += Self.nonOverlappingOccurrenceCount(of: pattern, in: lower)
+                occurrenceExprs.append(
+                    """
+                    (LENGTH(COALESCE(c.fullText,'')) - LENGTH(REPLACE(LOWER(COALESCE(c.fullText,'')), ?, ''))) / LENGTH(?)
+                    """
+                )
+                instrConditions.append("INSTR(LOWER(COALESCE(c.fullText,'')), ?) > 0")
+                args.append(pattern)
+                args.append(pattern)
+                args.append(pattern)
             }
-            guard conversationOccurrences > 0 else { continue }
 
-            var current = grouped[conversation.provider] ?? MutableProviderCount()
-            current.occurrenceCount += conversationOccurrences
-            current.conversationCount += 1
-            grouped[conversation.provider] = current
-        }
+            var sql = """
+            SELECT c.provider,
+                COALESCE(SUM(\(occurrenceExprs.joined(separator: " + "))), 0) AS occurrenceCount,
+                COUNT(DISTINCT c.id) AS conversationCount
+            FROM conversations AS c
+            WHERE (\(instrConditions.joined(separator: " OR ")))
+            """
 
-        return grouped
-            .map { provider, counts in
-                ConversationProviderOccurrence(
+            if let projectName {
+                sql += " AND c.projectName = ?"
+                args.append(projectName)
+            }
+            if let range = dateRange {
+                sql += """
+                 AND COALESCE(c.endTime, c.startTime, c.fileModifiedAt, c.indexedAt) >= ?
+                 AND COALESCE(c.startTime, c.endTime, c.fileModifiedAt, c.indexedAt) <= ?
+                """
+                args.append(range.lowerBound)
+                args.append(range.upperBound)
+            }
+            if let sources = conversationSources, sources.isEmpty == false {
+                let rawValues = sources.map(\.rawValue)
+                let placeholders = Array(repeating: "?", count: rawValues.count).joined(separator: ", ")
+                sql += " AND c.sourceType IN (\(placeholders))"
+                args.append(contentsOf: rawValues)
+            }
+            sql += " GROUP BY c.provider HAVING occurrenceCount > 0"
+
+            let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
+            return rows.compactMap { row in
+                guard let providerRaw = row["provider"] as? String,
+                      let provider = AgentProvider(rawValue: providerRaw) else { return nil }
+                let occurrenceCount = Int((row["occurrenceCount"] as? Int64) ?? 0)
+                let conversationCount = Int((row["conversationCount"] as? Int64) ?? 0)
+                return ConversationProviderOccurrence(
                     provider: provider,
-                    occurrenceCount: counts.occurrenceCount,
-                    conversationCount: counts.conversationCount
+                    occurrenceCount: occurrenceCount,
+                    conversationCount: conversationCount
                 )
             }
             .sorted {
@@ -336,6 +405,7 @@ extension DataStore {
                 }
                 return $0.provider.displayName < $1.provider.displayName
             }
+        }
     }
 
     nonisolated func scanConversationFullTextForCredentialExposure(
@@ -346,49 +416,61 @@ extension DataStore {
         limit: Int = 12
     ) throws -> CredentialExposureScanResult {
         let boundedLimit = max(1, min(limit, 200))
-        let conversations = try conversationStore.fetchConversationsForTranscriptScan(
-            provider: provider,
-            projectName: projectName,
-            dateRange: dateRange,
-            conversationSources: conversationSources
-        )
-
         let regexes = Self.credentialExposureRegexes
         guard regexes.isEmpty == false else {
             return CredentialExposureScanResult(totalMatches: 0, jumpTargets: [])
         }
 
+        let batchSize = 100
         var totalMatches = 0
         var jumpTargets: [ConversationJumpTarget] = []
         var seen = Set<String>()
+        var offset = 0
 
-        for conversation in conversations {
-            let text = conversation.fullText
-            guard text.isEmpty == false else { continue }
-            let nsText = text as NSString
+        while jumpTargets.count < boundedLimit {
+            let batch = try conversationStore.fetchTranscriptScanBatch(
+                provider: provider,
+                projectName: projectName,
+                dateRange: dateRange,
+                conversationSources: conversationSources,
+                limit: batchSize,
+                offset: offset
+            )
+            guard !batch.isEmpty else { break }
+            offset += batch.count
 
-            for regex in regexes {
-                let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
-                for match in matches {
-                    let matchText = nsText.substring(with: match.range)
-                    if Self.looksLikePlaceholderCredential(matchText) {
-                        continue
-                    }
+            for item in batch {
+                let text = item.fullText
+                guard text.isEmpty == false else { continue }
+                let nsText = text as NSString
 
-                    let dedupeKey = "\(conversation.id)|\(match.range.location)|\(match.range.length)"
-                    guard seen.insert(dedupeKey).inserted else { continue }
+                for regex in regexes {
+                    let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
+                    for match in matches {
+                        let matchText = nsText.substring(with: match.range)
+                        if Self.looksLikePlaceholderCredential(matchText) {
+                            continue
+                        }
 
-                    totalMatches += 1
-                    if jumpTargets.count < boundedLimit {
-                        jumpTargets.append(
-                            ConversationJumpTarget(
-                                conversation: conversation,
-                                snippet: Self.aggregateMatchSnippet(text: nsText, matchRange: match.range),
-                                startOffset: match.range.location,
-                                endOffset: match.range.location + match.range.length,
-                                source: .aggregateExact
+                        let dedupeKey = "\(item.id)|\(match.range.location)|\(match.range.length)"
+                        guard seen.insert(dedupeKey).inserted else { continue }
+
+                        totalMatches += 1
+                        if jumpTargets.count < boundedLimit {
+                            let conversation = try dbQueue.read { db -> ConversationRecord? in
+                                ConversationStore.fetchConversationRow(db, id: item.id)
+                            }
+                            guard let conversation = conversation else { continue }
+                            jumpTargets.append(
+                                ConversationJumpTarget(
+                                    conversation: conversation,
+                                    snippet: Self.aggregateMatchSnippet(text: nsText, matchRange: match.range),
+                                    startOffset: match.range.location,
+                                    endOffset: match.range.location + match.range.length,
+                                    source: .aggregateExact
+                                )
                             )
-                        )
+                        }
                     }
                 }
             }

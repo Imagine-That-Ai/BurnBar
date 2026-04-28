@@ -142,7 +142,7 @@ public struct BurnBarDaemonConfiguration: Sendable {
     public let gateway: BurnBarGatewayConfiguration
     /// Rate limiting configuration for Unix domain socket RPC.
     /// Default: 60 req/s sustained, 100 burst.
-    public let socketRateLimit: BurnBarRateLimitConfiguration?
+    public let socketRateLimit: BurnBarRateLimitConfiguration
 
     public init(
         socketPath: String = BurnBarDaemonPaths.defaultSocketPath,
@@ -151,7 +151,10 @@ public struct BurnBarDaemonConfiguration: Sendable {
         catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog,
         indexDatabasePath: String? = nil,
         gateway: BurnBarGatewayConfiguration = BurnBarGatewayConfiguration(),
-        socketRateLimit: BurnBarRateLimitConfiguration? = nil
+        socketRateLimit: BurnBarRateLimitConfiguration = BurnBarRateLimitConfiguration(
+            requestsPerSecond: 60,
+            burstCapacity: 100
+        )
     ) {
         self.socketPath = socketPath
         self.socketAuthToken = socketAuthToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty

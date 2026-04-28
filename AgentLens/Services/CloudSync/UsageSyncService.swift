@@ -39,8 +39,8 @@ final class UsageSyncService: CloudSyncDomain {
                 return
             }
 
-            let batch = context.db.batch()
-            let collectionRef = context.db.collection("users").document(uid).collection("usage")
+            let batch = context.firestoreGateway.batch()
+            let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("usage")
 
             for usage in unsynced {
                 let docId = "\(context.deviceId)_\(usage.id.uuidString)"

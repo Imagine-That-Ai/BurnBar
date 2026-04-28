@@ -250,42 +250,42 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
         let query = "help me write a better landing page headline"
         let plan = BurnBarSearchPlan.plan(userText: query)
 
-        let strategy = ChatSessionController.indexedQueryResponseStrategy(
+        let strategy = LocalIndexOracle.indexedQueryResponseStrategy(
             queryText: query,
             plan: plan,
             hasJumpTargets: true,
             retrievalResultCount: 8
         )
 
-        XCTAssertEqual(strategy, ChatSessionController.IndexedQueryResponseStrategy.llmOnly)
+        XCTAssertEqual(strategy, IndexedQueryResponseStrategy.llmOnly)
     }
 
     func test_indexedQueryResponseStrategy_compoundMemoryPrompt_usesHybrid() {
         let query = "which agent do i curse at the most and why"
         let plan = BurnBarSearchPlan.plan(userText: query)
 
-        let strategy = ChatSessionController.indexedQueryResponseStrategy(
+        let strategy = LocalIndexOracle.indexedQueryResponseStrategy(
             queryText: query,
             plan: plan,
             hasJumpTargets: true,
             retrievalResultCount: 5
         )
 
-        XCTAssertEqual(strategy, ChatSessionController.IndexedQueryResponseStrategy.hybridIndexThenLLM)
+        XCTAssertEqual(strategy, IndexedQueryResponseStrategy.hybridIndexThenLLM)
     }
 
     func test_indexedQueryResponseStrategy_providerRankingPrompt_usesLocalOracle() {
         let query = "which agent do i curse at the most"
         let plan = BurnBarSearchPlan.plan(userText: query)
 
-        let strategy = ChatSessionController.indexedQueryResponseStrategy(
+        let strategy = LocalIndexOracle.indexedQueryResponseStrategy(
             queryText: query,
             plan: plan,
             hasJumpTargets: true,
             retrievalResultCount: 5
         )
 
-        XCTAssertEqual(strategy, ChatSessionController.IndexedQueryResponseStrategy.localOracle)
+        XCTAssertEqual(strategy, IndexedQueryResponseStrategy.localOracle)
     }
 }
 

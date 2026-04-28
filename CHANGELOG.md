@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Firebase:** Document and operational path for **App Check enforcement on Cloud Firestore** (Auth + owner-scoped rules are insufficient to block unauthenticated-app clients; enforcement is in the Firebase console). See [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md), [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), and header comments in [firestore.rules](firestore.rules).
+- **Local database:** App and daemon depend on **SQLCipher-enabled GRDB** via SPM (`SahebRoy92/GRDB-SQLCipher`, pinned). When database encryption is enabled, `PRAGMA key` and `PRAGMA cipher_version` are enforced so encryption is not a no-op. See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) and [docs/RUNBOOK.md](docs/RUNBOOK.md).
+
 ### Changed
+- **Search:** `SearchService` hybrid retrieval runs off the main thread (MainActor snapshot for shared-artifact access; serialized gate for concurrent calls). `ChatSessionSearchProviding` is no longer `@MainActor`.
+- **Documentation:** [docs/OPENBURNBAR_SEARCH_ARCHITECTURE_SPINE.md](docs/OPENBURNBAR_SEARCH_ARCHITECTURE_SPINE.md) now matches the shipped layout (`DataStore/`, `SearchService` as retrieval locus) and clearly labels the former `Services/Retrieval/*` file tree as **not implemented**; added a diligence source map. [README.md](README.md), [QUICKSTART.md](QUICKSTART.md), [docs/RUNBOOK.md](docs/RUNBOOK.md) updated for App Check.
+- **Run / journal metadata:** `BurnBarRunCreateRequest` and `BurnBarRunJournalCheckpoint` now carry `BurnBarRunCreateMetadata` (typed keys, wire-identical JSON object) instead of a bare string dictionary; `BurnBarMissionControlReviewRunLauncher` uses the same type for the review-run path.
 - **Architecture:** Decomposed `OpenBurnBarContracts.swift` (1385 lines) into 7 domain-specific files under `Contracts/` — RPC, Run, Tool, Approval, Provider, Connector, Client, and Event contracts. No import changes needed; all types remain in the same `OpenBurnBarCore` target.
 - **Architecture:** Decomposed `BurnBarRunService` (1428 lines) into a focused facade (487 lines) plus extension files for lifecycle, execution, and tool dispatch. Extracted connector/browser passthroughs into `BurnBarToolingProxyService`.
 - **Architecture:** Decomposed `OpenBurnBarDaemonManager` (1784 lines) into a lean core (387 lines) plus extension files for lifecycle, provider config, controller, operational plane, and activity snapshots. Extracted notification relay, binary resolver, and usage sync service into standalone files.

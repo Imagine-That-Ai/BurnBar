@@ -48,3 +48,22 @@ public enum BurnBarJSONValue: Codable, Hashable, Sendable {
         }
     }
 }
+
+// MARK: - Ad hoc JSON object helpers (tool output, nested objects)
+
+extension Dictionary where Key == String, Value == BurnBarJSONValue {
+    public func stringValue(forKey key: String) -> String? {
+        guard case .string(let value)? = self[key] else { return nil }
+        return value
+    }
+
+    public func intValue(forKey key: String) -> Int? {
+        guard case .number(let value)? = self[key] else { return nil }
+        return Int(value)
+    }
+
+    public func boolValue(forKey key: String) -> Bool? {
+        guard case .bool(let value)? = self[key] else { return nil }
+        return value
+    }
+}

@@ -14,19 +14,23 @@ public struct BurnBarHNSWVectorIndexBackend: BurnBarPersistentVectorIndexBackend
     public let efConstruction: Int
     /// Query-time beam width (efSearch).
     public let efSearch: Int
+    /// Quantization strategy for vector storage.
+    public let quantization: BurnBarVectorQuantization
 
     public init(
         m: Int = 16,
         efConstruction: Int = 200,
         efSearch: Int = 64,
         backendID: String = "hnsw",
-        backendVersion: String = "1"
+        backendVersion: String = "1",
+        quantization: BurnBarVectorQuantization = .none
     ) {
         self.m = m
         self.efConstruction = efConstruction
         self.efSearch = efSearch
         self.backendID = backendID
         self.backendVersion = backendVersion
+        self.quantization = quantization
     }
 
     public func makeWritable(
@@ -37,7 +41,8 @@ public struct BurnBarHNSWVectorIndexBackend: BurnBarPersistentVectorIndexBackend
             dimensions: dimensions,
             distanceMetric: distanceMetric,
             m: m,
-            efConstruction: efConstruction
+            efConstruction: efConstruction,
+            quantization: quantization
         )
     }
 
@@ -60,22 +65,19 @@ private enum BurnBarHNSWIndexFormat {
     static let magic: UInt32 = 0x4F424849
     static let version: UInt32 = 1
 
-    /// Header layout (all little-endian):
-    ///   magic          UInt32  (4)
-    ///   version        UInt32  (4)
-    ///   dimensions     UInt32  (4)
-    ///   count          UInt64  (8)
-    ///   m              UInt32  (4)
-    ///   maxLevel       UInt32  (4)
-    ///   entryPointIdx  UInt64  (8)
-    static let headerSize = 4 + 4 + 4 + 8 + 4 + 4 + 8  // 36
+    /// v1 header size (36 bytes)
+    static let headerSize = 4 + 4 + 4 + 8 + 4 + 4 + 8
+    /// v2 header size (52 bytes) adds quantizationType + reserved fields
+    static let v2HeaderSize = headerSize + 4 + 4 + 8
 
     struct Header {
+        let version: UInt32
         let dimensions: UInt32
         let count: UInt64
         let m: UInt32
         let maxLevel: UInt32
         let entryPointIndex: UInt64
+        let quantizationType: UInt32
     }
 
     static func parseHeader(from data: Data) throws -> Header {
@@ -88,15 +90,27 @@ private enum BurnBarHNSWIndexFormat {
             }
             let magicVal = base.loadUnaligned(fromByteOffset: 0, as: UInt32.self).littleEndian
             let versionVal = base.loadUnaligned(fromByteOffset: 4, as: UInt32.self).littleEndian
-            guard magicVal == magic, versionVal == version else {
+            guard magicVal == magic else {
                 throw BurnBarPersistentVectorIndexError.missingIndexFile(URL(fileURLWithPath: "corrupt-hnsw-index"))
             }
+            guard versionVal == 1 || versionVal == 2 else {
+                throw BurnBarPersistentVectorIndexError.missingIndexFile(URL(fileURLWithPath: "corrupt-hnsw-index"))
+            }
+            if versionVal == 2, data.count < v2HeaderSize {
+                throw BurnBarPersistentVectorIndexError.missingIndexFile(URL(fileURLWithPath: "corrupt-hnsw-index"))
+            }
+            var quantizationType: UInt32 = 0
+            if versionVal == 2 {
+                quantizationType = base.loadUnaligned(fromByteOffset: 36, as: UInt32.self).littleEndian
+            }
             return Header(
+                version: versionVal,
                 dimensions: base.loadUnaligned(fromByteOffset: 8, as: UInt32.self).littleEndian,
                 count: base.loadUnaligned(fromByteOffset: 12, as: UInt64.self).littleEndian,
                 m: base.loadUnaligned(fromByteOffset: 20, as: UInt32.self).littleEndian,
                 maxLevel: base.loadUnaligned(fromByteOffset: 24, as: UInt32.self).littleEndian,
-                entryPointIndex: base.loadUnaligned(fromByteOffset: 28, as: UInt64.self).littleEndian
+                entryPointIndex: base.loadUnaligned(fromByteOffset: 28, as: UInt64.self).littleEndian,
+                quantizationType: quantizationType
             )
         }
     }
@@ -130,13 +144,16 @@ private final class BurnBarHNSWWritableIndex: @unchecked Sendable, BurnBarPersis
     private var maxLevel: Int = -1
     private var rng = BurnBarHNSWRNG()
 
-    init(dimensions: Int, distanceMetric: BurnBarEmbeddingDistanceMetric, m: Int, efConstruction: Int) {
+    private let quantization: BurnBarVectorQuantization
+
+    init(dimensions: Int, distanceMetric: BurnBarEmbeddingDistanceMetric, m: Int, efConstruction: Int, quantization: BurnBarVectorQuantization = .none) {
         self.dimensions = dimensions
         self.metric = distanceMetric
         self.m = m
         self.mMax0 = 2 * m
         self.efConstruction = efConstruction
         self.mL = 1.0 / log(Double(max(m, 2)))
+        self.quantization = quantization
     }
 
     func reserve(_ count: Int) throws {
@@ -215,14 +232,26 @@ private final class BurnBarHNSWWritableIndex: @unchecked Sendable, BurnBarPersis
     }
 
     func save(to url: URL) throws {
+        let quantizer: BurnBarScalarQuantizer?
+        if quantization == .scalarUInt8, !nodes.isEmpty {
+            var builder = BurnBarScalarQuantizerBuilder(dimensions: dimensions)
+            for node in nodes {
+                builder.accumulate(vector: node.vector)
+            }
+            quantizer = builder.build()
+        } else {
+            quantizer = nil
+        }
+
         try? FileManager.default.removeItem(at: url)
         FileManager.default.createFile(atPath: url.path, contents: nil)
         let handle = try FileHandle(forWritingTo: url)
         defer { try? handle.close() }
 
         // Write header
+        let fileVersion: UInt32 = quantizer != nil ? 2 : BurnBarHNSWIndexFormat.version
         var magic = BurnBarHNSWIndexFormat.magic.littleEndian
-        var version = BurnBarHNSWIndexFormat.version.littleEndian
+        var version = fileVersion.littleEndian
         var dims = UInt32(dimensions).littleEndian
         var count = UInt64(nodes.count).littleEndian
         var mLE = UInt32(m).littleEndian
@@ -237,7 +266,20 @@ private final class BurnBarHNSWWritableIndex: @unchecked Sendable, BurnBarPersis
         try withUnsafeBytes(of: &maxLevelLE) { try handle.write(contentsOf: $0) }
         try withUnsafeBytes(of: &epLE) { try handle.write(contentsOf: $0) }
 
-        // Write each node: key(UInt64), level(UInt32), vector(dims*Float), then per-layer neighbors
+        if fileVersion >= 2 {
+            var quantizationType = UInt32(quantizer != nil ? 1 : 0).littleEndian
+            var reserved1 = UInt32(0).littleEndian
+            var reserved2 = UInt64(0).littleEndian
+            try withUnsafeBytes(of: &quantizationType) { try handle.write(contentsOf: $0) }
+            try withUnsafeBytes(of: &reserved1) { try handle.write(contentsOf: $0) }
+            try withUnsafeBytes(of: &reserved2) { try handle.write(contentsOf: $0) }
+        }
+
+        if let quantizer = quantizer {
+            try quantizer.write(to: handle)
+        }
+
+        // Write each node: key(UInt64), level(UInt32), vector, then per-layer neighbors
         for node in nodes {
             var keyLE = node.key.littleEndian
             var levelLE = UInt32(node.level).littleEndian
@@ -245,8 +287,15 @@ private final class BurnBarHNSWWritableIndex: @unchecked Sendable, BurnBarPersis
             try withUnsafeBytes(of: &levelLE) { try handle.write(contentsOf: $0) }
 
             // Write vector
-            try node.vector.withUnsafeBufferPointer { buffer in
-                try handle.write(contentsOf: UnsafeRawBufferPointer(buffer))
+            if let quantizer = quantizer {
+                let encoded = quantizer.encode(vector: node.vector)
+                try encoded.withUnsafeBufferPointer { buffer in
+                    try handle.write(contentsOf: UnsafeRawBufferPointer(buffer))
+                }
+            } else {
+                try node.vector.withUnsafeBufferPointer { buffer in
+                    try handle.write(contentsOf: UnsafeRawBufferPointer(buffer))
+                }
             }
 
             // Write neighbors for each layer 0..level
@@ -371,6 +420,7 @@ private final class BurnBarHNSWReadableIndex: @unchecked Sendable, BurnBarPersis
     private let metric: BurnBarEmbeddingDistanceMetric
     private let efSearch: Int
     private var loadedData: Data?
+    private var quantizer: BurnBarScalarQuantizer?
 
     init(dimensions: Int, distanceMetric: BurnBarEmbeddingDistanceMetric, efSearch: Int) {
         self.dimensions = dimensions
@@ -380,10 +430,28 @@ private final class BurnBarHNSWReadableIndex: @unchecked Sendable, BurnBarPersis
 
     func load(from url: URL) throws {
         loadedData = try Data(contentsOf: url)
+        try parseQuantizerIfNeeded()
     }
 
     func view(from url: URL) throws {
         loadedData = try Data(contentsOf: url, options: [.mappedIfSafe])
+        try parseQuantizerIfNeeded()
+    }
+
+    private func parseQuantizerIfNeeded() throws {
+        guard let data = loadedData else {
+            quantizer = nil
+            return
+        }
+        let header = try BurnBarHNSWIndexFormat.parseHeader(from: data)
+        guard header.version >= 2, header.quantizationType == 1 else {
+            quantizer = nil
+            return
+        }
+        guard let (q, _) = BurnBarScalarQuantizer.read(from: data, dimensions: dimensions, offset: BurnBarHNSWIndexFormat.v2HeaderSize) else {
+            throw BurnBarPersistentVectorIndexError.missingIndexFile(URL(fileURLWithPath: "corrupt-hnsw-index"))
+        }
+        quantizer = q
     }
 
     func search(vector: [Float], limit: Int) throws -> ([UInt64], [Float]) {
@@ -401,6 +469,11 @@ private final class BurnBarHNSWReadableIndex: @unchecked Sendable, BurnBarPersis
 
         let query = hnswPreparedVector(vector, metric: metric)
 
+        // Determine data layout based on version and quantization
+        let baseHeaderSize = header.version >= 2 ? BurnBarHNSWIndexFormat.v2HeaderSize : BurnBarHNSWIndexFormat.headerSize
+        let quantizerDataSize = quantizer != nil ? 2 * dimensions * MemoryLayout<Float>.size : 0
+        let vectorByteSize = quantizer != nil ? dimensions * MemoryLayout<UInt8>.size : dimensions * MemoryLayout<Float>.size
+
         // Parse the graph from the serialized data
         return data.withUnsafeBytes { raw in
             guard let base = raw.baseAddress else { return ([], []) }
@@ -410,19 +483,17 @@ private final class BurnBarHNSWReadableIndex: @unchecked Sendable, BurnBarPersis
             let entryPointIndex = Int(header.entryPointIndex)
 
             // Pre-parse: build an array of (key, vectorOffset, level, neighborsPerLayer) for each node
-            // We need random access to nodes for graph traversal, so parse offsets first.
             struct NodeMeta {
                 let key: UInt64
-                let vectorOffset: Int  // byte offset to start of vector in data
+                let vectorOffset: Int
                 let level: Int
-                // For each layer 0..level, store (offset, count) of neighbor indices
                 var layerNeighborInfo: [(offset: Int, count: Int)]
             }
 
             var nodeMetas: [NodeMeta] = []
             nodeMetas.reserveCapacity(totalCount)
 
-            var offset = BurnBarHNSWIndexFormat.headerSize
+            var offset = baseHeaderSize + quantizerDataSize
             for _ in 0 ..< totalCount {
                 let key = base.loadUnaligned(fromByteOffset: offset, as: UInt64.self).littleEndian
                 offset += MemoryLayout<UInt64>.size
@@ -430,7 +501,7 @@ private final class BurnBarHNSWReadableIndex: @unchecked Sendable, BurnBarPersis
                 offset += MemoryLayout<UInt32>.size
 
                 let vectorOffset = offset
-                offset += self.dimensions * MemoryLayout<Float>.size
+                offset += vectorByteSize
 
                 var layerInfo: [(offset: Int, count: Int)] = []
                 layerInfo.reserveCapacity(level + 1)
@@ -448,9 +519,15 @@ private final class BurnBarHNSWReadableIndex: @unchecked Sendable, BurnBarPersis
             // Helper: compute distance from query to a node
             func distanceToNode(_ nodeIdx: Int) -> Float {
                 let meta = nodeMetas[nodeIdx]
-                let floatPtr = base.advanced(by: meta.vectorOffset).assumingMemoryBound(to: Float.self)
-                let buffer = UnsafeBufferPointer(start: floatPtr, count: self.dimensions)
-                return hnswDistanceFromBuffer(lhs: query, rhs: buffer, metric: self.metric)
+                if let quantizer = self.quantizer {
+                    let bytePtr = base.advanced(by: meta.vectorOffset).assumingMemoryBound(to: UInt8.self)
+                    let buffer = UnsafeBufferPointer(start: bytePtr, count: self.dimensions)
+                    return hnswQuantizedDistanceFromBuffer(lhs: query, rhs: buffer, quantizer: quantizer, metric: self.metric)
+                } else {
+                    let floatPtr = base.advanced(by: meta.vectorOffset).assumingMemoryBound(to: Float.self)
+                    let buffer = UnsafeBufferPointer(start: floatPtr, count: self.dimensions)
+                    return hnswDistanceFromBuffer(lhs: query, rhs: buffer, metric: self.metric)
+                }
             }
 
             // Helper: get neighbors of a node at a given layer
@@ -572,57 +649,54 @@ private final class BurnBarHNSWReadableIndex: @unchecked Sendable, BurnBarPersis
 // MARK: - Distance / Similarity Helpers
 
 /// Prepares a vector for HNSW distance computation (L2-normalizes for cosine metric).
+/// Uses SIMD-accelerated normalization when available.
 private func hnswPreparedVector(_ vector: [Float], metric: BurnBarEmbeddingDistanceMetric) -> [Float] {
     switch metric {
     case .cosine:
-        return BurnBarVectorMath.l2Normalized(vector)
+        return BurnBarVectorMath.simdL2Normalized(vector)
     case .dotProduct, .euclidean:
         return vector
     }
 }
 
 /// Computes distance (lower = more similar) for HNSW graph construction and search.
+/// Uses SIMD-accelerated dot product and Euclidean distance via vDSP when available.
 /// For cosine: 1 - dot(a, b) on L2-normalized vectors  (range [0, 2])
 /// For dotProduct: -dot(a, b)  (negate so lower = better)
 /// For euclidean: L2 distance
 private func hnswDistance(lhs: [Float], rhs: [Float], metric: BurnBarEmbeddingDistanceMetric) -> Float {
     switch metric {
     case .cosine:
-        var dot: Float = 0
-        for i in lhs.indices { dot += lhs[i] * rhs[i] }
-        return 1.0 - dot
+        return 1.0 - BurnBarVectorMath.simdDotProductF(lhs: lhs, rhs: rhs)
     case .dotProduct:
-        var dot: Float = 0
-        for i in lhs.indices { dot += lhs[i] * rhs[i] }
-        return -dot
+        return -BurnBarVectorMath.simdDotProductF(lhs: lhs, rhs: rhs)
     case .euclidean:
-        var sum: Float = 0
-        for i in lhs.indices {
-            let d = lhs[i] - rhs[i]
-            sum += d * d
-        }
-        return sqrt(sum)
+        return sqrt(BurnBarVectorMath.simdEuclideanDistanceSqF(lhs: lhs, rhs: rhs))
     }
 }
 
 /// Buffer-based variant for read-path performance (avoids array copy).
+/// Uses SIMD-accelerated dot product via vDSP when available.
 private func hnswDistanceFromBuffer(lhs: [Float], rhs: UnsafeBufferPointer<Float>, metric: BurnBarEmbeddingDistanceMetric) -> Float {
     switch metric {
     case .cosine:
-        var dot: Float = 0
-        for i in lhs.indices { dot += lhs[i] * rhs[i] }
-        return 1.0 - dot
+        return 1.0 - BurnBarVectorMath.simdDotProductF(lhs: lhs, rhs: rhs)
     case .dotProduct:
-        var dot: Float = 0
-        for i in lhs.indices { dot += lhs[i] * rhs[i] }
-        return -dot
+        return -BurnBarVectorMath.simdDotProductF(lhs: lhs, rhs: rhs)
     case .euclidean:
-        var sum: Float = 0
-        for i in lhs.indices {
-            let d = lhs[i] - rhs[i]
-            sum += d * d
-        }
-        return sqrt(sum)
+        return sqrt(BurnBarVectorMath.simdEuclideanDistanceSqF(lhs: lhs, rhs: rhs))
+    }
+}
+
+/// Quantized buffer-based distance for read-path performance with scalar quantization.
+private func hnswQuantizedDistanceFromBuffer(lhs: [Float], rhs: UnsafeBufferPointer<UInt8>, quantizer: BurnBarScalarQuantizer, metric: BurnBarEmbeddingDistanceMetric) -> Float {
+    switch metric {
+    case .cosine:
+        return 1.0 - quantizer.quantizedDotProduct(query: lhs, bytes: rhs)
+    case .dotProduct:
+        return -quantizer.quantizedDotProduct(query: lhs, bytes: rhs)
+    case .euclidean:
+        return sqrt(quantizer.quantizedEuclideanDistanceSq(query: lhs, bytes: rhs))
     }
 }
 

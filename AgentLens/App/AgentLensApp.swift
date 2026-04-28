@@ -2,6 +2,7 @@ import AppKit
 import FirebaseCore
 import FirebaseAppCheck
 import GoogleSignIn
+import OSLog
 import SwiftUI
 
 #if canImport(Sentry)
@@ -398,6 +399,38 @@ struct OpenBurnBarApp: App {
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
         }
         AccountManager.shared.onFirebaseConfigured()
+
+        // Validate App Check token when cloud sync is enabled.
+        // This is a fail-open warning: the app continues to work but logs a warning.
+        Task {
+            await validateAppCheckIfNeeded()
+        }
+    }
+
+    /// Validates that App Check is functional when cloud sync is enabled.
+    /// Posts a notification if App Check cannot obtain a token so the UI can warn the user.
+    @MainActor
+    private static func validateAppCheckIfNeeded() async {
+        guard AccountManager.shared.isCloudSyncEnabled else { return }
+        do {
+            let token = try await AppCheck.appCheck().token(forcingRefresh: false)
+            guard !token.token.isEmpty else {
+                postAppCheckWarning("App Check returned an empty token.")
+                return
+            }
+        } catch {
+            postAppCheckWarning("App Check token fetch failed: \(error.localizedDescription)")
+        }
+    }
+
+    @MainActor
+    private static func postAppCheckWarning(_ message: String) {
+        os_log("App Check validation warning: %{public}@", log: .default, type: .error, message)
+        NotificationCenter.default.post(
+            name: .openBurnBarAppCheckValidationFailed,
+            object: nil,
+            userInfo: ["message": message]
+        )
     }
 
     /// Initialize Sentry crash reporting if a DSN is available.

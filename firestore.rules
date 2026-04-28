@@ -3,6 +3,11 @@ rules_version = '2';
 // - users/{uid}/usage, conversations, chat_threads, session_logs (+ chunks), devices
 // - workspaces/workspace-{uid}/teams/team-default/artifacts/{artifactID} (+ versions/{revisionID})
 // The shared-artifact rule below intentionally stays owner-scoped for this source release.
+//
+// App Check: `request.auth` below is not sufficient to block non-app clients. Enforce
+// App Check for Cloud Firestore in the Firebase console so only your app+attested
+// traffic reaches this ruleset. See: https://firebase.google.com/docs/app-check/enable-enforcement
+// and docs/FIREBASE_APP_CHECK_ENFORCEMENT.md in this repo.
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {

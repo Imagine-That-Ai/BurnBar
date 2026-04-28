@@ -25,7 +25,8 @@ struct ProviderQuotaAdapterContext {
     let resolvedAPIKeys: [String: String?]
 }
 
-extension ProviderQuotaAdapterContext: @unchecked Sendable {}
+// All properties are value types (Sendable); no @unchecked needed.
+extension ProviderQuotaAdapterContext: Sendable {}
 
 extension ProviderQuotaAdapter {
     func unavailableSnapshot(

@@ -9,9 +9,8 @@ import Foundation
 ///
 /// `Locked` is reference-typed so that in-place mutation is visible to all
 /// owners of the box, similar to a `class`-based container.
-// AUDIT(@unchecked Sendable): Thread safety guaranteed by NSLock;
-// the compiler cannot verify lock-based invariants.
-public final class Locked<T>: @unchecked Sendable {
+// Thread safety guaranteed by NSLock; the compiler cannot verify lock-based invariants.
+public final class Locked<T: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var _value: T
 

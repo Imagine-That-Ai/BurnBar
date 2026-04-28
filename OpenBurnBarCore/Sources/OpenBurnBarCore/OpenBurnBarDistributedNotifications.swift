@@ -6,3 +6,7 @@ public enum OpenBurnBarDistributedNotifications {
     public static let titleKey = "title"
     public static let bodyKey = "body"
 }
+
+public extension Notification.Name {
+    static let openBurnBarAppCheckValidationFailed = Notification.Name("openBurnBarAppCheckValidationFailed")
+}

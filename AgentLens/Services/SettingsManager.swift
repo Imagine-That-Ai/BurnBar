@@ -1,84 +1,13 @@
 import Foundation
 import SwiftUI
 
-enum SummaryProviderID: String, CaseIterable, Codable {
-    case local
-    case mlx
-    case minimax
-    case openrouter
-    case zai
-}
+// MARK: - Settings Manager
 
-enum IndexEmbeddingProviderID: String, CaseIterable, Codable {
-    case deterministic
-    case openai
-}
-
-enum AppearanceMode: String, CaseIterable, Codable {
-    case system
-    case light
-    case dark
-
-    var colorScheme: ColorScheme? {
-        switch self {
-        case .system: return nil
-        case .light:  return .light
-        case .dark:   return .dark
-        }
-    }
-}
-
-private enum SettingsSecretDefaultsKey {
-    static let controllerTelegramBotToken = "controllerTelegramBotToken"
-    static let openClawBearerToken = "openClawBearerToken"
-    static let hermesBearerToken = "hermesBearerToken"
-    static let gatewayAuthToken = "gatewayAuthToken"
-}
-
-struct SettingsSecretPersistence {
-    let defaults: UserDefaults
-    let keychain: KeychainStore
-
-    func load(account: String, legacyDefaultsKey: String) -> String {
-        if let stored = try? keychain.string(for: account) {
-            if defaults.object(forKey: legacyDefaultsKey) != nil {
-                defaults.removeObject(forKey: legacyDefaultsKey)
-            }
-            return stored
-        }
-
-        guard let legacy = defaults.string(forKey: legacyDefaultsKey),
-              !legacy.isEmpty else {
-            if defaults.object(forKey: legacyDefaultsKey) != nil {
-                defaults.removeObject(forKey: legacyDefaultsKey)
-            }
-            return ""
-        }
-
-        do {
-            try keychain.set(legacy, for: account)
-            defaults.removeObject(forKey: legacyDefaultsKey)
-        } catch {
-            defaults.removeObject(forKey: legacyDefaultsKey)
-        }
-
-        return legacy
-    }
-
-    func persist(_ value: String, account: String, legacyDefaultsKey: String) {
-        do {
-            if value.isEmpty {
-                try keychain.delete(account: account)
-            } else {
-                try keychain.set(value, for: account)
-            }
-            defaults.removeObject(forKey: legacyDefaultsKey)
-        } catch {
-            defaults.removeObject(forKey: legacyDefaultsKey)
-        }
-    }
-}
-
+/// Composition root for all app configuration.
+///
+/// `SettingsManager` is no longer a god-object. It exposes domain-specific stores as `let`
+/// properties and delegates persistence to `SettingsPersistenceCoordinator`, which tracks
+/// dirty keys and flushes coalesced writes after a short debounce.
 @Observable
 @MainActor
 final class SettingsManager {
@@ -93,121 +22,214 @@ final class SettingsManager {
         service: OpenBurnBarIdentity.chatGatewayKeychainService,
         legacyServices: OpenBurnBarIdentity.legacyChatGatewayKeychainServices
     )
-    
-    // MARK: - Settings
-    
-    var logPaths: [AgentProvider: String] {
-        didSet { save() }
-    }
-    
-    var refreshInterval: TimeInterval {
-        didSet { save() }
-    }
-    
-    var showInMenuBar: Bool {
-        didSet { save() }
-    }
-    
-    var launchAtLogin: Bool {
-        didSet { save() }
+
+    // MARK: - Domain Stores
+
+    let persistence: SettingsPersistenceCoordinator
+    let appearance: AppearanceSettings
+    let behavior: BehaviorSettings
+    let alerts: AlertSettings
+    let controller: ControllerSettings
+    let gateway: GatewaySettings
+    let chatBackend: ChatBackendSettings
+    let index: IndexSettings
+    let crossEncoder: CrossEncoderSettings
+    let cloudSync: CloudSyncSettings
+    let cliAssistant: CLIAssistantSettings
+    let summary: SummarySettings
+    let quotas: QuotaSettings
+    let providerPath: ProviderPathSettings
+    let artifactDiscovery: ArtifactDiscoverySettings
+
+    // MARK: - Init
+
+    init(
+        defaults: UserDefaults = .standard,
+        controllerRuntimeSecrets: KeychainStore = SettingsManager.controllerRuntimeSecrets,
+        chatGatewaySecrets: KeychainStore = SettingsManager.chatGatewaySecrets
+    ) {
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        self.persistence = coordinator
+
+        let controllerSecretPersistence = SettingsSecretPersistence(
+            defaults: defaults,
+            keychain: controllerRuntimeSecrets
+        )
+        let chatGatewaySecretPersistence = SettingsSecretPersistence(
+            defaults: defaults,
+            keychain: chatGatewaySecrets
+        )
+
+        self.appearance = AppearanceSettings(persistence: coordinator)
+        self.behavior = BehaviorSettings(persistence: coordinator)
+        self.alerts = AlertSettings(persistence: coordinator)
+        self.controller = ControllerSettings(
+            persistence: coordinator,
+            secretPersistence: controllerSecretPersistence
+        )
+        self.gateway = GatewaySettings(
+            persistence: coordinator,
+            secretPersistence: chatGatewaySecretPersistence
+        )
+        self.chatBackend = ChatBackendSettings(
+            persistence: coordinator,
+            secretPersistence: chatGatewaySecretPersistence
+        )
+        self.index = IndexSettings(persistence: coordinator)
+        self.crossEncoder = CrossEncoderSettings(persistence: coordinator)
+        self.cloudSync = CloudSyncSettings(persistence: coordinator)
+        self.cliAssistant = CLIAssistantSettings(persistence: coordinator)
+        self.summary = SummarySettings(persistence: coordinator)
+        self.quotas = QuotaSettings(persistence: coordinator)
+        self.providerPath = ProviderPathSettings(persistence: coordinator)
+        self.artifactDiscovery = ArtifactDiscoverySettings(persistence: coordinator)
+
+        // Register periodic flush on app background
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(flushPendingWrites),
+            name: NSApplication.willResignActiveNotification,
+            object: nil
+        )
     }
 
+    @objc private func flushPendingWrites() {
+        persistence.flush()
+    }
+
+    // MARK: - Backward Compatibility (Computed Properties)
+
+    // These computed properties bridge the old SettingsManager interface to the new
+    // domain stores, allowing views and services to migrate incrementally.
+
+    // MARK: Appearance / Behavior
     var appearanceMode: AppearanceMode {
-        didSet { save() }
+        get { appearance.appearanceMode }
+        set { appearance.appearanceMode = newValue }
     }
-    
+
+    var showInMenuBar: Bool {
+        get { appearance.showInMenuBar }
+        set { appearance.showInMenuBar = newValue }
+    }
+
+    var preferredSwiftUIColorScheme: ColorScheme? {
+        appearance.appearanceMode.colorScheme
+    }
+
+    var launchAtLogin: Bool {
+        get { behavior.launchAtLogin }
+        set { behavior.launchAtLogin = newValue }
+    }
+
+    var refreshInterval: TimeInterval {
+        get { behavior.refreshInterval }
+        set { behavior.refreshInterval = newValue }
+    }
+
+    var refreshIntervalMinutes: Double {
+        get { behavior.refreshIntervalMinutes }
+        set { behavior.refreshInterval = newValue * 60 }
+    }
+
     var defaultTimeRange: TimeRange {
-        didSet { save() }
+        get { behavior.defaultTimeRange }
+        set { behavior.defaultTimeRange = newValue }
     }
-    
+
+    var usageDisplayMode: UsageDisplayMode {
+        get { behavior.usageDisplayMode }
+        set { behavior.usageDisplayMode = newValue }
+    }
+
+    // MARK: Alerts
     var costAlertThreshold: Double? {
-        didSet { save() }
+        get { alerts.costAlertThreshold }
+        set { alerts.costAlertThreshold = newValue }
     }
 
     var dailyDigestEnabled: Bool {
-        didSet { save() }
+        get { alerts.dailyDigestEnabled }
+        set { alerts.dailyDigestEnabled = newValue }
     }
 
-    /// Hour 0–23 local time for daily digest notification.
     var dailyDigestHour: Int {
-        didSet { save() }
+        get { alerts.dailyDigestHour }
+        set { alerts.dailyDigestHour = newValue }
     }
 
-    /// Enables the daemon-owned review/controller loop in the UI.
+    // MARK: Controller
     var controllerRuntimeEnabled: Bool {
-        didSet { save() }
+        get { controller.controllerRuntimeEnabled }
+        set { controller.controllerRuntimeEnabled = newValue }
     }
 
-    /// How often AgentLens should refresh the mirrored controller runtime from the daemon.
     var controllerRuntimeRefreshMinutes: Int {
-        didSet { save() }
+        get { controller.controllerRuntimeRefreshMinutes }
+        set { controller.controllerRuntimeRefreshMinutes = newValue }
     }
 
-    /// Allow the daemon/controller loop to post local notifications on this Mac.
     var controllerLocalNotificationsEnabled: Bool {
-        didSet { save() }
+        get { controller.controllerLocalNotificationsEnabled }
+        set { controller.controllerLocalNotificationsEnabled = newValue }
     }
 
-    /// Route unresolved work and nudges through Telegram when configured.
     var controllerTelegramEnabled: Bool {
-        didSet { save() }
+        get { controller.controllerTelegramEnabled }
+        set { controller.controllerTelegramEnabled = newValue }
     }
 
-    /// Telegram bot token for controller notifications/commands.
     var controllerTelegramBotToken: String {
-        didSet { save() }
+        get { controller.controllerTelegramBotToken }
+        set { controller.controllerTelegramBotToken = newValue }
     }
 
-    /// Telegram chat or channel identifier for controller notifications/commands.
     var controllerTelegramChatID: String {
-        didSet { save() }
+        get { controller.controllerTelegramChatID }
+        set { controller.controllerTelegramChatID = newValue }
     }
 
-    /// Allow the controller loop to create local calendar placeholders for followups.
     var controllerCalendarIntegrationEnabled: Bool {
-        didSet { save() }
+        get { controller.controllerCalendarIntegrationEnabled }
+        set { controller.controllerCalendarIntegrationEnabled = newValue }
     }
 
-    /// Default duration for controller-created calendar holds.
     var controllerCalendarDefaultMinutes: Int {
-        didSet { save() }
+        get { controller.controllerCalendarDefaultMinutes }
+        set { controller.controllerCalendarDefaultMinutes = newValue }
     }
 
-    /// Default snooze window for followups in minutes.
     var controllerDefaultSnoozeMinutes: Int {
-        didSet { save() }
+        get { controller.controllerDefaultSnoozeMinutes }
+        set { controller.controllerDefaultSnoozeMinutes = newValue }
     }
 
-    /// Show simulator / replay tooling in operator-facing surfaces.
     var controllerSimulatorToolsEnabled: Bool {
-        didSet { save() }
+        get { controller.controllerSimulatorToolsEnabled }
+        set { controller.controllerSimulatorToolsEnabled = newValue }
     }
 
-    // MARK: - HTTP Gateway Settings
-
-    /// Whether the HTTP gateway is enabled.
+    // MARK: Gateway
     var gatewayEnabled: Bool {
-        didSet { save() }
+        get { gateway.gatewayEnabled }
+        set { gateway.gatewayEnabled = newValue }
     }
 
-    /// Host to bind the HTTP gateway (default 127.0.0.1).
     var gatewayHost: String {
-        didSet { save() }
+        get { gateway.gatewayHost }
+        set { gateway.gatewayHost = newValue }
     }
 
-    /// Port for the HTTP gateway (default 8317).
     var gatewayPort: Int {
-        didSet { save() }
+        get { gateway.gatewayPort }
+        set { gateway.gatewayPort = newValue }
     }
 
-    /// Bearer token for gateway auth (required for non-loopback).
     var gatewayAuthToken: String {
-        didSet { save() }
+        get { gateway.gatewayAuthToken }
+        set { gateway.gatewayAuthToken = newValue }
     }
 
-    /// Build gateway settings as a simple dictionary for daemon launch args.
-    /// The actual BurnBarGatewayConfiguration type lives in the daemon module;
-    /// the daemon CLI parses these args from the launch agent plist.
     var gatewayConfigurationDict: [String: Any] {
         [
             "enabled": gatewayEnabled,
@@ -216,312 +238,25 @@ final class SettingsManager {
         ]
     }
 
-    /// User opted in to local indexing of conversation text for search and chat context.
+    // MARK: Indexing
     var conversationIndexingEnabled: Bool {
-        didSet { save() }
+        get { index.conversationIndexingEnabled }
+        set { index.conversationIndexingEnabled = newValue }
     }
 
-    /// When true, custom log paths are restricted to a set of known-safe roots.
-    /// Paths outside the known set fall back to the provider's default directory.
-    /// Default: true (safe default — protects against accidental sensitive-path exposure).
     var restrictedLogAccess: Bool {
-        didSet { save() }
+        get { index.restrictedLogAccess }
+        set { index.restrictedLogAccess = newValue }
     }
 
-    /// When true, the SQLite database is encrypted with SQLCipher (AES-256).
-    /// The encryption key is stored in the macOS Keychain. Requires the app to be
-    /// built with GRDBCipher (CocoaPods) for encryption to be active.
-    /// Default: false (no encryption — existing users are not migrated automatically).
     var databaseEncryptionEnabled: Bool {
-        didSet { save() }
+        get { index.databaseEncryptionEnabled }
+        set { index.databaseEncryptionEnabled = newValue }
     }
 
-    /// Preferred embedding version for semantic indexing/search. Empty string = automatic active version.
     var preferredIndexEmbeddingVersionID: String {
-        didSet { save() }
-    }
-
-    /// Provider used for new indexing and re-embedding work.
-    var indexEmbeddingProvider: IndexEmbeddingProviderID {
-        didSet { save() }
-    }
-
-    /// OpenAI embedding model used when `indexEmbeddingProvider == .openai`.
-    var indexOpenAIModel: String {
-        didSet { save() }
-    }
-
-    /// Opt-in: sync conversation metadata (not full transcripts) to Firestore for cross-device recall when signed in.
-    var conversationCloudBackupEnabled: Bool {
-        didSet { save() }
-    }
-
-    /// Copy on-disk session files into the app’s iCloud Drive container (independent of Firebase).
-    var iCloudSessionMirrorEnabled: Bool {
-        didSet { save() }
-    }
-
-    /// Opt-in: back up full session-log Markdown to Firestore. Requires auth + `isCloudSyncEnabled`.
-    var sessionLogCloudBackupEnabled: Bool {
-        didSet { save() }
-    }
-
-    /// Whether the one-time cloud session-log backup consent sheet has been shown (per device).
-    var sessionLogCloudBackupConsentShown: Bool {
-        didSet { save() }
-    }
-
-    /// Whether the one-time consent sheet for conversation indexing has been presented.
-    var conversationIndexingConsentShown: Bool {
-        didSet { save() }
-    }
-
-    /// Enables discovery and ingestion of skill/agent source artifacts from registered roots.
-    var artifactDiscoveryEnabled: Bool {
-        didSet { save() }
-    }
-
-    /// JSON string storage for registered discovery roots.
-    var artifactDiscoveryRegisteredRootsJSON: String {
-        didSet { save() }
-    }
-
-    /// JSON string storage for additional basename patterns (supports `*` wildcard).
-    var artifactDiscoveryAdditionalKnownPatternsJSON: String {
-        didSet { save() }
-    }
-
-    /// User allowed the app to invoke `claude` / `codex` CLIs for the in-app assistant.
-    var cliAssistantAllowed: Bool {
-        didSet {
-            if cliAssistantAllowed { cliAssistantConsentShown = true }
-            save()
-        }
-    }
-
-    /// Whether the one-time consent sheet for the CLI assistant has been presented.
-    var cliAssistantConsentShown: Bool {
-        didSet { save() }
-    }
-
-    /// OpenClaw gateway base URL (OpenAI-compatible), e.g. `http://127.0.0.1:18789`.
-    var openClawGatewayBaseURL: String {
-        didSet { save() }
-    }
-
-    /// Optional Bearer token for OpenClaw gateway (empty = omit header).
-    var openClawBearerToken: String {
-        didSet { save() }
-    }
-
-    /// Optional: same string as `API_SERVER_KEY` in ~/.hermes/.env when set; omit when Hermes has no API key.
-    var hermesBearerToken: String {
-        didSet { save() }
-    }
-
-    /// Optional `model` string for `POST /v1/chat/completions` to the Hermes gateway (port 8642).
-    /// Empty lets OpenBurnBar pick automatically: if the gateway’s `/v1/models` advertises MiniMax but you use Codex with a ChatGPT account, OpenBurnBar sends a Codex-supported model instead (see `resolvedHermesChatModel(gatewayAdvertisedModel:)`).
-    var hermesChatModelOverride: String {
-        didSet { save() }
-    }
-
-    /// User completed the chat backend picker / health onboarding (first-run or Settings).
-    var chatBackendOnboardingCompleted: Bool {
-        didSet { save() }
-    }
-
-    /// User completed the switcher profile onboarding wizard.
-    var switcherOnboardingCompleted: Bool {
-        didSet { save() }
-    }
-
-    /// Comma-separated `AgentProvider.rawValue` list — providers the user selected during onboarding.
-    var selectedOnboardingProvidersCSV: String {
-        didSet { save() }
-    }
-
-    /// Comma-separated `ChatBackendID.rawValue` list — only these appear in chat UI (subset; order = picker order).
-    var enabledChatBackendIDsCSV: String {
-        didSet { save() }
-    }
-
-    /// Show spend in USD or total token volume (scaled to M/B).
-    var usageDisplayMode: UsageDisplayMode {
-        didSet { save() }
-    }
-
-    /// Enables automatic conversation summaries after scan refresh.
-    var autoSessionSummariesEnabled: Bool {
-        didSet { save() }
-    }
-
-    /// Comma-separated provider order, e.g. "local,minimax,openrouter,zai".
-    var summaryProviderOrderCSV: String {
-        didSet { save() }
-    }
-
-    /// Optional hard daily cap for cloud summarization spend (USD). Nil = unlimited.
-    var summaryDailyCapUSD: Double? {
-        didSet { save() }
-    }
-
-    var summaryOpenRouterPrimaryModel: String {
-        didSet { save() }
-    }
-
-    var summaryOpenRouterFallbackModel: String {
-        didSet { save() }
-    }
-
-    var summaryMiniMaxModel: String {
-        didSet { save() }
-    }
-
-    var summaryZaiModel: String {
-        didSet { save() }
-    }
-
-    var summaryLocalModel: String {
-        didSet { save() }
-    }
-
-    var summaryLocalBaseURL: String {
-        didSet { save() }
-    }
-
-    var summaryMLXModel: String {
-        didSet { save() }
-    }
-
-    var summaryMLXBaseURL: String {
-        didSet { save() }
-    }
-
-    var summaryMaxPromptChars: Int {
-        didSet { save() }
-    }
-
-    var summaryMaxOutputTokens: Int {
-        didSet { save() }
-    }
-
-    var summaryRetryCount: Int {
-        didSet { save() }
-    }
-
-    var summaryBatchSize: Int {
-        didSet { save() }
-    }
-
-    var summaryFirstLoadBatchSize: Int {
-        didSet { save() }
-    }
-
-    /// Persisted once a full initial auto-summary sweep has been attempted at least once.
-    var summaryInitialSweepCompleted: Bool {
-        didSet { save() }
-    }
-
-    var summaryRequestTimeoutSeconds: Double {
-        didSet { save() }
-    }
-
-    /// Max parallel requests during a sweep (1 = sequential, 8 = default blast).
-    var summaryMaxConcurrency: Int {
-        didSet { save() }
-    }
-
-    /// Hard wall-clock limit per sweep in minutes (0 = no limit).
-    var summaryTimeLimitMinutes: Int {
-        didSet { save() }
-    }
-
-    /// Enables cross-encoder reranking for improved retrieval precision.
-    var crossEncoderRerankEnabled: Bool {
-        didSet { save() }
-    }
-
-    /// Provider used for cross-encoder reranking.
-    var crossEncoderProvider: CrossEncoderProviderID {
-        didSet { save() }
-    }
-
-    /// Provider-specific model used for cross-encoder reranking.
-    var crossEncoderModel: String {
-        didSet { save() }
-    }
-
-    /// Legacy base URL override retained for settings migration.
-    var crossEncoderBaseURL: String {
-        didSet { save() }
-    }
-
-    /// Maximum number of candidates sent to cross-encoder reranking.
-    var crossEncoderMaxCandidates: Int {
-        didSet { save() }
-    }
-
-    /// Maximum characters per candidate text sent to cross-encoder.
-    var crossEncoderMaxCharsPerCandidate: Int {
-        didSet { save() }
-    }
-
-    var miniMaxQuotaMode: MiniMaxQuotaMode {
-        didSet { save() }
-    }
-
-    var factoryQuotaPlanTier: FactoryQuotaPlanTier {
-        didSet { save() }
-    }
-
-    /// When enabled and exact token counts are unavailable, attempt tokenizer-assisted
-    /// estimation before falling back to character-ratio heuristics. Disabled by default.
-    var tokenizerAssistedFallbackEnabled: Bool {
-        didSet { save() }
-    }
-
-    private let defaults: UserDefaults
-    private let controllerSecretPersistence: SettingsSecretPersistence
-    private let chatGatewaySecretPersistence: SettingsSecretPersistence
-
-    // MARK: - Computed
-    
-    var refreshIntervalMinutes: Double {
-        get { refreshInterval / 60 }
-        set { refreshInterval = newValue * 60 }
-    }
-
-    var preferredSwiftUIColorScheme: ColorScheme? {
-        appearanceMode.colorScheme
-    }
-
-    var summaryProviderOrder: [SummaryProviderID] {
-        let parsed = summaryProviderOrderCSV
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-            .compactMap(SummaryProviderID.init(rawValue:))
-        if parsed.isEmpty {
-            return [.local, .mlx, .minimax, .openrouter, .zai]
-        }
-
-        var deduped: [SummaryProviderID] = []
-        for id in parsed where !deduped.contains(id) {
-            deduped.append(id)
-        }
-        for id in SummaryProviderID.allCases where !deduped.contains(id) {
-            deduped.append(id)
-        }
-        return deduped
-    }
-
-    var artifactDiscoveryRegisteredRoots: [String] {
-        get { Self.decodeJSONStringArray(artifactDiscoveryRegisteredRootsJSON) }
-        set { artifactDiscoveryRegisteredRootsJSON = Self.encodeJSONStringArray(newValue) }
-    }
-
-    var artifactDiscoveryAdditionalKnownPatterns: [String] {
-        get { Self.decodeJSONStringArray(artifactDiscoveryAdditionalKnownPatternsJSON) }
-        set { artifactDiscoveryAdditionalKnownPatternsJSON = Self.encodeJSONStringArray(newValue) }
+        get { index.preferredIndexEmbeddingVersionID }
+        set { index.preferredIndexEmbeddingVersionID = newValue }
     }
 
     var preferredIndexEmbeddingVersionIDValue: String? {
@@ -529,431 +264,353 @@ final class SettingsManager {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// Persists provider priority as CSV (see `summaryProviderOrderCSV`).
+    var indexEmbeddingProvider: IndexEmbeddingProviderID {
+        get { index.indexEmbeddingProvider }
+        set { index.indexEmbeddingProvider = newValue }
+    }
+
+    var indexOpenAIModel: String {
+        get { index.indexOpenAIModel }
+        set { index.indexOpenAIModel = newValue }
+    }
+
+    var conversationIndexingConsentShown: Bool {
+        get { index.conversationIndexingConsentShown }
+        set { index.conversationIndexingConsentShown = newValue }
+    }
+
+    // MARK: Cloud Sync
+    var conversationCloudBackupEnabled: Bool {
+        get { cloudSync.conversationCloudBackupEnabled }
+        set { cloudSync.conversationCloudBackupEnabled = newValue }
+    }
+
+    var iCloudSessionMirrorEnabled: Bool {
+        get { cloudSync.iCloudSessionMirrorEnabled }
+        set { cloudSync.iCloudSessionMirrorEnabled = newValue }
+    }
+
+    var sessionLogCloudBackupEnabled: Bool {
+        get { cloudSync.sessionLogCloudBackupEnabled }
+        set { cloudSync.sessionLogCloudBackupEnabled = newValue }
+    }
+
+    var sessionLogCloudBackupConsentShown: Bool {
+        get { cloudSync.sessionLogCloudBackupConsentShown }
+        set { cloudSync.sessionLogCloudBackupConsentShown = newValue }
+    }
+
+    // MARK: Artifact Discovery
+    var artifactDiscoveryEnabled: Bool {
+        get { artifactDiscovery.artifactDiscoveryEnabled }
+        set { artifactDiscovery.artifactDiscoveryEnabled = newValue }
+    }
+
+    var artifactDiscoveryRegisteredRootsJSON: String {
+        get { artifactDiscovery.artifactDiscoveryRegisteredRootsJSON }
+        set { artifactDiscovery.artifactDiscoveryRegisteredRootsJSON = newValue }
+    }
+
+    var artifactDiscoveryAdditionalKnownPatternsJSON: String {
+        get { artifactDiscovery.artifactDiscoveryAdditionalKnownPatternsJSON }
+        set { artifactDiscovery.artifactDiscoveryAdditionalKnownPatternsJSON = newValue }
+    }
+
+    var artifactDiscoveryRegisteredRoots: [String] {
+        get { artifactDiscovery.artifactDiscoveryRegisteredRoots }
+        set { artifactDiscovery.artifactDiscoveryRegisteredRoots = newValue }
+    }
+
+    var artifactDiscoveryAdditionalKnownPatterns: [String] {
+        get { artifactDiscovery.artifactDiscoveryAdditionalKnownPatterns }
+        set { artifactDiscovery.artifactDiscoveryAdditionalKnownPatterns = newValue }
+    }
+
+    // MARK: CLI Assistant
+    var cliAssistantAllowed: Bool {
+        get { cliAssistant.cliAssistantAllowed }
+        set {
+            cliAssistant.cliAssistantAllowed = newValue
+            if newValue { cliAssistant.cliAssistantConsentShown = true }
+        }
+    }
+
+    var cliAssistantConsentShown: Bool {
+        get { cliAssistant.cliAssistantConsentShown }
+        set { cliAssistant.cliAssistantConsentShown = newValue }
+    }
+
+    // MARK: Chat Backend
+    var openClawGatewayBaseURL: String {
+        get { chatBackend.openClawGatewayBaseURL }
+        set { chatBackend.openClawGatewayBaseURL = newValue }
+    }
+
+    var openClawBearerToken: String {
+        get { chatBackend.openClawBearerToken }
+        set { chatBackend.openClawBearerToken = newValue }
+    }
+
+    var hermesBearerToken: String {
+        get { chatBackend.hermesBearerToken }
+        set { chatBackend.hermesBearerToken = newValue }
+    }
+
+    var hermesChatModelOverride: String {
+        get { chatBackend.hermesChatModelOverride }
+        set { chatBackend.hermesChatModelOverride = newValue }
+    }
+
+    var chatBackendOnboardingCompleted: Bool {
+        get { chatBackend.chatBackendOnboardingCompleted }
+        set { chatBackend.chatBackendOnboardingCompleted = newValue }
+    }
+
+    var switcherOnboardingCompleted: Bool {
+        get { chatBackend.switcherOnboardingCompleted }
+        set { chatBackend.switcherOnboardingCompleted = newValue }
+    }
+
+    var selectedOnboardingProvidersCSV: String {
+        get { chatBackend.selectedOnboardingProvidersCSV }
+        set { chatBackend.selectedOnboardingProvidersCSV = newValue }
+    }
+
+    var selectedOnboardingProviders: Set<AgentProvider> {
+        get { chatBackend.selectedOnboardingProviders }
+        set { chatBackend.selectedOnboardingProviders = newValue }
+    }
+
+    var enabledChatBackendIDsCSV: String {
+        get { chatBackend.enabledChatBackendIDsCSV }
+        set { chatBackend.enabledChatBackendIDsCSV = newValue }
+    }
+
+    var enabledChatBackends: [ChatBackendID] {
+        chatBackend.enabledChatBackends
+    }
+
+    func setEnabledChatBackends(_ backends: [ChatBackendID]) {
+        chatBackend.setEnabledChatBackends(backends)
+    }
+
+    func setChatBackendEnabled(_ id: ChatBackendID, enabled: Bool) {
+        chatBackend.setChatBackendEnabled(id, enabled: enabled)
+    }
+
+    // MARK: Summary
+    var autoSessionSummariesEnabled: Bool {
+        get { summary.autoSessionSummariesEnabled }
+        set { summary.autoSessionSummariesEnabled = newValue }
+    }
+
+    var summaryProviderOrderCSV: String {
+        get { summary.summaryProviderOrderCSV }
+        set { summary.summaryProviderOrderCSV = newValue }
+    }
+
+    var summaryProviderOrder: [SummaryProviderID] {
+        summary.summaryProviderOrder
+    }
+
     func setSummaryProviderOrder(_ order: [SummaryProviderID]) {
-        summaryProviderOrderCSV = order.map(\.rawValue).joined(separator: ",")
-    }
-    
-    // MARK: - Initialization
-    
-    init(
-        defaults: UserDefaults = .standard,
-        controllerRuntimeSecrets: KeychainStore = SettingsManager.controllerRuntimeSecrets,
-        chatGatewaySecrets: KeychainStore = SettingsManager.chatGatewaySecrets
-    ) {
-        self.defaults = defaults
-        self.controllerSecretPersistence = SettingsSecretPersistence(
-            defaults: defaults,
-            keychain: controllerRuntimeSecrets
-        )
-        self.chatGatewaySecretPersistence = SettingsSecretPersistence(
-            defaults: defaults,
-            keychain: chatGatewaySecrets
-        )
-        OpenBurnBarMigration.migrateUserDefaults(defaults: defaults)
-
-        // Load from UserDefaults
-        
-        var loadedLogPaths: [AgentProvider: String] = [:]
-        for provider in AgentProvider.allCases {
-            let customPath = defaults.string(forKey: "logPath_\(provider.rawValue)")
-            loadedLogPaths[provider] = customPath ?? provider.logDirectory
-        }
-        self.logPaths = loadedLogPaths
-        
-        let loadedInterval = defaults.double(forKey: "refreshInterval")
-        self.refreshInterval = loadedInterval == 0 ? 600 : loadedInterval
-        
-        let hasLaunched = defaults.bool(forKey: "hasLaunchedBefore")
-        self.showInMenuBar = hasLaunched ? defaults.bool(forKey: "showInMenuBar") : true
-        
-        self.launchAtLogin = defaults.bool(forKey: "launchAtLogin")
-        if let modeRaw = defaults.string(forKey: "appearanceMode"),
-           let mode = AppearanceMode(rawValue: modeRaw) {
-            self.appearanceMode = mode
-        } else if defaults.bool(forKey: "preferLightAppearance") {
-            self.appearanceMode = .light
-        } else {
-            self.appearanceMode = .system
-        }
-        
-        if let timeRangeRaw = defaults.string(forKey: "defaultTimeRange"),
-           let timeRange = TimeRange(rawValue: timeRangeRaw) {
-            self.defaultTimeRange = timeRange
-        } else {
-            self.defaultTimeRange = .today
-        }
-        
-        if defaults.bool(forKey: "hasCostAlertThreshold") {
-            self.costAlertThreshold = defaults.double(forKey: "costAlertThreshold")
-        } else {
-            self.costAlertThreshold = nil
-        }
-
-        self.dailyDigestEnabled = defaults.bool(forKey: "dailyDigestEnabled")
-        if defaults.object(forKey: "dailyDigestHour") != nil {
-            let hour = defaults.integer(forKey: "dailyDigestHour")
-            self.dailyDigestHour = (hour >= 0 && hour < 24) ? hour : 18
-        } else {
-            self.dailyDigestHour = 18
-        }
-        if defaults.object(forKey: "controllerRuntimeEnabled") != nil {
-            self.controllerRuntimeEnabled = defaults.bool(forKey: "controllerRuntimeEnabled")
-        } else {
-            self.controllerRuntimeEnabled = true
-        }
-        if defaults.object(forKey: "controllerRuntimeRefreshMinutes") != nil {
-            self.controllerRuntimeRefreshMinutes = max(defaults.integer(forKey: "controllerRuntimeRefreshMinutes"), 1)
-        } else {
-            self.controllerRuntimeRefreshMinutes = 5
-        }
-        if defaults.object(forKey: "controllerLocalNotificationsEnabled") != nil {
-            self.controllerLocalNotificationsEnabled = defaults.bool(forKey: "controllerLocalNotificationsEnabled")
-        } else {
-            self.controllerLocalNotificationsEnabled = true
-        }
-        self.controllerTelegramEnabled = defaults.bool(forKey: "controllerTelegramEnabled")
-        self.controllerTelegramBotToken = controllerSecretPersistence.load(
-            account: OpenBurnBarIdentity.controllerTelegramBotTokenAccount,
-            legacyDefaultsKey: SettingsSecretDefaultsKey.controllerTelegramBotToken
-        )
-        self.controllerTelegramChatID = defaults.string(forKey: "controllerTelegramChatID") ?? ""
-        if defaults.object(forKey: "controllerCalendarIntegrationEnabled") != nil {
-            self.controllerCalendarIntegrationEnabled = defaults.bool(forKey: "controllerCalendarIntegrationEnabled")
-        } else {
-            self.controllerCalendarIntegrationEnabled = true
-        }
-        if defaults.object(forKey: "controllerCalendarDefaultMinutes") != nil {
-            self.controllerCalendarDefaultMinutes = max(defaults.integer(forKey: "controllerCalendarDefaultMinutes"), 15)
-        } else {
-            self.controllerCalendarDefaultMinutes = 30
-        }
-        if defaults.object(forKey: "controllerDefaultSnoozeMinutes") != nil {
-            self.controllerDefaultSnoozeMinutes = max(defaults.integer(forKey: "controllerDefaultSnoozeMinutes"), 15)
-        } else {
-            self.controllerDefaultSnoozeMinutes = 180
-        }
-        self.controllerSimulatorToolsEnabled = defaults.bool(forKey: "controllerSimulatorToolsEnabled")
-
-        self.gatewayEnabled = defaults.bool(forKey: "gatewayEnabled")
-        self.gatewayHost = defaults.string(forKey: "gatewayHost") ?? "127.0.0.1"
-        self.gatewayPort = defaults.object(forKey: "gatewayPort") as? Int ?? 8317
-        self.gatewayAuthToken = chatGatewaySecretPersistence.load(
-            account: OpenBurnBarIdentity.gatewayAuthTokenAccount,
-            legacyDefaultsKey: SettingsSecretDefaultsKey.gatewayAuthToken
-        )
-
-        self.conversationIndexingConsentShown = defaults.bool(forKey: "conversationIndexingConsentShown")
-        if defaults.object(forKey: "conversationIndexingEnabled") != nil {
-            self.conversationIndexingEnabled = defaults.bool(forKey: "conversationIndexingEnabled")
-        } else {
-            self.conversationIndexingEnabled = false
-        }
-        if defaults.object(forKey: "restrictedLogAccess") != nil {
-            self.restrictedLogAccess = defaults.bool(forKey: "restrictedLogAccess")
-        } else {
-            self.restrictedLogAccess = true
-        }
-        if defaults.object(forKey: "databaseEncryptionEnabled") != nil {
-            self.databaseEncryptionEnabled = defaults.bool(forKey: "databaseEncryptionEnabled")
-        } else {
-            self.databaseEncryptionEnabled = false
-        }
-        self.preferredIndexEmbeddingVersionID = defaults.string(forKey: "preferredIndexEmbeddingVersionID") ?? ""
-        if
-            let rawProvider = defaults.string(forKey: "indexEmbeddingProvider"),
-            let provider = IndexEmbeddingProviderID(rawValue: rawProvider)
-        {
-            self.indexEmbeddingProvider = provider
-        } else {
-            self.indexEmbeddingProvider = .deterministic
-        }
-        self.indexOpenAIModel = defaults.string(forKey: "indexOpenAIModel") ?? "text-embedding-3-small"
-        if defaults.object(forKey: "artifactDiscoveryEnabled") != nil {
-            self.artifactDiscoveryEnabled = defaults.bool(forKey: "artifactDiscoveryEnabled")
-        } else {
-            self.artifactDiscoveryEnabled = false
-        }
-        self.artifactDiscoveryRegisteredRootsJSON = defaults.string(forKey: "artifactDiscoveryRegisteredRootsJSON") ?? "[]"
-        self.artifactDiscoveryAdditionalKnownPatternsJSON = defaults.string(forKey: "artifactDiscoveryAdditionalKnownPatternsJSON") ?? "[]"
-
-        self.conversationCloudBackupEnabled = defaults.bool(forKey: "conversationCloudBackupEnabled")
-
-        self.iCloudSessionMirrorEnabled = defaults.bool(forKey: "iCloudSessionMirrorEnabled")
-        self.sessionLogCloudBackupEnabled = defaults.bool(forKey: "sessionLogCloudBackupEnabled")
-        self.sessionLogCloudBackupConsentShown = defaults.bool(forKey: "sessionLogCloudBackupConsentShown")
-
-        self.cliAssistantConsentShown = defaults.bool(forKey: "cliAssistantConsentShown")
-        if defaults.object(forKey: "cliAssistantAllowed") != nil {
-            self.cliAssistantAllowed = defaults.bool(forKey: "cliAssistantAllowed")
-        } else {
-            self.cliAssistantAllowed = false
-        }
-
-        self.openClawGatewayBaseURL = defaults.string(forKey: "openClawGatewayBaseURL") ?? "http://127.0.0.1:18789"
-        self.openClawBearerToken = chatGatewaySecretPersistence.load(
-            account: OpenBurnBarIdentity.openClawBearerTokenAccount,
-            legacyDefaultsKey: SettingsSecretDefaultsKey.openClawBearerToken
-        )
-        self.hermesBearerToken = chatGatewaySecretPersistence.load(
-            account: OpenBurnBarIdentity.hermesBearerTokenAccount,
-            legacyDefaultsKey: SettingsSecretDefaultsKey.hermesBearerToken
-        )
-        self.hermesChatModelOverride = defaults.string(forKey: "hermesChatModelOverride") ?? ""
-        self.chatBackendOnboardingCompleted = defaults.bool(forKey: "chatBackendOnboardingCompleted")
-        self.switcherOnboardingCompleted = defaults.bool(forKey: "switcherOnboardingCompleted")
-        self.selectedOnboardingProvidersCSV = defaults.string(forKey: "selectedOnboardingProvidersCSV") ?? ""
-
-        if defaults.object(forKey: "enabledChatBackendIDsCSV") != nil {
-            self.enabledChatBackendIDsCSV = defaults.string(forKey: "enabledChatBackendIDsCSV") ?? ""
-        } else {
-            if let raw = defaults.string(forKey: "chatBackendID"), let only = ChatBackendID(rawValue: raw) {
-                self.enabledChatBackendIDsCSV = ChatBackendID.encodeEnabledList([only])
-            } else {
-                self.enabledChatBackendIDsCSV = ""
-            }
-        }
-
-        if let modeRaw = defaults.string(forKey: "usageDisplayMode"),
-           let mode = UsageDisplayMode(rawValue: modeRaw) {
-            self.usageDisplayMode = mode
-        } else {
-            self.usageDisplayMode = .currency
-        }
-
-        if defaults.object(forKey: "autoSessionSummariesEnabled") != nil {
-            self.autoSessionSummariesEnabled = defaults.bool(forKey: "autoSessionSummariesEnabled")
-        } else {
-            self.autoSessionSummariesEnabled = true
-        }
-        self.summaryProviderOrderCSV = defaults.string(forKey: "summaryProviderOrderCSV") ?? "local,mlx,minimax,openrouter,zai"
-        if defaults.bool(forKey: "hasSummaryDailyCapUSD") {
-            self.summaryDailyCapUSD = defaults.double(forKey: "summaryDailyCapUSD")
-        } else {
-            self.summaryDailyCapUSD = nil
-        }
-        self.summaryOpenRouterPrimaryModel = defaults.string(forKey: "summaryOpenRouterPrimaryModel") ?? "qwen/qwen3.5-9b"
-        self.summaryOpenRouterFallbackModel = defaults.string(forKey: "summaryOpenRouterFallbackModel") ?? "openai/gpt-5-nano"
-        self.summaryMiniMaxModel = defaults.string(forKey: "summaryMiniMaxModel") ?? "gpt-5.5"
-        self.summaryZaiModel = defaults.string(forKey: "summaryZaiModel") ?? "glm-5-turbo"
-        self.summaryLocalModel = defaults.string(forKey: "summaryLocalModel") ?? "qwen3.5:9b"
-        self.summaryLocalBaseURL = defaults.string(forKey: "summaryLocalBaseURL") ?? "http://127.0.0.1:11434"
-        self.summaryMLXModel = defaults.string(forKey: "summaryMLXModel") ?? "mlx-community/Qwen3-4B-4bit"
-        self.summaryMLXBaseURL = defaults.string(forKey: "summaryMLXBaseURL") ?? "http://127.0.0.1:8080"
-        if defaults.object(forKey: "summaryMaxPromptChars") != nil {
-            self.summaryMaxPromptChars = max(defaults.integer(forKey: "summaryMaxPromptChars"), 4_000)
-        } else {
-            self.summaryMaxPromptChars = 60_000
-        }
-        if defaults.object(forKey: "summaryMaxOutputTokens") != nil {
-            self.summaryMaxOutputTokens = max(defaults.integer(forKey: "summaryMaxOutputTokens"), 120)
-        } else {
-            self.summaryMaxOutputTokens = 280
-        }
-        if defaults.object(forKey: "summaryRetryCount") != nil {
-            self.summaryRetryCount = max(defaults.integer(forKey: "summaryRetryCount"), 0)
-        } else {
-            self.summaryRetryCount = 1
-        }
-        if defaults.object(forKey: "summaryBatchSize") != nil {
-            self.summaryBatchSize = max(defaults.integer(forKey: "summaryBatchSize"), 1)
-        } else {
-            self.summaryBatchSize = 25
-        }
-        if defaults.object(forKey: "summaryFirstLoadBatchSize") != nil {
-            self.summaryFirstLoadBatchSize = max(defaults.integer(forKey: "summaryFirstLoadBatchSize"), 1)
-        } else {
-            self.summaryFirstLoadBatchSize = 120
-        }
-        self.summaryInitialSweepCompleted = defaults.bool(forKey: "summaryInitialSweepCompleted")
-        if defaults.object(forKey: "summaryRequestTimeoutSeconds") != nil {
-            let timeoutSeconds = defaults.double(forKey: "summaryRequestTimeoutSeconds")
-            self.summaryRequestTimeoutSeconds = timeoutSeconds > 0 ? timeoutSeconds : 20
-        } else {
-            self.summaryRequestTimeoutSeconds = 20
-        }
-        if defaults.object(forKey: "summaryMaxConcurrency") != nil {
-            self.summaryMaxConcurrency = max(defaults.integer(forKey: "summaryMaxConcurrency"), 1)
-        } else {
-            self.summaryMaxConcurrency = 8
-        }
-        if defaults.object(forKey: "summaryTimeLimitMinutes") != nil {
-            self.summaryTimeLimitMinutes = max(defaults.integer(forKey: "summaryTimeLimitMinutes"), 0)
-        } else {
-            self.summaryTimeLimitMinutes = 0
-        }
-
-        // Cross-encoder reranking settings (default off for privacy/cost)
-        if defaults.object(forKey: "crossEncoderRerankEnabled") != nil {
-            self.crossEncoderRerankEnabled = defaults.bool(forKey: "crossEncoderRerankEnabled")
-        } else {
-            self.crossEncoderRerankEnabled = false
-        }
-        let loadedCrossEncoderProvider = defaults.string(forKey: "crossEncoderProvider")
-            .flatMap(CrossEncoderProviderID.init(rawValue:))
-            ?? .codexCLI
-        self.crossEncoderProvider = loadedCrossEncoderProvider
-        let loadedCrossEncoderModel = defaults.string(forKey: "crossEncoderModel")
-            ?? CrossEncoderCatalog.defaultModel(for: loadedCrossEncoderProvider)
-        self.crossEncoderModel = CrossEncoderCatalog.normalizedModel(
-            loadedCrossEncoderModel,
-            provider: loadedCrossEncoderProvider
-        )
-        self.crossEncoderBaseURL = defaults.string(forKey: "crossEncoderBaseURL") ?? ""
-        if defaults.object(forKey: "crossEncoderMaxCandidates") != nil {
-            self.crossEncoderMaxCandidates = max(defaults.integer(forKey: "crossEncoderMaxCandidates"), 5)
-        } else {
-            self.crossEncoderMaxCandidates = 40
-        }
-        if defaults.object(forKey: "crossEncoderMaxCharsPerCandidate") != nil {
-            self.crossEncoderMaxCharsPerCandidate = max(defaults.integer(forKey: "crossEncoderMaxCharsPerCandidate"), 128)
-        } else {
-            self.crossEncoderMaxCharsPerCandidate = 512
-        }
-
-        if let billingModeRaw = defaults.string(forKey: "miniMaxQuotaMode"),
-           let billingMode = MiniMaxQuotaMode(rawValue: billingModeRaw) {
-            self.miniMaxQuotaMode = billingMode
-        } else {
-            self.miniMaxQuotaMode = .tokenPlan
-        }
-
-        if let planTierRaw = defaults.string(forKey: "factoryQuotaPlanTier"),
-           let planTier = FactoryQuotaPlanTier(rawValue: planTierRaw) {
-            self.factoryQuotaPlanTier = planTier
-        } else {
-            self.factoryQuotaPlanTier = .unknown
-        }
-
-        // Tokenizer-assisted fallback: default off
-        if defaults.object(forKey: "tokenizerAssistedFallbackEnabled") != nil {
-            self.tokenizerAssistedFallbackEnabled = defaults.bool(forKey: "tokenizerAssistedFallbackEnabled")
-        } else {
-            self.tokenizerAssistedFallbackEnabled = false
-        }
-    }
-    
-    // MARK: - Persistence
-    
-    private func save() {
-        let defaults = self.defaults
-        defaults.set(true, forKey: "hasLaunchedBefore")
-        
-        for (provider, path) in logPaths {
-            defaults.set(path, forKey: "logPath_\(provider.rawValue)")
-        }
-        
-        defaults.set(refreshInterval, forKey: "refreshInterval")
-        defaults.set(showInMenuBar, forKey: "showInMenuBar")
-        defaults.set(launchAtLogin, forKey: "launchAtLogin")
-        defaults.set(appearanceMode.rawValue, forKey: "appearanceMode")
-        defaults.set(defaultTimeRange.rawValue, forKey: "defaultTimeRange")
-        
-        if let threshold = costAlertThreshold {
-            defaults.set(true, forKey: "hasCostAlertThreshold")
-            defaults.set(threshold, forKey: "costAlertThreshold")
-        } else {
-            defaults.set(false, forKey: "hasCostAlertThreshold")
-        }
-
-        defaults.set(dailyDigestEnabled, forKey: "dailyDigestEnabled")
-        defaults.set(dailyDigestHour, forKey: "dailyDigestHour")
-        defaults.set(controllerRuntimeEnabled, forKey: "controllerRuntimeEnabled")
-        defaults.set(controllerRuntimeRefreshMinutes, forKey: "controllerRuntimeRefreshMinutes")
-        defaults.set(controllerLocalNotificationsEnabled, forKey: "controllerLocalNotificationsEnabled")
-        defaults.set(controllerTelegramEnabled, forKey: "controllerTelegramEnabled")
-        defaults.set(controllerTelegramChatID, forKey: "controllerTelegramChatID")
-        defaults.set(controllerCalendarIntegrationEnabled, forKey: "controllerCalendarIntegrationEnabled")
-        defaults.set(controllerCalendarDefaultMinutes, forKey: "controllerCalendarDefaultMinutes")
-        defaults.set(controllerDefaultSnoozeMinutes, forKey: "controllerDefaultSnoozeMinutes")
-        defaults.set(controllerSimulatorToolsEnabled, forKey: "controllerSimulatorToolsEnabled")
-        defaults.set(gatewayEnabled, forKey: "gatewayEnabled")
-        defaults.set(gatewayHost, forKey: "gatewayHost")
-        defaults.set(gatewayPort, forKey: "gatewayPort")
-        defaults.set(conversationIndexingEnabled, forKey: "conversationIndexingEnabled")
-        defaults.set(restrictedLogAccess, forKey: "restrictedLogAccess")
-        defaults.set(databaseEncryptionEnabled, forKey: "databaseEncryptionEnabled")
-        defaults.set(preferredIndexEmbeddingVersionID, forKey: "preferredIndexEmbeddingVersionID")
-        defaults.set(indexEmbeddingProvider.rawValue, forKey: "indexEmbeddingProvider")
-        defaults.set(indexOpenAIModel, forKey: "indexOpenAIModel")
-        defaults.set(artifactDiscoveryEnabled, forKey: "artifactDiscoveryEnabled")
-        defaults.set(artifactDiscoveryRegisteredRootsJSON, forKey: "artifactDiscoveryRegisteredRootsJSON")
-        defaults.set(artifactDiscoveryAdditionalKnownPatternsJSON, forKey: "artifactDiscoveryAdditionalKnownPatternsJSON")
-        defaults.set(conversationCloudBackupEnabled, forKey: "conversationCloudBackupEnabled")
-        defaults.set(iCloudSessionMirrorEnabled, forKey: "iCloudSessionMirrorEnabled")
-        defaults.set(sessionLogCloudBackupEnabled, forKey: "sessionLogCloudBackupEnabled")
-        defaults.set(sessionLogCloudBackupConsentShown, forKey: "sessionLogCloudBackupConsentShown")
-        defaults.set(conversationIndexingConsentShown, forKey: "conversationIndexingConsentShown")
-        defaults.set(cliAssistantAllowed, forKey: "cliAssistantAllowed")
-        defaults.set(cliAssistantConsentShown, forKey: "cliAssistantConsentShown")
-        defaults.set(openClawGatewayBaseURL, forKey: "openClawGatewayBaseURL")
-        defaults.set(hermesChatModelOverride, forKey: "hermesChatModelOverride")
-        defaults.set(chatBackendOnboardingCompleted, forKey: "chatBackendOnboardingCompleted")
-        defaults.set(switcherOnboardingCompleted, forKey: "switcherOnboardingCompleted")
-        defaults.set(selectedOnboardingProvidersCSV, forKey: "selectedOnboardingProvidersCSV")
-        defaults.set(enabledChatBackendIDsCSV, forKey: "enabledChatBackendIDsCSV")
-        defaults.set(usageDisplayMode.rawValue, forKey: "usageDisplayMode")
-
-        controllerSecretPersistence.persist(
-            controllerTelegramBotToken,
-            account: OpenBurnBarIdentity.controllerTelegramBotTokenAccount,
-            legacyDefaultsKey: SettingsSecretDefaultsKey.controllerTelegramBotToken
-        )
-        chatGatewaySecretPersistence.persist(
-            openClawBearerToken,
-            account: OpenBurnBarIdentity.openClawBearerTokenAccount,
-            legacyDefaultsKey: SettingsSecretDefaultsKey.openClawBearerToken
-        )
-        chatGatewaySecretPersistence.persist(
-            hermesBearerToken,
-            account: OpenBurnBarIdentity.hermesBearerTokenAccount,
-            legacyDefaultsKey: SettingsSecretDefaultsKey.hermesBearerToken
-        )
-        chatGatewaySecretPersistence.persist(
-            gatewayAuthToken,
-            account: OpenBurnBarIdentity.gatewayAuthTokenAccount,
-            legacyDefaultsKey: SettingsSecretDefaultsKey.gatewayAuthToken
-        )
-
-        defaults.set(autoSessionSummariesEnabled, forKey: "autoSessionSummariesEnabled")
-        defaults.set(summaryProviderOrderCSV, forKey: "summaryProviderOrderCSV")
-        if let cap = summaryDailyCapUSD {
-            defaults.set(true, forKey: "hasSummaryDailyCapUSD")
-            defaults.set(cap, forKey: "summaryDailyCapUSD")
-        } else {
-            defaults.set(false, forKey: "hasSummaryDailyCapUSD")
-        }
-        defaults.set(summaryOpenRouterPrimaryModel, forKey: "summaryOpenRouterPrimaryModel")
-        defaults.set(summaryOpenRouterFallbackModel, forKey: "summaryOpenRouterFallbackModel")
-        defaults.set(summaryMiniMaxModel, forKey: "summaryMiniMaxModel")
-        defaults.set(summaryZaiModel, forKey: "summaryZaiModel")
-        defaults.set(summaryLocalModel, forKey: "summaryLocalModel")
-        defaults.set(summaryLocalBaseURL, forKey: "summaryLocalBaseURL")
-        defaults.set(summaryMLXModel, forKey: "summaryMLXModel")
-        defaults.set(summaryMLXBaseURL, forKey: "summaryMLXBaseURL")
-        defaults.set(summaryMaxPromptChars, forKey: "summaryMaxPromptChars")
-        defaults.set(summaryMaxOutputTokens, forKey: "summaryMaxOutputTokens")
-        defaults.set(summaryRetryCount, forKey: "summaryRetryCount")
-        defaults.set(summaryBatchSize, forKey: "summaryBatchSize")
-        defaults.set(summaryFirstLoadBatchSize, forKey: "summaryFirstLoadBatchSize")
-        defaults.set(summaryInitialSweepCompleted, forKey: "summaryInitialSweepCompleted")
-        defaults.set(summaryRequestTimeoutSeconds, forKey: "summaryRequestTimeoutSeconds")
-        defaults.set(summaryMaxConcurrency, forKey: "summaryMaxConcurrency")
-        defaults.set(summaryTimeLimitMinutes, forKey: "summaryTimeLimitMinutes")
-
-        // Cross-encoder reranking settings
-        defaults.set(crossEncoderRerankEnabled, forKey: "crossEncoderRerankEnabled")
-        defaults.set(crossEncoderProvider.rawValue, forKey: "crossEncoderProvider")
-        defaults.set(crossEncoderModel, forKey: "crossEncoderModel")
-        defaults.set(crossEncoderBaseURL, forKey: "crossEncoderBaseURL")
-        defaults.set(crossEncoderMaxCandidates, forKey: "crossEncoderMaxCandidates")
-        defaults.set(crossEncoderMaxCharsPerCandidate, forKey: "crossEncoderMaxCharsPerCandidate")
-
-        defaults.set(miniMaxQuotaMode.rawValue, forKey: "miniMaxQuotaMode")
-        defaults.set(factoryQuotaPlanTier.rawValue, forKey: "factoryQuotaPlanTier")
-        defaults.set(tokenizerAssistedFallbackEnabled, forKey: "tokenizerAssistedFallbackEnabled")
+        summary.setSummaryProviderOrder(order)
     }
 
+    var summaryDailyCapUSD: Double? {
+        get { summary.summaryDailyCapUSD }
+        set { summary.summaryDailyCapUSD = newValue }
+    }
+
+    var summaryOpenRouterPrimaryModel: String {
+        get { summary.summaryOpenRouterPrimaryModel }
+        set { summary.summaryOpenRouterPrimaryModel = newValue }
+    }
+
+    var summaryOpenRouterFallbackModel: String {
+        get { summary.summaryOpenRouterFallbackModel }
+        set { summary.summaryOpenRouterFallbackModel = newValue }
+    }
+
+    var summaryMiniMaxModel: String {
+        get { summary.summaryMiniMaxModel }
+        set { summary.summaryMiniMaxModel = newValue }
+    }
+
+    var summaryZaiModel: String {
+        get { summary.summaryZaiModel }
+        set { summary.summaryZaiModel = newValue }
+    }
+
+    var summaryLocalModel: String {
+        get { summary.summaryLocalModel }
+        set { summary.summaryLocalModel = newValue }
+    }
+
+    var summaryLocalBaseURL: String {
+        get { summary.summaryLocalBaseURL }
+        set { summary.summaryLocalBaseURL = newValue }
+    }
+
+    var summaryMLXModel: String {
+        get { summary.summaryMLXModel }
+        set { summary.summaryMLXModel = newValue }
+    }
+
+    var summaryMLXBaseURL: String {
+        get { summary.summaryMLXBaseURL }
+        set { summary.summaryMLXBaseURL = newValue }
+    }
+
+    var summaryMaxPromptChars: Int {
+        get { summary.summaryMaxPromptChars }
+        set { summary.summaryMaxPromptChars = newValue }
+    }
+
+    var summaryMaxOutputTokens: Int {
+        get { summary.summaryMaxOutputTokens }
+        set { summary.summaryMaxOutputTokens = newValue }
+    }
+
+    var summaryRetryCount: Int {
+        get { summary.summaryRetryCount }
+        set { summary.summaryRetryCount = newValue }
+    }
+
+    var summaryBatchSize: Int {
+        get { summary.summaryBatchSize }
+        set { summary.summaryBatchSize = newValue }
+    }
+
+    var summaryFirstLoadBatchSize: Int {
+        get { summary.summaryFirstLoadBatchSize }
+        set { summary.summaryFirstLoadBatchSize = newValue }
+    }
+
+    var summaryInitialSweepCompleted: Bool {
+        get { summary.summaryInitialSweepCompleted }
+        set { summary.summaryInitialSweepCompleted = newValue }
+    }
+
+    var summaryRequestTimeoutSeconds: Double {
+        get { summary.summaryRequestTimeoutSeconds }
+        set { summary.summaryRequestTimeoutSeconds = newValue }
+    }
+
+    var summaryMaxConcurrency: Int {
+        get { summary.summaryMaxConcurrency }
+        set { summary.summaryMaxConcurrency = newValue }
+    }
+
+    var summaryTimeLimitMinutes: Int {
+        get { summary.summaryTimeLimitMinutes }
+        set { summary.summaryTimeLimitMinutes = newValue }
+    }
+
+    // MARK: Cross Encoder
+    var crossEncoderRerankEnabled: Bool {
+        get { crossEncoder.crossEncoderRerankEnabled }
+        set { crossEncoder.crossEncoderRerankEnabled = newValue }
+    }
+
+    var crossEncoderProvider: CrossEncoderProviderID {
+        get { crossEncoder.crossEncoderProvider }
+        set { crossEncoder.crossEncoderProvider = newValue }
+    }
+
+    var crossEncoderModel: String {
+        get { crossEncoder.crossEncoderModel }
+        set { crossEncoder.crossEncoderModel = newValue }
+    }
+
+    var crossEncoderBaseURL: String {
+        get { crossEncoder.crossEncoderBaseURL }
+        set { crossEncoder.crossEncoderBaseURL = newValue }
+    }
+
+    var crossEncoderMaxCandidates: Int {
+        get { crossEncoder.crossEncoderMaxCandidates }
+        set { crossEncoder.crossEncoderMaxCandidates = newValue }
+    }
+
+    var crossEncoderMaxCharsPerCandidate: Int {
+        get { crossEncoder.crossEncoderMaxCharsPerCandidate }
+        set { crossEncoder.crossEncoderMaxCharsPerCandidate = newValue }
+    }
+
+    // MARK: Quotas
+    var miniMaxQuotaMode: MiniMaxQuotaMode {
+        get { quotas.miniMaxQuotaMode }
+        set { quotas.miniMaxQuotaMode = newValue }
+    }
+
+    var factoryQuotaPlanTier: FactoryQuotaPlanTier {
+        get { quotas.factoryQuotaPlanTier }
+        set { quotas.factoryQuotaPlanTier = newValue }
+    }
+
+    var tokenizerAssistedFallbackEnabled: Bool {
+        get { quotas.tokenizerAssistedFallbackEnabled }
+        set { quotas.tokenizerAssistedFallbackEnabled = newValue }
+    }
+
+    // MARK: Provider Paths
+    var logPaths: [AgentProvider: String] {
+        get { providerPath.logPaths }
+        set { providerPath.logPaths = newValue }
+    }
+
+    func resetPathsToDefaults() {
+        providerPath.resetPathsToDefaults()
+    }
+
+    func detectAvailableProviders() -> [AgentProvider: Bool] {
+        providerPath.detectAvailableProviders()
+    }
+
+    func pathExists(for provider: AgentProvider) -> Bool {
+        providerPath.pathExists(for: provider, restrictedLogAccess: index.restrictedLogAccess)
+    }
+
+    func restrictedLogDirectory(for provider: AgentProvider) -> String {
+        providerPath.restrictedLogDirectory(for: provider, restrictedLogAccess: index.restrictedLogAccess)
+    }
+
+    func resolvedPath(for provider: AgentProvider) -> URL? {
+        providerPath.resolvedPath(for: provider, restrictedLogAccess: index.restrictedLogAccess)
+    }
+
+    // MARK: First Launch
+    var isFirstLaunch: Bool {
+        !persistence.bool(forKey: "hasLaunchedBefore")
+    }
+
+    // MARK: Usage Formatting
+    func formatUsageMetric(cost: Double, tokens: Int) -> String {
+        switch usageDisplayMode {
+        case .currency: return cost.formatAsCost()
+        case .tokens: return tokens.formatAsTokenVolume()
+        }
+    }
+
+    // MARK: Hermes Model Resolution
+    static func resolvedHermesChatModel(override: String, gatewayAdvertisedModel: String?) -> String {
+        let trimmed = override.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        guard let advertised = gatewayAdvertisedModel?.trimmingCharacters(in: .whitespacesAndNewlines), !advertised.isEmpty else {
+            return "hermes"
+        }
+        if advertised.range(of: "minimax", options: .caseInsensitive) != nil {
+            return CLIBridge.normalizedCodexModel("gpt-5.5")
+        }
+        return "hermes"
+    }
+
+    func resolvedHermesChatModel(gatewayAdvertisedModel: String?) -> String {
+        Self.resolvedHermesChatModel(override: hermesChatModelOverride, gatewayAdvertisedModel: gatewayAdvertisedModel)
+    }
+
+    // MARK: JSON Helpers
     static func decodeJSONStringArray(_ json: String) -> [String] {
         guard let data = json.data(using: .utf8),
               let decoded = try? JSONDecoder().decode([String].self, from: data) else {
@@ -973,197 +630,12 @@ final class SettingsManager {
         return json
     }
 
-    /// Formats a usage row or aggregate for the current display preference.
-    func formatUsageMetric(cost: Double, tokens: Int) -> String {
-        switch usageDisplayMode {
-        case .currency: return cost.formatAsCost()
-        case .tokens: return tokens.formatAsTokenVolume()
-        }
-    }
+    // MARK: - Explicit Save
 
-    // MARK: - Chat backends (shown in header)
-
-    var enabledChatBackends: [ChatBackendID] {
-        ChatBackendID.decodeEnabledList(fromCSV: enabledChatBackendIDsCSV)
-    }
-
-    func setEnabledChatBackends(_ backends: [ChatBackendID]) {
-        enabledChatBackendIDsCSV = ChatBackendID.encodeEnabledList(backends)
-    }
-
-    func setChatBackendEnabled(_ id: ChatBackendID, enabled: Bool) {
-        var list = enabledChatBackends
-        if enabled {
-            if !list.contains(id) { list.append(id) }
-        } else {
-            list.removeAll { $0 == id }
-        }
-        setEnabledChatBackends(list)
-    }
-
-    // MARK: - Hermes chat model
-
-    /// Resolves the `model` field for Hermes `POST /v1/chat/completions`. If the gateway’s `/v1/models` lists MiniMax while Codex is backed by a ChatGPT account, upstream rejects that model; we default to a Codex-supported id unless `hermesChatModelOverride` is set.
-    static func resolvedHermesChatModel(override: String, gatewayAdvertisedModel: String?) -> String {
-        let trimmed = override.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { return trimmed }
-        guard let advertised = gatewayAdvertisedModel?.trimmingCharacters(in: .whitespacesAndNewlines), !advertised.isEmpty else {
-            return "hermes"
-        }
-        if advertised.range(of: "minimax", options: .caseInsensitive) != nil {
-            return CLIBridge.normalizedCodexModel("gpt-5.5")
-        }
-        return "hermes"
-    }
-
-    func resolvedHermesChatModel(gatewayAdvertisedModel: String?) -> String {
-        Self.resolvedHermesChatModel(override: hermesChatModelOverride, gatewayAdvertisedModel: gatewayAdvertisedModel)
-    }
-
-    // MARK: - Onboarding provider selection
-
-    var selectedOnboardingProviders: Set<AgentProvider> {
-        get {
-            let csv = selectedOnboardingProvidersCSV
-            guard !csv.isEmpty else { return [] }
-            return Set(csv.split(separator: ",").compactMap { AgentProvider(rawValue: String($0)) })
-        }
-        set {
-            selectedOnboardingProvidersCSV = newValue.map(\.rawValue).sorted().joined(separator: ",")
-        }
-    }
-
-    // MARK: - First Launch
-
-    var isFirstLaunch: Bool {
-        !UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
-    }
-
-    // MARK: - Provider Detection
-
-    func detectAvailableProviders() -> [AgentProvider: Bool] {
-        var result: [AgentProvider: Bool] = [:]
-        for provider in AgentProvider.allCases {
-            result[provider] = candidatePaths(for: provider, configuredPath: provider.logDirectory).contains {
-                FileManager.default.fileExists(atPath: $0)
-            }
-        }
-        return result
-    }
-
-    func pathExists(for provider: AgentProvider) -> Bool {
-        let path = restrictedLogDirectory(for: provider)
-        return candidatePaths(for: provider, configuredPath: path).contains {
-            FileManager.default.fileExists(atPath: $0)
-        }
-    }
-
-    // MARK: - Path Resolution
-
-    /// Returns the log directory to use for the given provider, respecting
-    /// `restrictedLogAccess`. When restricted mode is on and the user's custom
-    /// path is not under a known-safe root, returns the provider's default path.
-    func restrictedLogDirectory(for provider: AgentProvider) -> String {
-        let validator = RestrictedLogPathValidator(restrictedMode: restrictedLogAccess)
-        let customPath = logPaths[provider]
-        let defaultPath = provider.logDirectory
-        return validator.resolvePath(customPath: customPath, providerDefault: defaultPath) ?? defaultPath
-    }
-
-    func resolvedPath(for provider: AgentProvider) -> URL? {
-        let path = restrictedLogDirectory(for: provider)
-        let expandedPaths = candidatePaths(for: provider, configuredPath: path)
-        if let existing = expandedPaths.first(where: { FileManager.default.fileExists(atPath: $0) }) {
-            return URL(fileURLWithPath: existing)
-        }
-        return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
-    }
-    
-    func resetPathsToDefaults() {
-        logPaths = AgentProvider.allCases.reduce(into: [:]) { result, provider in
-            result[provider] = provider.logDirectory
-        }
-    }
-
-    private func candidatePaths(for provider: AgentProvider, configuredPath: String) -> [String] {
-        let expandedConfigured = (configuredPath as NSString).expandingTildeInPath
-        var candidates: [String] = []
-
-        switch provider {
-        case .augment:
-            candidates = [
-                expandedConfigured,
-                ("~/Library/Application Support/Code/User/globalStorage/augment.vscode-augment" as NSString).expandingTildeInPath,
-                ("~/Library/Application Support/Cursor/User/globalStorage/augment.vscode-augment" as NSString).expandingTildeInPath,
-                ("~/Library/Application Support/Windsurf/User/globalStorage/augment.vscode-augment" as NSString).expandingTildeInPath,
-            ]
-        case .hermes:
-            candidates = [
-                expandedConfigured,
-                ("~/.hermes" as NSString).expandingTildeInPath,
-                ("~/.hermes/sessions" as NSString).expandingTildeInPath,
-            ]
-        case .goose:
-            if let root = ProcessInfo.processInfo.environment["GOOSE_PATH_ROOT"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !root.isEmpty {
-                candidates.append(((root as NSString).appendingPathComponent("data/sessions") as NSString).expandingTildeInPath)
-            }
-            candidates.append(contentsOf: [
-                ("~/Library/Application Support/Block/goose/sessions" as NSString).expandingTildeInPath,
-                ("~/.local/share/goose/sessions" as NSString).expandingTildeInPath,
-                expandedConfigured,
-            ])
-        case .forgeDev:
-            candidates = [
-                expandedConfigured,
-                ("~/.forge" as NSString).expandingTildeInPath,
-            ]
-        default:
-            candidates = [expandedConfigured]
-        }
-
-        var seen: Set<String> = []
-        return candidates.filter { seen.insert($0).inserted }
-    }
-}
-
-// MARK: - Time Range
-
-enum TimeRange: String, CaseIterable, Identifiable {
-    case today = "Today"
-    case last7Days = "Last 7 Days"
-    case last30Days = "Last 30 Days"
-    case thisMonth = "This Month"
-    case allTime = "All Time"
-    
-    var id: String { rawValue }
-    
-    var displayName: String { rawValue }
-    
-    func dateRange() -> ClosedRange<Date>? {
-        let calendar = Calendar.current
-        let now = Date()
-        
-        switch self {
-        case .today:
-            let start = calendar.startOfDay(for: now)
-            let end = calendar.date(byAdding: .day, value: 1, to: start) ?? now
-            return start...end
-            
-        case .last7Days:
-            let start = calendar.date(byAdding: .day, value: -7, to: now) ?? now
-            return start...now
-            
-        case .last30Days:
-            let start = calendar.date(byAdding: .day, value: -30, to: now) ?? now
-            return start...now
-            
-        case .thisMonth:
-            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
-            return startOfMonth...now
-            
-        case .allTime:
-            return nil // All time has no range
-        }
+    /// Forces an immediate flush of all dirty settings.
+    /// Most mutations are coalesced automatically; this is only needed
+    /// before critical transitions (e.g., app termination).
+    func save() {
+        persistence.flush()
     }
 }

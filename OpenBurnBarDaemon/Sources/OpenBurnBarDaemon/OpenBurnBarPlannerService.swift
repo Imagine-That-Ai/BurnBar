@@ -87,7 +87,7 @@ public struct BurnBarPlannerService {
     }
 
     public func normalizeIntent(from request: BurnBarRunCreateRequest) throws -> BurnBarAgentIntent {
-        if let providedIntent = request.metadata["agentIntent"] {
+        if let providedIntent = request.metadata[.agentIntent] {
             var intent = try providedIntent.decode(BurnBarAgentIntent.self)
             // Infer requestedTools from intent kind if not provided
             if intent.requestedTools == nil {
@@ -127,7 +127,7 @@ public struct BurnBarPlannerService {
     }
 
     private func intentFromWorkflowMetadata(_ request: BurnBarRunCreateRequest) throws -> BurnBarAgentIntent? {
-        let workflowValue = request.metadata["workspaceWorkflow"] ?? request.metadata["workflow"]
+        let workflowValue = request.metadata[.workspaceWorkflow] ?? request.metadata[.workflow]
         guard let workflowValue else {
             return nil
         }
@@ -150,11 +150,11 @@ public struct BurnBarPlannerService {
     }
 
     private func intentFromToolMetadata(_ request: BurnBarRunCreateRequest) throws -> BurnBarAgentIntent? {
-        guard let toolKind = request.metadata.toolKindValue(forKey: "toolKind") else {
+        guard let toolKind = request.metadata.toolKindValue(forKey: .toolKind) else {
             return nil
         }
 
-        let toolArguments = request.metadata["toolArguments"]
+        let toolArguments = request.metadata[.toolArguments]
         switch toolKind {
         case .runTerminal:
             let terminalPayload = (toolArguments ?? .object([:]))
@@ -189,7 +189,7 @@ public struct BurnBarPlannerService {
                 kind: .generic,
                 objective: request.prompt,
                 summary: "Execute the requested workspace tool and verify the result.",
-                targetPath: request.metadata.stringValue(forKey: "filePath") ?? request.metadata.stringValue(forKey: "path"),
+                targetPath: request.metadata.stringValue(forKey: .filePath) ?? request.metadata.stringValue(forKey: .path),
                 requestedTools: [toolKind],
                 toolArguments: toolArguments
             )
@@ -275,17 +275,17 @@ public struct BurnBarPlannerService {
 
     private func intentFromPrompt(
         _ prompt: String,
-        metadata: [String: BurnBarJSONValue]
+        metadata: BurnBarRunCreateMetadata
     ) -> BurnBarAgentIntent? {
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else {
             return nil
         }
 
-        let activeFilePath = metadata.stringValue(forKey: "activeFilePath")
-            ?? metadata.stringValue(forKey: "filePath")
-            ?? metadata.stringValue(forKey: "path")
-        let activeSelectionText = metadata.stringValue(forKey: "activeSelectionText")
+        let activeFilePath = metadata.stringValue(forKey: .activeFilePath)
+            ?? metadata.stringValue(forKey: .filePath)
+            ?? metadata.stringValue(forKey: .path)
+        let activeSelectionText = metadata.stringValue(forKey: .activeSelectionText)
 
         if let replacement = parseReplacementDirective(from: trimmedPrompt, selectedText: activeSelectionText),
            let activeFilePath {
@@ -447,11 +447,3 @@ private func parentDirectory(of path: String) -> String? {
     return parent.isEmpty ? nil : parent
 }
 
-private extension Dictionary where Key == String, Value == BurnBarJSONValue {
-    func toolKindValue(forKey key: String) -> BurnBarToolKind? {
-        guard let rawValue = stringValue(forKey: key) else {
-            return nil
-        }
-        return BurnBarToolKind(rawValue: rawValue)
-    }
-}

@@ -61,9 +61,7 @@ public actor BurnBarDaemonServer {
             connectorPlaneService: resolvedRunService.connectorPlaneService,
             browserToolService: resolvedRunService.browserToolService
         )
-        self.rateLimiter = rateLimiter ?? configuration.socketRateLimit.map {
-            BurnBarRateLimiter(configuration: $0)
-        }
+        self.rateLimiter = rateLimiter ?? BurnBarRateLimiter(configuration: configuration.socketRateLimit)
         // VAL-DAEMON-011: Wire a concrete execution readiness gate with fail-closed semantics.
         // When gate data is unavailable (no config, no connector plane), the gate returns a failure
         // with an explicit reason code instead of allowing dispatch to proceed (fail-open).

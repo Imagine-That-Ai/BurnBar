@@ -155,7 +155,7 @@ final class PerformanceTests: XCTestCase {
 
     // MARK: - Parsing Performance Tests
 
-    func test_performance_parseJSONL_throughput1000Lines() {
+    func test_performance_parseJSONL_throughput1000Lines() throws {
         let content = PerformanceFixtures.largeJSONLContent(lineCount: 1000, tokensPerLine: 100)
 
         measure(metrics: [XCTPerformanceMetric.wallClockTime]) {
@@ -199,7 +199,7 @@ final class PerformanceTests: XCTestCase {
             "Parsing 1000 lines should complete within \(PerformanceThresholds.parse1000Lines)s, took \(String(format: "%.4f", elapsed))s")
     }
 
-    func test_performance_parseJSONL_handlesLargeLines() {
+    func test_performance_parseJSONL_handlesLargeLines() throws {
         // Simulate a realistic large line with extensive content
         let largeContent = """
         {"type":"assistant","timestamp":"2024-01-15T10:30:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"\(String(repeating: "word ", count: 1000))"}],"usage":{"input_tokens":5000,"output_tokens":8000},"model":"claude-sonnet-4-20250514"}}
@@ -224,7 +224,7 @@ final class PerformanceTests: XCTestCase {
 
     // MARK: - Cost Calculation Performance Tests
 
-    func test_performance_calculateCost_singleRecord() {
+    func test_performance_calculateCost_singleRecord() throws {
         let usage = TokenUsage(
             provider: .claudeCode,
             sessionId: "test",
@@ -251,7 +251,7 @@ final class PerformanceTests: XCTestCase {
         }
     }
 
-    func test_performance_calculateCost_batch1000Records() {
+    func test_performance_calculateCost_batch1000Records() throws {
         let usages = PerformanceFixtures.generateTokenUsages(count: 1000)
 
         measure(metrics: [XCTPerformanceMetric.wallClockTime]) {
@@ -270,7 +270,7 @@ final class PerformanceTests: XCTestCase {
 
     // MARK: - Database Performance Tests
 
-    func test_performance_databaseWrite_1000Records() {
+    func test_performance_databaseWrite_1000Records() throws {
         let usages = PerformanceFixtures.generateTokenUsages(count: 1000)
 
         measure(metrics: [XCTPerformanceMetric.wallClockTime]) {
@@ -325,7 +325,7 @@ final class PerformanceTests: XCTestCase {
 
     // MARK: - Projection Pipeline Performance Tests
 
-    func test_performance_projection_singleConversation() {
+    func test_performance_projection_singleConversation() throws {
         let conversations = PerformanceFixtures.generateConversations(count: 1)
 
         measure(metrics: [XCTPerformanceMetric.wallClockTime]) {
@@ -359,7 +359,7 @@ final class PerformanceTests: XCTestCase {
         }
     }
 
-    func test_performance_projection_batch100Conversations() {
+    func test_performance_projection_batch100Conversations() throws {
         let conversations = PerformanceFixtures.generateConversations(count: 100)
 
         measure(metrics: [XCTPerformanceMetric.wallClockTime]) {
@@ -394,7 +394,7 @@ final class PerformanceTests: XCTestCase {
 
     // MARK: - String Processing Performance Tests
 
-    func test_performance_stringProcessing_projectPathDecoding() {
+    func test_performance_stringProcessing_projectPathDecoding() throws {
         let encodedPaths = (0..<1000).map { i in
             "-Users-\(String(repeating: "Folder\(i % 10)", count: 5))"
         }
@@ -428,7 +428,7 @@ final class PerformanceTests: XCTestCase {
         }
     }
 
-    func test_performance_stringProcessing_regexAPIKeyScrubbing() {
+    func test_performance_stringProcessing_regexAPIKeyScrubbing() throws {
         let sampleLogs = (0..<100).map { i in
             """
             Processing request with API key sk-ant-xxxxx\(i) for model claude-sonnet-4
@@ -452,7 +452,7 @@ final class PerformanceTests: XCTestCase {
 
     // MARK: - JSON Serialization Performance Tests
 
-    func test_performance_JSONSerialization_encodeTokenUsage() {
+    func test_performance_JSONSerialization_encodeTokenUsage() throws {
         let usage = TokenUsage(
             provider: .claudeCode,
             sessionId: "test-session-123",
@@ -469,12 +469,12 @@ final class PerformanceTests: XCTestCase {
         measure(metrics: [XCTPerformanceMetric.wallClockTime]) {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
-            let data = try! encoder.encode(usage)
+            let data = try encoder.encode(usage)
             XCTAssertGreaterThan(data.count, 0)
         }
     }
 
-    func test_performance_JSONSerialization_decodeTokenUsage() {
+    func test_performance_JSONSerialization_decodeTokenUsage() throws {
         let jsonString = """
         {"id":"550e8400-e29b-41d4-a716-446655440000","provider":"claudeCode","sessionId":"test-123","projectName":"~/Test","model":"claude-sonnet-4-20250514","inputTokens":1000,"outputTokens":500,"cacheCreationTokens":100,"cacheReadTokens":200,"totalTokens":1800,"cost":0.015,"startTime":"2024-01-15T10:00:00Z","endTime":"2024-01-15T10:05:00Z","createdAt":"2024-01-15T10:05:00Z","sourceDeviceId":null,"sourceDeviceName":null,"isRemote":false}
         """
@@ -483,25 +483,25 @@ final class PerformanceTests: XCTestCase {
         measure(metrics: [XCTPerformanceMetric.wallClockTime]) {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            let usage = try! decoder.decode(TokenUsage.self, from: data)
+            let usage = try decoder.decode(TokenUsage.self, from: data)
             XCTAssertEqual(usage.inputTokens, 1000)
         }
     }
 
-    func test_performance_JSONSerialization_batch100Usages() {
+    func test_performance_JSONSerialization_batch100Usages() throws {
         let usages = PerformanceFixtures.generateTokenUsages(count: 100)
 
         measure(metrics: [XCTPerformanceMetric.wallClockTime]) {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
-            let data = try! encoder.encode(usages)
+            let data = try encoder.encode(usages)
             XCTAssertGreaterThan(data.count, 0)
         }
     }
 
     // MARK: - Memory Pressure Tests
 
-    func test_performance_memoryHandling_largeCorpusSimulation() {
+    func test_performance_memoryHandling_largeCorpusSimulation() throws {
         // Simulate processing a large corpus (1000 sessions, 100 messages each)
         let sessionCount = 1000
         let messagesPerSession = 100
@@ -534,7 +534,7 @@ final class PerformanceTests: XCTestCase {
 
     // MARK: - Benchmark Summary Test
 
-    func test_benchmarkSummary_allOperations() {
+    func test_benchmarkSummary_allOperations() throws {
         // This test provides a summary of all performance metrics
         // Run this to get a quick overview of system performance
 

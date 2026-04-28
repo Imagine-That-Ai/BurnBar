@@ -39,6 +39,7 @@ public struct BurnBarPersistentVectorIndexManifest: Codable, Sendable {
     public let distanceMetric: BurnBarEmbeddingDistanceMetric
     public let vectorCount: Int
     public let builtAt: Date
+    public let quantization: BurnBarVectorQuantization?
 
     public init(
         backendID: String,
@@ -48,7 +49,8 @@ public struct BurnBarPersistentVectorIndexManifest: Codable, Sendable {
         dimensions: Int,
         distanceMetric: BurnBarEmbeddingDistanceMetric,
         vectorCount: Int,
-        builtAt: Date
+        builtAt: Date,
+        quantization: BurnBarVectorQuantization? = nil
     ) {
         self.backendID = backendID
         self.backendVersion = backendVersion
@@ -58,6 +60,7 @@ public struct BurnBarPersistentVectorIndexManifest: Codable, Sendable {
         self.distanceMetric = distanceMetric
         self.vectorCount = vectorCount
         self.builtAt = builtAt
+        self.quantization = quantization
     }
 }
 
@@ -89,9 +92,10 @@ public enum BurnBarPersistentVectorIndexFactory {
     public static func hnswBackend(
         m: Int = 16,
         efConstruction: Int = 200,
-        efSearch: Int = 64
+        efSearch: Int = 64,
+        quantization: BurnBarVectorQuantization = .none
     ) -> any BurnBarPersistentVectorIndexBackend {
-        BurnBarHNSWVectorIndexBackend(m: m, efConstruction: efConstruction, efSearch: efSearch)
+        BurnBarHNSWVectorIndexBackend(m: m, efConstruction: efConstruction, efSearch: efSearch, quantization: quantization)
     }
 
     /// Creates the brute-force exact-search backend (O(n) linear scan).

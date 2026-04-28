@@ -82,8 +82,8 @@ struct SharedArtifactSyncReport: Equatable, Sendable {
 @MainActor
 final class CloudSyncContext {
     let dataStore: DataStore
-    let accountManager: AccountManager
-    let settingsManager: SettingsManager
+    let accountManager: any AccountManaging
+    let settingsManager: any SettingsManagerProtocol
 
     /// Shared circuit breaker for Firestore network calls.
     let circuitBreaker = CloudSyncCircuitBreaker()
@@ -91,8 +91,8 @@ final class CloudSyncContext {
     /// Shared retry policy for transient Firestore failures.
     let retryPolicy = CloudSyncRetryPolicy()
 
-    /// Firestore instance, guarded by Firebase availability checks.
-    var db: Firestore { Firestore.firestore() }
+    /// Injectable Firestore gateway. Defaults to live Firestore in production.
+    let firestoreGateway: CloudSyncFirestoreGateway
 
     /// Shared backoff suppression date.
     var suppressedSyncUntil: Date?
@@ -100,7 +100,7 @@ final class CloudSyncContext {
     /// Computed Firebase UID, nil if unavailable.
     var currentUID: String? {
         guard accountManager.isFirebaseAvailable, accountManager.isSignedIn else { return nil }
-        return Auth.auth().currentUser?.uid
+        return accountManager.currentUser?.uid
     }
 
     /// Computed device ID.
@@ -118,12 +118,14 @@ final class CloudSyncContext {
 
     init(
         dataStore: DataStore,
-        accountManager: AccountManager,
-        settingsManager: SettingsManager
+        accountManager: any AccountManaging,
+        settingsManager: any SettingsManagerProtocol,
+        firestoreGateway: CloudSyncFirestoreGateway = CloudSyncFirestoreLiveGateway()
     ) {
         self.dataStore = dataStore
         self.accountManager = accountManager
         self.settingsManager = settingsManager
+        self.firestoreGateway = firestoreGateway
     }
 }
 

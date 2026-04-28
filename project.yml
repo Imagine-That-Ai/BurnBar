@@ -27,9 +27,11 @@ settings:
 packages:
   OpenBurnBarCore:
     path: OpenBurnBarCore
+  # SQLCipher-enabled GRDB (SPM). Must stay aligned with OpenBurnBarDaemon/Package.swift.
+  # Upstream: https://github.com/SahebRoy92/GRDB-SQLCipher (GRDB 6.29.3 + SQLCipher.swift)
   GRDB:
-    url: https://github.com/groue/GRDB.swift
-    from: "6.29.3"
+    url: https://github.com/SahebRoy92/GRDB-SQLCipher
+    exactVersion: 6.29.3
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
     from: "11.0.0"
@@ -64,7 +66,6 @@ targets:
               # IMPORTANT: Replace YOUR_CLIENT_ID_SUFFIX with your actual reversed Firebase client ID suffix.
               # Obtain from: GoogleService-Info.plist -> REVERSED_CLIENT_ID
               - com.googleusercontent.apps.YOUR_CLIENT_ID_SUFFIX
-    sources:
     sources:
       - path: AgentLens
         excludes:
@@ -187,35 +188,12 @@ targets:
     sources:
       - path: AgentLensTests/Active
         excludes:
-          # ── Keychain / system-state isolation ──────────────────────────
-          # Requires keychain-access-groups sandbox not available in CI.
-          # Tests create/destroy Keychain items that may conflict with the
-          # user's production credentials. Un-parking requires extracting a
-          # Keychain-interaction-gate protocol (see SecKeychainInteractionGate
-          # in the daemon) or running under a dedicated test keychain.
-          - SwitcherCLIAuthCoordinatorTests.swift
-          # UsageAggregatorTests targets a prior ProviderUsageRecord schema and
-          # BillingUsageReconciliation behavior (tests pre-date the billing-API
-          # refactor to minimax/zai/copilot-only). Un-parking requires either a
-          # full rewrite of the test cases against the current API or restoring
-          # the generic reconciliation path. Tracked separately from the
-          # infrastructure work in this branch.
-          - UsageAggregatorTests.swift
           # Legacy monolithic parser test file references private methods
           # (parseJSONL, dateValue), removed types (TranscriptSummary),
           # and renamed APIs (HermesParser.parseTimestamp). The dedicated
           # per-provider integration suites (CodexToken, Factory, Hermes,
-          # Kimi) already cover the same ground. Rewriting this file would
-          # duplicate effort; keeping it excluded.
+          # Kimi) already cover the same ground. PERMANENTLY EXCLUDED.
           - Parsers/ParserTests.swift
-          # References renamed types (BurnBarControllerSummary vs
-          # OpenBurnBarControllerSummary, changed initializers) and
-          # pre-refactor daemon manager API. Requires targeted rewrite.
-          - OpenBurnBarDaemonManagerTests.swift
-          # Uses deprecated XCTPerformanceMetric APIs and references
-          # renamed types (TokenUsageRecord, fetchAllUsage). Requires
-          # migration to XCTest metric API and type updates.
-          - PerformanceTests.swift
       - path: AgentLensTests/Support
     settings:
       base:

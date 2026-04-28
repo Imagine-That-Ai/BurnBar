@@ -186,6 +186,7 @@ private func configureSentryIfAvailable() {
         options.environment = "daemon"
         options.releaseName = "openburnbar-daemon@\(BurnBarDaemonVersion.current)"
         options.enableTracing = false
+        options.tracesSampleRate = 0.0
         #if DEBUG
         options.debug = false
         #endif
@@ -193,9 +194,9 @@ private func configureSentryIfAvailable() {
 }
 #endif
 
-// AUDIT(@unchecked Sendable): All stored properties are let; DispatchSourceSignal
-// is not formally Sendable but sources are immutable after init.
-private final class BurnBarSignalMonitor: @unchecked Sendable {
+// All stored properties are let; DispatchSourceSignal sources are immutable after init.
+// Formally Sendable because no mutable state exists post-init.
+private final class BurnBarSignalMonitor: Sendable {
     private let queue: DispatchQueue
     private let continuation: AsyncStream<Int32>.Continuation
     private let stream: AsyncStream<Int32>

@@ -112,14 +112,14 @@ public struct BurnBarRunCreateRequest: Codable, Hashable, Sendable {
     public let sessionID: BurnBarSessionID
     public let prompt: String
     public let modelID: String
-    public let metadata: [String: BurnBarJSONValue]
+    public let metadata: BurnBarRunCreateMetadata
 
     public init(
         clientID: BurnBarClientID,
         sessionID: BurnBarSessionID,
         prompt: String,
         modelID: String,
-        metadata: [String: BurnBarJSONValue] = [:]
+        metadata: BurnBarRunCreateMetadata = BurnBarRunCreateMetadata()
     ) {
         self.clientID = clientID
         self.sessionID = sessionID

@@ -14,15 +14,15 @@ struct BurnBarRunExecutionPlan: Sendable {
     let approvalMessage: String
 
     init(request: BurnBarRunCreateRequest) {
-        self.requiresApproval = request.metadata.boolValue(forKey: "requiresApproval") ?? false
-        self.failUntilAttempt = request.metadata.intValue(forKey: "failUntilAttempt") ?? 0
-        self.inputTokens = request.metadata.intValue(forKey: "inputTokens") ?? max(1, request.prompt.count / 4)
-        self.outputTokens = request.metadata.intValue(forKey: "outputTokens") ?? 12
-        self.cacheCreationTokens = request.metadata.intValue(forKey: "cacheCreationTokens") ?? 0
-        self.cacheReadTokens = request.metadata.intValue(forKey: "cacheReadTokens") ?? 0
-        self.approvalTitle = request.metadata.stringValue(forKey: "approvalTitle")
+        self.requiresApproval = request.metadata.boolValue(forKey: .requiresApproval) ?? false
+        self.failUntilAttempt = request.metadata.intValue(forKey: .failUntilAttempt) ?? 0
+        self.inputTokens = request.metadata.intValue(forKey: .inputTokens) ?? max(1, request.prompt.count / 4)
+        self.outputTokens = request.metadata.intValue(forKey: .outputTokens) ?? 12
+        self.cacheCreationTokens = request.metadata.intValue(forKey: .cacheCreationTokens) ?? 0
+        self.cacheReadTokens = request.metadata.intValue(forKey: .cacheReadTokens) ?? 0
+        self.approvalTitle = request.metadata.stringValue(forKey: .approvalTitle)
             ?? "Approve burnbar_action"
-        self.approvalMessage = request.metadata.stringValue(forKey: "approvalMessage")
+        self.approvalMessage = request.metadata.stringValue(forKey: .approvalMessage)
             ?? "OpenBurnBar needs approval before continuing this tool step."
     }
 }
@@ -31,7 +31,7 @@ struct BurnBarManagedRun: Sendable {
     let runID: BurnBarRunID
     let originalPrompt: String
     let modelID: String
-    let metadata: [String: BurnBarJSONValue]
+    let metadata: BurnBarRunCreateMetadata
     var intent: BurnBarAgentIntent
     var planOutline: BurnBarPlanOutline
     var attempt: Int
@@ -50,23 +50,6 @@ struct BurnBarManagedRun: Sendable {
     var companionToolCompleted: Bool
     var lastRecoveryDecision: BurnBarRecoveryDecision?
     var loopState: BurnBarAgentLoopState
-}
-
-extension Dictionary where Key == String, Value == BurnBarJSONValue {
-    func boolValue(forKey key: String) -> Bool? {
-        guard case .bool(let value)? = self[key] else { return nil }
-        return value
-    }
-
-    func stringValue(forKey key: String) -> String? {
-        guard case .string(let value)? = self[key] else { return nil }
-        return value
-    }
-
-    func intValue(forKey key: String) -> Int? {
-        guard case .number(let value)? = self[key] else { return nil }
-        return Int(value)
-    }
 }
 
 extension BurnBarJSONValue {
@@ -157,27 +140,28 @@ public actor BurnBarRunService {
     public func createControllerReviewRun(
         prompt: String,
         modelID: String,
-        metadata: [String: BurnBarJSONValue] = [:]
+        metadata: BurnBarRunCreateMetadata = BurnBarRunCreateMetadata()
     ) async throws -> BurnBarRunCreateResponse {
-        try await createDaemonManagedRun(
+        var combined = metadata
+        combined[.controllerReview] = .bool(true)
+        return try await createDaemonManagedRun(
             prompt: prompt,
             modelID: modelID,
-            metadata: metadata.merging(["controllerReview": .bool(true)]) { _, new in new }
+            metadata: combined
         )
     }
 
     public func createDaemonManagedRun(
         prompt: String,
         modelID: String,
-        metadata: [String: BurnBarJSONValue] = [:]
+        metadata: BurnBarRunCreateMetadata = BurnBarRunCreateMetadata()
     ) async throws -> BurnBarRunCreateResponse {
-        let effectiveMetadata = metadata
         let request = BurnBarRunCreateRequest(
             clientID: Self.controllerRuntimeClientID,
             sessionID: Self.controllerRuntimeSessionID,
             prompt: prompt,
             modelID: modelID,
-            metadata: effectiveMetadata
+            metadata: metadata
         )
         return try await createRun(request, enforceClientOwnership: false)
     }
