@@ -5,14 +5,22 @@ This document covers OpenBurnBar's local SQLite database: migration management, 
 ## Database Location
 
 ```
-~/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite
+~/Library/Application Support/OpenBurnBar/openburnbar.sqlite
 ```
 
 Backups are created automatically by the app before each migration run (via `runMigrationsSafely()`). Backup location:
 
 ```
-~/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite.backup-<timestamp>
+~/Library/Application Support/OpenBurnBar/openburnbar.sqlite.backup.<timestamp>
 ```
+
+If the app cannot open the database at startup, it enters recovery mode instead of crashing. Recovery mode does not start dashboard refresh, cloud sync, daemon attach, cursor attach, or periodic parsing tasks. Use **Retry** after fixing disk or permission issues, or **Archive and Reset** to move the current database sidecars into:
+
+```
+~/Library/Application Support/OpenBurnBar/StartupRecovery/<timestamp>/
+```
+
+The archive action preserves `openburnbar.sqlite`, `openburnbar.sqlite-wal`, and `openburnbar.sqlite-shm` before retrying with a clean database.
 
 ## Migration Architecture
 
@@ -20,11 +28,11 @@ OpenBurnBar uses [GRDB](https://github.com/groue/GRDB.swift) for schema migratio
 
 ### Migration Lifecycle
 
-1. App launches → `DataStore` initializes with `runMigrations: true`
+1. App launches -> `DataStore` initializes with `runMigrations: true`
 2. `runMigrationsSafely()` runs integrity check (`PRAGMA integrity_check`)
 3. If integrity passes, creates backup (except in-memory databases)
 4. GRDB migrator runs all unapplied migrations in order
-5. If a migration fails, the app starts with `runMigrations: false` and logs the error
+5. If opening, integrity, backup, or migration fails, the app starts in recovery mode with user-facing Retry, Show Support Folder, Copy Diagnostics, and Archive and Reset actions
 
 ### Migration Catalog
 
@@ -80,16 +88,16 @@ The app creates a timestamped backup before each migration. This is the safest r
 # 1. Stop OpenBurnBar completely (quit from menu bar)
 
 # 2. List available backups
-ls -lt ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite.backup-*
+ls -lt ~/Library/Application\ Support/OpenBurnBar/openburnbar.sqlite.backup.*
 
 # 3. Verify backup integrity
-sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite.backup-YYYYMMDD-HHMMSS "PRAGMA integrity_check;"
+sqlite3 ~/Library/Application\ Support/OpenBurnBar/openburnbar.sqlite.backup.YYYYMMDD-HHMMSS "PRAGMA integrity_check;"
 # Expected output: ok
 
 # 4. Replace the live database with the backup
 cd ~/Library/Application\ Support/OpenBurnBar/
-cp OpenBurnBar.sqlite OpenBurnBar.sqlite.failed-$(date +%Y%m%d-%H%M%S)
-cp OpenBurnBar.sqlite.backup-YYYYMMDD-HHMMSS OpenBurnBar.sqlite
+cp openburnbar.sqlite openburnbar.sqlite.failed-$(date +%Y%m%d-%H%M%S)
+cp openburnbar.sqlite.backup.YYYYMMDD-HHMMSS openburnbar.sqlite
 
 # 5. Relaunch OpenBurnBar
 open -a OpenBurnBar

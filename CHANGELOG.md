@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Startup recovery:** If `DataStore()` cannot open the local SQLite database, the macOS app now starts in a recovery-only menu/window instead of crashing. Recovery mode pauses sync/daemon/parser startup and offers Retry, Show Support Folder, Copy Diagnostics, Quit, and backup-preserving Archive and Reset actions.
 - **HNSW Scalar Quantization:** Float32 → UInt8 per-dimension uniform quantization reduces index size by ~4× with minimal recall loss. Asymmetric distance computation (query in Float32, corpus in UInt8) preserves >95% top-10 recall. (`BurnBarScalarQuantizer`, `BurnBarVectorQuantization`, `BurnBarHNSWVectorIndex.swift` format v2).
 - **HNSW Memory Budget Cap:** `BurnBarSemanticSearchConfig.memoryBudgetMB` and `maxVectorCount` enforce an upper bound on resident index size at load time. Oversized snapshots are rejected with structured telemetry and automatically fall back to streaming exact search (`streamingExactSemanticCandidates`). Includes conservative preset (256 MB) and `releaseSnapshot()` for explicit memory pressure response.
 - **Orphan Snapshot GC:** `BurnBarIndexedSearchService` cleans up unreferenced snapshot directories under `VectorIndexes/` on startup.
@@ -24,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Architecture:** Decomposed `OpenBurnBarContracts.swift` (1385 lines) into 7 domain-specific files under `Contracts/` — RPC, Run, Tool, Approval, Provider, Connector, Client, and Event contracts. No import changes needed; all types remain in the same `OpenBurnBarCore` target.
 - **Architecture:** Decomposed `BurnBarRunService` (1428 lines) into a focused facade (487 lines) plus extension files for lifecycle, execution, and tool dispatch. Extracted connector/browser passthroughs into `BurnBarToolingProxyService`.
 - **Architecture:** Decomposed `OpenBurnBarDaemonManager` (1784 lines) into a lean core (387 lines) plus extension files for lifecycle, provider config, controller, operational plane, and activity snapshots. Extracted notification relay, binary resolver, and usage sync service into standalone files.
+- **Architecture:** Decomposed `CLIBridge` into a 339-line facade plus isolated executable resolution, argument building, process streaming, backend parsing, quota recording, and OpenAI-compatible gateway modules, with focused parser/resolver coverage.
 
 ### Added
 - Release provenance: `scripts/tag-release.sh` for validated, annotated git tag creation with semver and CHANGELOG checks

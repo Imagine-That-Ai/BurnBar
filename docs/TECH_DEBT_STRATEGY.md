@@ -13,7 +13,7 @@
 The biggest truth about this codebase: **OpenBurnBar is a high-velocity product that has outgrown its initial architecture.** The team has shipped an impressive amount of functionality (daemon-first local runtime, hybrid search, Firestore sync, mission control, Cursor extension), but the code has accumulated structural debt at a faster rate than the foundation has been hardened. The result is a system that works well in the happy path but has brittle failure modes, oversized modules, and significant test blind spots in the most complex subsystems.
 
 **The debt is concentrated in four areas:**
-1. **Giant service monoliths** — Four files exceed 1,000 lines and violate single responsibility (CloudSyncService: 2,102; CLIBridge: 1,456; UsageAggregator: 1,250; SearchService: 1,203).
+1. **Giant service monoliths** — Three files still exceed 1,000 lines and violate single responsibility (CloudSyncService: 2,102; UsageAggregator: 1,250; SearchService: 1,203). CLIBridge has been split into a 339-line facade plus dedicated resolver, argument builder, process runner, and parser/gateway modules.
 2. **Main-thread I/O** — Four major services are pinned to `@MainActor` despite doing heavy database, network, and filesystem work.
 3. **Silent failure culture** — 252 empty `catch {}` blocks, pervasive `try?`, and `AppLogger.silently()` used as control flow swallow errors across sync, parsing, and IPC paths.
 4. **Test parking** — The most critical daemon and sync logic is either untested or parked in `AgentLensTests/Parked/`, excluded from CI.
@@ -84,7 +84,7 @@ There is no clear single source of truth. The daemon writes to a JSONL ledger; t
 | 7 | CursorConnectorManager has no instance tests | Testing | **Critical** | Local | L | Full-stack | Scheduled soon |
 | 8 | 252 empty `catch {}` blocks swallow errors | Code Quality | **High** | Systemic | L | Full-stack | Scheduled soon |
 | 9 | DataStore facade + 1,355 lines of pass-throughs | Architecture | **High** | Systemic | XL | Backend | Scheduled soon |
-| 10 | CLIBridge monolith (1,456 lines, 8 concerns) | Code Quality | **High** | Cross-cutting | L | Full-stack | Scheduled soon |
+| 10 | CLIBridge monolith (1,456 lines, 8 concerns) | Code Quality | **High** | Cross-cutting | L | Full-stack | Remediated |
 | 11 | UsageAggregator god object (1,250 lines, 18 deps) | Code Quality | **High** | Cross-cutting | XL | Backend | Scheduled soon |
 | 12 | Parser duplication (13 parsers, ~3,000 lines) | Code Quality | **High** | Cross-cutting | L | Backend | Scheduled soon |
 | 13 | `nonisolated` store exposure on `DataStoreActor` | Architecture | **High** | Cross-cutting | M | Platform | Scheduled soon |
@@ -285,7 +285,7 @@ There is no clear single source of truth. The daemon writes to a JSONL ledger; t
 | Workstream | Specific Work | Why Now |
 |---|---|---|
 | **P3-1: Split CloudSyncService** | Extract `UsageSyncService`, `ArtifactCollaborationService`, `SessionLogCloudService`, `ChatThreadCloudService`. Keep `CloudSyncService` as a thin coordinator. | The largest god object; blocks every sync feature. |
-| **P3-2: Split CLIBridge** | Extract `CLIDetectionService`, `SSEStreamParser`, `ProcessSpawner`, `ToolCallDecoder`. Move I/O off main thread. | Unblocks CLI provider additions. |
+| **P3-2: Split CLIBridge** | Remediated: `CLIBridge` is now a thin facade over `CLIExecutableResolver`, `CLIArgumentBuilder`, `CLIProcessStreamRunner`, `CLIStreamParsers`, and `OpenAICompatibleChatGatewayClient`, with backend parser coverage in `CLIBridgeTests`. | CLI provider additions can now target isolated resolver, parser, process, or gateway units. |
 | **P3-3: Event-driven UsageAggregator** | Convert `refreshAll()` to a pipeline: `ParserStage → PersistStage → IndexStage → ProjectionStage → SummaryStage`. Use a local job queue. | Prevents the 212-line method from growing further. |
 | **P3-4: MissionControl tests** | Add contract tests for `MissionControlStore` (in-memory SQLite), `BurnBarParallelDAGScheduler`, and `MissionControlMissionStateMerger`. | Enables confident refactoring of the daemon brain. |
 | **P3-5: Cloud sync integration tests** | Build fake `CloudSyncContext` with in-memory Firestore emulator. Test `sync()`, 3-way merge, optimistic concurrency, and error backoff. | Required before adding shared-artifact features. |
@@ -293,7 +293,7 @@ There is no clear single source of truth. The daemon writes to a JSONL ledger; t
 
 **Success criteria:**
 - CloudSyncService < 800 lines.
-- CLIBridge < 800 lines.
+- CLIBridge facade < 800 lines with backend parser tests.
 - UsageAggregator `refreshAll()` < 100 lines (delegates to pipeline stages).
 - MissionControl has >50% line coverage.
 - All DataStore sub-stores have dedicated unit tests.

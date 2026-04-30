@@ -75,6 +75,22 @@ struct OpenBurnBarAppPaths {
         supportDirectory.appendingPathComponent(OpenBurnBarIdentity.databaseFileName)
     }
 
+    var databaseSidecarURLs: [URL] {
+        [
+            databaseURL,
+            URL(fileURLWithPath: databaseURL.path + "-wal"),
+            URL(fileURLWithPath: databaseURL.path + "-shm"),
+        ]
+    }
+
+    var startupRecoveryDirectory: URL {
+        supportDirectory.appendingPathComponent("StartupRecovery", isDirectory: true)
+    }
+
+    func startupRecoveryArchiveDirectory(timestamp: String) -> URL {
+        startupRecoveryDirectory.appendingPathComponent(timestamp, isDirectory: true)
+    }
+
     var providerQuotaSnapshotsURL: URL {
         supportDirectory.appendingPathComponent("provider_quotas.json")
     }

@@ -8,11 +8,10 @@ import OpenBurnBarCore
 //   -> search_documents + search_chunks + search_chunks_fts
 //   -> chunk_embeddings + retrieval_health
 
-@MainActor
-final class ProjectionPipelineService {
+actor ProjectionPipelineService {
     private let dataStore: DataStore
     private let leaseOwner: String
-    private let nowProvider: () -> Date
+    nonisolated private let nowProvider: @Sendable () -> Date
     private let chunker: ProjectionChunker
     private let chunkEmbedder: any ChunkEmbeddingProviding
     private let embeddingModelID: String
@@ -25,12 +24,12 @@ final class ProjectionPipelineService {
     /// This enables tests to assert on write-amplification invariants directly.
     var lastChunkDiffResult: ChunkDiffResult?
 
-    static func makeConfigured(
+    @MainActor static func makeConfigured(
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
         providerAPIKeyStore: ProviderAPIKeyStore = .shared,
         leaseOwner: String = "projection-worker-\(UUID().uuidString)",
-        nowProvider: @escaping () -> Date = Date.init,
+        nowProvider: @escaping @Sendable () -> Date = { Date() },
         chunker: ProjectionChunker = ProjectionChunker()
     ) -> ProjectionPipelineService {
         let embedder = makeChunkEmbedder(
@@ -49,7 +48,7 @@ final class ProjectionPipelineService {
     init(
         dataStore: DataStore,
         leaseOwner: String = "projection-worker-\(UUID().uuidString)",
-        nowProvider: @escaping () -> Date = Date.init,
+        nowProvider: @escaping @Sendable () -> Date = { Date() },
         chunker: ProjectionChunker = ProjectionChunker(),
         chunkEmbedder: any ChunkEmbeddingProviding = DeterministicFakeEmbeddingProvider(),
         paginationPageSize: Int = 1000
@@ -64,7 +63,7 @@ final class ProjectionPipelineService {
         self.paginationPageSize = max(1, paginationPageSize)
     }
 
-    private static func makeChunkEmbedder(
+    @MainActor private static func makeChunkEmbedder(
         settingsManager: SettingsManager,
         providerAPIKeyStore: ProviderAPIKeyStore
     ) -> any ChunkEmbeddingProviding {
@@ -98,7 +97,7 @@ final class ProjectionPipelineService {
         }
     }
 
-    func enqueueRebuildJob(reason: String = "manual", priority: Int = 1) throws {
+    nonisolated func enqueueRebuildJob(reason: String = "manual", priority: Int = 1) throws {
         let now = nowProvider()
         let seed = "\(reason)|\(now.timeIntervalSince1970)"
         let id = ProjectionIdentity.rebuildJobID(seed: seed)
@@ -123,7 +122,7 @@ final class ProjectionPipelineService {
         )
     }
 
-    func enqueueReembedJob(
+    nonisolated func enqueueReembedJob(
         reason: String = "manual",
         sourceKind: SearchSourceKind? = nil,
         sourceID: String? = nil,
@@ -163,7 +162,7 @@ final class ProjectionPipelineService {
         )
     }
 
-    func enqueueSelectiveReproject(
+    nonisolated func enqueueSelectiveReproject(
         sourceKind: SearchSourceKind,
         sourceID: String,
         sourceVersionID: String,
@@ -267,9 +266,6 @@ final class ProjectionPipelineService {
                 }
             }
 
-            if report.leasedJobs.isMultiple(of: ProjectionPipelineRuntimeTuning.sweepYieldInterval) {
-                await Task.yield()
-            }
         }
 
         let sweepDurationMs = OpenBurnBarProjectionPerformanceTimer.elapsedMilliseconds(since: sweepStartedAt)
@@ -454,9 +450,6 @@ final class ProjectionPipelineService {
                     priority: 15
                 )
                 enqueuedReprojects += 1
-                if enqueuedReprojects.isMultiple(of: ProjectionPipelineRuntimeTuning.rebuildEnqueueYieldInterval) {
-                    await Task.yield()
-                }
             }
 
             conversationOffset += conversations.count
@@ -496,10 +489,6 @@ final class ProjectionPipelineService {
                         priority: 10
                     )
                     enqueuedReprojects += 1
-                }
-                let totalEnqueued = enqueuedReprojects + enqueuedPurges
-                if totalEnqueued.isMultiple(of: ProjectionPipelineRuntimeTuning.rebuildEnqueueYieldInterval) {
-                    await Task.yield()
                 }
             }
 
@@ -586,7 +575,7 @@ final class ProjectionPipelineService {
                     throw ProjectionPipelineError.embeddingFailure("Embedding provider returned a mismatched vector count.")
                 }
 
-                for (index, pair) in zip(batch, vectors).enumerated() {
+                for pair in zip(batch, vectors) {
                     let chunk = pair.0
                     let vector = pair.1
                     guard vector.count == expectedDimensions else {
@@ -604,10 +593,6 @@ final class ProjectionPipelineService {
                             updatedAt: now
                         )
                     )
-
-                    if index.isMultiple(of: ProjectionPipelineRuntimeTuning.embeddingWriteYieldInterval) {
-                        await Task.yield()
-                    }
                 }
 
                 indexedCount += batch.count

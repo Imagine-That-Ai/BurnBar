@@ -77,6 +77,7 @@ final class WindowManager: ObservableObject {
     private var onboardingWindow: NSWindow?
     private var hermesSetupWindow: NSWindow?
     private var switcherOnboardingWindow: NSWindow?
+    private var startupRecoveryWindow: NSWindow?
 
     func openDashboard(
         dataStore: DataStore,
@@ -301,6 +302,59 @@ final class WindowManager: ObservableObject {
 
         switcherOnboardingWindow = window
     }
+
+    func openStartupRecovery(
+        failure: DataStoreStartupFailure,
+        isRetrying: Bool,
+        isArchivingReset: Bool,
+        actionError: String?,
+        onRetry: @escaping () -> Void,
+        onRevealSupportFolder: @escaping () -> Void,
+        onArchiveAndReset: @escaping () -> Void,
+        onCopyDiagnostics: @escaping () -> Bool,
+        onQuit: @escaping () -> Void
+    ) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        let contentView = DataStoreStartupRecoveryView(
+            failure: failure,
+            isRetrying: isRetrying,
+            isArchivingReset: isArchivingReset,
+            actionError: actionError,
+            compact: false,
+            onRetry: onRetry,
+            onRevealSupportFolder: onRevealSupportFolder,
+            onArchiveAndReset: onArchiveAndReset,
+            onCopyDiagnostics: onCopyDiagnostics,
+            onQuit: onQuit
+        )
+
+        if let window = startupRecoveryWindow {
+            window.contentView = NSHostingView(rootView: contentView)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "OpenBurnBar Recovery"
+        window.backgroundColor = NSColor(DesignSystem.Colors.background)
+        window.contentView = NSHostingView(rootView: contentView)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        window.isReleasedWhenClosed = false
+
+        startupRecoveryWindow = window
+    }
+
+    func closeStartupRecovery() {
+        startupRecoveryWindow?.close()
+        startupRecoveryWindow = nil
+    }
 }
 
 // MARK: - App Entry Point
@@ -312,18 +366,12 @@ struct OpenBurnBarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @AppStorage("hasShownInitialDashboard") private var hasShownInitialDashboard = false
     @StateObject private var windowManager = WindowManager.shared
-    @State private var dataStore: DataStore
-    @State private var settingsManager: SettingsManager
-    @State private var aggregator: UsageAggregator?
-    @State private var accountManager: AccountManager
-    @State private var quotaService: ProviderQuotaService
-    @State private var daemonManager: OpenBurnBarDaemonManager
-    @State private var cursorConnectorManager: CursorConnectorManager
-    @State private var cloudSyncService: CloudSyncService?
-    @State private var iCloudSessionMirrorService: ICloudSessionMirrorService?
+    @State private var startupState: OpenBurnBarStartupState
+    @State private var isRetryingStartup = false
+    @State private var isArchivingReset = false
+    @State private var startupRecoveryActionError: String?
+    @State private var hasPresentedStartupRecoveryWindow = false
     @State private var periodicRefreshTask: Task<Void, Never>?
-    @State private var chatController: ChatSessionController
-    @State private var operatingLayer: OpenBurnBarOperatingLayer
     @State private var navigationCoordinator = NavigationCoordinator()
 
     init() {
@@ -332,24 +380,26 @@ struct OpenBurnBarApp: App {
             Self.configureSentryIfAvailable()
         }
         OpenBurnBarMigration.migrateUserDefaults()
-        _ = try? OpenBurnBarMigration.prepareSupportDirectory()
 
-        // Initialize DataStore - this MUST succeed for the app to function
-        let initializedStore: DataStore
+        _startupState = State(initialValue: Self.makeStartupState())
+    }
+
+    @MainActor
+    private static func makeStartupState(archiveURL: URL? = nil) -> OpenBurnBarStartupState {
         do {
-            initializedStore = try DataStore()
+            return .ready(try makeRuntimeContext())
         } catch {
-            fatalError(
-                "CRITICAL: Failed to initialize DataStore. The app cannot function without a working database.\n" +
-                "Error: \(error.localizedDescription)\n" +
-                "This usually indicates:\n" +
-                "  - The application support directory is not writable\n" +
-                "  - Disk space is exhausted\n" +
-                "  - File permissions are incorrect\n" +
-                "Please check ~/Library/Application\\ Support/OpenBurnBar/"
+            AppLogger.dataStore.error(
+                "startup_datastore_open_failed",
+                metadata: ["error": String(describing: error)]
             )
+            return .failed(DataStoreStartupFailure.make(error: error, archiveURL: archiveURL))
         }
+    }
 
+    @MainActor
+    private static func makeRuntimeContext() throws -> OpenBurnBarRuntimeContext {
+        let initializedStore = try DataStore()
         let settings = SettingsManager()
         let accountManager = AccountManager.shared
         let quotaService = ProviderQuotaService(settingsManager: settings)
@@ -365,17 +415,16 @@ struct OpenBurnBarApp: App {
             chatController: controller
         )
 
-        _dataStore = State(initialValue: initializedStore)
-        _settingsManager = State(initialValue: settings)
-        _aggregator = State(initialValue: nil)
-        _accountManager = State(initialValue: accountManager)
-        _quotaService = State(initialValue: quotaService)
-        _daemonManager = State(initialValue: daemonManager)
-        _cursorConnectorManager = State(initialValue: cursorConnectorManager)
-        _cloudSyncService = State(initialValue: nil)
-        _iCloudSessionMirrorService = State(initialValue: nil)
-        _chatController = State(initialValue: controller)
-        _operatingLayer = State(initialValue: layer)
+        return OpenBurnBarRuntimeContext(
+            dataStore: initializedStore,
+            settingsManager: settings,
+            accountManager: accountManager,
+            quotaService: quotaService,
+            daemonManager: daemonManager,
+            cursorConnectorManager: cursorConnectorManager,
+            chatController: controller,
+            operatingLayer: layer
+        )
     }
 
     @MainActor
@@ -474,36 +523,123 @@ struct OpenBurnBarApp: App {
 
     @MainActor
     private func installCommandRouter() {
-        AppCommandRouter.shared.openDashboard = {
-            windowManager.openDashboard(
-                dataStore: dataStore,
-                aggregator: aggregator,
-                accountManager: accountManager,
-                cloudSyncService: cloudSyncService,
-                iCloudSessionMirrorService: iCloudSessionMirrorService,
-                chatController: chatController,
-                operatingLayer: operatingLayer,
-                navigationCoordinator: navigationCoordinator,
-                settingsManager: settingsManager
-            )
+        guard let context = startupState.runtimeContext else {
+            AppCommandRouter.shared.openDashboard = { openStartupRecoveryWindow() }
+            AppCommandRouter.shared.openConversationSearch = { openStartupRecoveryWindow() }
+            AppCommandRouter.shared.openChatPanel = { openStartupRecoveryWindow() }
+            return
         }
 
+        AppCommandRouter.shared.openDashboard = {
+            openDashboard(context: context)
+        }
         AppCommandRouter.shared.openConversationSearch = {
-            windowManager.openDashboard(
-                dataStore: dataStore,
-                aggregator: aggregator,
-                accountManager: accountManager,
-                cloudSyncService: cloudSyncService,
-                iCloudSessionMirrorService: iCloudSessionMirrorService,
-                chatController: chatController,
-                operatingLayer: operatingLayer,
-                navigationCoordinator: navigationCoordinator,
-                settingsManager: settingsManager
-            )
-
-            // Navigation now handled via NavigationCoordinator
+            openDashboard(context: context)
             navigationCoordinator.openConversationSearch()
         }
+        AppCommandRouter.shared.openChatPanel = {
+            openDashboard(context: context)
+            navigationCoordinator.openChatPanel()
+        }
+    }
+
+    @MainActor
+    private func openDashboard(context: OpenBurnBarRuntimeContext) {
+        windowManager.openDashboard(
+            dataStore: context.dataStore,
+            aggregator: context.aggregator,
+            accountManager: context.accountManager,
+            cloudSyncService: context.cloudSyncService,
+            iCloudSessionMirrorService: context.iCloudSessionMirrorService,
+            chatController: context.chatController,
+            operatingLayer: context.operatingLayer,
+            navigationCoordinator: navigationCoordinator,
+            settingsManager: context.settingsManager
+        )
+    }
+
+    @MainActor
+    private func openStartupRecoveryWindow() {
+        guard let failure = startupState.failure else { return }
+        windowManager.openStartupRecovery(
+            failure: failure,
+            isRetrying: isRetryingStartup,
+            isArchivingReset: isArchivingReset,
+            actionError: startupRecoveryActionError,
+            onRetry: retryStartup,
+            onRevealSupportFolder: revealStartupSupportFolder,
+            onArchiveAndReset: archiveAndResetStartupDatabase,
+            onCopyDiagnostics: copyStartupDiagnostics,
+            onQuit: quitFromStartupRecovery
+        )
+    }
+
+    @MainActor
+    private func retryStartup() {
+        guard !isRetryingStartup && !isArchivingReset else { return }
+        isRetryingStartup = true
+        startupRecoveryActionError = nil
+        startupState = Self.makeStartupState()
+        isRetryingStartup = false
+        if startupState.runtimeContext != nil {
+            hasPresentedStartupRecoveryWindow = false
+            windowManager.closeStartupRecovery()
+        } else {
+            openStartupRecoveryWindow()
+        }
+    }
+
+    @MainActor
+    private func archiveAndResetStartupDatabase() {
+        guard !isRetryingStartup && !isArchivingReset else { return }
+        isArchivingReset = true
+        startupRecoveryActionError = nil
+        do {
+            let archiveResult = try OpenBurnBarStartupRecovery.archiveDatabaseSidecars()
+            startupState = Self.makeStartupState(archiveURL: archiveResult.archiveDirectory)
+            isArchivingReset = false
+            if startupState.runtimeContext != nil {
+                hasPresentedStartupRecoveryWindow = false
+                windowManager.closeStartupRecovery()
+            } else {
+                startupRecoveryActionError = "The database was archived, but OpenBurnBar still could not create a clean database."
+                openStartupRecoveryWindow()
+            }
+        } catch {
+            isArchivingReset = false
+            startupRecoveryActionError = error.localizedDescription
+            AppLogger.dataStore.error(
+                "startup_datastore_archive_reset_failed",
+                metadata: ["error": String(describing: error)]
+            )
+            openStartupRecoveryWindow()
+        }
+    }
+
+    @MainActor
+    private func revealStartupSupportFolder() {
+        guard let failure = startupState.failure else { return }
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: failure.supportDirectory.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([failure.supportDirectory])
+        } else {
+            NSWorkspace.shared.selectFile(
+                nil,
+                inFileViewerRootedAtPath: failure.supportDirectory.deletingLastPathComponent().path
+            )
+        }
+    }
+
+    @MainActor
+    private func copyStartupDiagnostics() -> Bool {
+        guard let failure = startupState.failure else { return false }
+        NSPasteboard.general.clearContents()
+        return NSPasteboard.general.setString(failure.diagnostics, forType: .string)
+    }
+
+    @MainActor
+    private func quitFromStartupRecovery() {
+        NSApplication.shared.terminate(nil)
     }
 
     @SceneBuilder
@@ -513,160 +649,174 @@ struct OpenBurnBarApp: App {
             if OpenBurnBarRuntime.isRunningTests {
                 EmptyView()
             } else {
-                MenuBarPopoverView(
-                    dataStore: dataStore,
-                    aggregator: aggregator,
-                    quotaService: quotaService,
-                    settingsManager: settingsManager,
-                    operatingLayer: operatingLayer,
-                    onOpenDashboard: {
-                        windowManager.openDashboard(
-                            dataStore: dataStore,
-                            aggregator: aggregator,
-                            accountManager: accountManager,
-                            cloudSyncService: cloudSyncService,
-                            iCloudSessionMirrorService: iCloudSessionMirrorService,
-                            chatController: chatController,
-                            operatingLayer: operatingLayer,
-                            navigationCoordinator: navigationCoordinator,
-                            settingsManager: settingsManager
-                        )
-                    },
-                    onOpenSettings: {
-                        windowManager.openSettings(
-                            settingsManager: settingsManager,
-                            accountManager: accountManager,
-                            cloudSyncService: cloudSyncService,
-                            iCloudSessionMirrorService: iCloudSessionMirrorService,
-                            dataStore: dataStore
-                        )
-                    },
-                    chatController: chatController,
-                    onOpenDashboardWithChat: {
-                        windowManager.openDashboard(
-                            dataStore: dataStore,
-                            aggregator: aggregator,
-                            accountManager: accountManager,
-                            cloudSyncService: cloudSyncService,
-                            iCloudSessionMirrorService: iCloudSessionMirrorService,
-                            chatController: chatController,
-                            operatingLayer: operatingLayer,
-                            navigationCoordinator: navigationCoordinator,
-                            settingsManager: settingsManager
-                        )
-                        // Navigation now handled via NavigationCoordinator
-                        navigationCoordinator.openChatPanel()
-                    },
-                    onOpenOnboardingWizard: {
-                        windowManager.openOnboardingWizard(
-                            dataStore: dataStore,
-                            aggregator: aggregator,
-                            settingsManager: settingsManager,
-                            chatController: chatController,
-                            onOpenDashboard: {
-                                windowManager.openDashboard(
-                                    dataStore: dataStore,
-                                    aggregator: aggregator,
-                                    accountManager: accountManager,
-                                    cloudSyncService: cloudSyncService,
-                                    iCloudSessionMirrorService: iCloudSessionMirrorService,
-                                    chatController: chatController,
-                                    operatingLayer: operatingLayer,
-                                    navigationCoordinator: navigationCoordinator,
-                                    settingsManager: settingsManager
-                                )
-                            }
-                        )
-                    }
-                )
-                .environment(settingsManager)
+                switch startupState {
+                case .ready(let context):
+                    MenuBarPopoverView(
+                        dataStore: context.dataStore,
+                        aggregator: context.aggregator,
+                        quotaService: context.quotaService,
+                        settingsManager: context.settingsManager,
+                        operatingLayer: context.operatingLayer,
+                        onOpenDashboard: {
+                            openDashboard(context: context)
+                        },
+                        onOpenSettings: {
+                            windowManager.openSettings(
+                                settingsManager: context.settingsManager,
+                                accountManager: context.accountManager,
+                                cloudSyncService: context.cloudSyncService,
+                                iCloudSessionMirrorService: context.iCloudSessionMirrorService,
+                                dataStore: context.dataStore
+                            )
+                        },
+                        chatController: context.chatController,
+                        onOpenDashboardWithChat: {
+                            openDashboard(context: context)
+                            navigationCoordinator.openChatPanel()
+                        },
+                        onOpenOnboardingWizard: {
+                            windowManager.openOnboardingWizard(
+                                dataStore: context.dataStore,
+                                aggregator: context.aggregator,
+                                settingsManager: context.settingsManager,
+                                chatController: context.chatController,
+                                onOpenDashboard: {
+                                    openDashboard(context: context)
+                                }
+                            )
+                        }
+                    )
+                    .environment(context.settingsManager)
+                case .failed(let failure):
+                    DataStoreStartupRecoveryView(
+                        failure: failure,
+                        isRetrying: isRetryingStartup,
+                        isArchivingReset: isArchivingReset,
+                        actionError: startupRecoveryActionError,
+                        compact: true,
+                        onRetry: retryStartup,
+                        onRevealSupportFolder: revealStartupSupportFolder,
+                        onArchiveAndReset: archiveAndResetStartupDatabase,
+                        onCopyDiagnostics: copyStartupDiagnostics,
+                        onQuit: quitFromStartupRecovery
+                    )
+                }
             }
         } label: {
             if OpenBurnBarRuntime.isRunningTests {
                 EmptyView()
             } else {
-                MenuBarLabel(
-                    totalCostToday: dataStore.totalCostToday,
-                    totalTokensToday: dataStore.totalTokensToday,
-                    usageDisplayMode: settingsManager.usageDisplayMode,
-                    rollingDailyAverage: dataStore.rollingDailyAverage,
-                    isRefreshing: aggregator?.isRefreshing ?? false
-                )
-                .task {
-                    await Task.yield()
-                    guard !OpenBurnBarRuntime.isRunningTests else { return }
-                    guard aggregator == nil else { return }
-                    let sync = CloudSyncService(
-                        dataStore: dataStore,
-                        accountManager: accountManager,
-                        settingsManager: settingsManager
+                switch startupState {
+                case .ready(let context):
+                    MenuBarLabel(
+                        totalCostToday: context.dataStore.totalCostToday,
+                        totalTokensToday: context.dataStore.totalTokensToday,
+                        usageDisplayMode: context.settingsManager.usageDisplayMode,
+                        rollingDailyAverage: context.dataStore.rollingDailyAverage,
+                        isRefreshing: context.aggregator?.isRefreshing ?? false
                     )
-                    cloudSyncService = sync
-                    let mirror = ICloudSessionMirrorService(settingsManager: settingsManager)
-                    iCloudSessionMirrorService = mirror
-                    let newAggregator = UsageAggregator(
-                        dataStore: dataStore,
-                        cloudSync: sync,
-                        sessionMirror: mirror,
-                        settingsManager: settingsManager,
-                        quotaService: quotaService
-                    )
-                    aggregator = newAggregator
-                    operatingLayer.aggregator = newAggregator
-                    operatingLayer.chatController = chatController
-                    daemonManager.attach(dataStore: dataStore)
-                    cursorConnectorManager.attach(dataStore: dataStore)
-                    if !hasShownInitialDashboard {
-                        hasShownInitialDashboard = true
-                        windowManager.openDashboard(
-                            dataStore: dataStore,
-                            aggregator: newAggregator,
-                            accountManager: accountManager,
-                            cloudSyncService: sync,
-                            iCloudSessionMirrorService: mirror,
-                            chatController: chatController,
-                            operatingLayer: operatingLayer,
-                            navigationCoordinator: navigationCoordinator,
-                            settingsManager: settingsManager
+                    .task {
+                        await Task.yield()
+                        guard !OpenBurnBarRuntime.isRunningTests else { return }
+                        guard context.aggregator == nil else { return }
+                        let sync = CloudSyncService(
+                            dataStore: context.dataStore,
+                            accountManager: context.accountManager,
+                            settingsManager: context.settingsManager
                         )
-                    }
-                    // Probe Hermes availability in the background
-                    Task {
-                        let enabledBackends = Set(settingsManager.enabledChatBackends)
-                        if enabledBackends.contains(.hermes) || chatController.chatBackend == .hermes {
-                            await chatController.probeHermesAvailability()
-                        } else {
-                            chatController.hermesAvailable = false
+                        context.cloudSyncService = sync
+                        let mirror = ICloudSessionMirrorService(settingsManager: context.settingsManager)
+                        context.iCloudSessionMirrorService = mirror
+                        let newAggregator = UsageAggregator(
+                            dataStore: context.dataStore,
+                            cloudSync: sync,
+                            sessionMirror: mirror,
+                            settingsManager: context.settingsManager,
+                            quotaService: context.quotaService
+                        )
+                        context.aggregator = newAggregator
+                        context.operatingLayer.aggregator = newAggregator
+                        context.operatingLayer.chatController = context.chatController
+                        context.daemonManager.attach(dataStore: context.dataStore)
+                        context.cursorConnectorManager.attach(dataStore: context.dataStore)
+                        if !hasShownInitialDashboard {
+                            hasShownInitialDashboard = true
+                            windowManager.openDashboard(
+                                dataStore: context.dataStore,
+                                aggregator: newAggregator,
+                                accountManager: context.accountManager,
+                                cloudSyncService: sync,
+                                iCloudSessionMirrorService: mirror,
+                                chatController: context.chatController,
+                                operatingLayer: context.operatingLayer,
+                                navigationCoordinator: navigationCoordinator,
+                                settingsManager: context.settingsManager
+                            )
                         }
-                        if enabledBackends.contains(.openclaw) || chatController.chatBackend == .openclaw {
-                            await chatController.probeOpenClawAvailability()
-                        } else {
-                            chatController.openClawAvailable = false
+                        // Probe Hermes availability in the background
+                        Task {
+                            let enabledBackends = Set(context.settingsManager.enabledChatBackends)
+                            if enabledBackends.contains(.hermes) || context.chatController.chatBackend == .hermes {
+                                await context.chatController.probeHermesAvailability()
+                            } else {
+                                context.chatController.hermesAvailable = false
+                            }
+                            if enabledBackends.contains(.openclaw) || context.chatController.chatBackend == .openclaw {
+                                await context.chatController.probeOpenClawAvailability()
+                            } else {
+                                context.chatController.openClawAvailable = false
+                            }
+                            await context.daemonManager.refreshHealth()
+                            await context.operatingLayer.refreshControllerRuntime()
                         }
-                        await daemonManager.refreshHealth()
-                        await operatingLayer.refreshControllerRuntime()
-                    }
-                    // Don't block the first frame on a long disk scan; the menu bar can appear while refresh runs.
-                    Task(priority: .userInitiated) {
-                        await newAggregator.refreshAll()
-                        await sync.uploadPendingConversations()
-                        await sync.uploadPendingChatThreads()
-                        if settingsManager.dailyDigestEnabled {
-                            await DailyDigestManager.shared.requestAuthorization()
-                            DailyDigestManager.shared.scheduleDigest(from: dataStore, at: settingsManager.dailyDigestHour)
-                        }
-                    }
-                    periodicRefreshTask?.cancel()
-                    periodicRefreshTask = Task(priority: .utility) {
-                        while !Task.isCancelled {
-                            let seconds = max(settingsManager.refreshInterval, 30)
-                            let nanos = UInt64(seconds * 1_000_000_000)
-                            try? await Task.sleep(nanoseconds: nanos)
-                            if Task.isCancelled { break }
+                        // Don't block the first frame on a long disk scan; the menu bar can appear while refresh runs.
+                        Task(priority: .userInitiated) {
                             await newAggregator.refreshAll()
-                            await daemonManager.refreshHealth()
-                            await operatingLayer.refreshControllerRuntime()
+                            await sync.uploadPendingConversations()
+                            await sync.uploadPendingChatThreads()
+                            if context.settingsManager.dailyDigestEnabled {
+                                await DailyDigestManager.shared.requestAuthorization()
+                                DailyDigestManager.shared.scheduleDigest(
+                                    from: context.dataStore,
+                                    at: context.settingsManager.dailyDigestHour
+                                )
+                            }
                         }
+                        periodicRefreshTask?.cancel()
+                        periodicRefreshTask = Task(priority: .utility) {
+                            while !Task.isCancelled {
+                                let seconds = max(context.settingsManager.refreshInterval, 30)
+                                let nanos = UInt64(seconds * 1_000_000_000)
+                                try? await Task.sleep(nanoseconds: nanos)
+                                if Task.isCancelled { break }
+                                await newAggregator.refreshAll()
+                                await context.daemonManager.refreshHealth()
+                                await context.operatingLayer.refreshControllerRuntime()
+                            }
+                        }
+                    }
+                case .failed:
+                    Label {
+                        EmptyView()
+                    } icon: {
+                        Image(nsImage: MenuBarRasterBrandMark.image)
+                            .overlay(alignment: .topTrailing) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(DesignSystem.Colors.error)
+                                    .background(Circle().fill(Color(NSColor.windowBackgroundColor)))
+                                    .offset(x: 4, y: -3)
+                            }
+                    }
+                    .labelStyle(.iconOnly)
+                    .frame(width: MenuBarLabel.menuBarLabelSlotWidth, height: MenuBarLabel.menuBarLabelSlotHeight)
+                    .fixedSize()
+                    .help("OpenBurnBar recovery mode")
+                    .task {
+                        await Task.yield()
+                        guard !hasPresentedStartupRecoveryWindow else { return }
+                        hasPresentedStartupRecoveryWindow = true
+                        openStartupRecoveryWindow()
                     }
                 }
             }
@@ -716,8 +866,8 @@ struct MenuBarLabel: View {
         rollingDailyAverage > 0 && totalCostToday > rollingDailyAverage * 1.2
     }
 
-    private static let menuBarLabelSlotWidth: CGFloat = 22
-    private static let menuBarLabelSlotHeight: CGFloat = 18
+    static let menuBarLabelSlotWidth: CGFloat = 22
+    static let menuBarLabelSlotHeight: CGFloat = 18
 
     private var menuBarIcon: some View {
         Image(nsImage: MenuBarRasterBrandMark.image)

@@ -32,6 +32,7 @@ struct DashboardView: View {
     @State var showingSettings = false
     @State var showProgressPanel = false
     @State var overviewAppeared = false
+    @State private var overviewEmptyStateAppeared = false
     @State var deviceCount = 0
     @State var sidebarAppeared = false
     @State var chatPanelOpen = false
@@ -39,7 +40,6 @@ struct DashboardView: View {
     @State private var showCLIConsentSheet = false
     @State private var showSessionLogCloudConsent = false
     @State var sessionLogJumpTarget: ConversationJumpTarget?
-    @State var sessionLogJumpLookup: [String: ConversationRecord] = [:]
     @State var dashboardCanvasSize: CGSize = .zero
     @State var didAutoExpandEmptyTimeRange = false
     @State var showContextPackSheet = false
@@ -214,7 +214,6 @@ struct DashboardView: View {
             if !settingsManager.conversationIndexingConsentShown {
                 showIndexingConsent = true
             }
-            refreshSessionLogJumpLookup()
         }
         .alert("Index conversation history?", isPresented: $showIndexingConsent) {
             Button("Enable") {
@@ -246,9 +245,6 @@ struct DashboardView: View {
             if isSignedIn && !settingsManager.sessionLogCloudBackupConsentShown {
                 showSessionLogCloudConsent = true
             }
-        }
-        .onChange(of: dataStore.lastRefresh) { _, _ in
-            refreshSessionLogJumpLookup()
         }
         .onChange(of: navigationCoordinator.pendingNavigation) { _, destination in
             guard let destination else { return }
@@ -366,20 +362,117 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Stubs for missing view helpers (pre-existing build gap)
+    // MARK: - View helpers
 
-    private func autoExpandTimeRangeIfNeeded() {}
-    private func refreshSessionLogJumpLookup() {}
+    private func autoExpandTimeRangeIfNeeded() {
+        guard !didAutoExpandEmptyTimeRange else { return }
+        defer { didAutoExpandEmptyTimeRange = true }
+        let currentRangeEmpty = dataStore.usages(in: selectedTimeRange.dateRange()).isEmpty
+        let allTimeEmpty = dataStore.usages.isEmpty
+        if currentRangeEmpty, !allTimeEmpty {
+            selectedTimeRange = .allTime
+        }
+    }
 
     @ViewBuilder
     private var dashboardWorkspaceNavStrip: some View {
-        EmptyView()
+        DashboardWorkspaceNavStrip(currentRoute: mainRoute) { route in
+            navigate(to: route)
+        }
     }
 
     @ViewBuilder
     private var overviewView: some View {
-        EmptyView()
+        if dataStore.usages.isEmpty {
+            overviewEmptyState
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    HStack(spacing: DesignSystem.Spacing.lg) {
+                        StatCard(
+                            title: "Total Cost",
+                            value: totalCostForTimeRange.formatAsCost(),
+                            accent: DesignSystem.Colors.whimsy,
+                            detail: heroSubheadline
+                        )
+                        StatCard(
+                            title: "Tokens",
+                            value: "\(totalTokensForTimeRange.formatted())",
+                            accent: DesignSystem.Colors.ember,
+                            detail: "\(activeProviderCount) provider\(activeProviderCount == 1 ? "" : "s") active"
+                        )
+                        StatCard(
+                            title: "Sessions",
+                            value: "\(filteredUsages.count)",
+                            accent: DesignSystem.Colors.amber,
+                            detail: "\(dataStore.usages.count) total tracked"
+                        )
+                    }
+                    NarrativeCardView(dataStore: dataStore)
+                    HStack(alignment: .top, spacing: DesignSystem.Spacing.xl) {
+                        VStack(spacing: DesignSystem.Spacing.xl) {
+                            providerLane
+                            modelLane
+                        }
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        activityLane
+                    }
+                }
+                .padding(DesignSystem.Spacing.xl)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear { overviewAppeared = true }
+        }
     }
 
-    private func openSessionLogs(_ target: ConversationJumpTarget) {}
+    private var overviewEmptyState: some View {
+        VStack(spacing: DesignSystem.Spacing.xl) {
+            Spacer()
+            VStack(spacing: DesignSystem.Spacing.lg) {
+                Image(systemName: "chart.bar.xaxis")
+                    .font(.system(size: 48, weight: .thin))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Text("Welcome to OpenBurnBar")
+                    .font(DesignSystem.Typography.title)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("Start a session with any AI agent and click the refresh button to track your first usage.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 400)
+                Button(action: runScan) {
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Scan for Sessions")
+                            .font(DesignSystem.Typography.caption)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                    .padding(.vertical, DesignSystem.Spacing.md)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                            .fill(DesignSystem.Colors.primaryGradient)
+                    )
+                    .shadow(color: DesignSystem.Colors.blaze.opacity(0.3), radius: 10, y: 3)
+                }
+                .buttonStyle(.plain)
+                .disabled(isScanning)
+            }
+            .opacity(overviewEmptyStateAppeared ? 1 : 0)
+            .offset(y: overviewEmptyStateAppeared ? 0 : 10)
+            .animation(DesignSystem.Animation.standard, value: overviewEmptyStateAppeared)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(DesignSystem.Colors.background)
+        .onAppear { overviewEmptyStateAppeared = true }
+    }
+
+    private func openSessionLogs(_ target: ConversationJumpTarget) {
+        sessionLogJumpTarget = target
+        if mainRoute != .sessionLogs {
+            navigate(to: .sessionLogs)
+        }
+    }
 }

@@ -9,7 +9,7 @@ On-call operational reference for diagnosing and resolving OpenBurnBar incidents
 | macOS App | `/Applications/OpenBurnBar.app` | `~/Library/Logs/OpenBurnBar/` |
 | Daemon | `Contents/Helpers/OpenBurnBarDaemon` (in app bundle) | `~/Library/Logs/OpenBurnBar/daemon.log` |
 | Socket | `~/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock` | — |
-| Database | `~/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite` | — |
+| Database | `~/Library/Application Support/OpenBurnBar/openburnbar.sqlite` | — |
 | Extension | VS Code / Cursor extension host | Extension dev console |
 | Cloud sync | Firebase Console | Firestore logs |
 
@@ -278,59 +278,65 @@ See the full release rollback procedure in [RELEASE_ROLLBACK.md](RELEASE_ROLLBAC
 
 ---
 
-## Incident 6: Migration Failure on Launch
+## Incident 6: Database Startup Recovery
 
 ### Symptoms
-- App crashes immediately on launch
-- Console log shows `GRDB.DatabaseError` or migration failure
-- `grdb_migrations` table is inconsistent with actual schema
+- Menu bar shows OpenBurnBar in recovery mode
+- Recovery window says the database needs attention
+- Console log shows `startup_datastore_open_failed`, `GRDB.DatabaseError`, or a migration/integrity failure
+- `grdb_migrations` table may be inconsistent with actual schema
 
 ### Diagnosis
 
 ```bash
-# Check crash logs
-ls -lt ~/Library/Logs/DiagnosticReports/OpenBurnBar* 2>/dev/null | head -5
-
 # Check database integrity
-sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite "PRAGMA integrity_check;"
+sqlite3 ~/Library/Application\ Support/OpenBurnBar/openburnbar.sqlite "PRAGMA integrity_check;"
 
 # Check which migrations have been applied
-sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite \
+sqlite3 ~/Library/Application\ Support/OpenBurnBar/openburnbar.sqlite \
   "SELECT identifier FROM grdb_migrations ORDER BY identifier;"
 
 # Compare with expected migrations in source
 grep "registerMigration" AgentLens/Services/DataStore/OpenBurnBarDatabase.swift | sed 's/.*"\(.*\)".*/\1/'
+
+# Check for recovery archives created by the in-app reset path
+ls -lt ~/Library/Application\ Support/OpenBurnBar/StartupRecovery/ 2>/dev/null | head
 ```
 
 ### Remediation
 
-1. **Check backup existence**:
+1. **Retry after fixing the underlying issue**: Free disk space, repair permissions, or restore access to `~/Library/Application Support/OpenBurnBar/`, then click **Retry** in the recovery window.
+
+2. **Archive and reset in-app**: Click **Archive and Reset**. OpenBurnBar copies `openburnbar.sqlite`, `openburnbar.sqlite-wal`, and `openburnbar.sqlite-shm` into `StartupRecovery/<timestamp>/`, removes the live sidecars, and retries startup with a clean database.
+
+3. **Check backup existence**:
    ```bash
-   ls -lt ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite.backup-* | head -3
+   ls -lt ~/Library/Application\ Support/OpenBurnBar/openburnbar.sqlite.backup.* | head -3
    ```
 
-2. **Restore from backup** (see Database Corruption incident above)
+4. **Restore from backup** (see Database Corruption incident above)
 
-3. **Review specific migration**: Use the rollback helper
+5. **Review specific migration**: Use the rollback helper
    ```bash
    scripts/rollback-migration.sh --list
    scripts/rollback-migration.sh v34  # Check a specific migration
    ```
 
-4. **Force re-migration** (safe-rerun migrations only):
+6. **Force re-migration** (safe-rerun migrations only):
    ```bash
    # Remove the failed migration record to let GRDB re-run it
-   sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite \
+   sqlite3 ~/Library/Application\ Support/OpenBurnBar/openburnbar.sqlite \
      "DELETE FROM grdb_migrations WHERE identifier = 'vXX_name';"
-   # Relaunch app — GRDB will re-attempt the migration
+   # Relaunch app; GRDB will re-attempt the migration
    ```
 
-5. **Nuclear reset** (see Database Corruption remediation)
+7. **Manual reset**: Quit OpenBurnBar and move the three `openburnbar.sqlite*` sidecar files into a timestamped folder. Prefer the in-app archive action when available because it preserves the exact sidecar set.
 
 ### Verification
 - App launches successfully
 - All expected migrations are in `grdb_migrations`
-- Data is intact (or acceptable data loss is acknowledged)
+- Recovery mode is gone
+- Data is intact, restored from backup, or archived reset is acknowledged
 
 ---
 

@@ -135,6 +135,16 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertTrue(dirs.contains("/Users/test/.local/bin"))
     }
 
+    func test_cliExecutableResolver_baseExecutableSearchDirectories_expandsHomeVariables() {
+        let dirs = CLIExecutableResolver.baseExecutableSearchDirectories(
+            environment: ["PATH": "$HOME/.cursor/extensions/bin:${HOME}/.factory/bin:/usr/bin"],
+            homeDirectory: "/Users/test"
+        )
+
+        XCTAssertTrue(dirs.contains("/Users/test/.cursor/extensions/bin"))
+        XCTAssertTrue(dirs.contains("/Users/test/.factory/bin"))
+    }
+
     func test_cliBridge_openAICompatibleUsage_parsesUsagePayload() {
         let usage = CLIBridge.openAICompatibleUsage(from: [
             "usage": [
@@ -171,5 +181,119 @@ final class CLIBridgeTests: XCTestCase {
             return XCTFail("Expected quota exhaustion error, got \(error)")
         }
         XCTAssertTrue(detail.localizedCaseInsensitiveContains("weekly limit"))
+    }
+
+    func test_claudeCodeStreamJSONParser_extractsTextAndToolEvents() {
+        let line = #"""
+        {"message":{"content":[{"type":"text","text":"hello"},{"type":"tool_use","name":"Read","input":{"path":"/tmp/file.swift"}}]}}
+        """#
+
+        XCTAssertEqual(
+            ClaudeCodeStreamJSONParser.events(fromLine: line),
+            [
+                .text("hello"),
+                .toolUse(name: "Read", detail: "/tmp/file.swift")
+            ]
+        )
+    }
+
+    func test_codexExecJSONLParser_emitsOnlyNewAgentMessageDelta() {
+        var parser = CodexExecJSONLParser()
+
+        let first = parser.events(fromLine: #"""
+        {"type":"item.updated","item":{"id":"m1","type":"agent_message","text":"hello"}}
+        """#)
+        let second = parser.events(fromLine: #"""
+        {"type":"item.updated","item":{"id":"m1","type":"agent_message","text":"hello world"}}
+        """#)
+
+        XCTAssertEqual(first.events, [.text("hello")])
+        XCTAssertNil(first.error)
+        XCTAssertEqual(second.events, [.text(" world")])
+        XCTAssertNil(second.error)
+    }
+
+    func test_codexExecJSONLParser_resetsDeltaForNewAgentMessageItem() {
+        var parser = CodexExecJSONLParser()
+        _ = parser.events(fromLine: #"""
+        {"type":"item.updated","item":{"id":"m1","type":"agent_message","text":"first"}}
+        """#)
+
+        let next = parser.events(fromLine: #"""
+        {"type":"item.updated","item":{"id":"m2","type":"agent_message","text":"second"}}
+        """#)
+
+        XCTAssertEqual(next.events, [.text("second")])
+        XCTAssertNil(next.error)
+    }
+
+    func test_codexExecJSONLParser_extractsCommandToolEvent() {
+        var parser = CodexExecJSONLParser()
+
+        let result = parser.events(fromLine: #"""
+        {"type":"item.started","item":{"type":"command_execution","command":"swift test --package-path OpenBurnBarCore"}}
+        """#)
+
+        XCTAssertEqual(
+            result.events,
+            [.toolUse(name: "Bash", detail: "swift test --package-path OpenBurnBarCore")]
+        )
+        XCTAssertNil(result.error)
+    }
+
+    func test_openAICompatibleSSEParser_extractsUsageToolAndText() {
+        var parser = OpenAICompatibleSSEParser()
+        let line = #"""
+        data: {"usage":{"input_tokens":2,"output_tokens":3},"choices":[{"delta":{"content":"hi","tool_calls":[{"function":{"name":"search","arguments":"{\"q\":\"burnbar\"}"}}]}}]}
+        """#
+
+        let result = parser.events(fromLine: line)
+
+        XCTAssertEqual(result.events.count, 3)
+        XCTAssertEqual(result.events[0], .usage(CLIUsageSnapshot(inputTokens: 2, outputTokens: 3, cacheCreationTokens: 0, cacheReadTokens: 0, reasoningTokens: 0)))
+        XCTAssertEqual(result.events[1], .toolUse(name: "search", detail: #"{"q":"burnbar"}"#))
+        XCTAssertEqual(result.events[2], .text("hi"))
+        XCTAssertTrue(result.streamedText)
+        XCTAssertFalse(result.done)
+    }
+
+    func test_openAICompatibleModelListParser_extractsFirstModelID() throws {
+        let data = #"{"data":[{"id":"Hermes-3"}]}"#.data(using: .utf8)!
+
+        XCTAssertEqual(OpenAICompatibleModelListParser.modelName(from: data), "Hermes-3")
+    }
+
+    func test_streamRuntime_cancelRunningProcess_terminatesMatchingTokenOnly() async throws {
+        let runtime = CLIBridgeStreamRuntimeCoordinator()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["5"]
+        try process.run()
+        let token = await runtime.registerRunningProcess(process)
+
+        await runtime.cancelRunningProcess(token: token + 1)
+        XCTAssertTrue(process.isRunning)
+
+        await runtime.cancelRunningProcess(token: token)
+        process.waitUntilExit()
+        XCTAssertFalse(process.isRunning)
+    }
+
+    func test_streamRuntime_cancelHTTPStreamTask_cancelsMatchingTokenOnly() async {
+        let runtime = CLIBridgeStreamRuntimeCoordinator()
+        let streamID = await runtime.nextHTTPStreamID()
+        let task = Task<Void, Never> {
+            while !Task.isCancelled {
+                await Task.yield()
+            }
+        }
+        await runtime.installHTTPStreamTask(task, streamID: streamID)
+
+        await runtime.cancelHTTPStreamTask(streamID: streamID + 1)
+        XCTAssertFalse(task.isCancelled)
+
+        await runtime.cancelHTTPStreamTask(streamID: streamID)
+        XCTAssertTrue(task.isCancelled)
+        await task.value
     }
 }

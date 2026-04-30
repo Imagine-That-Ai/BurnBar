@@ -1052,6 +1052,101 @@ final class CursorConnectorManager {
                 return [content["text"]]
             return []
 
+        def copy_passthrough_fields(source, target, fields):
+            if not isinstance(source, dict) or not isinstance(target, dict):
+                return target
+            for field in fields:
+                if field in source and source.get(field) is not None:
+                    target[field] = source.get(field)
+            return target
+
+        def response_item_to_chat_messages(item):
+            if not isinstance(item, dict):
+                return []
+
+            item_type = item.get("type")
+            if item_type in ("function_call", "custom_tool_call"):
+                call_id = item.get("call_id") or item.get("id") or f"call_{uuid.uuid4().hex}"
+                function_source = item.get("function") if isinstance(item.get("function"), dict) else {}
+                function_payload = {
+                    "name": item.get("name") or function_source.get("name") or "tool",
+                    "arguments": item.get("arguments") or item.get("input") or function_source.get("arguments") or "{}",
+                }
+                message = {
+                    "role": "assistant",
+                    "content": item.get("content") if item.get("content") is not None else "",
+                    "tool_calls": [{
+                        "id": call_id,
+                        "type": "function",
+                        "function": function_payload,
+                    }],
+                }
+                copy_passthrough_fields(item, message, ("reasoning_content", "thinking", "reasoning"))
+                return [message]
+
+            if item_type in ("function_call_output", "tool_result"):
+                message = {
+                    "role": "tool",
+                    "content": "\\n".join(extract_text_parts(item.get("output") if "output" in item else item.get("content"))),
+                    "tool_call_id": item.get("call_id") or item.get("tool_call_id") or item.get("id") or "",
+                }
+                copy_passthrough_fields(item, message, ("name",))
+                return [message]
+
+            role = item.get("role") or "user"
+            if role == "developer":
+                role = "system"
+            message = {"role": role}
+            text = "\\n".join(extract_text_parts(item.get("content")))
+            if item.get("content") is not None:
+                message["content"] = text
+            else:
+                message["content"] = item.get("output") if isinstance(item.get("output"), str) else ""
+            copy_passthrough_fields(
+                item,
+                message,
+                ("reasoning_content", "thinking", "reasoning", "tool_calls", "tool_call_id", "name")
+            )
+            if message.get("content") or message.get("reasoning_content") or message.get("tool_calls") or message.get("tool_call_id"):
+                return [message]
+            return []
+
+        def chat_message_to_response_output(message):
+            content = message.get("content")
+            if isinstance(content, str):
+                text = content
+            else:
+                text = "\\n".join(extract_text_parts(content))
+
+            output_items = []
+            message_item = {
+                "id": f"msg_{uuid.uuid4().hex}",
+                "type": "message",
+                "status": "completed",
+                "role": message.get("role") or "assistant",
+                "content": [{"type": "output_text", "text": text, "annotations": []}],
+            }
+            copy_passthrough_fields(message, message_item, ("reasoning_content", "thinking", "reasoning"))
+            output_items.append(message_item)
+
+            tool_calls = message.get("tool_calls")
+            if isinstance(tool_calls, list):
+                for tool_call in tool_calls:
+                    if not isinstance(tool_call, dict):
+                        continue
+                    function_payload = tool_call.get("function") if isinstance(tool_call.get("function"), dict) else {}
+                    call_id = tool_call.get("id") or f"call_{uuid.uuid4().hex}"
+                    call_item = {
+                        "id": call_id,
+                        "type": "function_call",
+                        "status": "completed",
+                        "call_id": call_id,
+                        "name": function_payload.get("name") or tool_call.get("name") or "tool",
+                        "arguments": function_payload.get("arguments") or tool_call.get("arguments") or "{}",
+                    }
+                    output_items.append(call_item)
+            return output_items, text
+
         def int_value(value):
             if value is None or isinstance(value, bool):
                 return None
@@ -1263,12 +1358,7 @@ final class CursorConnectorManager {
                         continue
                     if not isinstance(item, dict):
                         continue
-                    role = item.get("role") or "user"
-                    if role == "developer":
-                        role = "system"
-                    text = "\\n".join(extract_text_parts(item.get("content")))
-                    if text:
-                        messages.append({"role": role, "content": text})
+                    messages.extend(response_item_to_chat_messages(item))
             chat = {"model": payload["model"], "messages": messages or [{"role":"user","content":""}]}
             for key in ("stream", "temperature", "top_p", "stop", "tools", "tool_choice", "parallel_tool_calls", "presence_penalty", "frequency_penalty", "metadata"):
                 if key in payload:
@@ -1282,11 +1372,7 @@ final class CursorConnectorManager {
         def chat_to_responses_payload(model, payload):
             choice = (payload.get("choices") or [{}])[0]
             message = choice.get("message") or {}
-            content = message.get("content")
-            if isinstance(content, str):
-                text = content
-            else:
-                text = "\\n".join(extract_text_parts(content))
+            output, text = chat_message_to_response_output(message if isinstance(message, dict) else {})
             normalized_usage = normalize_usage(payload.get("usage") or {})
             return {
                 "id": payload.get("id") or f"resp_{uuid.uuid4().hex}",
@@ -1294,13 +1380,7 @@ final class CursorConnectorManager {
                 "created_at": int(datetime.datetime.now().timestamp()),
                 "status": "completed",
                 "model": model,
-                "output": [{
-                    "id": f"msg_{uuid.uuid4().hex}",
-                    "type": "message",
-                    "status": "completed",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": text, "annotations": []}],
-                }],
+                "output": output,
                 "output_text": text,
                 "usage": {
                     "input_tokens": normalized_usage.get("prompt_tokens"),
