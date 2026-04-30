@@ -6,7 +6,7 @@ import OpenBurnBarCore
 
 @MainActor
 final class ConversationSyncRoundTripTests: XCTestCase {
-    private var dataStore: DataStore!
+    private var dataStore: DataStoreCoordinator!
     private var accountManager: FakeAccountManager!
     private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!

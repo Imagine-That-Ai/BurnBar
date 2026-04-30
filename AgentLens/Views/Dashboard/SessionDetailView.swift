@@ -5,7 +5,7 @@ import SwiftUI
 struct SessionDetailView: View {
     let session: TokenUsage
     let theme: ProviderTheme
-    var dataStore: DataStore
+    var dataStore: DataStoreCoordinator
     var onOpenSessionLog: ((ConversationJumpTarget) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
@@ -381,8 +381,8 @@ private struct StatTile: View {
 }
 
 #Preview {
-    let store = (try? DataStore()) ?? {
-        preconditionFailure("Preview requires a valid DataStore - ensure app support directory is writable")
+    let store = (try? DataStoreCoordinator()) ?? {
+        preconditionFailure("Preview requires a valid DataStoreCoordinator - ensure app support directory is writable")
     }()
     return SessionDetailView(
         session: TokenUsage(

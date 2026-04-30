@@ -5,7 +5,7 @@ import OpenBurnBarCore
 struct ProvidersSettingsView: View {
     @Bindable var settingsManager: SettingsManager
     @Bindable var daemonManager: OpenBurnBarDaemonManager
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
 
     @State private var quotaService = ProviderQuotaService.shared
 

@@ -12,7 +12,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     func test_migration_v28_addsProvenanceColumns() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
         let columns = try queue.read { db -> [String] in
             let rows = try Row.fetchAll(db, sql: "PRAGMA table_info(token_usage)")
@@ -43,7 +43,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     func test_insertExactProviderLog_persistsProvenance() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
         let usage = TokenUsage(
             provider: .claudeCode, sessionId: "prov-test-1", projectName: "TestProject",
@@ -62,7 +62,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     func test_insertHeuristicEstimate_persistsProvenance() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
         let usage = TokenUsage(
             provider: .cursor, sessionId: "prov-test-2", projectName: "CursorProject",
@@ -82,7 +82,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     func test_insertBillingAPI_persistsProvenance() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
         let usage = TokenUsage(
             provider: .claudeCode, sessionId: "prov-test-3", projectName: "API Recon",
@@ -101,7 +101,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     func test_insertDaemonBridge_persistsProvenance() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
         let usage = TokenUsage(
             provider: .factory, sessionId: "prov-test-4", projectName: "Daemon Session",
@@ -118,7 +118,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     func test_insertConnectorBridge_persistsProvenance() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
         let usage = TokenUsage(
             provider: .claudeCode, sessionId: "prov-test-5", projectName: "Connector",
@@ -136,7 +136,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     func test_insertInAppChat_persistsProvenance() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
         let usage = TokenUsage(
             provider: .claudeCode, sessionId: "prov-test-6/1", projectName: "ChatProject",
@@ -155,7 +155,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     func test_upsertPreservesProvenanceOnConflict() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = UsageStore(dbQueue: queue)
 
         let sessionId = "prov-upsert-1"
@@ -202,7 +202,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
     func test_upsertEqualConfidence_allowsUpdate() throws {
         // Test that when confidence levels are equal, updates ARE allowed
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = UsageStore(dbQueue: queue)
 
         let sessionId = "prov-upsert-equal-conf"
@@ -245,7 +245,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     func test_insertRemoteUsage_preservesProvenance() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = UsageStore(dbQueue: queue)
 
         let usage = TokenUsage(
@@ -343,7 +343,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
     func test_migrationBackfill_existingRowsGetExactProvenance() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = UsageStore(dbQueue: queue)
 
         // Insert a row using pre-provenance code path (defaults to unknown)
@@ -433,7 +433,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
     func test_sourceIdentity_preservedOnEqualConfidenceUpsert() throws {
         // Given: a row from provider_log with exact confidence
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = UsageStore(dbQueue: queue)
 
         let sessionId = "source-identity-test-1"
@@ -491,7 +491,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
     func test_sourceIdentity_updatedOnHigherConfidenceUpsert() throws {
         // Given: a row from provider_log with low confidence
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = UsageStore(dbQueue: queue)
 
         let sessionId = "source-identity-test-2"
@@ -548,7 +548,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
     func test_sourceIdentity_preservedAcrossAllSources() throws {
         // Test that source identity is preserved for all source types
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = UsageStore(dbQueue: queue)
 
         let sources: [UsageSource] = [.providerLog, .inAppChat, .cursorBridge, .billingAPI, .daemon]
@@ -610,7 +610,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
     func test_atomicIngestionTransaction_sourceIdentity_preservedOnEqualConfidenceUpsert() throws {
         // Given: a row from provider_log with exact confidence via AtomicIngestionTransaction
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
         let store = UsageStore(dbQueue: queue)
 
@@ -683,7 +683,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
     func test_atomicIngestionTransaction_sourceIdentity_updatedOnHigherConfidenceUpsert() throws {
         // Given: a row from provider_log with low confidence via AtomicIngestionTransaction
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
         let store = UsageStore(dbQueue: queue)
 
@@ -755,7 +755,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
     func test_atomicIngestionTransaction_sourceIdentity_notOverwrittenOnLowerConfidence() throws {
         // Given: a row from billing_api with exact confidence
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
         let store = UsageStore(dbQueue: queue)
 

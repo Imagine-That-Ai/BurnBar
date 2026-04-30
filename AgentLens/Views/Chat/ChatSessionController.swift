@@ -46,7 +46,7 @@ final class ChatSessionController {
     var isSearching = false
     var historyQuery = ""
     var historyThreads: [ChatThreadSummary] = []
-    private(set) var activeThreadID: String = DataStore.legacyChatThreadID
+    private(set) var activeThreadID: String = DataStoreCoordinator.legacyChatThreadID
     var selectedContext: ConversationRecord?
     var retrievalHealthSnapshot: RetrievalSystemHealthSnapshot = .empty
     /// Set after each send from hybrid retrieval; UI may hint when no excerpts matched.
@@ -85,7 +85,7 @@ final class ChatSessionController {
     }
     var firstAssistantBadgeShown = false
     private(set) var activeStreamMessageId: String?
-    private let dataStore: DataStore
+    private let dataStore: DataStoreCoordinator
     private var searchService: any ChatSessionSearchProviding
     /// Typed reference for methods that require SearchService (runBurnBarQuery, InsightBriefSnapshot).
     private var typedSearchService: SearchService? { searchService as? SearchService }
@@ -102,7 +102,7 @@ final class ChatSessionController {
     private var sharedFeaturesAvailable = true
 
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         settingsManager: SettingsManager = .shared,
         searchService: (any ChatSessionSearchProviding)? = nil
     ) {
@@ -414,7 +414,7 @@ final class ChatSessionController {
                     AppLogger.chat.silentFailure("createChatThread (codex/claude)", error: error)
                 }
             }
-            return DataStore.legacyChatThreadID
+            return DataStoreCoordinator.legacyChatThreadID
 
         case .hermes, .openclaw:
             if createIfMissing {
@@ -426,7 +426,7 @@ final class ChatSessionController {
                     AppLogger.chat.silentFailure("createChatThread (hermes/openclaw)", error: error)
                 }
             }
-            return DataStore.legacyChatThreadID
+            return DataStoreCoordinator.legacyChatThreadID
         }
     }
 
@@ -478,7 +478,7 @@ final class ChatSessionController {
             activeThreadID = try dataStore.createChatThread(id: newID)
         } catch {
             AppLogger.chat.silentFailure("createChatThread (startNew)", error: error)
-            activeThreadID = DataStore.legacyChatThreadID
+            activeThreadID = DataStoreCoordinator.legacyChatThreadID
         }
         persistActiveThreadSlot()
         messages = []

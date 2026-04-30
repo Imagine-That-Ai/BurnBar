@@ -12,7 +12,7 @@ import SwiftUI
 /// The sheet maintains deterministic state: target selection always resets to `claude` on reopen.
 struct ContextPackSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Bindable var dataStore: DataStore
+    @Bindable var dataStore: DataStoreCoordinator
 
     /// Optional anchor session ID. When provided, the pack is assembled around this session.
     let anchorSessionId: String?
@@ -438,7 +438,7 @@ struct ContextPackSheet: View {
 
 /// Entry card shown on the Dashboard overview that opens the Context Pack sheet.
 struct ContextPackDashboardCard: View {
-    @Bindable var dataStore: DataStore
+    @Bindable var dataStore: DataStoreCoordinator
     let selectedTimeRange: TimeRange
     var onPresentSheet: () -> Void
 
@@ -498,7 +498,7 @@ struct ContextPackDashboardCard: View {
 struct SessionDetailContextPackRow: View {
     let session: TokenUsage
     let conversation: ConversationRecord?
-    @Bindable var dataStore: DataStore
+    @Bindable var dataStore: DataStoreCoordinator
     var onPresentSheet: (String?, String?) -> Void
 
     @Environment(SettingsManager.self) private var settingsManager: SettingsManager?

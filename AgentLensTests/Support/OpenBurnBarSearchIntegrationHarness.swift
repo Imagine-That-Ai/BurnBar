@@ -28,7 +28,7 @@ final class OpenBurnBarSearchIntegrationHarness {
     let rootURL: URL
     let databaseURL: URL
     let fileRoots: FileRoots
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let clock: OpenBurnBarFakeClock
     let embedder: OpenBurnBarFakeEmbedder
     let queryEmbedder: OpenBurnBarFakeQueryEmbedder
@@ -82,7 +82,7 @@ final class OpenBurnBarSearchIntegrationHarness {
         )
 
         databaseQueue = try DatabaseQueue(path: databaseURL.path)
-        dataStore = try DataStore(
+        dataStore = try DataStoreCoordinator(
             databaseQueue: databaseQueue,
             runMigrations: true,
             refreshOnInit: false

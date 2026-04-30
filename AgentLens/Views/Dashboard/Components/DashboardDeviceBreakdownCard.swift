@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import WebKit
 struct DeviceBreakdownCard: View {
-    var dataStore: DataStore
+    var dataStore: DataStoreCoordinator
     let isSyncing: Bool
     @State private var summaries: [DeviceUsageSummary] = []
 

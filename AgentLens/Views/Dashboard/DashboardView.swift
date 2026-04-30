@@ -2,384 +2,89 @@ import AppKit
 import SwiftUI
 import WebKit
 
-// MARK: - Dashboard Main Route
-
-enum DashboardMainRoute: Hashable {
-    case overview
-    case database
-    case projects
-    case missions
-    case sessionLogs
-    case provider(AgentProvider)
-    case model(String)
-}
-
-// MARK: - Dashboard View
-
 struct DashboardView: View {
-    @Bindable var dataStore: DataStore
-    @Bindable var operatingLayer: OpenBurnBarOperatingLayer
-    @Bindable var settingsManager: SettingsManager
-    @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    var aggregator: UsageAggregator?
-    var accountManager: AccountManager
-    var cloudSyncService: CloudSyncService?
-    var iCloudSessionMirrorService: ICloudSessionMirrorService?
-    @State var mainRoute: DashboardMainRoute = .overview
-    @State var routeHistory: [DashboardMainRoute] = []
-    @State var selectedTimeRange: TimeRange = .today
-    @AppStorage("dashboardViewMode") var viewMode: DashboardViewMode = .agents
+    let context: DashboardContext
+    @Environment(NavigationCoordinator.self) var navigationCoordinator
+    @AppStorage("dashboardViewMode") var storedViewMode: DashboardViewMode = .agents
+    @State var navigationModel = DashboardNavigationModel()
+    @State var consentCoordinator: DashboardConsentCoordinator?
     @State var showingSettings = false
     @State var showProgressPanel = false
     @State var overviewAppeared = false
-    @State var deviceCount = 0
     @State var sidebarAppeared = false
     @State var chatPanelOpen = false
-    @State private var showIndexingConsent = false
-    @State private var showCLIConsentSheet = false
-    @State private var showSessionLogCloudConsent = false
     @State var sessionLogJumpTarget: ConversationJumpTarget?
-    @State var sessionLogJumpLookup: [String: ConversationRecord] = [:]
     @State var dashboardCanvasSize: CGSize = .zero
-    @State var didAutoExpandEmptyTimeRange = false
     @State var showContextPackSheet = false
-    var chatController: ChatSessionController
-    @State var quotaService = ProviderQuotaService.shared
 
-    init(
-        dataStore: DataStore,
-        aggregator: UsageAggregator?,
-        accountManager: AccountManager = .shared,
-        cloudSyncService: CloudSyncService? = nil,
-        iCloudSessionMirrorService: ICloudSessionMirrorService? = nil,
-        chatController: ChatSessionController,
-        operatingLayer: OpenBurnBarOperatingLayer,
-        settingsManager: SettingsManager
-    ) {
-        self._dataStore = Bindable(dataStore)
-        self._operatingLayer = Bindable(operatingLayer)
-        self._settingsManager = Bindable(settingsManager)
-        self.aggregator = aggregator
-        self.accountManager = accountManager
-        self.cloudSyncService = cloudSyncService
-        self.iCloudSessionMirrorService = iCloudSessionMirrorService
-        self.chatController = chatController
+    init(context: DashboardContext) {
+        self.context = context
+        self._consentCoordinator = State(wrappedValue: DashboardConsentCoordinator(
+            settingsManager: context.settingsManager,
+            accountManager: context.accountManager
+        ))
     }
 
-    var isScanning: Bool { aggregator?.isRefreshing ?? false }
-
-    func runScan() {
-        guard let agg = aggregator else { return }
-        Task { await agg.refreshAll() }
-    }
-
-    func runRecount() {
-        guard let agg = aggregator else { return }
-        Task { await agg.recountAll() }
-    }
-
-    var canGoBack: Bool {
-        !routeHistory.isEmpty || mainRoute != .overview
-    }
-
-    func navigate(to route: DashboardMainRoute) {
-        guard route != mainRoute else { return }
-        routeHistory.append(mainRoute)
-        mainRoute = route
-    }
-
-    func goBack() {
-        if let previous = routeHistory.popLast() {
-            mainRoute = previous
-        } else if mainRoute != .overview {
-            mainRoute = .overview
-        }
-    }
-
-    var backButtonHelpText: String {
-        if let previous = routeHistory.last {
-            return "Back to \(routeTitle(previous))"
-        }
-        return "Back to Overview"
-    }
-
-    func routeTitle(_ route: DashboardMainRoute) -> String {
-        switch route {
-        case .overview: return "Overview"
-        case .database: return "Database"
-        case .projects: return "Projects"
-        case .missions: return "Missions"
-        case .sessionLogs: return "Session Logs"
-        case .provider(let provider): return provider.displayName
-        case .model(let modelName): return modelName
-        }
-    }
-
-    /// Opens Cursor's extension install flow for OpenBurnBar (`extensions/openburnbar` package id).
-    func openBurnBarCursorExtension() {
-        let id = "openburnbar.openburnbar"
-        let candidates = [
-            URL(string: "cursor:extension/\(id)"),
-            URL(string: "vscode:extension/\(id)"),
-        ].compactMap { $0 }
-        for url in candidates {
-            if NSWorkspace.shared.open(url) { return }
-        }
-    }
+    var isScanning: Bool { context.aggregator?.isRefreshing ?? false }
+    var canRunRecount: Bool { context.aggregator != nil }
 
     var body: some View {
-        @Bindable var chatController = chatController
-        return NavigationSplitView {
-            sidebarView
+        let dataStore = context.dataStore
+        let dateRange = navigationModel.selectedTimeRange.dateRange()
+        let providerSummaries = dataStore.providerSummaries(in: dateRange)
+        let modelSummaries = dataStore.modelSummaries(in: dateRange)
+        let filteredUsages = dataStore.usages(in: dateRange)
+        let totalCost = filteredUsages.reduce(0) { $0 + $1.cost }
+        let totalTokens = filteredUsages.reduce(0) { $0 + $1.totalTokens }
+        let activeProviderCount = Set(filteredUsages.map(\.provider)).count
+        let topModels = providerSummaries.flatMap { s in
+            s.modelBreakdown.map { (model: $0.modelName, provider: s.provider, cost: $0.cost, tokens: $0.totalTokens) }
+        }.sorted { $0.cost > $1.cost }
+
+        chrome(content:
+            NavigationSplitView {
+                DashboardSidebar(
+                    viewMode: navigationModel.viewMode,
+                    mainRoute: navigationModel.mainRoute,
+                    providerSummaries: providerSummaries,
+                    modelSummaries: modelSummaries,
+                    totalCost: totalCost,
+                    totalTokens: totalTokens,
+                    filteredUsagesCount: filteredUsages.count,
+                    activeProviderCount: activeProviderCount,
+                    selectedTimeRange: navigationModel.selectedTimeRange,
+                    context: context,
+                    sidebarAppeared: sidebarAppeared,
+                    onNavigate: { navigationModel.navigate(to: $0) },
+                    onBack: { navigationModel.goBack() },
+                    onOpenCursorExtension: { openBurnBarCursorExtension() }
+                )
                 .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
                 .background(DesignSystem.Colors.background)
-        } detail: {
-            detailView
-        }
-        .navigationSplitViewStyle(.balanced)
-        .background {
-            DashboardBackdrop(moodBand: dataStore.moodBand)
-            GeometryReader { geo in
-                Color.clear
-                    .onAppear {
-                        dashboardCanvasSize = geo.size
-                    }
-                    .onChange(of: geo.size) { _, newSize in
-                        dashboardCanvasSize = newSize
-                    }
-            }
-            .allowsHitTesting(false)
-        }
-        .onAppear {
-            autoExpandTimeRangeIfNeeded()
-        }
-        .onChange(of: dataStore.usages.count) { _, _ in
-            autoExpandTimeRangeIfNeeded()
-        }
-        .overlay(alignment: .bottomTrailing) {
-            VStack(spacing: 12) {
-                if chatPanelOpen {
-                    ChatPanel(
-                        controller: chatController,
-                        dataStore: dataStore,
-                        settingsManager: settingsManager,
-                        sharedFeaturesAvailable: accountManager.isSignedIn,
-                        containerSize: dashboardCanvasSize,
-                        edgePadding: 20,
-                        onOpenConversationJump: { target in
-                            sessionLogJumpTarget = target
-                            if mainRoute != .sessionLogs {
-                                navigate(to: .sessionLogs)
-                            }
-                        },
-                        onClose: {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                                chatPanelOpen = false
-                                UserDefaults.standard.set(dataStore.usages.count, forKey: "lastSeenSessionCountForChatBadge")
-                            }
+            } detail: {
+                DashboardDetailView(
+                    mainRoute: navigationModel.mainRoute,
+                    context: context,
+                    selectedTimeRange: navigationModel.selectedTimeRange,
+                    sessionLogJumpTarget: sessionLogJumpTarget,
+                    providerSummaries: providerSummaries,
+                    modelSummaries: modelSummaries,
+                    topModels: topModels,
+                    filteredUsages: filteredUsages,
+                    overviewAppeared: overviewAppeared,
+                    showProgressPanel: $showProgressPanel,
+                    showContextPackSheet: $showContextPackSheet,
+                    onNavigate: { navigationModel.navigate(to: $0) },
+                    onOpenSessionLogs: { target in
+                        sessionLogJumpTarget = target
+                        if navigationModel.mainRoute != .sessionLogs {
+                            navigationModel.navigate(to: .sessionLogs)
                         }
-                    )
-                    .offset(x: chatController.panelFloatOffset.width, y: chatController.panelFloatOffset.height)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .opacity
-                    ))
-                }
-                if !chatPanelOpen {
-                    ChatFAB(hasNewInsights: hasNewInsightPulse) {
-                        if !settingsManager.cliAssistantConsentShown {
-                            showCLIConsentSheet = true
-                            return
-                        }
-                        Task { await chatController.cliBridge.detect() }
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                            chatPanelOpen = true
-                        }
-                    }
-                }
-            }
-            .padding(EdgeInsets(top: 24, leading: 20, bottom: 20, trailing: 20))
-        }
-        .toolbar { toolbarContent }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView(
-                settingsManager: settingsManager,
-                accountManager: accountManager,
-                cloudSyncService: cloudSyncService,
-                iCloudSessionMirrorService: iCloudSessionMirrorService,
-                dataStore: dataStore
-            )
-        }
-        .onAppear {
-            if !settingsManager.conversationIndexingConsentShown {
-                showIndexingConsent = true
-            }
-            refreshSessionLogJumpLookup()
-        }
-        .alert("Index conversation history?", isPresented: $showIndexingConsent) {
-            Button("Enable") {
-                settingsManager.conversationIndexingEnabled = true
-                settingsManager.conversationIndexingConsentShown = true
-                Task { await aggregator?.refreshAll() }
-            }
-            Button("Not now", role: .cancel) {
-                settingsManager.conversationIndexingEnabled = false
-                settingsManager.conversationIndexingConsentShown = true
-            }
-        } message: {
-            Text("OpenBurnBar can index your conversation history for search and chat. This data stays on your Mac.")
-        }
-        .sheet(isPresented: $showCLIConsentSheet) {
-            CLIAssistantConsentSheet(settingsManager: settingsManager) {
-                showCLIConsentSheet = false
-            }
-            .presentationBackground(Material.ultraThinMaterial)
-        }
-        .sheet(isPresented: $showSessionLogCloudConsent) {
-            SessionLogCloudConsentSheet(settingsManager: settingsManager) {
-                showSessionLogCloudConsent = false
-            }
-            .presentationBackground(Material.ultraThinMaterial)
-        }
-        .onChange(of: accountManager.isSignedIn) { _, isSignedIn in
-            chatController.refreshRetrievalHealth(sharedFeaturesAvailable: isSignedIn)
-            if isSignedIn && !settingsManager.sessionLogCloudBackupConsentShown {
-                showSessionLogCloudConsent = true
-            }
-        }
-        .onChange(of: dataStore.lastRefresh) { _, _ in
-            refreshSessionLogJumpLookup()
-        }
-        .onChange(of: navigationCoordinator.pendingNavigation) { _, destination in
-            guard let destination else { return }
-            switch destination {
-            case .conversationSearch, .chatPanel:
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                    chatPanelOpen = true
-                }
-            default:
-                break
-            }
-            navigationCoordinator.clearPendingNavigation()
-        }
-        .onChange(of: navigationCoordinator.chatPanelOpen) { _, isOpen in
-            guard isOpen, !chatPanelOpen else { return }
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                chatPanelOpen = true
-            }
-        }
-        .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
-        .environment(settingsManager)
-    }
-
-    // MARK: - Detail View
-
-    @ViewBuilder
-    var detailView: some View {
-        VStack(spacing: 0) {
-            dashboardWorkspaceNavStrip
-
-            Group {
-                switch mainRoute {
-                case .overview:
-                    overviewView
-                case .database:
-                    DatabaseWorkspaceView(
-                        dataStore: dataStore,
-                        settingsManager: settingsManager,
-                        accountManager: accountManager,
-                        cloudSyncService: cloudSyncService
-                    )
-                case .projects:
-                    ProjectsView(
-                        dataStore: dataStore,
-                        settingsManager: settingsManager,
-                        operatingLayer: operatingLayer
-                    )
-                case .missions:
-                    MissionsLaneView(
-                        operatingLayer: operatingLayer,
-                        onOpenSessionLogs: {
-                            withAnimation(DesignSystem.Animation.standard) {
-                                navigate(to: .sessionLogs)
-                            }
-                        }
-                    )
-                case .sessionLogs:
-                    SessionLogsView(
-                        dataStore: dataStore,
-                        accountManager: accountManager,
-                        settingsManager: settingsManager,
-                        operatingLayer: operatingLayer,
-                        cloudSyncService: cloudSyncService,
-                        iCloudMirrorService: iCloudSessionMirrorService,
-                        jumpTarget: sessionLogJumpTarget,
-                        preferredChatModelKey: chatController.hermesModelName
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                case .provider(let provider):
-                    ProviderDashboardView(
-                        provider: provider,
-                        dataStore: dataStore,
-                        timeRange: selectedTimeRange,
-                        onOpenSessionLog: openSessionLogs
-                    )
-                case .model(let modelName):
-                    ModelDashboardView(
-                        modelName: modelName,
-                        dataStore: dataStore,
-                        timeRange: selectedTimeRange,
-                        onOpenSessionLog: openSessionLogs
-                    )
-                }
-            }
-            // Route views are heavily scroll-based. Give each route a fresh identity so macOS
-            // does not restore a stale NSScrollView offset from the previously visible pane.
-            .id(mainRoute)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if let agg = aggregator, agg.isSummarizing {
-                SummarizingStatusStrip(
-                    done: agg.summaryProgressDone,
-                    total: agg.summaryProgressTotal,
-                    currentTitle: agg.summaryCurrentTitle,
-                    completedProviders: Array(Set(agg.summaryQueue.compactMap(\.provider))).sorted(),
-                    onTap: { showProgressPanel = true }
+                    },
+                    onOpenSettings: { showingSettings = true }
                 )
-                .transition(.move(edge: .top).combined(with: .opacity))
             }
-        }
-        .animation(DesignSystem.Animation.standard, value: aggregator?.isSummarizing)
-        .sheet(isPresented: $showProgressPanel) {
-            if let agg = aggregator {
-                SummaryProgressPanel(aggregator: agg)
-            }
-        }
-        .sheet(isPresented: $showContextPackSheet) {
-            ContextPackSheet(
-                dataStore: dataStore,
-                anchorSessionId: nil,
-                anchorProject: nil,
-                dateRange: selectedTimeRange.dateRange()
-            )
-        }
+            .navigationSplitViewStyle(.balanced)
+        )
     }
-
-    // MARK: - Stubs for missing view helpers (pre-existing build gap)
-
-    private func autoExpandTimeRangeIfNeeded() {}
-    private func refreshSessionLogJumpLookup() {}
-
-    @ViewBuilder
-    private var dashboardWorkspaceNavStrip: some View {
-        EmptyView()
-    }
-
-    @ViewBuilder
-    private var overviewView: some View {
-        EmptyView()
-    }
-
-    private func openSessionLogs(_ target: ConversationJumpTarget) {}
 }

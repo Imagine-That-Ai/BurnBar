@@ -203,13 +203,3 @@ actor DataStoreActor {
         }
     }
 }
-
-// MARK: - DataStore (deprecated typealias)
-//
-// The DataStore class has been renamed to DataStoreCoordinator and moved to
-// AgentLens/Services/DataStore/DataStoreCoordinator.swift. All existing code
-// that imports this module will continue to work via the typealias below.
-// TODO(1.0): Remove this typealias and update all import sites.
-
-@available(*, deprecated, message: "DataStore is renamed to DataStoreCoordinator. Update your import to use DataStoreCoordinator instead.")
-typealias DataStore = DataStoreCoordinator

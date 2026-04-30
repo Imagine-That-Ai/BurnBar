@@ -22,7 +22,7 @@ extension OpenBurnBarDaemonManager {
     }
 
     func makeControllerActivitySnapshot(
-        from dataStore: DataStore
+        from dataStore: DataStoreCoordinator
     ) throws -> BurnBarControllerActivitySnapshot {
         let conversations = try dataStore.fetchConversations(limit: 250)
         let start = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date().addingTimeInterval(-7 * 24 * 60 * 60)

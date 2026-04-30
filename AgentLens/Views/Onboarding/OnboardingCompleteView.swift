@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct OnboardingCompleteView: View {
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let selectedProviders: Set<AgentProvider>
     let onOpenDashboard: () -> Void
     let onDismiss: () -> Void

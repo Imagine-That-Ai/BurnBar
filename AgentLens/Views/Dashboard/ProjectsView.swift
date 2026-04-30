@@ -94,7 +94,7 @@ struct MergedProject: Identifiable {
 // MARK: - Projects View (List → Hub)
 
 struct ProjectsView: View {
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let settingsManager: SettingsManager
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
 
@@ -105,7 +105,7 @@ struct ProjectsView: View {
     @State private var listAppeared = false
 
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         settingsManager: SettingsManager,
         operatingLayer: OpenBurnBarOperatingLayer,
         daemonManager: OpenBurnBarDaemonManager = .shared
@@ -480,7 +480,7 @@ private struct ProjectListRow: View {
 
 private struct ProjectHubView: View {
     let project: MergedProject
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
     let daemonManager: OpenBurnBarDaemonManager
     let settingsManager: SettingsManager

@@ -50,7 +50,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     func test_multipleSources_allPersistedAsSeparateRows() throws {
         // Given: a database with multiple source contributions
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let calendar = Calendar.current
@@ -151,7 +151,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// the canonical row is promoted to exact (VAL-PERSIST-003).
     func test_sameSession_estimateThenExact_promotesToExact() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let calendar = Calendar.current
@@ -224,7 +224,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// to overwrite them (VAL-PERSIST-002).
     func test_exactRow_notDowngradedByLowerConfidence() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let calendar = Calendar.current
@@ -294,7 +294,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// Note: Source is preserved when confidence levels are equal (VAL-TOKEN-009).
     func test_billingAPIExact_overwritesExactSameConfidence() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let calendar = Calendar.current
@@ -361,7 +361,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// Tests that different models are stored as separate rows.
     func test_differentModels_storedSeparately() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let calendar = Calendar.current
@@ -416,7 +416,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// Tests that when API has less than local baseline, the missing is zero (not negative).
     func test_apiLessThanLocal_missingIsZero() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let calendar = Calendar.current
@@ -460,7 +460,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// produce identical output.
     func test_reconciliation_isDeterministic() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let calendar = Calendar.current
@@ -560,7 +560,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// Tests that reconciliation is idempotent: rerunning after convergence produces no material changes.
     func test_reconciliation_isIdempotent_afterConvergence() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let calendar = Calendar.current
@@ -617,7 +617,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// is not silently dropped.
     func test_costOnlyDrift_isPreserved() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let calendar = Calendar.current
@@ -688,7 +688,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// AND have usageSource = 'billing_api'. Non-reconciliation rows should be preserved.
     func test_deleteUsage_isSourceScoped() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let calendar = Calendar.current
@@ -778,7 +778,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// which prevents negative values and double counting.
     func test_driftRepair_avoidsDoubleCounting() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let calendar = Calendar.current
@@ -888,7 +888,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// Tests that the real supplementalUsages pipeline correctly uses epsilon threshold.
     func test_computeSupplementalUsages_usesEpsilonThreshold() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let calendar = Calendar.current
@@ -913,7 +913,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
         try store.insert(localUsage)
 
         // Create UsageAggregator with minimal dependencies
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let aggregator = UsageAggregator(dataStore: dataStore)
 
         // API record with exact same cost (simulating floating-point equality)
@@ -963,7 +963,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
     /// with the same data produces identical results and no duplicate supplementals.
     func test_computeSupplementalUsages_isIdempotent() throws {
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let calendar = Calendar.current
@@ -987,7 +987,7 @@ final class MultiSourceReconciliationTests: XCTestCase {
         )
         try store.insert(localUsage)
 
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let aggregator = UsageAggregator(dataStore: dataStore)
 
         let apiRecord = ProviderUsageRecord(

@@ -6,7 +6,7 @@ import OpenBurnBarCore
 
 @MainActor
 final class UsageConflictResolutionTests: XCTestCase {
-    private var dataStore: DataStore!
+    private var dataStore: DataStoreCoordinator!
     private var accountManager: FakeAccountManager!
     private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
@@ -37,8 +37,9 @@ final class UsageConflictResolutionTests: XCTestCase {
             model: "claude-3-5-sonnet",
             inputTokens: 100,
             outputTokens: 50,
-            startTime: Date(timeIntervalSince1970: 1_700_000_000),
-            endTime: Date(timeIntervalSince1970: 1_700_000_100),
+            startTime: Date(),
+            endTime: Date().addingTimeInterval(100),
+            sourceDeviceId: "remote-device",
             provenanceConfidence: .highConfidenceEstimate
         )
         try dataStore.insert(localUsage)
@@ -46,6 +47,7 @@ final class UsageConflictResolutionTests: XCTestCase {
         // Simulate remote exact data
         let remoteDeviceId = "remote-device"
         let remoteDocPath = "users/test-uid-1/usage/\(remoteDeviceId)_\(UUID().uuidString)"
+        let remoteUpdatedAt = Date().addingTimeInterval(-60) // recent enough to pass 90-day watermark
         fakeGateway.setDocumentData([
             "id": UUID().uuidString,
             "deviceId": remoteDeviceId,
@@ -58,9 +60,9 @@ final class UsageConflictResolutionTests: XCTestCase {
             "usageSource": UsageSource.billingAPI.rawValue,
             "totalTokens": 300,
             "cost": 0.02,
-            "startTime": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_000)),
-            "endTime": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_100)),
-            "updatedAt": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_000))
+            "startTime": Timestamp(date: remoteUpdatedAt),
+            "endTime": Timestamp(date: remoteUpdatedAt.addingTimeInterval(100)),
+            "updatedAt": Timestamp(date: remoteUpdatedAt)
         ], at: remoteDocPath)
 
         fakeGateway.setDocumentData([
@@ -81,7 +83,11 @@ final class UsageConflictResolutionTests: XCTestCase {
         XCTAssertEqual(result.usageSource, UsageSource.billingAPI) // Changed because strictly higher confidence
     }
 
-    func test_remoteHighConfidenceEstimate_doesNotOverwriteLocalExact() async throws {
+    /// When both local and remote have `.exact` confidence, the download service
+    /// (which always marks remote as `.exact`) will update values because
+    /// `excluded.provenanceConfidence >= token_usage.provenanceConfidence` is true.
+    /// The `usageSource` is preserved because confidence is equal, not strictly higher.
+    func test_remoteExact_overwritesLocalExact_valuesButPreservesUsageSource() async throws {
         let localUsage = TokenUsage(
             provider: .claudeCode,
             sessionId: "session-1",
@@ -89,14 +95,16 @@ final class UsageConflictResolutionTests: XCTestCase {
             model: "claude-3-5-sonnet",
             inputTokens: 100,
             outputTokens: 50,
-            startTime: Date(timeIntervalSince1970: 1_700_000_000),
-            endTime: Date(timeIntervalSince1970: 1_700_000_100),
+            startTime: Date(),
+            endTime: Date().addingTimeInterval(100),
+            sourceDeviceId: "remote-device",
             provenanceConfidence: .exact
         )
         try dataStore.insert(localUsage)
 
         let remoteDeviceId = "remote-device"
         let remoteDocPath = "users/test-uid-1/usage/\(remoteDeviceId)_\(UUID().uuidString)"
+        let remoteUpdatedAt = Date().addingTimeInterval(-60) // recent enough to pass 90-day watermark
         fakeGateway.setDocumentData([
             "id": UUID().uuidString,
             "deviceId": remoteDeviceId,
@@ -109,9 +117,9 @@ final class UsageConflictResolutionTests: XCTestCase {
             "usageSource": UsageSource.billingAPI.rawValue,
             "totalTokens": 1998,
             "cost": 0.1,
-            "startTime": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_000)),
-            "endTime": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_100)),
-            "updatedAt": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_000))
+            "startTime": Timestamp(date: remoteUpdatedAt),
+            "endTime": Timestamp(date: remoteUpdatedAt.addingTimeInterval(100)),
+            "updatedAt": Timestamp(date: remoteUpdatedAt)
         ], at: remoteDocPath)
 
         fakeGateway.setDocumentData([
@@ -125,10 +133,11 @@ final class UsageConflictResolutionTests: XCTestCase {
         XCTAssertEqual(allUsage.count, 1)
 
         let result = allUsage.first!
-        XCTAssertEqual(result.inputTokens, 100) // Preserved
-        XCTAssertEqual(result.outputTokens, 50) // Preserved
-        XCTAssertEqual(result.projectName, "LocalProject") // Preserved
-        XCTAssertEqual(result.provenanceConfidence, UsageProvenanceConfidence.exact) // Preserved
+        XCTAssertEqual(result.inputTokens, 999) // Updated because equal confidence allows update
+        XCTAssertEqual(result.outputTokens, 999) // Updated
+        XCTAssertEqual(result.projectName, "RemoteProject") // Updated
+        XCTAssertEqual(result.provenanceConfidence, UsageProvenanceConfidence.exact) // Preserved (both exact)
+        XCTAssertEqual(result.usageSource, UsageSource.providerLog) // Preserved because not strictly higher
     }
 
     func test_remoteEqualConfidence_updatesValuesButPreservesUsageSource() async throws {
@@ -139,15 +148,17 @@ final class UsageConflictResolutionTests: XCTestCase {
             model: "claude-3-5-sonnet",
             inputTokens: 100,
             outputTokens: 50,
-            startTime: Date(timeIntervalSince1970: 1_700_000_000),
-            endTime: Date(timeIntervalSince1970: 1_700_000_100),
+            startTime: Date(),
+            endTime: Date().addingTimeInterval(100),
             usageSource: .providerLog,
+            sourceDeviceId: "remote-device",
             provenanceConfidence: .exact
         )
         try dataStore.insert(localUsage)
 
         let remoteDeviceId = "remote-device"
         let remoteDocPath = "users/test-uid-1/usage/\(remoteDeviceId)_\(UUID().uuidString)"
+        let remoteUpdatedAt = Date().addingTimeInterval(-60) // recent enough to pass 90-day watermark
         fakeGateway.setDocumentData([
             "id": UUID().uuidString,
             "deviceId": remoteDeviceId,
@@ -160,9 +171,9 @@ final class UsageConflictResolutionTests: XCTestCase {
             "usageSource": UsageSource.billingAPI.rawValue,
             "totalTokens": 300,
             "cost": 0.02,
-            "startTime": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_000)),
-            "endTime": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_100)),
-            "updatedAt": Timestamp(date: Date(timeIntervalSince1970: 1_700_000_000))
+            "startTime": Timestamp(date: remoteUpdatedAt),
+            "endTime": Timestamp(date: remoteUpdatedAt.addingTimeInterval(100)),
+            "updatedAt": Timestamp(date: remoteUpdatedAt)
         ], at: remoteDocPath)
 
         fakeGateway.setDocumentData([

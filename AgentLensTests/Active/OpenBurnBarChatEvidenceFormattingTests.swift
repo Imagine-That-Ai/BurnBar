@@ -117,7 +117,7 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
     @MainActor
     func test_memorySyncBoundary_isExplicitlyLocalFirst() throws {
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let boundary = CloudSyncService(
             dataStore: store,
             accountManager: AccountManager.shared,
@@ -132,7 +132,7 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
     @MainActor
     func test_dataStoreLocalAuthoritySnapshot_reportsCountsAndControllerMirrorPresence() throws {
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         try store.insert(
             TokenUsage(
                 provider: .factory,

@@ -46,7 +46,11 @@ final class DownloadSyncService: CloudSyncDomain {
     func updateLocalDeviceName(_ name: String) async {
         guard context.accountManager.isFirebaseAvailable, let uid = context.currentUID else { return }
         let devicesRef = context.firestoreGateway.collection("users").document(uid).collection("devices")
-        try? await devicesRef.document(context.deviceId).setData(["deviceName": name], merge: true)
+        do {
+            try await devicesRef.document(context.deviceId).setData(["deviceName": name], merge: true)
+        } catch {
+            AppLogger.sync.silentFailure("DownloadSyncService: updateLocalDeviceName", error: error)
+        }
     }
 
     // MARK: - Device Registry
@@ -173,7 +177,7 @@ final class DownloadSyncService: CloudSyncDomain {
                 )
                 try context.dataStore.insertRemoteUsage(usage)
 
-                if let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() {
+                if let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? data["updatedAt"] as? Date {
                     syncTx.recordProcessedItem(remoteUpdatedAt: updatedAt)
                 }
             }
@@ -260,7 +264,7 @@ final class DownloadSyncService: CloudSyncDomain {
                 try context.dataStore.insertRemoteConversation(record)
                 insertedIds.append(stableId)
 
-                if let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() {
+                if let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? data["updatedAt"] as? Date {
                     syncTx.recordProcessedItem(remoteUpdatedAt: updatedAt)
                 }
             }

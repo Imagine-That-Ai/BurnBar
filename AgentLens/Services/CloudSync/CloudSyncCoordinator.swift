@@ -11,7 +11,7 @@ import Foundation
 ///   sync with clean test surfaces and clear failure boundaries.
 /// - **Legacy CloudSyncService**: retained as-is for collaboration (`syncSharedArtifacts`)
 ///   and download (`syncRemoteReplicas`) — these are complex flows with deep coupling
-///   to DataStore internals that are not yet extracted.
+///   to DataStoreCoordinator internals that are not yet extracted.
 ///
 /// ## Public API (replaces CloudSyncService methods)
 ///
@@ -31,7 +31,7 @@ final class CloudSyncCoordinator {
     private let context: CloudSyncContext
 
     /// Reference to the original CloudSyncService for collaboration and download sync.
-    /// These flows are still coupled to DataStore internals and are not yet extracted.
+    /// These flows are still coupled to DataStoreCoordinator internals and are not yet extracted.
     private weak var legacyCloudSync: CloudSyncService?
 
     // MARK: - Domain Services
@@ -56,7 +56,7 @@ final class CloudSyncCoordinator {
     ///   - legacyCloudSync: The original CloudSyncService instance, used for collaboration
     ///     and download sync. May be nil if those features are not needed.
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         accountManager: any AccountManaging,
         settingsManager: any SettingsManagerProtocol,
         legacyCloudSync: CloudSyncService? = nil

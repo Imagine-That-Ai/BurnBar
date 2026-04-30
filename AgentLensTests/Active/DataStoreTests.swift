@@ -8,7 +8,7 @@ final class DataStoreTests: XCTestCase {
     // MARK: - Rolling Daily Average Tests
 
     func test_rollingDailyAverage_sevenDays() throws {
-        let store = try DataStore()
+        let store = try DataStoreCoordinator()
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         var usages: [TokenUsage] = []
@@ -34,7 +34,7 @@ final class DataStoreTests: XCTestCase {
     }
 
     func test_rollingDailyAverage_zeroFillsMissingDays() throws {
-        let store = try DataStore()
+        let store = try DataStoreCoordinator()
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         var usages: [TokenUsage] = []
@@ -61,25 +61,25 @@ final class DataStoreTests: XCTestCase {
     // MARK: - Mood Band Tests
 
     func test_moodBand_light() throws {
-        let store = try DataStore()
+        let store = try DataStoreCoordinator()
         store.replaceUsages(moodFixture(today: 0.5, rollingAvg: 1.0))
         XCTAssertEqual(store.moodBand, .light)
     }
 
     func test_moodBand_onPace() throws {
-        let store = try DataStore()
+        let store = try DataStoreCoordinator()
         store.replaceUsages(moodFixture(today: 1.0, rollingAvg: 1.0))
         XCTAssertEqual(store.moodBand, .onPace)
     }
 
     func test_moodBand_heavy() throws {
-        let store = try DataStore()
+        let store = try DataStoreCoordinator()
         store.replaceUsages(moodFixture(today: 2.0, rollingAvg: 1.0))
         XCTAssertEqual(store.moodBand, .heavy)
     }
 
     func test_moodBand_baseline() throws {
-        let store = try DataStore()
+        let store = try DataStoreCoordinator()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
         let u = TokenUsage(
@@ -98,13 +98,13 @@ final class DataStoreTests: XCTestCase {
     }
 
     func test_moodBand_quiet() throws {
-        let store = try DataStore()
+        let store = try DataStoreCoordinator()
         store.replaceUsages(moodFixture(today: 0, rollingAvg: 5))
         XCTAssertEqual(store.moodBand, .quiet)
     }
 
     func test_moodBand_zeroAverage() throws {
-        let store = try DataStore()
+        let store = try DataStoreCoordinator()
         let cal = Calendar.current
         let d0 = cal.startOfDay(for: Date())
         let d1 = cal.date(byAdding: .day, value: -1, to: d0)!
@@ -176,7 +176,7 @@ final class DataStoreTests: XCTestCase {
 
     func test_dataStoreLocalAuthoritySnapshot_reportsCountsAndControllerMirrorPresence() throws {
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         try store.insert(
             TokenUsage(
                 provider: .factory,

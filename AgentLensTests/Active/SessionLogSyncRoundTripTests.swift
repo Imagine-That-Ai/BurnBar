@@ -6,7 +6,7 @@ import OpenBurnBarCore
 
 @MainActor
 final class SessionLogSyncRoundTripTests: XCTestCase {
-    private var dataStore: DataStore!
+    private var dataStore: DataStoreCoordinator!
     private var accountManager: FakeAccountManager!
     private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
@@ -50,9 +50,10 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
             inferredTaskTitle: "Test Task",
             lastAssistantMessage: "Hello",
             fullText: largeBody,
-            fileModifiedAt: nil
+            fileModifiedAt: nil,
+            sourceType: .cliAssistant
         )
-        try dataStore.insertRemoteConversation(record)
+        try dataStore.upsertConversation(record)
 
         await sessionLogSync.sync()
 

@@ -43,7 +43,7 @@ final class DailyDigestManager {
         _ = try? await notificationCenter.requestAuthorization(options: [.alert, .sound])
     }
 
-    func scheduleDigest(from dataStore: DataStore, at hour: Int = 18) {
+    func scheduleDigest(from dataStore: DataStoreCoordinator, at hour: Int = 18) {
         notificationCenter.removePendingNotificationRequests(
             withIdentifiers: [OpenBurnBarIdentity.dailyDigestNotificationIdentifier] + OpenBurnBarIdentity.legacyDailyDigestNotificationIdentifiers
         )

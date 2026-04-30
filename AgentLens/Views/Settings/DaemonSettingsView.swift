@@ -3,12 +3,12 @@ import SwiftUI
 struct DaemonSettingsView: View {
     @Bindable var settingsManager: SettingsManager
     @Bindable var daemonManager: OpenBurnBarDaemonManager
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
 
     init(
         settingsManager: SettingsManager,
         daemonManager: OpenBurnBarDaemonManager = .shared,
-        dataStore: DataStore
+        dataStore: DataStoreCoordinator
     ) {
         self._settingsManager = Bindable(settingsManager)
         self._daemonManager = Bindable(daemonManager)

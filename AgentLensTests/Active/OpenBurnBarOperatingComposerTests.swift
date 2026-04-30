@@ -299,7 +299,7 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
     }
 
     @MainActor
-    private func makeLayer(dataStore: DataStore) -> OpenBurnBarOperatingLayer {
+    private func makeLayer(dataStore: DataStoreCoordinator) -> OpenBurnBarOperatingLayer {
         SettingsManager.shared.conversationIndexingEnabled = true
         let controller = ChatSessionController(dataStore: dataStore, settingsManager: .shared)
         return OpenBurnBarOperatingLayer(
@@ -310,13 +310,13 @@ final class OpenBurnBarOperatingComposerTests: XCTestCase {
         )
     }
 
-    private func makeInMemoryStore() throws -> DataStore {
+    private func makeInMemoryStore() throws -> DataStoreCoordinator {
         let queue = try DatabaseQueue(path: ":memory:")
-        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        return try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
 
     private func seedProject(
-        store: DataStore,
+        store: DataStoreCoordinator,
         project: String,
         conversationDates: [Date],
         latestMessage: String,

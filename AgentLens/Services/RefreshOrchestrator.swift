@@ -12,7 +12,7 @@ struct PostPersistenceResult {
 }
 
 actor RefreshOrchestrator {
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let settingsManager: SettingsManager
     let cloudSyncCoordinator: CloudSyncCoordinator?
     let cloudSync: CloudSyncService?
@@ -21,7 +21,7 @@ actor RefreshOrchestrator {
     let usageAPIService: ProviderUsageAPIService?
 
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         settingsManager: SettingsManager,
         cloudSyncCoordinator: CloudSyncCoordinator? = nil,
         cloudSync: CloudSyncService? = nil,

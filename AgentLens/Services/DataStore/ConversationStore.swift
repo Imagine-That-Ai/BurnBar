@@ -667,7 +667,7 @@ final class ConversationStore: Sendable {
             let now = Date()
             try db.execute(
                 sql: "INSERT INTO chat_threads (id, createdAt, updatedAt) VALUES (?, ?, ?)",
-                arguments: [DataStore.legacyChatThreadID, now, now]
+                arguments: [DataStoreCoordinator.legacyChatThreadID, now, now]
             )
         }
     }

@@ -6,7 +6,7 @@ let onboardingProviderCap = 3
 
 struct SwitcherOnboardingScanAddStep: View {
     @ObservedObject var discoveryService: SwitcherDiscoveryService
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let providerOrder: [OnboardingProvider]
 
     @State private var isSigningInGoogle = false

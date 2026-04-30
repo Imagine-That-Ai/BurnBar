@@ -131,7 +131,7 @@ private struct MiniModelStat: View {
 
 struct ModelDashboardView: View {
     let modelName: String
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let timeRange: TimeRange
     var onOpenSessionLog: ((ConversationJumpTarget) -> Void)? = nil
 

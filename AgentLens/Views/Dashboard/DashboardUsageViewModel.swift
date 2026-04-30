@@ -6,7 +6,7 @@ import OpenBurnBarCore
 
 /// Presentation-layer view model that aggregates raw `[TokenUsage]` into
 /// dashboard-ready metrics (cost totals, mood, sparklines, provider/model summaries).
-/// Owned by `DashboardView`; rebuilt whenever `DataStore.replaceUsages` fires.
+/// Owned by `DashboardView`; rebuilt whenever `DataStoreCoordinator.replaceUsages` fires.
 @Observable
 @MainActor
 final class DashboardUsageViewModel {

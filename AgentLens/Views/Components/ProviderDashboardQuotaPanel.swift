@@ -7,7 +7,7 @@ import AppKit
 struct ProviderDashboardQuotaPanel: View {
     let provider: AgentProvider
     @Bindable var quotaService: ProviderQuotaService
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
 
     private var snapshot: ProviderQuotaSnapshot? {
         quotaService.snapshot(for: provider)

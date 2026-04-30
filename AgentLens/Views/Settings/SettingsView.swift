@@ -10,7 +10,7 @@ struct SettingsView: View {
     var accountManager: AccountManager
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
-    var dataStore: DataStore
+    var dataStore: DataStoreCoordinator
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: SettingsTab? = .general
 
@@ -19,7 +19,7 @@ struct SettingsView: View {
         accountManager: AccountManager = .shared,
         cloudSyncService: CloudSyncService? = nil,
         iCloudSessionMirrorService: ICloudSessionMirrorService? = nil,
-        dataStore: DataStore
+        dataStore: DataStoreCoordinator
     ) {
         self._settingsManager = Bindable(settingsManager)
         self.accountManager = accountManager
@@ -145,8 +145,8 @@ private enum AccountActionError: LocalizedError {
 }
 
 #Preview {
-    let store = (try? DataStore()) ?? {
-        preconditionFailure("Preview requires a valid DataStore - ensure app support directory is writable")
+    let store = (try? DataStoreCoordinator()) ?? {
+        preconditionFailure("Preview requires a valid DataStoreCoordinator - ensure app support directory is writable")
     }()
     SettingsView(settingsManager: SettingsManager(), dataStore: store)
 }

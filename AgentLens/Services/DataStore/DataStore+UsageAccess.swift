@@ -1,7 +1,7 @@
 import Foundation
 import OpenBurnBarCore
 
-extension DataStore {
+extension DataStoreCoordinator {
     nonisolated func insert(_ usage: TokenUsage) throws {
         try usageStore.insert(usage)
     }

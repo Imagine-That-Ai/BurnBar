@@ -39,7 +39,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
     func test_exactRow_isNotDowngradedByLowerConfidenceEstimate() throws {
         // Given: an exact row already exists
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let sessionId = "exact-downgrade-test-1"
@@ -93,7 +93,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
     func test_exactRow_isNotDowngraded_evenWithDifferentValues() throws {
         // Given: an exact row exists
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let sessionId = "exact-downgrade-test-2"
@@ -143,7 +143,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
     func test_highConfidenceEstimate_isNotDowngradedByLowConfidence() throws {
         // Given: a high-confidence estimate row
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let sessionId = "hce-downgrade-test"
@@ -193,7 +193,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
     func test_lateExactPromotesEstimatedCanonicalRow() throws {
         // Given: an estimated row exists
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let sessionId = "exact-upgrade-test-1"
@@ -242,7 +242,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
     func test_lateExactPromotesDerivedExactRow() throws {
         // Given: a derived-exact row exists
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let sessionId = "exact-upgrade-test-2"
@@ -291,7 +291,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
     func test_lateHighConfidencePromotesLowConfidenceEstimate() throws {
         // Given: a low-confidence estimate exists
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let sessionId = "hce-upgrade-test"
@@ -341,7 +341,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
     func test_localReingest_sameLogicalKey_remainsDuplicateFree() throws {
         // Given: a usage row exists
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let sessionId = "dedupe-test-1"
@@ -390,7 +390,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
     func test_localReingest_differentConfidence_equalPrecedence_updatesInPlace() throws {
         // Given: a usage row with unknown confidence
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let sessionId = "dedupe-test-2"
@@ -466,7 +466,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
     func test_upsert_withDifferentSourceDeviceId_createsSeparateRows() throws {
         // Given: a usage row from device A
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let sessionId = "device-test-1"
@@ -516,7 +516,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
         // The conflict target is COALESCE(sourceDeviceId, '')
         // So null and empty string should be treated as the same
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let sessionId = "null-device-test"
@@ -567,7 +567,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
     func test_equalConfidence_differentValues_updatesCorrectly() throws {
         // Given: a row with high-confidence estimate
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let store = makeUsageStore(queue)
 
         let sessionId = "equal-conf-test"

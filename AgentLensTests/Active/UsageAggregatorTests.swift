@@ -9,12 +9,12 @@ final class UsageAggregatorTests: XCTestCase {
 
     // MARK: - Test Helpers
 
-    private func makeTestDataStore() throws -> DataStore {
-        try DataStore()
+    private func makeTestDataStore() throws -> DataStoreCoordinator {
+        try DataStoreCoordinator()
     }
 
     private func makeTestAggregator(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         parserOverrides: [AgentProvider: any LogParser]? = nil,
         usageAPIService: ProviderUsageAPIService? = nil
     ) -> UsageAggregator {

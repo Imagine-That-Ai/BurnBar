@@ -62,9 +62,9 @@ final class InsightBriefStartupTests: XCTestCase {
         XCTAssertEqual(snapshot.heaviestTaskCost ?? -1, 3.25, accuracy: 0.0001)
     }
 
-    private func makeInMemoryStore() throws -> DataStore {
+    private func makeInMemoryStore() throws -> DataStoreCoordinator {
         let queue = try DatabaseQueue(path: ":memory:")
-        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        return try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
 
     private func makeConversation(

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct NarrativeCardView: View {
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
 
     private var narrative: Insight {
         InsightEngine.generateNarrative(from: dataStore)

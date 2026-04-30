@@ -36,7 +36,7 @@ func providerQuotaManagementURL(
 struct ProviderQuotaSettingsSection: View {
     @Bindable var settingsManager: SettingsManager
     @Bindable var quotaService: ProviderQuotaService
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinatorCoordinator
     let onOpenProviderPlans: (AgentProvider) -> Void
     let quotaSourceSummary: (AgentProvider) -> String?
 
@@ -65,7 +65,7 @@ struct ProviderQuotaSettingsSection: View {
 
 struct ProviderQuotaOverviewPanel: View {
     @Bindable var quotaService: ProviderQuotaService
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinatorCoordinator
     let onSelectProvider: (AgentProvider) -> Void
 
     var body: some View {
@@ -185,7 +185,7 @@ private struct ProviderQuotaSettingsCard: View {
     let provider: AgentProvider
     @Bindable var settingsManager: SettingsManager
     @Bindable var quotaService: ProviderQuotaService
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinatorCoordinator
     let onOpenProviderPlans: (AgentProvider) -> Void
     let quotaSourceSummary: String?
 
@@ -584,7 +584,7 @@ private struct ProviderQuotaSettingsCard: View {
 
 private struct CursorQuotaInlineSetup: View {
     @Bindable var quotaService: ProviderQuotaService
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinatorCoordinator
 
     private var cursorManager: CursorConnectorManager { .shared }
     private var isConnected: Bool { cursorManager.config.isEnabled }

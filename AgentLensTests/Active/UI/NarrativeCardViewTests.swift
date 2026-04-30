@@ -26,8 +26,8 @@ final class NarrativeCardViewTests: XCTestCase {
         XCTAssertFalse(hasEmpty, "Should not render EmptyView when usages exist")
     }
 
-    private func makeIsolatedStore() throws -> DataStore {
-        try DataStore(databaseQueue: DatabaseQueue(), refreshOnInit: false)
+    private func makeIsolatedStore() throws -> DataStoreCoordinator {
+        try DataStoreCoordinator(databaseQueue: DatabaseQueue(), refreshOnInit: false)
     }
 }
 
@@ -52,7 +52,7 @@ final class InsightEngineLogicTests: XCTestCase {
         XCTAssertFalse(narrative.headline.isEmpty)
     }
 
-    private func makeIsolatedStore() throws -> DataStore {
-        try DataStore(databaseQueue: DatabaseQueue(), refreshOnInit: false)
+    private func makeIsolatedStore() throws -> DataStoreCoordinator {
+        try DataStoreCoordinator(databaseQueue: DatabaseQueue(), refreshOnInit: false)
     }
 }

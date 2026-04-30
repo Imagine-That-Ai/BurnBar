@@ -85,9 +85,9 @@ final class WorkflowInsightRollupServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.insights.isEmpty)
     }
 
-    private func makeRollupInMemoryStore() throws -> DataStore {
+    private func makeRollupInMemoryStore() throws -> DataStoreCoordinator {
         let queue = try DatabaseQueue(path: ":memory:")
-        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        return try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
 
     private func makeRollupFixtureUsages() -> [TokenUsage] {

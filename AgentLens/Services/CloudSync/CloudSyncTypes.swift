@@ -81,7 +81,7 @@ struct SharedArtifactSyncReport: Equatable, Sendable {
 /// Context passed to all sync domain services for shared dependencies.
 @MainActor
 final class CloudSyncContext {
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let accountManager: any AccountManaging
     let settingsManager: any SettingsManagerProtocol
 
@@ -117,7 +117,7 @@ final class CloudSyncContext {
     }
 
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         accountManager: any AccountManaging,
         settingsManager: any SettingsManagerProtocol,
         firestoreGateway: CloudSyncFirestoreGateway = CloudSyncFirestoreLiveGateway(),

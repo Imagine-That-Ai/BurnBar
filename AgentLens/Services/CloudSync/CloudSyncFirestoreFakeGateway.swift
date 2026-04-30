@@ -410,6 +410,13 @@ private enum FakeQueryEngine {
         if let l = lhs as? Date, let r = rhs as? Date {
             return l.compare(r).rawValue
         }
+        // Cross-type: Timestamp vs Date
+        if let l = lhs as? Timestamp, let r = rhs as? Date {
+            return l.dateValue().compare(r).rawValue
+        }
+        if let l = lhs as? Date, let r = rhs as? Timestamp {
+            return l.compare(r.dateValue()).rawValue
+        }
         if let l = lhs as? String, let r = rhs as? String {
             return l.compare(r).rawValue
         }

@@ -18,7 +18,7 @@ enum OnboardingWizardStep: Int, CaseIterable {
 // MARK: - Wizard View
 
 struct OnboardingWizardView: View {
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     var aggregator: UsageAggregator?
     let settingsManager: SettingsManager
     var chatController: ChatSessionController?

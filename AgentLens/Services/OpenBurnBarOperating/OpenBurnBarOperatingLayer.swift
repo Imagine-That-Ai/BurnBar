@@ -11,7 +11,7 @@ import SwiftUI
 @MainActor
 @Observable
 final class OpenBurnBarOperatingLayer {
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let settingsManager: SettingsManager
     let accountManager: AccountManager
     let daemonManager: OpenBurnBarDaemonManager
@@ -40,7 +40,7 @@ final class OpenBurnBarOperatingLayer {
     private var cachedSnapshot: OpenBurnBarOperatingSnapshot?
 
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         settingsManager: SettingsManager = .shared,
         accountManager: AccountManager = .shared,
         daemonManager: OpenBurnBarDaemonManager = .shared,

@@ -292,8 +292,8 @@ struct GlassBadge<Content: View>: View {
 }
 
 #Preview {
-    let store = (try? DataStore()) ?? {
-        preconditionFailure("Preview requires a valid DataStore - ensure app support directory is writable")
+    let store = (try? DataStoreCoordinator()) ?? {
+        preconditionFailure("Preview requires a valid DataStoreCoordinator - ensure app support directory is writable")
     }()
     let settingsManager = SettingsManager()
     let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)

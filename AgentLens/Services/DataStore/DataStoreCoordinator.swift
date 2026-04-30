@@ -8,11 +8,6 @@ import OpenBurnBarCore
 // DataStoreActor (actor) is in DataStore.swift to avoid a circular dependency.
 // This class is the @MainActor @Observable facade that forwards all async calls
 // to the actor. It also owns the usage view model.
-//
-// Previously this class was named DataStore. It was extracted to its own file
-// to eliminate the monolithic DataStore.swift. All code that imports DataStore
-// should continue to work via the typealias in DataStore.swift.
-// TODO(1.0): Remove the DataStore typealias and update all import sites.
 
 @Observable
 @MainActor

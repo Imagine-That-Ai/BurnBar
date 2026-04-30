@@ -17,7 +17,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_watermark_doesNotAdvance_whenTransactionNotCommitted() throws {
         // Given: a watermark store
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let watermarkStore = dataStore.remoteSyncWatermarkStore
         let accountUid = "test-account-uid"
         let collectionKind = RemoteSyncCollectionKind.usage
@@ -39,7 +39,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_watermark_advances_onlyAfterCommit() throws {
         // Given: a watermark store with no existing watermark
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let watermarkStore = dataStore.remoteSyncWatermarkStore
         let accountUid = "test-account-uid-2"
         let collectionKind = RemoteSyncCollectionKind.usage
@@ -69,7 +69,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_watermark_idempotent_commitAfterNoItems() throws {
         // Given: a committed transaction
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let watermarkStore = dataStore.remoteSyncWatermarkStore
         let accountUid = "test-account-uid-3"
         let collectionKind = RemoteSyncCollectionKind.conversations
@@ -102,7 +102,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_watermark_versionIncrements_onSubsequentCommit() throws {
         // Given: a committed transaction
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let watermarkStore = dataStore.remoteSyncWatermarkStore
         let accountUid = "test-account-uid-4"
         let collectionKind = RemoteSyncCollectionKind.usage
@@ -136,7 +136,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_watermark_perAccountIsolation() throws {
         // Given: watermarks for different accounts
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let watermarkStore = dataStore.remoteSyncWatermarkStore
         let account1 = "account-1"
         let account2 = "account-2"
@@ -175,7 +175,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_watermark_perCollectionIsolation() throws {
         // Given: watermarks for different collections in the same account
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let watermarkStore = dataStore.remoteSyncWatermarkStore
         let accountUid = "shared-account"
         let usageKind = RemoteSyncCollectionKind.usage
@@ -221,7 +221,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_watermark_fetchAllForAccount() throws {
         // Given: watermarks for multiple collections in one account
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let watermarkStore = dataStore.remoteSyncWatermarkStore
         let accountUid = "multi-collection-account"
 
@@ -246,7 +246,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_watermark_clearForAccount() throws {
         // Given: watermarks for an account
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let watermarkStore = dataStore.remoteSyncWatermarkStore
         let accountUid = "account-to-clear"
         let collectionKind = RemoteSyncCollectionKind.usage
@@ -271,7 +271,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_watermark_fetchOrDefault_returnsDefaultWhenNone() throws {
         // Given: no watermark exists
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let watermarkStore = dataStore.remoteSyncWatermarkStore
         let accountUid = "fresh-account"
         let collectionKind = RemoteSyncCollectionKind.usage
@@ -293,7 +293,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_remoteInsert_allowsReinsertOfSameKey() throws {
         // Given: a remote usage already exists
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = dataStore.usageStore
         let sessionId = "remote-reingest-test-1"
         let remoteUsage = TokenUsage(
@@ -329,7 +329,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_remoteInsert_updatesWhenCorrected() throws {
         // Given: a remote usage exists
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = dataStore.usageStore
         let sessionId = "remote-correction-test-1"
         let originalUsage = TokenUsage(
@@ -388,7 +388,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_remoteCorrection_updatesExistingLowerConfidenceRow() throws {
         // Given: an existing row with lower confidence (e.g., from heuristic) from same device
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = dataStore.usageStore
         let sessionId = "convergence-test-1"
         let sharedDeviceId = "shared-device"
@@ -444,7 +444,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_remoteCorrection_doesNotDowngradeExactToEstimate() throws {
         // Given: an existing exact row from same device
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = dataStore.usageStore
         let sessionId = "no-downgrade-test-1"
         let sharedDeviceId = "shared-device-2"
@@ -500,7 +500,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_remoteCorrection_convergesFromDifferentRemoteDevice() throws {
         // Given: remote usage from device A
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let dataStore = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = dataStore.usageStore
         let sessionId = "multi-device-correction"
         let deviceAUsage = TokenUsage(
@@ -556,7 +556,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_migration_v30_createsRemoteSyncWatermarksTable() throws {
         // Given: migrations have run
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
         let columns = try queue.read { db -> [String] in
             let rows = try Row.fetchAll(db, sql: "PRAGMA table_info(remote_sync_watermarks)")
@@ -574,7 +574,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
     func test_migration_v30_createsPrimaryKey() throws {
         // Given: migrations have run
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 
         let indexes = try queue.read { db -> [Row] in
             try Row.fetchAll(db, sql: "PRAGMA index_list(remote_sync_watermarks)")

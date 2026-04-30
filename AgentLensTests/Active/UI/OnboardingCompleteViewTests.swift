@@ -115,7 +115,7 @@ final class OnboardingCompleteViewTests: XCTestCase {
         XCTAssertNoThrow(try sut.find(ViewType.Image.self), "Should contain checkmark icon")
     }
 
-    private func makeIsolatedStore() throws -> DataStore {
-        try DataStore(databaseQueue: DatabaseQueue(), refreshOnInit: false)
+    private func makeIsolatedStore() throws -> DataStoreCoordinator {
+        try DataStoreCoordinator(databaseQueue: DatabaseQueue(), refreshOnInit: false)
     }
 }

@@ -57,7 +57,7 @@ private struct SessionLogGroup: Identifiable {
 // MARK: - Session Logs View
 
 struct SessionLogsView: View {
-    var dataStore: DataStore
+    var dataStore: DataStoreCoordinator
     var accountManager: AccountManager
     var settingsManager: SettingsManager
     var operatingLayer: OpenBurnBarOperatingLayer?
@@ -1222,7 +1222,7 @@ private struct CompactSessionRow: View {
 private struct DeviceIconPicker: View {
     let deviceId: String
     let currentIcon: String
-    var dataStore: DataStore
+    var dataStore: DataStoreCoordinator
     var onDismiss: () -> Void
 
     private let columns = Array(repeating: GridItem(.fixed(36), spacing: DesignSystem.Spacing.sm), count: 5)

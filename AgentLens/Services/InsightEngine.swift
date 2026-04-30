@@ -95,10 +95,10 @@ private struct RollupContext {
 
 @MainActor
 final class WorkflowInsightRollupService {
-    private let dataStore: DataStore
+    private let dataStore: DataStoreCoordinator
     private let nowProvider: () -> Date
 
-    init(dataStore: DataStore, nowProvider: @escaping () -> Date = Date.init) {
+    init(dataStore: DataStoreCoordinator, nowProvider: @escaping () -> Date = Date.init) {
         self.dataStore = dataStore
         self.nowProvider = nowProvider
     }
@@ -311,7 +311,7 @@ final class WorkflowInsightRollupService {
 @MainActor
 enum InsightEngine {
 
-    static func generate(from dataStore: DataStore) -> [Insight] {
+    static func generate(from dataStore: DataStoreCoordinator) -> [Insight] {
         let calendar = Calendar.current
         let now = Date()
         let usages = dataStore.usages
@@ -436,7 +436,7 @@ enum InsightEngine {
         return insights
     }
 
-    static func generateNarrative(from dataStore: DataStore) -> Insight {
+    static func generateNarrative(from dataStore: DataStoreCoordinator) -> Insight {
         let usages = dataStore.usages
         let calendar = Calendar.current
         let todayUsages = usages.filter { calendar.isDateInToday($0.startTime) }

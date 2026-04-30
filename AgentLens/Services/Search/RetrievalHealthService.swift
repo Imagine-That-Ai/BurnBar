@@ -12,12 +12,12 @@ final class RetrievalHealthService {
         let failedJobs: Int
     }
 
-    private let dataStore: DataStore
+    private let dataStore: DataStoreCoordinator
     private let nowProvider: () -> Date
 
     private(set) var lastSnapshotError: String?
 
-    init(dataStore: DataStore, nowProvider: @escaping () -> Date = Date.init) {
+    init(dataStore: DataStoreCoordinator, nowProvider: @escaping () -> Date = Date.init) {
         self.dataStore = dataStore
         self.nowProvider = nowProvider
     }

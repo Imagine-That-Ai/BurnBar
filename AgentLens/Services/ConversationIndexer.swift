@@ -23,7 +23,7 @@ final class ConversationIndexer {
     /// file modified timestamps are equivalent (with millisecond tolerance).
     /// Tolerance is needed because persisted SQLite datetimes are millisecond-precision,
     /// while filesystem mtimes can include micro/nanoseconds.
-    func index(_ records: [ConversationRecord], in dataStore: DataStore) async throws -> ConversationIndexingReport {
+    func index(_ records: [ConversationRecord], in dataStore: DataStoreCoordinator) async throws -> ConversationIndexingReport {
         var report = ConversationIndexingReport.empty
 
         for (index, record) in records.enumerated() {

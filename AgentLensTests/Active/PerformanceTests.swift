@@ -107,7 +107,7 @@ enum PerformanceFixtures {
 final class PerformanceTestHarness {
     let rootURL: URL
     let databaseQueue: DatabaseQueue
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let fileManager: FileManager
 
     init(name: String = "performance") throws {
@@ -122,7 +122,7 @@ final class PerformanceTestHarness {
         let dbPath = dbDirectory.appendingPathComponent("test.sqlite")
 
         databaseQueue = try DatabaseQueue(path: dbPath.path)
-        dataStore = try DataStore(
+        dataStore = try DataStoreCoordinator(
             databaseQueue: databaseQueue,
             runMigrations: true,
             refreshOnInit: false

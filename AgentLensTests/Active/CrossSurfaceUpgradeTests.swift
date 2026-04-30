@@ -23,9 +23,9 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeInMemoryStore() throws -> DataStore {
+    private func makeInMemoryStore() throws -> DataStoreCoordinator {
         let queue = try DatabaseQueue(path: ":memory:")
-        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        return try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
 
     /// Drains all pending projection jobs across multiple sweeps.
@@ -67,7 +67,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
         (row[column] as? Int) ?? Int(row[column] as? Int64 ?? 0)
     }
 
-    private func allUsageSummaries(_ store: DataStore) -> (totalCost: Double, totalTokens: Int) {
+    private func allUsageSummaries(_ store: DataStoreCoordinator) -> (totalCost: Double, totalTokens: Int) {
         let usages = store.usages
         let totalCost = usages.reduce(0) { $0 + $1.cost }
         let totalTokens = usages.reduce(0) { $0 + $1.totalTokens }
@@ -90,7 +90,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
             messageCount: 4,
             userWordCount: 20,
             assistantWordCount: 40,
-            keyFiles: ["DataStore.swift"],
+            keyFiles: ["DataStoreCoordinator.swift"],
             keyCommands: ["swift test"],
             keyTools: ["Read"],
             inferredTaskTitle: "CrossSurface Test",
@@ -107,8 +107,8 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
         )
     }
 
-    /// Inserts a usage row directly and refreshes the DataStore in-memory array.
-    private func insertAndRefresh(usage: TokenUsage, store: DataStore) async throws {
+    /// Inserts a usage row directly and refreshes the DataStoreCoordinator in-memory array.
+    private func insertAndRefresh(usage: TokenUsage, store: DataStoreCoordinator) async throws {
         try store.insert(usage)
         await store.refresh()
     }
@@ -116,7 +116,7 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
     // MARK: - VAL-CROSS-001: Exact-first upgrade propagates end-to-end
 
     /// Verifies that when a late exact usage row upgrades a prior estimate,
-    /// the reporting surfaces (computed properties on DataStore) reflect the
+    /// the reporting surfaces (computed properties on DataStoreCoordinator) reflect the
     /// corrected values after refresh.
     func test_lateExactUpgrade_propagatesToReportingSurfaces() async throws {
         let store = try makeInMemoryStore()

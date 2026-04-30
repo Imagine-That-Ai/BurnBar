@@ -10,7 +10,7 @@ import OpenBurnBarCore
 
 @MainActor
 final class ProjectionPipelineService {
-    private let dataStore: DataStore
+    private let dataStore: DataStoreCoordinator
     private let leaseOwner: String
     private let nowProvider: () -> Date
     private let chunker: ProjectionChunker
@@ -26,7 +26,7 @@ final class ProjectionPipelineService {
     var lastChunkDiffResult: ChunkDiffResult?
 
     static func makeConfigured(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         settingsManager: SettingsManager = .shared,
         providerAPIKeyStore: ProviderAPIKeyStore = .shared,
         leaseOwner: String = "projection-worker-\(UUID().uuidString)",
@@ -47,7 +47,7 @@ final class ProjectionPipelineService {
     }
 
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         leaseOwner: String = "projection-worker-\(UUID().uuidString)",
         nowProvider: @escaping () -> Date = Date.init,
         chunker: ProjectionChunker = ProjectionChunker(),

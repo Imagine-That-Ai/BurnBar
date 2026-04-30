@@ -39,9 +39,9 @@ private final class DashboardQuickSwitchTransitionProbe {
 
 /// Protocol for injectable switcher data source.
 /// Allows UI tests to provide deterministic mock data without requiring
-/// a real DataStore or SwitcherProfileStore instance.
+/// a real DataStoreCoordinator or SwitcherProfileStore instance.
 ///
-/// Production: Use `DataStoreSwitcherDataLoading` which wraps `DataStore.switcherStore`.
+/// Production: Use `DataStoreSwitcherDataLoading` which wraps `DataStoreCoordinator.switcherStore`.
 /// Tests: Use `MockSwitcherDataLoading` for deterministic test data.
 protocol SwitcherDataLoading {
     /// Fetches all switcher profiles.
@@ -54,7 +54,7 @@ protocol SwitcherDataLoading {
     func setActiveProfile(_ profileID: String) throws
 }
 
-/// Production implementation that wraps `DataStore.switcherStore`.
+/// Production implementation that wraps `DataStoreCoordinator.switcherStore`.
 final class DataStoreSwitcherDataLoading: SwitcherDataLoading {
     private let store: SwitcherProfileStore
 
@@ -90,12 +90,12 @@ final class DataStoreSwitcherDataLoading: SwitcherDataLoading {
 ///
 /// VAL-DASH-001 through VAL-DASH-008
 struct DashboardQuickSwitchView: View {
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let onOpenSettings: () -> Void
     let settingsManager: SettingsManager
 
     // Injectable data source for testability
-    // Production uses DataStoreSwitcherDataLoading wrapping dataStore.switcherStore
+    // Production uses DataStoreSwitcherDataLoading wrapping dataStoreCoordinator.switcherStore
     // Tests can inject MockSwitcherDataLoading for deterministic data
     private let switcherDataLoading: any SwitcherDataLoading
 
@@ -134,7 +134,7 @@ struct DashboardQuickSwitchView: View {
     ///   - skipLoadData: When true, skips calling loadData() in onAppear (for testing error/empty states).
     ///   - testAnnouncementHandler: Optional callback to capture accessibility announcements.
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         onOpenSettings: @escaping () -> Void,
         settingsManager: SettingsManager = .shared,
         testInjectedError: String? = nil,
@@ -164,7 +164,7 @@ struct DashboardQuickSwitchView: View {
     ///   - skipLoadData: When true, skips calling loadData() in onAppear (for testing error/empty states).
     ///   - testAnnouncementHandler: Optional callback to capture accessibility announcements.
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         onOpenSettings: @escaping () -> Void,
         settingsManager: SettingsManager = .shared,
         switcherDataLoading: any SwitcherDataLoading,
@@ -183,7 +183,7 @@ struct DashboardQuickSwitchView: View {
     #else
     /// Production initializer.
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         onOpenSettings: @escaping () -> Void,
         settingsManager: SettingsManager = .shared
     ) {

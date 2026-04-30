@@ -63,7 +63,7 @@ enum SwitcherOnboardingStep: Int, CaseIterable {
 // MARK: - Main Wizard View
 
 struct SwitcherOnboardingWizardView: View {
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let settingsManager: SettingsManager
     let onDismiss: () -> Void
     let onOpenSettings: () -> Void

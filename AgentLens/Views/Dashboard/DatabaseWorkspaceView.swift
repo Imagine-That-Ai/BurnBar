@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Database Workspace View
 
 struct DatabaseWorkspaceView: View {
-    @Bindable var dataStore: DataStore
+    @Bindable var dataStore: DataStoreCoordinator
     @Bindable var settingsManager: SettingsManager
     var accountManager: AccountManager
     var cloudSyncService: CloudSyncService?

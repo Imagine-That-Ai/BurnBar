@@ -123,7 +123,7 @@ final class CLIArtifactAuthoringTextGenerator: ArtifactAuthoringTextGenerating {
 
 @MainActor
 final class ArtifactAuthoringService {
-    private let dataStore: DataStore
+    private let dataStore: DataStoreCoordinator
     private let retrievalService: SearchService
     private let settingsProvider: any ArtifactDiscoverySettingsProviding
     private let textGenerator: any ArtifactAuthoringTextGenerating
@@ -131,7 +131,7 @@ final class ArtifactAuthoringService {
     private let nowProvider: () -> Date
 
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         retrievalService: SearchService? = nil,
         settingsProvider: any ArtifactDiscoverySettingsProviding,
         textGenerator: any ArtifactAuthoringTextGenerating = CLIArtifactAuthoringTextGenerator(),

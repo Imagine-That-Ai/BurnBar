@@ -72,7 +72,7 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
         let snapshotRecord: VectorIndexSnapshotRecord?
     }
 
-    private let dataStore: DataStore
+    private let dataStore: DataStoreCoordinator
     private let queryEmbedder: QueryEmbeddingProviding
     private let configuredEmbeddingVersionID: String?
     private let backend: VectorBackendKind
@@ -96,7 +96,7 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
     private(set) var lastHealthWriteError: String?
 
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         queryEmbedder: QueryEmbeddingProviding,
         embeddingVersionID: String? = nil,
         backend: VectorBackendKind = .ann,

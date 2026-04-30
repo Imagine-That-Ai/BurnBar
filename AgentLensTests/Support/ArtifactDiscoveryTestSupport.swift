@@ -21,9 +21,9 @@ final class StubArtifactDiscoverySettings: ArtifactDiscoverySettingsProviding {
 }
 
 @MainActor
-func makeDiscoveryInMemoryStore() throws -> DataStore {
+func makeDiscoveryInMemoryStore() throws -> DataStoreCoordinator {
     let queue = try DatabaseQueue(path: ":memory:")
-    return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+    return try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 }
 
 func writeDiscoveryFixture(_ text: String, to url: URL) throws {

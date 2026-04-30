@@ -104,7 +104,7 @@ final class ProviderQuotaService {
         activeProviders.contains(provider)
     }
 
-    func refreshIfNeeded(dataStore: DataStore, maxAge: TimeInterval = 5 * 60) async {
+    func refreshIfNeeded(dataStore: DataStoreCoordinator, maxAge: TimeInterval = 5 * 60) async {
         let hasUsefulSnapshot = ProviderQuotaService.supportedProviders.contains { provider in
             let snap = snapshotsByProvider[provider]
             return snap != nil && !(snap?.buckets.isEmpty ?? true)
@@ -119,7 +119,7 @@ final class ProviderQuotaService {
         await refreshAll(dataStore: dataStore)
     }
 
-    func refreshAll(dataStore: DataStore) async {
+    func refreshAll(dataStore: DataStoreCoordinator) async {
         guard !isFetching else { return }
         isFetching = true
         defer {
@@ -139,7 +139,7 @@ final class ProviderQuotaService {
         persistSnapshots()
     }
 
-    func refresh(provider: AgentProvider, dataStore: DataStore) async {
+    func refresh(provider: AgentProvider, dataStore: DataStoreCoordinator) async {
         guard Self.supportedProviders.contains(provider) else { return }
         activeProviders.insert(provider)
         defer { activeProviders.remove(provider) }
@@ -213,9 +213,9 @@ final class ProviderQuotaService {
 
     // MARK: - Internal
 
-    private func makeScratchDataStore() throws -> DataStore {
+    private func makeScratchDataStore() throws -> DataStoreCoordinator {
         let queue = try DatabaseQueue()
-        return try DataStore(
+        return try DataStoreCoordinator(
             databaseQueue: queue,
             runMigrations: true,
             refreshOnInit: false
@@ -223,7 +223,7 @@ final class ProviderQuotaService {
     }
 
     private func makeContext(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         apiKeyOverrides: [AgentProvider: String] = [:]
     ) -> ProviderQuotaAdapterContext {
         var resolvedKeys: [String: String?] = [:]

@@ -5,7 +5,7 @@ import SwiftUI
 /// Settings view for privacy, indexing, and embedding configuration
 struct PrivacyIndexingSettingsView: View {
     @Bindable var settingsManager: SettingsManager
-    var dataStore: DataStore
+    var dataStore: DataStoreCoordinator
     var sharedFeaturesAvailable: Bool
     @State private var storageBytes: Int64 = 0
     @State private var deleteConfirm = false

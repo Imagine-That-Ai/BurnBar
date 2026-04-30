@@ -12,7 +12,7 @@ import AppKit
 struct QuotaPopoverBar: View {
     @Bindable var quotaService: ProviderQuotaService
     @Bindable var settingsManager: SettingsManager
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     @State private var expandedProvider: AgentProvider?
     @State private var isWorking = false
     // Local state for inline setup fields

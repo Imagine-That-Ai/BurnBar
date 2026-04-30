@@ -22,20 +22,20 @@ final class BackfillSchedulerTests: XCTestCase {
         }
     }
 
-    private func makeInMemoryDataStore() throws -> DataStore {
+    private func makeInMemoryDataStore() throws -> DataStoreCoordinator {
         let queue = try DatabaseQueue()
-        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        return try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
 
-    private func makeBackfillCursorStore(_ store: DataStore) -> BackfillCursorStore {
+    private func makeBackfillCursorStore(_ store: DataStoreCoordinator) -> BackfillCursorStore {
         store.backfillCursorStore
     }
 
-    private func fetchAllCursors(store: DataStore) throws -> [BackfillCursorRecord] {
+    private func fetchAllCursors(store: DataStoreCoordinator) throws -> [BackfillCursorRecord] {
         try makeBackfillCursorStore(store).fetchAllCursors()
     }
 
-    private func fetchCursor(store: DataStore, provider: AgentProvider) throws -> BackfillCursorRecord? {
+    private func fetchCursor(store: DataStoreCoordinator, provider: AgentProvider) throws -> BackfillCursorRecord? {
         try makeBackfillCursorStore(store).fetchCursor(for: provider)
     }
 
@@ -588,7 +588,7 @@ final class BackfillSchedulerTests: XCTestCase {
     /// - Using deterministic timestamp computation to avoid floating-point precision issues
     func test_refreshAll_withSuccessfulPersistence_allowsCursorAdvance() async throws {
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let cursorStore = store.backfillCursorStore
 
         // Set up an initial cursor position using deterministic timestamps
@@ -681,7 +681,7 @@ final class BackfillSchedulerTests: XCTestCase {
         do {
             // Step 1: Create and set up the database with cursor state
             var queue: DatabaseQueue? = try DatabaseQueue(path: dbPath.path)
-            var store: DataStore? = try DataStore(databaseQueue: queue!, runMigrations: true, refreshOnInit: false)
+            var store: DataStoreCoordinator? = try DataStoreCoordinator(databaseQueue: queue!, runMigrations: true, refreshOnInit: false)
             guard let writableStore = store else {
                 XCTFail("Expected writable store to initialize")
                 return
@@ -729,7 +729,7 @@ final class BackfillSchedulerTests: XCTestCase {
             }
             do {
                 let readOnlyQueue = try DatabaseQueue(path: dbPath.path, configuration: readOnlyConfig)
-                let readOnlyStore = try DataStore(databaseQueue: readOnlyQueue, runMigrations: false, refreshOnInit: false)
+                let readOnlyStore = try DataStoreCoordinator(databaseQueue: readOnlyQueue, runMigrations: false, refreshOnInit: false)
 
                 // Step 5: Call refreshAll() - this should fail to insert and not advance the cursor.
                 // Use a deterministic parser override so CI/local both attempt at least one write.
@@ -890,7 +890,7 @@ final class BackfillSchedulerTests: XCTestCase {
         // that would break on different machines. The store uses only Date-based
         // cursor tracking and GRDB database operations (no file path strings).
         let bundle = Bundle(for: type(of: inMemoryStore))
-        // Smoke-check: cursor operations work through DataStore without path coupling
+        // Smoke-check: cursor operations work through DataStoreCoordinator without path coupling
         let claudeWindow = try cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now)
         XCTAssertNotNil(claudeWindow, "BackfillCursorStore window computation must work without filesystem paths")
 

@@ -241,7 +241,7 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
     }
 
     private func makeLayer(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         indexingEnabled: Bool = true
     ) -> OpenBurnBarOperatingLayer {
         SettingsManager.shared.conversationIndexingEnabled = indexingEnabled
@@ -256,12 +256,12 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
         )
     }
 
-    private func makeInMemoryStore() throws -> DataStore {
+    private func makeInMemoryStore() throws -> DataStoreCoordinator {
         let queue = try DatabaseQueue(path: ":memory:")
-        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        return try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
 
-    private func seedApolloScenario(into store: DataStore) {
+    private func seedApolloScenario(into store: DataStoreCoordinator) {
         let now = Date(timeIntervalSince1970: 1_773_114_400)
         let earlier = now.addingTimeInterval(-3_600)
 

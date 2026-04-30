@@ -49,7 +49,7 @@ private struct TranscriptChunk: Identifiable {
 
 struct SessionLogDetailPane: View {
     let record: ConversationRecord
-    var dataStore: DataStore
+    var dataStore: DataStoreCoordinator
     var operatingLayer: OpenBurnBarOperatingLayer?
     var overrideBody: String?
     var jumpTarget: ConversationJumpTarget?

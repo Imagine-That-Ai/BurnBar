@@ -51,7 +51,7 @@ final class SwitcherDiscoveryService: ObservableObject {
     @Published var scanProgress: [String] = []
     @Published var scanErrors: [String] = []
 
-    func scan(dataStore: DataStore) async {
+    func scan(dataStore: DataStoreCoordinator) async {
         isScanning = true
         discoveredIdentities = []
         scanProgress = []
@@ -200,7 +200,7 @@ final class SwitcherDiscoveryService: ObservableObject {
 
     /// Auto-creates a profile from a discovered identity.
     @discardableResult
-    func addIdentity(_ identity: DiscoveredIdentity, dataStore: DataStore) -> SwitcherProfileRecord? {
+    func addIdentity(_ identity: DiscoveredIdentity, dataStore: DataStoreCoordinator) -> SwitcherProfileRecord? {
         var record: SwitcherProfileRecord?
 
         switch identity.source {
@@ -295,7 +295,7 @@ final class SwitcherDiscoveryService: ObservableObject {
 
     /// Signs into a different Google account via OAuth and creates a Chrome profile for it.
     @discardableResult
-    func addDifferentGoogleAccount(dataStore: DataStore) async -> SwitcherProfileRecord? {
+    func addDifferentGoogleAccount(dataStore: DataStoreCoordinator) async -> SwitcherProfileRecord? {
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return nil }
 
         do {
@@ -380,7 +380,7 @@ final class SwitcherDiscoveryService: ObservableObject {
 
     /// Signs into a different Apple account via Sign in with Apple and creates a profile for it.
     @discardableResult
-    func addDifferentAppleAccount(dataStore: DataStore) async -> SwitcherProfileRecord? {
+    func addDifferentAppleAccount(dataStore: DataStoreCoordinator) async -> SwitcherProfileRecord? {
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return nil }
 
         do {
@@ -448,7 +448,7 @@ final class SwitcherDiscoveryService: ObservableObject {
     @discardableResult
     func refreshBrowserProfileAuthentication(
         _ profile: SwitcherProfileRecord,
-        dataStore: DataStore
+        dataStore: DataStoreCoordinator
     ) async -> SwitcherProfileRecord? {
         guard profile.targetKind == .browser, let browserType = profile.browserType else { return nil }
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return nil }
@@ -512,7 +512,7 @@ final class SwitcherDiscoveryService: ObservableObject {
     @discardableResult
     func addDifferentCLIAccount(
         cliType: SwitcherCLIProfileType,
-        dataStore: DataStore
+        dataStore: DataStoreCoordinator
     ) async -> SwitcherProfileRecord? {
         let placeholder = SwitcherProfileRecord(
             targetKind: .cli,
@@ -596,7 +596,7 @@ final class SwitcherDiscoveryService: ObservableObject {
         cliType: SwitcherCLIProfileType,
         apiKey: String,
         label: String?,
-        dataStore: DataStore
+        dataStore: DataStoreCoordinator
     ) -> SwitcherProfileRecord? {
         let displayLabel = label ?? cliType.displayName
 
@@ -702,7 +702,7 @@ final class SwitcherDiscoveryService: ObservableObject {
 
     private func loadCLIQuotaSummaries(
         for cliAuthInfos: [CLIAuthInfo],
-        dataStore: DataStore
+        dataStore: DataStoreCoordinator
     ) async -> [SwitcherCLIProfileType: IdentityQuotaSummary] {
         let quotaService = ProviderQuotaService.shared
         var summaries: [SwitcherCLIProfileType: IdentityQuotaSummary] = [:]

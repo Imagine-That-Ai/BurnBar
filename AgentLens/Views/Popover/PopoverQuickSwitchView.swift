@@ -50,7 +50,7 @@ private final class PopoverQuickSwitchTransitionProbe {
 ///
 /// VAL-POPOVER-001 through VAL-POPOVER-010
 struct PopoverQuickSwitchView: View {
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let onOpenSettings: () -> Void
     let settingsManager: SettingsManager
 
@@ -89,7 +89,7 @@ struct PopoverQuickSwitchView: View {
     ///   - skipLoadData: When true, skips calling loadData() in onAppear (for testing error/empty states).
     ///   - testAnnouncementHandler: Optional callback to capture accessibility announcements.
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         onOpenSettings: @escaping () -> Void,
         settingsManager: SettingsManager = .shared,
         testInjectedError: String? = nil,
@@ -111,7 +111,7 @@ struct PopoverQuickSwitchView: View {
 
     #if !DEBUG
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         onOpenSettings: @escaping () -> Void,
         settingsManager: SettingsManager = .shared
     ) {

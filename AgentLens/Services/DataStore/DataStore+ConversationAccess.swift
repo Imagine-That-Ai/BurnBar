@@ -1,7 +1,7 @@
 import Foundation
 import OpenBurnBarCore
 
-extension DataStore {
+extension DataStoreCoordinator {
     nonisolated func fetchUnsyncedConversations(limit: Int = 400) throws -> [ConversationRecord] {
         try conversationStore.fetchUnsyncedConversations(limit: limit)
     }

@@ -41,7 +41,7 @@ struct InsightBriefSnapshot {
 
     @MainActor
     static func build(
-        from dataStore: DataStore,
+        from dataStore: DataStoreCoordinator,
         intelligenceService _: SearchService? = nil,
         rollupService: WorkflowInsightRollupService? = nil,
         refreshRollups: Bool = true

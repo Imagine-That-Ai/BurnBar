@@ -7,7 +7,7 @@ import Foundation
 /// Uploads local chat threads (metadata + recent messages) to Firestore for cross-device resume.
 /// Layout: `users/{uid}/chat_threads/{deviceId}_{threadId}`
 ///
-/// Uses existing DataStore APIs:
+/// Uses existing DataStoreCoordinator APIs:
 ///   - `fetchChatThreadSummaries(limit:)` → `[ChatThreadSummary]`
 ///   - `fetchChatMessages(threadID:)` → `[ChatMessageRecord]`
 @MainActor
@@ -51,7 +51,13 @@ final class ChatThreadSyncService: CloudSyncDomain {
                 .collection("chat_threads")
 
             for thread in threads {
-                let messages = (try? context.dataStore.fetchChatMessages(threadID: thread.id)) ?? []
+                let messages: [ChatMessageRecord]
+                do {
+                    messages = try context.dataStore.fetchChatMessages(threadID: thread.id)
+                } catch {
+                    AppLogger.sync.silentFailure("ChatThreadSyncService: fetchChatMessages for thread \(thread.id)", error: error)
+                    messages = []
+                }
                 guard !messages.isEmpty else { continue }
 
                 let docId = "\(deviceId)_\(thread.id)"

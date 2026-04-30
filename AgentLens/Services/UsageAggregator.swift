@@ -9,11 +9,11 @@ import GRDB
 /// conversation indexing, cloud sync) runs off the main thread via
 /// `RefreshBackgroundWork` inside `Task.detached`.  This type only touches
 /// observable state on the main actor: setting `isRefreshing`, applying
-/// results to `DataStore`, and launching post-refresh side-effects.
+/// results to `DataStoreCoordinator`, and launching post-refresh side-effects.
 @Observable
 @MainActor
 final class UsageAggregator {
-    private let dataStore: DataStore
+    private let dataStore: DataStoreCoordinator
     private let parsers: [AgentProvider: any LogParser]
     private weak var cloudSync: CloudSyncService?
     private weak var cloudSyncCoordinator: CloudSyncCoordinator?
@@ -58,7 +58,7 @@ final class UsageAggregator {
     // MARK: - Init
 
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         cloudSync: CloudSyncService? = nil,
         cloudSyncCoordinator: CloudSyncCoordinator? = nil,
         sessionMirror: ICloudSessionMirrorService? = nil,

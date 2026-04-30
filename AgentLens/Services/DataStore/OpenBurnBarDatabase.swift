@@ -695,7 +695,7 @@ final class OpenBurnBarDatabase: Sendable {
             }
 
             try db.alter(table: "chat_messages") { t in
-                t.add(column: "threadId", .text).notNull().defaults(to: DataStore.legacyChatThreadID)
+                t.add(column: "threadId", .text).notNull().defaults(to: DataStoreCoordinator.legacyChatThreadID)
             }
 
             try db.create(
@@ -713,7 +713,7 @@ final class OpenBurnBarDatabase: Sendable {
                     COALESCE((SELECT MAX(timestamp) FROM chat_messages), CURRENT_TIMESTAMP)
                 )
                 """,
-                arguments: [DataStore.legacyChatThreadID]
+                arguments: [DataStoreCoordinator.legacyChatThreadID]
             )
         }
 

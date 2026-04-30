@@ -290,7 +290,7 @@ enum ParserTestFixtures {
 final class ParserIntegrationTestHarness {
     let rootURL: URL
     let databaseQueue: DatabaseQueue
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let fileManager: FileManager
 
     init(name: String = "parser-integration") throws {
@@ -305,7 +305,7 @@ final class ParserIntegrationTestHarness {
         let dbPath = dbDirectory.appendingPathComponent("test.sqlite")
 
         databaseQueue = try DatabaseQueue(path: dbPath.path)
-        dataStore = try DataStore(
+        dataStore = try DataStoreCoordinator(
             databaseQueue: databaseQueue,
             runMigrations: true,
             refreshOnInit: false

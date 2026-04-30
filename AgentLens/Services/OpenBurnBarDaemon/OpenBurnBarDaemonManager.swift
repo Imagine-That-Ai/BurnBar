@@ -205,7 +205,7 @@ final class OpenBurnBarDaemonManager {
     let dependencies: OpenBurnBarDaemonDependencies
     let usageSyncService: OpenBurnBarDaemonUsageSyncService
     let settingsManager: SettingsManager
-    weak var dataStore: DataStore?
+    weak var dataStore: DataStoreCoordinator?
 
     var status: OpenBurnBarDaemonStatus = .checking
     var lastError: String?
@@ -260,7 +260,7 @@ final class OpenBurnBarDaemonManager {
         }
     }
 
-    func attach(dataStore: DataStore) {
+    func attach(dataStore: DataStoreCoordinator) {
         self.dataStore = dataStore
         OpenBurnBarDaemonLocalNotificationRelay.shared.start()
         exportControllerActivitySnapshot()

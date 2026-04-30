@@ -394,7 +394,7 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
     private func summarizeSemantic(
         _ candidates: [SemanticCandidate],
         limit: Int,
-        dataStore: DataStore
+        dataStore: DataStoreCoordinator
     ) throws -> [SemanticCandidateSnapshot] {
         let boundedCandidates = Array(candidates.prefix(limit))
         let chunkIDs = Array(Set(boundedCandidates.map(\.chunkID)))

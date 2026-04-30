@@ -1,11 +1,12 @@
 import XCTest
 import GRDB
+import FirebaseFirestore
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
 @MainActor
 final class OfflineOnlineMergeTests: XCTestCase {
-    private var dataStore: DataStore!
+    private var dataStore: DataStoreCoordinator!
     private var accountManager: FakeAccountManager!
     private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
@@ -66,8 +67,8 @@ final class OfflineOnlineMergeTests: XCTestCase {
 
     func test_backoff_suppression_onPermissionDenied() async throws {
         fakeGateway.nextError = NSError(
-            domain: "FakeFirestore",
-            code: 7,
+            domain: "FIRFirestoreErrorDomain",
+            code: 7, // permissionDenied
             userInfo: [NSLocalizedDescriptionKey: "Permission denied"]
         )
 
@@ -104,7 +105,7 @@ final class OfflineOnlineMergeTests: XCTestCase {
 
     func test_watermark_doesNotAdvanceOnFailure() async throws {
         let remoteDeviceId = "remote-device"
-        let remoteTimestamp = Date(timeIntervalSince1970: 1_700_000_000)
+        let remoteTimestamp = Date().addingTimeInterval(-60) // recent enough to pass 90-day watermark
 
         fakeGateway.setDocumentData([
             "id": UUID().uuidString,
@@ -118,8 +119,8 @@ final class OfflineOnlineMergeTests: XCTestCase {
             "usageSource": UsageSource.providerLog.rawValue,
             "totalTokens": 150,
             "cost": 0.005,
-            "startTime": Date(timeIntervalSince1970: 1_700_000_000),
-            "endTime": Date(timeIntervalSince1970: 1_700_000_100),
+            "startTime": remoteTimestamp,
+            "endTime": remoteTimestamp.addingTimeInterval(100),
             "updatedAt": remoteTimestamp
         ], at: "users/test-uid-1/usage/\(remoteDeviceId)_usage-1")
 
@@ -136,9 +137,9 @@ final class OfflineOnlineMergeTests: XCTestCase {
 
         // Force error on getDocuments
         fakeGateway.nextError = NSError(
-            domain: "FakeFirestore",
-            code: -1,
-            userInfo: [NSLocalizedDescriptionKey: "Network error"]
+            domain: NSURLErrorDomain,
+            code: NSURLErrorTimedOut,
+            userInfo: [NSLocalizedDescriptionKey: "Network timeout"]
         )
 
         await downloadSync.sync()
@@ -151,8 +152,9 @@ final class OfflineOnlineMergeTests: XCTestCase {
         XCTAssertEqual(initialWatermark?.lastProcessedRemoteUpdateAt, watermarkAfterFailure?.lastProcessedRemoteUpdateAt)
         XCTAssertEqual(initialWatermark?.lastSyncedAt, watermarkAfterFailure?.lastSyncedAt)
 
-        // Clear error and retry
+        // Clear error and reset circuit breaker before retry
         fakeGateway.nextError = nil
+        await circuitBreaker.reset()
         await downloadSync.sync()
 
         // Watermark should now advance
@@ -161,7 +163,7 @@ final class OfflineOnlineMergeTests: XCTestCase {
             collectionKind: .usage
         )
         XCTAssertNotNil(watermarkAfterSuccess)
-        XCTAssertEqual(watermarkAfterSuccess?.lastProcessedRemoteUpdateAt, remoteTimestamp)
+        XCTAssertEqual(watermarkAfterSuccess?.lastProcessedRemoteUpdateAt?.timeIntervalSince1970 ?? 0, remoteTimestamp.timeIntervalSince1970, accuracy: 1.0)
     }
 
     // MARK: - Circuit Breaker Recovery
@@ -169,9 +171,9 @@ final class OfflineOnlineMergeTests: XCTestCase {
     func test_circuitBreaker_halfOpenToClosed_recovery() async throws {
         // Trip the circuit breaker by injecting consecutive failures
         fakeGateway.nextError = NSError(
-            domain: "FakeFirestore",
-            code: -1,
-            userInfo: [NSLocalizedDescriptionKey: "Network error"]
+            domain: NSURLErrorDomain,
+            code: NSURLErrorTimedOut,
+            userInfo: [NSLocalizedDescriptionKey: "Network timeout"]
         )
 
         for _ in 0..<5 {
@@ -191,7 +193,11 @@ final class OfflineOnlineMergeTests: XCTestCase {
 
         // Circuit should be open
         let stateAfterFailures = await circuitBreaker.state
-        XCTAssertEqual(stateAfterFailures, .open(since: Date()))
+        if case .open = stateAfterFailures {
+            // pass
+        } else {
+            XCTFail("Expected open state, got \(stateAfterFailures)")
+        }
 
         // Advance time past reset timeout and inject success
         fakeGateway.nextError = nil

@@ -15,9 +15,9 @@ final class CheckpointTests: XCTestCase {
     // MARK: - VAL-PERSIST-004: Checkpoints advance only after successful commit
 
     func test_checkpoint_doesNotAdvance_whenCommitFails() throws {
-        // Given: a DataStore with checkpoint store
+        // Given: a DataStoreCoordinator with checkpoint store
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         // Insert a usage first
@@ -63,9 +63,9 @@ final class CheckpointTests: XCTestCase {
     }
 
     func test_checkpoint_doesNotAdvance_whenTransaction_throwsBeforeCommit() throws {
-        // Given: a DataStore with checkpoint store
+        // Given: a DataStoreCoordinator with checkpoint store
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         // Insert a usage
@@ -114,9 +114,9 @@ final class CheckpointTests: XCTestCase {
     }
 
     func test_checkpoint_advances_onlyAfterSuccessfulCommit() throws {
-        // Given: a DataStore with checkpoint store
+        // Given: a DataStoreCoordinator with checkpoint store
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         // Insert usages
@@ -162,9 +162,9 @@ final class CheckpointTests: XCTestCase {
     }
 
     func test_checkpoint_idempotent_commitIsIdempotent() throws {
-        // Given: a DataStore with checkpoint store
+        // Given: a DataStoreCoordinator with checkpoint store
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         // Insert a usage
@@ -226,9 +226,9 @@ final class CheckpointTests: XCTestCase {
     // MARK: - VAL-PERSIST-005: Resume from checkpoint is gap-free and duplicate-free
 
     func test_resume_findsExistingCheckpoint() throws {
-        // Given: a DataStore with an existing checkpoint
+        // Given: a DataStoreCoordinator with an existing checkpoint
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         // Insert a checkpoint directly
@@ -249,9 +249,9 @@ final class CheckpointTests: XCTestCase {
     }
 
     func test_resume_noCheckpoint_meansFreshStart() throws {
-        // Given: a DataStore with no checkpoint
+        // Given: a DataStoreCoordinator with no checkpoint
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         // When: we create a CheckpointedParserWrapper
@@ -267,7 +267,7 @@ final class CheckpointTests: XCTestCase {
     func test_resume_gapFreeAfterInterruption() throws {
         // Given: a scenario simulating interruption and resume
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         // Insert usages representing first batch
@@ -332,7 +332,7 @@ final class CheckpointTests: XCTestCase {
     func test_resume_duplicateFreeOnReingest() throws {
         // Given: a scenario where same data is re-ingested after checkpoint
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         // Insert usages
@@ -379,9 +379,9 @@ final class CheckpointTests: XCTestCase {
     // MARK: - VAL-PERSIST-014: Parser cache corruption/reset recovery is safe
 
     func test_clearCheckpoint_forcesFullReprocess() throws {
-        // Given: a DataStore with checkpoint
+        // Given: a DataStoreCoordinator with checkpoint
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         // Insert usages and checkpoint
@@ -426,9 +426,9 @@ final class CheckpointTests: XCTestCase {
     }
 
     func test_clearAllCheckpoints_fullReset() throws {
-        // Given: a DataStore with multiple provider checkpoints
+        // Given: a DataStoreCoordinator with multiple provider checkpoints
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         // Insert checkpoints for multiple providers
@@ -459,7 +459,7 @@ final class CheckpointTests: XCTestCase {
     func test_recoveryAfterCorruption_noMissingRows() throws {
         // Given: a scenario with usage data and checkpoint
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         // Insert multiple usages
@@ -520,9 +520,9 @@ final class CheckpointTests: XCTestCase {
     // MARK: - VAL-CROSS-008: Atomic visibility boundary
 
     func test_atomicVisibility_noPartialState_onFailure() throws {
-        // Given: a DataStore with checkpoint store
+        // Given: a DataStoreCoordinator with checkpoint store
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         // When: we append to transaction but fail before commit
@@ -569,9 +569,9 @@ final class CheckpointTests: XCTestCase {
     }
 
     func test_atomicVisibility_fullState_afterCommit() throws {
-        // Given: a DataStore with checkpoint store
+        // Given: a DataStoreCoordinator with checkpoint store
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         // When: we commit atomically
@@ -618,7 +618,7 @@ final class CheckpointTests: XCTestCase {
     func test_atomicVisibility_rollbackClearsInMemoryState() throws {
         // Given: a transaction with data
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         let usage = TokenUsage(
@@ -659,7 +659,7 @@ final class CheckpointTests: XCTestCase {
     func test_atomicVisibility_multipleCommits_advancesCheckpointEachTime() throws {
         // Given: a committed transaction
         let queue = try DatabaseQueue()
-        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let checkpointStore = ParserCheckpointStore(dbQueue: queue)
 
         let tx = AtomicIngestionTransaction(

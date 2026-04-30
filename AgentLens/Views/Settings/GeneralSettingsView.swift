@@ -6,7 +6,7 @@ import SwiftUI
 /// privacy, chat backends, and session summary settings.
 struct GeneralSettingsView: View {
     @Bindable var settingsManager: SettingsManager
-    var dataStore: DataStore
+    var dataStore: DataStoreCoordinator
     var sharedFeaturesAvailable: Bool
     @Environment(\.colorScheme) private var colorScheme
 

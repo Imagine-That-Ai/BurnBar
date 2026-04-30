@@ -17,7 +17,7 @@ import OpenBurnBarCore
 /// actor isolation. Callers `await` all public methods. The `SearchRetrievalGate` private actor that
 /// previously serialized calls is now redundant and has been removed.
 actor SearchService {
-    private let dataStore: DataStore
+    private let dataStore: DataStoreCoordinator
     private let semanticProvider: SemanticCandidateProviding?
     private let reranker: RetrievalRerankProviding?
     private let sharedArtifactAccessContextProvider: @MainActor () -> SharedArtifactAccessContext?
@@ -37,7 +37,7 @@ actor SearchService {
     /// Preferred initializer when shared-artifact access should resolve against the live account; requires a
     /// `MainActor` snapshotter (use ``makeConversationSearchService(dataStore:settingsManager:providerAPIKeyStore:nowProvider:)`` in app code).
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         semanticProvider: SemanticCandidateProviding? = nil,
         reranker: RetrievalRerankProviding? = nil,
         sharedArtifactAccessContextProvider: @escaping @MainActor () -> SharedArtifactAccessContext?,
@@ -52,7 +52,7 @@ actor SearchService {
 
     /// Tests and call sites that do not use shared artifacts may omit the provider; context resolves to `nil`.
     convenience init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         semanticProvider: SemanticCandidateProviding? = nil,
         reranker: RetrievalRerankProviding? = nil,
         nowProvider: @escaping () -> Date = { Date() }
@@ -68,7 +68,7 @@ actor SearchService {
 
     @MainActor
     static func makeConversationSearchService(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         settingsManager: SettingsManager = .shared,
         providerAPIKeyStore: ProviderAPIKeyStore = .shared,
         nowProvider: @escaping () -> Date = { Date() }
@@ -256,7 +256,7 @@ actor SearchService {
     }
 
     private static func resolvedEmbeddingSelection(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         preferredEmbeddingVersionID: String?
     ) -> (model: EmbeddingModelRecord, version: EmbeddingVersionRecord)? {
         guard

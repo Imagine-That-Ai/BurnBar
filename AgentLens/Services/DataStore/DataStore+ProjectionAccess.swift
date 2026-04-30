@@ -1,7 +1,7 @@
 import Foundation
 import OpenBurnBarCore
 
-extension DataStore {
+extension DataStoreCoordinator {
     nonisolated func enqueueConversationProjectionJob(
         conversationID: String,
         jobType: ProjectionJobType = .reproject,

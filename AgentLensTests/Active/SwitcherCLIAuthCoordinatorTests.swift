@@ -700,9 +700,9 @@ final class SwitcherDiscoveryServiceTests: XCTestCase {
 
     // MARK: - Helper
 
-    private func makeTestDataStore() throws -> DataStore {
+    private func makeTestDataStore() throws -> DataStoreCoordinator {
         let queue = try DatabaseQueue()
-        return try DataStore(
+        return try DataStoreCoordinator(
             databaseQueue: queue,
             runMigrations: true,
             refreshOnInit: false

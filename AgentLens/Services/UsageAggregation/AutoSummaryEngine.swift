@@ -26,7 +26,7 @@ struct AutoSummaryResult {
 final class AutoSummaryEngine {
     // MARK: - Dependencies
 
-    private let dataStore: DataStore
+    private let dataStore: DataStoreCoordinator
     private let settingsManager: SettingsManager
     private let llmClient: SummaryLLMClient
     private let keyResolver: SummaryAPIKeyResolver
@@ -54,7 +54,7 @@ final class AutoSummaryEngine {
     // MARK: - Init
 
     init(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         settingsManager: SettingsManager,
         providerAPIKeyStore: ProviderAPIKeyStore,
         llmClient: SummaryLLMClient = SummaryLLMClient(),

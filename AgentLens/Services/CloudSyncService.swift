@@ -30,7 +30,7 @@ final class CloudSyncService {
 
     // MARK: - Dependencies
 
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let accountManager: AccountManager
     let settingsManager: SettingsManager
 
@@ -41,7 +41,7 @@ final class CloudSyncService {
 
     // MARK: - Init
 
-    init(dataStore: DataStore, accountManager: AccountManager, settingsManager: SettingsManager = .shared) {
+    init(dataStore: DataStoreCoordinator, accountManager: AccountManager, settingsManager: SettingsManager = .shared) {
         self.dataStore = dataStore
         self.accountManager = accountManager
         self.settingsManager = settingsManager
@@ -228,7 +228,13 @@ final class CloudSyncService {
             let collectionRef = db.collection("users").document(uid).collection("chat_threads")
 
             for thread in threads {
-                let messages = (try? dataStore.fetchChatMessages(threadID: thread.id)) ?? []
+                let messages: [ChatMessageRecord]
+                do {
+                    messages = try dataStore.fetchChatMessages(threadID: thread.id)
+                } catch {
+                    AppLogger.sync.silentFailure("CloudSyncService: fetchChatMessages for thread \(thread.id)", error: error)
+                    messages = []
+                }
                 guard !messages.isEmpty else { continue }
 
                 let docId = "\(deviceId)_\(thread.id)"
@@ -416,7 +422,11 @@ final class CloudSyncService {
     func updateLocalDeviceName(_ name: String) async {
         guard accountManager.isFirebaseAvailable, let uid = Auth.auth().currentUser?.uid else { return }
         let devicesRef = db.collection("users").document(uid).collection("devices")
-        try? await devicesRef.document(accountManager.deviceId).setData(["deviceName": name], merge: true)
+        do {
+            try await devicesRef.document(accountManager.deviceId).setData(["deviceName": name], merge: true)
+        } catch {
+            AppLogger.sync.silentFailure("CloudSyncService: updateLocalDeviceName", error: error)
+        }
     }
 
     private func downloadRemoteUsage(uid: String, localDeviceId: String) async {
@@ -637,19 +647,23 @@ final class CloudSyncService {
                 sourceID: id,
                 sourceVersionID: ""
             )
-            try? dataStore.enqueueProjectionJob(
-                ProjectionJobRecord(
-                    id: jobId,
-                    jobType: .reproject,
-                    sourceKind: .conversation,
-                    sourceID: id,
-                    sourceVersionID: "",
-                    status: .queued,
-                    priority: 0,
-                    createdAt: Date(),
-                    updatedAt: Date()
+            do {
+                try dataStore.enqueueProjectionJob(
+                    ProjectionJobRecord(
+                        id: jobId,
+                        jobType: .reproject,
+                        sourceKind: .conversation,
+                        sourceID: id,
+                        sourceVersionID: "",
+                        status: .queued,
+                        priority: 0,
+                        createdAt: Date(),
+                        updatedAt: Date()
+                    )
                 )
-            )
+            } catch {
+                AppLogger.sync.silentFailure("CloudSyncService: enqueueProjectionForRemoteConversations", error: error)
+            }
         }
     }
 

@@ -9,7 +9,7 @@ import AppKit
 /// Compact quota glance at the top of the menu bar tray.
 struct ProviderQuotaPopoverStrip: View {
     @Bindable private var quotaService = ProviderQuotaService.shared
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
@@ -79,7 +79,7 @@ struct ProviderQuotaPopoverStrip: View {
 struct QuotaCommandCenter: View {
     @Bindable var quotaService: ProviderQuotaService
     @Bindable var settingsManager: SettingsManager
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     @State private var expandedProvider: AgentProvider?
     @State private var localMiniMaxKey = ""
     @State private var localMiniMaxMode: MiniMaxQuotaMode = .tokenPlan
@@ -284,7 +284,7 @@ struct QuotaCommandRow: View {
     let provider: AgentProvider
     @Bindable var quotaService: ProviderQuotaService
     @Bindable var settingsManager: SettingsManager
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let isExpanded: Bool
     @Binding var localMiniMaxKey: String
     @Binding var localMiniMaxMode: MiniMaxQuotaMode

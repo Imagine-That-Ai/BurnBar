@@ -42,7 +42,7 @@ enum RefreshBackgroundWork {
     /// main thread.  Call from `Task.detached` and `await` the result.
     static func runFullRefresh(
         parsers: [AgentProvider: any LogParser],
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         orchestrator: RefreshOrchestrator,
         existingUsages: [TokenUsage],
         settings: RefreshSettingsSnapshot
@@ -136,7 +136,7 @@ enum RefreshBackgroundWork {
     static func runSingleProviderRefresh(
         provider: AgentProvider,
         parser: any LogParser,
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         settings: RefreshSettingsSnapshot
     ) async -> SingleProviderResult {
         var result = SingleProviderResult()
@@ -174,12 +174,12 @@ enum RefreshBackgroundWork {
     // MARK: - Health Persistence
 
     /// Writes a `RetrievalHealthRecord` summarising parser import status.
-    /// All DB access goes through `nonisolated` `DataStore` extensions,
+    /// All DB access goes through `nonisolated` `DataStoreCoordinator` extensions,
     /// so this is safe to call from any executor.
     static func writeParserImportHealth(
         parserHealth: [AgentProvider: ParserHealth],
         parsers: [AgentProvider: any LogParser],
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         importedUsageCount: Int,
         persistenceError: String?,
         conversationIndexingEnabled: Bool

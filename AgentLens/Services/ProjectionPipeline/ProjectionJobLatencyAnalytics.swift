@@ -2,7 +2,7 @@ import Foundation
 
 
 enum ProjectionJobLatencyAnalytics {
-    static func projectionJobLatencySummary(dataStore: DataStore, sampleLimit: Int) throws -> ProjectionJobLatencySummary {
+    static func projectionJobLatencySummary(dataStore: DataStoreCoordinator, sampleLimit: Int) throws -> ProjectionJobLatencySummary {
         let completedJobs = try dataStore.fetchProjectionJobs(statuses: [.completed], limit: max(1, sampleLimit))
         guard completedJobs.isEmpty == false else {
             return ProjectionJobLatencySummary(

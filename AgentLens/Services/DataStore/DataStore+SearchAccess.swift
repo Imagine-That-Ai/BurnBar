@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 import OpenBurnBarCore
 
-extension DataStore {
+extension DataStoreCoordinator {
     nonisolated func upsertSearchDocument(_ document: SearchDocumentRecord) throws {
         try searchIndexStore.upsertDocument(document)
     }

@@ -5,7 +5,7 @@ import SwiftUI
 /// A read-only diagnostics view that surfaces the latest computed operational
 /// metrics. Intended for internal troubleshooting and performance verification.
 struct LocalMetricsView: View {
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
 
     @State private var snapshot: LocalMetricsSnapshot?
     @State private var isLoading = false

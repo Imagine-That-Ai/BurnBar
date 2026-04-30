@@ -234,9 +234,9 @@ final class ConversationParsingTests: XCTestCase {
         XCTAssertTrue(pending.contains(where: { $0.id == id }))
     }
 
-    private func makeInMemoryStore() throws -> DataStore {
+    private func makeInMemoryStore() throws -> DataStoreCoordinator {
         let queue = try DatabaseQueue(path: ":memory:")
-        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        return try DataStoreCoordinator(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
 
     private func makeFactoryConversationRecord(

@@ -5,7 +5,7 @@ import OpenBurnBarCore
 
 @MainActor
 final class SharedArtifactConflictResolutionTests: XCTestCase {
-    private var dataStore: DataStore!
+    private var dataStore: DataStoreCoordinator!
     private var accountManager: FakeAccountManager!
     private var settingsManager: SettingsManager!
     private var fakeGateway: CloudSyncFirestoreFakeGateway!
@@ -98,10 +98,28 @@ final class SharedArtifactConflictResolutionTests: XCTestCase {
         XCTAssertEqual(decision, .pullRemote)
     }
 
+    private func insertSourceArtifact(id: String) throws {
+        let artifact = SourceArtifactRecord(
+            id: id,
+            sourceKind: .sharedArtifact,
+            canonicalPath: "/test/\(id).swift",
+            rootPath: "/test",
+            relativePath: "\(id).swift",
+            provenance: "test",
+            title: "Test Artifact",
+            body: "print(hello)",
+            contentHash: "abc123",
+            fileSizeBytes: 100
+        )
+        _ = try dataStore.upsertSourceArtifact(artifact)
+    }
+
     // MARK: - Sync State Store Conflict Recording
 
     func test_syncStateStore_recordsConflictedState() async throws {
         let artifactID = "artifact-1"
+        try insertSourceArtifact(id: artifactID)
+
         let state = SharedArtifactSyncStateRecord(
             sourceArtifactID: artifactID,
             remoteArtifactID: "remote-1",
@@ -132,6 +150,8 @@ final class SharedArtifactConflictResolutionTests: XCTestCase {
 
     func test_syncStateStore_conflictToResolved() async throws {
         let artifactID = "artifact-1"
+        try insertSourceArtifact(id: artifactID)
+
         let conflictedState = SharedArtifactSyncStateRecord(
             sourceArtifactID: artifactID,
             remoteArtifactID: "remote-1",

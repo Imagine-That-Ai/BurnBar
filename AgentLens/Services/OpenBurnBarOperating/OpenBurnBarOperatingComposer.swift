@@ -5,7 +5,7 @@ import Foundation
 @MainActor
 enum OpenBurnBarOperatingComposer {
     static func build(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         settingsManager: SettingsManager,
         accountManager: AccountManager,
         daemonStatus: OpenBurnBarDaemonStatus,
@@ -781,7 +781,7 @@ enum OpenBurnBarOperatingComposer {
 
     private static func buildFreshnessSummary(
         focus: ProjectFocus,
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         settingsManager: SettingsManager,
         aggregator: UsageAggregator?,
         rollupFreshness: InsightRollupFreshness,

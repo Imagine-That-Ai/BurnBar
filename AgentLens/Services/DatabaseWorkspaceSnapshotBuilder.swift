@@ -139,7 +139,7 @@ final class DatabaseWorkspaceSnapshotBuilder {
 
 @MainActor
     static func build(
-        from dataStore: DataStore,
+        from dataStore: DataStoreCoordinator,
         settingsManager: SettingsManager,
         accountManager: AccountManager? = nil,
         cloudSyncService: CloudSyncService? = nil

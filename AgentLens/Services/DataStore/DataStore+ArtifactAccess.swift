@@ -1,7 +1,7 @@
 import Foundation
 import OpenBurnBarCore
 
-extension DataStore {
+extension DataStoreCoordinator {
     nonisolated func upsertSourceArtifact(_ artifact: SourceArtifactRecord) throws -> SourceArtifactWriteDisposition {
         try artifactStore.upsertSourceArtifact(artifact)
     }

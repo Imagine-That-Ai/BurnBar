@@ -5,7 +5,7 @@ import AppKit
 
 struct MenuBarPopoverView: View {
     @Environment(\.dismiss) private var dismiss
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     var aggregator: UsageAggregator?
     var quotaService: ProviderQuotaService?
     let settingsManager: SettingsManager
@@ -792,8 +792,8 @@ struct GlassIconButton<Label: View>: View {
 }
 
 #Preview {
-    let store = (try? DataStore()) ?? {
-        preconditionFailure("Preview requires a valid DataStore - ensure app support directory is writable")
+    let store = (try? DataStoreCoordinator()) ?? {
+        preconditionFailure("Preview requires a valid DataStoreCoordinator - ensure app support directory is writable")
     }()
     let settingsManager = SettingsManager()
     MenuBarPopoverView(

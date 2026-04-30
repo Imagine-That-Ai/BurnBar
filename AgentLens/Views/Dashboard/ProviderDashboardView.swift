@@ -154,7 +154,7 @@ private struct MiniStat: View {
 
 struct ProviderDashboardView: View {
     let provider: AgentProvider
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let timeRange: TimeRange
     var onOpenSessionLog: ((ConversationJumpTarget) -> Void)? = nil
 
@@ -715,8 +715,8 @@ struct DailyTrendChart: View {
 }
 
 #Preview {
-    let store = (try? DataStore()) ?? {
-        preconditionFailure("Preview requires a valid DataStore - ensure app support directory is writable")
+    let store = (try? DataStoreCoordinator()) ?? {
+        preconditionFailure("Preview requires a valid DataStoreCoordinator - ensure app support directory is writable")
     }()
     return ProviderDashboardView(
         provider: .factory,

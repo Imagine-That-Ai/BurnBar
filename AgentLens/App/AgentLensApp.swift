@@ -78,17 +78,7 @@ final class WindowManager: ObservableObject {
     private var hermesSetupWindow: NSWindow?
     private var switcherOnboardingWindow: NSWindow?
 
-    func openDashboard(
-        dataStore: DataStore,
-        aggregator: UsageAggregator?,
-        accountManager: AccountManager,
-        cloudSyncService: CloudSyncService?,
-        iCloudSessionMirrorService: ICloudSessionMirrorService?,
-        chatController: ChatSessionController,
-        operatingLayer: OpenBurnBarOperatingLayer,
-        navigationCoordinator: NavigationCoordinator,
-        settingsManager: SettingsManager
-    ) {
+    func openDashboard(context: DashboardContext) {
         NSApplication.shared.activate(ignoringOtherApps: true)
 
         if let window = dashboardWindow {
@@ -96,19 +86,10 @@ final class WindowManager: ObservableObject {
             return
         }
 
-        let contentView = DashboardView(
-            dataStore: dataStore,
-            aggregator: aggregator,
-            accountManager: accountManager,
-            cloudSyncService: cloudSyncService,
-            iCloudSessionMirrorService: iCloudSessionMirrorService,
-            chatController: chatController,
-            operatingLayer: operatingLayer,
-            settingsManager: settingsManager
-        )
+        let contentView = DashboardView(context: context)
         .frame(minWidth: 900, minHeight: 600)
-        .environment(settingsManager)
-        .environment(navigationCoordinator)
+        .environment(context.settingsManager)
+        .environment(context.navigationCoordinator)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1100, height: 750),
@@ -135,7 +116,7 @@ final class WindowManager: ObservableObject {
         accountManager: AccountManager,
         cloudSyncService: CloudSyncService?,
         iCloudSessionMirrorService: ICloudSessionMirrorService?,
-        dataStore: DataStore
+        dataStore: DataStoreCoordinator
     ) {
         NSApplication.shared.activate(ignoringOtherApps: true)
 
@@ -173,7 +154,7 @@ final class WindowManager: ObservableObject {
     }
 
     func openOnboardingWizard(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         aggregator: UsageAggregator?,
         settingsManager: SettingsManager,
         chatController: ChatSessionController?,
@@ -259,7 +240,7 @@ final class WindowManager: ObservableObject {
     }
 
     func openSwitcherOnboardingWizard(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         settingsManager: SettingsManager,
         onOpenSettings: @escaping () -> Void
     ) {
@@ -312,7 +293,7 @@ struct OpenBurnBarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @AppStorage("hasShownInitialDashboard") private var hasShownInitialDashboard = false
     @StateObject private var windowManager = WindowManager.shared
-    @State private var dataStore: DataStore
+    @State private var dataStore: DataStoreCoordinator
     @State private var settingsManager: SettingsManager
     @State private var aggregator: UsageAggregator?
     @State private var accountManager: AccountManager
@@ -335,9 +316,9 @@ struct OpenBurnBarApp: App {
         _ = try? OpenBurnBarMigration.prepareSupportDirectory()
 
         // Initialize DataStore - this MUST succeed for the app to function
-        let initializedStore: DataStore
+        let initializedStore: DataStoreCoordinator
         do {
-            initializedStore = try DataStore()
+            initializedStore = try DataStoreCoordinator()
         } catch {
             fatalError(
                 "CRITICAL: Failed to initialize DataStore. The app cannot function without a working database.\n" +
@@ -376,6 +357,36 @@ struct OpenBurnBarApp: App {
         _iCloudSessionMirrorService = State(initialValue: nil)
         _chatController = State(initialValue: controller)
         _operatingLayer = State(initialValue: layer)
+    }
+
+    @MainActor
+    private func makeDashboardContext() -> DashboardContext {
+        DashboardContext(
+            dataStore: dataStore,
+            settingsManager: settingsManager,
+            accountManager: accountManager,
+            operatingLayer: operatingLayer,
+            chatController: chatController,
+            navigationCoordinator: navigationCoordinator,
+            aggregator: aggregator,
+            cloudSyncService: cloudSyncService,
+            iCloudSessionMirrorService: iCloudSessionMirrorService
+        )
+    }
+
+    @MainActor
+    private func makeDashboardContext(aggregator: UsageAggregator?, cloudSync: CloudSyncService?, mirror: ICloudSessionMirrorService?) -> DashboardContext {
+        DashboardContext(
+            dataStore: dataStore,
+            settingsManager: settingsManager,
+            accountManager: accountManager,
+            operatingLayer: operatingLayer,
+            chatController: chatController,
+            navigationCoordinator: navigationCoordinator,
+            aggregator: aggregator,
+            cloudSyncService: cloudSync,
+            iCloudSessionMirrorService: mirror
+        )
     }
 
     @MainActor
@@ -475,31 +486,11 @@ struct OpenBurnBarApp: App {
     @MainActor
     private func installCommandRouter() {
         AppCommandRouter.shared.openDashboard = {
-            windowManager.openDashboard(
-                dataStore: dataStore,
-                aggregator: aggregator,
-                accountManager: accountManager,
-                cloudSyncService: cloudSyncService,
-                iCloudSessionMirrorService: iCloudSessionMirrorService,
-                chatController: chatController,
-                operatingLayer: operatingLayer,
-                navigationCoordinator: navigationCoordinator,
-                settingsManager: settingsManager
-            )
+            windowManager.openDashboard(context: self.makeDashboardContext())
         }
 
         AppCommandRouter.shared.openConversationSearch = {
-            windowManager.openDashboard(
-                dataStore: dataStore,
-                aggregator: aggregator,
-                accountManager: accountManager,
-                cloudSyncService: cloudSyncService,
-                iCloudSessionMirrorService: iCloudSessionMirrorService,
-                chatController: chatController,
-                operatingLayer: operatingLayer,
-                navigationCoordinator: navigationCoordinator,
-                settingsManager: settingsManager
-            )
+            windowManager.openDashboard(context: self.makeDashboardContext())
 
             // Navigation now handled via NavigationCoordinator
             navigationCoordinator.openConversationSearch()
@@ -520,17 +511,7 @@ struct OpenBurnBarApp: App {
                     settingsManager: settingsManager,
                     operatingLayer: operatingLayer,
                     onOpenDashboard: {
-                        windowManager.openDashboard(
-                            dataStore: dataStore,
-                            aggregator: aggregator,
-                            accountManager: accountManager,
-                            cloudSyncService: cloudSyncService,
-                            iCloudSessionMirrorService: iCloudSessionMirrorService,
-                            chatController: chatController,
-                            operatingLayer: operatingLayer,
-                            navigationCoordinator: navigationCoordinator,
-                            settingsManager: settingsManager
-                        )
+                        windowManager.openDashboard(context: self.makeDashboardContext())
                     },
                     onOpenSettings: {
                         windowManager.openSettings(
@@ -543,17 +524,7 @@ struct OpenBurnBarApp: App {
                     },
                     chatController: chatController,
                     onOpenDashboardWithChat: {
-                        windowManager.openDashboard(
-                            dataStore: dataStore,
-                            aggregator: aggregator,
-                            accountManager: accountManager,
-                            cloudSyncService: cloudSyncService,
-                            iCloudSessionMirrorService: iCloudSessionMirrorService,
-                            chatController: chatController,
-                            operatingLayer: operatingLayer,
-                            navigationCoordinator: navigationCoordinator,
-                            settingsManager: settingsManager
-                        )
+                        windowManager.openDashboard(context: self.makeDashboardContext())
                         // Navigation now handled via NavigationCoordinator
                         navigationCoordinator.openChatPanel()
                     },
@@ -564,17 +535,7 @@ struct OpenBurnBarApp: App {
                             settingsManager: settingsManager,
                             chatController: chatController,
                             onOpenDashboard: {
-                                windowManager.openDashboard(
-                                    dataStore: dataStore,
-                                    aggregator: aggregator,
-                                    accountManager: accountManager,
-                                    cloudSyncService: cloudSyncService,
-                                    iCloudSessionMirrorService: iCloudSessionMirrorService,
-                                    chatController: chatController,
-                                    operatingLayer: operatingLayer,
-                                    navigationCoordinator: navigationCoordinator,
-                                    settingsManager: settingsManager
-                                )
+                                windowManager.openDashboard(context: self.makeDashboardContext())
                             }
                         )
                     }
@@ -618,17 +579,7 @@ struct OpenBurnBarApp: App {
                     cursorConnectorManager.attach(dataStore: dataStore)
                     if !hasShownInitialDashboard {
                         hasShownInitialDashboard = true
-                        windowManager.openDashboard(
-                            dataStore: dataStore,
-                            aggregator: newAggregator,
-                            accountManager: accountManager,
-                            cloudSyncService: sync,
-                            iCloudSessionMirrorService: mirror,
-                            chatController: chatController,
-                            operatingLayer: operatingLayer,
-                            navigationCoordinator: navigationCoordinator,
-                            settingsManager: settingsManager
-                        )
+                        windowManager.openDashboard(context: self.makeDashboardContext(aggregator: newAggregator, cloudSync: sync, mirror: mirror))
                     }
                     // Probe Hermes availability in the background
                     Task {

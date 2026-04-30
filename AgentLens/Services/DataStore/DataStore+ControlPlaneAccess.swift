@@ -1,7 +1,7 @@
 import Foundation
 import OpenBurnBarCore
 
-extension DataStore {
+extension DataStoreCoordinator {
     nonisolated func appendOperatingActionRecord(_ record: OpenBurnBarOperatingActionRecord) throws {
         try controlPlaneStore.appendOperatingActionRecord(record)
     }

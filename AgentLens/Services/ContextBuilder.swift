@@ -137,7 +137,7 @@ enum ContextBuilder {
     private static let maxPromptChars = 6_000
 
     static func buildSystemPrompt(
-        from dataStore: DataStore,
+        from dataStore: DataStoreCoordinator,
         intelligenceService: SearchService? = nil
     ) async -> String {
         let calendar = Calendar.current
@@ -213,7 +213,7 @@ enum ContextBuilder {
 
     /// Dashboard chat: OpenBurnBar data analyst persona, index health, and non-exhaustive usage rollups. Does not include per-message retrieval (append `OpenBurnBarChatEvidenceFormatting.formatPack` separately).
     static func buildDatabaseAnalystSystemPrompt(
-        from dataStore: DataStore,
+        from dataStore: DataStoreCoordinator,
         intelligenceService: SearchService? = nil,
         indexingEnabled: Bool,
         health: RetrievalSystemHealthSnapshot

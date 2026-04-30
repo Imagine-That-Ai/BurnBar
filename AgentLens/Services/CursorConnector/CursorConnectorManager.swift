@@ -36,7 +36,7 @@ final class CursorConnectorManager {
     private var usagePollTask: Task<Void, Never>?
     private var routePollTask: Task<Void, Never>?
     private var sessionToken: String = ""
-    private weak var dataStore: DataStore?
+    private weak var dataStore: DataStoreCoordinator?
 
     init(settingsManager: SettingsManager = .shared) {
         self.settingsManager = settingsManager
@@ -57,7 +57,7 @@ final class CursorConnectorManager {
         refreshSystemHealth()
     }
 
-    func attach(dataStore: DataStore) {
+    func attach(dataStore: DataStoreCoordinator) {
         self.dataStore = dataStore
         beginPollingLogsIfNeeded()
     }

@@ -1,7 +1,7 @@
 import Foundation
 import OpenBurnBarCore
 
-extension DataStore {
+extension DataStoreCoordinator {
     nonisolated func fetchDevices() throws -> [DeviceRecord] {
         try deviceStore.fetchDevices()
     }

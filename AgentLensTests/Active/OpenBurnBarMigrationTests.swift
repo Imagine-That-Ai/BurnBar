@@ -128,7 +128,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
 
         try seedLegacyV13Database(queue: queue, at: base)
 
-        let store = try DataStore(
+        let store = try DataStoreCoordinator(
             databaseQueue: queue,
             runMigrations: true,
             refreshOnInit: false
@@ -706,7 +706,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
                     6,
                     90,
                     130,
-                    #"["DataStore.swift"]"#,
+                    #"["DataStoreCoordinator.swift"]"#,
                     #"["swift test"]"#,
                     #"["Read","Edit"]"#,
                     "Legacy migration coverage",

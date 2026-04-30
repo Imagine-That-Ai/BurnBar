@@ -12,7 +12,7 @@ import OpenBurnBarCore
 /// - Only non-sensitive launch metadata is stored
 /// - OAuth boundary messaging is explicit
 struct AccountSwitcherSettingsView: View {
-    let dataStore: DataStore
+    let dataStore: DataStoreCoordinator
     let settingsManager: SettingsManager
 
     @State var profiles: [SwitcherProfileRecord] = []
@@ -61,7 +61,7 @@ struct AccountSwitcherSettingsView: View {
         let canSaveAsNew: Bool
     }
 
-    init(dataStore: DataStore, settingsManager: SettingsManager = .shared) {
+    init(dataStore: DataStoreCoordinator, settingsManager: SettingsManager = .shared) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
     }

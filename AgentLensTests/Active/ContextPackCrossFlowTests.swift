@@ -106,7 +106,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
     // MARK: - Test Data
 
     private var dbQueue: DatabaseQueue!
-    private var dataStore: DataStore!
+    private var dataStore: DataStoreCoordinator!
 
     // MARK: - Lifecycle
 
@@ -114,7 +114,7 @@ final class ContextPackCrossFlowTests: XCTestCase {
         super.setUp()
         do {
             dbQueue = try DatabaseQueue()
-            dataStore = try DataStore(databaseQueue: dbQueue, refreshOnInit: false)
+            dataStore = try DataStoreCoordinator(databaseQueue: dbQueue, refreshOnInit: false)
             // Ensure migrations are applied
             try dbQueue.write { db in
                 try db.execute(sql: """

@@ -5,12 +5,12 @@ import Foundation
 /// Lightweight operational metrics computed from the existing `retrieval_health`
 /// table plus in-memory counters. No external telemetry endpoints.
 actor LocalMetricsAggregator {
-    private let dataStore: DataStore
+    private let dataStore: DataStoreCoordinator
     private let counter = LocalMetricsCounter()
     private var latestSnapshot: LocalMetricsSnapshot?
     private var lastCompute: Date = .distantPast
 
-    init(dataStore: DataStore) {
+    init(dataStore: DataStoreCoordinator) {
         self.dataStore = dataStore
     }
 

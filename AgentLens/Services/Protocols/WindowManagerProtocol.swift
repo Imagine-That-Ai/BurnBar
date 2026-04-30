@@ -21,27 +21,8 @@ protocol WindowManagerProtocol: AnyObject {
     // MARK: - Dashboard Window
 
     /// Opens the main dashboard window.
-    /// - Parameters:
-    ///   - dataStore: The data store instance.
-    ///   - aggregator: Optional usage aggregator.
-    ///   - accountManager: The account manager.
-    ///   - cloudSyncService: Optional cloud sync service.
-    ///   - iCloudSessionMirrorService: Optional iCloud mirror service.
-    ///   - chatController: The chat session controller.
-    ///   - operatingLayer: The operating layer.
-    ///   - navigationCoordinator: The navigation coordinator.
-    ///   - settingsManager: The settings manager injected into dashboard descendants.
-    func openDashboard(
-        dataStore: DataStore,
-        aggregator: UsageAggregator?,
-        accountManager: AccountManager,
-        cloudSyncService: CloudSyncService?,
-        iCloudSessionMirrorService: ICloudSessionMirrorService?,
-        chatController: ChatSessionController,
-        operatingLayer: OpenBurnBarOperatingLayer,
-        navigationCoordinator: NavigationCoordinator,
-        settingsManager: SettingsManager
-    )
+    /// - Parameter context: The dashboard context bundling all shared dependencies.
+    func openDashboard(context: DashboardContext)
 
     // MARK: - Settings Window
 
@@ -57,7 +38,7 @@ protocol WindowManagerProtocol: AnyObject {
         accountManager: AccountManager,
         cloudSyncService: CloudSyncService?,
         iCloudSessionMirrorService: ICloudSessionMirrorService?,
-        dataStore: DataStore
+        dataStore: DataStoreCoordinator
     )
 
     // MARK: - Onboarding Wizard
@@ -70,7 +51,7 @@ protocol WindowManagerProtocol: AnyObject {
     ///   - chatController: Optional chat session controller.
     ///   - onOpenDashboard: Closure called when user wants to open dashboard.
     func openOnboardingWizard(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         aggregator: UsageAggregator?,
         settingsManager: SettingsManager,
         chatController: ChatSessionController?,
@@ -85,7 +66,7 @@ protocol WindowManagerProtocol: AnyObject {
     ///   - settingsManager: The settings manager.
     ///   - onOpenSettings: Closure called when user wants to open settings.
     func openSwitcherOnboardingWizard(
-        dataStore: DataStore,
+        dataStore: DataStoreCoordinator,
         settingsManager: SettingsManager,
         onOpenSettings: @escaping () -> Void
     )
