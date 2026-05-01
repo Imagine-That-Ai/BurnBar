@@ -59,12 +59,7 @@ jobs:
 
       - name: Extract code coverage
         if: always()
-        run: |
-          if [ -d "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" ]; then
-            ./scripts/extract-coverage.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-coverage.json" || true
-          else
-            echo '{"summary":{"percent":0.0,"executableLines":0,"coveredLines":0},"targets":[]}' > "$GITHUB_WORKSPACE/openburnbar-coverage.json"
-          fi
+        run: ./scripts/extract-coverage.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-coverage.json"
 
       - name: Compute diff coverage
         if: github.event_name == 'pull_request'

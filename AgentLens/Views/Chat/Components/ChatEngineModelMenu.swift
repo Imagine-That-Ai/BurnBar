@@ -1,7 +1,7 @@
 import SwiftUI
 
 private enum ChatEngineModelCatalog {
-    static let claudeCode: [String] = ["", "claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-3-5-sonnet-20241022"]
+    static let claudeCode: [String] = ["", "claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-opus-4-7", "claude-3-5-sonnet-20241022"]
     static let openClaw: [String] = ["", "gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"]
 }
 

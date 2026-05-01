@@ -31,7 +31,7 @@ OpenBurnBar currently ships four coordinated control surfaces:
 | **Core** | macOS app (dashboard, menu bar, session logs, settings), local daemon (provider routing, run state), Cursor/VS Code extension shell, CLI, shared `OpenBurnBarCore` contracts. Local SQLite + daemon-owned files remain canonical. |
 | **Experimental** | Optional Firestore replication, iCloud file mirroring, Cursor connector + tunnel, connector plane (GitHub/Slack/Linear/PostHog/Sentry/Gmail), mission control / controller runtime, Telegram bot integration, browser tooling plane, Hermes/OpenClaw chat backends. These are opt-in, best-effort, and may be redesigned or removed before `1.0`. |
 | **Adjacent tooling** | Repo helper at `tools/openburnbar-mcp/` (read-only MCP bridge to local SQLite) — optional for developers, not part of the runtime spine. |
-| **Parked tests** | `AgentLensTests/Parked/` — kept in-repo for future re-enablement, but intentionally excluded from `OpenBurnBarTests`; see `AgentLensTests/README.md`. |
+| **Quarantined tests** | `AgentLensTests/Quarantine/` — stale suites kept as migration reference only, but intentionally excluded from `OpenBurnBarTests` until fixed and moved back to `Active/`; see `AgentLensTests/README.md`. |
 
 **Why connectors, mission control, and Telegram are Experimental, not Core:**
 
@@ -197,4 +197,4 @@ The Xcode target **`OpenBurnBarTests`** (declared in `project.yml`) compiles **o
 - `AgentLensTests/Active/**`
 - `AgentLensTests/Support/**`
 
-Files under `AgentLensTests/Parked/**` remain in the tree as archival reference and do not affect the active test bundle until they are moved back into `Active/` and updated for current APIs. See `AgentLensTests/README.md` and `CONTRIBUTING.md` for the active vs parked policy.
+Files under `AgentLensTests/Quarantine/**` remain in the tree as migration reference and do not affect the active test bundle until they are fixed against current APIs, moved back into `Active/`, and regenerated through `xcodegen generate`. See `AgentLensTests/README.md` and `CONTRIBUTING.md` for the active vs quarantine policy.

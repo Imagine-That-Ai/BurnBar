@@ -233,7 +233,8 @@ For manual verification before promoting a release:
 # Build locally
 make build
 
-# Run the release smoke test
+# Run the release smoke test. The smoke script generates a throwaway daemon
+# socket auth token and verifies authenticated daemon health.
 scripts/test-openburnbar-release-smoke.sh
 
 # Check code signing

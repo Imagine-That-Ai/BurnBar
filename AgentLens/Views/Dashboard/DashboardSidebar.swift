@@ -17,6 +17,85 @@ struct DashboardSidebar: View {
     let onBack: () -> Void
     let onOpenCursorExtension: () -> Void
 
+    init(
+        viewMode: DashboardViewMode,
+        mainRoute: DashboardMainRoute,
+        providerSummaries: [ProviderSummary],
+        modelSummaries: [ModelSummary],
+        totalCost: Double,
+        totalTokens: Int,
+        filteredUsagesCount: Int,
+        activeProviderCount: Int,
+        selectedTimeRange: TimeRange,
+        context: DashboardContext,
+        sidebarAppeared: Bool,
+        onNavigate: @escaping (DashboardMainRoute) -> Void,
+        onBack: @escaping () -> Void,
+        onOpenCursorExtension: @escaping () -> Void
+    ) {
+        self.viewMode = viewMode
+        self.mainRoute = mainRoute
+        self.providerSummaries = providerSummaries
+        self.modelSummaries = modelSummaries
+        self.totalCost = totalCost
+        self.totalTokens = totalTokens
+        self.filteredUsagesCount = filteredUsagesCount
+        self.activeProviderCount = activeProviderCount
+        self.selectedTimeRange = selectedTimeRange
+        self.context = context
+        self.sidebarAppeared = sidebarAppeared
+        self.onNavigate = onNavigate
+        self.onBack = onBack
+        self.onOpenCursorExtension = onOpenCursorExtension
+    }
+
+    init(
+        viewMode: DashboardViewMode,
+        mainRoute: DashboardMainRoute,
+        providerSummaries: [ProviderSummary],
+        modelSummaries: [ModelSummary],
+        totalCost: Double,
+        totalTokens: Int,
+        filteredUsagesCount: Int,
+        activeProviderCount: Int,
+        selectedTimeRange: TimeRange,
+        accountManager: AccountManager,
+        cloudSyncService: CloudSyncService?,
+        settingsManager: SettingsManager,
+        dataStore: DataStoreCoordinator,
+        sidebarAppeared: Bool,
+        onNavigate: @escaping (DashboardMainRoute) -> Void,
+        onBack: @escaping () -> Void,
+        onOpenCursorExtension: @escaping () -> Void
+    ) {
+        let chatController = ChatSessionController(dataStore: dataStore, settingsManager: settingsManager)
+        let operatingLayer = OpenBurnBarOperatingLayer(dataStore: dataStore, settingsManager: settingsManager)
+        self.init(
+            viewMode: viewMode,
+            mainRoute: mainRoute,
+            providerSummaries: providerSummaries,
+            modelSummaries: modelSummaries,
+            totalCost: totalCost,
+            totalTokens: totalTokens,
+            filteredUsagesCount: filteredUsagesCount,
+            activeProviderCount: activeProviderCount,
+            selectedTimeRange: selectedTimeRange,
+            context: DashboardContext(
+                dataStore: dataStore,
+                settingsManager: settingsManager,
+                accountManager: accountManager,
+                operatingLayer: operatingLayer,
+                chatController: chatController,
+                navigationCoordinator: NavigationCoordinator(),
+                cloudSyncService: cloudSyncService
+            ),
+            sidebarAppeared: sidebarAppeared,
+            onNavigate: onNavigate,
+            onBack: onBack,
+            onOpenCursorExtension: onOpenCursorExtension
+        )
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {

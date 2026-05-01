@@ -60,13 +60,13 @@ public actor BurnBarRateLimiter {
     }
 
     private func pruneIfNeeded(now: ContinuousClock.Instant) {
-        if let lastPruned, now.duration(to: lastPruned) < pruneInterval {
+        if let lastPruned, lastPruned.duration(to: now) < pruneInterval {
             return
         }
 
         var pruned = 0
         for (key, bucket) in buckets {
-            if now.duration(to: bucket.lastUpdated) > bucketIdleTimeout {
+            if bucket.lastUpdated.duration(to: now) > bucketIdleTimeout {
                 buckets.removeValue(forKey: key)
                 pruned += 1
             }

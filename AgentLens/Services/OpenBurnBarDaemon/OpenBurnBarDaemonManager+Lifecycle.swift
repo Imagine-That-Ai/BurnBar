@@ -152,6 +152,10 @@ extension OpenBurnBarDaemonManager {
             options: 0
         )
         try data.write(to: paths.launchAgentPlistURL, options: .atomic)
+        try dependencies.fileManager.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: paths.launchAgentPlistURL.path
+        )
     }
 
     /// Always rotates the daemon socket auth token on daemon reinstall.

@@ -398,19 +398,25 @@ struct QuotaPopoverBar: View {
                 if trimmed.isEmpty { try ks.removeAPIKey(for: "minimax") }
                 else { try ks.setAPIKey(trimmed, for: "minimax") }
                 settingsManager.miniMaxQuotaMode = localMiniMaxMode
-            } catch { }
+            } catch {
+                AppLogger.dataStore.silentFailure("saveAPIKey(minimax)", error: error)
+            }
         case .zai:
             do {
                 let trimmed = localZaiKey.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.isEmpty { try ks.removeAPIKey(for: "zai") }
                 else { try ks.setAPIKey(trimmed, for: "zai") }
-            } catch { }
+            } catch {
+                AppLogger.dataStore.silentFailure("saveAPIKey(zai)", error: error)
+            }
         case .cursor:
             do {
                 let trimmed = localCursorCookie.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.isEmpty { try ks.removeAPIKey(for: "cursor_cookie") }
                 else { try ks.setAPIKey(trimmed, for: "cursor_cookie") }
-            } catch { }
+            } catch {
+                AppLogger.dataStore.silentFailure("saveAPIKey(cursor_cookie)", error: error)
+            }
         case .factory:
             settingsManager.factoryQuotaPlanTier = localFactoryTier
         default:

@@ -30,7 +30,7 @@ if [[ -z "$coverage_json" ]]; then
   done
   if [[ -n "$data_dir" ]]; then
     coverage_json="$TMPDIR/openburnbar-diff-coverage-summary.json"
-    "$repo_root/scripts/extract-coverage.sh" "$data_dir" > "$coverage_json" 2>/dev/null || true
+    "$repo_root/scripts/extract-coverage.sh" "$data_dir" > "$coverage_json"
   fi
 fi
 

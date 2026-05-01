@@ -15,7 +15,7 @@
 // This file is kept as a placeholder to preserve source compatibility.
 import OpenBurnBarCore
 
-public protocol BurnBarMissionControlServing: AnyObject {
+public protocol BurnBarMissionControlServing: AnyObject, Sendable {
     func startBackgroundLoops() async
     func stopBackgroundLoops() async
 

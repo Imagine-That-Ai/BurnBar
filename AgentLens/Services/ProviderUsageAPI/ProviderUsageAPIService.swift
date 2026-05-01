@@ -60,6 +60,12 @@ struct ProviderUsageRecord: Sendable, Equatable {
 
     var mappedProvider: AgentProvider? {
         switch normalizedProviderName {
+        case "factory":
+            return .factory
+        case "anthropic", "claude", "claude code", "claude-code":
+            return .claudeCode
+        case "openai", "codex", "openai codex":
+            return .codex
         case "minimax":
             return .minimax
         case "z.ai", "zai":

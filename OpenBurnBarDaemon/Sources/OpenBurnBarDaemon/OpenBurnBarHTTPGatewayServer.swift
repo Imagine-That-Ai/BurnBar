@@ -1,4 +1,5 @@
 import OpenBurnBarCore
+import CryptoKit
 import Foundation
 import Network
 
@@ -47,25 +48,18 @@ public actor BurnBarHTTPGatewayServer {
         let port = UInt16(configuration.port)
         let nwPort = NWEndpoint.Port(rawValue: port)!
         let params = NWParameters.tcp
+        params.requiredLocalEndpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: nwPort)
 
         let nwListener: NWListener
         do {
-            nwListener = try NWListener(using: params, on: nwPort)
+            nwListener = try NWListener(using: params)
         } catch {
             throw BurnBarHTTPGatewayError.listenerCreationFailed(error: error)
         }
 
-        // Bind to the configured host
-        if host == "127.0.0.1" || host == "localhost" || host == "::1" {
-            nwListener.newConnectionHandler = { [weak self] connection in
-                guard let self else { return }
-                Task { await self.handleConnection(connection) }
-            }
-        } else {
-            nwListener.newConnectionHandler = { [weak self] connection in
-                guard let self else { return }
-                Task { await self.handleConnection(connection) }
-            }
+        nwListener.newConnectionHandler = { [weak self] connection in
+            guard let self else { return }
+            Task { await self.handleConnection(connection) }
         }
 
         nwListener.stateUpdateHandler = { [weak self] state in
@@ -250,8 +244,7 @@ public actor BurnBarHTTPGatewayServer {
 
         // Rate limiting check
         if let rateLimiter {
-            let token = bearerToken(from: request.headers["authorization"])
-            let clientKey = token ?? "anonymous"
+            let clientKey = rateLimitClientKey(for: request)
             let limitResult = await rateLimiter.checkLimit(clientKey: clientKey)
             if case .throttled(let retryAfter) = limitResult {
                 logger.warning(
@@ -472,6 +465,18 @@ public actor BurnBarHTTPGatewayServer {
         }
         let token = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
         return token.isEmpty ? nil : token
+    }
+
+    private func rateLimitClientKey(for request: HTTPRequest) -> String {
+        if let token = bearerToken(from: request.headers["authorization"]) {
+            return "token:\(Self.stableDigest(token))"
+        }
+        return "anonymous"
+    }
+
+    private static func stableDigest(_ value: String) -> String {
+        let digest = SHA256.hash(data: Data(value.utf8))
+        return digest.prefix(12).map { String(format: "%02x", $0) }.joined()
     }
 
     private func corsHeaders(for request: HTTPRequest) -> [String: String] {

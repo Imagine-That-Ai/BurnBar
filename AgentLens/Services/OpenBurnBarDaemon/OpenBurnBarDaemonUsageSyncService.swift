@@ -83,8 +83,12 @@ final class OpenBurnBarDaemonUsageSyncService {
         let importedUsages = usageRecords.compactMap { tokenUsage(from: $0) }
 
         if let insertUsages, !importedUsages.isEmpty {
-            try? insertUsages(importedUsages)
-            refreshUsageCache?()
+            do {
+                try insertUsages(importedUsages)
+                refreshUsageCache?()
+            } catch {
+                AppLogger.dataStore.silentFailure("insertUsages(refreshState)", error: error)
+            }
         }
 
         return OpenBurnBarDaemonRuntimeSnapshot(
@@ -108,8 +112,12 @@ final class OpenBurnBarDaemonUsageSyncService {
         let importedUsages = usageEvents.compactMap { tokenUsage(from: $0) }
 
         if let insertUsages, !importedUsages.isEmpty {
-            try? insertUsages(importedUsages)
-            refreshUsageCache?()
+            do {
+                try insertUsages(importedUsages)
+                refreshUsageCache?()
+            } catch {
+                AppLogger.dataStore.silentFailure("insertUsages(runtimeSnapshot)", error: error)
+            }
         }
 
         return OpenBurnBarDaemonRuntimeSnapshot(

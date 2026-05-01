@@ -210,12 +210,11 @@ private enum CloudSyncRetryLog {
 ///   - operation: The async throwing closure to execute.
 /// - Returns: The result of the operation on success.
 /// - Throws: The last error if all retries are exhausted, or immediately on terminal/permission errors.
-@MainActor
 func withCloudSyncRetry<T>(
     policy: CloudSyncRetryPolicy,
     circuitBreaker: CloudSyncCircuitBreaker,
     domain: String,
-    operation: () async throws -> T
+    operation: @Sendable () async throws -> T
 ) async throws -> T {
     var lastError: Error?
 

@@ -203,8 +203,9 @@ final class CloudSyncService {
 
     // MARK: - Chat Thread Cloud Sync
 
-    /// Uploads chat threads and messages to Firestore for cross-device resume.
-    /// Layout: `users/{uid}/chat_threads/{deviceId}_{threadId}` (thread metadata + messages array).
+    /// Uploads chat threads to Firestore for cross-device resume.
+    /// Layout: `users/{uid}/chat_threads/{deviceId}_{threadId}`.
+    /// Full message content/title/preview are included only after explicit chat content consent.
     func uploadPendingChatThreads() async {
         guard accountManager.isFirebaseAvailable,
               accountManager.isSignedIn,
@@ -227,36 +228,44 @@ final class CloudSyncService {
             let batch = db.batch()
             let collectionRef = db.collection("users").document(uid).collection("chat_threads")
 
+            let includeContent = settingsManager.chatThreadContentCloudBackupEnabled
             for thread in threads {
-                let messages = (try? dataStore.fetchChatMessages(threadID: thread.id)) ?? []
-                guard !messages.isEmpty else { continue }
+                let messages = includeContent
+                    ? ((try? dataStore.fetchChatMessages(threadID: thread.id)) ?? [])
+                    : []
 
                 let docId = "\(deviceId)_\(thread.id)"
                 let docRef = collectionRef.document(docId)
 
-                let encodedMessages: [[String: Any]] = messages.map { msg in
-                    var m: [String: Any] = [
-                        "id": msg.id,
-                        "role": msg.role == .user ? "user" : "assistant",
-                        "content": String(msg.content.prefix(4000)),
-                        "timestamp": msg.timestamp.timeIntervalSince1970,
-                    ]
-                    if let cli = msg.cliUsed {
-                        m["cliUsed"] = cli
-                    }
-                    return m
-                }
-
-                let data: [String: Any] = [
+                var data: [String: Any] = [
                     "threadId": thread.id,
-                    "title": thread.title,
-                    "preview": String(thread.preview.prefix(500)),
                     "messageCount": thread.messageCount,
                     "createdAt": thread.lastActivityAt.timeIntervalSince1970,
                     "updatedAt": thread.lastActivityAt.timeIntervalSince1970,
                     "deviceId": deviceId,
-                    "messages": encodedMessages,
+                    "contentIncluded": includeContent,
                 ]
+                if includeContent {
+                    let encodedMessages: [[String: Any]] = messages.map { msg in
+                        var m: [String: Any] = [
+                            "id": msg.id,
+                            "role": msg.role == .user ? "user" : "assistant",
+                            "content": String(msg.content.prefix(4000)),
+                            "timestamp": msg.timestamp.timeIntervalSince1970,
+                        ]
+                        if let cli = msg.cliUsed {
+                            m["cliUsed"] = cli
+                        }
+                        return m
+                    }
+                    data["title"] = thread.title
+                    data["preview"] = String(thread.preview.prefix(500))
+                    data["messages"] = encodedMessages
+                } else {
+                    data["messages"] = FieldValue.delete()
+                    data["title"] = FieldValue.delete()
+                    data["preview"] = FieldValue.delete()
+                }
                 batch.setData(data, forDocument: docRef, merge: true)
             }
 

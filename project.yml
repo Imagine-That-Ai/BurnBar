@@ -79,35 +79,10 @@ targets:
           - "**/Services/ProjectionPipeline/ProjectionPipelineService*.swift"
           - Services/Search/SearchService*.swift
           - "**/Services/Search/SearchService*.swift"
-          # Local UI split drafts currently duplicate types still declared by
-          # ChatPanel/DashboardView. They are intentionally excluded from this
-          # CLIBridge remediation so xcodegen remains reproducible.
+          # Local Chat UI shim that duplicates types still declared by the main
+          # chat surface. Keep it out until the owning refactor lands.
           - Views/Chat/ChatEngineUIStubs.swift
           - "**/Views/Chat/ChatEngineUIStubs.swift"
-          - Views/Chat/Components/*.swift
-          - "**/Views/Chat/Components/*.swift"
-          - Views/Dashboard/Components/DashboardContext.swift
-          - "**/Views/Dashboard/Components/DashboardContext.swift"
-          - Views/Dashboard/DashboardActivityLaneView.swift
-          - "**/Views/Dashboard/DashboardActivityLaneView.swift"
-          - Views/Dashboard/DashboardChatOverlay.swift
-          - "**/Views/Dashboard/DashboardChatOverlay.swift"
-          - Views/Dashboard/DashboardConsentCoordinator.swift
-          - "**/Views/Dashboard/DashboardConsentCoordinator.swift"
-          - Views/Dashboard/DashboardDetailView.swift
-          - "**/Views/Dashboard/DashboardDetailView.swift"
-          - Views/Dashboard/DashboardModelLaneView.swift
-          - "**/Views/Dashboard/DashboardModelLaneView.swift"
-          - Views/Dashboard/DashboardNavigationModel.swift
-          - "**/Views/Dashboard/DashboardNavigationModel.swift"
-          - Views/Dashboard/DashboardOverviewView.swift
-          - "**/Views/Dashboard/DashboardOverviewView.swift"
-          - Views/Dashboard/DashboardSidebar.swift
-          - "**/Views/Dashboard/DashboardSidebar.swift"
-          - Views/Dashboard/DashboardToolbar.swift
-          - "**/Views/Dashboard/DashboardToolbar.swift"
-          - Views/Dashboard/DashboardView+Chrome.swift
-          - "**/Views/Dashboard/DashboardView+Chrome.swift"
     settings:
       base:
         PRODUCT_NAME: OpenBurnBar
@@ -225,28 +200,6 @@ targets:
     platform: macOS
     sources:
       - path: AgentLensTests/Active
-        excludes:
-          # Legacy monolithic parser test file references private methods
-          # (parseJSONL, dateValue), removed types (TranscriptSummary),
-          # and renamed APIs (HermesParser.parseTimestamp). The dedicated
-          # per-provider integration suites (CodexToken, Factory, Hermes,
-          # Kimi) already cover the same ground. PERMANENTLY EXCLUDED.
-          - Parsers/ParserTests.swift
-          # References outdated SwitcherCLIAuthCoordinator APIs (renamed
-          # parameters, private members, and removed Equatable conformance).
-          # PERMANENTLY EXCLUDED pending a full rewrite.
-          - SwitcherCLIAuthCoordinatorTests.swift
-          # References outdated APIs (XCTPerformanceMetric, TokenUsageRecord,
-          # fetchAllUsage) and has type-checker complexity issues.
-          # PERMANENTLY EXCLUDED pending a full rewrite.
-          - PerformanceTests.swift
-          # Local UI/startup split draft tests are excluded until their owning
-          # refactors land; the CLIBridge remediation has dedicated coverage.
-          - Dashboard*.swift
-          - OpenBurnBarStartupRecoveryTests.swift
-          - UI/ChatPanelComponentTests.swift
-          - UI/Dashboard*.swift
-          - UI/DataStoreStartupRecoveryViewTests.swift
 
       - path: AgentLensTests/Support
     settings:

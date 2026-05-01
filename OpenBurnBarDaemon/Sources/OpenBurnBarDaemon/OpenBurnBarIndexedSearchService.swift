@@ -3,6 +3,7 @@ import Foundation
 import SQLite3
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+private let indexedSearchQueueKey = DispatchSpecificKey<UUID>()
 
 /// Indexed search for the OpenBurnBar daemon.
 /// Supports both lexical FTS and semantic vector search with hybrid RRF fusion.
@@ -36,6 +37,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
 
     private let db: OpaquePointer?
     private let dbQueue = DispatchQueue(label: "com.openburnbar.daemon.indexed-search.sqlite")
+    private let dbQueueID = UUID()
     private let logger: BurnBarDaemonLogger
     private let semanticConfig: BurnBarSemanticSearchConfig
     private let snapshotBackend: any BurnBarPersistentVectorIndexBackend
@@ -76,12 +78,13 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         let databaseURL = URL(fileURLWithPath: databasePath)
         self.storageRootURL = databaseURL.deletingLastPathComponent().appendingPathComponent("VectorIndexes", isDirectory: true)
         self.storageNamespace = "daemon-" + databaseURL.lastPathComponent.replacingOccurrences(of: ".", with: "-")
+        dbQueue.setSpecific(key: indexedSearchQueueKey, value: dbQueueID)
         cleanupOrphanSnapshots()
     }
 
     deinit {
         guard let db else { return }
-        _ = dbQueue.sync {
+        _ = databaseSync {
             sqlite3_close(db)
         }
     }
@@ -130,7 +133,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         )
 
         // Perform search based on available data
-        let (hits, degradedMessage, semanticPerformed, semanticCount) = try dbQueue.sync {
+        let (hits, degradedMessage, semanticPerformed, semanticCount) = try databaseSync {
             return try performHybridSearch(
                 plan: plan,
                 query: query,
@@ -162,7 +165,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
     }
 
     func releaseSnapshot() {
-        dbQueue.sync {
+        databaseSync {
             snapshotContext = nil
         }
         logger.debug("snapshot_released", metadata: [:])
@@ -174,6 +177,13 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         let providerRaw: String?
         let projectName: String?
         let dateRange: ClosedRange<Date>?
+    }
+
+    private func databaseSync<T>(_ work: () throws -> T) rethrows -> T {
+        if DispatchQueue.getSpecific(key: indexedSearchQueueKey) == dbQueueID {
+            return try work()
+        }
+        return try dbQueue.sync(execute: work)
     }
 
     static func shouldPerformSemanticSearch(
@@ -370,7 +380,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
             args.append(.text(projectName))
         }
 
-        return try dbQueue.sync {
+        return try databaseSync {
             guard let statement = try prepareStatement(sql: sql) else { return nil }
             defer { sqlite3_finalize(statement) }
             try bind(args, to: statement)
@@ -499,7 +509,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
             args.append(.int(Int64(dateRange.upperBound.timeIntervalSince1970)))
         }
 
-        return try dbQueue.sync {
+        return try databaseSync {
             guard let statement = try prepareStatement(sql: sql) else { return [] }
             defer { sqlite3_finalize(statement) }
             try bind(args, to: statement)
@@ -602,7 +612,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
             LIMIT 1
             """
 
-        return try dbQueue.sync {
+        return try databaseSync {
             guard let statement = try prepareStatement(sql: sql) else { return nil }
             defer { sqlite3_finalize(statement) }
 
@@ -612,7 +622,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
     }
 
     private func chunkEmbeddingVersionStats(versionID: String) throws -> (vectorCount: Int, newestUpdatedAt: Date?, dimensions: Int) {
-        try dbQueue.sync {
+        try databaseSync {
             let sql = """
                 SELECT COUNT(*) AS cnt, MAX(e.updatedAt) AS maxUpdated, MAX(m.dimensions) AS dims
                 FROM chunk_embeddings AS e
@@ -635,7 +645,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
     }
 
     private func fetchVectorSnapshot(versionID: String, backendID: String) throws -> DaemonVectorIndexSnapshotRecord? {
-        try dbQueue.sync {
+        try databaseSync {
             let sql = """
                 SELECT *
                 FROM vector_index_snapshots
@@ -651,7 +661,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
     }
 
     private func upsertVectorSnapshot(_ record: DaemonVectorIndexSnapshotRecord) throws {
-        try dbQueue.sync {
+        try databaseSync {
             let sql = """
                 INSERT INTO vector_index_snapshots (
                     embeddingVersionID, backendID, state, fingerprint, dimensions, distanceMetric,
@@ -704,7 +714,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         // Collect all referenced relative paths from ready records
         var referencedPaths = Set<String>()
         do {
-            try dbQueue.sync {
+            try databaseSync {
                 let sql = "SELECT storageRelativePath FROM vector_index_snapshots WHERE state = 'ready'"
                 guard let stmt = try prepareStatement(sql: sql) else { return }
                 defer { sqlite3_finalize(stmt) }
@@ -954,7 +964,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
     }
 
     private func fetchChunkIDPage(versionID: String, limit: Int, offset: Int) throws -> [String] {
-        try dbQueue.sync {
+        try databaseSync {
             let sql = """
                 SELECT chunkID
                 FROM chunk_embeddings
@@ -980,7 +990,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         limit: Int,
         offset: Int
     ) throws -> [(chunkID: String, vector: [Float])] {
-        try dbQueue.sync {
+        try databaseSync {
             let sql = """
                 SELECT chunkID, vectorBlob
                 FROM chunk_embeddings
@@ -1080,7 +1090,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         let whereSQL = clauses.joined(separator: " AND ")
         args.append(.int(Int64(limit)))
 
-        return try dbQueue.sync {
+        return try databaseSync {
             let sql = """
                 SELECT
                     search_chunks_fts.chunkID AS chunkID,
@@ -1156,7 +1166,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
             .filter { !$0.isEmpty }
         guard !cleaned.isEmpty else { return 0 }
 
-        return try dbQueue.sync {
+        return try databaseSync {
             var total = 0
             for raw in cleaned {
                 let pattern = raw.lowercased()
@@ -1301,17 +1311,17 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         return formatter
     }()
 
-    private static let iso8601Fractional: ISO8601DateFormatter = {
+    private static var iso8601Fractional: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 
-    private static let iso8601Basic: ISO8601DateFormatter = {
+    private static var iso8601Basic: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
-    }()
+    }
 
     private func sqliteError(db: OpaquePointer?, code: Int32, context: String) -> NSError {
         let message = db.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "sqlite error"

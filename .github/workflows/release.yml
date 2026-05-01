@@ -36,6 +36,7 @@ jobs:
       dmg_path: ${{ steps.dmg.outputs.dmg_path }}
       dmg_name: ${{ steps.dmg.outputs.dmg_name }}
       zip_path: ${{ steps.zip.outputs.zip_path }}
+      zip_name: ${{ steps.zip.outputs.zip_name }}
       version: ${{ steps.version.outputs.version }}
     env:
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
@@ -45,6 +46,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
 
       - name: Resolve release tag and version
         id: version
@@ -69,6 +72,14 @@ jobs:
 
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
           echo "version=${TAG_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out release tag
+        env:
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+        run: |
+          git fetch --force --tags origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}"
+          git checkout --detach "$TAG_NAME"
+          echo "Building release tag $TAG_NAME at $(git rev-parse HEAD)"
 
       - name: Release preflight summary
         env:
@@ -446,6 +457,53 @@ jobs:
           echo "metadata_path=$METADATA_FILE" >> "$GITHUB_OUTPUT"
           cat "$METADATA_FILE"
 
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.dmg.outputs.dmg_name }}
+          path: ${{ steps.dmg.outputs.dmg_path }}
+          if-no-files-found: error
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.zip.outputs.zip_name }}
+          path: ${{ steps.zip.outputs.zip_path }}
+          if-no-files-found: error
+
+      - name: Upload checksums artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums-v${{ steps.version.outputs.version }}
+          path: ${{ steps.checksums.outputs.checksums_path }}
+          if-no-files-found: error
+
+      - name: Upload checksum signature artifact
+        if: steps.sign-checksums.outputs.sig_path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums-v${{ steps.version.outputs.version }}-signature
+          path: ${{ steps.sign-checksums.outputs.sig_path }}
+          if-no-files-found: error
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-v${{ steps.version.outputs.version }}
+          path: ${{ steps.sbom.outputs.sbom_path }}
+          if-no-files-found: error
+
+      - name: Upload release metadata artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata-v${{ steps.version.outputs.version }}
+          path: ${{ steps.metadata.outputs.metadata_path }}
+          if-no-files-found: error
+
+      - name: Clean up Firebase config
+        if: always()
+        run: bash ./scripts/ci/cleanup-firebase-config.sh
+
   smoke-test:
     needs: build-and-release
     runs-on: macos-15
@@ -459,8 +517,9 @@ jobs:
 
       - name: Mount DMG
         env:
-          DMG_PATH: ${{ needs.build-and-release.outputs.dmg_path }}
+          DMG_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.dmg_name }}
         run: |
+          test -f "$DMG_PATH"
           hdiutil attach "$DMG_PATH" \
             -mountpoint /Volumes/OpenBurnBar \
             -nobrowse
@@ -493,7 +552,50 @@ jobs:
             exit 1
           fi
 
-          echo "Smoke test passed: app launched, daemon socket active"
+          LAUNCH_AGENT_PLIST="$HOME/Library/LaunchAgents/com.openburnbar.daemon.plist"
+          if [[ ! -f "$LAUNCH_AGENT_PLIST" ]]; then
+            echo "::error::Daemon LaunchAgent plist not found at $LAUNCH_AGENT_PLIST"
+            hdiutil detach /Volumes/OpenBurnBar -force 2>/dev/null || true
+            exit 1
+          fi
+
+          SOCKET_AUTH_TOKEN="$(
+            /usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN' "$LAUNCH_AGENT_PLIST" 2>/dev/null || true
+          )"
+          if [[ -z "$SOCKET_AUTH_TOKEN" ]]; then
+            echo "::error::Daemon socket auth token missing from LaunchAgent environment"
+            hdiutil detach /Volumes/OpenBurnBar -force 2>/dev/null || true
+            exit 1
+          fi
+
+          python3 - <<PY
+          import json
+          import socket
+          import sys
+
+          path = """$DAEMON_SOCKET"""
+          token = """$SOCKET_AUTH_TOKEN"""
+          client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+          client.settimeout(5)
+          client.connect(path)
+          client.sendall(json.dumps({
+              "id": "release-smoke-health",
+              "method": "daemon.health",
+              "authToken": token
+          }).encode() + b"\n")
+          response = client.recv(65536).decode().strip()
+          client.close()
+          if not response:
+              sys.exit("OpenBurnBar daemon returned an empty health response")
+          payload = json.loads(response)
+          if payload.get("error"):
+              sys.exit(f"OpenBurnBar daemon health smoke failed: {payload['error']}")
+          if not payload.get("result", {}).get("ok"):
+              sys.exit(f"OpenBurnBar daemon health smoke returned unhealthy payload: {payload}")
+          print("Authenticated daemon health RPC passed")
+          PY
+
+          echo "Smoke test passed: app launched, daemon socket active, authenticated daemon RPC succeeded"
 
       - name: Eject DMG
         run: |
@@ -518,8 +620,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ needs.build-and-release.outputs.version }}
           VERSION: ${{ needs.build-and-release.outputs.version }}
-          DMG_PATH: ${{ needs.build-and-release.outputs.dmg_path }}
-          ZIP_PATH: ${{ needs.build-and-release.outputs.zip_path }}
+          DMG_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.dmg_name }}
+          ZIP_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.zip_name }}
         run: |
           # Checksums, SBOM, and metadata are also downloaded via merge-multiple
           CHECKSUMS_PATH=$(ls "$RUNNER_TEMP"/checksums-v${VERSION}*.txt 2>/dev/null | head -1)
@@ -528,6 +630,12 @@ jobs:
           SIG_PATH=$(ls "$RUNNER_TEMP"/*.asc 2>/dev/null | head -1)
 
           ASSETS=("$DMG_PATH" "$ZIP_PATH")
+          for asset in "${ASSETS[@]}"; do
+            if [[ ! -f "$asset" ]]; then
+              echo "::error::Release asset missing after artifact download: $asset"
+              exit 1
+            fi
+          done
           [[ -n "$CHECKSUMS_PATH" && -f "$CHECKSUMS_PATH" ]] && ASSETS+=("$CHECKSUMS_PATH")
           [[ -n "$SBOM_PATH" && -f "$SBOM_PATH" ]] && ASSETS+=("$SBOM_PATH")
           [[ -n "$METADATA_PATH" && -f "$METADATA_PATH" ]] && ASSETS+=("$METADATA_PATH")

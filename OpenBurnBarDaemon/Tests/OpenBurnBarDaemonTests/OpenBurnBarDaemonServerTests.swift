@@ -17,6 +17,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
 
         try await server.start()
         XCTAssertTrue(FileManager.default.fileExists(atPath: socketPath))
+        XCTAssertEqual(socketPermissions(at: socketPath), 0o600)
 
         let response: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try sendRequest(
             BurnBarRPCRequestEnvelope(id: "health-1", method: .health, authToken: "test-token"),
@@ -1012,6 +1013,12 @@ final class BurnBarDaemonServerTests: XCTestCase {
         }
 
         return address
+    }
+
+    private func socketPermissions(at socketPath: String) -> mode_t? {
+        var fileStatus = stat()
+        guard lstat(socketPath, &fileStatus) == 0 else { return nil }
+        return fileStatus.st_mode & mode_t(0o777)
     }
 
     // MARK: - Configuration Validation (D09)

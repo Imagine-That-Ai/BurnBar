@@ -60,7 +60,7 @@ A local JSON-RPC server listening on a UNIX domain socket at `~/Library/Applicat
 ### What it cannot do
 
 - By default it serves only the local UNIX socket (no network-accessible TCP listener).
-- Optional HTTP gateway mode can bind on TCP (`127.0.0.1:8317` by default); non-loopback binds require a bearer token.
+- Optional HTTP gateway mode can bind on TCP (`127.0.0.1:8317` by default); wildcard binds are rejected, non-loopback binds require a bearer token, and rate-limit identities use token digests instead of raw token-derived log labels.
 - It does not execute shell commands or spawn subprocesses on behalf of RPC callers.
 - It does not modify files outside its own support directory.
 - It does not require root or elevated privileges.
@@ -69,7 +69,7 @@ A local JSON-RPC server listening on a UNIX domain socket at `~/Library/Applicat
 
 | Threat | Mitigation | Residual risk |
 |---|---|---|
-| Local user impersonation via socket | Socket is filesystem-permission-protected; only the owning user can connect. Auth token required on every RPC request. The auth token is passed via launchd `EnvironmentVariables` (not CLI arguments) to prevent `ps aux` exposure. | Another process running as the same user can send RPC calls. This is inherent to single-user UNIX socket IPC. |
+| Local user impersonation via socket | Socket is filesystem-permission-protected (`0o600`); only the owning user can connect. Auth token required on every RPC request from app, extension, CLI, and smoke scripts. The auth token is passed via launchd `EnvironmentVariables` (not CLI arguments) to prevent `ps aux` exposure. | Another process running as the same user and able to read the user's LaunchAgent plist can send RPC calls. This is inherent to single-user UNIX socket IPC. |
 | Daemon compromise exposes Keychain secrets | Keychain items use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. Attacker with daemon code execution can read secrets for the current user. | Equivalent to any unsandboxed app running as that user. |
 | Malicious RPC input | Request size capped at 64 KB (`BurnBarDaemonServer.maxRequestBytes`). Typed Codable deserialization rejects malformed payloads. | No known injection vectors; RPC methods are enumerated, not dynamic dispatch. |
 | Daemon auth token leak via process listing | Auth token is passed via `EnvironmentVariables` in the launchd plist, not as a CLI argument. The plist file is written with `0o600` permissions (owner read/write only). | launchd plist is visible to the owning user. Other local users cannot read it. The plist path is `~/Library/LaunchAgents/` which has `0o755` directory permissions — a local admin could escalate. |
@@ -138,8 +138,8 @@ If the app is compromised, the attacker has full access to the user's home direc
 - **Auth:** Google and Apple Sign-In via Firebase Auth. OAuth tokens managed by Firebase SDK.
 - **App Check (Firestore):** The macOS app initializes App Check before Firebase. **Production** projects must **enforce** App Check for **Cloud Firestore** in the Firebase console so traffic without a valid attestation is rejected; Auth alone is not a substitute (see [FIREBASE_APP_CHECK_ENFORCEMENT.md](FIREBASE_APP_CHECK_ENFORCEMENT.md)).
 - **Firestore:** Owner-scoped rules: `users/{uid}/...` and `workspaces/workspace-{uid}/...` are readable/writable only by the authenticated owner. Basic size limits enforced. Authorization is expressed in rules; **app attestation** is expected via console App Check enforcement.
-- **What syncs:** Usage rows, chat threads (for cross-device resume), and owner-scoped shared-artifact heads/revisions. Conversation metadata and full session-log backup are separately gated.
-- **Privacy note:** Synced data can include project directory names, model names, chat content, and (if backup is enabled) full session log bodies with prompts or code.
+- **What syncs:** Usage rows, chat-thread metadata (for cross-device resume), and owner-scoped shared-artifact heads/revisions. Chat message bodies, conversation metadata, and full session-log backup are separately gated.
+- **Privacy note:** Synced data can include project directory names and model names. Chat content requires **Back Up Chat Message Content**; full session log bodies with prompts or code require the session-log backup setting.
 
 ### iCloud
 
@@ -177,7 +177,7 @@ The app makes outbound network requests in the following categories:
 |---|---|---|---|
 | Provider logos | `raw.githubusercontent.com/lobehub/lobe-icons/...` | On UI render (SwiftUI `AsyncImage`) | None (standard HTTP metadata only) |
 | Quota/usage APIs | Provider endpoints (MiniMax, Cursor, Factory, Z.ai) | When quota polling is enabled | Provider API keys (in auth headers) |
-| Firebase | Google Cloud | When cloud sync is enabled | Usage rows, chat threads, auth tokens |
+| Firebase | Google Cloud | When cloud sync is enabled | Usage rows, chat-thread metadata by default; chat content and session logs only behind their explicit backup settings |
 | iCloud | Apple iCloud | When iCloud mirroring is enabled | Session log file copies |
 | Connector APIs | GitHub, Slack, Linear, PostHog, Sentry, Gmail | When individual connectors are configured and tested | Connector-specific auth tokens |
 | Telegram | `api.telegram.org` | When Telegram bot is configured | Bot token, notification payloads |

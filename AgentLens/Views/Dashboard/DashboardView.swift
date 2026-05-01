@@ -2,33 +2,24 @@ import AppKit
 import SwiftUI
 import WebKit
 
-// MARK: - Dashboard Main Route
-
-enum DashboardMainRoute: Hashable {
-    case overview
-    case database
-    case projects
-    case missions
-    case sessionLogs
-    case provider(AgentProvider)
-    case model(String)
-}
-
 // MARK: - Dashboard View
 
 struct DashboardView: View {
     @Bindable var dataStore: DataStore
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
     @Bindable var settingsManager: SettingsManager
-    @Environment(NavigationCoordinator.self) private var navigationCoordinator
+    @Environment(NavigationCoordinator.self) var navigationCoordinator
     var aggregator: UsageAggregator?
     var accountManager: AccountManager
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
+    @State var navigationModel = DashboardNavigationModel()
+    @State var consentCoordinator: DashboardConsentCoordinator?
     @State var mainRoute: DashboardMainRoute = .overview
     @State var routeHistory: [DashboardMainRoute] = []
     @State var selectedTimeRange: TimeRange = .today
     @AppStorage("dashboardViewMode") var viewMode: DashboardViewMode = .agents
+    @AppStorage("dashboardViewMode") var storedViewMode: DashboardViewMode = .agents
     @State var showingSettings = false
     @State var showProgressPanel = false
     @State var overviewAppeared = false
@@ -64,9 +55,28 @@ struct DashboardView: View {
         self.cloudSyncService = cloudSyncService
         self.iCloudSessionMirrorService = iCloudSessionMirrorService
         self.chatController = chatController
+        self._consentCoordinator = State(initialValue: DashboardConsentCoordinator(
+            settingsManager: settingsManager,
+            accountManager: accountManager
+        ))
+    }
+
+    init(context: DashboardContext) {
+        self.init(
+            dataStore: context.dataStore,
+            aggregator: context.aggregator,
+            accountManager: context.accountManager,
+            cloudSyncService: context.cloudSyncService,
+            iCloudSessionMirrorService: context.iCloudSessionMirrorService,
+            chatController: context.chatController,
+            operatingLayer: context.operatingLayer,
+            settingsManager: context.settingsManager
+        )
     }
 
     var isScanning: Bool { aggregator?.isRefreshing ?? false }
+
+    var canRunRecount: Bool { aggregator != nil && !isScanning }
 
     func runScan() {
         guard let agg = aggregator else { return }
@@ -112,18 +122,6 @@ struct DashboardView: View {
         case .sessionLogs: return "Session Logs"
         case .provider(let provider): return provider.displayName
         case .model(let modelName): return modelName
-        }
-    }
-
-    /// Opens Cursor's extension install flow for OpenBurnBar (`extensions/openburnbar` package id).
-    func openBurnBarCursorExtension() {
-        let id = "openburnbar.openburnbar"
-        let candidates = [
-            URL(string: "cursor:extension/\(id)"),
-            URL(string: "vscode:extension/\(id)"),
-        ].compactMap { $0 }
-        for url in candidates {
-            if NSWorkspace.shared.open(url) { return }
         }
     }
 

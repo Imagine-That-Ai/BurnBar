@@ -611,7 +611,7 @@ public actor BurnBarParallelDAGScheduler {
 
     /// Updates the critical path based on current execution state.
     private func updateCriticalPath(nodeID: BurnBarDAGNodeID, success: Bool) async {
-        var criticalPath = state.criticalPath ?? BurnBarCriticalPathArtifact(missionID: missionID)
+        let criticalPath = state.criticalPath ?? BurnBarCriticalPathArtifact(missionID: missionID)
 
         // Update node timing
         var updatedTimings = criticalPath.nodeTimings
@@ -664,7 +664,7 @@ public actor BurnBarParallelDAGScheduler {
 
     /// Updates the timing for a node when it starts.
     private func updateNodeTiming(_ nodeID: BurnBarDAGNodeID, startedAt: Date) {
-        var criticalPath = state.criticalPath ?? BurnBarCriticalPathArtifact(missionID: missionID)
+        let criticalPath = state.criticalPath ?? BurnBarCriticalPathArtifact(missionID: missionID)
         var updatedTimings = criticalPath.nodeTimings
 
         let existingTiming = updatedTimings[nodeID.rawValue]

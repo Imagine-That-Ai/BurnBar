@@ -460,6 +460,18 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertFalse(settings.sessionLogCloudBackupConsentShown)
     }
 
+    func test_chatThreadContentCloudBackupEnabled_defaultValue_isFalse() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertFalse(settings.chatThreadContentCloudBackupEnabled)
+    }
+
+    func test_chatThreadContentCloudBackupConsentShown_defaultValue_isFalse() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertFalse(settings.chatThreadContentCloudBackupConsentShown)
+    }
+
     // MARK: - CLI Assistant Settings
 
     func test_cliAssistantAllowed_defaultValue_isFalse() {

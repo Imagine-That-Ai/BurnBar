@@ -42,6 +42,24 @@ public struct CLIAuthInfo: Identifiable, Equatable, Sendable {
         self.configDirectory = configDirectory
         self.accountDescription = accountDescription
     }
+
+    public init(
+        cliType: SwitcherCLIProfileType,
+        authState: CLIAuthState,
+        isInstalled: Bool,
+        accountDescription: String?,
+        configDirectory: String?,
+        executablePath: String?
+    ) {
+        self.init(
+            cliType: cliType,
+            isInstalled: isInstalled,
+            executablePath: executablePath,
+            authState: authState,
+            configDirectory: configDirectory,
+            accountDescription: accountDescription
+        )
+    }
 }
 
 // MARK: - CLI Auth Discovery

@@ -10,6 +10,21 @@
       "capabilities": ["accounting"],
       "models": [
         {
+          "id": "claude-opus-4-7-family",
+          "displayName": "Claude Opus 4.7 Family",
+          "visibility": "hidden",
+          "aliases": ["claude-opus-4-7"],
+          "matchers": [
+            { "all": ["claude", "opus", "4.7"], "any": [], "none": [] },
+            { "all": ["claude-opus-4-7"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 25,
+            "cacheReadPerMToken": 0.5
+          }
+        },
+        {
           "id": "claude-opus-4-6-family",
           "displayName": "Claude Opus 4.6 Family",
           "visibility": "hidden",
@@ -30,7 +45,7 @@
           "visibility": "hidden",
           "aliases": ["claude-opus-4-5"],
           "matchers": [
-            { "all": ["claude", "opus", "4.5"], "any": [], "none": ["4.6"] },
+            { "all": ["claude", "opus", "4.5"], "any": [], "none": ["4.6", "4.7"] },
             { "all": ["claude-opus-4-5"], "any": [], "none": [] }
           ],
           "pricing": {
@@ -60,7 +75,7 @@
           "visibility": "hidden",
           "aliases": ["claude-opus-4-20250514"],
           "matchers": [
-            { "all": ["claude", "opus", "4"], "any": [], "none": ["4.1", "4.5", "4.6"] },
+            { "all": ["claude", "opus", "4"], "any": [], "none": ["4.1", "4.5", "4.6", "4.7"] },
             { "all": ["claude-opus-4-0"], "any": [], "none": [] },
             { "all": ["claude-opus-4-20250514"], "any": [], "none": [] }
           ],

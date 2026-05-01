@@ -87,9 +87,9 @@ while [ $test_attempt -le $max_test_attempts ]; do
             CODE_SIGNING_REQUIRED=NO
             -only-testing:"OpenBurnBarTests"
         )
-        xcodebuild_log="$(mktemp "$repo_root/.derived-data/openburnbar-app-tests-log.XXXXXX.log")"
+        xcodebuild_log="$(mktemp "$repo_root/.derived-data/openburnbar-app-tests-log-XXXXXX")"
     else
-        xcodebuild_log="$(mktemp "$repo_root/.derived-data/openburnbar-app-tests-log.XXXXXX.log")"
+        xcodebuild_log="$(mktemp "$repo_root/.derived-data/openburnbar-app-tests-log-XXXXXX")"
     fi
 
     set +e

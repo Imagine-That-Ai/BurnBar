@@ -300,6 +300,16 @@ final class SettingsManager {
         set { cloudSync.sessionLogCloudBackupConsentShown = newValue }
     }
 
+    var chatThreadContentCloudBackupEnabled: Bool {
+        get { cloudSync.chatThreadContentCloudBackupEnabled }
+        set { cloudSync.chatThreadContentCloudBackupEnabled = newValue }
+    }
+
+    var chatThreadContentCloudBackupConsentShown: Bool {
+        get { cloudSync.chatThreadContentCloudBackupConsentShown }
+        set { cloudSync.chatThreadContentCloudBackupConsentShown = newValue }
+    }
+
     // MARK: Artifact Discovery
     var artifactDiscoveryEnabled: Bool {
         get { artifactDiscovery.artifactDiscoveryEnabled }

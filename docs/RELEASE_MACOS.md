@@ -31,7 +31,9 @@ The workflow will:
 7. Sign checksums with GPG key (if `RELEASE_SIGNING_KEY` secret is configured)
 8. Generate SPDX SBOM from SPM + npm dependencies
 9. Write release metadata JSON with version, commit, and timestamp
-10. Publish a GitHub prerelease with all assets
+10. Upload the DMG, ZIP, checksums, optional checksum signature, SBOM, and metadata as Actions artifacts
+11. Run release smoke from the uploaded DMG artifact, including app launch and authenticated daemon health
+12. Publish a GitHub prerelease with the same downloaded artifacts
 
 ## Release artifacts
 
@@ -76,7 +78,11 @@ python3 -m json.tool sbom-v0.2.0.spdx.json | head -30
 ## Manual rerun path
 
 Use `workflow_dispatch` on `.github/workflows/release.yml` and provide an existing `v*` tag.
-This is intended for release recovery without creating a new tag.
+The workflow checks out that exact tag before building. This is intended for release recovery without creating a new tag.
+
+## Release entitlements
+
+The release workflow signs with `AgentLens/Resources/OpenBurnBarRelease.entitlements`. That file intentionally omits provisioning-profile-only capabilities such as iCloud, Apple Sign-In, and keychain access groups unless a matching Developer ID provisioning profile is embedded before signing. The development entitlements in `AgentLens/Resources/OpenBurnBar.entitlements` remain broader for local/Xcode builds.
 
 ## Rollback
 

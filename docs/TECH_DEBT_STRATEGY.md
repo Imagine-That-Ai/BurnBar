@@ -6,6 +6,8 @@
 **Lines of Swift:** ~31,000 (AgentLens: ~20K, Daemon: ~11K, Core: ~11K)  
 **Test Files:** 88 active XCTest suites + 12 daemon tests + 12 core tests  
 
+**Status note, 2026-04-30:** This document is still the debt register, but several release-critical findings have moved since the original audit. The release workflow now uploads build artifacts before smoke/publish, smokes the downloaded DMG, and publishes the same downloaded assets. Daemon socket auth is required across app, extension, CLI, and smoke scripts. Stale app tests now belong in `AgentLensTests/Quarantine/`, not hidden under `Active/` excludes.
+
 ---
 
 ## 1. Executive Summary
@@ -16,7 +18,7 @@ The biggest truth about this codebase: **OpenBurnBar is a high-velocity product 
 1. **Giant service monoliths** — Three files still exceed 1,000 lines and violate single responsibility (CloudSyncService: 2,102; UsageAggregator: 1,250; SearchService: 1,203). CLIBridge has been split into a 339-line facade plus dedicated resolver, argument builder, process runner, and parser/gateway modules.
 2. **Main-thread I/O** — Four major services are pinned to `@MainActor` despite doing heavy database, network, and filesystem work.
 3. **Silent failure culture** — 252 empty `catch {}` blocks, pervasive `try?`, and `AppLogger.silently()` used as control flow swallow errors across sync, parsing, and IPC paths.
-4. **Test parking** — The most critical daemon and sync logic is either untested or parked in `AgentLensTests/Parked/`, excluded from CI.
+4. **Test quarantine and remaining app-suite drift** — stale suites now live in `AgentLensTests/Quarantine/`, while the active app bundle still has baseline failures that need focused cleanup before it can be treated as a release gate.
 
 The good news: the architecture docs are clear, the DataStore extraction is already partially complete, logging infrastructure exists, and the team has demonstrated discipline in docs and release automation. The debt is **payable without a rewrite** if tackled in the right order.
 
@@ -39,8 +41,8 @@ There is no consistent rule for what a Manager vs Service vs Store does. `Accoun
 ### Theme E: Cloud/Sync Logic Is the Biggest Blind Spot
 `CloudSyncService` (2,102 lines) has 56 tests, but **zero** tests exercise the actual `sync()` method, Firestore upload/download, 3-way merge, or optimistic concurrency. `CollaborationSyncService` (1,189 lines) is a no-op stub. The shared-artifact sync layer — the most complex distributed-system logic in the app — is completely unverified in CI.
 
-### Theme F: The Daemon Is a Black Box to CI
-`OpenBurnBarDaemonManager` (1,771 lines) has no active tests (comprehensive tests exist in `Parked/`). The MissionControl subsystem (30 source files, ~8,000 lines) has zero dedicated tests. The daemon's core scheduling, DAG execution, state merging, and notification logic is entirely manual-QA dependent.
+### Theme F: App-Daemon Integration Still Needs Full App-Gate Stability
+The daemon Swift package has active coverage for socket auth, gateway behavior, indexed search, MissionControl, run service, and provider routing. The remaining risk is the macOS app integration layer: `OpenBurnBarDaemonManager` and broader `OpenBurnBarTests` still carry baseline failures that keep the app harness from being a clean CI gate.
 
 ### Theme B: `@MainActor` as a Default, Not a Deliberate Choice
 `CloudSyncService`, `SearchService`, `UsageAggregator`, and `ProjectionPipelineService` are all `@MainActor` despite doing database I/O, network calls, and file parsing. The codebase then uses `Task.detached` (17+ occurrences) to escape the main actor, which breaks structured concurrency, cancellation, and task hierarchies.
@@ -54,8 +56,8 @@ There is no consistent rule for what a Manager vs Service vs Store does. `Accoun
 ### Theme E: Cloud/Sync Logic Is the Biggest Blind Spot
 `CloudSyncService` (2,102 lines) has 56 tests, but **zero** tests exercise the actual `sync()` method, Firestore upload/download, 3-way merge, or optimistic concurrency. `CollaborationSyncService` (1,189 lines) is a no-op stub. The shared-artifact sync layer — the most complex distributed-system logic in the app — is completely unverified in CI.
 
-### Theme F: The Daemon Is a Black Box to CI
-`OpenBurnBarDaemonManager` (1,771 lines) has no active tests (comprehensive tests exist in `Parked/`). The MissionControl subsystem (30 source files, ~8,000 lines) has zero dedicated tests. The daemon's core scheduling, DAG execution, state merging, and notification logic is entirely manual-QA dependent.
+### Theme F: App-Daemon Integration Still Needs Full App-Gate Stability
+The daemon Swift package has active coverage for socket auth, gateway behavior, indexed search, MissionControl, run service, and provider routing. The remaining risk is the macOS app integration layer: `OpenBurnBarDaemonManager` and broader `OpenBurnBarTests` still carry baseline failures that keep the app harness from being a clean CI gate.
 
 ### Theme G: Firebase/Firestore Leaked into Core Logic
 Firebase is documented as "optional replication," but the app target cannot compile without `FirebaseAuth` and `FirebaseFirestore`. `CloudSyncService` constructs Firestore batches directly. `AccountManager` calls `Auth.auth()` directly. `AgentLensApp` configures `FirebaseApp` in `init()`. Core sync logic is inseparable from Firestore semantics, preventing offline-only builds and vendor migration.
@@ -79,8 +81,8 @@ There is no clear single source of truth. The daemon writes to a JSONL ledger; t
 | 2 | CloudSyncService is a 2,102-line god object | Architecture | **Critical** | Cross-cutting | XL | Backend | Scheduled soon |
 | 3 | `@MainActor` on I/O-heavy services | Architecture | **Critical** | Cross-cutting | L | Platform | Scheduled soon |
 | 4 | Zero sync-logic tests for CloudSyncService | Testing | **Critical** | Cross-cutting | XL | Backend | Scheduled soon |
-| 5 | DaemonManager tests parked = zero CI coverage | Testing | **Critical** | Cross-cutting | M | Platform | Fix immediately |
-| 6 | MissionControl subsystem entirely untested | Testing | **Critical** | Systemic | XL | Backend | Scheduled soon |
+| 5 | App daemon-manager integration tests not green in the active app harness | Testing | **Critical** | Cross-cutting | M | Platform | Fix immediately |
+| 6 | MissionControl coverage needs continued expansion beyond daemon package unit paths | Testing | **High** | Systemic | XL | Backend | Scheduled soon |
 | 7 | CursorConnectorManager has no instance tests | Testing | **Critical** | Local | L | Full-stack | Scheduled soon |
 | 8 | 252 empty `catch {}` blocks swallow errors | Code Quality | **High** | Systemic | L | Full-stack | Scheduled soon |
 | 9 | DataStore facade + 1,355 lines of pass-throughs | Architecture | **High** | Systemic | XL | Backend | Scheduled soon |
@@ -88,8 +90,8 @@ There is no clear single source of truth. The daemon writes to a JSONL ledger; t
 | 11 | UsageAggregator god object (1,250 lines, 18 deps) | Code Quality | **High** | Cross-cutting | XL | Backend | Scheduled soon |
 | 12 | Parser duplication (13 parsers, ~3,000 lines) | Code Quality | **High** | Cross-cutting | L | Backend | Scheduled soon |
 | 13 | `nonisolated` store exposure on `DataStoreActor` | Architecture | **High** | Cross-cutting | M | Platform | Scheduled soon |
-| 14 | Socket RPC client has no timeout | Reliability | **High** | Cross-cutting | M | Platform | Scheduled soon |
-| 15 | Release pipeline ships without smoke tests | Reliability | **High** | Systemic | M | Infra | Fix immediately |
+| 14 | Socket RPC needs richer cancellation/back-pressure beyond current I/O deadlines | Reliability | **High** | Cross-cutting | M | Platform | Scheduled soon |
+| 15 | Release pipeline smoke/provenance must stay enforced after artifact handoff | Reliability | **High** | Systemic | M | Infra | Remediated; monitor |
 | 16 | No database migration rollback path | Reliability | **High** | Cross-cutting | L | Platform | Scheduled soon |
 | 17 | Pervasive `try?` abuse (1,470+ matches) | Reliability | **High** | Systemic | L | Full-stack | Scheduled soon |
 | 18 | Daemon has no crash recovery / heartbeat | Reliability | **High** | Cross-cutting | L | Platform | Scheduled soon |
@@ -128,7 +130,7 @@ There is no clear single source of truth. The daemon writes to a JSONL ledger; t
 | 43 | State ownership confusion (app/daemon/cloud) | Architecture | **Medium** | Cross-cutting | L | Architecture | Scheduled soon |
 | 44 | Interface instability (volatile public APIs) | Architecture | **Medium** | Cross-cutting | M | Full-stack | Scheduled soon |
 | 45 | App sandbox disabled (deliberate but documented risk) | Security | **Critical** | Systemic | XL | Architecture | **Accepted intentionally** |
-| 46 | Release entitlements strip keychain/iCloud/Apple Sign-In | Security | **High** | Cross-cutting | M | Infra | Scheduled soon |
+| 46 | Release entitlements intentionally omit provisioning-profile-only capabilities | Security | **High** | Cross-cutting | M | Infra | Documented; gate features or embed profile before enabling |
 | 47 | Missing Apple Privacy Manifest | Security | **High** | Cross-cutting | M | Infra | Scheduled soon |
 | 48 | SQLite database unencrypted at rest | Security | **High** | Cross-cutting | L | Platform | Scheduled soon |
 | 49 | VS Code extension activates in untrusted workspaces | Security | **High** | Cross-cutting | M | Full-stack | Scheduled soon |
@@ -139,7 +141,7 @@ There is no clear single source of truth. The daemon writes to a JSONL ledger; t
 | 54 | Keychain access uses legacy macOS keychain | Security | **Medium** | Cross-cutting | S | Platform | Scheduled soon |
 | 55 | Cursor connector Cloudflare tunnel exposes local router | Security | **Medium** | Local | M | Full-stack | Scheduled soon |
 | 56 | Minimal third-party license attribution | Security | **Medium** | Cross-cutting | M | Infra | Scheduled soon |
-| 57 | Daemon socket file permissions inherited from umask | Security | **Medium** | Local | S | Platform | Scheduled soon |
+| 57 | Daemon socket permission regression coverage must remain active | Security | **Medium** | Local | S | Platform | Remediated; monitor |
 | 58 | CursorConnectorManager writes executable Python script to user dir | Security | **Medium** | Local | M | Full-stack | Scheduled soon |
 | 59 | Credential scanning in conversations without user consent | Security | **Medium** | Cross-cutting | S | Full-stack | Scheduled soon |
 | 60 | Placeholder client ID in shipping Info.plist | Security | **Low** | Local | S | Infra | Opportunistic |
@@ -166,7 +168,7 @@ There is no clear single source of truth. The daemon writes to a JSONL ledger; t
 
 1. **Giant files create merge conflicts and review fatigue.** CloudSyncService, CLIBridge, UsageAggregator, SearchService, and ChatSessionController are where most feature work lands. A single PR touching any of these requires reviewers to reason about 1,000+ lines of mixed concerns.
 2. **The DataStore facade forces every database change through a bottleneck.** Adding a new query requires updating the actor, the main class, the extension file, and sometimes the deprecated forwards. This is pure friction.
-3. **Parked tests are rotting.** `OpenBurnBarDaemonManagerTests` (769 lines), `ProviderQuotaServiceTests` (1,041 lines), and `PerformanceTests` (608 lines) are excluded from CI. Every API drift makes revival harder.
+3. **Quarantined tests and active app drift still hurt confidence.** Stale suites now live under `AgentLensTests/Quarantine/`, and the active app harness still needs baseline failures fixed before it is a clean release gate.
 4. **Inconsistent concurrency patterns mean every async change is risky.** Engineers cannot assume `@MainActor` means "UI only" because it is also used for I/O. `Task.detached` is used as an escape hatch, making cancellation and memory management unpredictable.
 5. **Silent failures create "works on my machine" debugging loops.** When a parser, sync, or RPC call fails, there is no error surface. Developers must add logging ad hoc to diagnose issues that should have been visible from the start.
 6. **N+1 queries are pervasive and will compound with growth.** Search hydration, conversation indexing, cloud sync, chat thread upload, and usage upserts all do row-by-row or per-entity database operations instead of batching. As user data scales, these will dominate latency.
@@ -178,12 +180,12 @@ There is no clear single source of truth. The daemon writes to a JSONL ledger; t
 
 1. **`fatalError` on DataStore init** — Any disk pressure, permission issue, or SQLite corruption bricks the app. Users cannot export data or even see an error message.
 2. **Daemon has no crash recovery or heartbeat** — If the daemon OOMs or panics, `launchd` restarts it blindly. Repeated crashes throttle restarts, leaving the app permanently degraded with no diagnostic.
-3. **Socket RPC client has no timeout** — A stale socket or deadlocked daemon causes `refreshHealth()` to hang forever. The UI freezes and macOS marks the app as "Not Responding."
-4. **Release pipeline ships without smoke tests** — The `release.yml` workflow builds, signs, notarizes, and uploads without ever launching the `.app`. A broken daemon binary or missing resource bundle ships directly to users.
+3. **Socket RPC still needs end-to-end cancellation semantics** — Socket clients now have I/O deadlines, but higher-level cancellation and queue back-pressure need continued hardening.
+4. **Release smoke must stay tied to built artifacts** — The workflow now smokes the downloaded DMG artifact before publishing. The risk is regression in artifact handoff, not total absence of smoke.
 5. **Cloud sync lacks backoff / circuit breaker** — Transient Firestore outages trigger immediate retry on the next periodic tick. This can exhaust API quotas and drain battery.
 6. **No database migration rollback** — If a migration fails halfway, the user is left with a partially migrated schema and no recovery path. Downgrading the app is unsupported.
 7. **SQLite database is unencrypted at rest** — The database at `~/Library/Application Support/OpenBurnBar/openburnbar.sqlite` contains conversation transcripts, token usage, and project names. Physical access = full data access.
-8. **Release entitlements strip security capabilities** — The release build removes keychain access groups, iCloud, and Apple Sign-In entitlements. Firebase tokens may fall back to less secure storage.
+8. **Release entitlements intentionally differ from development entitlements** — Developer ID releases use `OpenBurnBarRelease.entitlements` and omit provisioning-profile-only capabilities unless a matching profile is embedded. Cloud features must stay gated or the release lane must embed that profile before enabling them.
 9. **VS Code extension activates in untrusted workspaces** — The extension declares `untrustedWorkspaces.supported: true` and still connects to the daemon socket, exposing local state to untrusted workspace code.
 
 ---
@@ -205,7 +207,7 @@ There is no clear single source of truth. The daemon writes to a JSONL ledger; t
 **Core philosophy:** Harden the foundation before refactoring the facade. The system has good bones (actor-based DataStore, structured logging, GRDB migrations, release automation) but brittle edges. The plan prioritizes:
 
 1. **Safety first** — Eliminate `fatalError`, add timeouts, fix silent failures, and add smoke tests to the release pipeline.
-2. **Test the untested** — Revive parked tests and write integration tests for the sync and daemon boundaries before refactoring them.
+2. **Test the untested** — Revive quarantined tests and write integration tests for the sync and app-daemon boundaries before refactoring them.
 3. **Decouple incrementally** — Split giant files behind stable interfaces. Use the existing protocol boundaries (e.g., `LogParser`) as migration seams.
 4. **Move I/O off main thread** — Remove `@MainActor` from services that do database, network, or filesystem work. Replace `Task.detached` with structured concurrency.
 5. **Standardize** — Adopt a single error handling style (`throws` + typed errors), a single naming convention, and a single concurrency model.
@@ -225,14 +227,14 @@ There is no clear single source of truth. The daemon writes to a JSONL ledger; t
 | Workstream | Specific Work | Why Now |
 |---|---|---|
 | **P0-1: Kill the fatalError** | Replace `fatalError` in `AgentLensApp.swift` with a graceful degradation modal (reset DB, open support dir, or contact support). | Bricks the app for any DB issue. |
-| **P0-2: Add release smoke test** | Insert `test-openburnbar-release-smoke.sh` into `release.yml` before upload. Gate publish on app launch + daemon health. | Prevents shipping broken notarized binaries. |
-| **P0-3: Socket RPC timeout** | Add `poll`/`select` with 5s timeout to `OpenBurnBarDaemonSocketClient`. Surface "Daemon not responding" alert on timeout. | Stops UI hangs. |
-| **P0-4: Revive DaemonManager tests** | Move `OpenBurnBarDaemonManagerTests.swift` from `Parked/` → `Active/`. Fix API drift. | Closes the largest daemon coverage gap. |
+| **P0-2: Keep release smoke artifact-backed** | Preserve the `release.yml` sequence: upload build artifacts, smoke the downloaded DMG, then publish the same downloaded assets. | Prevents shipping broken notarized binaries or mismatched assets. |
+| **P0-3: Socket RPC cancellation/back-pressure** | Build on current socket I/O deadlines with request-level cancellation and visible "Daemon not responding" UX. | Stops UI hangs and bounded-queue stalls. |
+| **P0-4: Finish active app harness cleanup** | Fix the remaining active `OpenBurnBarTests` baseline failures and move only corrected suites out of `Quarantine/`. | Makes the app harness a trustworthy release gate. |
 | **P0-5: Ban empty catch blocks** | Audit and replace 252 `catch {}` with `AppLogger.error` or propagation. Add SwiftLint rule. | Stops silent data loss. |
 
 **Success criteria:**
 - App never calls `fatalError` in production.
-- Release workflow fails if smoke test fails.
+- Release workflow fails if smoke test or release-artifact handoff fails.
 - Daemon RPC calls timeout and surface degraded state.
 - `OpenBurnBarDaemonManagerTests` passes in CI.
 - Zero new empty `catch {}` blocks merged.
@@ -362,7 +364,7 @@ These are high-leverage improvements that can be done in 1–2 days each and sho
 | Empty `catch {}` blocks | 252 | 150 | 0 |
 | `Task.detached` occurrences | 17+ | 10 | 0 |
 | `@MainActor` on I/O services | 4 | 2 | 0 |
-| Parked test lines in CI | 5,982 | 3,000 | 0 |
+| Quarantined test lines | tracked in `AgentLensTests/Quarantine/` | shrinking | 0 |
 | CloudSyncService test coverage | 0% sync logic | 30% | 60% |
 | DaemonManager test coverage | 0% | 50% | 80% |
 | MissionControl test coverage | 0% | 20% | 50% |
@@ -389,20 +391,20 @@ These are high-leverage improvements that can be done in 1–2 days each and sho
 
 ### Do First (This Week)
 1. **Fix the `fatalError` in `AgentLensApp.swift`** — This is a single point of failure that can brick user installations.
-2. **Add a smoke-test gate to `release.yml`** — Do not ship another notarized release without verifying the app launches.
-3. **Revive `OpenBurnBarDaemonManagerTests` from Parked** — Move it to Active and fix compilation. This is the fastest way to close the largest test gap.
+2. **Keep the artifact-backed smoke gate in `release.yml` green** — Do not ship another notarized release without verifying the downloaded DMG launches and the authenticated daemon health path works.
+3. **Finish the active app harness cleanup** — Fix remaining baseline failures, then move only corrected suites out of `Quarantine/`.
 4. **Validate URLs in BrowserToolService and provider executor** — Reject `file://`, `javascript:`, and arbitrary schemes. Prevents local file access and token leakage.
-5. **Restrict daemon socket file permissions** — `chmod(socketPath, 0o600)` after bind. Prevents other local users from connecting.
+5. **Keep daemon socket file permission coverage active** — `chmod(socketPath, 0o600)` after bind now has daemon test coverage; preserve it in future socket changes.
 6. **Add `kSecUseDataProtectionKeychain` to custom keychain stores** — Align with Firebase Auth's keychain model. Prevents secret loss on OS upgrades.
 
 ### Do Soon (Next 4–6 Weeks)
 1. Remove `@MainActor` from I/O services and replace `Task.detached` with structured concurrency.
 2. Ban empty `catch {}` blocks and audit `try?` usage in service code.
-3. Add socket RPC timeout and daemon heartbeat.
+3. Add request-level socket RPC cancellation/back-pressure and daemon heartbeat.
 4. Split `CloudSyncService` into domain sync services.
 5. Add CloudSyncService integration tests with a fake `CloudSyncContext`.
 6. **Add Apple Privacy Manifest** — Create `PrivacyInfo.xcprivacy` with data usage declarations. Required for App Store and notarization compliance.
-7. **Fix release entitlements or gate cloud features** — Either embed a Developer ID provisioning profile with keychain/iCloud entitlements, or explicitly disable Firebase/iCloud in release builds.
+7. **Gate release-only cloud capabilities or embed a profile** — Developer ID releases currently use the narrower release entitlement file; either keep iCloud/Apple Sign-In release-gated or embed a matching provisioning profile before enabling them.
 8. **Restrict VS Code extension in untrusted workspaces** — Change `untrustedWorkspaces.supported` to `limited` and suppress daemon connectivity until workspace is trusted.
 9. **Audit logging privacy levels** — Switch from `privacy: .public` to `.private` or `.auto` for all interpolated values.
 

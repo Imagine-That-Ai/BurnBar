@@ -189,6 +189,7 @@ public actor BurnBarDaemonServer {
         }
 
         let fileDescriptor = try BurnBarUnixDomainSocket.makeListeningSocket(at: configuration.socketPath)
+        try BurnBarUnixDomainSocket.restrictSocketPermissions(at: configuration.socketPath)
         listenerFileDescriptor = fileDescriptor
 
         acceptLoopTask = Task.detached(priority: .background) { [logger] in
@@ -1081,6 +1082,7 @@ public actor BurnBarDaemonServer {
         }
 
         BurnBarUnixDomainSocket.configureNoSigPipe(for: clientFileDescriptor)
+        BurnBarUnixDomainSocket.configureIOTimeouts(for: clientFileDescriptor)
 
         let peerPID = Self.peerPID(for: clientFileDescriptor)
 
@@ -1186,6 +1188,12 @@ private enum BurnBarUnixDomainSocket {
         }
     }
 
+    static func restrictSocketPermissions(at socketPath: String) throws {
+        guard chmod(socketPath, S_IRUSR | S_IWUSR) == 0 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+    }
+
     static func readRequest(from fileDescriptor: Int32, maxBytes: Int) throws -> Data {
         var buffer = Data()
         buffer.reserveCapacity(1024)
@@ -1242,6 +1250,9 @@ private enum BurnBarUnixDomainSocket {
                     }
                     throw POSIXError(.init(rawValue: code) ?? .EIO)
                 }
+                guard bytesWritten > 0 else {
+                    throw POSIXError(.EIO)
+                }
 
                 bytesRemaining -= bytesWritten
                 writeOffset += bytesWritten
@@ -1257,6 +1268,24 @@ private enum BurnBarUnixDomainSocket {
             SO_NOSIGPIPE,
             &value,
             socklen_t(MemoryLayout<Int32>.size)
+        )
+    }
+
+    static func configureIOTimeouts(for fileDescriptor: Int32, seconds: Int = 30) {
+        var timeout = timeval(tv_sec: seconds, tv_usec: 0)
+        setsockopt(
+            fileDescriptor,
+            SOL_SOCKET,
+            SO_RCVTIMEO,
+            &timeout,
+            socklen_t(MemoryLayout<timeval>.size)
+        )
+        setsockopt(
+            fileDescriptor,
+            SOL_SOCKET,
+            SO_SNDTIMEO,
+            &timeout,
+            socklen_t(MemoryLayout<timeval>.size)
         )
     }
 

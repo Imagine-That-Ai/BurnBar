@@ -114,6 +114,7 @@ enum CrossEncoderCatalog {
             CrossEncoderModelOption(id: "claude-sonnet-4-5", displayName: "Claude Sonnet 4.5"),
             CrossEncoderModelOption(id: "claude-sonnet-4", displayName: "Claude Sonnet 4"),
             CrossEncoderModelOption(id: "claude-haiku-4-5", displayName: "Claude Haiku 4.5"),
+            CrossEncoderModelOption(id: "claude-opus-4-7", displayName: "Claude Opus 4.7"),
             CrossEncoderModelOption(id: "claude-opus-4-6", displayName: "Claude Opus 4.6"),
             CrossEncoderModelOption(id: "claude-opus-4-5", displayName: "Claude Opus 4.5"),
             CrossEncoderModelOption(id: "claude-opus-4", displayName: "Claude Opus 4")

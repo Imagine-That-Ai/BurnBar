@@ -374,7 +374,7 @@ scripts/test-openburnbar-swift.sh
 # Retrieval + authoring replay/golden evals
 scripts/test-openburnbar-retrieval-evals.sh
 
-# Full release smoke (Swift + retrieval evals + extension + daemon health)
+# Full release smoke (Swift + retrieval evals + extension + authenticated daemon health)
 scripts/test-openburnbar-release-smoke.sh
 ```
 

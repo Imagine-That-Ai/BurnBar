@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBar
@@ -160,7 +161,7 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
 
         let authInfo = CLIAuthInfo(
             cliType: .codex,
-            authState: .authenticated,
+            authState: .authenticated(lastRefresh: nil),
             isInstalled: true,
             accountDescription: "test@example.com",
             configDirectory: "/path/to/config",
@@ -205,7 +206,7 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
 
         let authInfo = CLIAuthInfo(
             cliType: .claude,
-            authState: .authenticated,
+            authState: .authenticated(lastRefresh: nil),
             isInstalled: true,
             accountDescription: "test@example.com",
             configDirectory: "/path/to/config",
@@ -235,7 +236,7 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
 
         let authInfo = CLIAuthInfo(
             cliType: .opencode,
-            authState: .authenticated,
+            authState: .authenticated(lastRefresh: nil),
             isInstalled: true,
             accountDescription: nil,
             configDirectory: nil,
@@ -254,8 +255,8 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
             cliType: .codex,
             cliMetadata: SwitcherCLIProfileMetadata(
                 displayLabel: "Test",
-                accountDescription: "test@example.com",
-                configDirectory: "/existing/config/path"
+                configDirectory: "/existing/config/path",
+                accountDescription: "test@example.com"
             ),
             sortKey: 0
         )
@@ -480,12 +481,12 @@ final class SwitcherDiscoveryServiceTests: XCTestCase {
         return directory
     }
 
-    override func tearDown() throws {
+    override func tearDown() {
         for directory in tempDirectories {
             try? FileManager.default.removeItem(at: directory)
         }
         tempDirectories.removeAll()
-        try super.tearDown()
+        super.tearDown()
     }
 
     // MARK: - Discovery Source Tests
@@ -880,7 +881,7 @@ final class CLIAuthInfoTests: XCTestCase {
     func test_codex_authInfo_equatable() {
         let info1 = CLIAuthInfo(
             cliType: .codex,
-            authState: .authenticated,
+            authState: .authenticated(lastRefresh: nil),
             isInstalled: true,
             accountDescription: "test@example.com",
             configDirectory: "/config",
@@ -888,7 +889,7 @@ final class CLIAuthInfoTests: XCTestCase {
         )
         let info2 = CLIAuthInfo(
             cliType: .codex,
-            authState: .authenticated,
+            authState: .authenticated(lastRefresh: nil),
             isInstalled: true,
             accountDescription: "test@example.com",
             configDirectory: "/config",
@@ -916,7 +917,7 @@ final class CLIAuthInfoTests: XCTestCase {
     func test_claude_authInfo_authState() {
         let info = CLIAuthInfo(
             cliType: .claude,
-            authState: .authenticated,
+            authState: .authenticated(lastRefresh: nil),
             isInstalled: true,
             accountDescription: "user@claude.ai",
             configDirectory: "/Users/user/.claude",
@@ -924,7 +925,7 @@ final class CLIAuthInfoTests: XCTestCase {
         )
 
         XCTAssertEqual(info.cliType, .claude)
-        XCTAssertEqual(info.authState, .authenticated)
+        XCTAssertEqual(info.authState, .authenticated(lastRefresh: nil))
         XCTAssertEqual(info.accountDescription, "user@claude.ai")
         XCTAssertEqual(info.configDirectory, "/Users/user/.claude")
     }
