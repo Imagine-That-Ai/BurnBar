@@ -23,10 +23,16 @@ struct SignInScene: View {
     @State private var appeared = false
     @State private var email = ""
     @State private var password = ""
+    @State private var emailExpanded = false
+    @State private var emailMode: EmailMode = .signIn
     @FocusState private var focusedField: EmailField?
 
     private enum EmailField {
         case email, password
+    }
+
+    private enum EmailMode: Hashable {
+        case signIn, create
     }
 
     var body: some View {
@@ -35,48 +41,53 @@ struct SignInScene: View {
                           reduceTransparency: reduceTransparency)
                 .ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    Spacer(minLength: 24)
+            // Outer ScrollView only kicks in when the keyboard or large
+            // Dynamic Type push the content past the screen — under normal
+            // conditions everything stays vertically + horizontally
+            // centered inside a single column.
+            GeometryReader { geo in
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: MobileTheme.Spacing.lg)
 
-                    EmberLogo(reduceMotion: reduceMotion,
-                              reduceTransparency: reduceTransparency)
-                        .frame(maxWidth: 184)
-                        .frame(height: 132)
-                        .padding(.bottom, MobileTheme.Spacing.lg)
+                        VStack(spacing: 0) {
+                            EmberLogo(reduceMotion: reduceMotion,
+                                      reduceTransparency: reduceTransparency)
+                                .frame(maxWidth: 184)
+                                .frame(height: 132)
+                                .padding(.bottom, MobileTheme.Spacing.lg)
 
-                    wordmark
-                        .padding(.bottom, MobileTheme.Spacing.sm)
+                            wordmark
+                                .padding(.bottom, MobileTheme.Spacing.sm)
 
-                    tagline
-                        .padding(.bottom, MobileTheme.Spacing.lg)
+                            tagline
+                                .padding(.bottom, MobileTheme.Spacing.xl)
 
-                    emailAccountOptions
-                        .padding(.horizontal, MobileTheme.Spacing.xl)
-                        .padding(.bottom, MobileTheme.Spacing.md)
+                            providerButtons
 
-                    authDivider
-                        .padding(.horizontal, MobileTheme.Spacing.xl)
-                        .padding(.vertical, MobileTheme.Spacing.md)
+                            emailDisclosure
+                                .padding(.top, MobileTheme.Spacing.md)
 
-                    providerButtons
-                        .padding(.horizontal, MobileTheme.Spacing.xl)
+                            if let err = authStore.lastError {
+                                errorBanner(err)
+                                    .padding(.top, MobileTheme.Spacing.lg)
+                                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                            }
+                        }
+                        .frame(maxWidth: 360, alignment: .center)
 
-                    if let err = authStore.lastError {
-                        errorBanner(err)
-                            .padding(.horizontal, MobileTheme.Spacing.xl)
-                            .padding(.top, MobileTheme.Spacing.lg)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        Spacer(minLength: MobileTheme.Spacing.lg)
+
+                        privacyFooter
+                            .padding(.top, MobileTheme.Spacing.md)
                     }
-
-                    Spacer(minLength: 42)
-
-                    privacyFooter
-                        .padding(.bottom, MobileTheme.Spacing.lg)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, MobileTheme.Spacing.xl)
+                    .frame(minHeight: geo.size.height)
                 }
-                .frame(maxWidth: .infinity)
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(.horizontal, MobileTheme.Spacing.lg)
             .opacity(appeared ? 1 : 0)
             .offset(y: appeared || reduceMotion ? 0 : 16)
             .animation(reduceMotion ? .none : .easeOut(duration: 0.55), value: appeared)
@@ -84,6 +95,8 @@ struct SignInScene: View {
         .dynamicTypeSize(.medium ... .accessibility2)
         .onAppear { appeared = true }
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: authStore.lastError)
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: emailExpanded)
+        .animation(.snappy(duration: 0.2), value: emailMode)
     }
 
     // MARK: - Subviews
@@ -177,8 +190,90 @@ struct SignInScene: View {
         }
     }
 
-    private var emailAccountOptions: some View {
-        VStack(spacing: MobileTheme.Spacing.sm) {
+    /// Tertiary entry point for email auth. Collapsed by default — expands
+    /// inline into a compact pane with a Sign in / Create toggle, two
+    /// fields, and a single primary action. Keeps the first impression
+    /// social-first (Apple/Google) without sacrificing the email path for
+    /// users who actually need it.
+    @ViewBuilder
+    private var emailDisclosure: some View {
+        if emailExpanded {
+            emailExpandedPane
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)),
+                    removal: .opacity
+                ))
+        } else {
+            emailCollapsedLink
+                .transition(.opacity)
+        }
+    }
+
+    private var emailCollapsedLink: some View {
+        Button {
+            emailExpanded = true
+            // Defer focus a tick so the field exists by the time we reach for it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                focusedField = .email
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "envelope")
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                Text("Sign in with email")
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+            }
+            .foregroundStyle(MobileTheme.Colors.textPrimary)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                    .fill(MobileTheme.Colors.surfaceElevated.opacity(reduceTransparency ? 1 : 0.6))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                    .stroke(MobileTheme.Colors.border, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(authStore.state.inFlightProvider != nil)
+        .accessibilityIdentifier("signIn.email.disclose")
+        .accessibilityLabel("Sign in with email")
+    }
+
+    private var emailExpandedPane: some View {
+        VStack(spacing: MobileTheme.Spacing.md) {
+            HStack(spacing: MobileTheme.Spacing.sm) {
+                EmailModePill(
+                    title: "Sign in",
+                    isSelected: emailMode == .signIn,
+                    action: { emailMode = .signIn }
+                )
+                .accessibilityIdentifier("signIn.email.mode.signIn")
+
+                EmailModePill(
+                    title: "Create",
+                    isSelected: emailMode == .create,
+                    action: { emailMode = .create }
+                )
+                .accessibilityIdentifier("signIn.email.mode.create")
+
+                Spacer(minLength: 0)
+
+                Button {
+                    emailExpanded = false
+                    focusedField = nil
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(.footnote, design: .rounded).weight(.semibold))
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close email sign-in")
+            }
+
             VStack(spacing: MobileTheme.Spacing.sm) {
                 TextField("Email", text: $email)
                     .textInputAutocapitalization(.never)
@@ -190,19 +285,17 @@ struct SignInScene: View {
                     .modifier(AuthTextFieldChrome())
 
                 SecureField("Password", text: $password)
-                    .textContentType(.password)
+                    .textContentType(emailMode == .create ? .newPassword : .password)
                     .submitLabel(.go)
                     .focused($focusedField, equals: .password)
-                    .onSubmit { createEmailAccount() }
+                    .onSubmit { submitEmail() }
                     .modifier(AuthTextFieldChrome())
             }
 
-            Button {
-                createEmailAccount()
-            } label: {
+            Button(action: submitEmail) {
                 EmailButtonLabel(
-                    title: "Create account with email",
-                    systemImage: "envelope.fill",
+                    title: emailMode == .signIn ? "Sign in" : "Create account",
+                    systemImage: emailMode == .signIn ? "arrow.right" : "envelope.fill",
                     isLoading: authStore.state.inFlightProvider == .email
                 )
             }
@@ -210,34 +303,21 @@ struct SignInScene: View {
                                               reduceTransparency: reduceTransparency))
             .disabled(emailActionsDisabled)
             .opacity(emailActionsDisabled ? 0.62 : 1)
-            .accessibilityIdentifier("signIn.email.create")
-
-            Button {
-                signInWithEmail()
-            } label: {
-                Text("Sign in with email")
-                    .font(.system(.footnote, design: .rounded).weight(.semibold))
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    .frame(maxWidth: .infinity, minHeight: 34)
-            }
-            .disabled(emailActionsDisabled)
-            .accessibilityIdentifier("signIn.email.existing")
+            .accessibilityIdentifier(emailMode == .signIn
+                                     ? "signIn.email.existing"
+                                     : "signIn.email.create")
         }
-    }
-
-    private var authDivider: some View {
-        HStack(spacing: MobileTheme.Spacing.md) {
-            Rectangle()
-                .fill(MobileTheme.Colors.border)
-                .frame(height: 1)
-            Text("or")
-                .font(.system(.caption, design: .rounded).weight(.medium))
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-            Rectangle()
-                .fill(MobileTheme.Colors.border)
-                .frame(height: 1)
-        }
-        .accessibilityHidden(true)
+        .padding(MobileTheme.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(reduceTransparency ? 1 : 0.85))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .stroke(MobileTheme.Colors.border, lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("signIn.email.pane")
     }
 
     private var emailActionsDisabled: Bool {
@@ -246,15 +326,15 @@ struct SignInScene: View {
             || password.isEmpty
     }
 
-    private func createEmailAccount() {
+    private func submitEmail() {
+        focusedField = nil
         Task {
-            await authStore.createEmailAccount(email: email, password: password)
-        }
-    }
-
-    private func signInWithEmail() {
-        Task {
-            await authStore.signInWithEmail(email: email, password: password)
+            switch emailMode {
+            case .signIn:
+                await authStore.signInWithEmail(email: email, password: password)
+            case .create:
+                await authStore.createEmailAccount(email: email, password: password)
+            }
         }
     }
 
@@ -304,103 +384,210 @@ struct SignInScene: View {
 
 // MARK: - EmberLogo
 
-/// Renders the brand SVG inside a soft ember glow that "breathes" — scale
-/// pulses gently and the radial glow ebbs in and out, evoking embers in a
-/// fire pit.
+/// Renders the brand SVG as a *lit* flame — the tongues lick upward, the
+/// body sways side-to-side as if in a draft, the halo flickers with a
+/// multi-frequency rhythm (real fire isn't a sine wave), and faint embers
+/// rise through the silhouette.
 ///
-/// The glow lives behind the logo (NOT inside its mask) so the warm halo
-/// is fully visible even though the logo silhouette itself is what shimmers.
+/// The animation is driven by `TimelineView(.animation)` so motion is
+/// time-derived rather than spring-driven — gives a continuous, organic
+/// flicker instead of a metronomic pulse. The bars at the bottom of the
+/// SVG stay anchored while the upper flame stretches and leans, so the
+/// "fuel" reads as solid and the "fire" reads as alive.
+///
+/// Accessibility:
+/// - `reduceMotion`: collapses to a still logo + still halo. No flicker,
+///   no lean, no embers.
+/// - `reduceTransparency`: drops the halo, embers, blur, and plusLighter
+///   blends. Just the static SVG.
 private struct EmberLogo: View {
     let reduceMotion: Bool
     let reduceTransparency: Bool
 
-    @State private var pulse = false
-    @State private var sweep: CGFloat = -1.2
+    @State private var start = Date()
 
     var body: some View {
-        ZStack {
-            // Glow halo — sibling layer (NOT masked) so it stays visible.
-            if !reduceTransparency {
-                halo
-            }
-
-            // The logo itself: SVG resized, with shimmer overlay masked to
-            // the logo silhouette so the highlight only travels across the
-            // brand mark, never the surrounding canvas.
-            ZStack {
-                Image("AppLogo")
-                    .resizable()
-                    .renderingMode(.original)
-                    .scaledToFit()
-
-                if !reduceMotion && !reduceTransparency {
-                    shimmer
-                        .mask(
-                            Image("AppLogo")
-                                .resizable()
-                                .renderingMode(.original)
-                                .scaledToFit()
-                        )
+        Group {
+            if reduceMotion {
+                staticLogo
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { context in
+                    let t = context.date.timeIntervalSince(start)
+                    animatedLogo(t: t)
                 }
-            }
-            .scaleEffect(pulse && !reduceMotion ? 1.04 : 1.00)
-            .animation(
-                reduceMotion ? .none : .easeInOut(duration: 2.4).repeatForever(autoreverses: true),
-                value: pulse
-            )
-        }
-        .onAppear {
-            pulse = true
-            guard !reduceMotion else { return }
-            withAnimation(.linear(duration: 3.4).repeatForever(autoreverses: false)) {
-                sweep = 1.4
             }
         }
         .accessibilityHidden(true) // wordmark provides the label
     }
 
-    private var halo: some View {
+    // MARK: Static fallback
+
+    private var staticLogo: some View {
+        ZStack {
+            if !reduceTransparency {
+                staticHalo
+            }
+            logoImage
+        }
+    }
+
+    private var staticHalo: some View {
         RadialGradient(
             colors: [
-                MobileTheme.ember.opacity(0.50),
-                MobileTheme.amber.opacity(0.30),
+                MobileTheme.ember.opacity(0.45),
+                MobileTheme.amber.opacity(0.25),
                 Color.clear
             ],
             center: .center,
             startRadius: 0,
             endRadius: 140
         )
-        .scaleEffect(pulse && !reduceMotion ? 1.10 : 0.92)
-        .opacity(pulse && !reduceMotion ? 0.95 : 0.55)
         .blur(radius: 18)
         .blendMode(.plusLighter)
-        .animation(
-            reduceMotion ? .none : .easeInOut(duration: 2.4).repeatForever(autoreverses: true),
-            value: pulse
-        )
         .allowsHitTesting(false)
     }
 
-    /// Diagonal highlight band that travels across the logo silhouette.
-    private var shimmer: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            LinearGradient(
-                stops: [
-                    .init(color: .white.opacity(0.0), location: 0.35),
-                    .init(color: .white.opacity(0.55), location: 0.50),
-                    .init(color: .white.opacity(0.0), location: 0.65)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .frame(width: w * 1.2, height: h * 1.2)
-            .rotationEffect(.degrees(20))
-            .offset(x: w * sweep, y: h * sweep * 0.4)
-            .blendMode(.plusLighter)
-            .allowsHitTesting(false)
+    // MARK: Animated flame
+
+    private func animatedLogo(t: TimeInterval) -> some View {
+        // Multi-frequency flicker (sum of three sines) — fire isn't periodic,
+        // and stacking incommensurate frequencies gives the eye that "alive"
+        // feel without ever quite repeating.
+        let f1 = sin(t * 2 * .pi * 0.9)
+        let f2 = sin(t * 2 * .pi * 2.1 + 1.7)
+        let f3 = sin(t * 2 * .pi * 3.7 + 0.4)
+        let flicker  = f1 * 0.5 + f2 * 0.3 + f3 * 0.2          // [-1, 1]
+        let intensity = 0.5 + 0.5 * flicker                    // [ 0, 1]
+
+        // Slow lateral lean — like a flame catching a draft. Two slow,
+        // incommensurate components so it never lands on the same arc.
+        let leanRaw = sin(t * 2 * .pi * 0.45 + 0.9) * 0.6 +
+                      sin(t * 2 * .pi * 0.27)        * 0.4
+        let leanDegrees = leanRaw * 1.4                        // ±1.4°
+
+        // Vertical lick — anchored at the bottom so the bars stay rooted
+        // while the tongues reach up.
+        let stretchY: CGFloat = 1.0 + CGFloat(intensity) * 0.07   // up to +7%
+        let squeezeX: CGFloat = 1.0 - CGFloat(intensity) * 0.025  // ~conserve
+
+        return ZStack {
+            if !reduceTransparency {
+                halo(intensity: intensity)
+            }
+
+            ZStack {
+                logoImage
+
+                if !reduceTransparency {
+                    tipGlow(intensity: intensity)
+                        .mask(logoImage)
+
+                    embers(t: t)
+                        .mask(logoImage)
+                }
+            }
+            .scaleEffect(x: squeezeX, y: stretchY, anchor: .bottom)
+            .rotationEffect(.degrees(leanDegrees), anchor: .bottom)
         }
+    }
+
+    // MARK: Layers
+
+    private var logoImage: some View {
+        Image("AppLogo")
+            .resizable()
+            .renderingMode(.original)
+            .scaledToFit()
+    }
+
+    /// Warm radial glow behind the flame. Scale + opacity track the flicker
+    /// so the room "lights up" with the fire instead of pulsing on its own
+    /// rhythm.
+    private func halo(intensity: Double) -> some View {
+        let scale = 0.95 + intensity * 0.18
+        let opacity = 0.55 + intensity * 0.40
+        return RadialGradient(
+            colors: [
+                MobileTheme.ember.opacity(0.55),
+                MobileTheme.amber.opacity(0.32),
+                Color.clear
+            ],
+            center: .center,
+            startRadius: 0,
+            endRadius: 150
+        )
+        .scaleEffect(scale)
+        .opacity(opacity)
+        .blur(radius: 20)
+        .blendMode(.plusLighter)
+        .allowsHitTesting(false)
+    }
+
+    /// Brightens the upper portion of the silhouette — flame tips burn
+    /// hotter (whiter) than the base. Strength tracks the flicker.
+    private func tipGlow(intensity: Double) -> some View {
+        LinearGradient(
+            stops: [
+                .init(color: Color.white.opacity(0.10 + 0.45 * intensity), location: 0.05),
+                .init(color: Color.white.opacity(0.20 * intensity),         location: 0.30),
+                .init(color: Color.clear,                                   location: 0.65)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .blendMode(.plusLighter)
+        .allowsHitTesting(false)
+    }
+
+    /// Three rising ember sparks confined to the flame body (the upper
+    /// 70% of the silhouette — we don't want sparks crawling up through
+    /// the bars). Each loops on its own period with a phase offset, so the
+    /// sky over the fire never goes still.
+    private func embers(t: TimeInterval) -> some View {
+        GeometryReader { geo in
+            ZStack {
+                ember(t: t, period: 1.7, phase: 0.0, xFrac: 0.50, geo: geo,
+                      color: MobileTheme.amber)
+                ember(t: t, period: 2.1, phase: 0.6, xFrac: 0.42, geo: geo,
+                      color: MobileTheme.ember)
+                ember(t: t, period: 1.4, phase: 1.2, xFrac: 0.58, geo: geo,
+                      color: Color(hex: "FED430"))
+            }
+        }
+        .blendMode(.plusLighter)
+        .allowsHitTesting(false)
+    }
+
+    private func ember(t: TimeInterval,
+                       period: Double,
+                       phase: Double,
+                       xFrac: CGFloat,
+                       geo: GeometryProxy,
+                       color: Color) -> some View {
+        // Local progress 0 → 1 over `period` seconds.
+        let raw = (t + phase).truncatingRemainder(dividingBy: period)
+        let progress = CGFloat(raw / period)
+
+        // Travel within the flame body only (top 70% of the SVG bounds —
+        // the bottom 30% is the descending bar ladder, where flames don't
+        // belong).
+        let yStart: CGFloat = 0.65
+        let yEnd:   CGFloat = 0.05
+        let y = yStart + (yEnd - yStart) * progress
+
+        // Subtle horizontal wobble so the spark drifts as it rises.
+        let wobble = CGFloat(sin(Double(progress) * .pi * 2 + phase)) * 0.04
+        let x = xFrac + wobble
+
+        // 0 → peak → 0 over the cycle. `sin(progress·π)` gives a clean arc.
+        let alpha = max(0, sin(Double(progress) * .pi))
+
+        return Circle()
+            .fill(color)
+            .frame(width: 14, height: 14)
+            .blur(radius: 6)
+            .opacity(alpha * 0.9)
+            .position(x: geo.size.width * x, y: geo.size.height * y)
     }
 }
 
@@ -485,21 +672,28 @@ private struct GoogleButtonLabel: View {
     let isLoading: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image("GoogleLogo")
-                .resizable()
-                .renderingMode(.original)
-                .scaledToFit()
-                .frame(width: 24, height: 24)
-                .accessibilityHidden(true)
-            Text("Continue with Google")
-                .font(.system(.body, design: .rounded).weight(.semibold))
-            Spacer(minLength: 0)
+        ZStack {
+            HStack(spacing: 12) {
+                Image("GoogleLogo")
+                    .resizable()
+                    .renderingMode(.original)
+                    .scaledToFit()
+                    .frame(width: 22, height: 22)
+                    .accessibilityHidden(true)
+                Text("Continue with Google")
+                    .font(.system(.body, design: .rounded).weight(.semibold))
+            }
+
             if isLoading {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .controlSize(.small)
-                    .tint(MobileTheme.Colors.textSecondary)
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                        .tint(MobileTheme.Colors.textSecondary)
+                }
+                .padding(.trailing, 18)
+                .accessibilityHidden(true)
             }
         }
         .padding(.vertical, 16)
@@ -536,26 +730,60 @@ private struct EmailButtonLabel: View {
     let isLoading: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.system(.body, design: .rounded).weight(.semibold))
-                .frame(width: 24, height: 24)
-                .accessibilityHidden(true)
-            Text(title)
-                .font(.system(.body, design: .rounded).weight(.semibold))
-            Spacer(minLength: 0)
+        ZStack {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.system(.body, design: .rounded).weight(.semibold))
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(.system(.body, design: .rounded).weight(.semibold))
+            }
+            .opacity(isLoading ? 0 : 1)
+
             if isLoading {
                 ProgressView()
                     .progressViewStyle(.circular)
                     .controlSize(.small)
-                    .tint(MobileTheme.Colors.textSecondary)
+                    .tint(MobileTheme.Colors.textPrimary)
             }
         }
-        .padding(.vertical, 15)
+        .padding(.vertical, 14)
         .padding(.horizontal, 18)
-        .frame(maxWidth: .infinity, minHeight: 52)
+        .frame(maxWidth: .infinity, minHeight: 48)
         .foregroundStyle(MobileTheme.Colors.textPrimary)
         .contentShape(Rectangle())
+    }
+}
+
+/// Segmented-style pill used by the email pane to switch between Sign in
+/// and Create modes. Selected state borrows the brand gradient so the
+/// active mode reads at a glance without competing with the primary CTA.
+private struct EmailModePill: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(.footnote, design: .rounded).weight(.semibold))
+                .foregroundStyle(isSelected
+                                 ? Color.white
+                                 : MobileTheme.Colors.textSecondary)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 12)
+                .background(
+                    Group {
+                        if isSelected {
+                            Capsule().fill(MobileTheme.primaryGradient)
+                        } else {
+                            Capsule().fill(MobileTheme.Colors.surfaceElevated.opacity(0.6))
+                        }
+                    }
+                )
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 

@@ -5,14 +5,33 @@ import OpenBurnBarCore
 @MainActor
 final class ProviderConnectionStore {
     private let functions: FunctionsRepository
+    private let firestore: FirestoreRepository
 
     private(set) var connectingProvider: String?
     private(set) var deletingProvider: String?
     private(set) var refreshingProvider: String?
     private(set) var error: String?
+    private(set) var connections: [ProviderConnectionDoc] = []
+    private(set) var isLoading = false
 
-    init(functions: FunctionsRepository = FunctionsRepository()) {
+    init(
+        functions: FunctionsRepository = FunctionsRepository(),
+        firestore: FirestoreRepository = FirestoreRepository()
+    ) {
         self.functions = functions
+        self.firestore = firestore
+    }
+
+    func load() async {
+        isLoading = true
+        error = nil
+        defer { isLoading = false }
+
+        do {
+            connections = try await firestore.fetchProviderConnections()
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     func connect(provider: String, credential: String, kind: CredentialKind) async {
@@ -26,6 +45,7 @@ final class ProviderConnectionStore {
                 credential: credential,
                 kind: kind
             )
+            await load()
         } catch {
             self.error = error.localizedDescription
         }
@@ -38,6 +58,7 @@ final class ProviderConnectionStore {
 
         do {
             try await functions.deleteProviderCredential(provider: provider)
+            await load()
         } catch {
             self.error = error.localizedDescription
         }
@@ -50,6 +71,7 @@ final class ProviderConnectionStore {
 
         do {
             _ = try await functions.refreshProviderQuota(provider: provider)
+            await load()
         } catch {
             self.error = error.localizedDescription
         }

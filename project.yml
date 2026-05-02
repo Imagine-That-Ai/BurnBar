@@ -276,6 +276,7 @@ targets:
             CFBundleURLSchemes:
               - com.googleusercontent.apps.246956661961-k53p0e4oln229kmmed459fm6i8i5vtoo
     dependencies:
+      - target: OpenBurnBarWidget
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
         embed: true
@@ -309,5 +310,35 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.app.tests
     dependencies:
       - target: OpenBurnBarMobile
+      - package: OpenBurnBarCore
+        product: OpenBurnBarCore
+
+  OpenBurnBarWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: OpenBurnBarWidget
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_NAME: OpenBurnBarWidget
+        PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.app.widget
+        DEVELOPMENT_TEAM: 4Y367DF25B
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements
+        INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar Widget
+        INFOPLIST_KEY_CFBundleName: BurnBarWidget
+        SKIP_INSTALL: true
+    info:
+      path: OpenBurnBarWidget/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+          
+    dependencies:
+      - sdk: SwiftUI.framework
+      - sdk: WidgetKit.framework
       - package: OpenBurnBarCore
         product: OpenBurnBarCore

@@ -16,5 +16,11 @@
     <array>
         <string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     </array>
+
+    <!-- App Group for sharing widget data with the WidgetKit extension. -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.burnbar.app</string>
+    </array>
 </dict>
 </plist>

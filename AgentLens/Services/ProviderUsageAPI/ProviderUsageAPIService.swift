@@ -70,6 +70,8 @@ struct ProviderUsageRecord: Sendable, Equatable {
             return .minimax
         case "z.ai", "zai":
             return .zai
+        case "ollama":
+            return .ollama
         case "github copilot", "copilot":
             return .copilot
         default:

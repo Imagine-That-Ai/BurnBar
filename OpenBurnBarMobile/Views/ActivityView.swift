@@ -72,7 +72,7 @@ struct ActivityView: View {
 
 // MARK: - Usage Row
 
-private struct UsageRow: View {
+struct UsageRow: View {
     let usage: TokenUsage
 
     var providerEnum: AgentProvider? {

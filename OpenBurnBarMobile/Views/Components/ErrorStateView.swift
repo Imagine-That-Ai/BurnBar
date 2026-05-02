@@ -1,15 +1,32 @@
 import SwiftUI
 
 struct ErrorStateView: View {
+    let icon: String
+    let title: String
     let message: String
+    let retryLabel: String
     let onRetry: (() -> Void)?
+
+    init(
+        icon: String = "exclamationmark.triangle.fill",
+        title: String = "Something went wrong",
+        message: String,
+        retryLabel: String = "Try Again",
+        onRetry: (() -> Void)? = nil
+    ) {
+        self.icon = icon
+        self.title = title
+        self.message = message
+        self.retryLabel = retryLabel
+        self.onRetry = onRetry
+    }
 
     var body: some View {
         VStack(spacing: MobileTheme.Spacing.lg) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: icon)
                 .font(.system(size: 44))
                 .foregroundStyle(MobileTheme.Colors.warning)
-            Text("Something went wrong")
+            Text(title)
                 .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
             Text(message)
@@ -18,7 +35,7 @@ struct ErrorStateView: View {
                 .multilineTextAlignment(.center)
             if let onRetry {
                 Button(action: onRetry) {
-                    Label("Try Again", systemImage: "arrow.clockwise")
+                    Label(retryLabel, systemImage: "arrow.clockwise")
                         .font(MobileTheme.Typography.body)
                 }
                 .buttonStyle(.borderedProminent)

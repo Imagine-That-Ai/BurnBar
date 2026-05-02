@@ -353,7 +353,7 @@ final class FirestoreNormalizationTests: XCTestCase {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         let expected = formatter.date(from: "2026-05-02T12:00:00Z")!
-        XCTAssertEqual(rollup?.computedAt.timeIntervalSinceReferenceDate,
+        XCTAssertEqual((rollup?.computedAt.timeIntervalSinceReferenceDate ?? 0),
                        expected.timeIntervalSinceReferenceDate,
                        accuracy: 0.001,
                        "computedAt should decode from ISO 8601 string")
@@ -370,11 +370,11 @@ final class FirestoreNormalizationTests: XCTestCase {
         formatter.formatOptions = [.withInternetDateTime]
         let expectedFetched = formatter.date(from: "2026-05-02T12:00:00Z")!
         let expectedUpdated = formatter.date(from: "2026-05-02T12:00:00Z")!
-        XCTAssertEqual(snap?.fetchedAt.timeIntervalSinceReferenceDate,
+        XCTAssertEqual((snap?.fetchedAt.timeIntervalSinceReferenceDate ?? 0),
                        expectedFetched.timeIntervalSinceReferenceDate,
                        accuracy: 0.001,
                        "fetchedAt should decode from ISO 8601 string")
-        XCTAssertEqual(snap?.updatedAt.timeIntervalSinceReferenceDate,
+        XCTAssertEqual((snap?.updatedAt.timeIntervalSinceReferenceDate ?? 0),
                        expectedUpdated.timeIntervalSinceReferenceDate,
                        accuracy: 0.001,
                        "updatedAt should decode from ISO 8601 string")
@@ -390,11 +390,11 @@ final class FirestoreNormalizationTests: XCTestCase {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         let expected = formatter.date(from: "2026-05-02T12:00:00Z")!
-        XCTAssertEqual(conn?.lastValidatedAt?.timeIntervalSinceReferenceDate,
+        XCTAssertEqual((conn?.lastValidatedAt?.timeIntervalSinceReferenceDate ?? 0),
                        expected.timeIntervalSinceReferenceDate,
                        accuracy: 0.001,
                        "lastValidatedAt should decode from ISO 8601 string")
-        XCTAssertEqual(conn?.lastRefreshAt?.timeIntervalSinceReferenceDate,
+        XCTAssertEqual((conn?.lastRefreshAt?.timeIntervalSinceReferenceDate ?? 0),
                        expected.timeIntervalSinceReferenceDate,
                        accuracy: 0.001,
                        "lastRefreshAt should decode from ISO 8601 string")

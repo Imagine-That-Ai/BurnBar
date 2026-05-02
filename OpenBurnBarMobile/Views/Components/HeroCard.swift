@@ -37,6 +37,7 @@ struct HeroCard: View {
             }
             Text(value)
                 .font(MobileTheme.Typography.display)
+                .contentTransition(.numericText())
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)

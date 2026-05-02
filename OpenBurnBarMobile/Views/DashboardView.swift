@@ -9,26 +9,60 @@ struct DashboardView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: MobileTheme.Spacing.xl) {
-                heroSection
-                periodCards
-                if !store.dailyPoints.isEmpty {
-                    chartSection
+            if store.isLoading && store.windowTotals.isEmpty {
+                loadingPlaceholder
+            } else if let error = store.error, store.windowTotals.isEmpty {
+                ErrorStateView(
+                    icon: "chart.bar.fill",
+                    title: "Couldn't Load Dashboard",
+                    message: error,
+                    retryLabel: "Retry",
+                    onRetry: { Task { await store.load() } }
+                )
+            } else if !store.isLoading, store.windowTotals.isEmpty {
+                EmptyStateView(
+                    icon: "chart.bar.fill",
+                    title: "No Usage Data Yet",
+                    message: "Start using your AI agents on your Mac to see your burn here."
+                )
+            } else {
+                VStack(spacing: MobileTheme.Spacing.xl) {
+                    heroSection
+                        .staggeredEntrance(delay: 0.0)
+                    summaryLine
+                        .staggeredEntrance(delay: 0.05)
+                    periodCards
+                        .staggeredEntrance(delay: 0.10)
+                    if !store.dailyPoints.isEmpty {
+                        chartSection
+                            .staggeredEntrance(delay: 0.15)
+                            .chartEntrance()
+                    }
+                    if !store.topProviders.isEmpty {
+                        topProvidersSection
+                            .staggeredEntrance(delay: 0.20)
+                    }
+                    if !store.topModels.isEmpty {
+                        topModelsSection
+                            .staggeredEntrance(delay: 0.25)
+                    }
                 }
-                if !store.topProviders.isEmpty {
-                    topProvidersSection
-                }
-                if !store.topModels.isEmpty {
-                    topModelsSection
-                }
+                .padding(.vertical, MobileTheme.Spacing.lg)
             }
-            .padding(.vertical, MobileTheme.Spacing.lg)
         }
         .background(MobileTheme.Colors.background.ignoresSafeArea())
         .navigationTitle("Dashboard")
         .refreshable { await store.refresh() }
-        .task { store.startListening() }
+        .task { await store.load() }
         .onDisappear { store.stopListening() }
+        .onChange(of: displayMode) { _, newMode in
+            store.setDisplayMode(newMode)
+            Task { await store.refresh() }
+        }
+        .onChange(of: selectedWindow) { _, newWindow in
+            store.setWindow(newWindow)
+            Task { await store.refresh() }
+        }
     }
 
     // MARK: - Hero
@@ -40,7 +74,7 @@ struct DashboardView: View {
             subtitle: heroSubtitle,
             displayMode: displayMode,
             onToggle: {
-                withAnimation(.spring) {
+                withAnimation(.spring(duration: 0.35)) {
                     displayMode = displayMode == .currency ? .tokens : .currency
                 }
             }
@@ -63,6 +97,27 @@ struct DashboardView: View {
         }
     }
 
+    // MARK: - Summary
+
+    private var summaryLine: some View {
+        let parts: [String] = [
+            store.topProviders.isEmpty ? nil : "\(store.topProviders.count) providers",
+            store.topModels.isEmpty ? nil : "\(store.topModels.count) models",
+            store.topDevices.isEmpty ? nil : "\(store.topDevices.count) devices"
+        ].compactMap { $0 }
+
+        guard !parts.isEmpty else {
+            return AnyView(EmptyView())
+        }
+
+        return AnyView(
+            Text(parts.joined(separator: " · "))
+                .font(MobileTheme.Typography.footnote)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .padding(.horizontal, MobileTheme.Spacing.lg)
+        )
+    }
+
     // MARK: - Period Cards
 
     private var periodCards: some View {
@@ -76,6 +131,7 @@ struct DashboardView: View {
                         isSelected: selectedWindow == key,
                         onTap: { selectedWindow = key }
                     )
+                    .hoverScale()
                 }
             }
             .padding(.horizontal, MobileTheme.Spacing.lg)
@@ -105,6 +161,7 @@ struct DashboardView: View {
                 }
             }
             .padding(.horizontal, MobileTheme.Spacing.lg)
+            .animation(.smooth(duration: 0.6), value: store.dailyPoints.map(\.id))
         }
     }
 
@@ -119,6 +176,7 @@ struct DashboardView: View {
             LazyVStack(spacing: MobileTheme.Spacing.sm) {
                 ForEach(store.topProviders.prefix(5)) { summary in
                     RollupProviderSummaryRow(summary: summary, displayMode: displayMode)
+                        .hoverScale()
                 }
             }
             .padding(.horizontal, MobileTheme.Spacing.lg)
@@ -136,10 +194,27 @@ struct DashboardView: View {
             LazyVStack(spacing: MobileTheme.Spacing.sm) {
                 ForEach(store.topModels.prefix(5)) { summary in
                     RollupModelSummaryRow(summary: summary, displayMode: displayMode)
+                        .hoverScale()
                 }
             }
             .padding(.horizontal, MobileTheme.Spacing.lg)
         }
+    }
+
+    // MARK: - Loading Placeholder
+
+    private var loadingPlaceholder: some View {
+        VStack(spacing: MobileTheme.Spacing.lg) {
+            SkeletonView(height: 180, cornerRadius: MobileTheme.Radius.lg)
+                .padding(.horizontal, MobileTheme.Spacing.lg)
+            SkeletonView(height: 72, cornerRadius: MobileTheme.Radius.md)
+                .padding(.horizontal, MobileTheme.Spacing.lg)
+            SkeletonView(height: 72, cornerRadius: MobileTheme.Radius.md)
+                .padding(.horizontal, MobileTheme.Spacing.lg)
+            SkeletonView(height: 72, cornerRadius: MobileTheme.Radius.md)
+                .padding(.horizontal, MobileTheme.Spacing.lg)
+        }
+        .padding(.top, MobileTheme.Spacing.xl)
     }
 }
 
