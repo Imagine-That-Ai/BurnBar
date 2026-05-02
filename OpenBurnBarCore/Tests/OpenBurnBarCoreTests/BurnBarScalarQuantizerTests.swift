@@ -25,8 +25,14 @@ final class BurnBarScalarQuantizerTests: XCTestCase {
         for vector in vectors {
             let encoded = quantizer.encode(vector: vector)
             let decoded = quantizer.decode(bytes: encoded)
-            let error = zip(vector, decoded).map { Double($0 - $1) * Double($0 - $1) }.reduce(0, +)
-            totalRMSError += sqrt(error / Double(dimensions))
+            // Broken up because Swift's type-checker times out on the
+            // chained closure in CI (Swift 6.x + 64-bit dimensions).
+            var sumSquared: Double = 0
+            for (a, b) in zip(vector, decoded) {
+                let diff = Double(a) - Double(b)
+                sumSquared += diff * diff
+            }
+            totalRMSError += sqrt(sumSquared / Double(dimensions))
         }
         let avgRMSError = totalRMSError / Double(vectors.count)
         XCTAssertLessThan(avgRMSError, 0.01, "Average RMS error should be < 0.01")
