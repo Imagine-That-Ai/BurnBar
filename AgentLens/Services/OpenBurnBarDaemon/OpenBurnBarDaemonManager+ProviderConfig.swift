@@ -284,6 +284,8 @@ extension OpenBurnBarDaemonManager {
             return .minimax
         case "zai":
             return .zai
+        case "ollama":
+            return .ollama
         default:
             return nil
         }

@@ -24,6 +24,9 @@ struct SummaryAPIKeyResolver {
             let key = await store.apiKey(for: "zai")
             return nonEmpty(key) ?? cursorConnectorKey(for: "provider.zai.apiKey")
                 ?? nonEmpty(env["ZAI_API_KEY"])
+        case .ollama:
+            let key = await store.apiKey(for: "ollama")
+            return nonEmpty(key) ?? nonEmpty(env["OLLAMA_API_KEY"])
         }
     }
 

@@ -19,6 +19,8 @@ enum SummaryCostEstimator {
         switch provider {
         case .local, .mlx:
             return 0
+        case .ollama:
+            return 0
         case .minimax:
             inputPerM = 0.69
             outputPerM = 0.69

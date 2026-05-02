@@ -33,6 +33,7 @@ enum ParserRegistry {
             .goose: GooseParser(),
             .windsurf: WindsurfParser(),
             .warp: WarpParser(),
+            .ollama: ModelFilterParser(modelPattern: "ollama", provider: .ollama),
         ]
     }
 }

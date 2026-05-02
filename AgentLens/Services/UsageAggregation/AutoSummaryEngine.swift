@@ -244,6 +244,8 @@ final class AutoSummaryEngine {
             openRouterPrimaryModel: settingsManager.summaryOpenRouterPrimaryModel,
             openRouterFallbackModel: settingsManager.summaryOpenRouterFallbackModel,
             zaiModel: settingsManager.summaryZaiModel,
+            ollamaBaseURL: settingsManager.summaryOllamaBaseURL,
+            ollamaModel: settingsManager.summaryOllamaModel,
             requestTimeoutSeconds: settingsManager.summaryRequestTimeoutSeconds,
             maxPromptChars: effectiveAutoSummaryPromptChars,
             maxOutputTokens: effectiveAutoSummaryOutputTokens,

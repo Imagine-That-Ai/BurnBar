@@ -1845,6 +1845,30 @@
           }
         }
       ]
+    },
+    {
+      "id": "ollama",
+      "displayName": "Ollama",
+      "baseURL": "http://localhost:11434",
+      "visibility": "public",
+      "logoKey": "OllamaLogo",
+      "capabilities": ["routing"],
+      "models": [
+        {
+          "id": "ollama-family",
+          "displayName": "Ollama (local models)",
+          "visibility": "public",
+          "aliases": [],
+          "matchers": [
+            { "all": ["ollama"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          }
+        }
+      ]
     }
   ]
 }

@@ -1160,7 +1160,7 @@ final class SettingsManagerTests: XCTestCase {
     // MARK: - SummaryProviderID Tests
 
     func test_summaryProviderID_allCases() {
-        XCTAssertEqual(SummaryProviderID.allCases.count, 5)
+        XCTAssertEqual(SummaryProviderID.allCases.count, 6)
         XCTAssertTrue(SummaryProviderID.allCases.contains(.local))
         XCTAssertTrue(SummaryProviderID.allCases.contains(.mlx))
         XCTAssertTrue(SummaryProviderID.allCases.contains(.minimax))

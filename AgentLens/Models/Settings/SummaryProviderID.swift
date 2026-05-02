@@ -8,4 +8,5 @@ enum SummaryProviderID: String, CaseIterable, Codable {
     case minimax
     case openrouter
     case zai
+    case ollama
 }

@@ -6,6 +6,7 @@ enum CrossEncoderProviderID: String, CaseIterable, Codable, Identifiable {
     case minimax
     case zai
     case openrouter
+    case ollama
     case hermes
 
     var id: String { rawValue }
@@ -22,6 +23,8 @@ enum CrossEncoderProviderID: String, CaseIterable, Codable, Identifiable {
             return "Z.ai"
         case .openrouter:
             return "OpenRouter"
+        case .ollama:
+            return "Ollama"
         case .hermes:
             return "Hermes"
         }
@@ -31,7 +34,7 @@ enum CrossEncoderProviderID: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .codexCLI, .claudeCLI:
             return true
-        case .minimax, .zai, .openrouter, .hermes:
+        case .minimax, .zai, .openrouter, .ollama, .hermes:
             return false
         }
     }
@@ -44,6 +47,8 @@ enum CrossEncoderProviderID: String, CaseIterable, Codable, Identifiable {
             return "zai"
         case .openrouter:
             return "openrouter"
+        case .ollama:
+            return "ollama"
         case .codexCLI, .claudeCLI, .hermes:
             return nil
         }
@@ -57,6 +62,8 @@ enum CrossEncoderProviderID: String, CaseIterable, Codable, Identifiable {
             return "https://api.z.ai/api/coding/paas/v4"
         case .openrouter:
             return "https://openrouter.ai/api/v1"
+        case .ollama:
+            return "http://localhost:11434/v1"
         case .hermes:
             return "http://localhost:8642/v1"
         case .codexCLI, .claudeCLI:
@@ -80,6 +87,8 @@ enum CrossEncoderProviderID: String, CaseIterable, Codable, Identifiable {
             return "Requires a Z.ai API key in OpenBurnBar’s provider settings."
         case .openrouter:
             return "Requires an OpenRouter API key in OpenBurnBar’s provider settings."
+        case .ollama:
+            return "Local Ollama server. Ensure `ollama serve` is running on the configured host."
         case .hermes:
             return "Hermes gateway on `http://localhost:8642` — enable API_SERVER_ENABLED in ~/.hermes/.env, run hermes gateway run. Token in OpenBurnBar only if you set API_SERVER_KEY in that file."
         }
@@ -136,6 +145,11 @@ enum CrossEncoderCatalog {
         ],
         .hermes: [
             CrossEncoderModelOption(id: "hermes", displayName: "Hermes")
+        ],
+        .ollama: [
+            CrossEncoderModelOption(id: "llama3.2", displayName: "Llama 3.2"),
+            CrossEncoderModelOption(id: "qwen2.5-coder", displayName: "Qwen 2.5 Coder"),
+            CrossEncoderModelOption(id: "gemma3", displayName: "Gemma 3")
         ]
     ]
 

@@ -107,3 +107,10 @@ derived-data/
 
 # Generated SwiftPM checkout/artifact mirrors from factory validations
 .factory/validation/**/derived-data/**/SourcePackages/
+
+# Per-test UserDefaults plists Xcode emits next to source files when running
+# tests from inside the IDE (NSUserDefaults host-app simulation).
+*.swift.plist
+
+# QA harness output (qa skill writes timestamped reports + screenshots)
+qa-results/

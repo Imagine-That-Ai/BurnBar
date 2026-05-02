@@ -11,7 +11,7 @@ final class SummarySettings {
         didSet { persistence.set(autoSessionSummariesEnabled, forKey: "autoSessionSummariesEnabled") }
     }
 
-    var summaryProviderOrderCSV: String = "local,mlx,minimax,openrouter,zai" {
+    var summaryProviderOrderCSV: String = "local,mlx,minimax,openrouter,zai,ollama" {
         didSet { persistence.set(summaryProviderOrderCSV, forKey: "summaryProviderOrderCSV") }
     }
 
@@ -41,6 +41,14 @@ final class SummarySettings {
 
     var summaryZaiModel: String = "glm-5-turbo" {
         didSet { persistence.set(summaryZaiModel, forKey: "summaryZaiModel") }
+    }
+
+    var summaryOllamaModel: String = "llama3.2" {
+        didSet { persistence.set(summaryOllamaModel, forKey: "summaryOllamaModel") }
+    }
+
+    var summaryOllamaBaseURL: String = "http://127.0.0.1:11434" {
+        didSet { persistence.set(summaryOllamaBaseURL, forKey: "summaryOllamaBaseURL") }
     }
 
     var summaryLocalModel: String = "qwen3.5:9b" {
@@ -101,7 +109,7 @@ final class SummarySettings {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .compactMap(SummaryProviderID.init(rawValue:))
         if parsed.isEmpty {
-            return [.local, .mlx, .minimax, .openrouter, .zai]
+            return [.local, .mlx, .minimax, .openrouter, .zai, .ollama]
         }
 
         var deduped: [SummaryProviderID] = []
@@ -121,7 +129,7 @@ final class SummarySettings {
         } else {
             self.autoSessionSummariesEnabled = true
         }
-        self.summaryProviderOrderCSV = persistence.string(forKey: "summaryProviderOrderCSV", defaultValue: "local,mlx,minimax,openrouter,zai")
+        self.summaryProviderOrderCSV = persistence.string(forKey: "summaryProviderOrderCSV", defaultValue: "local,mlx,minimax,openrouter,zai,ollama")
         if persistence.bool(forKey: "hasSummaryDailyCapUSD") {
             self.summaryDailyCapUSD = persistence.double(forKey: "summaryDailyCapUSD")
         } else {
@@ -131,6 +139,8 @@ final class SummarySettings {
         self.summaryOpenRouterFallbackModel = persistence.string(forKey: "summaryOpenRouterFallbackModel", defaultValue: "openai/gpt-5-nano")
         self.summaryMiniMaxModel = persistence.string(forKey: "summaryMiniMaxModel", defaultValue: "gpt-5.5")
         self.summaryZaiModel = persistence.string(forKey: "summaryZaiModel", defaultValue: "glm-5-turbo")
+        self.summaryOllamaModel = persistence.string(forKey: "summaryOllamaModel", defaultValue: "llama3.2")
+        self.summaryOllamaBaseURL = persistence.string(forKey: "summaryOllamaBaseURL", defaultValue: "http://127.0.0.1:11434")
         self.summaryLocalModel = persistence.string(forKey: "summaryLocalModel", defaultValue: "qwen3.5:9b")
         self.summaryLocalBaseURL = persistence.string(forKey: "summaryLocalBaseURL", defaultValue: "http://127.0.0.1:11434")
         self.summaryMLXModel = persistence.string(forKey: "summaryMLXModel", defaultValue: "mlx-community/Qwen3-4B-4bit")

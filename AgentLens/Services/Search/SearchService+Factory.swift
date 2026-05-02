@@ -117,6 +117,19 @@ extension SearchService {
                 maxCharsPerCandidate: settingsManager.crossEncoderMaxCharsPerCandidate,
                 maxCandidatesPerRequest: settingsManager.crossEncoderMaxCandidates
             )
+
+        case .ollama:
+            guard let baseURL = provider.baseURL else {
+                return nil
+            }
+            return OpenAICompatibleCrossEncoderReranker(
+                apiKey: "",
+                requiresAPIKey: false,
+                modelName: model,
+                baseURL: baseURL,
+                maxCharsPerCandidate: settingsManager.crossEncoderMaxCharsPerCandidate,
+                maxCandidatesPerRequest: settingsManager.crossEncoderMaxCandidates
+            )
         }
     }
 
@@ -153,6 +166,9 @@ extension SearchService {
             return nonEmpty(providerAPIKeyStore.apiKey(for: "zai"))
                 ?? cursorConnectorKey(for: "provider.zai.apiKey")
                 ?? nonEmpty(env["ZAI_API_KEY"])
+        case .ollama:
+            return nonEmpty(providerAPIKeyStore.apiKey(for: "ollama"))
+                ?? nonEmpty(env["OLLAMA_API_KEY"])
         case .codexCLI, .claudeCLI, .hermes:
             return nil
         }

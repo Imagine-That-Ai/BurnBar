@@ -308,6 +308,7 @@ final class OpenBurnBarDaemonUsageSyncService {
         switch providerID.lowercased() {
         case "zai":       return .zai
         case "minimax":   return .minimax
+        case "ollama":    return .ollama
         case "openai":    return .codex
         case "anthropic": return .claudeCode
         case "google":    return .geminiCLI

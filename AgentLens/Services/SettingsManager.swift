@@ -453,6 +453,16 @@ final class SettingsManager {
         set { summary.summaryZaiModel = newValue }
     }
 
+    var summaryOllamaModel: String {
+        get { summary.summaryOllamaModel }
+        set { summary.summaryOllamaModel = newValue }
+    }
+
+    var summaryOllamaBaseURL: String {
+        get { summary.summaryOllamaBaseURL }
+        set { summary.summaryOllamaBaseURL = newValue }
+    }
+
     var summaryLocalModel: String {
         get { summary.summaryLocalModel }
         set { summary.summaryLocalModel = newValue }

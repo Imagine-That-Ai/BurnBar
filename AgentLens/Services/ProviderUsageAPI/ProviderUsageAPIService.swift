@@ -161,6 +161,11 @@ final class ProviderUsageAPIService {
             active.append(MiniMaxUsageProbe(apiKey: key))
         }
 
+        // Ollama local probe — always attempt if server is running.
+        let ollamaHost = environment["OLLAMA_HOST"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let ollamaBase = ollamaHost.isEmpty ? "http://localhost:11434" : (ollamaHost.hasPrefix("http") ? ollamaHost : "http://\(ollamaHost)")
+        active.append(OllamaUsageProbe(baseURL: ollamaBase, apiKey: resolvedAPIKey(for: "ollama")))
+
         apis = active
     }
 
@@ -227,6 +232,9 @@ final class ProviderUsageAPIService {
             return nonEmpty(keyStore.apiKey(for: provider))
                 ?? connectorKey(for: "provider.minimax.apiKey")
                 ?? nonEmpty(environment["MINIMAX_API_KEY"])
+        case "ollama":
+            return nonEmpty(keyStore.apiKey(for: provider))
+                ?? nonEmpty(environment["OLLAMA_API_KEY"])
         default:
             return nonEmpty(keyStore.apiKey(for: provider))
         }

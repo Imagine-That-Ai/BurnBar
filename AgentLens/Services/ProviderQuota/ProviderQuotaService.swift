@@ -17,6 +17,7 @@ final class ProviderQuotaService {
         .factory,
         .cursor,
         .warp,
+        .ollama,
     ]
 
     private let keyStore: ProviderAPIKeyStore
@@ -323,6 +324,8 @@ final class ProviderQuotaService {
             return "minimax"
         case .zai:
             return "zai"
+        case .ollama:
+            return "ollama"
         default:
             return nil
         }

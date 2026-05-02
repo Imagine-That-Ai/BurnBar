@@ -10,11 +10,11 @@
     </array>
 
     <!-- Keychain access group MUST share the AppIdentifierPrefix with the
-         build's actual bundle identifier (`com.burnbar.app`). The escrow key
+         build's actual bundle identifier. The escrow key
          in `iOSDeviceKeypair.swift` writes to Keychain via this group. -->
     <key>keychain-access-groups</key>
     <array>
-        <string>$(AppIdentifierPrefix)com.burnbar.app</string>
+        <string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     </array>
 </dict>
 </plist>

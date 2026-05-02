@@ -201,8 +201,12 @@ targets:
     platform: macOS
     sources:
       - path: AgentLensTests/Active
+        excludes:
+          - "**/*.swift.plist"
 
       - path: AgentLensTests/Support
+        excludes:
+          - "**/*.swift.plist"
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarTests
@@ -246,7 +250,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarMobile
-        PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.ios
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         # Apple sign-in + iOS Keychain access group; see
@@ -264,6 +268,7 @@ targets:
     dependencies:
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
+        embed: true
       - package: Firebase
         product: FirebaseAuth
       - package: Firebase

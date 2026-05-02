@@ -14,6 +14,8 @@ struct SummarySettingsSnapshot: Sendable {
     let openRouterPrimaryModel: String
     let openRouterFallbackModel: String
     let zaiModel: String
+    let ollamaBaseURL: String
+    let ollamaModel: String
     let requestTimeoutSeconds: Double
     let maxPromptChars: Int
     let maxOutputTokens: Int
@@ -183,6 +185,33 @@ actor SummaryWorker {
                     provider: .zai,
                     baseURL: "https://api.z.ai/api/coding/paas/v4",
                     apiKey: key,
+                    model: model,
+                    prompt: prompt,
+                    fallbackTitle: conversation.inferredTaskTitle,
+                    settings: settings
+                ) {
+                    try? dataStoreActor.updateConversationSummary(
+                        id: conversation.id,
+                        title: result.title,
+                        summary: result.summary,
+                        provider: result.provider.rawValue,
+                        model: result.model,
+                        runCostUSD: result.estimatedCostUSD
+                    )
+                    return result
+                }
+
+            case .ollama:
+                let model = settings.ollamaModel
+                let baseURL = settings.ollamaBaseURL
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                guard !baseURL.isEmpty, !model.isEmpty else { continue }
+                let apiKey = await keyResolver.resolveAPIKey(for: .ollama)
+                if let result = await summarizeWithOpenAICompatibleProvider(
+                    provider: .ollama,
+                    baseURL: baseURL + "/v1",
+                    apiKey: apiKey ?? "",
                     model: model,
                     prompt: prompt,
                     fallbackTitle: conversation.inferredTaskTitle,
