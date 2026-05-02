@@ -13,7 +13,8 @@ final class AlertSettings {
                 persistence.set(true, forKey: "hasCostAlertThreshold")
                 persistence.set(threshold, forKey: "costAlertThreshold")
             } else {
-                persistence.set(false, forKey: "hasCostAlertThreshold")
+                persistence.removeObject(forKey: "hasCostAlertThreshold")
+                persistence.removeObject(forKey: "costAlertThreshold")
             }
         }
     }

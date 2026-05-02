@@ -132,9 +132,24 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
     case goose = "Goose"
     case openClaw = "OpenClaw"
     case windsurf = "Windsurf"
+    case warp = "Warp"
 
     var id: String { rawValue }
-    
+
+    /// A stable, lowercased, space-stripped token for persisting provider
+    /// identifiers in user data. Decoupled from `rawValue` (the display name)
+    /// so future UI renames don't invalidate stored values.
+    var persistedToken: String {
+        rawValue.lowercased().replacingOccurrences(of: " ", with: "")
+    }
+
+    /// Resolves a provider from either its persisted token or its display
+    /// name (rawValue). Case- and whitespace-insensitive.
+    static func fromPersistedToken(_ token: String) -> AgentProvider? {
+        let normalized = token.lowercased().replacingOccurrences(of: " ", with: "")
+        return AgentProvider.allCases.first { $0.persistedToken == normalized }
+    }
+
     /// Bundled asset catalog image name for every provider.
     var bundledLogoName: String {
         switch self {
@@ -157,6 +172,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .goose:      return "GooseLogo"
         case .openClaw:   return "OpenClawLogo"
         case .windsurf:   return "WindsurfLogo"
+        case .warp:       return "WarpLogo"
         }
     }
 
@@ -186,6 +202,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .goose: return "bird.fill"
         case .openClaw: return "point.3.connected.trianglepath.dotted"
         case .windsurf: return "sailboat.fill"
+        case .warp: return "terminal.fill"
         }
     }
     
@@ -212,6 +229,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .goose: return "~/.local/share/goose/sessions"
         case .openClaw: return "~/.openclaw/sessions"
         case .windsurf: return "~/Library/Application Support/Windsurf - Next/User/globalStorage"
+        case .warp: return "~/Library/Application Support/dev.warp.Warp-Stable"
         }
     }
 
@@ -233,6 +251,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .goose: return "sessions.db"
         case .openClaw: return "*.jsonl"
         case .windsurf: return "state.vscdb"
+        case .warp: return "warp_network*.log"
         }
     }
 
@@ -240,7 +259,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .factory, .claudeCode, .codex, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose:
             return .supported
-        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf:
+        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp:
             return .partial
         case .augment:
             return .unsupported
@@ -251,7 +270,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose, .openClaw:
             return .exact
-        case .zai, .minimax, .copilot, .cursor, .windsurf:
+        case .zai, .minimax, .copilot, .cursor, .windsurf, .warp:
             return .estimated
         case .augment:
             return .unavailable

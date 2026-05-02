@@ -46,9 +46,10 @@ final class SettingsManager {
     init(
         defaults: UserDefaults = .standard,
         controllerRuntimeSecrets: KeychainStore = SettingsManager.controllerRuntimeSecrets,
-        chatGatewaySecrets: KeychainStore = SettingsManager.chatGatewaySecrets
+        chatGatewaySecrets: KeychainStore = SettingsManager.chatGatewaySecrets,
+        flushDelayNanoseconds: UInt64 = 100_000_000
     ) {
-        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults, flushDelayNanoseconds: flushDelayNanoseconds)
         self.persistence = coordinator
 
         let controllerSecretPersistence = SettingsSecretPersistence(

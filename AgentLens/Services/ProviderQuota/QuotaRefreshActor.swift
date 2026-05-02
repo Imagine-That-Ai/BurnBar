@@ -48,6 +48,7 @@ actor QuotaRefreshActor {
             .zai: ZAIQuotaAdapter(),
             .factory: FactoryQuotaAdapter(),
             .cursor: CursorQuotaAdapter(),
+            .warp: WarpQuotaAdapter(),
         ]
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
@@ -120,7 +121,7 @@ actor QuotaRefreshActor {
         )
 
         var snapshots: [AgentProvider: ProviderQuotaSnapshot] = [:]
-        let providers: [AgentProvider] = [.codex, .claudeCode, .minimax, .zai, .factory, .cursor]
+        let providers: [AgentProvider] = [.codex, .claudeCode, .minimax, .zai, .factory, .cursor, .warp]
         await withTaskGroup(of: (AgentProvider, ProviderQuotaSnapshot).self) { group in
             for provider in providers {
                 group.addTask {

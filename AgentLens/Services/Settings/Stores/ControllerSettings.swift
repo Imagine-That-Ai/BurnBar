@@ -63,7 +63,8 @@ final class ControllerSettings {
             self.controllerRuntimeEnabled = true
         }
         if persistence.objectExists(forKey: "controllerRuntimeRefreshMinutes") {
-            self.controllerRuntimeRefreshMinutes = max(persistence.integer(forKey: "controllerRuntimeRefreshMinutes"), 1)
+            let stored = persistence.integer(forKey: "controllerRuntimeRefreshMinutes")
+            self.controllerRuntimeRefreshMinutes = stored >= 1 ? stored : 5
         } else {
             self.controllerRuntimeRefreshMinutes = 5
         }
@@ -84,12 +85,14 @@ final class ControllerSettings {
             self.controllerCalendarIntegrationEnabled = true
         }
         if persistence.objectExists(forKey: "controllerCalendarDefaultMinutes") {
-            self.controllerCalendarDefaultMinutes = max(persistence.integer(forKey: "controllerCalendarDefaultMinutes"), 15)
+            let stored = persistence.integer(forKey: "controllerCalendarDefaultMinutes")
+            self.controllerCalendarDefaultMinutes = stored >= 15 ? stored : 30
         } else {
             self.controllerCalendarDefaultMinutes = 30
         }
         if persistence.objectExists(forKey: "controllerDefaultSnoozeMinutes") {
-            self.controllerDefaultSnoozeMinutes = max(persistence.integer(forKey: "controllerDefaultSnoozeMinutes"), 15)
+            let stored = persistence.integer(forKey: "controllerDefaultSnoozeMinutes")
+            self.controllerDefaultSnoozeMinutes = stored >= 15 ? stored : 180
         } else {
             self.controllerDefaultSnoozeMinutes = 180
         }

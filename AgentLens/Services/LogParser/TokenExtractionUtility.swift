@@ -405,8 +405,12 @@ enum TokenExtractionUtility {
             guard text.lowercased().contains("model:") else { return nil }
             guard let range = text.range(of: "model:", options: .caseInsensitive) else { return nil }
             let afterModel = text[range.upperBound...]
-            let endIndex = afterModel.firstIndex(of: "\n") ?? afterModel.endIndex
-            let model = String(afterModel[..<endIndex]).trimmingCharacters(in: .whitespaces)
+            // Take only the first whitespace-delimited token after `model:` —
+            // free-text tails like "model: gpt-5 for inference" should yield
+            // just `"gpt-5"`, not the whole trailing phrase.
+            let trimmedHead = afterModel.drop(while: { $0.isWhitespace })
+            let tokenEnd = trimmedHead.firstIndex(where: { $0.isWhitespace || $0 == "\n" }) ?? trimmedHead.endIndex
+            let model = String(trimmedHead[..<tokenEnd])
             return model.isEmpty ? nil : model
         case let array as [Any]:
             for item in array {
@@ -429,7 +433,13 @@ enum TokenExtractionUtility {
 
     /// Strip `custom:` prefix from model names.
     static func normalizeModelName(_ model: String) -> String {
-        model.hasPrefix("custom:") ? String(model.dropFirst(7)) : model
+        // Case-insensitive prefix strip so "Custom:" and "custom:" both reduce
+        // to the bare model name. The "custom:" prefix is a Cursor convention
+        // marking a user-supplied model registered under their account.
+        if model.lowercased().hasPrefix("custom:") {
+            return String(model.dropFirst(7))
+        }
+        return model
     }
 
     /// Stable lowercase key for grouping usages by model.

@@ -19,7 +19,13 @@ final class SettingsPersistenceCoordinator {
     init(defaults: UserDefaults = .standard, flushDelayNanoseconds: UInt64 = 100_000_000) {
         self.defaults = defaults
         self.flushDelayNanoseconds = flushDelayNanoseconds
-        OpenBurnBarMigration.migrateUserDefaults(defaults: defaults)
+        // Migrate legacy bundle-domain preferences only into the standard suite. Per-test
+        // isolated `UserDefaults(suiteName:)` instances must stay pristine — pulling
+        // values from the developer's `com.burnbar.app` / `com.agentlens.app` system
+        // domains into a fresh test suite breaks every default-value assertion.
+        if defaults === UserDefaults.standard {
+            OpenBurnBarMigration.migrateUserDefaults(defaults: defaults)
+        }
     }
 
     deinit {
@@ -126,6 +132,13 @@ final class SettingsPersistenceCoordinator {
     // MARK: - Private
 
     private func scheduleFlush() {
+        // A zero-delay coordinator is the synchronous test mode: flush every
+        // pending mutation inline so callers can immediately observe the new
+        // `UserDefaults` state. Production schedules a debounced async flush.
+        if flushDelayNanoseconds == 0 {
+            flush()
+            return
+        }
         guard pendingFlushTask == nil else { return }
         pendingFlushTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: self?.flushDelayNanoseconds ?? 100_000_000)

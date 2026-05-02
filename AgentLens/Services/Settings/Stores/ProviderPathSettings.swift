@@ -10,16 +10,29 @@ final class ProviderPathSettings {
     var logPaths: [AgentProvider: String] = [:] {
         didSet {
             for (provider, path) in logPaths {
-                persistence.set(path, forKey: "logPath_\(provider.rawValue)")
+                persistence.set(path, forKey: ProviderPathSettings.defaultsKey(for: provider))
             }
         }
+    }
+
+    /// Resolves the persisted defaults key for a provider's log path. Reads
+    /// fall through to the legacy `rawValue`-based key so installs that
+    /// already wrote `logPath_Codex` keep their custom paths after the
+    /// stable-token migration.
+    static func defaultsKey(for provider: AgentProvider) -> String {
+        "logPath_\(provider.persistedToken)"
+    }
+
+    static func legacyDefaultsKey(for provider: AgentProvider) -> String {
+        "logPath_\(provider.rawValue)"
     }
 
     init(persistence: SettingsPersistenceCoordinator) {
         self.persistence = persistence
         var loadedLogPaths: [AgentProvider: String] = [:]
         for provider in AgentProvider.allCases {
-            let customPath = persistence.optionalString(forKey: "logPath_\(provider.rawValue)")
+            let customPath = persistence.optionalString(forKey: ProviderPathSettings.defaultsKey(for: provider))
+                ?? persistence.optionalString(forKey: ProviderPathSettings.legacyDefaultsKey(for: provider))
             loadedLogPaths[provider] = customPath ?? provider.logDirectory
         }
         self.logPaths = loadedLogPaths

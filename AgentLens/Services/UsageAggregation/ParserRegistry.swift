@@ -32,6 +32,7 @@ enum ParserRegistry {
             .geminiCLI: GeminiCLIParser(),
             .goose: GooseParser(),
             .windsurf: WindsurfParser(),
+            .warp: WarpParser(),
         ]
     }
 }

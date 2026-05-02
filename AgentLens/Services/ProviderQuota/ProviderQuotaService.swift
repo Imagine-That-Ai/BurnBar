@@ -16,6 +16,7 @@ final class ProviderQuotaService {
         .zai,
         .factory,
         .cursor,
+        .warp,
     ]
 
     private let keyStore: ProviderAPIKeyStore

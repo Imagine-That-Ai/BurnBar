@@ -106,6 +106,7 @@ enum DesignSystem {
             case .goose: return Color(hex: "0D9488")
             case .openClaw: return Color(hex: "FF6B6B")
             case .windsurf: return Color(hex: "06B6D4")
+            case .warp: return Color(hex: "DDE4EA")
             }
         }
 
@@ -130,6 +131,7 @@ enum DesignSystem {
             case .goose: return Color(hex: "2DD4BF")
             case .openClaw: return Color(hex: "F472B6")
             case .windsurf: return Color(hex: "22D3EE")
+            case .warp: return Color(hex: "111111")
             }
         }
 
@@ -154,6 +156,7 @@ enum DesignSystem {
             case .goose: return [Color(hex: "0D9488"), Color(hex: "2DD4BF"), Color(hex: "0F766E"), Color(hex: "5EEAD4")]
             case .openClaw: return [Color(hex: "FF6B6B"), Color(hex: "F472B6"), Color(hex: "F9A8D4"), Color(hex: "FBBF24")]
             case .windsurf: return [Color(hex: "06B6D4"), Color(hex: "22D3EE"), Color(hex: "0891B2"), Color(hex: "67E8F9")]
+            case .warp: return [Color(hex: "DDE4EA"), Color(hex: "111111"), Color(hex: "AEB8C2"), Color(hex: "F4F6F8")]
             }
         }
 

@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.openburnbar
   deploymentTarget:
     macOS: "14.0"
+    iOS: "17.0"
   xcodeVersion: "16.0"
   generateEmptyDirectories: true
   groupSortPosition: top
@@ -12,7 +13,7 @@ settings:
     SWIFT_VERSION: "5.10"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_PREVIEWS: YES
-    MARKETING_VERSION: "0.1.2-beta"
+    MARKETING_VERSION: "0.1.3-beta.1"
     CURRENT_PROJECT_VERSION: 1
     CODE_SIGN_STYLE: Automatic
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
@@ -231,5 +232,60 @@ targets:
       - target: OpenBurnBarDaemonExecutable
         link: false
         embed: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarCore
+
+  OpenBurnBarMobile:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: OpenBurnBarMobile
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_NAME: OpenBurnBarMobile
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.ios
+        INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
+        INFOPLIST_KEY_CFBundleName: OpenBurnBar
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+    dependencies:
+      - package: OpenBurnBarCore
+        product: OpenBurnBarCore
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseFirestore
+      - package: Firebase
+        product: FirebaseFunctions
+      - package: Firebase
+        product: FirebaseAppCheck
+      - package: GoogleSignIn
+        product: GoogleSignIn
+      - package: Sentry
+        product: Sentry
+    scheme:
+      testTargets:
+        - OpenBurnBarMobileTests
+
+  OpenBurnBarMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: OpenBurnBarMobileTests
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_NAME: OpenBurnBarMobileTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.ios.tests
+    dependencies:
+      - target: OpenBurnBarMobile
       - package: OpenBurnBarCore
         product: OpenBurnBarCore

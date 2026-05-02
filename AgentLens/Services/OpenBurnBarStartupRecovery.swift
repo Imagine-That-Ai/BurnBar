@@ -28,6 +28,24 @@ struct DataStoreStartupFailure: Identifiable, Equatable {
         )
     }
 
+    /// Zero-cost placeholder used by the XCTest host. No filesystem probing, no
+    /// `OpenBurnBarAppPaths.live()` lookup — just enough to satisfy the
+    /// `OpenBurnBarStartupState.failed` requirement so `OpenBurnBarApp.init` can
+    /// short-circuit out of every real bootstrap path under `XCTest`. The test
+    /// stub scene never reads this value; it exists only to keep the type system
+    /// happy while we skip real startup.
+    static func testStubPlaceholder() -> DataStoreStartupFailure {
+        DataStoreStartupFailure(
+            id: UUID(),
+            occurredAt: Date(timeIntervalSinceReferenceDate: 0),
+            errorSummary: "XCTest host bootstrap (no real startup performed)",
+            technicalDetails: "OpenBurnBarRuntime.shouldUseTestStubScene == true",
+            supportDirectory: URL(fileURLWithPath: "/dev/null/openburnbar-test-stub", isDirectory: true),
+            databaseURL: URL(fileURLWithPath: "/dev/null/openburnbar-test-stub.sqlite"),
+            archiveURL: nil
+        )
+    }
+
     var diagnostics: String {
         var lines = [
             "\(OpenBurnBarIdentity.productName) could not open its local database.",

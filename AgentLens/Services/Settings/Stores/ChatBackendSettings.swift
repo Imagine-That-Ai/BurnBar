@@ -60,10 +60,19 @@ final class ChatBackendSettings {
         get {
             let csv = selectedOnboardingProvidersCSV
             guard !csv.isEmpty else { return [] }
-            return Set(csv.split(separator: ",").compactMap { AgentProvider(rawValue: String($0)) })
+            return Set(csv.split(separator: ",").compactMap { token in
+                AgentProvider.fromPersistedToken(String(token))
+            })
         }
         set {
-            selectedOnboardingProvidersCSV = newValue.map(\.rawValue).sorted().joined(separator: ",")
+            // Persist a stable, lowercased, space-stripped canonical form so
+            // future `rawValue` (display-name) renames don't invalidate
+            // existing user data. Reads go through `fromPersistedToken`
+            // which is case- and space-insensitive.
+            selectedOnboardingProvidersCSV = newValue
+                .map(\.persistedToken)
+                .sorted()
+                .joined(separator: ",")
         }
     }
 

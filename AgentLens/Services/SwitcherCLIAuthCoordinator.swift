@@ -37,6 +37,13 @@ final class SwitcherCLIAuthCoordinator {
         }
 
         var fileManager: FileManager = .default
+
+        /// Resolves the on-disk executable path for a CLI type. Defaults to
+        /// the production `CLILaunchAdapter` lookup; tests inject a closure
+        /// that returns nil to exercise the "executable not installed" path.
+        var executablePathResolver: @Sendable (SwitcherCLIProfileType) -> String? = { cliType in
+            CLILaunchAdapter.executablePath(for: cliType)
+        }
     }
 
     private let dependencies: Dependencies
@@ -55,7 +62,7 @@ final class SwitcherCLIAuthCoordinator {
             return .failed("This CLI does not support account reconnect yet.")
         }
 
-        guard let executablePath = CLILaunchAdapter.executablePath(for: cliType) else {
+        guard let executablePath = dependencies.executablePathResolver(cliType) else {
             return .failed("\(cliType.displayName) is not installed.")
         }
 

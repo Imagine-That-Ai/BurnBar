@@ -7,6 +7,8 @@ import AppKit
 
 /// Protocol for checking browser availability and constructing launch configurations.
 /// This abstracts browser-specific logic so it can be replaced in tests.
+#if os(macOS)
+
 public protocol BrowserAvailabilityProviding: Sendable {
     /// Checks if a browser is installed and available for launching.
     func isBrowserAvailable(_ browserType: SwitcherBrowserProfileType) -> Bool
@@ -337,3 +339,6 @@ public final class InMemorySwitcherProfileStoreAdapter: SwitcherProfileStoreAdap
         state.withLock { $0.profiles[profile.id] = profile }
     }
 }
+
+
+#endif

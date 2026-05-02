@@ -40,6 +40,7 @@ final class CloudSyncCoordinator {
     private let conversationSync: ConversationSyncService
     private let chatThreadSync: ChatThreadSyncService
     private let sessionLogSync: SessionLogSyncService
+    private let quotaSnapshotSync: QuotaSnapshotSyncService
 
     // MARK: - Shared State
 
@@ -71,6 +72,7 @@ final class CloudSyncCoordinator {
         self.conversationSync = ConversationSyncService(context: context)
         self.chatThreadSync = ChatThreadSyncService(context: context)
         self.sessionLogSync = SessionLogSyncService(context: context)
+        self.quotaSnapshotSync = QuotaSnapshotSyncService(context: context)
     }
 
     // MARK: - Public API: Upload (Local → Cloud)
@@ -98,6 +100,15 @@ final class CloudSyncCoordinator {
     /// Gated on `sessionLogCloudBackupEnabled`.
     func syncSessionLogs() async {
         await propagateSessionLogErrors { await sessionLogSync.sync() }
+    }
+
+    /// Upload local quota snapshots to Firestore for iOS visibility.
+    func syncQuotaSnapshots(_ snapshots: [ProviderQuotaSnapshot]) async {
+        guard !isSyncing else { return }
+        isSyncing = true
+        lastSyncError = nil
+        await quotaSnapshotSync.uploadSnapshots(snapshots)
+        isSyncing = false
     }
 
     /// Synchronize shared/team artifacts between local cache and Firestore.

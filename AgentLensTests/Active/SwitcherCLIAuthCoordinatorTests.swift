@@ -141,7 +141,8 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
                     configDirectory: nil,
                     executablePath: nil
                 )
-            }
+            },
+            executablePathResolver: { _ in nil }
         )
 
         let customCoordinator = SwitcherCLIAuthCoordinator(dependencies: deps)

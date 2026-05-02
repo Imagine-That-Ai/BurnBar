@@ -136,12 +136,14 @@ final class SummarySettings {
         self.summaryMLXModel = persistence.string(forKey: "summaryMLXModel", defaultValue: "mlx-community/Qwen3-4B-4bit")
         self.summaryMLXBaseURL = persistence.string(forKey: "summaryMLXBaseURL", defaultValue: "http://127.0.0.1:8080")
         if persistence.objectExists(forKey: "summaryMaxPromptChars") {
-            self.summaryMaxPromptChars = max(persistence.integer(forKey: "summaryMaxPromptChars"), 4_000)
+            let stored = persistence.integer(forKey: "summaryMaxPromptChars")
+            self.summaryMaxPromptChars = stored >= 4_000 ? stored : 60_000
         } else {
             self.summaryMaxPromptChars = 60_000
         }
         if persistence.objectExists(forKey: "summaryMaxOutputTokens") {
-            self.summaryMaxOutputTokens = max(persistence.integer(forKey: "summaryMaxOutputTokens"), 120)
+            let stored = persistence.integer(forKey: "summaryMaxOutputTokens")
+            self.summaryMaxOutputTokens = stored >= 120 ? stored : 280
         } else {
             self.summaryMaxOutputTokens = 280
         }

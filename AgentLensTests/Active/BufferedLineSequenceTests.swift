@@ -97,6 +97,9 @@ final class BufferedLineSequenceTests: XCTestCase {
         let line = String(repeating: "x", count: 100)
         let lineCount = 20_000
         let url = tempDir.appendingPathComponent("large.txt")
+        // FileHandle(forWritingTo:) requires the file to exist; create it
+        // empty first so the handle has a target.
+        try Data().write(to: url)
         let handle = try FileHandle(forWritingTo: url)
         for _ in 0..<lineCount {
             handle.write("\(line)\n".data(using: .utf8)!)

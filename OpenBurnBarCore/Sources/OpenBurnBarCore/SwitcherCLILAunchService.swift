@@ -20,6 +20,8 @@ import AppKit
 /// - Build explicit argv from profile metadata and validated additional args
 /// - Propagate only allowlisted environment variables
 /// - Execute via Foundation Process with explicit executable and arguments
+#if os(macOS)
+
 public enum CLILaunchAdapter {
 
     // MARK: - Launch Result
@@ -1573,3 +1575,6 @@ public struct CLILaunchRedactor {
         return result
     }
 }
+
+
+#endif

@@ -31,7 +31,8 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         let settings = SettingsManager(
             defaults: defaults,
             controllerRuntimeSecrets: controllerSecrets,
-            chatGatewaySecrets: gatewaySecrets
+            chatGatewaySecrets: gatewaySecrets,
+            flushDelayNanoseconds: 0
         )
 
         XCTAssertEqual(settings.openClawBearerToken, "legacy-openclaw-token")
@@ -81,7 +82,8 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         let settings = SettingsManager(
             defaults: defaults,
             controllerRuntimeSecrets: controllerSecrets,
-            chatGatewaySecrets: gatewaySecrets
+            chatGatewaySecrets: gatewaySecrets,
+            flushDelayNanoseconds: 0
         )
 
         settings.controllerTelegramBotToken = "controller-token"

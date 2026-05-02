@@ -91,7 +91,12 @@ tools/burnbar-mcp/.venv/
 # Local Xcode/SwiftPM caches used by scripts/build.sh
 .spm-cache/
 .derived-data/
+.derived-data-*/
 derived-data/
+
+# Local-only Factory skills and xcodegen scratch
+.factory/skills/
+.xcodegen-validate/
 .gstack/
 
 # Accidental SwiftPM/protobuf checkouts at repo root

@@ -35,7 +35,11 @@ struct SettingsSecretPersistence {
             try keychain.set(legacy, for: account)
             defaults.removeObject(forKey: legacyDefaultsKey)
         } catch {
-            defaults.removeObject(forKey: legacyDefaultsKey)
+            // Keychain migration failed — preserve the legacy UserDefaults
+            // value so the next session can retry. Deleting it here would
+            // permanently lose the user's secret if the keychain is locked
+            // (e.g. CI without keychain provisioning, or app updates that
+            // momentarily reject writes).
         }
 
         return legacy
@@ -50,7 +54,9 @@ struct SettingsSecretPersistence {
             }
             defaults.removeObject(forKey: legacyDefaultsKey)
         } catch {
-            defaults.removeObject(forKey: legacyDefaultsKey)
+            // Same data-loss-protection rationale as `load(_:_:)`. Keep the
+            // legacy value intact when keychain mutation fails so the user
+            // can retry without re-entering credentials.
         }
     }
 }

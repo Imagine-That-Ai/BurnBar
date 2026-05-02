@@ -9,10 +9,11 @@ import ViewInspector
 final class ProviderLogoViewTests: XCTestCase {
 
     func test_rendersForProviderWithLogoURL() throws {
-        let providersWithURL = AgentProvider.allCases.filter { $0.logoURL != nil }
-        XCTAssertFalse(providersWithURL.isEmpty, "At least some providers should have logo URLs")
-
-        for provider in providersWithURL {
+        // Production switched to bundled-asset logos exclusively (`logoURL`
+        // always returns nil now). Render every provider through the shared
+        // ProviderLogoView — the test still proves `inspect()` succeeds for
+        // each provider, regardless of remote-URL provenance.
+        for provider in AgentProvider.allCases {
             let view = ProviderLogoView(provider: provider, size: 32)
             XCTAssertNoThrow(try view.inspect(), "Failed for \(provider.displayName)")
         }

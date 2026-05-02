@@ -1,0 +1,169 @@
+name: OpenBurnBar Functional QA
+
+# Informational functional QA. This workflow posts one updated PR comment and does not
+# replace the existing OpenBurnBar PR Harness/static validators.
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+  issues: write
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Optional PR number to update with the QA report
+        required: false
+        type: string
+
+concurrency:
+  group: qa-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  functional-qa:
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      INTERNAL_RUN: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+      HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve PR metadata
+        id: pr
+        env:
+          INPUT_PR: ${{ github.event.inputs.pr_number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.event.pull_request.head.ref }}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${INPUT_PR:-}" ]]; then
+            echo "number=${INPUT_PR}" >> "$GITHUB_OUTPUT"
+            ref=$(gh pr view "$INPUT_PR" --json headRefName --jq .headRefName)
+            echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=" >> "$GITHUB_OUTPUT"
+            echo "ref=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install ImageMagick
+        run: |
+          if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
+            brew install imagemagick
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/openburnbar/package-lock.json
+
+      - name: Install tuistory
+        run: npm install -g tuistory
+
+      - name: Install OpenBurnBar extension dependencies
+        run: npm ci --prefix extensions/openburnbar
+
+      - name: Install Droid CLI
+        run: curl -fsSL https://app.factory.ai/cli | sh
+
+      - name: Run QA
+        id: qa
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          CI: true
+          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+          FIREBASE_APP_CHECK_DEBUG_TOKEN: ${{ secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN }}
+          QA_FIREBASE_EMAIL: ${{ secrets.QA_FIREBASE_EMAIL }}
+          QA_FIREBASE_PASSWORD: ${{ secrets.QA_FIREBASE_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.OPENBURNBAR_PROVIDER_GITHUB_TOKEN }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          Z_AI_API_KEY: ${{ secrets.Z_AI_API_KEY }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          FACTORY_BEARER_TOKEN: ${{ secrets.FACTORY_BEARER_TOKEN }}
+          FACTORY_COOKIE_HEADER: ${{ secrets.FACTORY_COOKIE_HEADER }}
+          API_SERVER_KEY: ${{ secrets.API_SERVER_KEY }}
+          OPENBURNBAR_SENTRY_DSN: ${{ secrets.OPENBURNBAR_SENTRY_DSN }}
+        run: |
+          mkdir -p qa-results
+          droid exec --auto high "You are running in a non-interactive CI environment. There is NO human available. Do NOT use AskUser, do NOT wait for confirmations, do NOT pause for input. Run the qa skill for OpenBurnBar against the checked-out branch. This workflow is optional/informational. Write the final report to qa-results/report.md and put artifacts under qa-results/." 2>&1 | tee qa-results/qa-output.txt
+
+      - name: Ensure report exists
+        if: always()
+        run: |
+          mkdir -p qa-results
+          if [[ ! -f qa-results/report.md ]]; then
+            {
+              echo "## QA Report"
+              echo ""
+              echo "| # | Test Case | App | Persona | Result | Notes |"
+              echo "|---|-----------|-----|---------|--------|-------|"
+              echo "| 1 | QA execution | qa | operator | :no_entry: BLOCKED | Droid did not produce qa-results/report.md; see qa-output.txt artifact. |"
+              echo ""
+              echo "<details>"
+              echo "<summary>Screenshots & Evidence</summary>"
+              echo ""
+              echo '```text'
+              tail -200 qa-results/qa-output.txt 2>/dev/null || true
+              echo '```'
+              echo ""
+              echo "</details>"
+            } > qa-results/report.md
+          fi
+          if ! grep -q '^## QA Report' qa-results/report.md; then
+            tmp=$(mktemp)
+            { echo "## QA Report"; echo; cat qa-results/report.md; } > "$tmp"
+            mv "$tmp" qa-results/report.md
+          fi
+
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-results-${{ github.run_number }}
+          path: qa-results/**
+          retention-days: 14
+
+      - name: Post QA report as PR comment
+        if: always() && steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+
+          pr = os.environ['PR_NUMBER']
+          run_url = os.environ['RUN_URL']
+          marker = '<!-- qa-report -->'
+          report_path = Path('qa-results/report.md')
+          body = report_path.read_text() if report_path.exists() else '## QA Report\n\n:no_entry: BLOCKED -- report missing.'
+          if not body.startswith('## QA Report'):
+              body = '## QA Report\n\n' + body
+          body = f"{marker}\n{body}\n\n---\nArtifacts: see `qa-results-{os.environ.get('GITHUB_RUN_NUMBER', '')}` in the workflow run.\nWorkflow run: {run_url}\n"
+
+          comments_json = subprocess.check_output(['gh', 'api', f'repos/{os.environ["GITHUB_REPOSITORY"]}/issues/{pr}/comments', '--paginate'], text=True)
+          comments = json.loads(comments_json)
+          existing = next((c for c in comments if c.get('body', '').startswith(marker)), None)
+          if existing:
+              subprocess.check_call(['gh', 'api', f'repos/{os.environ["GITHUB_REPOSITORY"]}/issues/comments/{existing["id"]}', '-X', 'PATCH', '-f', f'body={body}'])
+          else:
+              subprocess.check_call(['gh', 'api', f'repos/{os.environ["GITHUB_REPOSITORY"]}/issues/{pr}/comments', '-f', f'body={body}'])
+          PY

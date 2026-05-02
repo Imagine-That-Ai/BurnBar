@@ -50,12 +50,14 @@ final class CrossEncoderSettings {
         )
         self.crossEncoderBaseURL = persistence.string(forKey: "crossEncoderBaseURL")
         if persistence.objectExists(forKey: "crossEncoderMaxCandidates") {
-            self.crossEncoderMaxCandidates = max(persistence.integer(forKey: "crossEncoderMaxCandidates"), 5)
+            let stored = persistence.integer(forKey: "crossEncoderMaxCandidates")
+            self.crossEncoderMaxCandidates = stored >= 5 ? stored : 40
         } else {
             self.crossEncoderMaxCandidates = 40
         }
         if persistence.objectExists(forKey: "crossEncoderMaxCharsPerCandidate") {
-            self.crossEncoderMaxCharsPerCandidate = max(persistence.integer(forKey: "crossEncoderMaxCharsPerCandidate"), 128)
+            let stored = persistence.integer(forKey: "crossEncoderMaxCharsPerCandidate")
+            self.crossEncoderMaxCharsPerCandidate = stored >= 128 ? stored : 512
         } else {
             self.crossEncoderMaxCharsPerCandidate = 512
         }

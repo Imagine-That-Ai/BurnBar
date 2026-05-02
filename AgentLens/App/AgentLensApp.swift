@@ -9,12 +9,34 @@ import SwiftUI
 import Sentry
 #endif
 
-private enum OpenBurnBarRuntime {
+/// Single source of truth for "this process is hosting an XCTest bundle, not a real user."
+///
+/// XCTest's host-bundle-loader path is sensitive: any heavyweight scene work, file I/O, or
+/// background `Task` started inside `App.init` / `App.body` can race the runner-connect window
+/// and produce the opaque `"test runner hung before establishing connection"` failure mode.
+/// We use this gate to short-circuit *every* expensive bootstrap and replace the menu-bar
+/// scene with `EmptyScene` so the test process becomes a near-empty SwiftUI host whose only
+/// job is loading and executing `OpenBurnBarTests.xctest`.
+enum OpenBurnBarRuntime {
+    /// True when the current process is an XCTest host. Detected via the well-known
+    /// XCTest environment variables that Apple injects into the test runner.
     static var isRunningTests: Bool {
         let environment = ProcessInfo.processInfo.environment
         return environment["XCTestConfigurationFilePath"] != nil
             || environment["XCTestSessionIdentifier"] != nil
             || environment["XCTestBundlePath"] != nil
+    }
+
+    /// Allows tests / harnesses to opt **in** to the live menu-bar scene by setting
+    /// `OPENBURNBAR_FORCE_LIVE_SCENE=1`. Default is opt-out (skip the live scene under tests).
+    static var forceLiveScene: Bool {
+        ProcessInfo.processInfo.environment["OPENBURNBAR_FORCE_LIVE_SCENE"] == "1"
+    }
+
+    /// True when we should bypass the live menu-bar scene and present `EmptyScene()` instead.
+    /// This is the gate that protects the XCTest runner-connect window.
+    static var shouldUseTestStubScene: Bool {
+        isRunningTests && !forceLiveScene
     }
 }
 
@@ -375,10 +397,30 @@ struct OpenBurnBarApp: App {
     @State private var navigationCoordinator = NavigationCoordinator()
 
     init() {
-        if !OpenBurnBarRuntime.isRunningTests {
-            Self.configureFirebaseIfAvailable()
-            Self.configureSentryIfAvailable()
+        if OpenBurnBarRuntime.shouldUseTestStubScene {
+            // XCTest host fast path. The developer's real `OpenBurnBar` support
+            // directory frequently grows past several GB; opening the canonical
+            // on-disk SQLite database from `App.init` synchronously can take
+            // long enough to race the XCTest runner-connect handshake (the
+            // opaque `"test runner hung before establishing connection"`
+            // failure mode). We therefore skip every form of synchronous boot:
+            //   - No Firebase / Sentry / Google Sign-In configuration.
+            //   - No `OpenBurnBarMigration.migrateUserDefaults()` (the legacy-
+            //     domain scan can stall briefly under XCTest sandboxing).
+            //   - No `DataStore` open. The live menu-bar scene is short-
+            //     circuited to `EmptyView` for both content and label by
+            //     `OpenBurnBarRuntime.shouldUseTestStubScene` so `startupState`
+            //     is never read in this branch. Tests open their own isolated
+            //     `DataStore`s in `setUp`; the placeholder below exists only
+            //     to satisfy `_startupState`'s non-optional initial value.
+            _startupState = State(initialValue: .failed(
+                DataStoreStartupFailure.testStubPlaceholder()
+            ))
+            return
         }
+
+        Self.configureFirebaseIfAvailable()
+        Self.configureSentryIfAvailable()
         OpenBurnBarMigration.migrateUserDefaults()
 
         _startupState = State(initialValue: Self.makeStartupState())
@@ -646,7 +688,7 @@ struct OpenBurnBarApp: App {
     private var liveMenuBarScene: some Scene {
         let _ = installCommandRouter()
         MenuBarExtra {
-            if OpenBurnBarRuntime.isRunningTests {
+            if OpenBurnBarRuntime.shouldUseTestStubScene {
                 EmptyView()
             } else {
                 switch startupState {
@@ -703,7 +745,7 @@ struct OpenBurnBarApp: App {
                 }
             }
         } label: {
-            if OpenBurnBarRuntime.isRunningTests {
+            if OpenBurnBarRuntime.shouldUseTestStubScene {
                 EmptyView()
             } else {
                 switch startupState {
@@ -717,7 +759,7 @@ struct OpenBurnBarApp: App {
                     )
                     .task {
                         await Task.yield()
-                        guard !OpenBurnBarRuntime.isRunningTests else { return }
+                        guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
                         guard context.aggregator == nil else { return }
                         let sync = CloudSyncService(
                             dataStore: context.dataStore,
@@ -824,6 +866,14 @@ struct OpenBurnBarApp: App {
         .menuBarExtraStyle(.window)
     }
 
+    /// The live menu-bar scene already short-circuits both `content` and `label`
+    /// to `EmptyView()` when `OpenBurnBarRuntime.isRunningTests` is true (see
+    /// `liveMenuBarScene` above), so all heavyweight work (popover construction,
+    /// `task` blocks, daemon attaches, periodic refresh) is already gated. The
+    /// remaining XCTest-host concern (synchronous `DataStore` open + Firebase /
+    /// Sentry boot) is handled in `init()`. Returning `liveMenuBarScene`
+    /// unconditionally keeps `body` as a single concrete `Scene` type, avoiding
+    /// SwiftUI's `SceneBuilder` if/else inference quirks.
     var body: some Scene {
         liveMenuBarScene
     }
