@@ -35,7 +35,10 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ubuntu-latest
+    # Swift requires xcodebuild → macOS runner. JS/TS and Python don't need
+    # macOS, but the matrix-level runner is set per-job to keep the matrix
+    # simple. Per-language overrides handled below via `runs-on: ${{ matrix.runner }}`.
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -46,10 +49,13 @@ jobs:
           # for more complete symbol resolution.
           - language: swift
             build-mode: manual
+            runner: macos-15
           - language: javascript-typescript
             build-mode: none
+            runner: ubuntu-latest
           - language: python
             build-mode: none
+            runner: ubuntu-latest
 
     steps:
       - name: Checkout
