@@ -5,7 +5,7 @@ import Foundation
 /// Fetches usage metrics from the GitHub Copilot REST API.
 /// Auth: GitHub PAT with `manage_billing:copilot` or `read:org` scope.
 /// Endpoint: GET /user/copilot/metrics
-final class GitHubCopilotUsageAPI: ProviderUsageAPI, @unchecked Sendable {
+final class GitHubCopilotUsageAPI: ProviderUsageAPI, Sendable {
     let providerName = "GitHub Copilot"
     let authMethod: ProviderAuthMethod = .pat
 

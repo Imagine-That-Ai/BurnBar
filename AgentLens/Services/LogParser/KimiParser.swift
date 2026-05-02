@@ -5,7 +5,7 @@ import Foundation
 /// KimiParser extracts token usage from Kimi (Moonshot) CLI sessions.
 /// Prefers exact token counts from wire.jsonl (available since v0.66, Dec 2025).
 /// Falls back to character-based estimation from context.jsonl for older sessions.
-final class KimiParser: LogParser, @unchecked Sendable {
+final class KimiParser: LogParser, Sendable {
     let provider: AgentProvider = .kimi
 
     func parse() async throws -> ParseResult {

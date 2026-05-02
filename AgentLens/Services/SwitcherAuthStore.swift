@@ -17,8 +17,8 @@ final class SwitcherAuthStore {
 
     static let service = OpenBurnBarIdentity.switcherAuthKeychainService
 
-    init() {
-        self.keychain = KeychainStore(service: Self.service, legacyServices: [])
+    init(keychain: KeychainStore = KeychainStore(service: OpenBurnBarIdentity.switcherAuthKeychainService, legacyServices: [])) {
+        self.keychain = keychain
     }
 
     // MARK: - API Key

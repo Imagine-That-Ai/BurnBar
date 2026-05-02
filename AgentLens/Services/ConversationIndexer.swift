@@ -10,7 +10,7 @@ struct ConversationIndexingReport: Equatable {
     static let empty = ConversationIndexingReport()
 }
 
-@MainActor
+
 final class ConversationIndexer {
     static let shared = ConversationIndexer()
     private static let fileModifiedAtToleranceSeconds: TimeInterval = 0.001
@@ -42,7 +42,7 @@ final class ConversationIndexer {
             report.enqueuedProjectionJobCount += 1
 
             if index > 0, index.isMultiple(of: Self.writeYieldInterval) {
-                await Task.yield()
+                
             }
         }
 

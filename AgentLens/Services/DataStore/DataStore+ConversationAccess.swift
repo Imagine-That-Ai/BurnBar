@@ -2,42 +2,42 @@ import Foundation
 import OpenBurnBarCore
 
 extension DataStore {
-    func fetchUnsyncedConversations(limit: Int = 400) throws -> [ConversationRecord] {
+    nonisolated func fetchUnsyncedConversations(limit: Int = 400) throws -> [ConversationRecord] {
         try conversationStore.fetchUnsyncedConversations(limit: limit)
     }
 
-    func markConversationsSynced(ids: [String]) throws {
+    nonisolated func markConversationsSynced(ids: [String]) throws {
         try conversationStore.markConversationsSynced(ids: ids)
     }
 
-    func upsertConversation(_ record: ConversationRecord) throws {
+    nonisolated func upsertConversation(_ record: ConversationRecord) throws {
         try conversationStore.upsertConversation(record)
     }
 
-    func fileModifiedAtForConversation(id: String) throws -> Date? {
+    nonisolated func fileModifiedAtForConversation(id: String) throws -> Date? {
         try conversationStore.fileModifiedAtForConversation(id: id)
     }
 
-    func fetchConversation(id: String) throws -> ConversationRecord? {
+    nonisolated func fetchConversation(id: String) throws -> ConversationRecord? {
         try conversationStore.fetchConversation(id: id)
     }
 
-    func fetchConversations(limit: Int = 500) throws -> [ConversationRecord] {
+    nonisolated func fetchConversations(limit: Int = 500) throws -> [ConversationRecord] {
         try conversationStore.fetchConversations(limit: limit)
     }
 
     /// Paginated conversation fetch using offset-based cursor.
-    func fetchConversations(limit: Int, offset: Int) throws -> [ConversationRecord] {
+    nonisolated func fetchConversations(limit: Int, offset: Int) throws -> [ConversationRecord] {
         try conversationStore.fetchConversations(limit: limit, offset: offset)
     }
 
     /// Fetches multiple conversations by their IDs.
     /// Used by gap repair to check if indexed content is stale.
-    func fetchConversations(ids: [String]) throws -> [ConversationRecord] {
+    nonisolated func fetchConversations(ids: [String]) throws -> [ConversationRecord] {
         try conversationStore.fetchConversations(ids: ids)
     }
 
-    func updateConversationSummary(
+    nonisolated func updateConversationSummary(
         id: String,
         title: String?,
         summary: String?,
@@ -57,11 +57,11 @@ extension DataStore {
         )
     }
 
-    func markConversationSummaryAttempt(id: String, attemptedAt: Date = Date()) throws {
+    nonisolated func markConversationSummaryAttempt(id: String, attemptedAt: Date = Date()) throws {
         try conversationStore.markConversationSummaryAttempt(id: id, attemptedAt: attemptedAt)
     }
 
-    func fetchConversationsNeedingSummary(
+    nonisolated func fetchConversationsNeedingSummary(
         limit: Int = 80,
         staleAfter: TimeInterval = 30 * 60,
         now: Date = Date(),
@@ -76,7 +76,7 @@ extension DataStore {
         )
     }
 
-    func countConversationsNeedingSummary(
+    nonisolated func countConversationsNeedingSummary(
         staleAfter: TimeInterval = 30 * 60,
         now: Date = Date(),
         retryCooldown: TimeInterval? = nil,
@@ -89,60 +89,60 @@ extension DataStore {
         )
     }
 
-    func summarySpendToday(now: Date = Date()) throws -> Double {
+    nonisolated func summarySpendToday(now: Date = Date()) throws -> Double {
         try conversationStore.summarySpendToday(now: now)
     }
 
-    func deleteAllIndexedConversations() throws {
+    nonisolated func deleteAllIndexedConversations() throws {
         try conversationStore.deleteAllIndexedConversations()
     }
 
     /// Deletes a single conversation by ID. Used for testing delete-event miss recovery.
-    func deleteConversation(id: String) throws {
+    nonisolated func deleteConversation(id: String) throws {
         try conversationStore.deleteConversation(id: id)
     }
 
-    func approximateConversationStorageBytes() throws -> Int64 {
+    nonisolated func approximateConversationStorageBytes() throws -> Int64 {
         try conversationStore.approximateConversationStorageBytes()
     }
 
-    func saveChatMessage(_ message: ChatMessageRecord) throws {
+    nonisolated func saveChatMessage(_ message: ChatMessageRecord) throws {
         try conversationStore.saveChatMessage(message, threadID: Self.legacyChatThreadID)
     }
 
-    func saveChatMessage(_ message: ChatMessageRecord, threadID: String) throws {
+    nonisolated func saveChatMessage(_ message: ChatMessageRecord, threadID: String) throws {
         try conversationStore.saveChatMessage(message, threadID: threadID)
     }
 
-    func createChatThread(id: String = UUID().uuidString, at date: Date = Date()) throws -> String {
+    nonisolated func createChatThread(id: String = UUID().uuidString, at date: Date = Date()) throws -> String {
         try conversationStore.createChatThread(id: id, at: date)
     }
 
-    func chatThreadExists(id: String) throws -> Bool {
+    nonisolated func chatThreadExists(id: String) throws -> Bool {
         try conversationStore.chatThreadExists(id: id)
     }
 
-    func fetchMostRecentChatThreadID() throws -> String? {
+    nonisolated func fetchMostRecentChatThreadID() throws -> String? {
         try conversationStore.fetchMostRecentChatThreadID()
     }
 
-    func fetchChatThreadSummaries(searchQuery: String = "", limit: Int = 80) throws -> [ChatThreadSummary] {
+    nonisolated func fetchChatThreadSummaries(searchQuery: String = "", limit: Int = 80) throws -> [ChatThreadSummary] {
         try conversationStore.fetchChatThreadSummaries(searchQuery: searchQuery, limit: limit)
     }
 
-    func fetchChatMessages() throws -> [ChatMessageRecord] {
+    nonisolated func fetchChatMessages() throws -> [ChatMessageRecord] {
         try conversationStore.fetchChatMessages()
     }
 
-    func fetchChatMessages(threadID: String) throws -> [ChatMessageRecord] {
+    nonisolated func fetchChatMessages(threadID: String) throws -> [ChatMessageRecord] {
         try conversationStore.fetchChatMessages(threadID: threadID)
     }
 
-    func deleteAllChatMessages() throws {
+    nonisolated func deleteAllChatMessages() throws {
         try conversationStore.deleteAllChatMessages()
     }
 
-    func searchConversationsFTS(
+    nonisolated func searchConversationsFTS(
         query: String,
         provider: AgentProvider? = nil,
         projectName: String? = nil,
@@ -156,37 +156,37 @@ extension DataStore {
         )
     }
 
-    func fetchAllSessionLogs(limit: Int = 1000) throws -> [ConversationRecord] {
+    nonisolated func fetchAllSessionLogs(limit: Int = 1000) throws -> [ConversationRecord] {
         try conversationStore.fetchAllSessionLogs(limit: limit)
     }
 
-    func fetchSessionLogSummaries(limit: Int = 1000) throws -> [ConversationRecord] {
+    nonisolated func fetchSessionLogSummaries(limit: Int = 1000) throws -> [ConversationRecord] {
         try conversationStore.fetchSessionLogSummaries(limit: limit)
     }
 
-    func fetchUnsyncedSessionLogs(limit: Int = 100) throws -> [ConversationRecord] {
+    nonisolated func fetchUnsyncedSessionLogs(limit: Int = 100) throws -> [ConversationRecord] {
         try conversationStore.fetchUnsyncedSessionLogs(limit: limit)
     }
 
-    func markSessionLogsSynced(ids: [String]) throws {
+    nonisolated func markSessionLogsSynced(ids: [String]) throws {
         try conversationStore.markSessionLogsSynced(ids: ids)
     }
 
-    func countConversations() throws -> Int {
+    nonisolated func countConversations() throws -> Int {
         try conversationStore.countConversations()
     }
 
-    func insertRemoteConversation(_ record: ConversationRecord) throws {
+    nonisolated func insertRemoteConversation(_ record: ConversationRecord) throws {
         try conversationStore.insertRemoteConversation(record)
     }
 
-    func updateConversationFullText(id: String, fullText: String) throws {
+    nonisolated func updateConversationFullText(id: String, fullText: String) throws {
         try conversationStore.updateConversationFullText(id: id, fullText: fullText)
     }
 
     /// Synthesizes a single `cliAssistant` ConversationRecord from persisted chat messages
     /// and upserts it so the Session Logs center and cloud sync treat it like any other session.
-    func upsertCLIConversation(from messages: [ChatMessageRecord]) throws {
+    nonisolated func upsertCLIConversation(from messages: [ChatMessageRecord]) throws {
         guard messages.isEmpty == false else { return }
 
         let start = messages.first?.timestamp
@@ -229,17 +229,19 @@ extension DataStore {
 
     /// Fetches conversations suitable for transcript scan / context pack assembly.
     /// Filters by optional provider, project name, date range, and source types.
-    func fetchConversationsForTranscriptScan(
+    nonisolated func fetchConversationsForTranscriptScan(
         provider: AgentProvider?,
         projectName: String?,
         dateRange: ClosedRange<Date>?,
-        conversationSources: Set<ConversationSourceType>?
+        conversationSources: Set<ConversationSourceType>?,
+        limit: Int = 500
     ) throws -> [ConversationRecord] {
         try conversationStore.fetchConversationsForTranscriptScan(
             provider: provider,
             projectName: projectName,
             dateRange: dateRange,
-            conversationSources: conversationSources
+            conversationSources: conversationSources,
+            limit: limit
         )
     }
 }

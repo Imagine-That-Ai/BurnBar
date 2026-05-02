@@ -390,6 +390,77 @@ struct ChunkEmbeddingRecord: Equatable, Sendable {
     }
 }
 
+enum VectorIndexSnapshotState: String, Codable, CaseIterable, Sendable {
+    case building
+    case ready
+    case stale
+    case failed
+}
+
+struct VectorIndexSnapshotRecord: Equatable, Sendable {
+    let embeddingVersionID: String
+    let backendID: String
+    let state: VectorIndexSnapshotState
+    let fingerprint: String
+    let dimensions: Int
+    let distanceMetric: EmbeddingDistanceMetric
+    let vectorCount: Int
+    let storageRelativePath: String?
+    let fileBytes: Int64
+    let backendVersion: String
+    let errorCode: String?
+    let errorMessage: String?
+    let createdAt: Date
+    let updatedAt: Date
+    let lastBuiltAt: Date?
+
+    init(
+        embeddingVersionID: String,
+        backendID: String,
+        state: VectorIndexSnapshotState,
+        fingerprint: String,
+        dimensions: Int,
+        distanceMetric: EmbeddingDistanceMetric,
+        vectorCount: Int,
+        storageRelativePath: String? = nil,
+        fileBytes: Int64 = 0,
+        backendVersion: String,
+        errorCode: String? = nil,
+        errorMessage: String? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        lastBuiltAt: Date? = nil
+    ) {
+        self.embeddingVersionID = embeddingVersionID
+        self.backendID = backendID
+        self.state = state
+        self.fingerprint = fingerprint
+        self.dimensions = dimensions
+        self.distanceMetric = distanceMetric
+        self.vectorCount = vectorCount
+        self.storageRelativePath = storageRelativePath
+        self.fileBytes = fileBytes
+        self.backendVersion = backendVersion
+        self.errorCode = errorCode
+        self.errorMessage = errorMessage
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.lastBuiltAt = lastBuiltAt
+    }
+}
+
+struct ChunkEmbeddingVersionStats: Equatable, Sendable {
+    let embeddingVersionID: String
+    let vectorCount: Int
+    let newestUpdatedAt: Date?
+
+    init(embeddingVersionID: String, vectorCount: Int, newestUpdatedAt: Date?) {
+        self.embeddingVersionID = embeddingVersionID
+        self.vectorCount = vectorCount
+        self.newestUpdatedAt = newestUpdatedAt
+    }
+}
+
 struct RetrievalHealthRecord: Equatable, Sendable {
     let subsystem: RetrievalSubsystem
     let status: RetrievalHealthStatus

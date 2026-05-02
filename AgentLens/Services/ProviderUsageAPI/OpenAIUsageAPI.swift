@@ -5,7 +5,7 @@ import Foundation
 /// Fetches usage data from the OpenAI Organization Usage API.
 /// Requires an Admin API key.
 /// Endpoint: GET /v1/organization/usage/completions
-final class OpenAIUsageAPI: ProviderUsageAPI, @unchecked Sendable {
+final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
     let providerName = "OpenAI"
     let authMethod: ProviderAuthMethod = .apiKey
 

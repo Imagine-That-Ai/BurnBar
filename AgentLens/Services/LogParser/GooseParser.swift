@@ -1,24 +1,13 @@
 import Foundation
+import OpenBurnBarCore
 import GRDB
 
 // MARK: - Goose Parser
 
 /// Parses Goose (Block) sessions from the active Goose data directory.
 /// Falls back to legacy JSONL files only when no SQLite database exists.
-final class GooseParser: LogParser, @unchecked Sendable {
+final class GooseParser: LogParser, Sendable {
     let provider: AgentProvider = .goose
-
-    nonisolated(unsafe) private static let iso8601Basic: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-
-    nonisolated(unsafe) private static let iso8601Fractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
 
     private static let sqliteDateFormats: [DateFormatter] = {
         let formats = [
@@ -263,8 +252,7 @@ final class GooseParser: LogParser, @unchecked Sendable {
             return TimestampNormalizationUtility.date(fromEpoch: value)
         }
         if let value: String = row[column] {
-            if let parsed = Self.iso8601Fractional.date(from: value) { return parsed }
-            if let parsed = Self.iso8601Basic.date(from: value) { return parsed }
+            if let parsed = ThreadSafeISO8601DateFormatter.parse(value) { return parsed }
             for formatter in Self.sqliteDateFormats {
                 if let parsed = formatter.date(from: value) {
                     return parsed
@@ -326,7 +314,7 @@ final class GooseParser: LogParser, @unchecked Sendable {
             }
 
             if let ts = json["timestamp"] as? String,
-               let date = Self.iso8601Fractional.date(from: ts) ?? Self.iso8601Basic.date(from: ts) {
+               let date = ThreadSafeISO8601DateFormatter.parse(ts) {
                 if startTime == nil { startTime = date }
                 endTime = date
             }

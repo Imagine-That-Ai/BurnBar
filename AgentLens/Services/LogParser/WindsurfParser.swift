@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 import SQLite3
 
 // MARK: - Windsurf Parser
@@ -14,7 +15,7 @@ import SQLite3
 /// 1. `.pb` file attributes (session ID from filename, timestamps from filesystem)
 /// 2. `state.vscdb` JSON values for model/workspace info
 /// 3. Heuristic token estimation based on `.pb` file size
-final class WindsurfParser: LogParser, @unchecked Sendable {
+final class WindsurfParser: LogParser, Sendable {
     let provider: AgentProvider = .windsurf
 
     // MARK: - Paths
@@ -120,27 +121,31 @@ final class WindsurfParser: LogParser, @unchecked Sendable {
     // MARK: - State DB Helpers
 
     /// Cached model/workspace lookups from state.vscdb.
-    private nonisolated(unsafe) static var cachedModelMap: [String: String]?
-    private nonisolated(unsafe) static var cachedWorkspaceMap: [String: String]?
-    private nonisolated(unsafe) static var cachedTitleMap: [String: String]?
+    private struct StateDBCache {
+        var models: [String: String]?
+        var workspaces: [String: String]?
+        var titles: [String: String]?
+    }
+    private static let stateDBCache = Locked(StateDBCache())
 
     private func extractModelFromStateDB(sessionId: String) -> String? {
         ensureStateDBCache()
-        return Self.cachedModelMap?[sessionId]
+        return Self.stateDBCache.withLock { $0.models?[sessionId] }
     }
 
     private func extractWorkspaceName(sessionId: String) -> String? {
         ensureStateDBCache()
-        return Self.cachedWorkspaceMap?[sessionId]
+        return Self.stateDBCache.withLock { $0.workspaces?[sessionId] }
     }
 
     private func extractSessionTitle(sessionId: String) -> String? {
         ensureStateDBCache()
-        return Self.cachedTitleMap?[sessionId]
+        return Self.stateDBCache.withLock { $0.titles?[sessionId] }
     }
 
     private func ensureStateDBCache() {
-        if Self.cachedModelMap != nil { return }
+        let alreadyCached = Self.stateDBCache.withLock { $0.models != nil }
+        if alreadyCached { return }
 
         var models: [String: String] = [:]
         var workspaces: [String: String] = [:]
@@ -149,17 +154,15 @@ final class WindsurfParser: LogParser, @unchecked Sendable {
         let globalPath = (Self.globalStoragePath as NSString).expandingTildeInPath
         let dbPath = (globalPath as NSString).appendingPathComponent("state.vscdb")
 
-        guard FileManager.default.fileExists(atPath: dbPath),
-              readStateDBKeys(atPath: dbPath, models: &models, workspaces: &workspaces, titles: &titles) else {
-            Self.cachedModelMap = models
-            Self.cachedWorkspaceMap = workspaces
-            Self.cachedTitleMap = titles
-            return
+        if FileManager.default.fileExists(atPath: dbPath) {
+            _ = readStateDBKeys(atPath: dbPath, models: &models, workspaces: &workspaces, titles: &titles)
         }
 
-        Self.cachedModelMap = models
-        Self.cachedWorkspaceMap = workspaces
-        Self.cachedTitleMap = titles
+        Self.stateDBCache.withLock {
+            $0.models = models
+            $0.workspaces = workspaces
+            $0.titles = titles
+        }
     }
 
     /// Reads the `codeium.windsurf` key from a state.vscdb and extracts trajectory metadata.

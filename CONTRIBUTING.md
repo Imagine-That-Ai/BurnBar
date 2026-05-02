@@ -13,7 +13,7 @@ OpenBurnBar is more than the macOS app:
 | MCP helper (optional) | `tools/openburnbar-mcp/` | Read-only SQLite bridge for MCP clients |
 
 Canonical architecture: [docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md](docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md).  
-Support tiers (core vs experimental vs parked tests): [README.md](README.md) and [AgentLensTests/README.md](AgentLensTests/README.md).
+Support tiers (core vs experimental vs quarantined tests): [README.md](README.md) and [AgentLensTests/README.md](AgentLensTests/README.md).
 
 **AI coding agents** (Cursor, Claude Code, Codex, etc.): read **[AGENTS.md](AGENTS.md)** first — completion standard, testing and documentation expectations, and scope discipline. **[CLAUDE.md](CLAUDE.md)** mirrors the same bar for tools that prefer that filename.
 
@@ -48,7 +48,7 @@ AgentLens/
 
 - **Xcode project** is generated from **`project.yml`** (XcodeGen). After editing `project.yml`, run `xcodegen generate` if you maintain `OpenBurnBar.xcodeproj` locally.
 - **Swift packages**: `swift test --package-path OpenBurnBarCore`, `swift test --package-path OpenBurnBarDaemon`.
-- **App tests**: `./scripts/test-openburnbar-app.sh` runs **`OpenBurnBarTests` only** — the target compiles `AgentLensTests/Active/**` plus `AgentLensTests/Support/**`; anything under `AgentLensTests/Parked/**` is archival until re-enabled.
+- **App tests**: `./scripts/test-openburnbar-app.sh` runs **`OpenBurnBarTests` only** — the target compiles `AgentLensTests/Active/**` plus `AgentLensTests/Support/**`; anything under `AgentLensTests/Quarantine/**` is archival until fixed and moved back to `Active/`.
 
 ## Adding a New Provider Parser
 

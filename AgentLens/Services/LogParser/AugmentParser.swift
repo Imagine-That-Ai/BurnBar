@@ -4,7 +4,7 @@ import Foundation
 
 /// Best-effort Augment parser. Discovers likely VS Code-family storage roots, but
 /// remains conservative until a real token-bearing sample is available.
-final class AugmentParser: LogParser, @unchecked Sendable {
+final class AugmentParser: LogParser, Sendable {
     let provider: AgentProvider = .augment
 
     func parse() async throws -> ParseResult {

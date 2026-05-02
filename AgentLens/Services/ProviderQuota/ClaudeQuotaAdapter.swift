@@ -1,6 +1,6 @@
 import Foundation
 
-@MainActor
+
 struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let bridgeStatus = context.refreshClaudeBridgeStatus()
@@ -38,7 +38,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         }
 
         // Fallback: estimate from OpenBurnBar-tracked token usage (works for VS Code too)
-        let tokenEstimate = claudeTokenEstimate(dataStore: context.dataStore)
+        let tokenEstimate = await claudeTokenEstimate(dataStoreActor: context.dataStoreActor)
         if !tokenEstimate.isEmpty {
             return ProviderQuotaSnapshot(
                 provider: .claudeCode,
@@ -68,14 +68,15 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Claude Helpers
 
-    private func claudeTokenEstimate(dataStore: DataStore) -> [ProviderQuotaBucket] {
+    private func claudeTokenEstimate(dataStoreActor: DataStoreActor) async -> [ProviderQuotaBucket] {
         let now = Date()
         let calendar = Calendar.current
         let fiveHoursAgo = calendar.date(byAdding: .hour, value: -5, to: now) ?? now
         let sevenDaysAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
 
-        let fiveHourUsages = dataStore.usages(for: .claudeCode, in: fiveHoursAgo...now)
-        let sevenDayUsages = dataStore.usages(for: .claudeCode, in: sevenDaysAgo...now)
+        let allUsages = (try? await dataStoreActor.fetchAllUsage()) ?? []
+        let fiveHourUsages = allUsages.filter { $0.provider == .claudeCode && $0.startTime >= fiveHoursAgo && $0.startTime <= now }
+        let sevenDayUsages = allUsages.filter { $0.provider == .claudeCode && $0.startTime >= sevenDaysAgo && $0.startTime <= now }
 
         let fiveHourTokens = Double(fiveHourUsages.reduce(0) { $0 + $1.totalTokens })
         let sevenDayTokens = Double(sevenDayUsages.reduce(0) { $0 + $1.totalTokens })

@@ -109,12 +109,16 @@ final class WorkflowInsightRollupService {
             context = try buildContext()
         } catch {
             let message = "Workflow insights are unavailable: \(error.localizedDescription)"
-            try? upsertHealth(
-                payload: nil,
-                status: .failed,
-                errorCode: "INSIGHT_ROLLUP_CONTEXT_FAILED",
-                errorMessage: message
-            )
+            do {
+                try upsertHealth(
+                    payload: nil,
+                    status: .failed,
+                    errorCode: "INSIGHT_ROLLUP_CONTEXT_FAILED",
+                    errorMessage: message
+                )
+            } catch {
+                AppLogger.dataStore.silentFailure("upsertHealth", error: error)
+            }
             return WorkflowInsightRollupSnapshot(
                 insights: [],
                 freshness: .unavailable,
@@ -138,12 +142,16 @@ final class WorkflowInsightRollupService {
                 freshness = .fresh
             } catch {
                 let message = "Workflow insights could not refresh: \(error.localizedDescription)"
-                try? upsertHealth(
-                    payload: payload,
-                    status: .failed,
-                    errorCode: "INSIGHT_ROLLUP_MATERIALIZE_FAILED",
-                    errorMessage: message
-                )
+                do {
+                    try upsertHealth(
+                        payload: payload,
+                        status: .failed,
+                        errorCode: "INSIGHT_ROLLUP_MATERIALIZE_FAILED",
+                        errorMessage: message
+                    )
+                } catch {
+                    AppLogger.dataStore.silentFailure("upsertHealth", error: error)
+                }
                 return WorkflowInsightRollupSnapshot(
                     insights: payload?.insights ?? [],
                     freshness: payload == nil ? .unavailable : .stale,
@@ -154,12 +162,16 @@ final class WorkflowInsightRollupService {
         }
 
         let status = healthStatus(for: freshness)
-        try? upsertHealth(
-            payload: payload,
-            status: status,
-            errorCode: nil,
-            errorMessage: nil
-        )
+        do {
+            try upsertHealth(
+                payload: payload,
+                status: status,
+                errorCode: nil,
+                errorMessage: nil
+            )
+        } catch {
+            AppLogger.dataStore.silentFailure("upsertHealth", error: error)
+        }
 
         return WorkflowInsightRollupSnapshot(
             insights: payload?.insights ?? [],

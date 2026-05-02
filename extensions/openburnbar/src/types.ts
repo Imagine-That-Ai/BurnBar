@@ -73,6 +73,7 @@ export type BurnBarJSONValue =
 export interface BurnBarRPCRequestEnvelope {
   id: string;
   method: BurnBarRPCMethod;
+  authToken?: string;
 }
 
 export interface BurnBarRPCRequestEnvelopeWithParams<Params> extends BurnBarRPCRequestEnvelope {

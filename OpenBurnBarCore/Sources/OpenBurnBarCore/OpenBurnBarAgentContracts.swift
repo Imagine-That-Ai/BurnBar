@@ -317,7 +317,7 @@ public struct BurnBarRunJournalCheckpoint: Codable, Hashable, Sendable {
     public let phase: BurnBarRunPhase
     public let modelID: String
     public let originalPrompt: String
-    public let metadata: [String: BurnBarJSONValue]
+    public let metadata: BurnBarRunCreateMetadata
     public let intent: BurnBarAgentIntent
     public let planOutline: BurnBarPlanOutline
     public let attempt: Int
@@ -342,7 +342,7 @@ public struct BurnBarRunJournalCheckpoint: Codable, Hashable, Sendable {
         phase: BurnBarRunPhase,
         modelID: String,
         originalPrompt: String,
-        metadata: [String: BurnBarJSONValue] = [:],
+        metadata: BurnBarRunCreateMetadata = BurnBarRunCreateMetadata(),
         intent: BurnBarAgentIntent,
         planOutline: BurnBarPlanOutline,
         attempt: Int = 1,

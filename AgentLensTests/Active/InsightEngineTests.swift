@@ -6,22 +6,22 @@ final class InsightEngineTests: XCTestCase {
 
     // MARK: - Insight Card Tests
 
-    func test_insightCard_zeroInsights() {
-        let store = try! DataStore()
+    func test_insightCard_zeroInsights() throws {
+        let store = try DataStore()
         store.replaceUsages([])
         let insights = InsightEngine.generate(from: store)
         XCTAssertTrue(insights.isEmpty)
     }
 
-    func test_insightCard_oneInsight() {
-        let store = try! DataStore()
+    func test_insightCard_oneInsight() throws {
+        let store = try DataStore()
         store.replaceUsages(moodFixture(today: 2.0, rollingAvg: 1.0))
         let insights = InsightEngine.generate(from: store)
         XCTAssertTrue(insights.count >= 1)
     }
 
-    func test_insightCard_newSessions_countsDistinctSessionIds() {
-        let store = try! DataStore()
+    func test_insightCard_newSessions_countsDistinctSessionIds() throws {
+        let store = try DataStore()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
         let u1 = TokenUsage(
@@ -53,15 +53,15 @@ final class InsightEngineTests: XCTestCase {
 
     // MARK: - Narrative Template Tests
 
-    func test_narrativeTemplate_noSessions() {
-        let store = try! DataStore()
+    func test_narrativeTemplate_noSessions() throws {
+        let store = try DataStore()
         store.replaceUsages([])
         let n = InsightEngine.generateNarrative(from: store)
         XCTAssertTrue(n.headline.contains("No sessions"))
     }
 
-    func test_narrativeTemplate_oneSessions() {
-        let store = try! DataStore()
+    func test_narrativeTemplate_oneSessions() throws {
+        let store = try DataStore()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
         let u = TokenUsage(
@@ -80,8 +80,8 @@ final class InsightEngineTests: XCTestCase {
         XCTAssertTrue(n.headline.hasPrefix("One ") || n.headline.contains("1"))
     }
 
-    func test_narrativeTemplate_nSessions() {
-        let store = try! DataStore()
+    func test_narrativeTemplate_nSessions() throws {
+        let store = try DataStore()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
         let u1 = TokenUsage(
@@ -111,8 +111,8 @@ final class InsightEngineTests: XCTestCase {
         XCTAssertTrue(n.headline.contains("2") || n.headline.contains("sessions"))
     }
 
-    func test_narrativeTemplate_countsDistinctSessionIds() {
-        let store = try! DataStore()
+    func test_narrativeTemplate_countsDistinctSessionIds() throws {
+        let store = try DataStore()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
         let u1 = TokenUsage(
@@ -142,8 +142,8 @@ final class InsightEngineTests: XCTestCase {
         XCTAssertTrue(n.headline.hasPrefix("One "))
     }
 
-    func test_narrativeTemplate_collapsesClaudeSubagentSessionIds() {
-        let store = try! DataStore()
+    func test_narrativeTemplate_collapsesClaudeSubagentSessionIds() throws {
+        let store = try DataStore()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
         let u1 = TokenUsage(
@@ -176,8 +176,8 @@ final class InsightEngineTests: XCTestCase {
 
     // MARK: - Sparkline Tests
 
-    func test_sparklineData_alwaysSevenPoints() {
-        let store = try! DataStore()
+    func test_sparklineData_alwaysSevenPoints() throws {
+        let store = try DataStore()
         store.replaceUsages([])
         let sparkline = store.last7DayCosts
         XCTAssertEqual(sparkline.count, 7)
@@ -185,13 +185,13 @@ final class InsightEngineTests: XCTestCase {
 
     // MARK: - Model Pricing Tests
 
-    func test_modelPricing_knownModel() {
+    func test_modelPricing_knownModel() throws {
         let pricing = ModelPricing.lookup(model: "gpt-4o")
         XCTAssertGreaterThan(pricing.inputPerMToken, 0)
     }
 
-    func test_insightEngine_structuredFields() {
-        let store = try! DataStore()
+    func test_insightEngine_structuredFields() throws {
+        let store = try DataStore()
         let cal = Calendar.current
         let day = cal.startOfDay(for: Date())
         let yesterday = cal.date(byAdding: .day, value: -1, to: day)!

@@ -35,10 +35,10 @@ struct ParserCheckpointRecord: Codable, FetchableRecord, PersistableRecord {
 ///
 /// The checkpoint token encodes parser-specific progress state (e.g., last processed file path,
 /// file offset, or session ID). The exact format depends on the parser implementation.
-final class ParserCheckpointStore {
-    private let dbQueue: DatabaseQueue
+final class ParserCheckpointStore: Sendable {
+    private let dbQueue: any DatabaseWriter
 
-    init(dbQueue: DatabaseQueue) {
+    init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 
@@ -146,7 +146,7 @@ struct CheckpointAwareParseResult: Sendable {
 /// 2. Tracks progress during parsing
 /// 3. Advances the checkpoint only after successful commit
 /// 4. Provides safe recovery when cache/checkpoint is corrupted
-final class CheckpointedParserWrapper: @unchecked Sendable {
+final class CheckpointedParserWrapper: Sendable {
     private let parser: any LogParser
     private let checkpointStore: ParserCheckpointStore
 
@@ -238,7 +238,7 @@ final class CheckpointedParserWrapper: @unchecked Sendable {
 /// If ingestion fails before commit, neither reporting totals nor indexing surfaces
 /// may expose partial state; visibility begins only after successful commit.
 final class AtomicIngestionTransaction {
-    private let dbQueue: DatabaseQueue
+    private let dbQueue: any DatabaseWriter
     private let checkpointStore: ParserCheckpointStore
     private let provider: AgentProvider
 
@@ -250,7 +250,7 @@ final class AtomicIngestionTransaction {
     private var isCommitted: Bool = false
     private var isRolledBack: Bool = false
 
-    init(dbQueue: DatabaseQueue, checkpointStore: ParserCheckpointStore, provider: AgentProvider) {
+    init(dbQueue: any DatabaseWriter, checkpointStore: ParserCheckpointStore, provider: AgentProvider) {
         self.dbQueue = dbQueue
         self.checkpointStore = checkpointStore
         self.provider = provider

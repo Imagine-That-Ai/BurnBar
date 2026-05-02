@@ -148,5 +148,5 @@ private enum AccountActionError: LocalizedError {
     let store = (try? DataStore()) ?? {
         preconditionFailure("Preview requires a valid DataStore - ensure app support directory is writable")
     }()
-    return SettingsView(settingsManager: SettingsManager(), dataStore: store)
+    SettingsView(settingsManager: SettingsManager(), dataStore: store)
 }

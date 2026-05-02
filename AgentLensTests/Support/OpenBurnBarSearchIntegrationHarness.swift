@@ -112,7 +112,6 @@ final class OpenBurnBarSearchIntegrationHarness {
         semanticBackend: VectorBackendKind = .ann,
         exactRerankEnabled: Bool = true,
         exactRerankLimit: Int = 320,
-        annCandidateMultiplier: Int = 6,
         sharedAccessContext: SharedArtifactAccessContext? = nil
     ) -> SearchService {
         let semanticProvider: SemanticCandidateProviding?
@@ -123,7 +122,6 @@ final class OpenBurnBarSearchIntegrationHarness {
                 backend: semanticBackend,
                 exactRerankEnabled: exactRerankEnabled,
                 exactRerankLimit: exactRerankLimit,
-                annCandidateMultiplier: annCandidateMultiplier,
                 nowProvider: { [clock] in clock.now() }
             )
         } else {
@@ -159,7 +157,7 @@ final class OpenBurnBarSearchIntegrationHarness {
             artifactDiscoveryAdditionalKnownPatterns: additionalKnownPatterns
         )
         let service = ArtifactDiscoveryService(
-            dataStore: dataStore,
+            dataStoreActor: dataStore.actor,
             settingsProvider: settings,
             fileManager: fileManager,
             nowProvider: { [clock] in clock.now() }
@@ -647,26 +645,32 @@ enum OpenBurnBarSearchFixtureBuilder {
     }
 }
 
-@MainActor
-final class OpenBurnBarFakeClock {
-    private(set) var current: Date
+final class OpenBurnBarFakeClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
 
     init(now: Date) {
         current = now
     }
 
     func now() -> Date {
-        current
+        lock.lock()
+        defer { lock.unlock() }
+        return current
     }
 
     @discardableResult
     func advance(seconds: TimeInterval) -> Date {
+        lock.lock()
+        defer { lock.unlock() }
         current = current.addingTimeInterval(seconds)
         return current
     }
 
     @discardableResult
     func set(_ date: Date) -> Date {
+        lock.lock()
+        defer { lock.unlock() }
         current = date
         return current
     }
@@ -683,7 +687,7 @@ enum OpenBurnBarFakeEmbedderError: LocalizedError {
     }
 }
 
-/// Test seam is mutated by single-test flows; mark unchecked to avoid noisy Swift 6 sendability warnings.
+// AUDIT(@unchecked Sendable): Test-only mock; mutable vars set single-threaded before embedder runs.
 final class OpenBurnBarFakeEmbedder: ChunkEmbeddingProviding, @unchecked Sendable {
     private let deterministicEmbedder: DeterministicFakeEmbeddingProvider
     var failAll = false

@@ -308,7 +308,7 @@ final class BackfillSchedulerTests: XCTestCase {
     /// Tests that exact-first upsert semantics are preserved during backfill.
     /// Backfill writes use the same exact-first upsert as live ingestion,
     /// so existing exact rows cannot be downgraded.
-    func test_backfill_coexistsWithExactFirstLiveIngestion() throws {
+    func test_backfill_coexistsWithExactFirstLiveIngestion() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
@@ -356,7 +356,7 @@ final class BackfillSchedulerTests: XCTestCase {
         )
         try store.insert(liveExactUsage2)
 
-        store.refresh()
+        await store.refresh()
 
         // Verify both live exact rows exist and exact-first semantics preserved
         let allUsages = store.usages
@@ -370,7 +370,7 @@ final class BackfillSchedulerTests: XCTestCase {
     }
 
     /// Tests that backfill cannot overwrite exact live ingestion rows with lower confidence.
-    func test_backfill_cannotDowngradeExactLiveRows() throws {
+    func test_backfill_cannotDowngradeExactLiveRows() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
@@ -412,7 +412,7 @@ final class BackfillSchedulerTests: XCTestCase {
         )
         try store.insert(backfillEstimateUsage)
 
-        store.refresh()
+        await store.refresh()
 
         // Verify exact row was NOT downgraded - exact-first semantics preserved
         let canonicalRow = store.usages.first { $0.sessionId == "exact-live-session" }
@@ -422,7 +422,7 @@ final class BackfillSchedulerTests: XCTestCase {
     }
 
     /// Tests that live ingestion can upgrade a backfill estimate to exact.
-    func test_liveIngestion_canUpgradeBackfillEstimate() throws {
+    func test_liveIngestion_canUpgradeBackfillEstimate() async throws {
         let store = try makeInMemoryDataStore()
         let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
@@ -470,7 +470,7 @@ final class BackfillSchedulerTests: XCTestCase {
         )
         try store.insert(liveExactUsage)
 
-        store.refresh()
+        await store.refresh()
 
         // Verify row was upgraded to exact
         let canonicalRow = store.usages.first { $0.sessionId == "upgrade-test-session" }

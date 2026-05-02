@@ -233,7 +233,7 @@ struct OnboardingWizardView: View {
         if !ordered.isEmpty {
             settingsManager.setEnabledChatBackends(ordered)
             let start = ordered.contains(defaultEngine) ? defaultEngine : ordered[0]
-            chatController?.setChatBackend(start)
+            chatController?.chatBackend = start
         }
         settingsManager.chatBackendOnboardingCompleted = true
         hasOnboarded = true

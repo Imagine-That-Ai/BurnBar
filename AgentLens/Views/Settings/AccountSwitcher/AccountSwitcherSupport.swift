@@ -233,7 +233,7 @@ enum BrowserAccountChangePlanner {
     }
 }
 
-final class SettingsSwitcherProfileAdapter: SwitcherProfileStoreAdapter, @unchecked Sendable {
+final class SettingsSwitcherProfileAdapter: SwitcherProfileStoreAdapter, Sendable {
     private let store: SwitcherProfileStore
 
     init(store: SwitcherProfileStore) {

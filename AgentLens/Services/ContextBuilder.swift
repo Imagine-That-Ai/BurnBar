@@ -136,17 +136,16 @@ enum OpenBurnBarChatEvidenceFormatting {
 enum ContextBuilder {
     private static let maxPromptChars = 6_000
 
-    @MainActor
     static func buildSystemPrompt(
         from dataStore: DataStore,
         intelligenceService: SearchService? = nil
-    ) -> String {
+    ) async -> String {
         let calendar = Calendar.current
         let now = Date()
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
-        let retrieval = intelligenceService ?? SearchService.makeConversationSearchService(dataStore: dataStore)
 
-        let recentUsages = dataStore.usages
+        let allUsages = (try? await dataStore.actor.fetchAllUsage()) ?? []
+        let recentUsages = allUsages
             .filter { $0.startTime >= weekAgo }
             .sorted { $0.startTime > $1.startTime }
 
@@ -156,7 +155,7 @@ enum ContextBuilder {
         lines.append("")
         lines.append("## Recent work (last 7 days)")
 
-        let conversations = retrieval.recentConversations(limit: 80)
+        let conversations = (try? await dataStore.actor.fetchConversations(limit: 80)) ?? []
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
 
         for usage in recentUsages.prefix(24) {
@@ -173,7 +172,7 @@ enum ContextBuilder {
         lines.append("")
         lines.append("## This week's token spend")
 
-        let weekUsages = dataStore.usages.filter { $0.startTime >= weekAgo }
+        let weekUsages = allUsages.filter { $0.startTime >= weekAgo }
         var modelCost: [String: Double] = [:]
         var projectCost: [String: Double] = [:]
         for u in weekUsages {
@@ -192,7 +191,7 @@ enum ContextBuilder {
         lines.append("")
         lines.append("## Where you left off")
 
-        if let latest = retrieval.latestConversation(in: conversations), !latest.lastAssistantMessage.isEmpty {
+        if let latest = latestConversation(in: conversations), !latest.lastAssistantMessage.isEmpty {
             lines.append(latest.lastAssistantMessage)
         } else {
             lines.append("(No recent assistant message indexed yet.)")
@@ -213,31 +212,29 @@ enum ContextBuilder {
     }
 
     /// Dashboard chat: OpenBurnBar data analyst persona, index health, and non-exhaustive usage rollups. Does not include per-message retrieval (append `OpenBurnBarChatEvidenceFormatting.formatPack` separately).
-    @MainActor
     static func buildDatabaseAnalystSystemPrompt(
         from dataStore: DataStore,
         intelligenceService: SearchService? = nil,
         indexingEnabled: Bool,
         health: RetrievalSystemHealthSnapshot
-    ) -> String {
-        let retrieval = intelligenceService ?? SearchService.makeConversationSearchService(dataStore: dataStore)
+    ) async -> String {
         let calendar = Calendar.current
         let now = Date()
         let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
 
         var lines: [String] = []
-        lines.append("You are OpenBurnBar’s local data analyst and index oracle for THIS Mac only.")
+        lines.append("You are OpenBurnBar's local data analyst and index oracle for THIS Mac only.")
         lines.append(
-            "You reason over OpenBurnBar’s local SQLite-backed index (conversations, derived chunks, skills/agent docs). You are not a generic coding agent unless the user explicitly asks for code help."
+            "You reason over OpenBurnBar's local SQLite-backed index (conversations, derived chunks, skills/agent docs). You are not a generic coding agent unless the user explicitly asks for code help."
         )
         lines.append("Product name: OpenBurnBar. Never call it Agent Lens or AgentLens.")
         lines.append("")
         lines.append("Rules:")
         lines.append(
-            "- Ground factual claims in **Retrieved evidence**, **## Aggregate over indexed transcripts** (exact substring counts over stored conversation text—authoritative for “how many times” questions), or **Ephemeral rollups** here. If the user asks for counts and an Aggregate section is present with a number, treat that total as the indexed answer for those patterns and time window—even when retrieved excerpts look unrelated."
+            "- Ground factual claims in **Retrieved evidence**, **## Aggregate over indexed transcripts** (exact substring counts over stored conversation text—authoritative for \"how many times\" questions), or **Ephemeral rollups** here. If the user asks for counts and an Aggregate section is present with a number, treat that total as the indexed answer for those patterns and time window—even when retrieved excerpts look unrelated."
         )
         lines.append(
-            "- If none of those sections supports an answer, say you don’t have indexed support and avoid guessing."
+            "- If none of those sections supports an answer, say you don't have indexed support and avoid guessing."
         )
         lines.append("- Never invent sessions, costs, or transcript content.")
         lines.append("- Prefer concise bullets or small tables. Lead with the direct answer, then supporting points.")
@@ -276,14 +273,15 @@ enum ContextBuilder {
 
         lines.append("## Ephemeral rollups (not exhaustive)")
         lines.append(
-            "High-level usage from OpenBurnBar tables—**not** a substitute for retrieved excerpts. Use for spend/time questions when retrieval is thin."
+            "High-level usage from OpenBurnBar tables—not a substitute for retrieved excerpts. Use for spend/time questions when retrieval is thin."
         )
 
-        let recentUsages = dataStore.usages
+        let allUsages = (try? await dataStore.actor.fetchAllUsage()) ?? []
+        let recentUsages = allUsages
             .filter { $0.startTime >= weekAgo }
             .sorted { $0.startTime > $1.startTime }
 
-        let conversations = retrieval.recentConversations(limit: 80)
+        let conversations = (try? await dataStore.actor.fetchConversations(limit: 80)) ?? []
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
 
         lines.append("")
@@ -300,8 +298,8 @@ enum ContextBuilder {
         }
 
         lines.append("")
-        lines.append("### This week’s token spend (approximate mix)")
-        let weekUsages = dataStore.usages.filter { $0.startTime >= weekAgo }
+        lines.append("### This week's token spend (approximate mix)")
+        let weekUsages = allUsages.filter { $0.startTime >= weekAgo }
         var modelCost: [String: Double] = [:]
         var projectCost: [String: Double] = [:]
         for u in weekUsages {
@@ -319,7 +317,7 @@ enum ContextBuilder {
 
         lines.append("")
         lines.append("### Latest indexed assistant line (may be unrelated to the user question)")
-        if let latest = retrieval.latestConversation(in: conversations), !latest.lastAssistantMessage.isEmpty {
+        if let latest = latestConversation(in: conversations), !latest.lastAssistantMessage.isEmpty {
             lines.append(latest.lastAssistantMessage)
         } else {
             lines.append("(None yet.)")
@@ -336,6 +334,13 @@ enum ContextBuilder {
         return result
     }
 
+    private static func latestConversation(in conversations: [ConversationRecord]) -> ConversationRecord? {
+        conversations.max(by: { a, b in
+            let ad = a.endTime ?? a.startTime ?? .distantPast
+            let bd = b.endTime ?? b.startTime ?? .distantPast
+            return ad < bd
+        })
+    }
     /// Prepares session transcript for on-demand summarization (middle section dropped when very long).
     static func chunkedSessionContext(_ fullText: String) -> String {
         if fullText.count <= 80_000 { return fullText }

@@ -18,6 +18,8 @@ import AppKit
 /// - Chrome: Uses `--profile-directory=<name>` argument to target specific profile
 /// - Safari: Uses WebKit profile container names; Safari doesn't support CLI profile switching
 ///   so this launches Safari which will use its last active profile
+#if os(macOS)
+
 public enum BrowserLaunchAdapter {
 
     // MARK: - Launch Result
@@ -587,3 +589,6 @@ public struct BrowserFilesystemGuard {
         return result
     }
 }
+
+
+#endif

@@ -7,6 +7,8 @@ import AppKit
 
 /// Protocol for checking browser availability and constructing launch configurations.
 /// This abstracts browser-specific logic so it can be replaced in tests.
+#if os(macOS)
+
 public protocol BrowserAvailabilityProviding: Sendable {
     /// Checks if a browser is installed and available for launching.
     func isBrowserAvailable(_ browserType: SwitcherBrowserProfileType) -> Bool
@@ -77,7 +79,7 @@ public struct ProductionBrowserAvailabilityProvider: BrowserAvailabilityProvidin
 /// - Uses only allowlisted launch arguments
 /// - Typed errors for all failure modes
 /// - Serialized launches via coordinator
-public final class SwitcherBrowserLaunchService: @unchecked Sendable {
+public final class SwitcherBrowserLaunchService: Sendable {
     private let profileStore: SwitcherProfileStoreAdapter
     private let coordinator: BrowserLaunchCoordinator
     private let browserProvider: BrowserAvailabilityProviding
@@ -304,46 +306,39 @@ public protocol SwitcherProfileStoreAdapter: Sendable {
 // MARK: - In-Memory Adapter for Testing
 
 /// In-memory adapter for testing without GRDB.
-public final class InMemorySwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter, @unchecked Sendable {
-    private var profiles: [String: SwitcherProfileRecord] = [:]
-    private var activeProfileID: String?
-    private let lock = NSLock()
+public final class InMemorySwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter, Sendable {
+    private struct State {
+        var profiles: [String: SwitcherProfileRecord] = [:]
+        var activeProfileID: String?
+    }
+    private let state = Locked(State())
 
     public init() {}
 
     public func addProfile(_ profile: SwitcherProfileRecord) {
-        lock.lock()
-        defer { lock.unlock() }
-        profiles[profile.id] = profile
+        state.withLock { $0.profiles[profile.id] = profile }
     }
 
     public func fetchProfile(id: String) -> SwitcherProfileRecord? {
-        lock.lock()
-        defer { lock.unlock() }
-        return profiles[id]
+        state.withLock { $0.profiles[id] }
     }
 
     public func fetchAllProfiles() -> [SwitcherProfileRecord] {
-        lock.lock()
-        defer { lock.unlock() }
-        return Array(profiles.values).sorted { $0.sortKey < $1.sortKey }
+        state.withLock { Array($0.profiles.values).sorted { $0.sortKey < $1.sortKey } }
     }
 
     public func fetchActiveProfileID() -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return activeProfileID
+        state.withLock { $0.activeProfileID }
     }
 
     public func setActiveProfileID(_ profileID: String?) {
-        lock.lock()
-        defer { lock.unlock() }
-        activeProfileID = profileID
+        state.withLock { $0.activeProfileID = profileID }
     }
 
     public func updateProfile(_ profile: SwitcherProfileRecord) {
-        lock.lock()
-        defer { lock.unlock() }
-        profiles[profile.id] = profile
+        state.withLock { $0.profiles[profile.id] = profile }
     }
 }
+
+
+#endif

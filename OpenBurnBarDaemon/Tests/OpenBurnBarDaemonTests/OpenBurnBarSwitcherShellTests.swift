@@ -173,7 +173,7 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
     }
 }
 
-private final class TestSwitcherProfileStore: BurnBarSwitcherProfileStoreProviding, @unchecked Sendable {
+private final class TestSwitcherProfileStore: BurnBarSwitcherProfileStoreProviding, Sendable {
     private let profiles: [SwitcherProfileRecord]
     private let activeProfileIDValue: String?
 
@@ -207,24 +207,19 @@ private struct TestCredentialStore: BurnBarSwitcherCredentialProviding {
     }
 }
 
-private final class TestStatusRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var values: [String] = []
+private final class TestStatusRecorder: Sendable {
+    private let state = Locked<[String]>([])
 
     func append(_ value: String) {
-        lock.lock()
-        values.append(value)
-        lock.unlock()
+        state.withLock { $0.append(value) }
     }
 
     func snapshot() -> [String] {
-        lock.lock()
-        defer { lock.unlock() }
-        return values
+        state.read()
     }
 }
 
-private final class TestTerminalRunner: BurnBarCLITerminalRunning, @unchecked Sendable {
+private final class TestTerminalRunner: BurnBarCLITerminalRunning, Sendable {
     struct Invocation: Equatable {
         let cliType: SwitcherCLIProfileType
         let executable: URL
@@ -278,7 +273,7 @@ private final class TestTerminalRunner: BurnBarCLITerminalRunning, @unchecked Se
     }
 }
 
-private final class TestShellExecutor: BurnBarCLIShellExecuting, @unchecked Sendable {
+private final class TestShellExecutor: BurnBarCLIShellExecuting, Sendable {
     private let state = State()
 
     func execute(_ request: BurnBarCLIShellLaunchRequest) async throws -> BurnBarCLIShellExecutionResult {

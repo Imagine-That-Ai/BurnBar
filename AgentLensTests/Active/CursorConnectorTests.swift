@@ -194,4 +194,22 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertTrue(script.contains("keychain_account"))
         XCTAssertTrue(script.contains("find-generic-password"))
     }
+
+    func test_proxyScript_preservesDeepSeekReasoningContentAcrossResponsesConversion() {
+        let script = CursorConnectorManager.proxyScript()
+
+        XCTAssertTrue(script.contains("reasoning_content"))
+        XCTAssertTrue(script.contains("response_item_to_chat_messages"))
+        XCTAssertTrue(script.contains("chat_message_to_response_output"))
+        XCTAssertTrue(script.contains("(\"reasoning_content\", \"thinking\", \"reasoning\")"))
+    }
+
+    func test_proxyScript_preservesToolCallHistoryAcrossResponsesConversion() {
+        let script = CursorConnectorManager.proxyScript()
+
+        XCTAssertTrue(script.contains("function_call_output"))
+        XCTAssertTrue(script.contains("tool_calls"))
+        XCTAssertTrue(script.contains("tool_call_id"))
+        XCTAssertTrue(script.contains("call_id"))
+    }
 }

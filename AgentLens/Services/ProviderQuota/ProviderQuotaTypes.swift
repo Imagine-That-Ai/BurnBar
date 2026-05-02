@@ -150,6 +150,12 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
     let provider: AgentProvider
     let fetchedAt: Date
     let source: ProviderQuotaSourceKind
+    /// Backend-compatible source kind (new field; defaults to `source` for backward compat).
+    var sourceKind: ProviderQuotaSourceKind { source }
+    /// Source identifier — device ID for desktop, credential ID for backend.
+    var sourceId: String { "" }
+    /// Firestore payload schema for cross-surface quota snapshots.
+    var schemaVersion: Int { 1 }
     let confidence: ProviderQuotaConfidence
     let managementURL: String?
     let statusMessage: String

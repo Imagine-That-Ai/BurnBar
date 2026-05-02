@@ -38,6 +38,7 @@ enum BurnBarRPCErrorCode {
     static let methodNotFound = -32601
     static let internalError = -32603
     static let unauthorized = -32001
+    static let rateLimitExceeded = -32002
 }
 
 struct IncomingRequestEnvelope: Decodable {
