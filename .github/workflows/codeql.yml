@@ -61,19 +61,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Swift build — resolves packages and compiles all targets (AgentLens app,
-      # OpenBurnBarDaemon, OpenBurnBarCore). Running this before CodeQL init+analyze
-      # ensures the autobuild detector finds the Swift toolchain and project.
-      - name: Build Swift (CodeQL)
-        run: |
-          xcodebuild -project OpenBurnBar.xcodeproj \
-            -scheme OpenBurnBar \
-            -configuration Debug \
-            -destination 'platform=macOS' \
-            -derivedDataPath .codeql-derived-data \
-            build
-        if: matrix.language == 'swift'
-
+      # init must run BEFORE the manual Swift build so CodeQL's tracer
+      # observes the compiler invocations. Without this, the database
+      # finalizer reports "no source seen" and fails with exit 32.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
@@ -83,6 +73,22 @@ jobs:
           # quality/lint noise that security-and-quality adds (unused-var,
           # dead-store, etc.). Those are handled by eslint in the PR harness.
           queries: security-extended
+
+      # Swift build — resolves packages and compiles all targets so CodeQL
+      # can trace the compiler. Runs after init (so CodeQL hooks the build)
+      # and only on the swift matrix entry. Disable code signing because
+      # macOS-15 GitHub runners don't have signing identities.
+      - name: Build Swift (CodeQL)
+        if: matrix.language == 'swift'
+        run: |
+          xcodebuild -project OpenBurnBar.xcodeproj \
+            -scheme OpenBurnBar \
+            -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath .codeql-derived-data \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
