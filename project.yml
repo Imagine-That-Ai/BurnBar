@@ -211,8 +211,12 @@ targets:
         TEST_HOST: "$(BUNDLE_LOADER)"
     dependencies:
       - target: OpenBurnBar
+      # `link: false` because the host app already links OpenBurnBarCore
+      # statically; double-linking duplicates symbols and triggers
+      # ld_classic dupes / Swift runtime conflicts on Xcode 16+.
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
+        link: false
       - package: ViewInspector
         product: ViewInspector
       - package: SnapshotTesting
@@ -246,7 +250,9 @@ targets:
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarMobile
-        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.ios
+        PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.app
+        DEVELOPMENT_TEAM: 4Y367DF25B
+        CODE_SIGN_STYLE: Automatic
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
@@ -254,6 +260,8 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+    info:
+      path: OpenBurnBarMobile/Info.plist
     dependencies:
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
@@ -284,7 +292,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarMobileTests
-        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.ios.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.app.tests
     dependencies:
       - target: OpenBurnBarMobile
       - package: OpenBurnBarCore
