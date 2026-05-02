@@ -2,6 +2,10 @@ import XCTest
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+
+private typealias AppAgentProvider = OpenBurnBar.AgentProvider
+private typealias AppTokenUsage = OpenBurnBar.TokenUsage
+private typealias AppUsageSource = OpenBurnBar.UsageSource
 final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
 
     func test_emptyResults_showsPlaceholder() throws {

@@ -17,6 +17,7 @@ enum LLMModelBrand: Hashable {
     case apple      // Apple MLX models (mlx-community/)
     case amazon
     case alibaba
+    case ollama     // Ollama local models
     case unknown
 
     /// Bundled asset catalog image name for every brand.
@@ -37,6 +38,7 @@ enum LLMModelBrand: Hashable {
         case .apple:      return "AppleLogo"
         case .amazon:     return "AmazonLogo"
         case .alibaba:    return "AlibabaLogo"
+        case .ollama:     return "OllamaLogo"
         case .unknown:    return ""
         }
     }
@@ -63,6 +65,7 @@ enum LLMModelBrand: Hashable {
         case .apple: return Color(hex: "A2AAAD")   // Apple Silver
         case .amazon: return Color(hex: "FF9900")
         case .alibaba: return Color(hex: "FF6A00")
+        case .ollama: return Color(hex: "8B8589")
         case .unknown: return DesignSystem.Colors.textSecondary
         }
     }

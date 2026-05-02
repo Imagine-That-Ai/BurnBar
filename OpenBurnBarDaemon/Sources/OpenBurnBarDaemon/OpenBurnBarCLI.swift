@@ -270,6 +270,18 @@ public struct BurnBarCLIInvocationResult: Equatable, Sendable {
     }
 }
 
+public struct BurnBarCLIStartupPreflightResult: Equatable, Sendable {
+    public let output: String
+    public let exitCode: Int32
+    public let writesToStandardError: Bool
+
+    public init(output: String, exitCode: Int32, writesToStandardError: Bool) {
+        self.output = output
+        self.exitCode = exitCode
+        self.writesToStandardError = writesToStandardError
+    }
+}
+
 public struct BurnBarCLIRunner {
     public let client: any BurnBarCLIClient
     public let shellExecutor: any BurnBarCLIShellExecuting
@@ -377,6 +389,74 @@ public struct BurnBarCLIRunner {
       exec <codex|claude|opencode> [--profile-id <id>] [args...]
       install-shell-shims
     """
+
+    public static let helpCommands: Set<String> = ["help", "--help", "-h"]
+
+    public static let directCommandNames: Set<String> = [
+        "health",
+        "controller",
+        "status",
+        "questions",
+        "followups",
+        "missions",
+        "mission-approve",
+        "simulator-runs",
+        "simulator-replay",
+        "exec",
+        "install-shell-shims"
+    ]
+
+    public static let canonicalExecutableNames: Set<String> = [
+        "OpenBurnBarCLI",
+        "openburnbar-cli",
+        "burnbar",
+        "openburnbar"
+    ]
+
+    public static let shellShimExecutableNames = Set(SwitcherCLIProfileType.allCases.map(\.executableName))
+
+    public static func startupPreflightResult(
+        arguments: [String],
+        invokedExecutablePath: String?
+    ) -> BurnBarCLIStartupPreflightResult? {
+        let effectiveArguments = arguments.first == "--" ? Array(arguments.dropFirst()) : arguments
+        let executableName = invokedExecutablePath.map { URL(fileURLWithPath: $0).lastPathComponent }
+        if let executableName, shellShimExecutableNames.contains(executableName) {
+            return nil
+        }
+
+        guard let command = effectiveArguments.first else {
+            return BurnBarCLIStartupPreflightResult(
+                output: usageText,
+                exitCode: EXIT_SUCCESS,
+                writesToStandardError: false
+            )
+        }
+
+        if helpCommands.contains(command) {
+            return BurnBarCLIStartupPreflightResult(
+                output: usageText,
+                exitCode: EXIT_SUCCESS,
+                writesToStandardError: false
+            )
+        }
+
+        guard let invokedExecutablePath else {
+            return nil
+        }
+
+        let canonicalName = URL(fileURLWithPath: invokedExecutablePath).lastPathComponent
+        guard canonicalExecutableNames.contains(canonicalName),
+              directCommandNames.contains(command) == false else {
+            return nil
+        }
+
+        return BurnBarCLIStartupPreflightResult(
+            output: "\(BurnBarCLIError.invalidCommand(command).localizedDescription)\n\n\(usageText)",
+            exitCode: EXIT_FAILURE,
+            writesToStandardError: true
+        )
+    }
 
     private func formatHealth(_ response: BurnBarHealthResponse) -> String {
         "Daemon \(response.daemonVersion) | protocol \(response.protocolVersion) | socket \(response.socketPath ?? "n/a") | ok=\(response.ok)"

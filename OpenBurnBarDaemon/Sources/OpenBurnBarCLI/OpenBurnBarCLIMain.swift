@@ -4,6 +4,16 @@ import Foundation
 @main
 struct BurnBarCLIExecutable {
     static func main() {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if let result = BurnBarCLIRunner.startupPreflightResult(
+            arguments: arguments,
+            invokedExecutablePath: CommandLine.arguments.first
+        ) {
+            let stream = result.writesToStandardError ? stderr : stdout
+            fputs(result.output + "\n", stream)
+            exit(result.exitCode)
+        }
+
         let environment = ProcessInfo.processInfo.environment
         let socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
             ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
@@ -16,7 +26,7 @@ struct BurnBarCLIExecutable {
 
             do {
                 let result = try await runner.invoke(
-                    arguments: Array(CommandLine.arguments.dropFirst()),
+                    arguments: arguments,
                     invokedExecutablePath: CommandLine.arguments.first
                 )
                 if let output = result.output, !output.isEmpty {

@@ -4,6 +4,8 @@ import SnapshotTesting
 import GRDB
 @testable import OpenBurnBar
 
+private typealias AppAgentProvider = OpenBurnBar.AgentProvider
+
 // MARK: - Onboarding Visual Regression Tests
 
 /// Guards onboarding pills, completion screen, and popover visuals.
@@ -12,7 +14,7 @@ final class OnboardingVisualSnapshotTests: XCTestCase {
 
     func test_onboardingProviderPill_selected() {
         let view = OnboardingProviderPill(
-            provider: .factory,
+            provider: AppAgentProvider.factory,
             isSelected: true,
             isDetected: true,
             onTap: {}
@@ -26,7 +28,7 @@ final class OnboardingVisualSnapshotTests: XCTestCase {
 
     func test_onboardingProviderPill_unselected() {
         let view = OnboardingProviderPill(
-            provider: .claudeCode,
+            provider: AppAgentProvider.claudeCode,
             isSelected: false,
             isDetected: false,
             onTap: {}
@@ -42,7 +44,7 @@ final class OnboardingVisualSnapshotTests: XCTestCase {
         let store = try DataStore(databaseQueue: DatabaseQueue(), refreshOnInit: false)
         let view = OnboardingCompleteView(
             dataStore: store,
-            selectedProviders: [.factory, .claudeCode, .copilot],
+            selectedProviders: [AppAgentProvider.factory, .claudeCode, .copilot],
             onOpenDashboard: {},
             onDismiss: {}
         )

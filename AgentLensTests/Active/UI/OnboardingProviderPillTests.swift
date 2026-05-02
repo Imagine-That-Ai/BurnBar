@@ -3,6 +3,8 @@ import SwiftUI
 import ViewInspector
 @testable import OpenBurnBar
 
+private typealias AppAgentProvider = OpenBurnBar.AgentProvider
+
 // MARK: - OnboardingProviderPill
 
 @MainActor
@@ -10,7 +12,7 @@ final class OnboardingProviderPillTests: XCTestCase {
 
     func test_rendersForFactory() throws {
         let view = OnboardingProviderPill(
-            provider: .factory,
+            provider: AppAgentProvider.factory,
             isSelected: false,
             isDetected: false,
             onTap: {}
@@ -20,7 +22,7 @@ final class OnboardingProviderPillTests: XCTestCase {
 
     func test_rendersForClaudeCode() throws {
         let view = OnboardingProviderPill(
-            provider: .claudeCode,
+            provider: AppAgentProvider.claudeCode,
             isSelected: true,
             isDetected: true,
             onTap: {}
@@ -40,7 +42,7 @@ final class OnboardingProviderPillTests: XCTestCase {
     }
 
     func test_rendersAllProviders() {
-        for provider in AgentProvider.allCases {
+        for provider in AppAgentProvider.allCases {
             let view = OnboardingProviderPill(
                 provider: provider,
                 isSelected: false,

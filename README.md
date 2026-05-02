@@ -430,6 +430,24 @@ Use this when you want session logs in **your** Apple ID’s iCloud storage inst
 
 ---
 
+## What mobile shows you
+
+`OpenBurnBarMobile` is a SwiftUI iOS 17+ companion that becomes useful immediately after sign-in. It does not ask you to re-add the providers you already configured on Mac — it mirrors the summaries your Mac publishes to Firestore and lets you opt into encrypted credential transfer when (and only when) you want it.
+
+After signing in with Apple or Google on the same Firebase account you use on Mac:
+
+- **Dashboard** shows hero spend, period totals, top providers and models, and a sync-health pill. Empty until your Mac publishes — never tells you everything looks fine when it doesn't.
+- **Quota Watch** lists urgency-sorted snapshots with provenance and a stale banner if quota data is older than the freshness threshold.
+- **Activity** paginates the raw usage ledger, classifies errors into permission denied / App Check blocked / network / Firestore-unavailable rather than swallowing them.
+- **Account → Devices** lets you approve this iPhone (after your Mac signs in and approves it from the new **Devices & Sync** tab in macOS Settings).
+- **Account → Encrypted credential transfer** surfaces only the credentials your Mac has explicitly exported, decrypts them on this device with the iOS Keychain, and never reports success until provider readback confirms the credential works.
+
+Architectural details and screen-by-screen behavior live in [docs/IOS_APP_ARCHITECTURE.md](docs/IOS_APP_ARCHITECTURE.md).
+
+If mobile shows "No Mac data has been published yet" but the Mac is signed in, see Incidents 9–12 in the [Runbook](docs/RUNBOOK.md).
+
+---
+
 ## Limitations (we're not going to surprise you)
 
 - **Costs are estimates** from public price lists, not your accounting software. Great for vibes and trends; don't use them to fight finance.

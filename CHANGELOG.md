@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Warp provider (`AgentProvider.warp`):** New parser (`WarpParser`) reads `warp_network*.log` files from Warp's Application Support directory, preserving exact usage objects when present and falling back to conservative character-based estimation for agent prompt telemetry. Warp quota adapter (`WarpQuotaAdapter`) surfaces monthly credit/budget telemetry. Full provider identity (bundled Warp logo, golden brand colors, unique SF Symbol fallback) wired through all UI surfaces, parser registry, and quota refresh actor. Includes unit tests for exact usage extraction, estimation fallback, empty/malformed input handling, and quota refresh with and without credit telemetry.
+
 ## [0.1.3-beta.1] — 2026-05-01
 
 ### Added

@@ -36,6 +36,10 @@ final class AccountStore {
     }
 
     func loadConnections() async {
+        await fetchConnections()
+    }
+
+    func fetchConnections() async {
         isLoading = true
         error = nil
         defer { isLoading = false }
@@ -61,15 +65,19 @@ final class AccountStore {
 }
 
 enum SyncHealth: String, Sendable {
-    case unknown, healthy, syncing, error, offline
+    case unknown, healthy, stale, error
 
     var label: String {
+        displayText
+    }
+
+    /// Human-readable label that views can render alongside the status icon.
+    var displayText: String {
         switch self {
-        case .unknown: return "Unknown"
-        case .healthy: return "Healthy"
-        case .syncing: return "Syncing"
-        case .error: return "Error"
-        case .offline: return "Offline"
+        case .unknown: return "Sync status unknown"
+        case .healthy: return "Cloud sync healthy"
+        case .stale:   return "Sync data is stale"
+        case .error:   return "Sync error"
         }
     }
 }

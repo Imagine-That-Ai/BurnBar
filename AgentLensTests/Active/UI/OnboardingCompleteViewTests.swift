@@ -4,6 +4,8 @@ import ViewInspector
 import GRDB
 @testable import OpenBurnBar
 
+private typealias AppAgentProvider = OpenBurnBar.AgentProvider
+
 // MARK: - OnboardingCompleteView
 
 @MainActor
@@ -24,7 +26,7 @@ final class OnboardingCompleteViewTests: XCTestCase {
         let store = try makeIsolatedStore()
         let view = OnboardingCompleteView(
             dataStore: store,
-            selectedProviders: [.claudeCode, .factory],
+            selectedProviders: [AppAgentProvider.claudeCode, .factory],
             onOpenDashboard: {},
             onDismiss: {}
         )
@@ -49,7 +51,7 @@ final class OnboardingCompleteViewTests: XCTestCase {
         store.replaceUsages(usages)
         let view = OnboardingCompleteView(
             dataStore: store,
-            selectedProviders: [.factory],
+            selectedProviders: [AppAgentProvider.factory],
             onOpenDashboard: {},
             onDismiss: {}
         )
@@ -61,7 +63,7 @@ final class OnboardingCompleteViewTests: XCTestCase {
         let store = try makeIsolatedStore()
         let view = OnboardingCompleteView(
             dataStore: store,
-            selectedProviders: [.claudeCode, .factory, .hermes],
+            selectedProviders: [AppAgentProvider.claudeCode, .factory, .hermes],
             onOpenDashboard: {},
             onDismiss: {}
         )

@@ -123,6 +123,9 @@ struct SettingsView: View {
         case .notifications:
             NotificationsSettingsView(settingsManager: settingsManager)
                 .navigationTitle("Notifications")
+        case .devicesAndSync:
+            DevicesAndSyncSettingsView()
+                .navigationTitle(MacCopy.devicesAndSyncTitle)
         case .switcher:
             AccountSwitcherSettingsView(
                 dataStore: dataStore,

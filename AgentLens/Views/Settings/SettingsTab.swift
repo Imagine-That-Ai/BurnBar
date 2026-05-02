@@ -10,6 +10,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case providers
     case alerts
     case notifications
+    case devicesAndSync
     case switcher
 
     var id: String { rawValue }
@@ -22,6 +23,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .providers: return "Providers"
         case .alerts: return "Alerts"
         case .notifications: return "Notifications"
+        case .devicesAndSync: return MacCopy.devicesAndSyncTitle
         case .switcher: return "Account Switcher"
         }
     }
@@ -34,6 +36,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .providers: return "externaldrive.connected.to.line.below"
         case .alerts: return "bell.fill"
         case .notifications: return "bell.badge.fill"
+        case .devicesAndSync: return "macbook.and.iphone"
         case .switcher: return "arrow.triangle.2.circlepath"
         }
     }
@@ -46,6 +49,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .providers: return DesignSystem.Colors.ember
         case .alerts: return DesignSystem.Colors.blaze
         case .notifications: return DesignSystem.Colors.whimsy
+        case .devicesAndSync: return DesignSystem.Colors.teal
         case .switcher: return DesignSystem.Colors.amber
         }
     }

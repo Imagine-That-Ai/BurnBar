@@ -23,6 +23,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case geminiCLI = "Gemini CLI"
     case goose = "Goose"
     case openClaw = "OpenClaw"
+    case ollama = "Ollama"
     case windsurf = "Windsurf"
     case warp = "Warp"
 
@@ -60,6 +61,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .geminiCLI:  return "GeminiCLILogo"
         case .goose:      return "GooseLogo"
         case .openClaw:   return "OpenClawLogo"
+        case .ollama:     return "OllamaLogo"
         case .windsurf:   return "WindsurfLogo"
         case .warp:       return "WarpLogo"
         }
@@ -86,6 +88,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .geminiCLI: return "diamond.fill"
         case .goose: return "bird.fill"
         case .openClaw: return "point.3.connected.trianglepath.dotted"
+        case .ollama: return "server.rack"
         case .windsurf: return "sailboat.fill"
         case .warp: return "terminal.fill"
         }

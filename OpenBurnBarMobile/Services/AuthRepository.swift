@@ -11,6 +11,8 @@ final class AuthRepository {
 
     var currentUser: User? { auth.currentUser }
 
+    var isSignedIn: Bool { auth.currentUser != nil }
+
     func signInAnonymously() async throws -> User {
         let result = try await auth.signInAnonymously()
         return result.user
@@ -26,5 +28,15 @@ final class AuthRepository {
         auth.addStateDidChangeListener { _, user in
             callback(user)
         }
+    }
+
+    /// Convenience wrapper that subscribes to auth state changes for an
+    /// `@Observable` store. Returns the underlying handle so callers can
+    /// detach if they ever need to.
+    @discardableResult
+    func observeAuthChanges(
+        _ callback: @escaping @Sendable (User?) -> Void
+    ) -> AuthStateDidChangeListenerHandle {
+        addStateDidChangeListener(callback)
     }
 }

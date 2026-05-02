@@ -189,15 +189,29 @@ private struct RollupModelSummaryRow: View {
     let summary: RollupModelSummary
     let displayMode: UsageDisplayMode
 
+    /// Lightweight provider-flavored tint for the model glyph. Mirrors the
+    /// macOS dashboard's per-provider color hint without depending on the
+    /// full `DesignSystem.Colors` palette.
+    private func modelColor(for model: String) -> Color {
+        let lower = model.lowercased()
+        if lower.contains("claude")  { return MobileTheme.ember }
+        if lower.contains("gpt")     { return Color(hex: "10A37F") }
+        if lower.contains("gemini")  { return Color(hex: "4285F4") }
+        if lower.contains("kimi")    { return Color(hex: "2CCAC0") }
+        if lower.contains("minimax") || lower.contains("abab") { return Color(hex: "D49A3A") }
+        if lower.contains("grok")    { return Color(hex: "111111") }
+        return MobileTheme.whimsy
+    }
+
     var body: some View {
         HStack(spacing: MobileTheme.Spacing.md) {
             Circle()
-                .fill(DesignSystemColors.colorForModel(summary.model).opacity(0.2))
+                .fill(modelColor(for: summary.model).opacity(0.2))
                 .frame(width: 36, height: 36)
                 .overlay(
                     Image(systemName: "cpu")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(DesignSystemColors.colorForModel(summary.model))
+                        .foregroundStyle(modelColor(for: summary.model))
                 )
             VStack(alignment: .leading, spacing: 2) {
                 Text(summary.model)

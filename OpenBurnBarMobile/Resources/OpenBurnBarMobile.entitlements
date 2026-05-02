@@ -2,13 +2,19 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-    <key>com.apple.security.network.client</key>
-    <true/>
+    <!-- Required for `SignInWithAppleButton` and `ASAuthorizationAppleIDProvider`.
+         Without this, Apple sign-in fails at runtime. -->
+    <key>com.apple.developer.applesignin</key>
+    <array>
+        <string>Default</string>
+    </array>
+
+    <!-- Keychain access group MUST share the AppIdentifierPrefix with the
+         build's actual bundle identifier (`com.burnbar.app`). The escrow key
+         in `iOSDeviceKeypair.swift` writes to Keychain via this group. -->
     <key>keychain-access-groups</key>
     <array>
-        <string>$(AppIdentifierPrefix)com.openburnbar.app.ios</string>
+        <string>$(AppIdentifierPrefix)com.burnbar.app</string>
     </array>
 </dict>
 </plist>

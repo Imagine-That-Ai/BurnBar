@@ -131,6 +131,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
     case geminiCLI = "Gemini CLI"
     case goose = "Goose"
     case openClaw = "OpenClaw"
+    case ollama = "Ollama"
     case windsurf = "Windsurf"
     case warp = "Warp"
 
@@ -171,6 +172,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .geminiCLI:  return "GeminiCLILogo"
         case .goose:      return "GooseLogo"
         case .openClaw:   return "OpenClawLogo"
+        case .ollama:     return "OllamaLogo"
         case .windsurf:   return "WindsurfLogo"
         case .warp:       return "WarpLogo"
         }
@@ -201,8 +203,9 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .geminiCLI: return "diamond.fill"
         case .goose: return "bird.fill"
         case .openClaw: return "point.3.connected.trianglepath.dotted"
+        case .ollama:   return "server.rack"
         case .windsurf: return "sailboat.fill"
-        case .warp: return "terminal.fill"
+        case .warp: return "rectangle.split.2x1.fill"
         }
     }
     
@@ -228,6 +231,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .geminiCLI: return "~/.gemini/tmp"
         case .goose: return "~/.local/share/goose/sessions"
         case .openClaw: return "~/.openclaw/sessions"
+        case .ollama:   return "~/.ollama/logs"
         case .windsurf: return "~/Library/Application Support/Windsurf - Next/User/globalStorage"
         case .warp: return "~/Library/Application Support/dev.warp.Warp-Stable"
         }
@@ -250,6 +254,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .geminiCLI: return "*.json"
         case .goose: return "sessions.db"
         case .openClaw: return "*.jsonl"
+        case .ollama:   return "server*.log"
         case .windsurf: return "state.vscdb"
         case .warp: return "warp_network*.log"
         }
@@ -259,7 +264,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .factory, .claudeCode, .codex, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose:
             return .supported
-        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp:
+        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp, .ollama:
             return .partial
         case .augment:
             return .unsupported
@@ -270,7 +275,7 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose, .openClaw:
             return .exact
-        case .zai, .minimax, .copilot, .cursor, .windsurf, .warp:
+        case .zai, .minimax, .copilot, .cursor, .windsurf, .warp, .ollama:
             return .estimated
         case .augment:
             return .unavailable

@@ -3,6 +3,10 @@ import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
+private typealias AppAgentProvider = OpenBurnBar.AgentProvider
+private typealias AppTokenUsage = OpenBurnBar.TokenUsage
+private typealias AppUsageSource = OpenBurnBar.UsageSource
+
 @MainActor
 final class OfflineOnlineMergeTests: XCTestCase {
     private var dataStore: DataStore!
@@ -36,8 +40,8 @@ final class OfflineOnlineMergeTests: XCTestCase {
     func test_backoff_recovery_whenFirebaseBecomesAvailable() async throws {
         accountManager.isFirebaseAvailable = false
 
-        let usage = TokenUsage(
-            provider: .claudeCode,
+        let usage = AppTokenUsage(
+            provider: AppAgentProvider.claudeCode,
             sessionId: "session-1",
             projectName: "TestProject",
             model: "claude-3-5-sonnet",
@@ -72,8 +76,8 @@ final class OfflineOnlineMergeTests: XCTestCase {
             userInfo: [NSLocalizedDescriptionKey: "Permission denied"]
         )
 
-        let usage = TokenUsage(
-            provider: .claudeCode,
+        let usage = AppTokenUsage(
+            provider: AppAgentProvider.claudeCode,
             sessionId: "session-1",
             projectName: "TestProject",
             model: "claude-3-5-sonnet",
@@ -111,13 +115,13 @@ final class OfflineOnlineMergeTests: XCTestCase {
         fakeGateway.setDocumentData([
             "id": UUID().uuidString,
             "deviceId": remoteDeviceId,
-            "provider": AgentProvider.claudeCode.rawValue,
+            "provider": AppAgentProvider.claudeCode.rawValue,
             "sessionId": "session-1",
             "projectName": "RemoteProject",
             "model": "claude-3-5-sonnet",
             "inputTokens": 100,
             "outputTokens": 50,
-            "usageSource": UsageSource.providerLog.rawValue,
+            "usageSource": AppUsageSource.providerLog.rawValue,
             "totalTokens": 150,
             "cost": 0.005,
             "startTime": Date(timeIntervalSince1970: 1_700_000_000),
@@ -178,8 +182,8 @@ final class OfflineOnlineMergeTests: XCTestCase {
         )
 
         for _ in 0..<5 {
-            let usage = TokenUsage(
-                provider: .claudeCode,
+            let usage = AppTokenUsage(
+                provider: AppAgentProvider.claudeCode,
                 sessionId: "session-\(UUID().uuidString)",
                 projectName: "TestProject",
                 model: "claude-3-5-sonnet",
@@ -200,8 +204,8 @@ final class OfflineOnlineMergeTests: XCTestCase {
         fakeGateway.nextError = nil
         await circuitBreaker.advanceTime(by: 70)
 
-        let usage = TokenUsage(
-            provider: .claudeCode,
+        let usage = AppTokenUsage(
+            provider: AppAgentProvider.claudeCode,
             sessionId: "session-recovery",
             projectName: "TestProject",
             model: "claude-3-5-sonnet",
@@ -218,8 +222,8 @@ final class OfflineOnlineMergeTests: XCTestCase {
         XCTAssertEqual(stateAfterFirstSuccess, .halfOpen)
 
         // Second success should close the circuit
-        let usage2 = TokenUsage(
-            provider: .claudeCode,
+        let usage2 = AppTokenUsage(
+            provider: AppAgentProvider.claudeCode,
             sessionId: "session-recovery-2",
             projectName: "TestProject",
             model: "claude-3-5-sonnet",
@@ -242,8 +246,8 @@ final class OfflineOnlineMergeTests: XCTestCase {
 
         // Insert multiple unsynced rows while offline
         for i in 0..<5 {
-            let usage = TokenUsage(
-                provider: .claudeCode,
+            let usage = AppTokenUsage(
+                provider: AppAgentProvider.claudeCode,
                 sessionId: "session-\(i)",
                 projectName: "TestProject",
                 model: "claude-3-5-sonnet",
@@ -278,8 +282,8 @@ final class OfflineOnlineMergeTests: XCTestCase {
 
         // Insert multiple unsynced rows while offline
         for i in 0..<3 {
-            let usage = TokenUsage(
-                provider: .claudeCode,
+            let usage = AppTokenUsage(
+                provider: AppAgentProvider.claudeCode,
                 sessionId: "batch-\(i)",
                 projectName: "TestProject",
                 model: "claude-3-5-sonnet",

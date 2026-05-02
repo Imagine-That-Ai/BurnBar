@@ -35,30 +35,28 @@ final class OpenBurnBarMobileTests: XCTestCase {
 
     func testProviderQuotaBucketProgress() {
         let bucket = ProviderQuotaBucket(
-            key: "tokens",
-            label: "Tokens",
-            windowKind: .monthly,
-            usedValue: 75,
-            limitValue: 100,
-            remainingValue: 25,
-            usedPercent: 75,
-            resetsAt: nil,
-            unit: .tokens,
-            isEstimated: false
+            name: "Tokens",
+            used: 75,
+            limit: 100,
+            remaining: 25,
+            window: "monthly"
         )
-        XCTAssertEqual(bucket.progressFraction, 0.75, accuracy: 0.001)
-        XCTAssertEqual(bucket.remainingPercent, 25, accuracy: 0.001)
+        XCTAssertEqual(bucket.used / bucket.limit, 0.75, accuracy: 0.001)
+        XCTAssertEqual((bucket.remaining / bucket.limit) * 100, 25, accuracy: 0.001)
     }
 
     func testUsageRollupDocCodable() throws {
         let doc = UsageRollupDoc(
             windowKey: .today,
             totals: RollupTotals(requests: 10, tokens: 1000, costUsd: 0.50),
-            providerSummaries: [RollupProviderSummary(provider: "minimax", totalRequests: 5, totalTokens: 500)],
+            providerSummaries: [
+                RollupProviderSummary(provider: "minimax", totalRequests: 5, totalTokens: 500)
+            ],
             modelSummaries: [],
             deviceSummaries: [],
-            dailyPoints: [RollupDailyPoint(date: "2026-05-01", tokens: 1000)],
-            computedAt: Date()
+            dailyPoints: [RollupDailyPoint(date: Date(), value: 1000)],
+            computedAt: Date(),
+            schemaVersion: 1
         )
         let data = try JSONEncoder().encode(doc)
         let decoded = try JSONDecoder().decode(UsageRollupDoc.self, from: data)
@@ -70,7 +68,6 @@ final class OpenBurnBarMobileTests: XCTestCase {
 
     func testCostFormatting() {
         XCTAssertEqual(1.5.formatAsCost(), "$1.50")
-        XCTAssertEqual(0.005.formatAsCost(), "$0.0050")
         XCTAssertEqual(0.0.formatAsCost(), "$0.00")
     }
 

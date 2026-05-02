@@ -340,6 +340,85 @@ ls -lt ~/Library/Application\ Support/OpenBurnBar/StartupRecovery/ 2>/dev/null |
 
 ---
 
+## Incident 9: Mobile Shows "No Mac data has been published yet."
+
+### Symptoms
+- iOS app signs in successfully but the Dashboard, Quota, Activity, and Account → Provider summaries surfaces are empty.
+- Account → Cloud Sync pill shows `Cloud sync healthy` (or no error) but `Last published` is `—`.
+
+### Diagnosis
+
+1. On the **Mac**, open OpenBurnBar → Settings → **Account**: confirm signed in.
+2. On the **Mac**, open Settings → **Devices & Sync**: confirm `Cloud sync healthy` and a recent `Last published` timestamp.
+3. On the **iPhone**, open Account → **Sync diagnostics** and confirm:
+   - Status: `Cloud sync healthy`
+   - Listeners: provider summaries / devices counts greater than zero.
+   - Errors section is hidden.
+4. If listeners report zero records, run a Mac usage refresh (popover → refresh) which triggers a fresh publish.
+
+### Remediation
+- Same Firebase project, same account: cross-check the email shown in mobile Account profile vs. Mac Account settings. Different accounts can never share data.
+- If the Mac publishes successfully but mobile still reads nothing, sign out on mobile and sign in again. The auth listener resubscribes and rebuilds Firestore listeners.
+- If `Sync diagnostics` shows `Permission denied`: the user is signed in to a different Firebase project or rules were changed. Reinstall the app (which fetches a fresh `GoogleService-Info.plist` tied to the correct project) and confirm the same `bundleId` from `project.yml`.
+
+---
+
+## Incident 10: Mobile Shows "App Check blocked"
+
+### Symptoms
+- Sync diagnostics on iOS shows `App Check blocked` red status.
+- Imports fail with `App Check rejected this device. See Diagnostics.`
+
+### Diagnosis
+1. Confirm App Check enforcement is enabled in Firebase Console (see `docs/FIREBASE_APP_CHECK_ENFORCEMENT.md`).
+2. Confirm the build is signed with the team registered for App Check.
+3. On a development build, set the App Check debug provider and register the debug token in the Firebase Console.
+
+### Remediation
+- Reinstall the app from the official channel (TestFlight/App Store) — sideloaded builds may not present a valid attestation token.
+- Re-issue a debug token if developing locally.
+
+---
+
+## Incident 11: Pending Trust Stuck on Mobile
+
+### Symptoms
+- iOS Account screen shows trust pill `Pending`.
+- Dashboard shows the "Approve this device" actionable card.
+
+### Diagnosis
+1. On the Mac, open **Devices & Sync**. The mobile device should appear in the **Pending approvals** section.
+2. If it does not appear, sign out and back in on the mobile device so it re-registers with cloud sync.
+3. Check that the user is signed into the same Firebase account on both devices.
+
+### Remediation
+- Click `Approve device` on the Mac for the mobile device. Mobile should refresh to `Trusted` within a few seconds (or after a manual pull-to-refresh).
+- If no Mac device is yet trusted (first-device bootstrap), open Mac → Devices & Sync → **Bootstrap** → `Approve this Mac as primary device`.
+- If the Mac shows the pending device but cannot approve it, check Sync diagnostics for any permission/App Check errors before retrying.
+
+---
+
+## Incident 12: Encrypted Credential Import Fails on Mobile
+
+### Symptoms
+- Mobile import progress reaches `Decrypted locally` or earlier and reports a classified failure.
+
+### Diagnosis & Remediation by reason
+
+| Reason on mobile | Likely cause | Remediation |
+|---|---|---|
+| `This transfer has been revoked.` | Mac revoked the grant. | Mac → Devices & Sync → Active escrow grants → start a new transfer. |
+| `This envelope is encrypted for a different device.` | Mac encrypted for the wrong destination key. | Mac → Devices & Sync, confirm destination, restart transfer. |
+| `This device's private key is missing or has been reset.` | iOS keychain was reset / reinstall. | Sign out + back in to regenerate keys; have Mac approve and re-export. |
+| `Decryption failed.` | Envelope corrupted in transit. | Retry. If repeated, restart export from Mac. |
+| `<Provider> rejected the credential.` | Credential expired or was rotated. | Reconnect provider on Mac, then re-export. |
+| `Sign in again with the same account used on Mac.` | Permission denied. | Sign out and back in on the device that fails. |
+| `App Check rejected this device.` | App Check enforcement. | See Incident 10. |
+
+UI never claims `Validated` until provider readback, so any `Validated` step in history is authoritative.
+
+---
+
 ## Escalation Contacts
 
 | Role | Contact |

@@ -194,3 +194,36 @@ All network requests except provider logos are opt-in and require explicit user 
 4. Cloud features are opt-in and do not replace local state.
 5. The extension trusts VS Code's workspace trust API for tool gating.
 6. External API calls use provider-specific auth (API keys, bearer tokens, OAuth) — OpenBurnBar does not proxy credentials through its own servers.
+
+## Mobile Escrow & Device Trust
+
+### Encrypted Credential Transfer
+
+Provider credentials only move between devices through an opt-in encrypted escrow system:
+- Each device generates a durable P-256 encryption keypair on first launch. Private keys stay in platform Keychain (macOS Keychain / iOS Keychain).
+- Public keys sync through Firestore (`users/{uid}/escrow_public_keys/{deviceId}_{keyVersion}`).
+- When a user opts to transfer a provider credential, the source device encrypts it for the destination device's public key using ECIES (P-256 + AES-GCM). Only ciphertext is written to Firestore (`users/{uid}/escrow_envelopes/{envelopeId}`).
+- The destination device downloads the ciphertext, decrypts locally with its private key, stores the credential in its platform Keychain, and validates against the provider API.
+- Success is proven only after provider readback — not optimistic transport success.
+
+### Device Trust Model
+
+| Phase | Description |
+|---|---|
+| **Registration** | A device signing into Firebase automatically registers as `pending` in `users/{uid}/escrow_devices/{deviceId}`. It can view synced stats but cannot import credentials. |
+| **Approval (normal)** | An existing trusted device approves the pending device. This creates an `EscrowGrant` and updates the device trust state to `trusted`. |
+| **Bootstrap (first device)** | If no trusted device exists, the user explicitly confirms "this is my first device" to bootstrap trust. No silent auto-approval. |
+| **Revocation** | A trusted device can revoke another device's trust. All outstanding grants to the revoked device are invalidated. |
+
+### Firestore Secret Prohibition
+
+- Firestore rules reject documents containing fields named `apiKey`, `token`, `refreshToken`, `accessToken`, `idToken`, `cookie`, `password`, `secret`, `authorization`, `bearer`, or `credential` within `escrow_envelopes`.
+- Unit tests prove plaintext secret strings are never serialized into Firestore-bound documents.
+- Firebase never sees plaintext provider credentials — only ciphertext and non-sensitive metadata (provider ID, account label, credential kind, device IDs, timestamps).
+
+### Key Management
+
+- Private keys live exclusively in the platform Keychain (iOS Keychain / macOS Keychain) with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
+- Key versioning supports rotation. Old keys are retained for decrypting historic envelopes.
+- Missing private key is a recoverable state — surfaced as a classified error, not a crash.
+- Encryption keys are not derivable by Firebase, Firestore rules, Cloud Functions, or backend infrastructure.

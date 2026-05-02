@@ -105,8 +105,9 @@ enum DesignSystem {
             case .geminiCLI: return Color(hex: "4285F4")
             case .goose: return Color(hex: "0D9488")
             case .openClaw: return Color(hex: "FF6B6B")
+            case .ollama:   return Color(hex: "8B8589")
             case .windsurf: return Color(hex: "06B6D4")
-            case .warp: return Color(hex: "DDE4EA")
+            case .warp: return Color(hex: "F5A623")
             }
         }
 
@@ -130,8 +131,9 @@ enum DesignSystem {
             case .geminiCLI: return Color(hex: "8AB4F8")
             case .goose: return Color(hex: "2DD4BF")
             case .openClaw: return Color(hex: "F472B6")
+            case .ollama:   return Color(hex: "B8A9A0")
             case .windsurf: return Color(hex: "22D3EE")
-            case .warp: return Color(hex: "111111")
+            case .warp: return Color(hex: "FFD700")
             }
         }
 
@@ -155,8 +157,9 @@ enum DesignSystem {
             case .geminiCLI: return [Color(hex: "4285F4"), Color(hex: "8AB4F8"), Color(hex: "1A73E8"), Color(hex: "669DF6")]
             case .goose: return [Color(hex: "0D9488"), Color(hex: "2DD4BF"), Color(hex: "0F766E"), Color(hex: "5EEAD4")]
             case .openClaw: return [Color(hex: "FF6B6B"), Color(hex: "F472B6"), Color(hex: "F9A8D4"), Color(hex: "FBBF24")]
+            case .ollama:   return [Color(hex: "8B8589"), Color(hex: "B8A9A0"), Color(hex: "6E6368"), Color(hex: "9A8F94")]
             case .windsurf: return [Color(hex: "06B6D4"), Color(hex: "22D3EE"), Color(hex: "0891B2"), Color(hex: "67E8F9")]
-            case .warp: return [Color(hex: "DDE4EA"), Color(hex: "111111"), Color(hex: "AEB8C2"), Color(hex: "F4F6F8")]
+            case .warp: return [Color(hex: "F5A623"), Color(hex: "FFD700"), Color(hex: "E8951A"), Color(hex: "FFEAA7")]
             }
         }
 

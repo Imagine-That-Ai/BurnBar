@@ -15,13 +15,17 @@ final class ProviderConnectionStore {
         self.functions = functions
     }
 
-    func connect(provider: String, credential: String) async {
+    func connect(provider: String, credential: String, kind: CredentialKind) async {
         connectingProvider = provider
         error = nil
         defer { connectingProvider = nil }
 
         do {
-            try await functions.connectProviderCredential(provider: provider, credential: credential)
+            _ = try await functions.connectProviderCredential(
+                provider: provider,
+                credential: credential,
+                kind: kind
+            )
         } catch {
             self.error = error.localizedDescription
         }
@@ -45,7 +49,7 @@ final class ProviderConnectionStore {
         defer { refreshingProvider = nil }
 
         do {
-            try await functions.refreshProviderQuota(provider: provider)
+            _ = try await functions.refreshProviderQuota(provider: provider)
         } catch {
             self.error = error.localizedDescription
         }
