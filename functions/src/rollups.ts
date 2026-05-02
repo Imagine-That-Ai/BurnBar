@@ -31,6 +31,16 @@ function toUtcDate(iso: string): string {
 }
 
 /**
+ * Extract cost from a usage event, trying both field names used by
+ * the desktop sync (`cost`) and the canonical schema (`costUsd`).
+ */
+function eventCost(ev: UsageEventDoc): number | undefined {
+  const v = ev.costUsd ?? ev.cost;
+  if (typeof v === "number") return v;
+  return undefined;
+}
+
+/**
  * Build inclusive date-range predicate for a window key.
  */
 function windowPredicate(key: WindowKey, now: Date): (iso: string) => boolean {
@@ -95,7 +105,8 @@ export async function computeUserRollups(
       totalRequests += 1;
       const tokens = (ev.inputTokens ?? 0) + (ev.outputTokens ?? 0);
       totalTokens += tokens;
-      totalCost += ev.costUsd ?? 0;
+      const evCost = eventCost(ev);
+      if (evCost != null) totalCost += evCost;
 
       // Provider
       const pKey = ev.provider;
@@ -103,13 +114,13 @@ export async function computeUserRollups(
       if (pEx) {
         pEx.totalRequests += 1;
         pEx.totalTokens += tokens;
-        if (ev.costUsd != null) pEx.totalCost = (pEx.totalCost ?? 0) + ev.costUsd;
+        if (evCost != null) pEx.totalCost = (pEx.totalCost ?? 0) + evCost;
       } else {
         providerMap.set(pKey, {
           provider: ev.provider,
           totalRequests: 1,
           totalTokens: tokens,
-          totalCost: ev.costUsd ?? undefined,
+          totalCost: evCost ?? undefined,
         });
       }
 
@@ -120,14 +131,14 @@ export async function computeUserRollups(
         if (mEx) {
           mEx.requests += 1;
           mEx.tokens += tokens;
-          if (ev.costUsd != null) mEx.cost = (mEx.cost ?? 0) + ev.costUsd;
+          if (evCost != null) mEx.cost = (mEx.cost ?? 0) + evCost;
         } else {
           modelMap.set(mKey, {
             model: ev.model,
             provider: ev.provider,
             requests: 1,
             tokens,
-            cost: ev.costUsd ?? undefined,
+            cost: evCost ?? undefined,
           });
         }
       }

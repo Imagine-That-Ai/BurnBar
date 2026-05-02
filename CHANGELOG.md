@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Warp provider (`AgentProvider.warp`):** New parser (`WarpParser`) reads `warp_network*.log` files from Warp's Application Support directory, preserving exact usage objects when present and falling back to conservative character-based estimation for agent prompt telemetry. Warp quota adapter (`WarpQuotaAdapter`) surfaces monthly credit/budget telemetry. Full provider identity (bundled Warp logo, golden brand colors, unique SF Symbol fallback) wired through all UI surfaces, parser registry, and quota refresh actor. Includes unit tests for exact usage extraction, estimation fallback, empty/malformed input handling, and quota refresh with and without credit telemetry.
 
+### Fixed
+- **Mobile app data-loading failure after authentication:** Resolved multiple Firestore document shape mismatches causing silent empty data after sign-in. FirestoreRepository `sanitizeForJSON` now converts Firestore `Timestamp` objects (from `startTime`/`endTime`) and ISO‑8601 date strings (from Cloud Function `computedAt`/`fetchedAt`/`updatedAt`/`lastValidatedAt`/`lastRefreshAt`) into `timeIntervalSinceReferenceDate` Doubles so that `JSONDecoder.deferredToDate` can decode them. `decodeWithDocID` injects document IDs and normalizes field shapes (dailyPoints dict-to-array, deviceId-to-sourceDeviceId, nested array id injection) before Codable decoding. DashboardStore wired with real listener plus initial load. Cloud Function `computeUserRollups` reads both `costUsd` and `cost`. FunctionsRepository also passes callable responses through `sanitizeForJSON`. Added 24 tests in `FirestoreNormalizationTests` covering Timestamp→Double, ISO date→Double, NSNull, recursive dict/array sanitization, and full decode round‑trips for rollups, quota snapshots, provider connections, and usage events.
+- **FirestoreRepository reliability hardening:** Added `FirestoreDecodeError` typed error (captures document ID, target type, stage, underlying error) so silent decode failures are impossible to miss in logs. All fetch methods now report per-document decode failures via `Result` and `OSLog` warnings. Added `retryWithBackoff(maxRetries:baseDelay:)` with exponential backoff for transient Firestore errors (unavailable, resource exhausted, deadline exceeded, network blips) on all collection fetches.
+- **Protocol-oriented normalization (`FirestoreNormalizable`):** New `decodeDocument<N: FirestoreNormalizable>(_:from:docID:)` generic entry point makes adding a new Firestore document type a one-conformance operation — just declare `Model` and implement `normalize(_:docID:)`. Existing `UsageRollupNormalizer`, `TokenUsageNormalizer`, `QuotaSnapshotNormalizer`, and `ProviderConnectionNormalizer` conformances ship as reference implementations. covering Timestamp→Double, ISO date→Double, NSNull, recursive dict/array sanitization, and full decode round‑trips for rollups, quota snapshots, provider connections, and usage events.
+
 ## [0.1.3-beta.1] — 2026-05-01
 
 ### Added
@@ -213,3 +218,40 @@ Prior to this changelog, releases were tracked informally. The following milesto
 - Provider secrets are never persisted in Firestore plaintext.
 - Callable functions enforce Firebase Auth + App Check.
 - Firestore rules remain owner-scoped; App Check enforcement is configured at the product level.
+
+## [Unreleased] — iPadOS Port (In Progress)
+
+### Added
+- **iPadOS Navigation Shell (`RootNavigationView`):** `NavigationSplitView`-based root replacing `RootTabView` on iPad. Sidebar with Overview, Activity, Quota, Session Logs, Projects, Missions, Account routes. Detail pane with `NavigationStack` for drill-in navigation and back-button history. Settings and Chat presented as `.sheet` overlays. Sync health pill in sidebar footer.
+- **iPad Settings (`iPadSettingsView`):** `NavigationSplitView` with 7 tabs — General, Account, Providers, Alerts, Notifications, Devices & Sync, Account Switcher. Daemon tab excluded (macOS-only). Real `@AppStorage` bindings for appearance, usage display, daily digest, budget, and token alerts.
+- **`DashboardNavigationModel`:** `@Observable @MainActor` route history stack with `navigate(to:)`, `goBack()`, `resetToOverview()`, and `routeTitle(_:)`.
+- **`iPadDashboardRoute` + `iPadSettingsTab`:** Typed navigation enums with `Hashable` conformance for `NavigationLink(value:)` binding.
+- **MobileTheme token parity:** Expanded with Hermes mercury colors (`hermesMercury`, `hermesAureate`, `mercuryGradient`), chat stroke tokens, all gradients (`primary`, `accent`, `card`, `whimsy`), `Animation` namespace (`standard`, `gentle`, `snappy`, `hover`, `mercuryShimmer`, `mercuryPulse`), provider chart palettes (`chartPalette(for:)`), model color hashing (`colorForModel`, `gradientForModel`), and deterministic `LLMModelBrand` inference.
+- **iPad feature stubs:** `ProviderDashboardView`, `ModelDashboardView`, `SessionLogsView`, `ProjectsView`, `MissionsView`, `HermesChatPlaceholder` — all with meaningful empty-state copy instead of generic placeholders.
+- **Unit tests:** `DashboardNavigationModelTests` (route history, back nav, titles, settings tab identity) and `MobileThemeTests` (deterministic hashing, known brands, chart palettes, animation curves).
+- **`AuthGateView` iPad branching:** Uses `horizontalSizeClass == .regular` for runtime adaptivity on iPad in Split View / Stage Manager.
+
+### Architecture
+- Cloud-first companion: iPad reads exclusively from Firestore (Mac pushes). No local DB, no daemon, no CLI bridge.
+- iPhone `RootTabView` preserved unchanged.
+
+### Added (Phase 1 Continuation)
+- **Real `ProviderDashboardView`** — Hero metrics (cost, sessions, tokens), quota panel with bucket progress bars, token breakdown donut chart (`SectorMark`), daily trend area chart (`AreaMark` + `LineMark`), and recent sessions list with pagination. Reads from `ProviderDashboardStore` (Firestore `conversations` filtered by provider).
+- **Real `SessionLogsView`** — Two-column `NavigationSplitView` with searchable session list (client-side filter on model/project/provider) and `SessionDetailView` detail pane. Filter sheet with provider picker and date range. Pull-to-refresh. Pagination via `ActivityStore`.
+- **Real `ChatView`** — Full-screen chat with user/assistant bubbles, mercury gradient stroke, animated thinking indicator (3 oscillating droplets), auto-scroll to bottom, clear confirmation alert, and simulated streaming response. Focus-aware input field with mercury gradient border.
+- **`ProviderDashboardStore`** — `@Observable @MainActor` store for provider-scoped usage data. Aggregates totals, token breakdowns, daily points. Paginated Firestore reads.
+- **`GlassCard` + `StaggeredEntrance` + `HoverScale`** — Reusable view modifiers for premium iPad polish. Staggered fade-in with spring animation. Hover scale effect for trackpad users.
+- **`AnimatedEntranceModifier.swift`** — Shared animation primitives for consistent motion across iPad views.
+- **Tests:** `ProviderDashboardStoreTests` (aggregates, empty state, daily points).
+
+### Fixed
+- **Concurrency bug in `FirestoreRepository.sanitizeForJSON`** — `isISODateString` was instance method called from `nonisolated` context. Made it `nonisolated static` to satisfy Swift 6 strict concurrency.
+
+### Added (Phase 1 Final)
+- **Real `iPadAccountSettingsView`** — `AuthStore` integration with profile card, auth status indicator, sign-out confirmation alert
+- **Real `iPadDevicesSettingsView`** — `DevicesStore` integration with device list, trust badges (color-coded), bootstrap approve, rename sheet, revoke confirmation
+- **Animation modifiers** — `ChartEntrance` (scale + fade for charts), `PushTransition` (directional slide for page transitions)
+- **Keyboard shortcut discovery** — ⌘1-4, ⌘R, ⌘H, ⌘, shortcuts overlay
+
+### Fixed
+- **Swift 6 concurrency** in `FirestoreRepository` — isolated `sanitizeForJSON` correctly

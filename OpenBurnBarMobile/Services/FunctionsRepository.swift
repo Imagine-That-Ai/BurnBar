@@ -18,7 +18,8 @@ final class FunctionsRepository {
             "credentialKind": kind.rawValue
         ])
         guard let data = result.data as? [String: Any],
-              let jsonData = try? JSONSerialization.data(withJSONObject: data),
+              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
+              let jsonData = try? JSONSerialization.data(withJSONObject: sanitized ?? data),
               let doc = try? JSONDecoder().decode(ProviderConnectionDoc.self, from: jsonData) else {
             throw FunctionsError.decodingFailed
         }
@@ -34,7 +35,8 @@ final class FunctionsRepository {
         let callable = functions.httpsCallable("refreshProviderQuota")
         let result = try await callable.call(["provider": provider])
         guard let data = result.data as? [String: Any],
-              let jsonData = try? JSONSerialization.data(withJSONObject: data),
+              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
+              let jsonData = try? JSONSerialization.data(withJSONObject: sanitized ?? data),
               let snap = try? JSONDecoder().decode(ProviderQuotaSnapshot.self, from: jsonData) else {
             throw FunctionsError.decodingFailed
         }

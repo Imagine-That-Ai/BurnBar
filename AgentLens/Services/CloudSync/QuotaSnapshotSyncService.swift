@@ -46,11 +46,16 @@ final class QuotaSnapshotSyncService {
         }
     }
 
+    /// Encodes a snapshot into the Firestore shape that the mobile app's
+    /// `ProviderQuotaSnapshot` Codable type expects.  The desktop's in-memory
+    /// model uses richer field names; this method translates to the canonical
+    /// Firestore schema shared with iOS.
     private func encodeSnapshot(_ snapshot: ProviderQuotaSnapshot, deviceId: String) -> [String: Any] {
         var result: [String: Any] = [
             "provider": snapshot.provider.persistedToken,
             "sourceKind": snapshot.sourceKind.rawValue,
             "sourceId": deviceId,
+            "source": snapshot.provider.displayName,
             "fetchedAt": Timestamp(date: snapshot.fetchedAt),
             "confidence": snapshot.confidence.rawValue,
             "statusMessage": snapshot.statusMessage,
@@ -64,19 +69,27 @@ final class QuotaSnapshotSyncService {
         return result
     }
 
+    /// Encodes a bucket into the mobile-compatible Firestore schema.
+    /// The desktop model uses `key`/`label`/`usedValue`; the shared Codable
+    /// type expects `name`/`used`/`limit`/`remaining`/`window`/`meta`.
     private func encodeBucket(_ bucket: ProviderQuotaBucket) -> [String: Any] {
-        var result: [String: Any] = [
-            "key": bucket.key,
+        var meta: [String: String] = [
             "label": bucket.label,
-            "windowKind": bucket.windowKind.rawValue,
             "unit": bucket.unit.rawValue,
-            "isEstimated": bucket.isEstimated
+            "isEstimated": bucket.isEstimated ? "true" : "false"
         ]
-        if let v = bucket.usedValue { result["usedValue"] = v }
-        if let v = bucket.limitValue { result["limitValue"] = v }
-        if let v = bucket.remainingValue { result["remainingValue"] = v }
-        if let v = bucket.usedPercent { result["usedPercent"] = v }
-        if let d = bucket.resetsAt { result["resetsAt"] = Timestamp(date: d) }
+        if let v = bucket.usedPercent { meta["usedPercent"] = String(format: "%.2f", v) }
+        if let d = bucket.resetsAt {
+            meta["resetsAt"] = ISO8601DateFormatter().string(from: d)
+        }
+        var result: [String: Any] = [
+            "name": bucket.key,
+            "used": bucket.usedValue ?? 0,
+            "limit": bucket.limitValue ?? 0,
+            "remaining": bucket.remainingValue ?? 0,
+            "window": bucket.windowKind.rawValue,
+            "meta": meta
+        ]
         return result
     }
 }

@@ -224,8 +224,11 @@ export interface UsageEventDoc {
   /** Number of output tokens. */
   outputTokens?: number;
 
-  /** Estimated cost in USD (optional). */
+  /** Estimated cost in USD (optional, canonical field). */
   costUsd?: number;
+
+  /** Cost in USD (legacy field written by desktop UsageSyncService). */
+  cost?: number;
 
   /** ISO 8601 timestamp of the event. */
   timestamp: string;
