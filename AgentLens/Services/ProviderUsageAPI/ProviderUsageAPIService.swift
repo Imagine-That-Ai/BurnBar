@@ -23,7 +23,7 @@ protocol ProviderUsageAPI: Sendable {
 
 // MARK: - Usage Record (from provider APIs)
 
-struct ProviderUsageRecord: Sendable {
+struct ProviderUsageRecord: Sendable, Equatable {
     let providerName: String
     let model: String
     let date: Date
@@ -60,6 +60,12 @@ struct ProviderUsageRecord: Sendable {
 
     var mappedProvider: AgentProvider? {
         switch normalizedProviderName {
+        case "factory":
+            return .factory
+        case "anthropic", "claude", "claude code", "claude-code":
+            return .claudeCode
+        case "openai", "codex", "openai codex":
+            return .codex
         case "minimax":
             return .minimax
         case "z.ai", "zai":
@@ -160,6 +166,14 @@ final class ProviderUsageAPIService {
 
     var configuredProviders: [String] {
         apis.map(\.providerName)
+    }
+
+    /// Rebuilds APIs and returns a snapshot of the active `ProviderUsageAPI` instances.
+    /// Call this on `@MainActor` before entering a background context so billing
+    /// reconciliation can run without main-actor hops.
+    func snapshotAPIs() -> [any ProviderUsageAPI] {
+        rebuildAPIs()
+        return apis
     }
 
     /// Fetch usage from all configured provider APIs.

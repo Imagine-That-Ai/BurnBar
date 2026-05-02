@@ -1327,7 +1327,7 @@ struct PopoverQuickSwitchView: View {
 // MARK: - Profile Store Adapter for Popover
 
 /// Adapter that wraps SwitcherProfileStore for use with launch services.
-private final class PopoverSwitcherProfileAdapter: SwitcherProfileStoreAdapter, @unchecked Sendable {
+private final class PopoverSwitcherProfileAdapter: SwitcherProfileStoreAdapter, Sendable {
     private let store: SwitcherProfileStore
 
     init(store: SwitcherProfileStore) {

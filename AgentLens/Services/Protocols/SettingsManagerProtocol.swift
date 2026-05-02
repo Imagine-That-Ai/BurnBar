@@ -79,6 +79,12 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Whether session log backup consent has been shown.
     var sessionLogCloudBackupConsentShown: Bool { get set }
 
+    /// Whether to back up OpenBurnBar Assistant chat message content to Firestore.
+    var chatThreadContentCloudBackupEnabled: Bool { get set }
+
+    /// Whether chat content backup consent has been shown.
+    var chatThreadContentCloudBackupConsentShown: Bool { get set }
+
     // MARK: - CLI Assistant
 
     /// Whether CLI assistant is allowed.

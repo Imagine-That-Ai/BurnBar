@@ -24,7 +24,8 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 "search_chunks",
                 "search_chunks_fts",
                 "search_documents_fts",
-                "search_documents"
+                "search_documents",
+                "vector_index_snapshots"
             ])
         )
         XCTAssertEqual(
@@ -49,7 +50,8 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 "search_chunks_source_lookup_idx",
                 "search_chunks_unique_document_ordinal_idx",
                 "search_documents_project_provider_idx",
-                "search_documents_source_lookup_idx"
+                "search_documents_source_lookup_idx",
+                "vector_index_snapshots_state_idx"
             ])
         )
     }
@@ -188,6 +190,29 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             ["chunk-1"]
         )
 
+        let snapshot = VectorIndexSnapshotRecord(
+            embeddingVersionID: "version-1",
+            backendID: "usearch_hnsw_v1",
+            state: .ready,
+            fingerprint: "version-1|1|100",
+            dimensions: 3072,
+            distanceMetric: .cosine,
+            vectorCount: 1,
+            storageRelativePath: "test/version-1/usearch",
+            fileBytes: 128,
+            backendVersion: "1.0.0",
+            createdAt: now,
+            updatedAt: now,
+            lastBuiltAt: now
+        )
+        try store.upsertVectorIndexSnapshot(snapshot)
+        let fetchedSnapshot = try store.fetchVectorIndexSnapshot(
+            embeddingVersionID: "version-1",
+            backendID: "usearch_hnsw_v1"
+        )
+        XCTAssertEqual(fetchedSnapshot?.state, .ready)
+        XCTAssertEqual(fetchedSnapshot?.storageRelativePath, "test/version-1/usearch")
+
         try store.upsertRetrievalHealth(
             RetrievalHealthRecord(
                 subsystem: .projection,
@@ -270,7 +295,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         XCTAssertEqual(failedJob.availableAt.timeIntervalSince1970, retryAt.timeIntervalSince1970, accuracy: 0.001)
     }
 
-    func test_databaseWorkspaceSnapshotBuilder_usesTruthfulCounts() throws {
+    func test_databaseWorkspaceSnapshotBuilder_usesTruthfulCounts() async throws {
         let store = try makeInMemoryStore()
         let base = Date(timeIntervalSince1970: 1_742_200_000)
         let settings = SettingsManager.shared
@@ -610,7 +635,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             )
         )
 
-        let snapshot = DatabaseWorkspaceSnapshotBuilder.build(
+        let snapshot = await DatabaseWorkspaceSnapshotBuilder.build(
             from: store,
             settingsManager: settings
         )

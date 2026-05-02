@@ -4,7 +4,7 @@ import OpenBurnBarCore
 
 @MainActor
 final class SwitcherCLIAuthCoordinator {
-    enum ReconnectResult {
+    enum ReconnectResult: Equatable {
         case readyToPersist(SwitcherProfileRecord)
         case requiresConfirmation(updatedProfile: SwitcherProfileRecord, previousAccount: String?, detectedAccount: String?)
         case cancelled
@@ -37,6 +37,13 @@ final class SwitcherCLIAuthCoordinator {
         }
 
         var fileManager: FileManager = .default
+
+        /// Resolves the on-disk executable path for a CLI type. Defaults to
+        /// the production `CLILaunchAdapter` lookup; tests inject a closure
+        /// that returns nil to exercise the "executable not installed" path.
+        var executablePathResolver: @Sendable (SwitcherCLIProfileType) -> String? = { cliType in
+            CLILaunchAdapter.executablePath(for: cliType)
+        }
     }
 
     private let dependencies: Dependencies
@@ -55,7 +62,7 @@ final class SwitcherCLIAuthCoordinator {
             return .failed("This CLI does not support account reconnect yet.")
         }
 
-        guard let executablePath = CLILaunchAdapter.executablePath(for: cliType) else {
+        guard let executablePath = dependencies.executablePathResolver(cliType) else {
             return .failed("\(cliType.displayName) is not installed.")
         }
 
@@ -135,7 +142,7 @@ final class SwitcherCLIAuthCoordinator {
         return .readyToPersist(updatedProfile)
     }
 
-    private func isConnected(_ authInfo: CLIAuthInfo) -> Bool {
+    func isConnected(_ authInfo: CLIAuthInfo) -> Bool {
         switch authInfo.cliType {
         case .codex:
             switch authInfo.authState {
@@ -154,7 +161,7 @@ final class SwitcherCLIAuthCoordinator {
         }
     }
 
-    private func resolvedConfigDirectory(
+    func resolvedConfigDirectory(
         for profile: SwitcherProfileRecord,
         cliType: SwitcherCLIProfileType,
         preservesExistingAccount: Bool
@@ -174,7 +181,7 @@ final class SwitcherCLIAuthCoordinator {
         return root.appendingPathComponent(profile.id, isDirectory: true).path
     }
 
-    private func updatedProfileRecord(
+    func updatedProfileRecord(
         from profile: SwitcherProfileRecord,
         cliType: SwitcherCLIProfileType,
         configDirectory: String,
@@ -245,7 +252,7 @@ final class SwitcherCLIAuthCoordinator {
         try dependencies.fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
     }
 
-    private func loginCommands(for cliType: SwitcherCLIProfileType, executablePath: String) -> [String] {
+    func loginCommands(for cliType: SwitcherCLIProfileType, executablePath: String) -> [String] {
         let candidates: [[String]]
         switch cliType {
         case .codex:
@@ -261,7 +268,7 @@ final class SwitcherCLIAuthCoordinator {
         }
     }
 
-    private func configEnvironmentKeys(for cliType: SwitcherCLIProfileType) -> [String] {
+    func configEnvironmentKeys(for cliType: SwitcherCLIProfileType) -> [String] {
         switch cliType {
         case .codex:
             return ["CODEX_HOME", "CODEX_CONFIG_PATH"]
@@ -288,13 +295,13 @@ final class SwitcherCLIAuthCoordinator {
         return 124
     }
 
-    private func normalized(_ value: String?) -> String? {
+    func normalized(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private func shellEscape(_ value: String) -> String {
+    func shellEscape(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
     }
 }

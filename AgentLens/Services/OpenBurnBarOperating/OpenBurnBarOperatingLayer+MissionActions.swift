@@ -250,15 +250,19 @@ extension OpenBurnBarOperatingLayer {
             )
 
             // Record in local history as well
-            try? dataStore.appendOperatingActionRecord(
-                OpenBurnBarOperatingActionRecord(
-                    projectName: trimmedProjectSlug,
-                    missionFingerprint: response.mission.id.rawValue,
-                    actionKind: .missionCreation,
-                    summary: "Mission created: \(trimmedTitle)",
-                    detail: trimmedSummary
+            do {
+                try dataStore.appendOperatingActionRecord(
+                    OpenBurnBarOperatingActionRecord(
+                        projectName: trimmedProjectSlug,
+                        missionFingerprint: response.mission.id.rawValue,
+                        actionKind: .missionCreation,
+                        summary: "Mission created: \(trimmedTitle)",
+                        detail: trimmedSummary
+                    )
                 )
-            )
+            } catch {
+                AppLogger.dataStore.silentFailure("appendOperatingActionRecord", error: error)
+            }
 
             return response.mission.id.rawValue
         } catch {

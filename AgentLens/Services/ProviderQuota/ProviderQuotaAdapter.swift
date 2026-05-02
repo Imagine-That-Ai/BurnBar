@@ -1,7 +1,7 @@
 import Foundation
 
-@MainActor
-protocol ProviderQuotaAdapter {
+
+protocol ProviderQuotaAdapter: Sendable {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot
 }
 
@@ -11,19 +11,22 @@ struct ProviderQuotaAdapterContext {
     let session: URLSession
     let environment: [String: String]
     let homeDirectoryURL: URL
-    let dataStore: DataStore
+    let dataStoreActor: DataStoreActor
     let snapshotStore: ProviderQuotaSnapshotStore
     let bridgeManager: ClaudeQuotaBridgeManager
     let miniMaxModeProvider: () -> MiniMaxQuotaMode
     let factoryPlanProvider: () -> FactoryQuotaPlanTier
     let claudeBridgeStatus: ClaudeQuotaBridgeStatus
     let codexRolloutScanCache: CodexRolloutScanCache
-    let updateCodexRolloutScanCache: @MainActor (CodexRolloutScanCache, Bool) -> Void
-    let refreshClaudeBridgeStatus: @MainActor () -> ClaudeQuotaBridgeStatus
+    let updateCodexRolloutScanCache: (CodexRolloutScanCache, Bool) -> Void
+    let refreshClaudeBridgeStatus: () -> ClaudeQuotaBridgeStatus
 
     /// Pre-resolved API keys (read from ProviderAPIKeyStore on the main actor before dispatch).
     let resolvedAPIKeys: [String: String?]
 }
+
+// All properties are value types (Sendable); no @unchecked needed.
+extension ProviderQuotaAdapterContext: Sendable {}
 
 extension ProviderQuotaAdapter {
     func unavailableSnapshot(

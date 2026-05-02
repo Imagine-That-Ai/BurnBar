@@ -4,11 +4,12 @@ import Foundation
 
 /// FactoryDroidParser extracts token usage from Factory Droid sessions and categorizes
 /// them by the underlying model provider (MiniMax, Z.ai, Claude, etc.)
-final class FactoryDroidParser: LogParser, @unchecked Sendable {
+final class FactoryDroidParser: LogParser, Sendable {
     let provider: AgentProvider = .factory
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
     private let cacheURL: URL
+    private let cacheStore: ParserDiskCacheStore<FactoryDroidCacheEntry>
 
     init(
         fileManager: FileManager = .default,
@@ -17,6 +18,12 @@ final class FactoryDroidParser: LogParser, @unchecked Sendable {
         self.fileManager = fileManager
         self.appPaths = appPaths
         self.cacheURL = appPaths.factoryDroidParserCacheURL
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 2,
+            logLabel: "FactoryDroidParser"
+        )
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
     }
 
@@ -30,7 +37,7 @@ final class FactoryDroidParser: LogParser, @unchecked Sendable {
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
-        var parseCache = loadParseCache()
+        var parseCache = cacheStore.load()
         var activePaths = Set<String>()
         var cacheMutated = false
 
@@ -75,7 +82,7 @@ final class FactoryDroidParser: LogParser, @unchecked Sendable {
                         settingsFile: settingsFile,
                         metadataFile: metadataFile
                     ) {
-                        parseCache.fileEntries[cacheKey] = FactoryDroidCachedSession(
+                        parseCache.fileEntries[cacheKey] = FactoryDroidCacheEntry(
                             signature: signature,
                             usage: parsed?.usage,
                             conversation: parsed?.conversation
@@ -95,7 +102,7 @@ final class FactoryDroidParser: LogParser, @unchecked Sendable {
         }
 
         if cacheMutated {
-            persistParseCache(parseCache)
+            cacheStore.persist(parseCache)
         }
 
         return ParseResult(usages: usages, conversations: conversations)
@@ -330,7 +337,7 @@ final class FactoryDroidParser: LogParser, @unchecked Sendable {
     }
 
     private func appendCached(
-        _ cached: FactoryDroidCachedSession,
+        _ cached: FactoryDroidCacheEntry,
         usages: inout [TokenUsage],
         conversations: inout [ConversationRecord]
     ) {
@@ -356,64 +363,6 @@ final class FactoryDroidParser: LogParser, @unchecked Sendable {
         }
     }
 
-    private func loadParseCache() -> FactoryDroidParserCache {
-        guard fileManager.fileExists(atPath: cacheURL.path) else { return .empty }
-        do {
-            let data = try Data(contentsOf: cacheURL)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let cache = try decoder.decode(FactoryDroidParserCache.self, from: data)
-            guard cache.schemaVersion == FactoryDroidParserCache.empty.schemaVersion else {
-                return .empty
-            }
-            return cache
-        } catch {
-            return .empty
-        }
-    }
-
-    private func persistParseCache(_ cache: FactoryDroidParserCache) {
-        do {
-            if !fileManager.fileExists(atPath: appPaths.supportDirectory.path) {
-                try fileManager.createDirectory(at: appPaths.supportDirectory, withIntermediateDirectories: true)
-            }
-            var persisted = cache
-            persisted.lastUpdatedAt = Date()
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(persisted)
-            try data.write(to: cacheURL, options: .atomic)
-        } catch {
-            AppLogger.parser.silentFailure("FactoryDroidParser: Failed to persist parser cache", error: error)
-        }
-    }
-
-    private func compositeSignature(
-        jsonlFile: URL,
-        settingsFile: URL,
-        metadataFile: URL
-    ) -> FactoryDroidCompositeSignature? {
-        guard let jsonl = fileSignature(for: jsonlFile) else {
-            return nil
-        }
-        let settings = fileSignature(for: settingsFile)
-        let metadata = fileSignature(for: metadataFile)
-        return FactoryDroidCompositeSignature(
-            jsonl: jsonl,
-            settings: settings,
-            metadata: metadata
-        )
-    }
-
-    private func fileSignature(for file: URL) -> FactoryDroidFileSignature? {
-        let values = try? file.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey])
-        guard values?.isRegularFile == true else { return nil }
-        let modifiedAt = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
-        let sizeBytes = Int64(values?.fileSize ?? 0)
-        return FactoryDroidFileSignature(modifiedAt: modifiedAt, sizeBytes: sizeBytes)
-    }
-
     private func detectProviderFromModel(_ model: String) -> AgentProvider {
         let lowercasedModel = model.lowercased()
 
@@ -427,33 +376,20 @@ final class FactoryDroidParser: LogParser, @unchecked Sendable {
 
         return .factory
     }
+    private func compositeSignature(
+        jsonlFile: URL,
+        settingsFile: URL,
+        metadataFile: URL
+    ) -> CompositeFileSignature<FileSignature>? {
+        guard let jsonl = FileSignature(for: jsonlFile) else { return nil }
+        let settings = FileSignature(for: settingsFile)
+        let metadata = FileSignature(for: metadataFile)
+        return CompositeFileSignature(primary: jsonl, settings: settings, metadata: metadata)
+    }
 }
 
-private struct FactoryDroidFileSignature: Codable, Equatable {
-    let modifiedAt: TimeInterval
-    let sizeBytes: Int64
-}
-
-private struct FactoryDroidCompositeSignature: Codable, Equatable {
-    let jsonl: FactoryDroidFileSignature
-    let settings: FactoryDroidFileSignature?
-    let metadata: FactoryDroidFileSignature?
-}
-
-private struct FactoryDroidCachedSession: Codable, Equatable {
-    let signature: FactoryDroidCompositeSignature
+private struct FactoryDroidCacheEntry: Codable, Equatable {
+    let signature: CompositeFileSignature<FileSignature>
     let usage: TokenUsage?
     let conversation: ConversationRecord?
-}
-
-private struct FactoryDroidParserCache: Codable, Equatable {
-    var schemaVersion: Int
-    var fileEntries: [String: FactoryDroidCachedSession]
-    var lastUpdatedAt: Date?
-
-    static let empty = FactoryDroidParserCache(
-        schemaVersion: 2,
-        fileEntries: [:],
-        lastUpdatedAt: nil
-    )
 }

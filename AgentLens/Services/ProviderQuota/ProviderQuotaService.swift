@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OpenBurnBarCore
 
 // MARK: - Quota Service
 
@@ -15,6 +16,7 @@ final class ProviderQuotaService {
         .zai,
         .factory,
         .cursor,
+        .warp,
     ]
 
     private let keyStore: ProviderAPIKeyStore
@@ -30,7 +32,7 @@ final class ProviderQuotaService {
     private let snapshotStore: ProviderQuotaSnapshotStore
     private let bridgeManager: ClaudeQuotaBridgeManager
 
-    private let adapters: [AgentProvider: any ProviderQuotaAdapter]
+    private let quotaRefreshActor: QuotaRefreshActor
 
     private(set) var snapshotsByProvider: [AgentProvider: ProviderQuotaSnapshot] = [:]
     private(set) var errors: [AgentProvider: String] = [:]
@@ -74,14 +76,18 @@ final class ProviderQuotaService {
             snapshotStore: store
         )
 
-        self.adapters = [
-            .codex: CodexQuotaAdapter(),
-            .claudeCode: ClaudeQuotaAdapter(),
-            .minimax: MiniMaxQuotaAdapter(),
-            .zai: ZAIQuotaAdapter(),
-            .factory: FactoryQuotaAdapter(),
-            .cursor: CursorQuotaAdapter(),
-        ]
+        self.quotaRefreshActor = QuotaRefreshActor(
+            settingsManager: settingsManager,
+            keyStore: keyStore,
+            providerRuntimeKeyStore: providerRuntimeKeyStore,
+            appPaths: appPaths,
+            fileManager: fileManager,
+            session: session,
+            environment: environment,
+            homeDirectoryURL: homeDirectoryURL,
+            miniMaxModeProvider: self.miniMaxModeProvider,
+            factoryPlanProvider: self.factoryPlanProvider
+        )
 
         self.claudeBridgeStatus = bridgeManager.refreshClaudeBridgeStatus()
 
@@ -124,8 +130,10 @@ final class ProviderQuotaService {
         errors = [:]
         refreshClaudeBridgeStatus()
 
-        for provider in Self.supportedProviders {
-            await refresh(provider: provider, dataStore: dataStore)
+        activeProviders = Set(Self.supportedProviders)
+        let snapshots = await quotaRefreshActor.fetchAllSnapshots(dataStoreActor: dataStore.actor)
+        for (provider, snapshot) in snapshots {
+            snapshotsByProvider[provider] = snapshot
         }
 
         lastFetch = Date()
@@ -136,9 +144,11 @@ final class ProviderQuotaService {
         guard Self.supportedProviders.contains(provider) else { return }
         activeProviders.insert(provider)
         defer { activeProviders.remove(provider) }
+        let start = Date()
 
         do {
-            let snapshot = try await fetchSnapshotForAdapter(provider: provider, dataStore: dataStore)
+            let context = makeContext(dataStore: dataStore)
+            let snapshot = try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
             snapshotsByProvider[provider] = snapshot
             errors.removeValue(forKey: provider)
             lastFetch = Date()
@@ -146,7 +156,11 @@ final class ProviderQuotaService {
             if provider == .claudeCode {
                 refreshClaudeBridgeStatus()
             }
+            TelemetryService.shared.record(feature: .providerQuotaRefresh, outcome: .success, durationMs: Int(Date().timeIntervalSince(start) * 1000))
+            OpenBurnBarMetrics.counter(name: "quota_refresh_success", labels: ["provider": provider.rawValue])
         } catch {
+            TelemetryService.shared.record(feature: .providerQuotaRefresh, outcome: .failure, durationMs: Int(Date().timeIntervalSince(start) * 1000))
+            OpenBurnBarMetrics.counter(name: "quota_refresh_failure", labels: ["provider": provider.rawValue])
             errors[provider] = error.localizedDescription
             if snapshotsByProvider[provider] == nil {
                 snapshotsByProvider[provider] = ProviderQuotaSnapshot(
@@ -170,18 +184,7 @@ final class ProviderQuotaService {
         case .minimax, .zai:
             let scratchDataStore = try makeScratchDataStore()
             let context = makeContext(dataStore: scratchDataStore, apiKeyOverrides: [provider: apiKeyOverride])
-            guard let adapter = adapters[provider] else {
-                return ProviderQuotaSnapshot(
-                    provider: provider,
-                    fetchedAt: Date(),
-                    source: .unavailable,
-                    confidence: .unavailable,
-                    managementURL: nil,
-                    statusMessage: "Per-plan quota refresh is currently available for MiniMax and Z.ai.",
-                    buckets: []
-                )
-            }
-            return try await adapter.fetch(context: context)
+            return try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
         default:
             return ProviderQuotaSnapshot(
                 provider: provider,
@@ -210,22 +213,6 @@ final class ProviderQuotaService {
     }
 
     // MARK: - Internal
-
-    private func fetchSnapshotForAdapter(provider: AgentProvider, dataStore: DataStore) async throws -> ProviderQuotaSnapshot {
-        guard let adapter = adapters[provider] else {
-            return ProviderQuotaSnapshot(
-                provider: provider,
-                fetchedAt: Date(),
-                source: .unavailable,
-                confidence: .unavailable,
-                managementURL: nil,
-                statusMessage: "Quota reporting is not implemented for \(provider.displayName).",
-                buckets: []
-            )
-        }
-        let context = makeContext(dataStore: dataStore)
-        return try await adapter.fetch(context: context)
-    }
 
     private func makeScratchDataStore() throws -> DataStore {
         let queue = try DatabaseQueue()
@@ -261,7 +248,7 @@ final class ProviderQuotaService {
             session: session,
             environment: environment,
             homeDirectoryURL: homeDirectoryURL,
-            dataStore: dataStore,
+            dataStoreActor: dataStore.actor,
             snapshotStore: snapshotStore,
             bridgeManager: bridgeManager,
             miniMaxModeProvider: miniMaxModeProvider,

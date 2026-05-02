@@ -5,10 +5,10 @@ import OpenBurnBarCore
 // MARK: - UsageStore
 
 /// Token-usage CRUD, sync helpers, refresh reads, and provider/model summary builders.
-final class UsageStore: @unchecked Sendable {
-    private let dbQueue: DatabaseQueue
+final class UsageStore: Sendable {
+    private let dbQueue: any DatabaseWriter
 
-    init(dbQueue: DatabaseQueue) {
+    init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 
@@ -51,7 +51,7 @@ final class UsageStore: @unchecked Sendable {
                         reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
                         usageSource, sourceDeviceId, sourceDeviceName, isRemote, syncedAt,
                         provenanceMethod, provenanceConfidence, estimatorVersion
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, '')) DO UPDATE SET
                         projectName = excluded.projectName,
                         inputTokens = excluded.inputTokens,
@@ -133,7 +133,7 @@ final class UsageStore: @unchecked Sendable {
                     usage.cacheReadTokens, usage.reasoningTokens, usage.totalTokens, usage.cost,
                     usage.startTime, usage.endTime, usage.createdAt,
                     usage.usageSource.rawValue,
-                    usage.sourceDeviceId, usage.sourceDeviceName, Date(),
+                    usage.sourceDeviceId, usage.sourceDeviceName, usage.isRemote, Date(),
                     usage.provenanceMethod.rawValue,
                     usage.provenanceConfidence.rawValue,
                     usage.estimatorVersion
@@ -145,8 +145,16 @@ final class UsageStore: @unchecked Sendable {
     // MARK: - Refresh
 
     func fetchAllUsage() throws -> [TokenUsage] {
+        try fetchRecentUsage(limit: Int.max)
+    }
+
+    func fetchRecentUsage(limit: Int) throws -> [TokenUsage] {
         try dbQueue.read { db -> [TokenUsage] in
-            let rows = try Row.fetchAll(db, sql: "SELECT * FROM token_usage ORDER BY startTime DESC")
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM token_usage ORDER BY startTime DESC LIMIT ?",
+                arguments: [limit]
+            )
             return rows.compactMap { row -> TokenUsage? in
                 guard let idString = row["id"] as? String,
                       let id = UUID(uuidString: idString),

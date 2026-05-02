@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 import OpenBurnBarCore
 
-@MainActor
 protocol ChatSessionSearchProviding {
     func search(query: String) async -> [SearchResult]
 }
@@ -23,7 +22,7 @@ final class ChatSessionController {
     var isStreaming = false
     var streamError: String?
     var chatBackend: ChatBackendID = .codex
-    /// Per-backend `model` selection for the active chat. Empty means defaults (Codex: gpt-5.4-mini, Claude: CLI default, Hermes: automatic from gateway/settings, OpenClaw: gpt-4o-mini).
+    /// Per-backend `model` selection for the active chat. Empty means defaults (Codex: gpt-5.5, Claude: CLI default, Hermes: automatic from gateway/settings, OpenClaw: gpt-4o-mini).
     var chatModelCodex: String = "" {
         didSet { UserDefaults.standard.set(chatModelCodex, forKey: Self.udChatModelCodex) }
     }
@@ -177,7 +176,7 @@ final class ChatSessionController {
         switch backend {
         case .codex:
             let s = chatModelCodex.trimmingCharacters(in: .whitespacesAndNewlines)
-            return s.isEmpty ? CLIBridge.normalizedCodexModel("gpt-5.4-mini") : CLIBridge.normalizedCodexModel(s)
+            return s.isEmpty ? CLIBridge.normalizedCodexModel("gpt-5.5") : CLIBridge.normalizedCodexModel(s)
         case .claude:
             return chatModelClaude.trimmingCharacters(in: .whitespacesAndNewlines)
         case .hermes:
@@ -833,7 +832,7 @@ final class ChatSessionController {
             aggregateSection: aggregateSection
         )
 
-        let basePrompt = ContextBuilder.buildDatabaseAnalystSystemPrompt(
+        let basePrompt = await ContextBuilder.buildDatabaseAnalystSystemPrompt(
             from: dataStore,
             intelligenceService: searchSvc,
             indexingEnabled: settingsManager.conversationIndexingEnabled,
@@ -962,7 +961,7 @@ final class ChatSessionController {
                         let final = self.messages[idx]
                         do {
                             try self.dataStore.saveChatMessage(final, threadID: self.activeThreadID)
-                            self.saveUsageIfNeeded(
+                            await self.saveUsageIfNeeded(
                                 usageSnapshot,
                                 backend: self.chatBackend,
                                 requestModel: requestModel,
@@ -1034,7 +1033,7 @@ final class ChatSessionController {
         responseMessageID: String,
         startedAt: Date,
         endedAt: Date
-    ) {
+    ) async {
         guard let usageSnapshot else { return }
 
         let (provider, projectLabel, model): (AgentProvider, String, String) = {
@@ -1084,7 +1083,7 @@ final class ChatSessionController {
 
         do {
             try dataStore.insert(usage)
-            dataStore.refresh()
+            await dataStore.refresh()
         } catch {
             AppLogger.chat.silentFailure("insert in-app chat usage", error: error)
         }

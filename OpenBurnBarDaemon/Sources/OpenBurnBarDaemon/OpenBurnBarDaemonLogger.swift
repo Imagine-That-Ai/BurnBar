@@ -31,6 +31,13 @@ public struct BurnBarDaemonLogger: Sendable {
         logger.error("\(format(event: event, metadata: metadata), privacy: .public)")
     }
 
+    /// Log a failed operation that was intentionally handled silently.
+    public func silentFailure(_ operation: String, error: Error, context: [String: String] = [:]) {
+        var metadata = context
+        metadata["error"] = String(describing: error)
+        logger.warning("Silent failure: \(format(event: operation, metadata: metadata), privacy: .public)")
+    }
+
     private func format(event: String, metadata: [String: String]) -> String {
         guard !metadata.isEmpty else {
             return "event=\(event)"

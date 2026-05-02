@@ -135,15 +135,15 @@ enum DatabaseWorkspaceSelection: Equatable, Hashable {
 
 // MARK: - Snapshot Builder
 
-@MainActor
 final class DatabaseWorkspaceSnapshotBuilder {
 
+@MainActor
     static func build(
         from dataStore: DataStore,
         settingsManager: SettingsManager,
         accountManager: AccountManager? = nil,
         cloudSyncService: CloudSyncService? = nil
-    ) -> DatabaseWorkspaceSnapshot {
+    ) async -> DatabaseWorkspaceSnapshot {
         var snap = DatabaseWorkspaceSnapshot()
 
         func capture<T>(
@@ -168,6 +168,9 @@ final class DatabaseWorkspaceSnapshotBuilder {
 
         // Corpus
         let usages = dataStore.usages
+        let providerSummaries = dataStore.providerSummaries
+        let modelSummaries = dataStore.modelSummaries(in: nil)
+        let indexingEnabled = settingsManager.conversationIndexingEnabled
         snap.totalSessions = usages.count
         snap.totalCostAllTime = usages.reduce(0) { $0 + $1.cost }
         snap.totalTokensAllTime = usages.reduce(0) { $0 + $1.totalTokens }
@@ -179,11 +182,11 @@ final class DatabaseWorkspaceSnapshotBuilder {
         snap.recentSessions = Array(usages.sorted { $0.startTime > $1.startTime }.prefix(20))
 
         // Provider/model summaries
-        snap.providerSummaries = dataStore.providerSummaries
-        snap.modelSummaries = dataStore.modelSummaries(in: nil)
+        snap.providerSummaries = providerSummaries
+        snap.modelSummaries = modelSummaries
 
         // Indexing
-        snap.indexingEnabled = settingsManager.conversationIndexingEnabled
+        snap.indexingEnabled = indexingEnabled
 
         // Search/index coverage
         capture(metric: .indexedDocuments, context: "document_count", assign: { snap.indexedDocuments = $0 }) {

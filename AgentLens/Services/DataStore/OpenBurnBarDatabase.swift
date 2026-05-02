@@ -5,22 +5,120 @@ import OpenBurnBarCore
 
 // MARK: - Shared Database Spine
 
-/// Owns the shared `DatabaseQueue`, the full ordered migrator (v1–v26), and
-/// shared SQL / date / JSON / row-decoding helpers used by all focused stores.
+/// Owns the shared database writer (DatabasePool in production, DatabaseQueue in tests),
+/// the full ordered migrator (v1–v26), and shared SQL / date / JSON / row-decoding
+/// helpers used by all focused stores.
 ///
-/// Stores receive a `DatabaseQueue` reference; this type additionally provides
+/// Stores receive a `DatabaseWriter` reference; this type additionally provides
 /// a single migration entry-point and shared codecs so that each store file
 /// stays focused on domain SQL.
-final class OpenBurnBarDatabase {
-    let dbQueue: DatabaseQueue
+final class OpenBurnBarDatabase: Sendable {
+    let dbQueue: any DatabaseWriter
 
-    init(databaseQueue: DatabaseQueue) {
+    init(databaseQueue: any DatabaseWriter) {
         self.dbQueue = databaseQueue
     }
 
     /// Run all registered migrations in order.
     func runMigrations() throws {
         try Self.migrator.migrate(dbQueue)
+    }
+
+    // MARK: - Safe Migrations (Integrity Check + Backup)
+
+    enum OpenBurnBarDatabaseError: Error {
+        case integrityCheckFailed(details: String)
+        case backupFailed(underlying: Error)
+    }
+
+    /// Run integrity check, backup, then migrate.
+    /// Skips backup for in-memory databases (tests).
+    func runMigrationsSafely() throws {
+        try runIntegrityCheck()
+        try createBackupIfNeeded()
+        try Self.migrator.migrate(dbQueue)
+    }
+
+    private func runIntegrityCheck() throws {
+        let result = try dbQueue.read { db -> String in
+            try String.fetchOne(db, sql: "PRAGMA integrity_check") ?? "unknown"
+        }
+        guard result == "ok" else {
+            AppLogger.dataStore.error("Database integrity check failed", metadata: ["details": result])
+            throw OpenBurnBarDatabaseError.integrityCheckFailed(details: result)
+        }
+    }
+
+    private var isInMemoryDatabase: Bool {
+        let path = dbQueue.path
+        return path == ":memory:" || path.hasPrefix("file:")
+    }
+
+    private func createBackupIfNeeded() throws {
+        guard !isInMemoryDatabase else { return }
+
+        let dbPath = dbQueue.path
+        let dbURL = URL(fileURLWithPath: dbPath)
+        let supportDir = dbURL.deletingLastPathComponent()
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyyMMdd-HHmmss"
+        let timestamp = dateFormatter.string(from: Date())
+        let backupName = "\(dbURL.lastPathComponent).backup.\(timestamp)"
+        let backupURL = supportDir.appendingPathComponent(backupName)
+
+        // Ensure the database file actually exists before backing up
+        guard FileManager.default.fileExists(atPath: dbPath) else { return }
+
+        let destinationQueue: DatabaseQueue
+        do {
+            destinationQueue = try DatabaseQueue(path: backupURL.path)
+        } catch {
+            AppLogger.dataStore.silentFailure("Database backup: failed to open destination queue", error: error)
+            throw OpenBurnBarDatabaseError.backupFailed(underlying: error)
+        }
+        defer {
+            _ = destinationQueue
+        }
+
+        do {
+            try dbQueue.backup(to: destinationQueue)
+            AppLogger.dataStore.info("Database backup created", metadata: ["path": backupURL.path])
+        } catch {
+            AppLogger.dataStore.silentFailure("Database backup: backup operation failed", error: error)
+            throw OpenBurnBarDatabaseError.backupFailed(underlying: error)
+        }
+
+        pruneOldBackups(in: supportDir, keeping: 5)
+    }
+
+    private func pruneOldBackups(in directory: URL, keeping max: Int) {
+        let fileManager = FileManager.default
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: []
+        ) else { return }
+
+        let backups = contents
+            .filter { $0.lastPathComponent.contains(".backup.") }
+            .compactMap { url -> (url: URL, date: Date)? in
+                guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
+                      let date = values.contentModificationDate else { return nil }
+                return (url, date)
+            }
+            .sorted { $0.date > $1.date }
+
+        guard backups.count > max else { return }
+
+        for item in backups[max...] {
+            do {
+                try fileManager.removeItem(at: item.url)
+                AppLogger.dataStore.info("Pruned old database backup", metadata: ["path": item.url.path])
+            } catch {
+                AppLogger.dataStore.silentFailure("Prune old database backup failed", error: error)
+            }
+        }
     }
 
     // MARK: - Migrator
@@ -956,6 +1054,34 @@ final class OpenBurnBarDatabase {
                 index: "backfill_cursors_provider_idx",
                 on: "backfill_cursors",
                 columns: ["provider"]
+            )
+        }
+
+        migrator.registerMigration("v34_vector_index_snapshots") { db in
+            try db.create(table: "vector_index_snapshots") { t in
+                t.column("embeddingVersionID", .text)
+                    .notNull()
+                    .references("embedding_versions", column: "id", onDelete: .cascade)
+                t.column("backendID", .text).notNull()
+                t.column("state", .text).notNull()
+                t.column("fingerprint", .text).notNull()
+                t.column("dimensions", .integer).notNull()
+                t.column("distanceMetric", .text).notNull()
+                t.column("vectorCount", .integer).notNull().defaults(to: 0)
+                t.column("storageRelativePath", .text)
+                t.column("fileBytes", .integer).notNull().defaults(to: 0)
+                t.column("backendVersion", .text).notNull()
+                t.column("errorCode", .text)
+                t.column("errorMessage", .text)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+                t.column("lastBuiltAt", .datetime)
+                t.primaryKey(["embeddingVersionID", "backendID"])
+            }
+            try db.create(
+                index: "vector_index_snapshots_state_idx",
+                on: "vector_index_snapshots",
+                columns: ["state", "updatedAt"]
             )
         }
 

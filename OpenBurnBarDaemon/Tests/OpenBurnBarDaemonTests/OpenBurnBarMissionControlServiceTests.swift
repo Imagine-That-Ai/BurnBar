@@ -4277,14 +4277,11 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         )
 
         // Track execution order
-        final class TestSchedulerDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
-            var order: [BurnBarDAGNodeID] = []
-            let lock = NSLock()
+        final class TestSchedulerDispatch: Sendable, BurnBarDAGSchedulerDispatch {
+            let order = Locked<[BurnBarDAGNodeID]>([])
 
             func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {
-                lock.lock()
-                order.append(nodeID)
-                lock.unlock()
+                order.withLock { $0.append(nodeID) }
             }
 
             func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
@@ -4354,9 +4351,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertTrue(finalState.runningNodes.isEmpty, "No nodes should be running")
 
         // Verify execution order matches dependency order
-        testDispatch.lock.lock()
-        let order = testDispatch.order
-        testDispatch.lock.unlock()
+        let order = testDispatch.order.read()
         XCTAssertEqual(order, [nodeAID, nodeBID, nodeCID], "Nodes should execute in dependency order")
     }
 
@@ -4380,14 +4375,11 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             edges: []
         )
 
-        final class ConcurrentTestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
-            var scheduledNodes: [BurnBarDAGNodeID] = []
-            let lock = NSLock()
+        final class ConcurrentTestDispatch: Sendable, BurnBarDAGSchedulerDispatch {
+            let scheduledNodes = Locked<[BurnBarDAGNodeID]>([])
 
             func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {
-                lock.lock()
-                scheduledNodes.append(nodeID)
-                lock.unlock()
+                scheduledNodes.withLock { $0.append(nodeID) }
             }
 
             func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
@@ -4416,9 +4408,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertTrue(state.runningNodes.contains(nodeCID), "Node C should be running")
 
         // VAL-EXEC-009: With maxConcurrency=3, all nodes should be scheduled
-        testDispatch.lock.lock()
-        let scheduled = testDispatch.scheduledNodes
-        testDispatch.lock.unlock()
+        let scheduled = testDispatch.scheduledNodes.read()
         XCTAssertEqual(
             scheduled.count, 3,
             "All 3 independent nodes should be scheduled concurrently with maxConcurrency=3"
@@ -4444,7 +4434,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             edges: []
         )
 
-        final class RejectTestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+        final class RejectTestDispatch: Sendable, BurnBarDAGSchedulerDispatch {
             func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
             func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
             func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
@@ -4548,7 +4538,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             edges: []
         )
 
-        final class RejectFailDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+        final class RejectFailDispatch: Sendable, BurnBarDAGSchedulerDispatch {
             func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
             func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
             func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
@@ -4613,7 +4603,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             edges: []
         )
 
-        final class RegisterTestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+        final class RegisterTestDispatch: Sendable, BurnBarDAGSchedulerDispatch {
             func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
             func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
             func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
@@ -4703,7 +4693,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             edges: []
         )
 
-        final class CriticalPathTestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+        final class CriticalPathTestDispatch: Sendable, BurnBarDAGSchedulerDispatch {
             func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
             func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
             func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
@@ -4762,7 +4752,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             edges: []
         )
 
-        final class UpdateCPTestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+        final class UpdateCPTestDispatch: Sendable, BurnBarDAGSchedulerDispatch {
             func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
             func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
             func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
@@ -4844,7 +4834,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             edges: []
         )
 
-        final class TestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+        final class TestDispatch: Sendable, BurnBarDAGSchedulerDispatch {
             func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
             func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
             func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
@@ -4922,7 +4912,7 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             edges: []
         )
 
-        final class TestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+        final class TestDispatch: Sendable, BurnBarDAGSchedulerDispatch {
             func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
             func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
             func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
@@ -4976,14 +4966,14 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
             edges: []
         )
 
-        final class TestDispatch: @unchecked Sendable, BurnBarDAGSchedulerDispatch {
+        final class TestDispatch: Sendable, BurnBarDAGSchedulerDispatch {
             func schedulerDidScheduleNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, prompt: String, metadata: [String: BurnBarJSONValue]) async {}
             func schedulerDidCompleteNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, result: String) async {}
             func schedulerDidFailNode(_ nodeID: BurnBarDAGNodeID, missionID: BurnBarMissionID, error: String) async {}
         }
 
         // Custom metrics provider that prefers node A
-        final class CustomMetricsProvider: @unchecked Sendable, BurnBarDAGReconcilerMetricsProvider {
+        final class CustomMetricsProvider: Sendable, BurnBarDAGReconcilerMetricsProvider {
             func metrics(for nodeID: BurnBarDAGNodeID) -> BurnBarDAGNodeOutcomeMetrics? {
                 if nodeID.rawValue == "high-quality-a" {
                     return BurnBarDAGNodeOutcomeMetrics(
@@ -5604,12 +5594,12 @@ private actor ReviewLauncherRecorder {
     struct Launch: Sendable {
         let prompt: String
         let modelID: String
-        let metadata: [String: BurnBarJSONValue]
+        let metadata: BurnBarRunCreateMetadata
     }
 
     private(set) var launches: [Launch] = []
 
-    func record(prompt: String, modelID: String, metadata: [String: BurnBarJSONValue]) {
+    func record(prompt: String, modelID: String, metadata: BurnBarRunCreateMetadata) {
         launches.append(Launch(prompt: prompt, modelID: modelID, metadata: metadata))
     }
 }

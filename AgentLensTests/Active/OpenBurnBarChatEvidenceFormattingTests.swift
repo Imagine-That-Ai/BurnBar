@@ -4,13 +4,13 @@ import OpenBurnBarCore
 @testable import OpenBurnBar
 final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
 
-    func test_emptyResults_showsPlaceholder() {
+    func test_emptyResults_showsPlaceholder() throws {
         let s = OpenBurnBarChatEvidenceFormatting.formatPack(results: [], maxTotalChars: 2_000)
         XCTAssertTrue(s.contains("## Retrieved evidence"))
         XCTAssertTrue(s.contains("No matching indexed excerpts"))
     }
 
-    func test_dedupesSecondChunkFromSameConversation() {
+    func test_dedupesSecondChunkFromSameConversation() throws {
         let now = Date()
         let conv = ConversationRecord(
             id: "cursor:abc",
@@ -80,7 +80,7 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
         XCTAssertFalse(s.contains("`ch2`"))
     }
 
-    func test_truncatesToMaxChars() {
+    func test_truncatesToMaxChars() throws {
         let now = Date()
         let longSnippet = String(repeating: "x", count: 500)
         var results: [RetrievalResult] = []
@@ -115,9 +115,9 @@ final class OpenBurnBarChatEvidenceFormattingTests: XCTestCase {
     }
 
     @MainActor
-    func test_memorySyncBoundary_isExplicitlyLocalFirst() {
-        let queue = try! DatabaseQueue()
-        let store = try! DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+    func test_memorySyncBoundary_isExplicitlyLocalFirst() throws {
+        let queue = try DatabaseQueue()
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let boundary = CloudSyncService(
             dataStore: store,
             accountManager: AccountManager.shared,

@@ -50,8 +50,8 @@ struct BackfillCursorRecord: Codable, FetchableRecord, PersistableRecord {
 /// - Cursor advances ONLY after successful backfill batch commit (VAL-PERSIST-004 analog)
 /// - Cursor progresses monotonically - never moves backward (VAL-PERSIST-007)
 /// - 7-day windows are strictly bounded - each run processes at most 7 days (VAL-PERSIST-006)
-final class BackfillCursorStore {
-    private let dbQueue: DatabaseQueue
+final class BackfillCursorStore: Sendable {
+    private let dbQueue: any DatabaseWriter
 
     /// The maximum duration of a single backfill window in seconds (7 days).
     static let backfillWindowSeconds: TimeInterval = 7 * 24 * 60 * 60
@@ -63,7 +63,7 @@ final class BackfillCursorStore {
     /// granularity used to ensure equal timestamps survive persistence round-trips.
     static let storagePrecisionSeconds: TimeInterval = 0.001
 
-    init(dbQueue: DatabaseQueue) {
+    init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 

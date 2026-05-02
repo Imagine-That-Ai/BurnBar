@@ -21,6 +21,45 @@ protocol CloudSyncDomain: AnyObject {
     func sync() async
 }
 
+@MainActor
+protocol CloudSyncing: AnyObject {
+    var isSyncing: Bool { get }
+    var lastSyncDate: Date? { get }
+    var lastSyncError: String? { get }
+    var cloudTotalCost: Double? { get }
+    var lastCollaborationNotice: SharedArtifactCollaborationNotice? { get }
+
+    func uploadPending() async
+    func uploadPendingConversations() async
+    func uploadPendingChatThreads() async
+    func uploadPendingSessionLogs() async
+    func syncSharedArtifacts(maxRemoteArtifacts: Int) async
+    func downloadRemoteData(uid: String?) async
+    func updateLocalDeviceName(_ name: String) async
+    func fetchCloudTotal(uid: String?) async
+    func fetchCloudSessionLogs(limit: Int) async throws -> [ConversationRecord]
+    func fetchCloudSessionLogBody(docId: String) async throws -> String
+    func memorySyncBoundarySnapshot() -> OpenBurnBarMemorySyncBoundarySnapshot
+}
+
+extension CloudSyncing {
+    func syncSharedArtifacts() async {
+        await syncSharedArtifacts(maxRemoteArtifacts: 200)
+    }
+
+    func downloadRemoteData() async {
+        await downloadRemoteData(uid: nil)
+    }
+
+    func fetchCloudTotal() async {
+        await fetchCloudTotal(uid: nil)
+    }
+
+    func fetchCloudSessionLogs() async throws -> [ConversationRecord] {
+        try await fetchCloudSessionLogs(limit: 200)
+    }
+}
+
 // MARK: - Shared Sync State
 
 /// Shared backoff policy used across all sync domains.
@@ -43,11 +82,17 @@ struct SharedArtifactSyncReport: Equatable, Sendable {
 @MainActor
 final class CloudSyncContext {
     let dataStore: DataStore
-    let accountManager: AccountManager
-    let settingsManager: SettingsManager
+    let accountManager: any AccountManaging
+    let settingsManager: any SettingsManagerProtocol
 
-    /// Firestore instance, guarded by Firebase availability checks.
-    var db: Firestore { Firestore.firestore() }
+    /// Shared circuit breaker for Firestore network calls.
+    let circuitBreaker: CloudSyncCircuitBreaker
+
+    /// Shared retry policy for transient Firestore failures.
+    let retryPolicy = CloudSyncRetryPolicy()
+
+    /// Injectable Firestore gateway. Defaults to live Firestore in production.
+    let firestoreGateway: CloudSyncFirestoreGateway
 
     /// Shared backoff suppression date.
     var suppressedSyncUntil: Date?
@@ -55,7 +100,7 @@ final class CloudSyncContext {
     /// Computed Firebase UID, nil if unavailable.
     var currentUID: String? {
         guard accountManager.isFirebaseAvailable, accountManager.isSignedIn else { return nil }
-        return Auth.auth().currentUser?.uid
+        return accountManager.currentUID
     }
 
     /// Computed device ID.
@@ -73,12 +118,16 @@ final class CloudSyncContext {
 
     init(
         dataStore: DataStore,
-        accountManager: AccountManager,
-        settingsManager: SettingsManager
+        accountManager: any AccountManaging,
+        settingsManager: any SettingsManagerProtocol,
+        firestoreGateway: CloudSyncFirestoreGateway = CloudSyncFirestoreLiveGateway(),
+        circuitBreaker: CloudSyncCircuitBreaker = CloudSyncCircuitBreaker()
     ) {
         self.dataStore = dataStore
         self.accountManager = accountManager
         self.settingsManager = settingsManager
+        self.firestoreGateway = firestoreGateway
+        self.circuitBreaker = circuitBreaker
     }
 }
 

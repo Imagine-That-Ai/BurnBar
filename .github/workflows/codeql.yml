@@ -1,9 +1,13 @@
 name: CodeQL
 
-# Daily CodeQL scan + on every push/PR. Replaces GitHub's default CodeQL setup
-# (which only runs weekly). To activate this workflow, switch the repo's
-# code-scanning configuration from "Default setup" to "Advanced setup" in
-# Settings → Code security → Code scanning → CodeQL analysis.
+# Daily CodeQL scan + on every push/PR. Covers:
+#   - Swift (AgentLens, OpenBurnBarDaemon, OpenBurnBarCore) — security + correctness
+#   - JavaScript/TypeScript (VS Code extension)
+#   - Python (CI helpers, build scripts)
+#
+# Swift is built with xcodebuild before analysis to ensure full symbol resolution.
+# To activate this workflow, switch the repo's code-scanning configuration from
+# "Default setup" to "Advanced setup" in Settings → Code security → Code scanning.
 #
 # Copilot Autofix runs automatically on the resulting alerts when enabled in
 # the same settings page; it proposes fix commits you can land via a single
@@ -31,21 +35,35 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ubuntu-latest
+    # Swift requires xcodebuild → macOS runner. JS/TS and Python don't need
+    # macOS, but the matrix-level runner is set per-job to keep the matrix
+    # simple. Per-language overrides handled below via `runs-on: ${{ matrix.runner }}`.
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Swift coverage: the app, daemon, and core frameworks.
+          # autobuild is sufficient for security queries; we use manual xcodebuild
+          # for more complete symbol resolution.
+          - language: swift
+            build-mode: manual
+            runner: macos-15
           - language: javascript-typescript
             build-mode: none
+            runner: ubuntu-latest
           - language: python
             build-mode: none
+            runner: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # init must run BEFORE the manual Swift build so CodeQL's tracer
+      # observes the compiler invocations. Without this, the database
+      # finalizer reports "no source seen" and fails with exit 32.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
@@ -55,6 +73,22 @@ jobs:
           # quality/lint noise that security-and-quality adds (unused-var,
           # dead-store, etc.). Those are handled by eslint in the PR harness.
           queries: security-extended
+
+      # Swift build — resolves packages and compiles all targets so CodeQL
+      # can trace the compiler. Runs after init (so CodeQL hooks the build)
+      # and only on the swift matrix entry. Disable code signing because
+      # macOS-15 GitHub runners don't have signing identities.
+      - name: Build Swift (CodeQL)
+        if: matrix.language == 'swift'
+        run: |
+          xcodebuild -project OpenBurnBar.xcodeproj \
+            -scheme OpenBurnBar \
+            -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath .codeql-derived-data \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3

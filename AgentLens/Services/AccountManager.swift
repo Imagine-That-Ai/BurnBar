@@ -54,7 +54,7 @@ final class AccountManager {
 
     // MARK: - Init
 
-    private init() {
+    init() {
         deviceId = Self.loadOrCreateDeviceId()
         configureFirebase()
     }

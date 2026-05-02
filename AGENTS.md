@@ -23,7 +23,7 @@ Time is not an excuse. Fatigue is not an excuse. Complexity is not an excuse. **
 ## Working in this repo
 
 - **Search the codebase** before adding new types, parsers, or UI; extend what exists unless the task explicitly requires greenfield work.
-- **Tests:** add or update tests in the active `AgentLensTests` / `OpenBurnBarDaemon` test targets for behavior changes; parked tests under `AgentLensTests/Parked/` are not compiled by default — see [`AgentLensTests/README.md`](AgentLensTests/README.md).
+- **Tests:** add or update tests in the active `AgentLensTests` / `OpenBurnBarDaemon` test targets for behavior changes; long-lived stale suites belong under `AgentLensTests/Quarantine/` and are not compiled by default — see [`AgentLensTests/README.md`](AgentLensTests/README.md).
 - **Docs:** user-facing or architectural changes belong in `docs/` and, when appropriate, [`CHANGELOG.md`](CHANGELOG.md) — follow existing doc voice and cross-links in [`README.md`](README.md).
 - **Scope:** every line in a change should serve the request; avoid drive-by refactors and unrelated files.
 

@@ -5,7 +5,7 @@ import Foundation
 /// Fetches usage data from the Anthropic Admin API.
 /// Requires an Admin API key (sk-ant-admin...).
 /// Endpoint: GET /v1/organizations/usage_report/messages
-final class AnthropicUsageAPI: ProviderUsageAPI, @unchecked Sendable {
+final class AnthropicUsageAPI: ProviderUsageAPI, Sendable {
     let providerName = "Anthropic"
     let authMethod: ProviderAuthMethod = .apiKey
 

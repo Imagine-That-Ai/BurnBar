@@ -4,7 +4,7 @@ import Foundation
 
 /// Shared parser for Cline-family VS Code extensions (Cline, Kilo Code, Roo Code).
 /// All three use the same `tasks/*/api_conversation_history.json` format.
-final class ClineFormatParser: LogParser, @unchecked Sendable {
+final class ClineFormatParser: LogParser, Sendable {
     let provider: AgentProvider
     private let storagePaths: [String]
 

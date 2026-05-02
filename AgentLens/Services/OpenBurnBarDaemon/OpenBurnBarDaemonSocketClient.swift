@@ -845,6 +845,7 @@ enum OpenBurnBarDaemonSocketClient {
             &noSigPipe,
             socklen_t(MemoryLayout<Int32>.size)
         )
+        configureIOTimeouts(for: fileDescriptor)
 
         var address = try socketAddress(for: socketURL.path)
         let connectResult = withUnsafePointer(to: &address) { pointer in
@@ -893,6 +894,24 @@ enum OpenBurnBarDaemonSocketClient {
         }
 
         return try JSONDecoder().decode(BurnBarRPCResponseEnvelope<Response>.self, from: response)
+    }
+
+    private static func configureIOTimeouts(for fileDescriptor: Int32, seconds: Int = 30) {
+        var timeout = timeval(tv_sec: seconds, tv_usec: 0)
+        setsockopt(
+            fileDescriptor,
+            SOL_SOCKET,
+            SO_RCVTIMEO,
+            &timeout,
+            socklen_t(MemoryLayout<timeval>.size)
+        )
+        setsockopt(
+            fileDescriptor,
+            SOL_SOCKET,
+            SO_SNDTIMEO,
+            &timeout,
+            socklen_t(MemoryLayout<timeval>.size)
+        )
     }
 
     private static func socketAddress(for socketPath: String) throws -> sockaddr_un {

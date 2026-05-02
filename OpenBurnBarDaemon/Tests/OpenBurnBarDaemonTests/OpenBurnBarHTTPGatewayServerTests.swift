@@ -121,6 +121,35 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(authorizedResponse.statusCode, 200)
     }
 
+    func testGatewayRateLimitingReturns429() async throws {
+        let harness = try GatewayHarness(
+            authToken: "gateway-secret",
+            rateLimit: BurnBarRateLimitConfiguration(requestsPerSecond: 1, burstCapacity: 1)
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        // First request should be allowed
+        let (allowedResponse, _) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/health",
+            headers: ["Authorization": "Bearer gateway-secret"]
+        )
+        XCTAssertEqual(allowedResponse.statusCode, 200)
+
+        // Second immediate request should be rate limited
+        let (throttledResponse, throttledBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/health",
+            headers: ["Authorization": "Bearer gateway-secret"]
+        )
+        XCTAssertEqual(throttledResponse.statusCode, 429)
+        XCTAssertTrue(String(decoding: throttledBody, as: UTF8.self).contains("rate limit exceeded"))
+        XCTAssertNotNil(throttledResponse.value(forHTTPHeaderField: "Retry-After"))
+    }
+
     private func sendGatewayRequest(
         port: Int,
         method: String,
@@ -227,7 +256,7 @@ private final class GatewayHarness {
     let port: Int
     private let server: BurnBarHTTPGatewayServer
 
-    init(authToken: String? = nil) throws {
+    init(authToken: String? = nil, rateLimit: BurnBarRateLimitConfiguration? = nil) throws {
         self.port = try Self.reservePort()
 
         let tempDirectory = FileManager.default.temporaryDirectory
@@ -246,7 +275,8 @@ private final class GatewayHarness {
                 isEnabled: true,
                 host: "127.0.0.1",
                 port: port,
-                authToken: authToken
+                authToken: authToken,
+                rateLimit: rateLimit
             ),
             configStore: configStore,
             logger: BurnBarDaemonLogger(category: "gateway-tests")

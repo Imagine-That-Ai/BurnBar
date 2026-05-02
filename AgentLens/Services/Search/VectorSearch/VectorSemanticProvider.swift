@@ -1,15 +1,10 @@
 import Foundation
 import OpenBurnBarCore
 
-// MARK: - Semantic Candidate
-
-/// A candidate from semantic search with its relevance score.
 struct SemanticCandidate: Sendable {
     let chunkID: String
     let score: Double
 }
-
-// MARK: - Performance Metrics
 
 private struct SemanticQueryPerformanceMetrics: Codable {
     let queryEmbeddingLatencyMs: Double?
@@ -31,6 +26,10 @@ private struct SemanticRetrievalHealthDetails: Codable {
     let candidateCount: Int
     let fallbackToExact: Bool
     let exactRerankEnabled: Bool
+    let snapshotState: String?
+    let snapshotFileBytes: Int64?
+    let snapshotBuiltAt: Date?
+    let snapshotBackendVersion: String?
     let queryEmbeddingLatencyMs: Double?
     let indexRefreshLatencyMs: Double?
     let candidateGenerationLatencyMs: Double?
@@ -40,11 +39,19 @@ private struct SemanticRetrievalHealthDetails: Codable {
     let totalQueryLatencyMs: Double?
 }
 
-// MARK: - Vector Semantic Candidate Provider
+private extension EmbeddingDistanceMetric {
+    var burnBarCoreMetric: BurnBarEmbeddingDistanceMetric {
+        switch self {
+        case .cosine:
+            return .cosine
+        case .dotProduct:
+            return .dotProduct
+        case .euclidean:
+            return .euclidean
+        }
+    }
+}
 
-/// Provider that uses vector similarity for semantic search.
-/// Manages ANN/exact backends and handles embedding resolution.
-@MainActor
 final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
     private struct ActiveEmbeddingSelection {
         let model: EmbeddingModelRecord
@@ -58,6 +65,13 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
         var fallbackExactLatencyMs: Double?
     }
 
+    private struct SnapshotContext {
+        let embeddingVersionID: String
+        let fingerprint: String
+        let snapshot: BurnBarPersistentVectorIndexSnapshot?
+        let snapshotRecord: VectorIndexSnapshotRecord?
+    }
+
     private let dataStore: DataStore
     private let queryEmbedder: QueryEmbeddingProviding
     private let configuredEmbeddingVersionID: String?
@@ -65,15 +79,20 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
     private let exactRerankEnabled: Bool
     private let exactRerankLimit: Int
     private let nowProvider: () -> Date
-    private let annBackend: SignpostANNVectorCandidateBackend
-    private let exactBackend: ExactVectorCandidateBackend
+    private let storageRootURL: URL
+    private let storageNamespace: String
+    private let snapshotBackend: any BurnBarPersistentVectorIndexBackend
+    private let snapshotPageSize: Int
 
-    private var vectorsByChunkID: [String: [Float]] = [:]
-    private var indexFingerprint: String?
+    private var snapshotContext: SnapshotContext?
     private var indexedEmbeddingVersionID: String?
     private var indexedDistanceMetric: EmbeddingDistanceMetric = .cosine
     private var indexedVectorCount = 0
     private var indexedDimensions = 0
+    private var lastSnapshotState: VectorIndexSnapshotState?
+    private var lastSnapshotFileBytes: Int64?
+    private var lastSnapshotBuiltAt: Date?
+    private var lastSnapshotBackendVersion: String?
     private(set) var lastHealthWriteError: String?
 
     init(
@@ -83,8 +102,11 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
         backend: VectorBackendKind = .ann,
         exactRerankEnabled: Bool = true,
         exactRerankLimit: Int = 320,
-        annCandidateMultiplier: Int = 6,
-        nowProvider: @escaping () -> Date = Date.init
+        nowProvider: @escaping () -> Date = Date.init,
+        storageRootURL: URL = OpenBurnBarAppPaths.live().vectorIndexesRootURL,
+        storageNamespace: String = "app",
+        snapshotBackend: any BurnBarPersistentVectorIndexBackend = BurnBarPersistentVectorIndexFactory.defaultBackend(),
+        snapshotPageSize: Int = 1_000
     ) {
         self.dataStore = dataStore
         self.queryEmbedder = queryEmbedder
@@ -93,8 +115,10 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
         self.exactRerankEnabled = exactRerankEnabled
         self.exactRerankLimit = max(1, min(exactRerankLimit, 5_000))
         self.nowProvider = nowProvider
-        self.annBackend = SignpostANNVectorCandidateBackend(candidateMultiplier: annCandidateMultiplier)
-        self.exactBackend = ExactVectorCandidateBackend()
+        self.storageRootURL = storageRootURL
+        self.storageNamespace = storageNamespace
+        self.snapshotBackend = snapshotBackend
+        self.snapshotPageSize = max(1, snapshotPageSize)
     }
 
     func semanticCandidates(for query: String, filters _: RetrievalFilters, limit: Int) async throws -> [SemanticCandidate] {
@@ -199,7 +223,7 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
                 candidateCount: semanticCandidates.count,
                 fallbackUsed: fallbackUsed,
                 errorCode: fallbackUsed ? "SEMANTIC_ANN_FALLBACK_TO_EXACT" : nil,
-                errorMessage: fallbackUsed ? "ANN candidate generation failed; exact fallback path served the query." : nil,
+                errorMessage: fallbackUsed ? "Persistent ANN snapshot was unavailable; streaming exact fallback served the query." : nil,
                 performanceMetrics: SemanticQueryPerformanceMetrics(
                     queryEmbeddingLatencyMs: queryEmbeddingLatencyMs,
                     indexRefreshLatencyMs: indexRefreshLatencyMs,
@@ -269,48 +293,70 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
 
     private func gatherCandidates(queryVector: [Float], limit: Int) throws -> ([VectorIndexCandidate], Bool, CandidateGatherMetrics) {
         let boundedLimit = min(limit, indexedVectorCount)
+        guard boundedLimit > 0 else { return ([], false, CandidateGatherMetrics()) }
+
         var metrics = CandidateGatherMetrics()
         switch backend {
         case .exact:
-            let exactStartedAt = OpenBurnBarPerformanceTimer.now()
-            let candidates = try exactBackend.candidates(for: queryVector, limit: boundedLimit)
-            metrics.candidateGenerationLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: exactStartedAt)
+            let startedAt = OpenBurnBarPerformanceTimer.now()
+            let candidates = try streamingExactCandidates(queryVector: queryVector, limit: boundedLimit)
+            let elapsed = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: startedAt)
+            metrics.fallbackExactLatencyMs = elapsed
+            metrics.candidateGenerationLatencyMs = elapsed
             return (candidates, false, metrics)
+
         case .ann:
-            let annStartedAt = OpenBurnBarPerformanceTimer.now()
-            do {
+            if let snapshot = snapshotContext?.snapshot {
+                let annStartedAt = OpenBurnBarPerformanceTimer.now()
                 let candidateLimit = min(indexedVectorCount, max(boundedLimit, exactRerankEnabled ? exactRerankLimit : boundedLimit))
-                let annCandidates = try annBackend.candidates(for: queryVector, limit: candidateLimit)
+                let annCandidates = try snapshot.candidates(for: queryVector, limit: candidateLimit).map {
+                    VectorIndexCandidate(chunkID: $0.chunkID, score: $0.score)
+                }
                 let annLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: annStartedAt)
                 metrics.annCandidateGenerationLatencyMs = annLatencyMs
                 metrics.candidateGenerationLatencyMs = annLatencyMs
+
                 if exactRerankEnabled {
                     let rerankStartedAt = OpenBurnBarPerformanceTimer.now()
-                    let reranked = exactRerank(candidates: annCandidates, queryVector: queryVector, limit: boundedLimit)
+                    let reranked = try exactRerank(
+                        candidates: annCandidates,
+                        queryVector: queryVector,
+                        limit: boundedLimit
+                    )
                     metrics.exactRerankLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: rerankStartedAt)
+                    metrics.candidateGenerationLatencyMs = annLatencyMs + (metrics.exactRerankLatencyMs ?? 0)
                     return (reranked, false, metrics)
                 }
+
                 return (Array(annCandidates.prefix(boundedLimit)), false, metrics)
-            } catch {
-                let annLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: annStartedAt)
-                metrics.annCandidateGenerationLatencyMs = annLatencyMs
-                let fallbackStartedAt = OpenBurnBarPerformanceTimer.now()
-                let fallbackCandidates = try exactBackend.candidates(for: queryVector, limit: boundedLimit)
-                let fallbackLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: fallbackStartedAt)
-                metrics.fallbackExactLatencyMs = fallbackLatencyMs
-                metrics.candidateGenerationLatencyMs = annLatencyMs + fallbackLatencyMs
-                return (fallbackCandidates, true, metrics)
             }
+
+            let fallbackStartedAt = OpenBurnBarPerformanceTimer.now()
+            let fallback = try streamingExactCandidates(queryVector: queryVector, limit: boundedLimit)
+            let fallbackLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: fallbackStartedAt)
+            metrics.fallbackExactLatencyMs = fallbackLatencyMs
+            metrics.candidateGenerationLatencyMs = fallbackLatencyMs
+            return (fallback, true, metrics)
         }
     }
 
-    private func exactRerank(candidates: [VectorIndexCandidate], queryVector: [Float], limit: Int) -> [VectorIndexCandidate] {
-        guard candidates.isEmpty == false else { return [] }
+    private func exactRerank(
+        candidates: [VectorIndexCandidate],
+        queryVector: [Float],
+        limit: Int
+    ) throws -> [VectorIndexCandidate] {
+        guard let embeddingVersionID = indexedEmbeddingVersionID, candidates.isEmpty == false else { return [] }
+        let chunkIDs = candidates.map(\.chunkID)
+        let embeddings = try dataStore.fetchChunkEmbeddings(chunkIDs: chunkIDs, embeddingVersionID: embeddingVersionID)
+        let vectorByChunkID = Dictionary(uniqueKeysWithValues: embeddings.compactMap { embedding in
+            VectorBlobCodec.decode(embedding.vectorBlob).map { (embedding.chunkID, $0) }
+        })
+
         var reranked: [VectorIndexCandidate] = []
         reranked.reserveCapacity(candidates.count)
 
         for candidate in candidates {
-            guard let vector = vectorsByChunkID[candidate.chunkID] else { continue }
+            guard let vector = vectorByChunkID[candidate.chunkID] else { continue }
             let exactScore = VectorMath.similarity(lhs: queryVector, rhs: vector, metric: indexedDistanceMetric)
             guard exactScore.isFinite else { continue }
             reranked.append(VectorIndexCandidate(chunkID: candidate.chunkID, score: exactScore))
@@ -322,10 +368,44 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
             }
             return $0.score > $1.score
         }
-        if reranked.count > limit {
-            return Array(reranked.prefix(limit))
+        return Array(reranked.prefix(limit))
+    }
+
+    private func streamingExactCandidates(queryVector: [Float], limit: Int) throws -> [VectorIndexCandidate] {
+        guard let embeddingVersionID = indexedEmbeddingVersionID else { return [] }
+
+        var best: [VectorIndexCandidate] = []
+        best.reserveCapacity(limit)
+        var offset = 0
+
+        while true {
+            let page = try dataStore.fetchChunkEmbeddings(
+                embeddingVersionID: embeddingVersionID,
+                limit: snapshotPageSize,
+                offset: offset
+            )
+            guard page.isEmpty == false else { break }
+
+            for record in page {
+                guard let vector = VectorBlobCodec.decode(record.vectorBlob) else { continue }
+                let score = VectorMath.similarity(lhs: queryVector, rhs: vector, metric: indexedDistanceMetric)
+                guard score.isFinite else { continue }
+                let candidate = VectorIndexCandidate(chunkID: record.chunkID, score: score)
+                if best.count < limit {
+                    best.append(candidate)
+                    best.sort(by: candidateSort)
+                } else if let last = best.last, candidateSort(candidate, last) {
+                    best.removeLast()
+                    best.append(candidate)
+                    best.sort(by: candidateSort)
+                }
+            }
+
+            offset += page.count
+            if page.count < snapshotPageSize { break }
         }
-        return reranked
+
+        return best
     }
 
     private func refreshIndexIfNeeded(queryDimensions: Int) async throws {
@@ -334,64 +414,242 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
             return
         }
 
-        let embeddings = try dataStore.fetchChunkEmbeddings(embeddingVersionID: selection.version.id)
-        let sortedEmbeddings = embeddings.sorted {
-            if $0.chunkID == $1.chunkID {
-                return $0.updatedAt < $1.updatedAt
-            }
-            return $0.chunkID < $1.chunkID
-        }
-        let newestEmbeddingEpoch = sortedEmbeddings.map(\.updatedAt.timeIntervalSince1970).max() ?? 0
+        let stats = try dataStore.chunkEmbeddingVersionStats(embeddingVersionID: selection.version.id)
+        let newestEmbeddingEpoch = Int(stats.newestUpdatedAt?.timeIntervalSince1970 ?? 0)
         let fingerprint = [
             selection.version.id,
             selection.model.distanceMetric.rawValue,
             String(selection.model.dimensions),
-            String(sortedEmbeddings.count),
-            String(Int(newestEmbeddingEpoch))
+            String(stats.vectorCount),
+            String(newestEmbeddingEpoch)
         ].joined(separator: "|")
 
-        if fingerprint == indexFingerprint,
-           indexedDimensions == selection.model.dimensions,
-           indexedEmbeddingVersionID == selection.version.id {
-            if indexedDimensions != queryDimensions {
-                throw VectorIndexBackendError.dimensionMismatch(expected: indexedDimensions, actual: queryDimensions)
-            }
-            return
-        }
-
-        var entries: [VectorIndexEntry] = []
-        entries.reserveCapacity(sortedEmbeddings.count)
-        var vectors: [String: [Float]] = [:]
-        vectors.reserveCapacity(sortedEmbeddings.count)
-
-        for embedding in sortedEmbeddings {
-            guard let vector = VectorBlobCodec.decode(embedding.vectorBlob) else { continue }
-            guard vector.count == selection.model.dimensions else { continue }
-            entries.append(VectorIndexEntry(chunkID: embedding.chunkID, vector: vector))
-            vectors[embedding.chunkID] = vector
-        }
-
-        guard entries.isEmpty == false else {
-            resetIndex()
-            indexedEmbeddingVersionID = selection.version.id
-            indexedDistanceMetric = selection.model.distanceMetric
-            indexedDimensions = selection.model.dimensions
-            return
-        }
-
-        try annBackend.rebuild(entries: entries, distanceMetric: selection.model.distanceMetric)
-        try exactBackend.rebuild(entries: entries, distanceMetric: selection.model.distanceMetric)
-
-        vectorsByChunkID = vectors
-        indexFingerprint = fingerprint
         indexedEmbeddingVersionID = selection.version.id
         indexedDistanceMetric = selection.model.distanceMetric
-        indexedVectorCount = entries.count
+        indexedVectorCount = stats.vectorCount
         indexedDimensions = selection.model.dimensions
 
-        if indexedDimensions != queryDimensions {
+        if queryDimensions != indexedDimensions {
             throw VectorIndexBackendError.dimensionMismatch(expected: indexedDimensions, actual: queryDimensions)
         }
+
+        if stats.vectorCount == 0 {
+            snapshotContext = SnapshotContext(
+                embeddingVersionID: selection.version.id,
+                fingerprint: fingerprint,
+                snapshot: nil,
+                snapshotRecord: nil
+            )
+            lastSnapshotState = nil
+            lastSnapshotFileBytes = nil
+            lastSnapshotBuiltAt = nil
+            lastSnapshotBackendVersion = nil
+            return
+        }
+
+        if let snapshotContext,
+           snapshotContext.embeddingVersionID == selection.version.id,
+           snapshotContext.fingerprint == fingerprint {
+            syncSnapshotMetadata(from: snapshotContext.snapshotRecord)
+            return
+        }
+
+        let record = try dataStore.fetchVectorIndexSnapshot(
+            embeddingVersionID: selection.version.id,
+            backendID: snapshotBackend.backendID
+        )
+
+        if let record,
+           record.state == .ready,
+           record.fingerprint == fingerprint,
+           let snapshot = try loadSnapshotIfPresent(from: record) {
+            snapshotContext = SnapshotContext(
+                embeddingVersionID: selection.version.id,
+                fingerprint: fingerprint,
+                snapshot: snapshot,
+                snapshotRecord: record
+            )
+            syncSnapshotMetadata(from: record)
+            return
+        }
+
+        let builtRecord = try rebuildSnapshot(selection: selection, fingerprint: fingerprint, existingRecord: record)
+        let builtSnapshot = try loadSnapshotIfPresent(from: builtRecord)
+        snapshotContext = SnapshotContext(
+            embeddingVersionID: selection.version.id,
+            fingerprint: fingerprint,
+            snapshot: builtSnapshot,
+            snapshotRecord: builtRecord
+        )
+        syncSnapshotMetadata(from: builtRecord)
+    }
+
+    private func rebuildSnapshot(
+        selection: ActiveEmbeddingSelection,
+        fingerprint: String,
+        existingRecord: VectorIndexSnapshotRecord?
+    ) throws -> VectorIndexSnapshotRecord {
+        let builtAt = nowProvider()
+        let generation = UUID().uuidString
+        let databasePrefix = storageNamespace.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "app" : storageNamespace
+        let relativeParent = "\(databasePrefix)/\(selection.version.id)/\(snapshotBackend.backendID)"
+        let finalRelativePath = "\(relativeParent)/\(generation)"
+        let tempRelativePath = "\(relativeParent)/tmp-\(generation)"
+        let tempFiles = BurnBarPersistentVectorIndexFiles(
+            directoryURL: storageRootURL.appendingPathComponent(tempRelativePath, isDirectory: true)
+        )
+        let finalFiles = BurnBarPersistentVectorIndexFiles(
+            directoryURL: storageRootURL.appendingPathComponent(finalRelativePath, isDirectory: true)
+        )
+
+        let buildingRecord = VectorIndexSnapshotRecord(
+            embeddingVersionID: selection.version.id,
+            backendID: snapshotBackend.backendID,
+            state: .building,
+            fingerprint: fingerprint,
+            dimensions: selection.model.dimensions,
+            distanceMetric: selection.model.distanceMetric,
+            vectorCount: indexedVectorCount,
+            storageRelativePath: existingRecord?.storageRelativePath,
+            fileBytes: existingRecord?.fileBytes ?? 0,
+            backendVersion: snapshotBackend.backendVersion,
+            errorCode: nil,
+            errorMessage: nil,
+            createdAt: existingRecord?.createdAt ?? builtAt,
+            updatedAt: builtAt,
+            lastBuiltAt: existingRecord?.lastBuiltAt
+        )
+        try dataStore.upsertVectorIndexSnapshot(buildingRecord)
+
+        let fileManager = FileManager.default
+        try? fileManager.removeItem(at: tempFiles.directoryURL)
+        try fileManager.createDirectory(at: tempFiles.directoryURL, withIntermediateDirectories: true, attributes: nil)
+
+        do {
+            let chunkIDs = try allChunkIDs(for: selection.version.id)
+            let keyByChunkID = try BurnBarPersistentVectorIndexKeyCodec.makeMapping(chunkIDs: chunkIDs)
+            let writer = try snapshotBackend.makeWritable(
+                dimensions: selection.model.dimensions,
+                distanceMetric: selection.model.distanceMetric.burnBarCoreMetric
+            )
+            try writer.reserve(indexedVectorCount)
+
+            var offset = 0
+            while true {
+                let page = try dataStore.fetchChunkEmbeddings(
+                    embeddingVersionID: selection.version.id,
+                    limit: snapshotPageSize,
+                    offset: offset
+                )
+                guard page.isEmpty == false else { break }
+
+                for record in page {
+                    guard
+                        let key = keyByChunkID[record.chunkID],
+                        let vector = VectorBlobCodec.decode(record.vectorBlob),
+                        vector.count == selection.model.dimensions
+                    else { continue }
+                    try writer.add(key: key, vector: vector)
+                }
+
+                offset += page.count
+                if page.count < snapshotPageSize { break }
+            }
+
+            try writer.save(to: tempFiles.indexURL)
+            let manifest = BurnBarPersistentVectorIndexManifest(
+                backendID: snapshotBackend.backendID,
+                backendVersion: snapshotBackend.backendVersion,
+                embeddingVersionID: selection.version.id,
+                fingerprint: fingerprint,
+                dimensions: selection.model.dimensions,
+                distanceMetric: selection.model.distanceMetric.burnBarCoreMetric,
+                vectorCount: indexedVectorCount,
+                builtAt: builtAt
+            )
+            try BurnBarPersistentVectorIndexSnapshotIO.writeManifest(manifest, to: tempFiles.manifestURL)
+            try BurnBarPersistentVectorIndexSnapshotIO.writeKeyMapping(keyByChunkID, to: tempFiles.keyMappingURL)
+
+            try fileManager.createDirectory(
+                at: finalFiles.directoryURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+            try? fileManager.removeItem(at: finalFiles.directoryURL)
+            try fileManager.moveItem(at: tempFiles.directoryURL, to: finalFiles.directoryURL)
+
+            let readyRecord = VectorIndexSnapshotRecord(
+                embeddingVersionID: selection.version.id,
+                backendID: snapshotBackend.backendID,
+                state: .ready,
+                fingerprint: fingerprint,
+                dimensions: selection.model.dimensions,
+                distanceMetric: selection.model.distanceMetric,
+                vectorCount: indexedVectorCount,
+                storageRelativePath: finalRelativePath,
+                fileBytes: BurnBarPersistentVectorIndexSnapshotIO.fileByteCount(at: finalFiles.indexURL),
+                backendVersion: snapshotBackend.backendVersion,
+                errorCode: nil,
+                errorMessage: nil,
+                createdAt: existingRecord?.createdAt ?? builtAt,
+                updatedAt: builtAt,
+                lastBuiltAt: builtAt
+            )
+            try dataStore.upsertVectorIndexSnapshot(readyRecord)
+
+            if let previousPath = existingRecord?.storageRelativePath, previousPath != finalRelativePath {
+                try? fileManager.removeItem(at: storageRootURL.appendingPathComponent(previousPath, isDirectory: true))
+            }
+
+            return readyRecord
+        } catch {
+            try? fileManager.removeItem(at: tempFiles.directoryURL)
+            let failedRecord = VectorIndexSnapshotRecord(
+                embeddingVersionID: selection.version.id,
+                backendID: snapshotBackend.backendID,
+                state: .failed,
+                fingerprint: fingerprint,
+                dimensions: selection.model.dimensions,
+                distanceMetric: selection.model.distanceMetric,
+                vectorCount: indexedVectorCount,
+                storageRelativePath: existingRecord?.storageRelativePath,
+                fileBytes: existingRecord?.fileBytes ?? 0,
+                backendVersion: snapshotBackend.backendVersion,
+                errorCode: "VECTOR_SNAPSHOT_BUILD_FAILED",
+                errorMessage: error.localizedDescription,
+                createdAt: existingRecord?.createdAt ?? builtAt,
+                updatedAt: builtAt,
+                lastBuiltAt: existingRecord?.lastBuiltAt
+            )
+            try dataStore.upsertVectorIndexSnapshot(failedRecord)
+            throw error
+        }
+    }
+
+    private func allChunkIDs(for embeddingVersionID: String) throws -> [String] {
+        var result: [String] = []
+        var offset = 0
+        while true {
+            let page = try dataStore.fetchChunkEmbeddings(
+                embeddingVersionID: embeddingVersionID,
+                limit: snapshotPageSize,
+                offset: offset
+            )
+            guard page.isEmpty == false else { break }
+            result.append(contentsOf: page.map(\.chunkID))
+            offset += page.count
+            if page.count < snapshotPageSize { break }
+        }
+        return result
+    }
+
+    private func loadSnapshotIfPresent(from record: VectorIndexSnapshotRecord) throws -> BurnBarPersistentVectorIndexSnapshot? {
+        guard let relativePath = record.storageRelativePath, relativePath.isEmpty == false else { return nil }
+        let files = BurnBarPersistentVectorIndexFiles(
+            directoryURL: storageRootURL.appendingPathComponent(relativePath, isDirectory: true)
+        )
+        guard FileManager.default.fileExists(atPath: files.indexURL.path) else { return nil }
+        return try BurnBarPersistentVectorIndexSnapshot.open(files: files, backend: snapshotBackend)
     }
 
     private func resolveEmbeddingSelection() async throws -> ActiveEmbeddingSelection? {
@@ -407,6 +665,7 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
         } else {
             selectedVersion = versions.first(where: \.isActive) ?? versions.first
         }
+
         guard let version = selectedVersion, let model = modelByID[version.modelID] else {
             return nil
         }
@@ -414,12 +673,22 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
     }
 
     private func resetIndex() {
-        vectorsByChunkID = [:]
-        indexFingerprint = nil
+        snapshotContext = nil
         indexedEmbeddingVersionID = nil
         indexedDistanceMetric = .cosine
         indexedVectorCount = 0
         indexedDimensions = 0
+        lastSnapshotState = nil
+        lastSnapshotFileBytes = nil
+        lastSnapshotBuiltAt = nil
+        lastSnapshotBackendVersion = nil
+    }
+
+    private func syncSnapshotMetadata(from record: VectorIndexSnapshotRecord?) {
+        lastSnapshotState = record?.state
+        lastSnapshotFileBytes = record?.fileBytes
+        lastSnapshotBuiltAt = record?.lastBuiltAt
+        lastSnapshotBackendVersion = record?.backendVersion
     }
 
     private func upsertSemanticHealth(
@@ -445,6 +714,10 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
             candidateCount: candidateCount,
             fallbackToExact: fallbackUsed,
             exactRerankEnabled: exactRerankEnabled,
+            snapshotState: lastSnapshotState?.rawValue,
+            snapshotFileBytes: lastSnapshotFileBytes,
+            snapshotBuiltAt: lastSnapshotBuiltAt,
+            snapshotBackendVersion: lastSnapshotBackendVersion,
             queryEmbeddingLatencyMs: performanceMetrics?.queryEmbeddingLatencyMs,
             indexRefreshLatencyMs: performanceMetrics?.indexRefreshLatencyMs,
             candidateGenerationLatencyMs: performanceMetrics?.candidateGenerationLatencyMs,
@@ -466,5 +739,12 @@ final class VectorSemanticCandidateProvider: SemanticCandidateProviding {
                 updatedAt: now
             )
         )
+    }
+
+    private func candidateSort(_ lhs: VectorIndexCandidate, _ rhs: VectorIndexCandidate) -> Bool {
+        if lhs.score == rhs.score {
+            return lhs.chunkID < rhs.chunkID
+        }
+        return lhs.score > rhs.score
     }
 }
