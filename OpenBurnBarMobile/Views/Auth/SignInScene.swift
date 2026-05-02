@@ -21,6 +21,13 @@ struct SignInScene: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
     @State private var appeared = false
+    @State private var email = ""
+    @State private var password = ""
+    @FocusState private var focusedField: EmailField?
+
+    private enum EmailField {
+        case email, password
+    }
 
     var body: some View {
         ZStack {
@@ -28,35 +35,46 @@ struct SignInScene: View {
                           reduceTransparency: reduceTransparency)
                 .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                Spacer(minLength: 24)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 24)
 
-                EmberLogo(reduceMotion: reduceMotion,
-                          reduceTransparency: reduceTransparency)
-                    .frame(maxWidth: 220)
-                    .frame(height: 168)
-                    .padding(.bottom, MobileTheme.Spacing.xl)
+                    EmberLogo(reduceMotion: reduceMotion,
+                              reduceTransparency: reduceTransparency)
+                        .frame(maxWidth: 184)
+                        .frame(height: 132)
+                        .padding(.bottom, MobileTheme.Spacing.lg)
 
-                wordmark
-                    .padding(.bottom, MobileTheme.Spacing.sm)
+                    wordmark
+                        .padding(.bottom, MobileTheme.Spacing.sm)
 
-                tagline
-                    .padding(.bottom, MobileTheme.Spacing.xxl)
+                    tagline
+                        .padding(.bottom, MobileTheme.Spacing.lg)
 
-                providerButtons
-                    .padding(.horizontal, MobileTheme.Spacing.xl)
-
-                if let err = authStore.lastError {
-                    errorBanner(err)
+                    emailAccountOptions
                         .padding(.horizontal, MobileTheme.Spacing.xl)
-                        .padding(.top, MobileTheme.Spacing.lg)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.bottom, MobileTheme.Spacing.md)
+
+                    authDivider
+                        .padding(.horizontal, MobileTheme.Spacing.xl)
+                        .padding(.vertical, MobileTheme.Spacing.md)
+
+                    providerButtons
+                        .padding(.horizontal, MobileTheme.Spacing.xl)
+
+                    if let err = authStore.lastError {
+                        errorBanner(err)
+                            .padding(.horizontal, MobileTheme.Spacing.xl)
+                            .padding(.top, MobileTheme.Spacing.lg)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+
+                    Spacer(minLength: 42)
+
+                    privacyFooter
+                        .padding(.bottom, MobileTheme.Spacing.lg)
                 }
-
-                Spacer(minLength: 24)
-
-                privacyFooter
-                    .padding(.bottom, MobileTheme.Spacing.lg)
+                .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, MobileTheme.Spacing.lg)
             .opacity(appeared ? 1 : 0)
@@ -97,7 +115,7 @@ struct SignInScene: View {
     @ViewBuilder
     private var providerButtons: some View {
         VStack(spacing: MobileTheme.Spacing.md) {
-            ForEach(authStore.availableProviders, id: \.self) { provider in
+            ForEach(authStore.availableProviders.filter { $0 != .email }, id: \.self) { provider in
                 providerButton(for: provider)
                     .accessibilityIdentifier("signIn.\(provider.rawValue)")
                     .opacity(otherSignInRunning(notMatching: provider) ? 0.6 : 1.0)
@@ -110,6 +128,8 @@ struct SignInScene: View {
     @ViewBuilder
     private func providerButton(for provider: MobileAuthProviderID) -> some View {
         switch provider {
+        case .email:
+            EmptyView()
         case .apple:
             // Apple's SwiftUI button handles HIG, dark mode, localization,
             // and VoiceOver out of the box — never hand-roll this control.
@@ -154,6 +174,87 @@ struct SignInScene: View {
             .accessibilityHint(authStore.state.inFlightProvider == .google
                                ? "Signing in"
                                : "Continues sign in with your Google account")
+        }
+    }
+
+    private var emailAccountOptions: some View {
+        VStack(spacing: MobileTheme.Spacing.sm) {
+            VStack(spacing: MobileTheme.Spacing.sm) {
+                TextField("Email", text: $email)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
+                    .submitLabel(.next)
+                    .focused($focusedField, equals: .email)
+                    .onSubmit { focusedField = .password }
+                    .modifier(AuthTextFieldChrome())
+
+                SecureField("Password", text: $password)
+                    .textContentType(.password)
+                    .submitLabel(.go)
+                    .focused($focusedField, equals: .password)
+                    .onSubmit { createEmailAccount() }
+                    .modifier(AuthTextFieldChrome())
+            }
+
+            Button {
+                createEmailAccount()
+            } label: {
+                EmailButtonLabel(
+                    title: "Create account with email",
+                    systemImage: "envelope.fill",
+                    isLoading: authStore.state.inFlightProvider == .email
+                )
+            }
+            .buttonStyle(EmberPressButtonStyle(reduceMotion: reduceMotion,
+                                              reduceTransparency: reduceTransparency))
+            .disabled(emailActionsDisabled)
+            .opacity(emailActionsDisabled ? 0.62 : 1)
+            .accessibilityIdentifier("signIn.email.create")
+
+            Button {
+                signInWithEmail()
+            } label: {
+                Text("Sign in with email")
+                    .font(.system(.footnote, design: .rounded).weight(.semibold))
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .frame(maxWidth: .infinity, minHeight: 34)
+            }
+            .disabled(emailActionsDisabled)
+            .accessibilityIdentifier("signIn.email.existing")
+        }
+    }
+
+    private var authDivider: some View {
+        HStack(spacing: MobileTheme.Spacing.md) {
+            Rectangle()
+                .fill(MobileTheme.Colors.border)
+                .frame(height: 1)
+            Text("or")
+                .font(.system(.caption, design: .rounded).weight(.medium))
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+            Rectangle()
+                .fill(MobileTheme.Colors.border)
+                .frame(height: 1)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var emailActionsDisabled: Bool {
+        authStore.state.inFlightProvider != nil
+            || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || password.isEmpty
+    }
+
+    private func createEmailAccount() {
+        Task {
+            await authStore.createEmailAccount(email: email, password: password)
+        }
+    }
+
+    private func signInWithEmail() {
+        Task {
+            await authStore.signInWithEmail(email: email, password: password)
         }
     }
 
@@ -385,8 +486,12 @@ private struct GoogleButtonLabel: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            GoogleGGlyph()
-                .frame(width: 22, height: 22)
+            Image("GoogleLogo")
+                .resizable()
+                .renderingMode(.original)
+                .scaledToFit()
+                .frame(width: 24, height: 24)
+                .accessibilityHidden(true)
             Text("Continue with Google")
                 .font(.system(.body, design: .rounded).weight(.semibold))
             Spacer(minLength: 0)
@@ -398,6 +503,55 @@ private struct GoogleButtonLabel: View {
             }
         }
         .padding(.vertical, 16)
+        .padding(.horizontal, 18)
+        .frame(maxWidth: .infinity, minHeight: 52)
+        .foregroundStyle(MobileTheme.Colors.textPrimary)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Email Controls
+
+private struct AuthTextFieldChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .font(.system(.body, design: .rounded).weight(.medium))
+            .foregroundStyle(MobileTheme.Colors.textPrimary)
+            .tint(MobileTheme.amber)
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .frame(minHeight: 50)
+            .background(MobileTheme.Colors.surfaceElevated)
+            .clipShape(RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
+                    .stroke(MobileTheme.Colors.border, lineWidth: 1)
+            )
+    }
+}
+
+private struct EmailButtonLabel: View {
+    let title: String
+    let systemImage: String
+    let isLoading: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(.body, design: .rounded).weight(.semibold))
+                .frame(width: 24, height: 24)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.system(.body, design: .rounded).weight(.semibold))
+            Spacer(minLength: 0)
+            if isLoading {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .controlSize(.small)
+                    .tint(MobileTheme.Colors.textSecondary)
+            }
+        }
+        .padding(.vertical, 15)
         .padding(.horizontal, 18)
         .frame(maxWidth: .infinity, minHeight: 52)
         .foregroundStyle(MobileTheme.Colors.textPrimary)
@@ -435,41 +589,6 @@ private struct EmberPressButtonStyle: ButtonStyle {
                 reduceMotion ? .none : .spring(response: 0.25, dampingFraction: 0.8),
                 value: configuration.isPressed
             )
-    }
-}
-
-// MARK: - GoogleGGlyph
-
-/// Simplified four-color Google "G" glyph drawn with SwiftUI shapes so we
-/// don't have to ship a brand asset. Visual only — `accessibilityHidden`
-/// because the parent button already labels itself "Continue with Google".
-private struct GoogleGGlyph: View {
-    var body: some View {
-        ZStack {
-            Circle()
-                .trim(from: 0.00, to: 0.25)
-                .stroke(Color(red: 0.95, green: 0.26, blue: 0.21), lineWidth: 4)
-                .rotationEffect(.degrees(-90))
-            Circle()
-                .trim(from: 0.25, to: 0.50)
-                .stroke(Color(red: 0.98, green: 0.74, blue: 0.02), lineWidth: 4)
-                .rotationEffect(.degrees(-90))
-            Circle()
-                .trim(from: 0.50, to: 0.75)
-                .stroke(Color(red: 0.13, green: 0.69, blue: 0.30), lineWidth: 4)
-                .rotationEffect(.degrees(-90))
-            Circle()
-                .trim(from: 0.75, to: 1.00)
-                .stroke(Color(red: 0.26, green: 0.52, blue: 0.96), lineWidth: 4)
-                .rotationEffect(.degrees(-90))
-
-            Rectangle()
-                .fill(Color(red: 0.26, green: 0.52, blue: 0.96))
-                .frame(width: 9, height: 4)
-                .offset(x: 4, y: 0)
-        }
-        .frame(width: 22, height: 22)
-        .accessibilityHidden(true)
     }
 }
 
@@ -555,6 +674,12 @@ private final class PreviewAuthGateway: AuthGateway {
         if provider == throwsOn {
             throw CloudGatewayError.classified(.networkUnavailable)
         }
+    }
+    func createEmailAccount(email: String, password: String) async throws {
+        try await signIn(provider: .email)
+    }
+    func signInWithEmail(email: String, password: String) async throws {
+        try await signIn(provider: .email)
     }
     func signOut() throws {}
 }

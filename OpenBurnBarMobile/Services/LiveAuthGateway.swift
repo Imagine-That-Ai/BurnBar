@@ -37,6 +37,7 @@ final class LiveAuthGateway: NSObject, AuthGateway {
 
     func signIn(provider: MobileAuthProviderID) async throws {
         switch provider {
+        case .email: throw CloudGatewayError.classified(.other(message: "Use email sign-in from the email form."))
         case .apple: try await signInWithApple()
         case .google: try await signInWithGoogle()
         }
@@ -50,6 +51,7 @@ final class LiveAuthGateway: NSObject, AuthGateway {
     // MARK: - Apple
 
     private func signInWithApple() async throws {
+        try validateFirebaseBundle()
         let nonce = randomNonceString(); currentNonce = nonce
         let request = ASAuthorizationAppleIDProvider().createRequest()
         request.requestedScopes = [.fullName, .email]
@@ -68,9 +70,14 @@ final class LiveAuthGateway: NSObject, AuthGateway {
     // MARK: - Google
 
     private func signInWithGoogle() async throws {
+        try validateFirebaseBundle()
+        guard let clientID = googleClientID else {
+            throw CloudGatewayError.classified(.other(message: "Google sign-in is missing its iOS client ID."))
+        }
         guard let root = rootVC else {
             throw CloudGatewayError.classified(.firebaseUnavailable)
         }
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
         return try await withCheckedThrowingContinuation { cont in
             GIDSignIn.sharedInstance.signIn(withPresenting: root) { result, error in
                 if let error {
@@ -96,14 +103,63 @@ final class LiveAuthGateway: NSObject, AuthGateway {
         }
     }
 
+    // MARK: - Email
+
+    func createEmailAccount(email: String, password: String) async throws {
+        try validateFirebaseBundle()
+        try validateEmailCredentials(email: email, password: password)
+        try await Auth.auth().createUser(withEmail: email.trimmedEmail, password: password)
+    }
+
+    func signInWithEmail(email: String, password: String) async throws {
+        try validateFirebaseBundle()
+        try validateEmailCredentials(email: email, password: password)
+        try await Auth.auth().signIn(withEmail: email.trimmedEmail, password: password)
+    }
+
     private func auth(_ cred: AuthCredential) async throws {
         if let u = Auth.auth().currentUser, u.isAnonymous { try await u.link(with: cred); return }
         try await Auth.auth().signIn(with: cred)
     }
 
     private var rootVC: UIViewController? {
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return nil }
-        return scene.windows.first?.rootViewController
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let activeScene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        return activeScene?.windows.first { $0.isKeyWindow }?.rootViewController
+            ?? activeScene?.windows.first?.rootViewController
+    }
+
+    private var googleClientID: String? {
+        FirebaseApp.app()?.options.clientID
+            ?? firebasePlistValue("CLIENT_ID")
+    }
+
+    private func firebasePlistValue(_ key: String) -> String? {
+        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+              let values = NSDictionary(contentsOfFile: path) as? [String: Any] else {
+            return nil
+        }
+        return values[key] as? String
+    }
+
+    private func validateFirebaseBundle() throws {
+        guard let options = FirebaseApp.app()?.options else {
+            throw CloudGatewayError.classified(.firebaseUnavailable)
+        }
+        guard let runtimeBundleID = Bundle.main.bundleIdentifier,
+              options.bundleID != runtimeBundleID else {
+            return
+        }
+        throw CloudGatewayError.classified(.other(message: "This Firebase app is registered for \(options.bundleID), but this build is \(Bundle.main.bundleIdentifier ?? "unknown")."))
+    }
+
+    private func validateEmailCredentials(email: String, password: String) throws {
+        guard email.trimmedEmail.contains("@") else {
+            throw CloudGatewayError.classified(.other(message: "Enter a valid email address."))
+        }
+        guard password.count >= 8 else {
+            throw CloudGatewayError.classified(.other(message: "Use at least 8 characters for your password."))
+        }
     }
 
     private static func identity(from user: User?) -> MobileAuthIdentity? {
@@ -120,6 +176,12 @@ final class LiveAuthGateway: NSObject, AuthGateway {
 
     private func sha256(_ s: String) -> String {
         Data(SHA256.hash(data: Data(s.utf8))).compactMap { String(format: "%02x", $0) }.joined()
+    }
+}
+
+private extension String {
+    var trimmedEmail: String {
+        trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

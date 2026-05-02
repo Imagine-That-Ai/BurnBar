@@ -80,6 +80,10 @@ targets:
           - "**/Services/ProjectionPipeline/ProjectionPipelineService*.swift"
           - Services/Search/SearchService*.swift
           - "**/Services/Search/SearchService*.swift"
+          # Local provider-usage drafts are not part of generated projects
+          # until their owning implementation lands.
+          - Services/ProviderUsageAPI/OllamaUsageProbe.swift
+          - "**/Services/ProviderUsageAPI/OllamaUsageProbe.swift"
           # Local Chat UI shim that duplicates types still declared by the main
           # chat surface. Keep it out until the owning refactor lands.
           - Views/Chat/ChatEngineUIStubs.swift
@@ -250,7 +254,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarMobile
-        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.ios
+        PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.app
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         # Apple sign-in + iOS Keychain access group; see
@@ -265,6 +269,12 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
     info:
       path: OpenBurnBarMobile/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: com.burnbar.app.google-sign-in
+            CFBundleURLSchemes:
+              - com.googleusercontent.apps.246956661961-k53p0e4oln229kmmed459fm6i8i5vtoo
     dependencies:
       - package: OpenBurnBarCore
         product: OpenBurnBarCore

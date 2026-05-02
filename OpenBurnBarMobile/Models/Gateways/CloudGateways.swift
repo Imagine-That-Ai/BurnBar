@@ -4,7 +4,7 @@ import OpenBurnBarCore
 // MARK: - Auth
 
 public enum MobileAuthProviderID: String, Sendable, Equatable, CaseIterable {
-    case apple, google
+    case email, apple, google
 }
 
 public struct MobileAuthIdentity: Sendable, Equatable {
@@ -28,6 +28,8 @@ public protocol AuthGateway: AnyObject {
     var currentIdentity: MobileAuthIdentity? { get }
     func observe(onChange: @escaping @MainActor (MobileAuthIdentity?) -> Void)
     func signIn(provider: MobileAuthProviderID) async throws
+    func createEmailAccount(email: String, password: String) async throws
+    func signInWithEmail(email: String, password: String) async throws
     func signOut() throws
 }
 

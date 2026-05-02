@@ -63,6 +63,22 @@ final class AuthStore {
         catch { lastError = .other(message: error.localizedDescription); state = .signedOut }
     }
 
+    func createEmailAccount(email: String, password: String) async {
+        guard gateway.isFirebaseAvailable else { state = .firebaseUnavailable; return }
+        state = .signingIn(provider: .email); lastError = nil
+        do { try await gateway.createEmailAccount(email: email, password: password) }
+        catch let CloudGatewayError.classified(c) { lastError = c; state = .signedOut }
+        catch { lastError = .other(message: error.localizedDescription); state = .signedOut }
+    }
+
+    func signInWithEmail(email: String, password: String) async {
+        guard gateway.isFirebaseAvailable else { state = .firebaseUnavailable; return }
+        state = .signingIn(provider: .email); lastError = nil
+        do { try await gateway.signInWithEmail(email: email, password: password) }
+        catch let CloudGatewayError.classified(c) { lastError = c; state = .signedOut }
+        catch { lastError = .other(message: error.localizedDescription); state = .signedOut }
+    }
+
     func signOut() {
         do { try gateway.signOut(); state = .signedOut; lastError = nil }
         catch let CloudGatewayError.classified(c) { lastError = c }

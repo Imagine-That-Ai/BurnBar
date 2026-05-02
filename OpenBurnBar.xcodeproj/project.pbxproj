@@ -3642,7 +3642,7 @@
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_55EE6E83-325E-41ED-BD87-3002313F5B6F" /* OpenBurnBarCore */;
+			productRef = "TEMP_899FA5DF-28AD-46FF-BF07-A44B0AD6D27E" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -3734,7 +3734,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.openburnbar.app.ios;
+				PRODUCT_BUNDLE_IDENTIFIER = com.burnbar.app;
 				PRODUCT_NAME = OpenBurnBarMobile;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -3998,7 +3998,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.openburnbar.app.ios;
+				PRODUCT_BUNDLE_IDENTIFIER = com.burnbar.app;
 				PRODUCT_NAME = OpenBurnBarMobile;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -4304,7 +4304,7 @@
 			package = F7ED8DA2789DCAFECCAE84D3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAppCheck;
 		};
-		"TEMP_55EE6E83-325E-41ED-BD87-3002313F5B6F" /* OpenBurnBarCore */ = {
+		"TEMP_899FA5DF-28AD-46FF-BF07-A44B0AD6D27E" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};
