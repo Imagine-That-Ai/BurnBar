@@ -389,15 +389,17 @@ jobs:
         run: |
           CHECKSUMS_FILE="$RUNNER_TEMP/checksums-v${VERSION}.txt"
 
-          echo "# OpenBurnBar v${VERSION} release checksums" > "$CHECKSUMS_FILE"
-          echo "# Generated at $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$CHECKSUMS_FILE"
-          echo "# Commit: $(git rev-parse HEAD)" >> "$CHECKSUMS_FILE"
-          echo "" >> "$CHECKSUMS_FILE"
-
-          sha256sum "$DMG_PATH" >> "$CHECKSUMS_FILE"
-          sha512sum "$DMG_PATH" >> "$CHECKSUMS_FILE"
-          sha256sum "$ZIP_PATH" >> "$CHECKSUMS_FILE"
-          sha512sum "$ZIP_PATH" >> "$CHECKSUMS_FILE"
+          # Group writes (SC2129) so we open the output file once.
+          {
+            echo "# OpenBurnBar v${VERSION} release checksums"
+            echo "# Generated at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "# Commit: $(git rev-parse HEAD)"
+            echo ""
+            sha256sum "$DMG_PATH"
+            sha512sum "$DMG_PATH"
+            sha256sum "$ZIP_PATH"
+            sha512sum "$ZIP_PATH"
+          } > "$CHECKSUMS_FILE"
 
           cat "$CHECKSUMS_FILE"
 
@@ -539,7 +541,8 @@ jobs:
 
           # Check the daemon Unix socket exists and is reachable
           DAEMON_SOCKET="$HOME/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock"
-          for i in {1..10}; do
+          # shellcheck disable=SC2034 # i is the canonical loop counter even though unused.
+          for _ in {1..10}; do
             if [[ -S "$DAEMON_SOCKET" ]]; then
               break
             fi
@@ -623,11 +626,12 @@ jobs:
           DMG_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.dmg_name }}
           ZIP_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.zip_name }}
         run: |
-          # Checksums, SBOM, and metadata are also downloaded via merge-multiple
-          CHECKSUMS_PATH=$(ls "$RUNNER_TEMP"/checksums-v${VERSION}*.txt 2>/dev/null | head -1)
-          SBOM_PATH=$(ls "$RUNNER_TEMP"/*.spdx.json 2>/dev/null | head -1)
-          METADATA_PATH=$(ls "$RUNNER_TEMP"/release-metadata.json 2>/dev/null | head -1)
-          SIG_PATH=$(ls "$RUNNER_TEMP"/*.asc 2>/dev/null | head -1)
+          # Checksums, SBOM, and metadata are also downloaded via merge-multiple.
+          # `find -print -quit` is shellcheck-clean (SC2012) and quoted to handle spaces (SC2086).
+          CHECKSUMS_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "checksums-v${VERSION}*.txt" -print -quit 2>/dev/null)
+          SBOM_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.spdx.json" -print -quit 2>/dev/null)
+          METADATA_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "release-metadata.json" -print -quit 2>/dev/null)
+          SIG_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.asc" -print -quit 2>/dev/null)
 
           ASSETS=("$DMG_PATH" "$ZIP_PATH")
           for asset in "${ASSETS[@]}"; do

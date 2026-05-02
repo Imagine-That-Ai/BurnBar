@@ -42,17 +42,19 @@ jobs:
         env:
           INPUT_PR: ${{ github.event.inputs.pr_number }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
-            echo "ref=${{ github.event.pull_request.head.ref }}" >> "$GITHUB_OUTPUT"
+            printf 'number=%s\n' "${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+            printf 'ref=%s\n' "${PR_HEAD_REF}" >> "$GITHUB_OUTPUT"
           elif [[ -n "${INPUT_PR:-}" ]]; then
-            echo "number=${INPUT_PR}" >> "$GITHUB_OUTPUT"
+            printf 'number=%s\n' "${INPUT_PR}" >> "$GITHUB_OUTPUT"
             ref=$(gh pr view "$INPUT_PR" --json headRefName --jq .headRefName)
-            echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+            printf 'ref=%s\n' "${ref}" >> "$GITHUB_OUTPUT"
           else
             echo "number=" >> "$GITHUB_OUTPUT"
-            echo "ref=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            printf 'ref=%s\n' "${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install ImageMagick
