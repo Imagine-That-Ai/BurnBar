@@ -303,6 +303,8 @@ targets:
       base:
         PRODUCT_NAME: OpenBurnBarMobileTests
         PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.app.tests
+        DEVELOPMENT_TEAM: 4Y367DF25B
+        CODE_SIGN_STYLE: Automatic
     dependencies:
       - target: OpenBurnBarMobile
       - package: OpenBurnBarCore

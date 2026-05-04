@@ -7,6 +7,7 @@ const usageDocs = [
   {
     provider: "Kimi",
     providerID: "kimi",
+    sessionId: "kimi-session-1",
     model: "chatcmpl-legacy-message-id",
     inputTokens: 1_250,
     outputTokens: 500,
@@ -19,7 +20,19 @@ const usageDocs = [
   {
     provider: "Codex",
     providerID: "codex",
+    sessionId: "codex-session-1",
     model: "gpt-5.5",
+    inputTokens: 100,
+    outputTokens: 25,
+    totalTokens: 125,
+    cost: 0.001,
+    startTime: now.toISOString(),
+  },
+  {
+    provider: "Codex",
+    providerID: "codex",
+    sessionId: "codex-session-1",
+    model: "unknown",
     inputTokens: 100,
     outputTokens: 25,
     totalTokens: 125,
@@ -50,7 +63,7 @@ assert.equal(today.today, 1_875);
 assert.equal(today.providerSummaries.find((p) => p.provider === "Kimi")?.totalTokens, 1_750);
 assert.equal(today.modelSummaries.find((m) => m.provider === "Kimi")?.model, "kimi-for-coding");
 assert.equal(today.modelSummaries.find((m) => m.provider === "Kimi")?.tokens, 1_750);
-assert.equal(today.totals.costUsd, 0.001555);
+assert.equal(today.totals.costUsd, 0.00291);
 
 function containsUndefined(value) {
   if (Array.isArray(value)) return value.some(containsUndefined);

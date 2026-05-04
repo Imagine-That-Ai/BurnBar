@@ -20,7 +20,9 @@
  */
 
 import { defineSecret, defineString } from "firebase-functions/params";
-import type { SecretParam, StringParam } from "firebase-functions/params";
+
+type SecretParam = ReturnType<typeof defineSecret>;
+type StringParam = ReturnType<typeof defineString>;
 
 /**
  * App Store Connect API key id. Visible in the App Store Connect "Keys"

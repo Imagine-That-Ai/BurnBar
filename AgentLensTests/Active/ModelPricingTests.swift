@@ -3,7 +3,7 @@ import XCTest
 
 /// Unit tests for ModelPricing cost calculations — pure business logic
 /// with no external dependencies, no async, no state.
-final class ModelPricingTests: XCTestCase {
+final class ModelPricingStandaloneTests: XCTestCase {
 
     // MARK: - Cost calculation
 

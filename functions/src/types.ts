@@ -340,6 +340,9 @@ export interface UsageEventDoc {
   /** Model identifier. */
   model?: string;
 
+  /** Provider/session identifier used to collapse idempotent re-uploads. */
+  sessionId?: string;
+
   /** Device that originated the request. */
   deviceId?: string;
 
@@ -369,6 +372,9 @@ export interface UsageEventDoc {
 
   /** Cost in USD (legacy field written by desktop UsageSyncService). */
   cost?: number;
+
+  /** Parser/source confidence used to choose the best copy of a duplicate. */
+  provenanceConfidence?: string;
 
   /** ISO 8601 timestamp of the event. */
   timestamp?: unknown;
@@ -468,4 +474,90 @@ export interface EnvConfig {
 
   /** Max batch size for scheduled quota refresh (default 20). */
   quotaRefreshBatchSize: number;
+
+  /** StoreKit product ID that unlocks hosted quota sync. */
+  hostedQuotaProductID: string;
+
+  /** App Store verification config. */
+  appStore: AppStoreConfig;
+}
+
+// ---------------------------------------------------------------------------
+// App Store hosted quota entitlement docs
+// ---------------------------------------------------------------------------
+
+export type AppStoreEnvironment =
+  | "Production"
+  | "Sandbox"
+  | "Xcode"
+  | "LocalTesting";
+
+export interface AppStoreConfig {
+  bundleId: string;
+  appAppleId?: number;
+  environment: AppStoreEnvironment;
+  enableOnlineChecks: boolean;
+  autoFallbackEnvironment?: AppStoreEnvironment;
+  asc: {
+    issuerId: string;
+    keyId: string;
+    privateKeyP8: string;
+  };
+}
+
+export type EntitlementOwnershipType = "PURCHASED" | "FAMILY_SHARED";
+
+export type HostedQuotaEntitlementSource =
+  | "apple_jws_verified"
+  | "apple_s2s"
+  | "scheduled_reconcile";
+
+export interface HostedQuotaEntitlementDoc {
+  id: string;
+  active: boolean;
+  productID: string;
+  transactionID: string;
+  originalTransactionID: string;
+  expiresAt?: string;
+  revokedAt?: string;
+  revocationReason?: number;
+  environment: AppStoreEnvironment;
+  ownershipType?: EntitlementOwnershipType;
+  appAccountToken?: string;
+  signedTransactionHash: string;
+  lastNotificationUUID?: string;
+  lastVerifiedAt: string;
+  source: HostedQuotaEntitlementSource;
+  verificationVersion: number;
+  schemaVersion: number;
+  updatedAt: string;
+}
+
+export interface EntitlementBindingDoc {
+  id: string;
+  uid: string;
+  productID: string;
+  clientPlatform?: "ios" | "ipados" | "macos";
+  consumedAt?: string;
+  createdAt: string;
+  schemaVersion: number;
+}
+
+export interface EntitlementEventDoc {
+  id: string;
+  uid: string;
+  source: "client_callable" | "apple_s2s" | "scheduled_reconcile";
+  notificationType?: string;
+  notificationSubtype?: string;
+  transactionId: string;
+  originalTransactionId: string;
+  productId: string;
+  environment: AppStoreEnvironment;
+  expiresAt?: string;
+  revokedAt?: string;
+  revocationReason?: number;
+  rawJWSHash: string;
+  observedAt: string;
+  decoded: Record<string, unknown>;
+  schemaVersion: number;
 }

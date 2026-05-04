@@ -67,6 +67,31 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertTrue(unsyncedAfter.isEmpty)
     }
 
+    func test_usageUpload_drainsMultipleLocalBatchesInOneSync() async throws {
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        for index in 0..<805 {
+            let usage = TokenUsage(
+                provider: .codex,
+                sessionId: "session-\(index)",
+                projectName: "BatchProject",
+                model: "gpt-5.5",
+                inputTokens: 100 + index,
+                outputTokens: 25,
+                startTime: baseTime.addingTimeInterval(TimeInterval(index)),
+                endTime: baseTime.addingTimeInterval(TimeInterval(index + 1))
+            )
+            try dataStore.insert(usage)
+        }
+
+        XCTAssertEqual(try dataStore.fetchUnsynced().count, 400)
+
+        await usageSync.sync()
+
+        XCTAssertEqual(fakeGateway.batchCommitCount, 3)
+        XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/usage").count, 805)
+        XCTAssertTrue(try dataStore.fetchUnsynced().isEmpty)
+    }
+
     func test_providerAccountUpload_writesOnlyNonSecretLocalAccountMetadata() async throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let account = ProviderAccountDoc(

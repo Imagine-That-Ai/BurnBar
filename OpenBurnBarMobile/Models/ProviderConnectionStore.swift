@@ -52,21 +52,23 @@ final class ProviderConnectionStore {
         )
     }
 
-    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async {
+    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc? {
         connectingProvider = providerID.rawValue
         error = nil
         defer { connectingProvider = nil }
 
         do {
-            _ = try await functions.connectProviderAccount(
+            let doc = try await functions.connectProviderAccount(
                 providerID: providerID,
                 credential: credential,
                 kind: kind,
                 label: label
             )
             await load()
+            return doc
         } catch {
             self.error = error.localizedDescription
+            return nil
         }
     }
 
@@ -87,6 +89,46 @@ final class ProviderConnectionStore {
         }
     }
 
+    func connectHosted(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc? {
+        connectingProvider = providerID.rawValue
+        error = nil
+        defer { connectingProvider = nil }
+
+        do {
+            let doc = try await functions.connectProviderAccount(
+                providerID: providerID,
+                credential: credential,
+                kind: kind,
+                label: label
+            )
+            await load()
+            return doc
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
+    }
+
+    func connectSelfHosted(providerID: ProviderID, label: String?) async -> ProviderAccountDoc? {
+        connectingProvider = providerID.rawValue
+        error = nil
+        defer { connectingProvider = nil }
+
+        do {
+            let doc = try await functions.connectProviderAccount(
+                providerID: providerID,
+                credential: "",
+                kind: .token,
+                label: label
+            )
+            await load()
+            return doc
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
+    }
+
     func delete(account: ProviderAccountDoc) async {
         deletingAccountID = account.id
         error = nil
@@ -94,6 +136,11 @@ final class ProviderConnectionStore {
 
         do {
             try await functions.deleteProviderAccount(accountID: account.id)
+            if account.storageScope == .localOnly,
+               account.providerID == .claudeCode || account.providerID == .codex {
+                // Clean up locally-stored runner config when deleting a self-hosted account.
+                SelfHostedQuotaRunnerStore.shared.delete(accountID: account.id)
+            }
             await load()
         } catch {
             self.error = error.localizedDescription

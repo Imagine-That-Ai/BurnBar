@@ -7,9 +7,11 @@
   },
   "main": "lib/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-certs.mjs",
     "build:watch": "tsc --watch",
     "test:rollups": "npm run build && node scripts/test-rollups.mjs",
+    "test:appstore": "npm run build && node scripts/test-appstore.mjs",
+    "test": "npm run test:rollups && npm run test:appstore",
     "lint": "eslint src/**/*.ts",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
@@ -17,6 +19,7 @@
     "logs": "firebase functions:log"
   },
   "dependencies": {
+    "@apple/app-store-server-library": "^3.0.0",
     "firebase-admin": "^13.0.0",
     "firebase-functions": "^6.0.0",
     "googleapis": "^148.0.0"

@@ -98,6 +98,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FirestoreRepository` reliability (typed errors, exponential backoff).
 - Protocol-oriented normalization (`FirestoreNormalizable`).
 
+## [Unreleased] — Server-side Apple JWS Verification (2026-05-04)
+
+### Added
+- **Full Apple App Store JWS verification pipeline (`functions/src/appstore/`).**
+  Hosted-quota entitlements are now derived from chain-verified, live-reconciled
+  Apple state. Replaces the v1 callable that only stored a SHA-256 of a
+  client-supplied JWS.
+  - `verifier.ts` — `AppleJWSVerifier` wraps `@apple/app-store-server-library`
+    against three vendored root certificates (`AppleRootCA-G3`, `AppleRootCA-G2`,
+    `AppleIncRootCertificate`) with SHA-256 fingerprint pinning enforced at
+    cold start. Per-environment `SignedDataVerifier` instances, optional
+    `autoFallbackEnvironment` retry, and stable `apple-jws-…` error codes.
+  - `client.ts` — Cached `AppStoreServerAPIClient` per environment; surfaces
+    `getAllSubscriptionStatuses` and `getTransactionInfo` for live reconciliation.
+  - `reconciler.ts` — Single writer for `users/{uid}/entitlements/hosted_quota_sync`.
+    Resolves UID via `appAccountToken` ↔ `entitlement_bindings`, picks the
+    most recent `signedDate` transaction across the JWS + ASC view, enforces
+    monotonicity on `lastVerifiedAt`, and merges stable fields forward.
+  - `audit.ts` — Append-only `users/{uid}/entitlement_events/{eventId}` with
+    `notificationUUID`-keyed idempotency, `signedTransactionInfo`/
+    `signedRenewalInfo`/`signedPayload` redaction (raw JWS hashed,
+    `appAccountToken` truncated).
+  - `notifications.ts` — Public `appStoreServerNotificationsV2` HTTPS
+    endpoint; verifies S2S `signedPayload`, distinguishes 4xx (terminal
+    invalid) from 5xx (Apple-retry), idempotent on `notificationUUID`.
+  - `scheduled.ts` — Daily `reconcileHostedEntitlementsDaily` rebuilds
+    every active entitlement from ASC truth so missed webhooks converge
+    within 24h.
+  - `callable.ts` — Three iOS-facing callables: `beginEntitlementBinding`
+    (mints `appAccountToken` UUID before purchase),
+    `verifyHostedQuotaEntitlement` (verifies + reconciles a JWS),
+    `restoreHostedQuotaEntitlement` (re-runs reconciliation for the
+    signed-in user's known `originalTransactionID`).
+- **Pinned Apple root certificates.** DER-encoded certs vendored under
+  `functions/src/appstore/certs/` and copied to `lib/` by
+  `scripts/copy-certs.mjs` (chained from `npm run build`). SHA-256
+  fingerprints pinned in `verifier.ts:ROOT_CERT_FILES`.
+- **`HostedQuotaEntitlementDoc` schema v2** (`schemaVersion: 2`,
+  `verificationVersion: 2`, `source: "apple_jws_verified"`). Adds
+  `revokedAt`, `revocationReason`, `environment`, `ownershipType`,
+  `appAccountToken`, `signedTransactionHash`, `lastNotificationUUID`,
+  `lastVerifiedAt`. Carries forward stable fields when a JWS omits them.
+- **`EntitlementBindingDoc`** at `users/{uid}/entitlement_bindings/{token}` —
+  server-only collection that maps a server-minted UUID to a Firebase UID
+  pre-purchase. Required to attribute incoming JWS payloads when the
+  callable was untrusted (e.g. S2S notifications).
+- **`EntitlementEventDoc`** append-only audit log surfaced under
+  `users/{uid}/entitlement_events/{eventId}` for forensics.
+- **iOS `HostedQuotaSubscriptionStore` rewritten** for the new pipeline.
+  Mints `appAccountToken` via `beginEntitlementBinding`, passes it through
+  `Product.PurchaseOption.appAccountToken`, forwards the JWS to
+  `verifyHostedQuotaEntitlement`, observes `Transaction.updates` for
+  renewals/revocations, and adds `restorePurchases()` backed by
+  `restoreHostedQuotaEntitlement`. Prefers the server's view of
+  inactivity over the local StoreKit cache.
+- **Firestore rules (`firestore.rules`):** server-only writes to
+  `users/{uid}/entitlements/*` and `users/{uid}/entitlement_events/*`;
+  `users/{uid}/entitlement_bindings/*` denied to clients for both reads
+  and writes.
+- **Regression suite (`functions/scripts/test-appstore.mjs`):** 31
+  `node:test` cases covering root cert fingerprint pinning, environment
+  enum round-trip, reconciler selection / merge / monotonicity logic,
+  audit redaction + idempotency, binding doc construction, and stable
+  error codes. Wired into `npm test` via `npm run test:appstore`.
+- **`@apple/app-store-server-library` v3** added to `functions/package.json`.
+
+### Security
+- Trust pipeline: every entitlement field is now derived from a chain-verified
+  Apple JWS, reconciled against live App Store Server API truth, and bound
+  to a Firebase UID via a server-minted `appAccountToken`. Client-supplied
+  values are no longer authoritative for activation, expiration, or
+  ownership — see `docs/THREAT_MODEL.md` § "Hosted Quota Subscription".
+- `entitlement_events` audit log makes every state change reviewable by
+  the owner and replayable from raw JWS hashes.
+
+### Migration notes
+- Legacy v1 entitlement docs (where the server stored only a SHA-256 of a
+  client-supplied JWS) keep their fields untouched until the next verified
+  event. The first call into `verifyHostedQuotaEntitlement` /
+  `restoreHostedQuotaEntitlement` upgrades the doc to schema v2 in place.
+- Operators must populate `APP_STORE_ASC_KEY_ID`, `APP_STORE_ASC_ISSUER_ID`,
+  and `APP_STORE_ASC_KEY_P8` via Secret Manager before the production
+  callables are reachable; see `docs/HOSTED_QUOTA_SYNC.md`
+  § "App Store JWS verification config".
+
 ## [Unreleased] — iOS / iPad Visual Depth & Polish Pass (2026-05-04)
 
 ### Added

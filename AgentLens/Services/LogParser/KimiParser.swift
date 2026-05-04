@@ -144,7 +144,7 @@ final class KimiParser: LogParser, Sendable {
         let cacheReadTokens: Int
 
         if let wt = wireTokens, (wt.inputOther > 0 || wt.output > 0 || wt.inputCacheRead > 0 || wt.inputCacheCreation > 0) {
-            inputTokens = wt.inputOther + wt.inputCacheRead + wt.inputCacheCreation
+            inputTokens = wt.inputOther
             outputTokens = wt.output
             cacheCreationTokens = wt.inputCacheCreation
             cacheReadTokens = wt.inputCacheRead
@@ -239,9 +239,10 @@ final class KimiParser: LogParser, Sendable {
             result.inputCacheRead += tokenUsage["input_cache_read"] as? Int ?? 0
             result.inputCacheCreation += tokenUsage["input_cache_creation"] as? Int ?? 0
 
-            // Extract model from message_id if present (format: chatcmpl-xxx)
-            if result.model == nil, let messageId = payload["message_id"] as? String, !messageId.isEmpty {
-                result.model = messageId
+            if result.model == nil,
+               let model = tokenUsage["model"] as? String ?? payload["model"] as? String,
+               !model.isEmpty {
+                result.model = model
             }
         }
 

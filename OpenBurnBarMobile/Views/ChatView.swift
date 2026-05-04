@@ -261,12 +261,12 @@ struct HermesChatBubble: View {
 
     private var bubbleStroke: some ShapeStyle {
         if message.isError {
-            return MobileTheme.Colors.error
+            return AnyShapeStyle(MobileTheme.Colors.error)
         }
         if isUser {
-            return MobileTheme.Colors.chatUserStroke
+            return AnyShapeStyle(MobileTheme.Colors.chatUserStroke)
         }
-        return MobileTheme.mercuryGradient
+        return AnyShapeStyle(MobileTheme.mercuryGradient)
     }
 }
 

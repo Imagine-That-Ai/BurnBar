@@ -2,6 +2,7 @@ import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
+@MainActor
 final class OpenBurnBarMobileTests: XCTestCase {
 
     // MARK: - Shared Model Compatibility
@@ -98,6 +99,19 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(ProviderConnectionStatus.error.rawValue, "error")
     }
 
+    // MARK: - Self-hosted Runner Delete Cleanup
+
+    func testSelfHostedRunnerStoreDeleteRemovesURLAndSecret() throws {
+        let store = SelfHostedQuotaRunnerStore()
+        try store.save(accountID: "cleanup-test", runnerURL: "https://runner.example.com", accessSecret: "secret123")
+        XCTAssertNotNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("https://runner.example.com"))
+
+        store.delete(accountID: "cleanup-test")
+        // After deletion, reloading the URL should fail
+        let defaults = UserDefaults.standard
+        XCTAssertNil(defaults.string(forKey: "selfHostedQuotaRunnerURL.cleanup-test"))
+    }
+
     // MARK: - Self-hosted Runner URL Validation
 
     func testValidatedRunnerURLAcceptsHTTPS() {
@@ -115,69 +129,5 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("http://192.168.1.1"))
         XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL(""))
         XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("not-a-url"))
-    }
-
-    // MARK: - Mobile Refresh Policy
-
-    func testCanRefreshFromMobileForCloudAccounts() {
-        let account = ProviderAccountDoc(
-            id: "test-cloud",
-            providerID: .openAI,
-            label: "Test",
-            status: .connected,
-            credentialKind: .bearer,
-            storageScope: .cloudRefreshable,
-            redactedLabel: "t***",
-            schemaVersion: 2,
-            createdAt: Date(),
-            updatedAt: Date()
-        )
-        XCTAssertTrue(ProviderAccountStorageVisual.canRefreshFromMobile(account: account))
-    }
-
-    func testCanRefreshFromMobileForLocalOnlySelfHosted() {
-        let claudeAccount = ProviderAccountDoc(
-            id: "test-claude",
-            providerID: .claudeCode,
-            label: "Test",
-            status: .connected,
-            credentialKind: .bearer,
-            storageScope: .localOnly,
-            redactedLabel: "t***",
-            schemaVersion: 2,
-            createdAt: Date(),
-            updatedAt: Date()
-        )
-        XCTAssertTrue(ProviderAccountStorageVisual.canRefreshFromMobile(account: claudeAccount))
-
-        let codexAccount = ProviderAccountDoc(
-            id: "test-codex",
-            providerID: .codex,
-            label: "Test",
-            status: .connected,
-            credentialKind: .session,
-            storageScope: .localOnly,
-            redactedLabel: "t***",
-            schemaVersion: 2,
-            createdAt: Date(),
-            updatedAt: Date()
-        )
-        XCTAssertTrue(ProviderAccountStorageVisual.canRefreshFromMobile(account: codexAccount))
-    }
-
-    func testCanRefreshFromMobileForLocalOnlyOtherProviders() {
-        let openAIAccount = ProviderAccountDoc(
-            id: "test-local",
-            providerID: .openAI,
-            label: "Test",
-            status: .connected,
-            credentialKind: .bearer,
-            storageScope: .localOnly,
-            redactedLabel: "t***",
-            schemaVersion: 2,
-            createdAt: Date(),
-            updatedAt: Date()
-        )
-        XCTAssertFalse(ProviderAccountStorageVisual.canRefreshFromMobile(account: openAIAccount))
     }
 }

@@ -35,7 +35,6 @@ import type { JWSTransactionDecodedPayload } from "@apple/app-store-server-libra
 
 import type {
   AppStoreConfig,
-  AppStoreEnvironment,
   EntitlementBindingDoc,
   EntitlementOwnershipType,
   HostedQuotaEntitlementDoc,
@@ -212,7 +211,7 @@ export async function beginBinding(
   };
   await db
     .doc(`users/${uid}/entitlement_bindings/${token}`)
-    .create(stripUndefined(doc));
+    .create(stripUndefined(doc as unknown as Record<string, unknown>));
   return { appAccountToken: token };
 }
 
@@ -465,7 +464,7 @@ function buildEntitlementDoc(args: BuildArgs): HostedQuotaEntitlementDoc {
     schemaVersion: ENTITLEMENT_SCHEMA_VERSION,
     updatedAt: now.toISOString(),
   };
-  return stripUndefined(doc) as HostedQuotaEntitlementDoc;
+  return stripUndefined(doc as unknown as Record<string, unknown>) as unknown as HostedQuotaEntitlementDoc;
 }
 
 /** Reject stale events: never let an older signedDate revive a newer doc. */
@@ -492,7 +491,7 @@ function mergeWithExisting(
     appAccountToken: next.appAccountToken ?? existing.appAccountToken,
     ownershipType: next.ownershipType ?? existing.ownershipType,
     environment: next.environment ?? existing.environment,
-  }) as HostedQuotaEntitlementDoc;
+  }) as unknown as HostedQuotaEntitlementDoc;
 }
 
 // ---------------------------------------------------------------------------
@@ -574,3 +573,24 @@ function stripUndefined<T extends Record<string, unknown>>(value: T): T {
     Object.entries(value).filter(([, v]) => v !== undefined)
   ) as T;
 }
+
+// ---------------------------------------------------------------------------
+// Test-only exports
+// ---------------------------------------------------------------------------
+
+/**
+ * Internals reachable from `scripts/test-appstore.mjs`. Not part of the
+ * public surface — do not import outside tests.
+ */
+export const __testing__ = {
+  pickWinning,
+  buildEntitlementDoc,
+  mergeWithExisting,
+  shouldOverwrite,
+  redactPayload,
+  redactToken,
+  auditEventId,
+  ENTITLEMENT_SCHEMA_VERSION,
+  VERIFICATION_VERSION,
+  BINDING_SCHEMA_VERSION,
+};

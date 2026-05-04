@@ -187,11 +187,61 @@ Current intended price:
 $4.99/month
 ```
 
-The code expects StoreKit 2 to verify the user's current transaction and then
-sync an entitlement document to Firebase. Active entitlement sync must include
-the StoreKit signed transaction JWS; Functions stores only a SHA-256 hash of the
-JWS for auditability. Firebase Functions require an active hosted entitlement
-before hosted Codex refresh is allowed.
+### Server-side Apple JWS verification (v2)
+
+Entitlement state is the result of **full Apple JWS chain verification**, not
+a SHA-256 of a client-supplied token.
+
+Trust pipeline (every entitlement write flows through it):
+
+1. **Chain verification.** Cloud Functions decode the JWS using
+   `@apple/app-store-server-library` against three vendored Apple root
+   certificates pinned by SHA-256 fingerprint:
+     - `AppleRootCA-G3.cer` — current EC root
+     - `AppleRootCA-G2.cer` — RSA root for cross-signed chains
+     - `AppleIncRootCertificate.cer` — legacy chain
+   Fingerprints are checked at cold start. Mismatch refuses to start the
+   function — see `functions/src/appstore/verifier.ts` (`ROOT_CERT_FILES`).
+2. **Bundle / app id assertion.** The decoded JWS payload's `bundleId`
+   must match `appStore.bundleId`. Production webhooks must additionally
+   match the configured `appAppleId`.
+3. **Live reconciliation.** The signed transaction's
+   `originalTransactionId` is sent to the App Store Server API
+   (`getAllSubscriptionStatuses`). Every JWS in that response is
+   re-verified independently. The "winning" transaction is the one
+   with the most recent `signedDate` matching the configured product
+   id. Apple's view trumps the inbound JWS — a stale client cannot
+   resurrect a revoked entitlement.
+4. **UID binding via `appAccountToken`.** Before
+   `Product.purchase()`, the iOS client calls
+   `beginEntitlementBinding`, which mints a fresh UUID and writes
+   `users/{uid}/entitlement_bindings/{token}` server-side. The token
+   is set on the StoreKit purchase via
+   `Product.PurchaseOption.appAccountToken`, so it appears verbatim
+   inside the Apple-signed JWS. The reconciler reads
+   `payload.appAccountToken`, looks it up in
+   `entitlement_bindings`, and writes the entitlement to the
+   matching UID. A token replayed under a different UID is rejected
+   with `binding_mismatch`.
+5. **Idempotent audit.** Every verified event is appended to
+   `users/{uid}/entitlement_events/{eventId}` keyed on Apple's
+   `notificationUUID` (S2S) or `transactionId.signedDate`
+   (client-driven). Duplicates collapse via Firestore `create()` —
+   the client-side `ALREADY_EXISTS` is treated as success.
+6. **Server-to-server webhook.** A public
+   `appStoreServerNotificationsV2` HTTPS endpoint accepts Apple's
+   `signedPayload`, runs the same verification + reconciliation, and
+   returns 200 only after the audit is appended. Apple retries are
+   idempotent on `notificationUUID`.
+7. **Daily reconciliation.** A scheduled function
+   (`reconcileHostedEntitlementsDaily`) re-pulls
+   `getAllSubscriptionStatuses` for every active entitlement so a
+   missed webhook still converges within 24 hours.
+
+**Schema versioning.** `HostedQuotaEntitlementDoc.schemaVersion = 2`,
+`verificationVersion = 2`, `source = "apple_jws_verified"`. Older docs
+written by the legacy SHA-256 path keep their `source` literal so
+operators can audit migration progress.
 
 Entitlement document:
 
@@ -200,15 +250,22 @@ users/{uid}/entitlements/hosted_quota_sync
 ```
 
 Users can read their entitlement. Clients cannot write entitlement documents
-directly through Firestore rules. Entitlement writes go through Functions.
+directly through Firestore rules. Entitlement writes go through Functions
+exclusively (`firestore.rules` denies `write` on this path and on
+`entitlement_events`; `entitlement_bindings` is server-only for both reads
+and writes).
 
 ## Firebase Functions
 
 ### New Callable Surface
 
-| Callable | Purpose |
+| Callable / endpoint | Purpose |
 |---|---|
-| `syncHostedQuotaEntitlement` | Syncs StoreKit subscription state into Firestore |
+| `beginEntitlementBinding` | Mints an `appAccountToken` UUID before `Product.purchase()` so the resulting JWS can be attributed to the signed-in UID |
+| `verifyHostedQuotaEntitlement` | Verifies a client-supplied StoreKit JWS against AppleRootCA + reconciles live state via App Store Server API |
+| `restoreHostedQuotaEntitlement` | Re-runs live reconciliation for the signed-in user's known `originalTransactionID`; powers "Restore Purchases" |
+| `appStoreServerNotificationsV2` (HTTPS) | Public endpoint Apple POSTs S2S notifications to. Verifies `signedPayload`, reconciles, idempotent on `notificationUUID` |
+| `reconcileHostedEntitlementsDaily` (scheduled) | Daily reconciliation against ASC for every active entitlement to catch missed webhooks |
 | `connectHostedQuotaAccount` | Stores hosted Codex credentials and creates a provider account |
 | `connectSelfHostedQuotaAccount` | Creates a local-only/self-hosted Claude Code or Codex provider account |
 | `refreshProviderAccountQuota` | Refreshes one account; hosted Codex routes through the hosted runner |
@@ -234,12 +291,54 @@ firebase functions:config:set \
   openburnbar.kms_key_name="projects/.../locations/.../keyRings/.../cryptoKeys/..."
 ```
 
+#### App Store JWS verification config
+
+Apple JWS verification additionally requires:
+
+```bash
+# App Store Connect API key (sign in to App Store Connect → Users and Access →
+# Keys → In-App Purchase). Provision as Firebase secrets:
+firebase functions:secrets:set APP_STORE_ASC_KEY_ID         # e.g. "ABCDEF1234"
+firebase functions:secrets:set APP_STORE_ASC_ISSUER_ID      # UUID
+firebase functions:secrets:set APP_STORE_ASC_KEY_P8         # paste full PEM body
+
+# Non-secret env params:
+export APP_STORE_BUNDLE_ID=com.burnbar.app
+export APP_STORE_APPLE_APP_ID=1234567890                    # numeric appAppleId
+export APP_STORE_ENV=Production                             # or Sandbox
+export APP_STORE_AUTO_FALLBACK_ENV=Sandbox                  # optional: auto-retry env
+export APP_STORE_ENABLE_ONLINE_CHECKS=true                  # OCSP/expiration checks
+```
+
+The three secrets are declared in
+`functions/src/appstore/config.ts` and bound to every Apple-aware
+callable via `APP_STORE_SECRETS`. Cold start re-reads them once per
+instance.
+
+The vendored Apple root certificates are checked into
+`functions/src/appstore/certs/` and copied into the build output by
+`scripts/copy-certs.mjs` (chained from `npm run build`). Each `.cer`
+file's SHA-256 fingerprint is pinned in `verifier.ts:ROOT_CERT_FILES`;
+swapping a root file without updating the pin fails cold start with
+`Apple root certificate fingerprint mismatch …`.
+
 ### Important Files
 
 - `functions/src/index.ts`
 - `functions/src/quota.ts`
 - `functions/src/config.ts`
 - `functions/src/types.ts`
+- `functions/src/appstore/`
+  - `verifier.ts` — `AppleJWSVerifier` (cert pinning, environment
+    auto-fallback, stable error codes)
+  - `client.ts` — `AppStoreServerAPIClient` wrapper (cached per env)
+  - `reconciler.ts` — single-writer entitlement merge, UID binding
+  - `audit.ts` — append-only `entitlement_events` log
+  - `notifications.ts` — public S2S webhook handler
+  - `callable.ts` — three iOS-facing callables
+  - `scheduled.ts` — daily reconciliation
+  - `certs/` — vendored Apple root certificates
+- `functions/scripts/test-appstore.mjs` — node:test regression suite
 - `firestore.rules`
 
 ## Quota Runner
@@ -439,9 +538,22 @@ warnings are not test failures.
 ## Safety Checklist Before Release
 
 - StoreKit product exists in App Store Connect.
-- Production hosted billing has server-side App Store JWS verification wired
-  with Apple's App Store Server Library, or launch is limited to trusted beta.
-- `syncHostedQuotaEntitlement` is deployed.
+- Server-side Apple JWS verification is wired with `@apple/app-store-server-library`
+  v3 against pinned AppleRootCA-G3/G2/AppleInc roots. The pin SHA-256s in
+  `functions/src/appstore/verifier.ts:ROOT_CERT_FILES` match the
+  vendored `.cer` files.
+- `beginEntitlementBinding`, `verifyHostedQuotaEntitlement`, and
+  `restoreHostedQuotaEntitlement` callables are deployed; the
+  `appStoreServerNotificationsV2` HTTPS endpoint URL is configured in
+  App Store Connect → App → App Information → App Store Server
+  Notifications → Production / Sandbox URL.
+- `reconcileHostedEntitlementsDaily` scheduled job is deployed.
+- App Store Connect API secrets (`APP_STORE_ASC_KEY_ID`,
+  `APP_STORE_ASC_ISSUER_ID`, `APP_STORE_ASC_KEY_P8`) are populated in
+  Secret Manager.
+- `npm test` (Functions) passes — covers root cert pinning,
+  reconciler selection logic, audit redaction, and binding doc
+  construction.
 - Hosted runner is deployed with `RUNNER_SHARED_SECRET`.
 - Functions config points at the hosted runner.
 - Firebase App Check is enforced for callable access.

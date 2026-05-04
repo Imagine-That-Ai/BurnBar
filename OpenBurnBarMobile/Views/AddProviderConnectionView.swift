@@ -169,6 +169,7 @@ struct AddProviderConnectionView: View {
                     }
                     .padding(.vertical, 4)
                     .accessibilityElement(children: .combine)
+                    .animation(.default, value: syncMode)
                 } else {
                     HStack(spacing: MobileTheme.Spacing.md) {
                         Image(systemName: "server.rack")
@@ -358,7 +359,7 @@ struct AddProviderConnectionView: View {
 
     private var credentialFooterText: String {
         if syncMode == .hosted {
-            return "Paste the contents of your Codex auth.json. OpenBurnBar stores it server-side for explicit hosted quota refreshes."
+            return "Paste the contents of ~/.codex/auth.json. OpenBurnBar stores it server-side for explicit hosted quota refreshes."
         }
         return "OpenBurnBar uses this to add the quota account and enable cloud refresh where the provider supports it."
     }
@@ -475,6 +476,14 @@ private extension String {
     }
 }
 
-#Preview {
+#Preview("Standard Cloud Provider") {
     AddProviderConnectionView(provider: .minimax)
+}
+
+#Preview("Codex — Hosted & Self-hosted") {
+    AddProviderConnectionView(provider: .codex)
+}
+
+#Preview("Claude Code — Self-hosted only") {
+    AddProviderConnectionView(provider: .claudeCode)
 }

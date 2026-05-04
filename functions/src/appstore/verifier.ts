@@ -30,9 +30,8 @@
  */
 
 import { createHash, X509Certificate } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   Environment,
@@ -53,7 +52,7 @@ import type { AppStoreConfig, AppStoreEnvironment } from "../types.js";
 // Pinned trust anchors
 // ---------------------------------------------------------------------------
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const HERE = __dirname;
 
 /** Vendored Apple root certificates and their pinned SHA-256 fingerprints. */
 export const ROOT_CERT_FILES: ReadonlyArray<{
@@ -90,7 +89,9 @@ export function loadAppleRootCertificates(): Buffer[] {
   if (cachedRootBuffers) return cachedRootBuffers;
   const buffers: Buffer[] = [];
   for (const { name, fingerprintHex } of ROOT_CERT_FILES) {
-    const buf = readFileSync(join(HERE, "certs", name));
+    const libPath = join(HERE, "certs", name);
+    const srcPath = join(process.cwd(), "src", "appstore", "certs", name);
+    const buf = readFileSync(existsSync(libPath) ? libPath : srcPath);
     const got = createHash("sha256").update(buf).digest("hex");
     if (got !== fingerprintHex) {
       throw new Error(

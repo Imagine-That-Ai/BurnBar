@@ -66,7 +66,7 @@ export async function appendEntitlementEvent(
     decoded: redact(input.decoded),
     schemaVersion: SCHEMA_VERSION,
   };
-  const cleaned = stripUndefined(doc) as EntitlementEventDoc;
+  const cleaned = stripUndefined(doc as unknown as Record<string, unknown>) as unknown as EntitlementEventDoc;
   const ref = db.doc(`users/${input.uid}/entitlement_events/${docId}`);
   try {
     await ref.create(cleaned);
@@ -119,3 +119,17 @@ function sanitizeDocId(raw: string): string {
     .replace(/[^a-zA-Z0-9_.\-]/g, "-")
     .slice(0, 200);
 }
+
+// ---------------------------------------------------------------------------
+// Test-only exports
+// ---------------------------------------------------------------------------
+
+/**
+ * Internals reachable from `scripts/test-appstore.mjs`. Not part of the
+ * public surface — do not import outside tests.
+ */
+export const __testing__ = {
+  redact,
+  sanitizeDocId,
+  SCHEMA_VERSION,
+};

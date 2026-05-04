@@ -155,6 +155,33 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // --- Apple-verified hosted-quota entitlement (server-only writer) ---
+    // Cloud Functions are the sole writer; clients read their own
+    // entitlement state. Trust is anchored in JWS chain verification
+    // against AppleRootCA-G3 + reconciliation against the App Store
+    // Server API. See `functions/src/appstore/`.
+    match /users/{userId}/entitlements/{entitlementId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    // --- Apple-verified entitlement audit log (server-only writer) ---
+    // Append-only log of every server-verified Apple JWS event, keyed
+    // on Apple's notificationUUID where available. Owners may read for
+    // support / debug; clients must never write.
+    match /users/{userId}/entitlement_events/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    // --- appAccountToken bindings (server-only) ---
+    // Server mints a UUID per signed-in user before purchase and uses
+    // it to bind incoming JWS payloads to the correct UID. No client
+    // surface — both read and write are denied to clients.
+    match /users/{userId}/entitlement_bindings/{bindingId} {
+      allow read, write: if false;
+    }
+
     // --- Escrow: additional field-level rejection of plaintext-looking secret fields ---
     // These collections use stricter size limits and explicit plaintext-field
     // rejection where credentials could otherwise be mis-serialized.

@@ -33,32 +33,32 @@ final class UsageSyncService: CloudSyncDomain {
         defer { isSyncing = false }
 
         do {
-            let unsynced = try context.dataStore.fetchUnsynced()
-            guard !unsynced.isEmpty else {
-                lastSyncDate = Date()
-                return
-            }
-
-            let batch = context.firestoreGateway.batch()
             let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("usage")
 
-            for usage in unsynced {
-                let docId = "\(context.deviceId)_\(usage.id.uuidString)"
-                let docRef = collectionRef.document(docId)
-                let data = encodeUsage(usage, deviceId: context.deviceId)
-                batch.setData(data, forDocument: docRef, merge: true)
-            }
+            while true {
+                let unsynced = try context.dataStore.fetchUnsynced()
+                guard !unsynced.isEmpty else { break }
 
-            try await withCloudSyncRetry(
-                policy: context.retryPolicy,
-                circuitBreaker: context.circuitBreaker,
-                domain: "usage"
-            ) {
-                try await batch.commit()
-            }
+                let batch = context.firestoreGateway.batch()
 
-            let syncedIds = unsynced.map { $0.id }
-            try context.dataStore.markSynced(ids: syncedIds)
+                for usage in unsynced {
+                    let docId = "\(context.deviceId)_\(usage.id.uuidString)"
+                    let docRef = collectionRef.document(docId)
+                    let data = encodeUsage(usage, deviceId: context.deviceId)
+                    batch.setData(data, forDocument: docRef, merge: true)
+                }
+
+                try await withCloudSyncRetry(
+                    policy: context.retryPolicy,
+                    circuitBreaker: context.circuitBreaker,
+                    domain: "usage"
+                ) {
+                    try await batch.commit()
+                }
+
+                let syncedIds = unsynced.map { $0.id }
+                try context.dataStore.markSynced(ids: syncedIds)
+            }
 
             lastSyncDate = Date()
             lastSyncError = nil

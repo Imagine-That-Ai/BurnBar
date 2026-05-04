@@ -227,3 +227,38 @@ Provider credentials only move between devices through an opt-in encrypted escro
 - Key versioning supports rotation. Old keys are retained for decrypting historic envelopes.
 - Missing private key is a recoverable state — surfaced as a classified error, not a crash.
 - Encryption keys are not derivable by Firebase, Firestore rules, Cloud Functions, or backend infrastructure.
+
+## Hosted Quota Subscription — Apple JWS Trust Pipeline
+
+Hosted quota sync is gated by a paid Apple subscription. The server is the
+sole writer of entitlement state; the iOS client never trusts its own
+StoreKit verification result for authorization.
+
+### Threat model
+
+| Threat | Mitigation |
+|---|---|
+| **Forged JWS from a non-Apple signer** | Server verifies the chain against three vendored Apple root certificates (`AppleRootCA-G3`, `AppleRootCA-G2`, `AppleIncRootCertificate`) using `@apple/app-store-server-library`. SHA-256 fingerprints are pinned in `functions/src/appstore/verifier.ts:ROOT_CERT_FILES` and checked at cold start; any tamper with the vendored DER refuses to start the function. |
+| **Replayed JWS from another user** | Pre-purchase, the server mints an `appAccountToken` UUID and writes `users/{uid}/entitlement_bindings/{token}`. StoreKit embeds the UUID inside the Apple-signed JWS via `Product.PurchaseOption.appAccountToken`. The reconciler reads `payload.appAccountToken`, looks it up in the binding collection, and rejects with `binding_mismatch` if it resolves to a different UID. |
+| **Replayed older JWS reviving a revoked entitlement** | Reconciler calls `getAllSubscriptionStatuses` for the inbound `originalTransactionId` and re-verifies every JWS in the response. The "winning" transaction is the one with the most recent `signedDate`; older payloads cannot overwrite a newer verified state. `shouldOverwrite` enforces ISO-timestamp monotonicity on `lastVerifiedAt`. |
+| **Bundle / app id confusion** | Decoded JWS payloads must match `appStore.bundleId`; production notifications must additionally match `appStore.appAppleId`. Mismatches throw `bundle_id_mismatch` and never write the entitlement. |
+| **Sandbox JWS aimed at production (or vice versa)** | The verifier auto-falls-back to the alternate environment when configured (`autoFallbackEnvironment`), but the matching `Environment` is stamped on the entitlement doc so operators can audit which environment a user's purchase actually verified under. |
+| **Apple S2S replay** | Webhook endpoint is idempotent on `notificationUUID` via Firestore `create()` semantics on `users/{uid}/entitlement_events/{n_<uuid>}`. The audit append is the same operation regardless of how many times Apple retries. |
+| **Missed S2S delivery** | A scheduled `reconcileHostedEntitlementsDaily` job re-pulls live state for every active entitlement. Missed renewals/revocations converge within 24 hours without operator intervention. |
+| **Client-driven false claim of inactivity** | Clients only forward signed JWS strings; the server is authoritative. The iOS surface uses `restoreHostedQuotaEntitlement` (re-runs ASC reconciliation) when no local entitlement is found, instead of writing `active = false` on the client's behalf. |
+| **Audit log secret exposure** | The audit `decoded` payload runs through a redactor that drops nested `signedTransactionInfo` / `signedRenewalInfo` / `signedPayload` strings and replaces them with their SHA-256. The raw JWS itself is never persisted; only its hash. `appAccountToken` UUIDs are stored on the entitlement doc but only logged with the first/last 4 chars (`abcd…7890`). |
+| **Function deploy with stale or missing ASC creds** | The verifier and ASC client throw at first-use rather than silently degrading. Operators see `APP_STORE_ASC_KEY_ID is not set` etc. on the first call, not as a quiet verification regression. |
+
+### Firestore Rules
+
+- `users/{uid}/entitlements/{entitlementId}` — owner read; `write` denied to all clients.
+- `users/{uid}/entitlement_events/{eventId}` — owner read; `write` denied to all clients.
+- `users/{uid}/entitlement_bindings/{bindingId}` — server-only, denied to clients for both read and write.
+
+### Schema versioning
+
+The entitlement doc carries `schemaVersion: 2` and `verificationVersion: 2` for
+the Apple-JWS-verified path. The `source` literal `apple_jws_verified` is
+written by every callable / S2S / scheduled write; legacy v1 docs (which
+trusted only a SHA-256 of a client-supplied JWS) are migrated forward on the
+next verified event.

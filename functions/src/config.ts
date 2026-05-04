@@ -69,6 +69,39 @@ function buildConfig(): EnvConfig {
         cfg.openburnbar?.quota_refresh_batch_size,
       20
     ),
+    hostedQuotaProductID:
+      process.env.HOSTED_QUOTA_PRODUCT_ID ??
+      cfg.openburnbar?.hosted_quota_product_id ??
+      "hosted_quota_sync",
+    appStore: {
+      bundleId:
+        process.env.APP_STORE_BUNDLE_ID ??
+        cfg.appstore?.bundle_id ??
+        "com.burnbar.app",
+      appAppleId: toNum(
+        process.env.APP_STORE_APPLE_APP_ID ?? cfg.appstore?.apple_app_id,
+        0
+      ),
+      environment:
+        (process.env.APP_STORE_ENV ??
+          cfg.appstore?.environment ??
+          "Sandbox") as EnvConfig["appStore"]["environment"],
+      enableOnlineChecks: toBool(
+        process.env.APP_STORE_ENABLE_ONLINE_CHECKS ??
+          cfg.appstore?.enable_online_checks,
+        true
+      ),
+      autoFallbackEnvironment:
+        (process.env.APP_STORE_AUTO_FALLBACK_ENV ??
+          cfg.appstore?.auto_fallback_environment) as
+          | EnvConfig["appStore"]["autoFallbackEnvironment"]
+          | undefined,
+      asc: {
+        issuerId: process.env.APP_STORE_ASC_ISSUER_ID ?? "",
+        keyId: process.env.APP_STORE_ASC_KEY_ID ?? "",
+        privateKeyP8: process.env.APP_STORE_ASC_KEY_P8 ?? "",
+      },
+    },
   };
 }
 

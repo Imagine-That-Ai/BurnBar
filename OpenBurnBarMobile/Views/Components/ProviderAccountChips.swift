@@ -59,14 +59,6 @@ enum ProviderAccountStorageVisual {
         case .deviceKeychain, .localOnly: return false
         }
     }
-
-    static func canRefreshFromMobile(account: ProviderAccountDoc) -> Bool {
-        if account.storageScope == .localOnly,
-           account.providerID == .claudeCode || account.providerID == .codex {
-            return true
-        }
-        return canRefreshFromMobile(account.storageScope)
-    }
 }
 
 struct ProviderAccountStorageChip: View {

@@ -252,6 +252,12 @@ struct DashboardView: View {
         )
     }
 
+    private var chartAccessibilityValue: String {
+        let total = store.dailyPoints.reduce(0) { $0 + $1.value }
+        let days = store.dailyPoints.count
+        return "\(days) days, \(total) total tokens"
+    }
+
     // MARK: - Spend Velocity Sparkline (iPad)
 
     @ViewBuilder
@@ -381,6 +387,8 @@ struct DashboardView: View {
                         AxisValueLabel(format: .dateTime.month().day())
                     }
                 }
+                .accessibilityLabel("Daily token usage chart")
+                .accessibilityValue(chartAccessibilityValue)
             }
             .padding(.horizontal, MobileTheme.Spacing.lg)
             .animation(.smooth(duration: 0.6), value: store.dailyPoints.map(\.id))
@@ -464,19 +472,38 @@ private struct RollupProviderSummaryRow: View {
                 if let provider {
                     ProviderAvatar(provider: provider, mode: .tile, size: 40)
                 }
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(provider?.displayName ?? summary.provider)
                         .font(MobileTheme.Typography.body)
                         .foregroundStyle(MobileTheme.Colors.textPrimary)
                     Text("\(summary.totalRequests) requests")
                         .font(MobileTheme.Typography.footnote)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
+                    // Proportional bar — share relative to top provider
+                    proportionalBar
                 }
                 Spacer()
                 Text(displayMode == .currency ? (summary.totalCost ?? 0).formatAsCost() : summary.totalTokens.formatAsTokenVolume())
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var proportionalBar: some View {
+        if let provider {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(MobileTheme.Colors.surfaceElevated)
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(MobileTheme.Colors.primary(for: provider).opacity(0.6))
+                        .frame(width: geo.size.width * 0.75)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: geo.size.width)
+                }
+            }
+            .frame(height: 4)
         }
     }
 }

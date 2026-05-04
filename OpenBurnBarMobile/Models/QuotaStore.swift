@@ -92,6 +92,11 @@ final class QuotaStore {
         }
     }
 
+    /// Provider keys that currently have any quota snapshots.
+    var visibleProviders: [String] {
+        Array(snapshotsByProvider.keys).sorted()
+    }
+
     /// Snapshots grouped by canonical provider key.
     var snapshotsByProvider: [String: [ProviderQuotaSnapshot]] {
         Dictionary(grouping: snapshots, by: { $0.providerID.rawValue })

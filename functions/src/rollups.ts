@@ -17,7 +17,7 @@ import type {
   RollupJobDoc,
 } from "./types.js";
 
-const ROLLUP_SCHEMA_VERSION = 2;
+const ROLLUP_SCHEMA_VERSION = 3;
 
 /** Window keys in ascending granularity order. */
 const WINDOW_KEYS = ["today", "7d", "30d", "90d", "all_time"] as const;
@@ -30,6 +30,14 @@ type TimestampLike = {
   nanoseconds?: number;
   _seconds?: number;
   _nanoseconds?: number;
+};
+
+type RollupEvent = {
+  event: UsageEventDoc;
+  date: Date;
+  tokens: number;
+  cost?: number;
+  model?: string;
 };
 
 function coerceDate(value: unknown): Date | undefined {
@@ -141,6 +149,116 @@ function eventMetrics(ev: UsageEventDoc): { tokens: number; cost?: number } {
   };
 }
 
+function provenanceRank(ev: UsageEventDoc): number {
+  switch (ev.provenanceConfidence) {
+    case "exact":
+      return 4;
+    case "derived_exact":
+      return 3;
+    case "high_confidence_estimate":
+      return 2;
+    case "low_confidence_estimate":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function modelRank(model: string | undefined): number {
+  if (!model) return 0;
+  const normalized = model.toLowerCase();
+  if (normalized === "unknown" || normalized.startsWith("chatcmpl-")) return 0;
+  return 1;
+}
+
+function eventUpdatedMillis(ev: UsageEventDoc): number {
+  return (
+    coerceDate(ev.updatedAt)?.getTime() ??
+    coerceDate(ev.createdAt)?.getTime() ??
+    coerceDate(ev.endTime)?.getTime() ??
+    coerceDate(ev.startTime)?.getTime() ??
+    0
+  );
+}
+
+function tokenBucketKey(ev: UsageEventDoc, metrics: { tokens: number; cost?: number }): string {
+  const provider = eventProviderID(ev).toLowerCase();
+  if (provider === "codex") {
+    return String(metrics.tokens);
+  }
+
+  return [
+    finiteNumber(ev.inputTokens),
+    finiteNumber(ev.outputTokens),
+    finiteNumber(ev.cacheCreationTokens),
+    finiteNumber(ev.cacheReadTokens),
+    finiteNumber(ev.reasoningTokens),
+    metrics.tokens,
+  ].join(":");
+}
+
+function logicalUsageKey(ev: UsageEventDoc, date: Date, metrics: { tokens: number; cost?: number }): string {
+  const provider = eventProviderID(ev);
+  const sessionId = ev.sessionId ?? "";
+  const deviceId = ev.deviceId ?? ev.sourceDeviceId ?? "";
+  const accountId = ev.providerAccountID ?? "";
+  const startedAt = date.toISOString();
+
+  return [
+    provider,
+    sessionId,
+    deviceId,
+    accountId,
+    startedAt,
+    tokenBucketKey(ev, metrics),
+  ].join("|");
+}
+
+function preferRollupEvent(candidate: RollupEvent, existing: RollupEvent): boolean {
+  const candidateProvenance = provenanceRank(candidate.event);
+  const existingProvenance = provenanceRank(existing.event);
+  if (candidateProvenance !== existingProvenance) {
+    return candidateProvenance > existingProvenance;
+  }
+
+  const candidateUpdatedAt = eventUpdatedMillis(candidate.event);
+  const existingUpdatedAt = eventUpdatedMillis(existing.event);
+  if (candidateUpdatedAt !== existingUpdatedAt) {
+    return candidateUpdatedAt > existingUpdatedAt;
+  }
+
+  const candidateModel = modelRank(candidate.model);
+  const existingModel = modelRank(existing.model);
+  if (candidateModel !== existingModel) {
+    return candidateModel > existingModel;
+  }
+
+  const candidateCost = candidate.cost ?? 0;
+  const existingCost = existing.cost ?? 0;
+  if (candidateCost !== existingCost) {
+    return candidateCost < existingCost;
+  }
+
+  return true;
+}
+
+function dedupeUsageEvents(events: RollupEvent[]): RollupEvent[] {
+  const deduped = new Map<string, RollupEvent>();
+
+  for (const entry of events) {
+    const key = logicalUsageKey(entry.event, entry.date, {
+      tokens: entry.tokens,
+      cost: entry.cost,
+    });
+    const existing = deduped.get(key);
+    if (!existing || preferRollupEvent(entry, existing)) {
+      deduped.set(key, entry);
+    }
+  }
+
+  return Array.from(deduped.values());
+}
+
 function stripUndefined<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((item) => stripUndefined(item)) as T;
@@ -193,12 +311,22 @@ export async function computeUserRollups(
 ): Promise<Record<WindowKey, UsageRollupDoc>> {
   const usageRef = db.collection(`users/${uid}/usage`);
   const snapshot = await usageRef.get();
-  const events = snapshot.docs
+  const events = dedupeUsageEvents(snapshot.docs
     .map((d) => d.data() as UsageEventDoc)
     .map((event) => ({ event, date: eventDate(event) }))
     .filter((entry): entry is { event: UsageEventDoc; date: Date } => {
       return entry.date != null;
-    });
+    })
+    .map(({ event, date }) => {
+      const metrics = eventMetrics(event);
+      return {
+        event,
+        date,
+        tokens: metrics.tokens,
+        cost: metrics.cost,
+        model: eventModel(event),
+      };
+    }));
 
   const now = new Date();
   const results = {} as Record<WindowKey, UsageRollupDoc>;
@@ -216,11 +344,11 @@ export async function computeUserRollups(
     let totalTokens = 0;
     let totalCost = 0;
 
-    for (const { event: ev, date } of filtered) {
+    for (const entry of filtered) {
+      const { event: ev, date } = entry;
       totalRequests += 1;
-      const metrics = eventMetrics(ev);
-      const tokens = metrics.tokens;
-      const evCost = metrics.cost;
+      const tokens = entry.tokens;
+      const evCost = entry.cost;
       totalTokens += tokens;
       if (evCost != null) totalCost += evCost;
 
@@ -261,7 +389,7 @@ export async function computeUserRollups(
         });
       }
 
-      const model = eventModel(ev);
+      const model = entry.model;
       if (model) {
         const mKey = `${ev.provider}:${model}`;
         const mEx = modelMap.get(mKey);
