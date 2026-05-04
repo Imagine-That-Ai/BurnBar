@@ -6,34 +6,46 @@ import Foundation
 /// testable, and extensible without touching the aggregation orchestrator.
 enum ParserRegistry {
     static func defaultParsers() -> [AgentProvider: any LogParser] {
-        [
-            .factory: FactoryDroidParser(),
-            .claudeCode: ClaudeCodeParser(),
-            .copilot: CopilotParser(),
-            .aider: AiderParser(),
-            .cursor: CursorParser(),
-            .codex: CodexParser(),
-            .zai: ModelFilterParser(modelPattern: "zai", provider: .zai),
-            .minimax: ModelFilterParser(modelPattern: "minimax", provider: .minimax),
-            .kimi: KimiParser(),
-            .cline: ClineFormatParser(provider: .cline, storagePaths: [
-                "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
-            ]),
-            .kiloCode: ClineFormatParser(provider: .kiloCode, storagePaths: [
-                "~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks",
-            ]),
-            .rooCode: ClineFormatParser(provider: .rooCode, storagePaths: [
-                "~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks",
-                "~/Library/Application Support/Code/User/globalStorage/roo-inc.roo-code/tasks",
-            ]),
-            .forgeDev: ForgeDevParser(),
-            .augment: AugmentParser(),
-            .hermes: HermesParser(),
-            .geminiCLI: GeminiCLIParser(),
-            .goose: GooseParser(),
-            .windsurf: WindsurfParser(),
-            .warp: WarpParser(),
-            .ollama: ModelFilterParser(modelPattern: "ollama", provider: .ollama),
-        ]
+        var parsers: [AgentProvider: any LogParser] = [:]
+        parsers[.factory] = FactoryDroidParser()
+        parsers[.claudeCode] = ClaudeCodeParser()
+        parsers[.copilot] = CopilotParser()
+        parsers[.aider] = AiderParser()
+        parsers[.cursor] = CursorParser()
+        parsers[.codex] = CodexParser()
+        parsers[.zai] = ModelFilterParser(modelPattern: "zai", provider: .zai)
+        parsers[.minimax] = ModelFilterParser(modelPattern: "minimax", provider: .minimax)
+        parsers[.kimi] = KimiParser()
+        parsers[.cline] = ClineFormatParser(provider: .cline, storagePaths: clineStoragePaths())
+        parsers[.kiloCode] = ClineFormatParser(provider: .kiloCode, storagePaths: kiloCodeStoragePaths())
+        parsers[.rooCode] = ClineFormatParser(provider: .rooCode, storagePaths: rooCodeStoragePaths())
+        parsers[.forgeDev] = ForgeDevParser()
+        parsers[.augment] = AugmentParser()
+        parsers[.hermes] = HermesParser()
+        parsers[.geminiCLI] = GeminiCLIParser()
+        parsers[.goose] = GooseParser()
+        parsers[.windsurf] = WindsurfParser()
+        parsers[.warp] = WarpParser()
+        parsers[.ollama] = ModelFilterParser(modelPattern: "ollama", provider: .ollama)
+        return parsers
+    }
+
+    private static func clineStoragePaths() -> [String] {
+        var paths: [String] = []
+        paths.append("~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks")
+        return paths
+    }
+
+    private static func kiloCodeStoragePaths() -> [String] {
+        var paths: [String] = []
+        paths.append("~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks")
+        return paths
+    }
+
+    private static func rooCodeStoragePaths() -> [String] {
+        var paths: [String] = []
+        paths.append("~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks")
+        paths.append("~/Library/Application Support/Code/User/globalStorage/roo-inc.roo-code/tasks")
+        return paths
     }
 }
