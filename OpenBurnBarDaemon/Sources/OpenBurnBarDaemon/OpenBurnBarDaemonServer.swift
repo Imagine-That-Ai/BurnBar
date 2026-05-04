@@ -12,9 +12,11 @@ public actor BurnBarDaemonServer {
     private let usageRecorder: BurnBarUsageRecorder
     private let clientRegistry: BurnBarClientRegistry
     private let runService: BurnBarRunService
-    private let missionControlService: BurnBarMissionControlService
+    private let toolingProxy: BurnBarToolingProxyService
+    private let missionControlService: any BurnBarMissionControlServing
     private let indexedSearch: BurnBarIndexedSearchService?
     private let gatewayServer: BurnBarHTTPGatewayServer?
+    private let rateLimiter: BurnBarRateLimiter?
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
 
@@ -25,7 +27,8 @@ public actor BurnBarDaemonServer {
         usageRecorder: BurnBarUsageRecorder? = nil,
         clientRegistry: BurnBarClientRegistry? = nil,
         runService: BurnBarRunService? = nil,
-        missionControlService: BurnBarMissionControlService? = nil
+        missionControlService: (any BurnBarMissionControlServing)? = nil,
+        rateLimiter: BurnBarRateLimiter? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
@@ -54,6 +57,11 @@ public actor BurnBarDaemonServer {
         self.usageRecorder = resolvedUsageRecorder
         self.clientRegistry = resolvedClientRegistry
         self.runService = resolvedRunService
+        self.toolingProxy = BurnBarToolingProxyService(
+            connectorPlaneService: resolvedRunService.connectorPlaneService,
+            browserToolService: resolvedRunService.browserToolService
+        )
+        self.rateLimiter = rateLimiter ?? BurnBarRateLimiter(configuration: configuration.socketRateLimit)
         // VAL-DAEMON-011: Wire a concrete execution readiness gate with fail-closed semantics.
         // When gate data is unavailable (no config, no connector plane), the gate returns a failure
         // with an explicit reason code instead of allowing dispatch to proceed (fail-open).
@@ -63,12 +71,13 @@ public actor BurnBarDaemonServer {
         // configStore.snapshot(), we rely on the fact that connectorPlaneSnapshot() validates
         // both runtime availability AND provider credentials (since connectors are backed by
         // the same credential system).
+        let resolvedToolingProxy = self.toolingProxy
         let executionReadinessGate: BurnBarExecutionReadinessGate = { @Sendable mission, packet in
             // Check 1: Verify connector plane runtime is accessible
             // This also implicitly validates that provider credentials are accessible since
             // the connector plane is backed by the same secret store.
             do {
-                let connectorPlane = try await resolvedRunService.connectorPlaneSnapshot()
+                let connectorPlane = try await resolvedToolingProxy.connectorPlaneSnapshot()
                 // If connector plane has no enabled/healthy connectors, runtime is unavailable
                 let hasEnabledConnector = connectorPlane.connectors.contains { $0.isEnabled }
                 if !hasEnabledConnector {
@@ -149,6 +158,8 @@ public actor BurnBarDaemonServer {
     }
 
     public func start() async throws {
+        try configuration.validate()
+
         guard listenerFileDescriptor == nil else {
             logger.debug(
                 "bootstrap_start_skipped",
@@ -178,6 +189,7 @@ public actor BurnBarDaemonServer {
         }
 
         let fileDescriptor = try BurnBarUnixDomainSocket.makeListeningSocket(at: configuration.socketPath)
+        try BurnBarUnixDomainSocket.restrictSocketPermissions(at: configuration.socketPath)
         listenerFileDescriptor = fileDescriptor
 
         acceptLoopTask = Task.detached(priority: .background) { [logger] in
@@ -264,6 +276,10 @@ public actor BurnBarDaemonServer {
     }
 
     private func responseData(for requestData: Data) async -> Data {
+        await responseData(for: requestData, peerPID: nil)
+    }
+
+    private func responseData(for requestData: Data, peerPID: pid_t?) async -> Data {
         do {
             let decoder = JSONDecoder()
             let incomingRequest = try decoder.decode(IncomingRequestEnvelope.self, from: requestData)
@@ -275,7 +291,8 @@ public actor BurnBarDaemonServer {
                         "rpc_request_unauthorized",
                         metadata: [
                             "request_id": incomingRequest.id,
-                            "method": incomingRequest.method
+                            "method": incomingRequest.method,
+                            "peer_pid": peerPID.map(String.init) ?? "unknown"
                         ]
                     )
                     return encodeErrorResponse(
@@ -299,6 +316,28 @@ public actor BurnBarDaemonServer {
                     code: BurnBarRPCErrorCode.methodNotFound,
                     message: "Unsupported OpenBurnBar RPC method '\(incomingRequest.method)'."
                 )
+            }
+
+            // Rate limiting check (per peer PID)
+            if let rateLimiter {
+                let clientKey = peerPID.map(String.init) ?? "unknown"
+                let limitResult = await rateLimiter.checkLimit(clientKey: clientKey)
+                if case .throttled(let retryAfter) = limitResult {
+                    logger.warning(
+                        "rpc_rate_limit_exceeded",
+                        metadata: [
+                            "request_id": incomingRequest.id,
+                            "method": incomingRequest.method,
+                            "peer_pid": clientKey,
+                            "retry_after": "\(retryAfter)"
+                        ]
+                    )
+                    return encodeErrorResponse(
+                        id: incomingRequest.id,
+                        code: BurnBarRPCErrorCode.rateLimitExceeded,
+                        message: "Rate limit exceeded. Retry after \(String(format: "%.1f", retryAfter)) seconds."
+                    )
+                }
             }
 
             let request = BurnBarRPCRequestEnvelope(id: incomingRequest.id, method: method, authToken: incomingRequest.authToken)
@@ -373,7 +412,7 @@ public actor BurnBarDaemonServer {
                     id: typedRequest.id,
                     protocolVersion: BurnBarProtocolVersion.current,
                     result: BurnBarConnectorPlaneResponse(
-                        snapshot: try await runService.connectorPlaneSnapshot()
+                        snapshot: try await toolingProxy.connectorPlaneSnapshot()
                     )
                 )
                 return encode(response)
@@ -386,7 +425,7 @@ public actor BurnBarDaemonServer {
                     id: typedRequest.id,
                     protocolVersion: BurnBarProtocolVersion.current,
                     result: BurnBarConnectorPlaneResponse(
-                        snapshot: try await runService.updateConnectorPlane(typedRequest.params)
+                        snapshot: try await toolingProxy.updateConnectorPlane(typedRequest.params)
                     )
                 )
                 return encode(response)
@@ -398,7 +437,7 @@ public actor BurnBarDaemonServer {
                 let response = BurnBarRPCResponseEnvelope(
                     id: typedRequest.id,
                     protocolVersion: BurnBarProtocolVersion.current,
-                    result: try await runService.performConnectorAction(typedRequest.params)
+                    result: try await toolingProxy.performConnectorAction(typedRequest.params)
                 )
                 return encode(response)
             case .browserToolingGet:
@@ -407,7 +446,7 @@ public actor BurnBarDaemonServer {
                     id: typedRequest.id,
                     protocolVersion: BurnBarProtocolVersion.current,
                     result: BurnBarBrowserToolingResponse(
-                        snapshot: try await runService.browserToolingSnapshot()
+                        snapshot: try await toolingProxy.browserToolingSnapshot()
                     )
                 )
                 return encode(response)
@@ -420,7 +459,7 @@ public actor BurnBarDaemonServer {
                     id: typedRequest.id,
                     protocolVersion: BurnBarProtocolVersion.current,
                     result: BurnBarBrowserToolingResponse(
-                        snapshot: try await runService.updateBrowserTooling(typedRequest.params)
+                        snapshot: try await toolingProxy.updateBrowserTooling(typedRequest.params)
                     )
                 )
                 return encode(response)
@@ -432,7 +471,7 @@ public actor BurnBarDaemonServer {
                 let response = BurnBarRPCResponseEnvelope(
                     id: typedRequest.id,
                     protocolVersion: BurnBarProtocolVersion.current,
-                    result: try await runService.performBrowserAction(typedRequest.params)
+                    result: try await toolingProxy.performBrowserAction(typedRequest.params)
                 )
                 return encode(response)
             case .controllerSummary:
@@ -981,7 +1020,12 @@ public actor BurnBarDaemonServer {
             )
             // Return a minimal valid response
             let fallback = ["error": ["code": code, "message": "Internal encoding error"]] as [String: Any]
-            return (try? JSONSerialization.data(withJSONObject: fallback)) ?? Data()
+            do {
+                return try JSONSerialization.data(withJSONObject: fallback)
+            } catch {
+                logger.silentFailure("encode_fallback_error_response", error: error)
+                return Data()
+            }
         }
     }
 
@@ -1021,6 +1065,13 @@ public actor BurnBarDaemonServer {
         logger.debug("accept_loop_stopped")
     }
 
+    private static func peerPID(for clientFileDescriptor: Int32) -> pid_t? {
+        var pid: pid_t = 0
+        var pidSize = socklen_t(MemoryLayout<pid_t>.size)
+        let result = getsockopt(clientFileDescriptor, SOL_LOCAL, LOCAL_PEERPID, &pid, &pidSize)
+        return result == 0 ? pid : nil
+    }
+
     private static func handleClientConnection(
         server: BurnBarDaemonServer,
         clientFileDescriptor: Int32,
@@ -1031,13 +1082,19 @@ public actor BurnBarDaemonServer {
         }
 
         BurnBarUnixDomainSocket.configureNoSigPipe(for: clientFileDescriptor)
+        BurnBarUnixDomainSocket.configureIOTimeouts(for: clientFileDescriptor)
+
+        let peerPID = Self.peerPID(for: clientFileDescriptor)
 
         do {
             let requestData = try BurnBarUnixDomainSocket.readRequest(
                 from: clientFileDescriptor,
                 maxBytes: maxRequestBytes
             )
-            let responseData = await server.responseData(for: requestData) + Data([0x0A])
+            let responseData = await server.responseData(
+                for: requestData,
+                peerPID: peerPID
+            ) + Data([0x0A])
             try BurnBarUnixDomainSocket.writeAll(responseData, to: clientFileDescriptor)
             logger.debug(
                 "rpc_response_sent",
@@ -1131,6 +1188,12 @@ private enum BurnBarUnixDomainSocket {
         }
     }
 
+    static func restrictSocketPermissions(at socketPath: String) throws {
+        guard chmod(socketPath, S_IRUSR | S_IWUSR) == 0 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+    }
+
     static func readRequest(from fileDescriptor: Int32, maxBytes: Int) throws -> Data {
         var buffer = Data()
         buffer.reserveCapacity(1024)
@@ -1187,6 +1250,9 @@ private enum BurnBarUnixDomainSocket {
                     }
                     throw POSIXError(.init(rawValue: code) ?? .EIO)
                 }
+                guard bytesWritten > 0 else {
+                    throw POSIXError(.EIO)
+                }
 
                 bytesRemaining -= bytesWritten
                 writeOffset += bytesWritten
@@ -1202,6 +1268,24 @@ private enum BurnBarUnixDomainSocket {
             SO_NOSIGPIPE,
             &value,
             socklen_t(MemoryLayout<Int32>.size)
+        )
+    }
+
+    static func configureIOTimeouts(for fileDescriptor: Int32, seconds: Int = 30) {
+        var timeout = timeval(tv_sec: seconds, tv_usec: 0)
+        setsockopt(
+            fileDescriptor,
+            SOL_SOCKET,
+            SO_RCVTIMEO,
+            &timeout,
+            socklen_t(MemoryLayout<timeval>.size)
+        )
+        setsockopt(
+            fileDescriptor,
+            SOL_SOCKET,
+            SO_SNDTIMEO,
+            &timeout,
+            socklen_t(MemoryLayout<timeval>.size)
         )
     }
 

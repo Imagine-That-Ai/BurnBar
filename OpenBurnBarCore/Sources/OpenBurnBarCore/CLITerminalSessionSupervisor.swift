@@ -80,14 +80,16 @@ public enum CLIQuotaExhaustionClassifier {
     }
 }
 
-public final class CLITerminalSessionSupervisor: @unchecked Sendable {
+public final class CLITerminalSessionSupervisor: Sendable {
     public typealias EventHandler = @Sendable (CLITerminalSessionEvent) -> Void
 
     private let cliType: SwitcherCLIProfileType
     private let eventHandler: EventHandler
-    private let lock = NSLock()
-    private var chunks: [String] = []
-    private var didEmitQuotaEvent = false
+    private struct State {
+        var chunks: [String] = []
+        var didEmitQuotaEvent = false
+    }
+    private let state = Locked(State())
 
     public init(
         cliType: SwitcherCLIProfileType,
@@ -100,18 +102,18 @@ public final class CLITerminalSessionSupervisor: @unchecked Sendable {
     public func ingest(_ text: String, source: CLITerminalSessionOutputSource) {
         guard !text.isEmpty else { return }
 
-        let matchedDetail: String? = lock.withLock {
-            chunks.append(text)
-            if chunks.count > 256 {
-                chunks.removeFirst(chunks.count - 256)
+        let matchedDetail: String? = state.withLock { s in
+            s.chunks.append(text)
+            if s.chunks.count > 256 {
+                s.chunks.removeFirst(s.chunks.count - 256)
             }
 
-            guard !didEmitQuotaEvent else { return nil }
-            guard let detail = CLIQuotaExhaustionClassifier.classify(for: cliType, in: chunks.joined()) else {
+            guard !s.didEmitQuotaEvent else { return nil }
+            guard let detail = CLIQuotaExhaustionClassifier.classify(for: cliType, in: s.chunks.joined()) else {
                 return nil
             }
 
-            didEmitQuotaEvent = true
+            s.didEmitQuotaEvent = true
             return detail
         }
 
@@ -120,7 +122,7 @@ public final class CLITerminalSessionSupervisor: @unchecked Sendable {
     }
 
     public func snapshot() -> String {
-        lock.withLock { chunks.joined() }
+        state.withLock { $0.chunks.joined() }
     }
 
     public func attach(
@@ -165,31 +167,22 @@ public final class CLITerminalSessionSupervisor: @unchecked Sendable {
     }
 }
 
-public final class CLITerminalSessionPipeObserver: @unchecked Sendable {
-    private let lock = NSLock()
-    private var didCancel = false
-    private let cancelAction: () -> Void
+public final class CLITerminalSessionPipeObserver: Sendable {
+    private let didCancel = Locked(false)
+    private let cancelAction: @Sendable () -> Void
 
-    init(cancelAction: @escaping () -> Void) {
+    init(cancelAction: @escaping @Sendable () -> Void) {
         self.cancelAction = cancelAction
     }
 
     public func cancel() {
-        let shouldCancel = lock.withLock { () -> Bool in
-            guard !didCancel else { return false }
-            didCancel = true
+        let shouldCancel = didCancel.withLock { flag -> Bool in
+            guard !flag else { return false }
+            flag = true
             return true
         }
 
         guard shouldCancel else { return }
         cancelAction()
-    }
-}
-
-private extension NSLock {
-    func withLock<T>(_ work: () -> T) -> T {
-        lock()
-        defer { unlock() }
-        return work()
     }
 }

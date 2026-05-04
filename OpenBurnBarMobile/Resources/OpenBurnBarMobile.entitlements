@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Required for `SignInWithAppleButton` and `ASAuthorizationAppleIDProvider`.
+         Without this, Apple sign-in fails at runtime. -->
+    <key>com.apple.developer.applesignin</key>
+    <array>
+        <string>Default</string>
+    </array>
+
+    <!-- Keychain access group MUST share the AppIdentifierPrefix with the
+         build's actual bundle identifier. The escrow key
+         in `iOSDeviceKeypair.swift` writes to Keychain via this group. -->
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    </array>
+
+    <!-- App Group for sharing widget data with the WidgetKit extension. -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.burnbar.app</string>
+    </array>
+</dict>
+</plist>

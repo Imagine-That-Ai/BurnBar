@@ -69,6 +69,7 @@ extension ProviderBrand {
         case "alibaba":     return Color(hex: "FF6A00")
         case "zai":         return Color(hex: "8B5CF6")
         case "minimax":     return Color(hex: "F59E0B")
+        case "ollama":      return Color(hex: "8B8589")
         case "moonshot":    return Color(hex: "6366F1")
         case "misc":        return DesignSystem.Colors.textSecondary
         default:            return DesignSystem.Colors.textSecondary
@@ -90,6 +91,7 @@ extension ProviderBrand {
         case "alibaba":     return "cloud.fill"
         case "zai":         return "bolt.fill"
         case "minimax":     return "star.fill"
+        case "ollama":      return "server.rack"
         case "moonshot":    return "moon.fill"
         case "misc":        return "cube.transparent"
         default:            return "cube.transparent"

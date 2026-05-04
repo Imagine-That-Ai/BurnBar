@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -61,6 +62,13 @@ export const DEFAULT_BURNBAR_SOCKET_PATH = join(
   'OpenBurnBar',
   'openburnbar-daemon.sock'
 );
+export const DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST = join(
+  homedir(),
+  'Library',
+  'LaunchAgents',
+  'com.openburnbar.daemon.plist'
+);
+const DEFAULT_MAX_IN_FLIGHT = 8;
 
 function resolveDefaultSocketPath(): string {
   return (
@@ -70,9 +78,26 @@ function resolveDefaultSocketPath(): string {
   );
 }
 
+function resolveDefaultAuthToken(): string | undefined {
+  const envToken = process.env.OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN ?? process.env.BURNBAR_DAEMON_SOCKET_AUTH_TOKEN;
+  if (envToken?.trim()) {
+    return envToken.trim();
+  }
+
+  try {
+    const plist = readFileSync(DEFAULT_BURNBAR_LAUNCH_AGENT_PLIST, 'utf8');
+    const match = plist.match(/<key>OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN<\/key>\s*<string>([^<]+)<\/string>/);
+    return match?.[1]?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface OpenBurnBarDaemonClientOptions {
   socketPath?: string;
   timeoutMs?: number;
+  authToken?: string;
+  maxInFlight?: number;
 }
 
 export class OpenBurnBarDaemonClientError extends Error {
@@ -114,10 +139,15 @@ export interface OpenBurnBarDaemonClientLike {
 export class OpenBurnBarDaemonClient implements OpenBurnBarDaemonClientLike {
   private readonly socketPath: string;
   private readonly timeoutMs: number;
+  private readonly authToken?: string;
+  private readonly maxInFlight: number;
+  private inFlight = 0;
 
   constructor(options: OpenBurnBarDaemonClientOptions = {}) {
     this.socketPath = options.socketPath ?? resolveDefaultSocketPath();
     this.timeoutMs = options.timeoutMs ?? 60_000;
+    this.authToken = options.authToken?.trim() || resolveDefaultAuthToken();
+    this.maxInFlight = options.maxInFlight ?? DEFAULT_MAX_IN_FLIGHT;
   }
 
   async health(): Promise<BurnBarHealthResponse> {
@@ -222,9 +252,17 @@ export class OpenBurnBarDaemonClient implements OpenBurnBarDaemonClientLike {
   }
 
   private async send<Result, Params = undefined>(method: BurnBarRPCMethod, params?: Params): Promise<Result> {
+    if (this.inFlight >= this.maxInFlight) {
+      throw new OpenBurnBarDaemonClientError(
+        `OpenBurnBar daemon client has ${this.inFlight} RPCs in flight; refusing to queue ${method}.`
+      );
+    }
+
+    this.inFlight += 1;
     const payload = JSON.stringify(this.makeEnvelope(method, params)) + '\n';
 
-    return await new Promise<Result>((resolve, reject) => {
+    try {
+      return await new Promise<Result>((resolve, reject) => {
       const socket = createConnection(this.socketPath);
       let responseBuffer = '';
       let settled = false;
@@ -314,20 +352,25 @@ export class OpenBurnBarDaemonClient implements OpenBurnBarDaemonClientLike {
           fail(new OpenBurnBarDaemonClientError('OpenBurnBar daemon closed the connection before replying.'));
         }
       });
-    });
+      });
+    } finally {
+      this.inFlight -= 1;
+    }
   }
 
   private makeEnvelope(method: BurnBarRPCMethod, params?: unknown): BurnBarRPCRequestEnvelope | BurnBarRPCRequestEnvelopeWithParams<unknown> {
+    const base = {
+      id: randomUUID(),
+      method,
+      ...(this.authToken ? { authToken: this.authToken } : {})
+    };
+
     if (typeof params === 'undefined') {
-      return {
-        id: randomUUID(),
-        method
-      };
+      return base;
     }
 
     return {
-      id: randomUUID(),
-      method,
+      ...base,
       params
     };
   }

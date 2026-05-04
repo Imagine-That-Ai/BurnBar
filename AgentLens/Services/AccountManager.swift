@@ -5,6 +5,8 @@ import CryptoKit
 import FirebaseCore
 import Foundation
 import GoogleSignIn
+import OSLog
+import Security
 
 // MARK: - AccountManager
 
@@ -54,7 +56,7 @@ final class AccountManager {
 
     // MARK: - Init
 
-    private init() {
+    init() {
         deviceId = Self.loadOrCreateDeviceId()
         configureFirebase()
     }
@@ -67,12 +69,14 @@ final class AccountManager {
             return
         }
         isFirebaseAvailable = true
+        configureFirebaseAuthAccessGroup()
         configureGoogleSignInIfPossible()
         observeAuthState()
     }
 
     func onFirebaseConfigured() {
         isFirebaseAvailable = true
+        configureFirebaseAuthAccessGroup()
         configureGoogleSignInIfPossible()
         observeAuthState()
     }
@@ -81,6 +85,66 @@ final class AccountManager {
         guard Self.hasConfiguredFirebaseApp else { return }
         guard let clientID = FirebaseApp.app()?.options.clientID else { return }
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+    }
+
+    /// Firebase Auth on macOS uses `kSecUseDataProtectionKeychain`, which requires
+    /// the SDK to be explicitly bound to the bundle's keychain access group when
+    /// the Keychain Sharing entitlement is present. Without this call, persisting
+    /// the signed-in user after Apple/Google sign-in fails with an opaque
+    /// "keychain error" and the user is bounced back to the sign-in screen.
+    /// See https://firebase.google.com/docs/ios/troubleshooting-faq.
+    ///
+    /// We discover the team-prefixed group at runtime (instead of hardcoding the
+    /// 10-character Team ID) so the fix follows whatever signing identity Xcode
+    /// selects. If the bundle has no keychain entitlement (e.g. notarized
+    /// Developer ID release lane — see `OpenBurnBarRelease.entitlements`), the
+    /// probe returns nil and we leave Firebase Auth on its default keychain path.
+    private func configureFirebaseAuthAccessGroup() {
+        guard let group = Self.discoverKeychainAccessGroup() else { return }
+        do {
+            try Auth.auth().useUserAccessGroup(group)
+        } catch {
+            // Non-fatal: Firebase Auth falls back to its default keychain path.
+            // Log so we can spot misconfigured signing without crashing the app.
+            os_log(
+                "Firebase Auth useUserAccessGroup failed for %{public}@: %{public}@",
+                log: .default,
+                type: .error,
+                group,
+                error.localizedDescription
+            )
+        }
+    }
+
+    /// Probes the keychain to discover the bundle's access group prefix
+    /// (`<TeamID>.<bundle-id>`). Returns nil when no Keychain Sharing
+    /// entitlement is present (writes fail with `errSecMissingEntitlement`).
+    private static func discoverKeychainAccessGroup() -> String? {
+        let probe: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: "openburnbar.firebase-auth-access-group-probe",
+            kSecAttrService as String: "openburnbar.firebase-auth-access-group-probe",
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+            kSecUseDataProtectionKeychain as String: true
+        ]
+        SecItemDelete(probe as CFDictionary)
+        var add = probe
+        add[kSecValueData as String] = Data("probe".utf8)
+        let addStatus = SecItemAdd(add as CFDictionary, nil)
+        guard addStatus == errSecSuccess else { return nil }
+        defer { SecItemDelete(probe as CFDictionary) }
+
+        var read = probe
+        read[kSecReturnAttributes as String] = true
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(read as CFDictionary, &item)
+        guard status == errSecSuccess,
+              let attrs = item as? [String: Any],
+              let group = attrs[kSecAttrAccessGroup as String] as? String,
+              group.contains(".") else {
+            return nil
+        }
+        return group
     }
 
     private func observeAuthState() {

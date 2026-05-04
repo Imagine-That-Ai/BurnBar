@@ -50,6 +50,57 @@ describe("OpenBurnBarDaemonClient", () => {
     await close(server);
   });
 
+  it("adds daemon auth token to socket envelopes", async () => {
+    const socketPath = makeSocketPath("auth-token");
+    const server = createServer((socket) => {
+      socket.on("data", (chunk) => {
+        const request = JSON.parse(chunk.toString("utf8").trim());
+        expect(request.method).toBe("daemon.health");
+        expect(request.authToken).toBe("socket-secret");
+        socket.end(
+          JSON.stringify({
+            id: request.id,
+            protocolVersion: 1,
+            result: {
+              ok: true,
+              daemonVersion: "0.1.0",
+              protocolVersion: 1,
+              socketPath
+            }
+          }) + "\n"
+        );
+      });
+    });
+
+    await listen(server, socketPath);
+
+    const client = new OpenBurnBarDaemonClient({ socketPath, authToken: "socket-secret" });
+    await expect(client.health()).resolves.toMatchObject({
+      ok: true
+    });
+
+    await close(server);
+  });
+
+  it("rejects requests above the configured in-flight limit", async () => {
+    const socketPath = makeSocketPath("backpressure");
+    const server = createServer((socket) => {
+      socket.on("data", () => {
+        // Keep the first request open until the client timeout so the second call
+        // exercises client-side back-pressure deterministically.
+      });
+    });
+
+    await listen(server, socketPath);
+
+    const client = new OpenBurnBarDaemonClient({ socketPath, timeoutMs: 50, maxInFlight: 1 });
+    const first = client.health();
+    await expect(client.health()).rejects.toThrow("RPCs in flight");
+    await expect(first).rejects.toThrow("Timed out waiting for OpenBurnBar daemon");
+
+    await close(server);
+  });
+
   it("loads the catalog payload", async () => {
     const socketPath = makeSocketPath("catalog");
     const server = createServer((socket) => {

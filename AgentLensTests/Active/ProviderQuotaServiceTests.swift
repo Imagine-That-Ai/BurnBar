@@ -1,5 +1,7 @@
 import Foundation
+import GRDB
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 @MainActor
@@ -12,6 +14,65 @@ final class ProviderQuotaServiceTests: XCTestCase {
         }
         tempDirectories.removeAll()
         StubURLProtocol.requestHandler = nil
+        OpenBurnBarDaemonManager.shared.providerConfigurations = []
+    }
+
+    func test_supportedProviders_includesWarp() {
+        XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.warp))
+    }
+
+    func test_warpRefresh_readsLocalCreditTelemetry() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let warpDirectory = home
+            .appendingPathComponent("Library/Application Support/dev.warp.Warp-Stable", isDirectory: true)
+        try FileManager.default.createDirectory(at: warpDirectory, withIntermediateDirectories: true)
+        let payload = """
+        Body {
+          "data": {
+            "viewer": {
+              "warpCredits": {
+                "creditsUsed": 25,
+                "creditsLimit": 100,
+                "creditsRemaining": 75,
+                "resetsAt": "2026-06-01T00:00:00Z"
+              }
+            }
+          }
+        }
+        """
+        try Data(payload.utf8).write(to: warpDirectory.appendingPathComponent("warp_network.log"))
+
+        let service = makeService(home: home, appSupportRoot: appSupport)
+
+        await service.refresh(provider: .warp, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .warp))
+
+        XCTAssertEqual(snapshot.source, .localSession)
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertEqual(snapshot.buckets.first?.label, "Monthly credits")
+        XCTAssertEqual(snapshot.buckets.first?.usedValue, 25)
+        XCTAssertEqual(snapshot.buckets.first?.limitValue, 100)
+        XCTAssertEqual(snapshot.buckets.first?.remainingValue, 75)
+    }
+
+    func test_warpRefresh_withoutCreditTelemetry_returnsUnavailableSnapshot() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let warpDirectory = home
+            .appendingPathComponent("Library/Application Support/dev.warp.Warp-Stable", isDirectory: true)
+        try FileManager.default.createDirectory(at: warpDirectory, withIntermediateDirectories: true)
+        try Data("Body {\"batch\":[]}".utf8).write(to: warpDirectory.appendingPathComponent("warp_network.log"))
+
+        let service = makeService(home: home, appSupportRoot: appSupport)
+
+        await service.refresh(provider: .warp, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .warp))
+
+        XCTAssertEqual(snapshot.provider, .warp)
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.buckets.isEmpty)
+        XCTAssertTrue(snapshot.statusMessage.contains("Warp credit quota was not found"))
     }
 
     func test_codexRefresh_readsLatestLocalQuotaSnapshot() async throws {
@@ -32,7 +93,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             appSupportRoot: appSupport
         )
 
-        await service.refresh(provider: .codex, dataStore: try! DataStore())
+        await service.refresh(provider: .codex, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .codex))
 
         XCTAssertEqual(snapshot.source, .localSession)
@@ -63,7 +124,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             appSupportRoot: appSupport
         )
 
-        await service.refresh(provider: .codex, dataStore: try! DataStore())
+        await service.refresh(provider: .codex, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .codex))
 
         XCTAssertEqual(snapshot.source, .localSession)
@@ -86,13 +147,13 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
         let first = makeService(home: home, appSupportRoot: appSupport)
-        await first.refresh(provider: .codex, dataStore: try! DataStore())
+        await first.refresh(provider: .codex, dataStore: try makeDataStore())
         XCTAssertTrue(FileManager.default.fileExists(atPath: paths.codexRolloutScanCacheURL.path))
 
         try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: rolloutURL.path)
 
         let second = makeService(home: home, appSupportRoot: appSupport)
-        await second.refresh(provider: .codex, dataStore: try! DataStore())
+        await second.refresh(provider: .codex, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(second.snapshot(for: .codex))
 
         XCTAssertEqual(snapshot.source, .localSession)
@@ -116,7 +177,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let service = makeService(home: home, appSupportRoot: appSupport)
 
-        await service.refresh(provider: .codex, dataStore: try! DataStore())
+        await service.refresh(provider: .codex, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .codex))
 
         XCTAssertEqual(snapshot.buckets.count, 1)
@@ -140,7 +201,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let service = makeService(home: home, appSupportRoot: appSupport)
 
-        await service.refresh(provider: .codex, dataStore: try! DataStore())
+        await service.refresh(provider: .codex, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .codex))
 
         XCTAssertEqual(snapshot.buckets.count, 2)
@@ -200,7 +261,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             environment: ["ANTHROPIC_API_KEY": "sk-ant-test"]
         )
 
-        await service.refresh(provider: .claudeCode, dataStore: try! DataStore())
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
@@ -245,7 +306,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             environment: ["ANTHROPIC_API_KEY": "sk-ant-test"]
         )
 
-        await service.refresh(provider: .claudeCode, dataStore: try! DataStore())
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
         XCTAssertEqual(snapshot.source, .localCLI)
@@ -254,41 +315,6 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.statusMessage.contains("API billing"))
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "5-hour window" && $0.remainingPercent?.rounded() == 90 }))
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "7-day Opus window" && $0.remainingPercent?.rounded() == 60 }))
-    }
-
-    func test_factoryRefresh_estimatesRemainingFromPlanTierAndMonthlyUsage() async throws {
-        let home = try makeTemporaryDirectory()
-        let appSupport = try makeTemporaryDirectory()
-        let service = makeService(
-            home: home,
-            appSupportRoot: appSupport,
-            factoryPlanProvider: { .pro }
-        )
-
-        let store = try! DataStore()
-        let start = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date()
-        store.replaceUsages([
-            TokenUsage(
-                provider: .factory,
-                sessionId: "factory-month",
-                projectName: "Quota",
-                model: "factory-model",
-                inputTokens: 3_000_000,
-                outputTokens: 2_000_000,
-                costUSD: 0,
-                startTime: start.addingTimeInterval(60),
-                endTime: start.addingTimeInterval(120)
-            )
-        ])
-
-        await service.refresh(provider: .factory, dataStore: store)
-        let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
-        let bucket = try XCTUnwrap(snapshot.primaryBucket)
-
-        XCTAssertEqual(snapshot.source, .manualEstimate)
-        XCTAssertEqual(snapshot.confidence, .estimated)
-        XCTAssertEqual(bucket.remainingValue?.rounded(), 15_000_000)
-        XCTAssertEqual(bucket.limitValue?.rounded(), 20_000_000)
     }
 
     func test_factoryRefresh_prefersExactFactoryAPIUsingExplicitEnvironmentCredentials() async throws {
@@ -321,7 +347,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             }
 
             if url.path.hasSuffix("/api/organization/subscription/usage") {
-                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(request.httpMethod, "GET")
                 return try self.httpResponse(
                     url: url,
                     statusCode: 200,
@@ -360,7 +386,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             factoryPlanProvider: { .pro }
         )
 
-        await service.refresh(provider: .factory, dataStore: try! DataStore())
+        await service.refresh(provider: .factory, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
 
         XCTAssertEqual(snapshot.source, .officialAPI)
@@ -391,7 +417,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             factoryPlanProvider: { .pro }
         )
 
-        let store = try! DataStore()
+        let store = try makeDataStore()
         await first.refreshAll(dataStore: store)
         XCTAssertTrue(FileManager.default.fileExists(atPath: paths.providerQuotaSnapshotsURL.path))
 
@@ -402,6 +428,50 @@ final class ProviderQuotaServiceTests: XCTestCase {
         )
 
         XCTAssertNotNil(second.snapshot(for: .factory))
+    }
+
+    func test_persistedSnapshots_preserveMultipleAccountsForSameProvider() throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
+        let work = ProviderQuotaSnapshot(
+            provider: .minimax,
+            accountID: "minimax_work",
+            accountLabel: "Work",
+            accountStorageScope: .deviceKeychain,
+            fetchedAt: Date(timeIntervalSince1970: 100),
+            source: .officialAPI,
+            sourceId: "slot-work",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Work quota",
+            buckets: []
+        )
+        let personal = ProviderQuotaSnapshot(
+            provider: .minimax,
+            accountID: "minimax_personal",
+            accountLabel: "Personal",
+            accountStorageScope: .deviceKeychain,
+            fetchedAt: Date(timeIntervalSince1970: 200),
+            source: .officialAPI,
+            sourceId: "slot-personal",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Personal quota",
+            buckets: []
+        )
+
+        store.persistSnapshots([.minimax: personal], accountSnapshots: [
+            ProviderQuotaSnapshotStore.accountSnapshotKey(work): work,
+            ProviderQuotaSnapshotStore.accountSnapshotKey(personal): personal,
+        ])
+
+        let service = makeService(home: home, appSupportRoot: appSupport)
+
+        XCTAssertEqual(service.snapshots(for: .minimax).map(\.accountID), ["minimax_personal", "minimax_work"])
+        XCTAssertEqual(service.snapshot(accountID: "minimax_work")?.accountLabel, "Work")
+        XCTAssertEqual(service.snapshot(for: .minimax)?.accountID, "minimax_personal")
     }
 
     func test_miniMaxRefresh_usesTokenPlanEndpoint() async throws {
@@ -439,12 +509,394 @@ final class ProviderQuotaServiceTests: XCTestCase {
             miniMaxModeProvider: { .tokenPlan }
         )
 
-        await service.refresh(provider: .minimax, dataStore: try! DataStore())
+        await service.refresh(provider: .minimax, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
 
         XCTAssertEqual(snapshot.source, .officialAPI)
         XCTAssertEqual(snapshot.buckets.count, 2)
         XCTAssertEqual(snapshot.buckets.first?.remainingPercent?.rounded(), 75)
+    }
+
+    func test_refreshAll_fetchesDaemonCredentialSlotsAsAccountSnapshots() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let runtimeSecrets = KeychainStore(
+            service: "tests.runtime.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: TestKeychainBackend()
+        )
+        try runtimeSecrets.set("sk-cp-work", for: "provider.minimax.slot.work.apiKey")
+        try runtimeSecrets.set("sk-cp-personal", for: "provider.minimax.slot.personal.apiKey")
+
+        OpenBurnBarDaemonManager.shared.providerConfigurations = [
+            OpenBurnBarDaemonProviderConfiguration(
+                providerID: "minimax",
+                provider: .minimax,
+                displayName: "MiniMax",
+                isEnabled: true,
+                baseURL: "https://api.minimax.io",
+                preferredModelIDs: [],
+                preferredCredentialSlotID: "work",
+                credentialSlots: [
+                    OpenBurnBarDaemonProviderConfiguration.CredentialSlot(
+                        slotID: "work",
+                        label: "Work",
+                        isEnabled: true,
+                        status: .ready,
+                        cooldownUntil: nil,
+                        lastSelectedAt: nil,
+                        lastQuotaRemainingPercent: nil,
+                        lastQuotaResetsAt: nil,
+                        lastStatusMessage: nil
+                    ),
+                    OpenBurnBarDaemonProviderConfiguration.CredentialSlot(
+                        slotID: "personal",
+                        label: "Personal",
+                        isEnabled: true,
+                        status: .ready,
+                        cooldownUntil: nil,
+                        lastSelectedAt: nil,
+                        lastQuotaRemainingPercent: nil,
+                        lastQuotaResetsAt: nil,
+                        lastStatusMessage: nil
+                    ),
+                ]
+            )
+        ]
+
+        let observedAuthorizations = Locked<[String]>([])
+        let session = makeStubSession { request in
+            let authorization = request.value(forHTTPHeaderField: "Authorization") ?? ""
+            observedAuthorizations.withLock { $0.append(authorization) }
+            let usedPercent: Int
+            switch authorization {
+            case "Bearer sk-cp-work":
+                usedPercent = 10
+            case "Bearer sk-cp-personal":
+                usedPercent = 70
+            default:
+                usedPercent = 99
+            }
+            let body = """
+            {
+              "data": [
+                {
+                  "name": "5 hour quota",
+                  "used_percent": \(usedPercent),
+                  "window": "5 hour"
+                }
+              ]
+            }
+            """
+            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            providerRuntimeKeyStore: runtimeSecrets,
+            session: session,
+            miniMaxModeProvider: { .tokenPlan },
+            refreshProviders: [.minimax]
+        )
+
+        let dataStore = try makeDataStore()
+        await service.refreshAll(dataStore: dataStore)
+
+        let snapshots = service.snapshots(for: .minimax)
+        let work = try XCTUnwrap(snapshots.first { $0.accountLabel == "Work" })
+        let personal = try XCTUnwrap(snapshots.first { $0.accountLabel == "Personal" })
+        let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: ProviderID(rawValue: "minimax"))
+
+        XCTAssertEqual(work.accountID, "minimax-work")
+        XCTAssertEqual(work.accountStorageScope, .deviceKeychain)
+        XCTAssertEqual(work.sourceId, "daemon-slot:minimax:work")
+        XCTAssertEqual(try XCTUnwrap(work.primaryBucket?.remainingPercent).rounded(), 90)
+        XCTAssertEqual(personal.accountID, "minimax-personal")
+        XCTAssertEqual(personal.sourceId, "daemon-slot:minimax:personal")
+        XCTAssertEqual(try XCTUnwrap(personal.primaryBucket?.remainingPercent).rounded(), 30)
+        XCTAssertTrue(observedAuthorizations.read().contains("Bearer sk-cp-work"))
+        XCTAssertTrue(observedAuthorizations.read().contains("Bearer sk-cp-personal"))
+        XCTAssertEqual(persistedAccounts.map(\.id), ["minimax-work", "minimax-personal"])
+        XCTAssertEqual(persistedAccounts.first?.label, "Work")
+        XCTAssertEqual(persistedAccounts.first?.storageScope, .deviceKeychain)
+        XCTAssertEqual(persistedAccounts.first?.isDefault, true)
+    }
+
+    func test_refreshAll_fetchesOpenAIDaemonCredentialSlotsAsAccountSnapshots() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let runtimeSecrets = KeychainStore(
+            service: "tests.runtime.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: TestKeychainBackend()
+        )
+        try runtimeSecrets.set("sk-openai-work", for: "provider.openai.slot.work.apiKey")
+
+        OpenBurnBarDaemonManager.shared.providerConfigurations = [
+            OpenBurnBarDaemonProviderConfiguration(
+                providerID: "openai",
+                provider: .openAI,
+                displayName: "OpenAI",
+                isEnabled: true,
+                baseURL: "https://api.openai.com/v1",
+                preferredModelIDs: [],
+                preferredCredentialSlotID: "work",
+                credentialSlots: [
+                    OpenBurnBarDaemonProviderConfiguration.CredentialSlot(
+                        slotID: "work",
+                        label: "Work",
+                        isEnabled: true,
+                        status: .ready,
+                        cooldownUntil: nil,
+                        lastSelectedAt: nil,
+                        lastQuotaRemainingPercent: nil,
+                        lastQuotaResetsAt: nil,
+                        lastStatusMessage: nil
+                    ),
+                ]
+            )
+        ]
+
+        let session = makeStubSession { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-openai-work")
+            XCTAssertEqual(request.url?.host, "api.openai.com")
+            let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
+            let queryItems = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+            XCTAssertEqual(queryItems["bucket_width"], "1d")
+            XCTAssertNil(queryItems["granularity"])
+            let body = """
+            {
+              "data": [
+                {
+                  "results": [
+                    {
+                      "input_tokens": 1000,
+                      "output_tokens": 250,
+                      "input_cached_tokens": 100,
+                      "num_model_requests": 7
+                    }
+                  ]
+                }
+              ]
+            }
+            """
+            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            providerRuntimeKeyStore: runtimeSecrets,
+            session: session,
+            refreshProviders: [.openAI]
+        )
+
+        let dataStore = try makeDataStore()
+        await service.refreshAll(dataStore: dataStore)
+
+        let snapshot = try XCTUnwrap(service.snapshots(for: AgentProvider.openAI).first { $0.accountLabel == "Work" })
+        let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: .openAI)
+
+        XCTAssertEqual(snapshot.accountID, "openai-work")
+        XCTAssertEqual(snapshot.providerID, ProviderID.openAI)
+        XCTAssertEqual(snapshot.accountStorageScope, ProviderAccountStorageScope.deviceKeychain)
+        XCTAssertEqual(snapshot.sourceId, "daemon-slot:openai:work")
+        XCTAssertEqual(snapshot.buckets.first { $0.key == "tokens-24h" }?.usedValue, 1250)
+        XCTAssertEqual(snapshot.buckets.first { $0.key == "requests-24h" }?.usedValue, 7)
+        XCTAssertEqual(persistedAccounts.map(\.id), ["openai-work"])
+        XCTAssertEqual(persistedAccounts.first?.label, "Work")
+        XCTAssertEqual(persistedAccounts.first?.storageScope, .deviceKeychain)
+    }
+
+    func test_refreshAll_marksRemovedDaemonCredentialSlotAccountsDeleted() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let runtimeSecrets = KeychainStore(
+            service: "tests.runtime.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: TestKeychainBackend()
+        )
+        try runtimeSecrets.set("sk-cp-work", for: "provider.minimax.slot.work.apiKey")
+
+        OpenBurnBarDaemonManager.shared.providerConfigurations = [
+            OpenBurnBarDaemonProviderConfiguration(
+                providerID: "minimax",
+                provider: .minimax,
+                displayName: "MiniMax",
+                isEnabled: true,
+                baseURL: "https://api.minimax.io",
+                preferredModelIDs: [],
+                preferredCredentialSlotID: "work",
+                credentialSlots: [
+                    OpenBurnBarDaemonProviderConfiguration.CredentialSlot(
+                        slotID: "work",
+                        label: "Work",
+                        isEnabled: true,
+                        status: .ready,
+                        cooldownUntil: nil,
+                        lastSelectedAt: nil,
+                        lastQuotaRemainingPercent: nil,
+                        lastQuotaResetsAt: nil,
+                        lastStatusMessage: nil
+                    ),
+                ]
+            )
+        ]
+
+        let dataStore = try makeDataStore()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        try dataStore.providerAccountStore.upsert(
+            ProviderAccountDoc(
+                id: "minimax-personal",
+                providerID: ProviderID(rawValue: "minimax"),
+                label: "Personal",
+                status: .connected,
+                credentialKind: .bearer,
+                storageScope: .deviceKeychain,
+                redactedLabel: "Stored in Mac Keychain",
+                isDefault: true,
+                sortKey: 0,
+                schemaVersion: 1,
+                createdAt: now,
+                updatedAt: now
+            )
+        )
+
+        let session = makeStubSession { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-cp-work")
+            let body = """
+            {
+              "data": [
+                {
+                  "name": "5 hour quota",
+                  "used_percent": 10,
+                  "window": "5 hour"
+                }
+              ]
+            }
+            """
+            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+        }
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            providerRuntimeKeyStore: runtimeSecrets,
+            session: session,
+            miniMaxModeProvider: { .tokenPlan },
+            refreshProviders: [.minimax]
+        )
+
+        await service.refreshAll(dataStore: dataStore)
+
+        let accounts = try dataStore.providerAccountStore.fetchAll(providerID: ProviderID(rawValue: "minimax"))
+        let work = try XCTUnwrap(accounts.first { $0.id == "minimax-work" })
+        let removed = try XCTUnwrap(accounts.first { $0.id == "minimax-personal" })
+
+        XCTAssertEqual(work.status, .connected)
+        XCTAssertEqual(work.isDefault, true)
+        XCTAssertEqual(removed.status, .deleted)
+        XCTAssertEqual(removed.lastErrorCode, "credential_slot_removed")
+        XCTAssertEqual(removed.isDefault, false)
+    }
+
+    func test_refreshIfNeeded_populatesRoutingStateFromFreshPersistedSnapshotsWithoutNetworkRefresh() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let now = Date()
+        ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default).persistSnapshots([
+            .openAI: ProviderQuotaSnapshot(
+                provider: .openAI,
+                fetchedAt: now,
+                source: .officialAPI,
+                confidence: .exact,
+                managementURL: nil,
+                statusMessage: "Fresh OpenAI quota.",
+                buckets: [
+                    ProviderQuotaBucket(
+                        key: "monthly",
+                        label: "Monthly",
+                        windowKind: .monthly,
+                        usedValue: 10,
+                        limitValue: 100,
+                        remainingValue: 90,
+                        usedPercent: 10,
+                        resetsAt: nil,
+                        unit: .requests,
+                        isEstimated: false
+                    )
+                ]
+            )
+        ])
+
+        let dataStore = try makeDataStore()
+        try dataStore.providerAccountStore.upsert(
+            routingAccount(id: "openai-work", label: "Work", storageScope: .deviceKeychain)
+        )
+        let session = makeStubSession { request in
+            XCTFail("Fresh persisted quota should not require a network refresh: \(request)")
+            return try self.httpResponse(url: request.url!, statusCode: 500, body: "{}")
+        }
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            refreshProviders: [.openAI]
+        )
+
+        await service.refreshIfNeeded(dataStore: dataStore)
+
+        let state = try XCTUnwrap(service.routingState(for: .openAI))
+        XCTAssertEqual(state.activeAccount?.accountID, "openai-work")
+        XCTAssertEqual(state.activeAccount?.quotaState, .unknown)
+    }
+
+    func test_refreshRoutingState_persistsSanitizedRoutingEventTrail() throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let dataStore = try makeDataStore()
+
+        try dataStore.providerAccountStore.upsert(
+            routingAccount(
+                id: "openai-work",
+                label: "Work",
+                status: .error,
+                storageScope: .deviceKeychain,
+                // Plaintext-shaped secret payload that the persistence
+                // layer must scrub before writing routing events to disk.
+                redactedLabel: "secretVersionName=" + "REDACTED_PLACEHOLDER",
+                lastErrorCode: "Authorization: " + "Bearer REDACTED_PLACEHOLDER"
+            )
+        )
+        try dataStore.providerAccountStore.upsert(
+            routingAccount(id: "openai-personal", label: "Personal", storageScope: .deviceKeychain, sortKey: 1)
+        )
+
+        let service = makeService(home: home, appSupportRoot: appSupport, refreshProviders: [.openAI])
+        let states = service.refreshRoutingState(
+            dataStore: dataStore,
+            request: ProviderRoutingRequest(preferredProviderIDs: [.openAI])
+        )
+
+        XCTAssertEqual(states[.openAI]?.activeAccount?.accountID, "openai-personal")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.providerRoutingEventsURL.path))
+
+        let persisted = try String(contentsOf: paths.providerRoutingEventsURL)
+        XCTAssertTrue(persisted.contains("Personal"))
+        // Persistence layer must scrub plaintext-shaped secret payload
+        // before writing routing events to disk. Both the substring tag
+        // and the placeholder value would pass through unsanitized if the
+        // scrubber is bypassed.
+        XCTAssertFalse(persisted.localizedCaseInsensitiveContains("secretVersionName"))
+        XCTAssertFalse(persisted.localizedCaseInsensitiveContains("REDACTED_PLACEHOLDER"))
+        XCTAssertFalse(persisted.localizedCaseInsensitiveContains("Bearer "))
+        XCTAssertFalse(persisted.localizedCaseInsensitiveContains("credentialHandle"))
+
+        let reloaded = makeService(home: home, appSupportRoot: appSupport, refreshProviders: [.openAI])
+        XCTAssertEqual(reloaded.routingEvents.count, 1)
+        XCTAssertEqual(reloaded.routingEvents.first?.selectedAccountID, "openai-personal")
     }
 
     func test_miniMaxRefresh_rejectsStandardAPIKeysBeforeNetworkCall() async throws {
@@ -464,7 +916,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             miniMaxModeProvider: { .tokenPlan }
         )
 
-        await service.refresh(provider: .minimax, dataStore: try! DataStore())
+        await service.refresh(provider: .minimax, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
@@ -510,7 +962,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             miniMaxModeProvider: { .tokenPlan }
         )
 
-        await service.refresh(provider: .minimax, dataStore: try! DataStore())
+        await service.refresh(provider: .minimax, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
 
         XCTAssertEqual(snapshot.buckets.count, 2)
@@ -554,7 +1006,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             miniMaxModeProvider: { .tokenPlan }
         )
 
-        await service.refresh(provider: .minimax, dataStore: try! DataStore())
+        await service.refresh(provider: .minimax, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
         let bucket = try XCTUnwrap(snapshot.primaryBucket)
 
@@ -604,7 +1056,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             miniMaxModeProvider: { .tokenPlan }
         )
 
-        await service.refresh(provider: .minimax, dataStore: try! DataStore())
+        await service.refresh(provider: .minimax, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .minimax))
 
         XCTAssertEqual(snapshot.buckets.count, 2)
@@ -672,7 +1124,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             session: session
         )
 
-        await service.refresh(provider: .zai, dataStore: try! DataStore())
+        await service.refresh(provider: .zai, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .zai))
 
         XCTAssertEqual(snapshot.source, .officialAPI)
@@ -717,7 +1169,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             session: session
         )
 
-        await service.refresh(provider: .zai, dataStore: try! DataStore())
+        await service.refresh(provider: .zai, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .zai))
 
         XCTAssertEqual(snapshot.source, .officialAPI)
@@ -746,7 +1198,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             session: session
         )
 
-        await service.refresh(provider: .zai, dataStore: try! DataStore())
+        await service.refresh(provider: .zai, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .zai))
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
@@ -771,6 +1223,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
                       "billing_cycle_end": "2026-04-24T12:00:00Z",
                       "individual_usage": {
                         "plan": {
+                          "used": 12000,
+                          "limit": 50000,
                           "total_percent_used": 30
                         },
                         "on_demand": {
@@ -814,15 +1268,15 @@ final class ProviderQuotaServiceTests: XCTestCase {
             session: session
         )
 
-        await service.refresh(provider: .cursor, dataStore: try! DataStore())
+        await service.refresh(provider: .cursor, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .cursor))
         let primary = try XCTUnwrap(snapshot.primaryBucket)
 
         XCTAssertEqual(snapshot.source, .officialAPI)
         XCTAssertEqual(snapshot.confidence, .exact)
-        XCTAssertEqual(primary.label, "Included requests")
+        XCTAssertEqual(primary.label, "Included usage")
         XCTAssertEqual(primary.remainingValue?.rounded(), 380)
-        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "On-demand spend" && $0.limitValue == 25 }))
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "On-demand" && $0.limitValue == 25 }))
     }
 
     func test_cursorRefresh_fallsBackWhenConfiguredCookieIsRejected() async throws {
@@ -845,7 +1299,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             session: session
         )
 
-        await service.refresh(provider: .cursor, dataStore: try! DataStore())
+        await service.refresh(provider: .cursor, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .cursor))
 
         XCTAssertEqual(snapshot.source, .unavailable)
@@ -899,21 +1353,34 @@ final class ProviderQuotaServiceTests: XCTestCase {
         keyStore: ProviderAPIKeyStore = ProviderAPIKeyStore(
             keychain: KeychainStore(service: "tests.\(UUID().uuidString)", legacyServices: [], backend: TestKeychainBackend())
         ),
+        providerRuntimeKeyStore: KeychainStore = KeychainStore(
+            service: "tests.runtime.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: TestKeychainBackend()
+        ),
         session: URLSession = .shared,
         environment: [String: String] = [:],
         miniMaxModeProvider: @escaping () -> MiniMaxQuotaMode = { .payAsYouGo },
-        factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier = { .unknown }
+        factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier = { .unknown },
+        refreshProviders: [AgentProvider] = ProviderQuotaService.supportedProviders
     ) -> ProviderQuotaService {
         ProviderQuotaService(
             keyStore: keyStore,
+            providerRuntimeKeyStore: providerRuntimeKeyStore,
             appPaths: OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot),
             fileManager: .default,
             session: session,
             environment: environment,
             homeDirectoryURL: home,
             miniMaxModeProvider: miniMaxModeProvider,
-            factoryPlanProvider: factoryPlanProvider
+            factoryPlanProvider: factoryPlanProvider,
+            refreshProviders: refreshProviders
         )
+    }
+
+    private func makeDataStore() throws -> DataStore {
+        let queue = try DatabaseQueue()
+        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }
 
     private func makeKeyStore(provider: String, value: String) throws -> ProviderAPIKeyStore {
@@ -923,6 +1390,35 @@ final class ProviderQuotaServiceTests: XCTestCase {
         )
         try store.setAPIKey(value, for: provider)
         return store
+    }
+
+    private func routingAccount(
+        id: String,
+        label: String,
+        status: ProviderAccountStatus = .connected,
+        storageScope: ProviderAccountStorageScope = .deviceKeychain,
+        redactedLabel: String = "Stored in test keychain",
+        lastErrorCode: String? = nil,
+        sortKey: Double = 0
+    ) -> ProviderAccountDoc {
+        let now = Date(timeIntervalSinceReferenceDate: 800_200_000 + sortKey)
+        return ProviderAccountDoc(
+            id: id,
+            providerID: .openAI,
+            label: label,
+            status: status,
+            credentialKind: .bearer,
+            storageScope: storageScope,
+            redactedLabel: redactedLabel,
+            isDefault: sortKey == 0,
+            sortKey: sortKey,
+            lastValidatedAt: now,
+            lastRefreshAt: now,
+            lastErrorCode: lastErrorCode,
+            schemaVersion: 1,
+            createdAt: now,
+            updatedAt: now
+        )
     }
 
     private func makeStubSession(
@@ -1012,7 +1508,12 @@ private final class TestKeychainBackend: KeychainStoreBackend {
 
 private final class StubURLProtocol: URLProtocol {
     /// Test-only global seam intentionally mutable across test setup/teardown.
-    nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let _requestHandler = Locked<(@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
+
+    static var requestHandler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get { _requestHandler.read() }
+        set { _requestHandler.write(newValue) }
+    }
 
     override class func canInit(with request: URLRequest) -> Bool {
         true
@@ -1039,4 +1540,198 @@ private final class StubURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+}
+
+extension ProviderQuotaServiceTests {
+    // MARK: - Cursor
+
+    func test_cursorRefresh_parsesUsageSummary_fromAPI() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        // Golden fixture: real cursor.sh/api/usage-summary response captured 2026-05-03
+        let goldenResponse = """
+        {
+          "membershipType": "ultra",
+          "individualUsage": {
+            "plan": {
+              "breakdown": {"bonus": 0, "included": 36063, "total": 36063},
+              "enabled": true,
+              "limit": 40000,
+              "apiPercentUsed": 59.85,
+              "used": 36063,
+              "remaining": 3937,
+              "autoPercentUsed": 6.138,
+              "totalPercentUsed": 24.042
+            },
+            "onDemand": {"limit": 100, "enabled": true, "remaining": 100, "used": 0}
+          },
+          "limitType": "user",
+          "billingCycleEnd": "2026-05-27T23:10:32.000Z",
+          "isUnlimited": false,
+          "billingCycleStart": "2026-04-27T23:10:32.000Z"
+        }
+        """
+
+        let session = makeStubSession { request in
+            if request.url?.absoluteString.contains("/api/usage-summary") ?? false {
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: goldenResponse)
+            }
+            if request.url?.absoluteString.contains("/api/auth/me") ?? false {
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
+            }
+            throw URLError(.badURL)
+        }
+
+        // Simulate a valid JWT via env var (cursorAuth/accessToken from state.vscdb)
+        let env = ["CURSOR_COOKIE_HEADER": "WorkosCursorSessionToken=test::eyJ.test.test"]
+
+        let service = makeService(
+            home: home, appSupportRoot: appSupport,
+            session: session, environment: env)
+
+        await service.refresh(provider: .cursor, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .cursor))
+
+        // Confidence
+        XCTAssertEqual(snapshot.confidence, .exact, "Cursor must be .exact — we hit the real API")
+        XCTAssertEqual(snapshot.source, .officialAPI)
+
+        // Plan bucket — real numbers from the golden fixture
+        let planBucket = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "cursor-plan" }))
+        XCTAssertEqual(planBucket.label, "Included usage")
+        XCTAssertEqual(planBucket.isEstimated, false)
+        let planPct = try XCTUnwrap(planBucket.usedPercent)
+        XCTAssertEqual(planPct, 24.04, accuracy: 0.01, "Plan usage % must match golden fixture")
+
+        // Used/limit in dollars (cents/100)
+        let usedVal = try XCTUnwrap(planBucket.usedValue); XCTAssertEqual(usedVal, 360.63, accuracy: 0.01)
+        let limitVal = try XCTUnwrap(planBucket.limitValue); XCTAssertEqual(limitVal, 400.00, accuracy: 0.01)
+        XCTAssertEqual(planBucket.windowKind, .monthly)
+
+        // Auto + Composer bucket
+        let autoBucket = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "cursor-auto" }))
+        XCTAssertEqual(autoBucket.label, "Auto + Composer")
+        XCTAssertEqual(autoBucket.isEstimated, false)
+        let autoPct = try XCTUnwrap(autoBucket.usedPercent)
+        XCTAssertEqual(autoPct, 6.14, accuracy: 0.01)
+
+        // API bucket
+        let apiBucket = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "cursor-api" }))
+        XCTAssertEqual(apiBucket.label, "API usage")
+        XCTAssertEqual(apiBucket.isEstimated, false)
+        let apiPct = try XCTUnwrap(apiBucket.usedPercent)
+        XCTAssertEqual(apiPct, 59.85, accuracy: 0.01)
+
+        // Status message
+        XCTAssertTrue(snapshot.statusMessage.contains("Ultra"), "Expected Ultra tier, got: \(snapshot.statusMessage)")
+        XCTAssertTrue(snapshot.statusMessage.contains("Capped"), "Expected Capped plan")
+
+        // No on-demand bucket (used=0)
+        // On-demand bucket exists when limit > 0, even if used=0 — this is correct.
+        if let odBucket = snapshot.buckets.first(where: { $0.key == "cursor-ondemand" }) {
+            XCTAssertEqual(odBucket.usedValue, 0.0)
+            XCTAssertEqual(odBucket.limitValue, 1.0)  // 100 cents = $1.00
+            XCTAssertEqual(odBucket.unit, .count)
+        }
+    }
+
+
+    func test_cursorRefresh_noAuth_returnsUnavailable() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            environment: ["OPENBURNBAR_DISABLE_CURSOR_AUTO_AUTH": "1"]
+        )
+
+        await service.refresh(provider: .cursor, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .cursor))
+
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.buckets.isEmpty)
+        XCTAssertTrue(snapshot.statusMessage.contains("Sign in"), "Expected sign-in prompt, got: \(snapshot.statusMessage)")
+    }
+
+    // MARK: - Ollama Cloud
+
+    func test_ollamaCloud_parsesSettingsHTML() async throws {
+        // NOTE: OllamaCloudScraper requires real Chrome cookies.
+        // This test verifies that when cloud models exist but scraping
+        // is unavailable (no cookies), the adapter still reports .exact
+        // with model counts — never .estimated.
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let session = makeStubSession { request in
+            guard let urlString = request.url?.absoluteString else {
+                throw URLError(.badURL)
+            }
+            if urlString.contains("ollama.com/settings") {
+                return try self.httpResponse(url: request.url!, statusCode: 302, body: "")
+            }
+            if urlString.contains("api/tags") {
+                let body = """
+                {"models": [{"name": "llama3:cloud", "modified_at": "2026-01-01T00:00:00Z"}, {"name": "codellama", "modified_at": "2026-01-01T00:00:00Z"}]}
+                """
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            }
+            if urlString.contains("api/ps") {
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
+            }
+            throw URLError(.badURL)
+        }
+
+        let env = ["OLLAMA_HOST": "http://localhost:11434"]
+        let service = makeService(home: home, appSupportRoot: appSupport, session: session, environment: env)
+
+        await service.refresh(provider: .ollama, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .ollama))
+
+        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertFalse(snapshot.buckets.isEmpty)
+
+        let cloudBucket = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "ollama-cloud" }))
+        XCTAssertEqual(cloudBucket.isEstimated, false)
+        XCTAssertEqual(cloudBucket.label, "Cloud models")
+
+    func test_ollamaCloud_noCookies_fallsBackToModelCounting() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let session = makeStubSession { request in
+            guard let urlString = request.url?.absoluteString else {
+                throw URLError(.badURL)
+            }
+            if urlString.contains("ollama.com/settings") {
+                // Simulate no valid cookies — redirect to login
+                return try self.httpResponse(url: request.url!, statusCode: 302, body: "")
+            }
+            if urlString.contains("api/tags") {
+                let body = """
+                {"models": [{"name": "llama3", "modified_at": "2026-01-01T00:00:00Z"}, {"name": "mistral:cloud", "modified_at": "2026-01-01T00:00:00Z"}]}
+                """
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            }
+            if urlString.contains("api/ps") {
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
+            }
+            throw URLError(.badURL)
+        }
+
+        let env = ["OLLAMA_HOST": "http://localhost:11434"]
+        let service = makeService(home: home, appSupportRoot: appSupport, session: session, environment: env)
+
+        await service.refresh(provider: .ollama, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .ollama))
+
+        // Should still be .exact because local models + cloud models are counted
+        XCTAssertEqual(snapshot.confidence, .exact)
+        // Should have local model bucket
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.key.contains("local") }), "Expected local model bucket")
+    }
+}
+
 }

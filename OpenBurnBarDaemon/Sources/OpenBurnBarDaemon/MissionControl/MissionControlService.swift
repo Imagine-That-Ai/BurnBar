@@ -1,25 +1,42 @@
+// MARK: - Mission Control Scope Note
+//
+// Mission Control provides project/question/followup/mission CRUD for daemon-managed
+// AI runs. This is experimental infrastructure built ahead of user validation.
+//
+// If you are reading this during a refactor: consider whether Mission Control
+// complexity is justified by active user demand. The core OpenBurnBar value
+// proposition is token usage tracking; Mission Control is a secondary surface.
+//
+// Before expanding Mission Control, validate:
+//   1. Are users actively creating missions through the UI?
+//   2. Does the mission approval flow reduce error rates vs. direct execution?
+//   3. Is the operational burden of maintaining Mission Control < value delivered?
+//
+// If the answer to any is "no" or "unknown", deprioritize Mission Control expansion
+// and invest in core tracking, search, and sync reliability instead.
+
 import OpenBurnBarCore
 import Foundation
 
-public actor BurnBarMissionControlService {
-    private let store: BurnBarMissionControlStore
-    private let logger: BurnBarDaemonLogger
-    private let transport: BurnBarMissionControlTransport
-    private let activitySnapshotURL: URL?
-    private let reviewRunLauncher: BurnBarMissionControlReviewRunLauncher?
-    private let runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup?
-    private let usageLedgerURL: URL
+public actor BurnBarMissionControlService: BurnBarMissionControlServing {
+    let store: BurnBarMissionControlStore
+    let logger: BurnBarDaemonLogger
+    let transport: BurnBarMissionControlTransport
+    let activitySnapshotURL: URL?
+    let reviewRunLauncher: BurnBarMissionControlReviewRunLauncher?
+    let runSnapshotLookup: BurnBarMissionControlRunSnapshotLookup?
+    let usageLedgerURL: URL
     /// VAL-DAEMON-011: Execution readiness gate for pre-dispatch checks.
     /// When nil, dispatch proceeds without readiness checks (legacy behavior for tests).
-    private let executionReadinessGate: BurnBarExecutionReadinessGate?
-    private let performanceGuardrails: BurnBarMissionControlPerformanceGuardrails?
+    let executionReadinessGate: BurnBarExecutionReadinessGate?
+    let performanceGuardrails: BurnBarMissionControlPerformanceGuardrails?
 
     /// Terminal mission statuses that block dispatch — must match MissionControlStore.terminalStatuses.
-    private static let terminalMissionStatuses: Set<BurnBarMissionStatus> = [
+    static let terminalMissionStatuses: Set<BurnBarMissionStatus> = [
         .completed, .failed, .cancelled
     ]
-    private var notificationLoopTask: Task<Void, Never>?
-    private var lastIngestedActivityDigest: String?
+    var notificationLoopTask: Task<Void, Never>?
+    var lastIngestedActivityDigest: String?
 
     public init(
         store: BurnBarMissionControlStore = BurnBarMissionControlStore(),
@@ -64,7 +81,7 @@ public actor BurnBarMissionControlService {
         self.performanceGuardrails = performanceGuardrails
     }
 
-    public func startBackgroundLoops() {
+    public func startBackgroundLoops() async {
         guard notificationLoopTask == nil else { return }
         notificationLoopTask = Task(priority: .background) { [service = self] in
             await service.runNotificationLoop()
@@ -275,12 +292,14 @@ public actor BurnBarMissionControlService {
 
         let launchedRun: BurnBarRunCreateResponse?
         if let reviewRunLauncher {
-            let metadata = request.packet.metadata.merging([
-                "missionExecution": .bool(true),
-                "mission_id": .string(mission.id.rawValue),
-                "mission_packet_id": .string(request.packet.id.rawValue),
-                "project_slug": .string(mission.projectSlug)
-            ]) { _, new in new }
+            let metadata = BurnBarRunCreateMetadata(
+                request.packet.metadata.merging([
+                    "missionExecution": .bool(true),
+                    "mission_id": .string(mission.id.rawValue),
+                    "mission_packet_id": .string(request.packet.id.rawValue),
+                    "project_slug": .string(mission.projectSlug)
+                ]) { _, new in new }
+            )
             launchedRun = try await reviewRunLauncher(
                 buildMissionPacketPrompt(mission: mission, packet: request.packet),
                 missionExecutionModelID(for: mission, packet: request.packet),
@@ -667,7 +686,7 @@ public actor BurnBarMissionControlService {
             )
         )
         if existingQuestions.contains(where: { question in
-            guard let existingFingerprint = question.metadata["ingestion_fingerprint"]?.stringValue() else {
+            guard let existingFingerprint = question.metadata["ingestion_fingerprint"]?.missionStringValue() else {
                 return false
             }
             return existingFingerprint == fingerprint
@@ -722,8 +741,8 @@ public actor BurnBarMissionControlService {
         }
 
         let metadata = project.metadata
-        if let hardCap = metadata["enterprise_budget_hard_cap_usd"]?.numberValue(),
-           let observedSpend = metadata["enterprise_budget_spend_usd"]?.numberValue(),
+        if let hardCap = metadata["enterprise_budget_hard_cap_usd"]?.missionNumberValue(),
+           let observedSpend = metadata["enterprise_budget_spend_usd"]?.missionNumberValue(),
            observedSpend > hardCap {
             return BurnBarEnterprisePolicyBlock(
                 reasonCode: .budgetHardCapBlocked,
@@ -733,7 +752,7 @@ public actor BurnBarMissionControlService {
                     hardCap
                 ),
                 approvalMode: metadata["enterprise_approval_mode"]
-                    .flatMap { $0.stringValue() }
+                    .flatMap { $0.missionStringValue() }
                     .flatMap(BurnBarEnterpriseApprovalMode.init(rawValue:)),
                 budgetHardCapUSD: hardCap,
                 observedSpendUSD: observedSpend,
@@ -741,7 +760,7 @@ public actor BurnBarMissionControlService {
             )
         }
 
-        guard let approvalModeRaw = metadata["enterprise_approval_mode"]?.stringValue() else {
+        guard let approvalModeRaw = metadata["enterprise_approval_mode"]?.missionStringValue() else {
             return nil
         }
         guard let approvalMode = BurnBarEnterpriseApprovalMode(rawValue: approvalModeRaw) else {
@@ -754,7 +773,7 @@ public actor BurnBarMissionControlService {
 
         switch approvalMode {
         case .manualAll:
-            let hasExplicitApproval = packet.metadata["enterprise_explicit_approval_granted"]?.boolValue() == true
+            let hasExplicitApproval = packet.metadata["enterprise_explicit_approval_granted"]?.missionBoolValue() == true
             if hasExplicitApproval == false {
                 return BurnBarEnterprisePolicyBlock(
                     reasonCode: .approvalRequiredByMode,
@@ -764,7 +783,7 @@ public actor BurnBarMissionControlService {
                 )
             }
         case .autoLowOnly:
-            let riskLevel = packet.metadata["risk_level"]?.stringValue()?.lowercased()
+            let riskLevel = packet.metadata["risk_level"]?.missionStringValue()?.lowercased()
             if riskLevel == "high" || riskLevel == "critical" {
                 return BurnBarEnterprisePolicyBlock(
                     reasonCode: .approvalRequiredByMode,
@@ -1036,13 +1055,15 @@ public actor BurnBarMissionControlService {
             let takeoverRun = try await reviewRunLauncher(
                 buildAutoTakeoverPrompt(mission: currentMission, packet: packet, snapshot: sourceSnapshot),
                 missionExecutionModelID(for: currentMission, packet: packet),
-                packet.metadata.merging([
-                    "autoTakeover": .bool(true),
-                    "missionExecution": .bool(true),
-                    "mission_id": .string(currentMission.id.rawValue),
-                    "mission_packet_id": .string(packet.id.rawValue),
-                    "source_run_id": .string(sourceRunID.rawValue)
-                ]) { _, new in new }
+                BurnBarRunCreateMetadata(
+                    packet.metadata.merging([
+                        "autoTakeover": .bool(true),
+                        "missionExecution": .bool(true),
+                        "mission_id": .string(currentMission.id.rawValue),
+                        "mission_packet_id": .string(packet.id.rawValue),
+                        "source_run_id": .string(sourceRunID.rawValue)
+                    ]) { _, new in new }
+                )
             )
 
             let takeoverReason = autoTakeoverReason(for: sourceSnapshot, now: now)
@@ -1197,365 +1218,6 @@ public actor BurnBarMissionControlService {
         _ = try await store.upsertProject(copy(project: project, metadata: metadata))
     }
 
-    private func missionPacketStatus(for phase: BurnBarRunPhase) -> BurnBarMissionPacketStatus {
-        switch phase {
-        case .idle, .planning:
-            return .dispatched
-        case .awaitingApproval, .executingTool, .waitingOnCompanion, .modelStreaming:
-            return .running
-        case .completed:
-            return .completed
-        case .failed:
-            return .failed
-        case .cancelled:
-            return .cancelled
-        }
-    }
-
-    private func isTerminal(phase: BurnBarRunPhase) -> Bool {
-        switch phase {
-        case .completed, .failed, .cancelled:
-            return true
-        case .idle, .planning, .awaitingApproval, .executingTool, .waitingOnCompanion, .modelStreaming:
-            return false
-        }
-    }
-
-    private func latestUsageEvent(for runID: BurnBarRunID) -> BurnBarUsageEvent? {
-        guard FileManager.default.fileExists(atPath: usageLedgerURL.path),
-              let content = try? String(contentsOf: usageLedgerURL, encoding: .utf8) else {
-            return nil
-        }
-
-        let decoder = JSONDecoder()
-        let lines = content.split(whereSeparator: \.isNewline)
-        var matches: [BurnBarUsageEvent] = []
-        matches.reserveCapacity(lines.count)
-
-        for line in lines {
-            guard line.isEmpty == false,
-                  let record = try? decoder.decode(BurnBarUsageRecord.self, from: Data(line.utf8)),
-                  record.event.runID == runID else {
-                continue
-            }
-            matches.append(record.event)
-        }
-
-        return matches.sorted { $0.recordedAt > $1.recordedAt }.first
-    }
-
-    private func missionResultStatus(for phase: BurnBarRunPhase) -> BurnBarMissionResultStatus {
-        switch phase {
-        case .completed:
-            return .succeeded
-        case .failed, .cancelled:
-            return .failed
-        case .idle, .planning, .awaitingApproval, .executingTool, .waitingOnCompanion, .modelStreaming:
-            return .partial
-        }
-    }
-
-    private func missionResultSummary(
-        for packet: BurnBarMissionPacketSnapshot,
-        snapshot: BurnBarRunStateSnapshot
-    ) -> String {
-        switch snapshot.phase {
-        case .completed:
-            return "\(packet.workerName) completed its mission packet."
-        case .failed:
-            return "\(packet.workerName) failed its mission packet."
-        case .cancelled:
-            return "\(packet.workerName) was cancelled before finishing."
-        case .idle, .planning, .awaitingApproval, .executingTool, .waitingOnCompanion, .modelStreaming:
-            return "\(packet.workerName) reported a partial mission result."
-        }
-    }
-
-    private func missionResultDetail(for snapshot: BurnBarRunStateSnapshot) -> String? {
-        switch snapshot.phase {
-        case .completed:
-            return "Run \(snapshot.runID.rawValue) completed on \(snapshot.modelID)."
-        case .failed:
-            return snapshot.errorMessage?.nonEmpty ?? "Run \(snapshot.runID.rawValue) failed."
-        case .cancelled:
-            return snapshot.errorMessage?.nonEmpty ?? "Run \(snapshot.runID.rawValue) was cancelled."
-        case .idle, .planning, .awaitingApproval, .executingTool, .waitingOnCompanion, .modelStreaming:
-            return snapshot.errorMessage?.nonEmpty
-        }
-    }
-
-    private func autoTakeoverStatus(for phase: BurnBarRunPhase) -> BurnBarAutoTakeoverStatus {
-        switch phase {
-        case .completed:
-            return .completed
-        case .failed, .cancelled:
-            return .failed
-        case .idle, .planning, .awaitingApproval, .executingTool, .waitingOnCompanion, .modelStreaming:
-            return .launched
-        }
-    }
-
-    private func shouldAutoTakeover(
-        snapshot: BurnBarRunStateSnapshot,
-        now: Date
-    ) -> Bool {
-        switch snapshot.phase {
-        case .failed, .cancelled:
-            return true
-        case .awaitingApproval, .completed:
-            return false
-        case .idle, .planning, .executingTool, .waitingOnCompanion, .modelStreaming:
-            return now.timeIntervalSince(snapshot.updatedAt) >= autoTakeoverStallThreshold(for: snapshot.phase)
-        }
-    }
-
-    private func buildAutoTakeoverPrompt(
-        mission: BurnBarMissionSnapshot,
-        packet: BurnBarMissionPacketSnapshot,
-        snapshot: BurnBarRunStateSnapshot
-    ) -> String {
-        let recoveryReason = autoTakeoverReason(for: snapshot, now: Date())
-        return """
-        OpenBurnBar auto-takeover for mission \(mission.title) in project \(mission.projectSlug).
-
-        Original packet:
-        - Worker: \(packet.workerName)
-        - Objective: \(packet.objective)
-        - Source run: \(snapshot.runID.rawValue)
-        - Source phase: \(snapshot.phase.rawValue)
-        - Last updated: \(snapshot.updatedAt.formatted(date: .abbreviated, time: .shortened))
-        - Recovery reason: \(snapshot.errorMessage?.nonEmpty ?? recoveryReason)
-
-        Take over the work, recover the objective if possible, and return a concise operator-facing outcome with:
-        1. what you completed
-        2. what remains blocked
-        3. the next recommended operator action
-        """
-    }
-
-    private func autoTakeoverReason(
-        for snapshot: BurnBarRunStateSnapshot,
-        now: Date
-    ) -> String {
-        switch snapshot.phase {
-        case .failed:
-            return snapshot.errorMessage?.nonEmpty ?? "Source run failed."
-        case .cancelled:
-            return snapshot.errorMessage?.nonEmpty ?? "Source run was cancelled."
-        case .idle, .planning, .executingTool, .waitingOnCompanion, .modelStreaming:
-            let minutes = max(1, Int(now.timeIntervalSince(snapshot.updatedAt) / 60))
-            return "Source run stalled in \(snapshot.phase.rawValue) for \(minutes)m."
-        case .awaitingApproval:
-            return "Source run is waiting on operator approval."
-        case .completed:
-            return "Source run already completed."
-        }
-    }
-
-    private func missionExecutionModelID(
-        for mission: BurnBarMissionSnapshot,
-        packet: BurnBarMissionPacketSnapshot
-    ) -> String {
-        packet.metadata.stringValue(forKey: "model_id")
-            ?? mission.metadata.stringValue(forKey: "model_id")
-            ?? "glm-5"
-    }
-
-    private func buildMissionPacketPrompt(
-        mission: BurnBarMissionSnapshot,
-        packet: BurnBarMissionPacketSnapshot
-    ) -> String {
-        let approvalLine = mission.approval.approved
-            ? "Approved by \(mission.approval.approvedBy ?? "operator")."
-            : "Still awaiting explicit approval."
-        let priorResults = mission.results
-            .sorted { $0.createdAt > $1.createdAt }
-            .prefix(3)
-            .map { "- \($0.summary)" }
-            .joined(separator: "\n")
-        let priorResultsBlock = priorResults.isEmpty ? "- None yet." : priorResults
-
-        return """
-        OpenBurnBar mission execution for project \(mission.projectSlug).
-
-        Mission:
-        - Title: \(mission.title)
-        - Summary: \(mission.summary)
-        - Recommendation: \(mission.recommendation.rawValue)
-        - Approval: \(approvalLine)
-
-        Packet:
-        - Worker: \(packet.workerName)
-        - Objective: \(packet.objective)
-
-        Recent mission results:
-        \(priorResultsBlock)
-
-        Execute the packet objective directly. Return a concise completion note that states what changed, what evidence you used, and any remaining blockers.
-        """
-    }
-
-    private func missionSnapshot(
-        from mission: BurnBarMissionSnapshot,
-        status: BurnBarMissionStatus,
-        updatedAt: Date,
-        packets: [BurnBarMissionPacketSnapshot],
-        results: [BurnBarMissionResultSnapshot],
-        burnRecords: [BurnBarMissionBurnRecord],
-        takeoverHistory: [BurnBarAutoTakeoverRecord]?
-    ) -> BurnBarMissionSnapshot {
-        var metadata = mission.metadata
-        let totalTokens = results.reduce(0) { partial, result in
-            partial
-                + intValue(result.metadata["input_tokens"])
-                + intValue(result.metadata["output_tokens"])
-                + intValue(result.metadata["cache_read_tokens"])
-        }
-        metadata["total_tokens"] = .number(Double(totalTokens))
-        metadata["packet_count"] = .number(Double(packets.count))
-        metadata["result_count"] = .number(Double(results.count))
-        metadata["burn_record_count"] = .number(Double(burnRecords.count))
-        if let latestPacket = packets.sorted(by: { ($0.dispatchedAt ?? .distantPast) > ($1.dispatchedAt ?? .distantPast) }).first,
-           let runID = latestPacket.runID?.rawValue {
-            metadata["latest_run_id"] = .string(runID)
-        } else {
-            metadata.removeValue(forKey: "latest_run_id")
-        }
-        if let latestTakeover = takeoverHistory?.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
-            metadata["latest_takeover_status"] = .string(latestTakeover.status.rawValue)
-            if let runID = latestTakeover.takeoverRunID?.rawValue {
-                metadata["latest_takeover_run_id"] = .string(runID)
-            }
-        } else {
-            metadata.removeValue(forKey: "latest_takeover_status")
-            metadata.removeValue(forKey: "latest_takeover_run_id")
-        }
-
-        return BurnBarMissionSnapshot(
-            id: mission.id,
-            projectSlug: mission.projectSlug,
-            title: mission.title,
-            summary: mission.summary,
-            status: resolvedMissionStatus(
-                preferredStatus: status,
-                approval: mission.approval,
-                packets: packets,
-                results: results
-            ),
-            recommendation: mission.recommendation,
-            createdAt: mission.createdAt,
-            updatedAt: updatedAt,
-            approval: mission.approval,
-            packets: packets,
-            results: results,
-            burnRecords: burnRecords,
-            takeoverHistory: takeoverHistory,
-            metadata: metadata
-        )
-    }
-
-    private func resolvedMissionStatus(
-        preferredStatus: BurnBarMissionStatus,
-        approval: BurnBarMissionApprovalSnapshot,
-        packets: [BurnBarMissionPacketSnapshot],
-        results: [BurnBarMissionResultSnapshot]
-    ) -> BurnBarMissionStatus {
-        if preferredStatus == .cancelled {
-            return .cancelled
-        }
-        if approval.approved == false {
-            return packets.isEmpty && results.isEmpty ? preferredStatus : .awaitingApproval
-        }
-        if packets.isEmpty {
-            return results.isEmpty ? preferredStatus : statusFromTerminalResults(results)
-        }
-
-        if packets.contains(where: { $0.status == .running }) {
-            return .inProgress
-        }
-        if packets.contains(where: { $0.status == .queued || $0.status == .dispatched }) {
-            return .dispatching
-        }
-
-        let allPacketsTerminal = packets.allSatisfy { packet in
-            [.completed, .failed, .cancelled].contains(packet.status)
-        }
-        guard allPacketsTerminal else {
-            return preferredStatus
-        }
-        guard results.isEmpty == false else {
-            return preferredStatus
-        }
-
-        return statusFromTerminalResults(results)
-    }
-
-    private func statusFromTerminalResults(
-        _ results: [BurnBarMissionResultSnapshot]
-    ) -> BurnBarMissionStatus {
-        let statuses = Set(results.map(\.status))
-        if statuses.isSubset(of: [.succeeded, .replayed]) {
-            return .completed
-        }
-        if statuses == [.failed] {
-            return .failed
-        }
-        return .partiallyCompleted
-    }
-
-    private func mergePackets(
-        _ existing: [BurnBarMissionPacketSnapshot],
-        _ appended: BurnBarMissionPacketSnapshot
-    ) -> [BurnBarMissionPacketSnapshot] {
-        var merged: [String: BurnBarMissionPacketSnapshot] = [:]
-        for packet in existing {
-            merged[packet.id.rawValue] = packet
-        }
-        merged[appended.id.rawValue] = appended
-        return merged.values.sorted {
-            ($0.dispatchedAt ?? .distantPast) < ($1.dispatchedAt ?? .distantPast)
-        }
-    }
-
-    private func replacePacket(
-        _ packet: BurnBarMissionPacketSnapshot,
-        in packets: [BurnBarMissionPacketSnapshot]
-    ) -> [BurnBarMissionPacketSnapshot] {
-        var replaced = false
-        let updated = packets.map { existing -> BurnBarMissionPacketSnapshot in
-            guard existing.id == packet.id else { return existing }
-            replaced = true
-            return packet
-        }
-        return mergePackets(replaced ? updated : packets, packet)
-    }
-
-    private func replaceTakeoverRecord(
-        _ record: BurnBarAutoTakeoverRecord,
-        in history: [BurnBarAutoTakeoverRecord]?
-    ) -> [BurnBarAutoTakeoverRecord] {
-        let existing = history ?? []
-        var replaced = false
-        let updated = existing.map { current -> BurnBarAutoTakeoverRecord in
-            guard current.id == record.id else { return current }
-            replaced = true
-            return record
-        }
-        let merged = replaced ? updated : (existing + [record])
-        return merged.sorted { $0.createdAt < $1.createdAt }
-    }
-
-    private func autoTakeoverStallThreshold(for phase: BurnBarRunPhase) -> TimeInterval {
-        switch phase {
-        case .idle, .planning:
-            return 5 * 60
-        case .executingTool, .waitingOnCompanion, .modelStreaming:
-            return 15 * 60
-        case .awaitingApproval, .completed, .failed, .cancelled:
-            return .infinity
-        }
-    }
-
     private func launchReviewRun(
         projectSlug: String,
         cadence: BurnBarControllerReviewCadence,
@@ -1573,11 +1235,13 @@ public actor BurnBarMissionControlService {
             launchedRun = try await reviewRunLauncher(
                 buildReviewPrompt(for: project, cadence: cadence),
                 project.reviewModelID ?? "glm-5",
-                metadata.merging([
-                    "controller_project_slug": .string(projectSlug),
-                    "controller_review_cadence": .string(cadence.rawValue),
-                    "controller_review_origin": .string(origin.rawValue)
-                ]) { _, new in new }
+                BurnBarRunCreateMetadata(
+                    metadata.merging([
+                        "controller_project_slug": .string(projectSlug),
+                        "controller_review_cadence": .string(cadence.rawValue),
+                        "controller_review_origin": .string(origin.rawValue)
+                    ]) { _, new in new }
+                )
             )
         } else {
             launchedRun = nil
@@ -1602,466 +1266,5 @@ public actor BurnBarMissionControlService {
         return BurnBarControllerReviewRunRecordResponse(run: recordedRun, summary: summarySnapshot.summary)
     }
 
-    private func normalizedQuestion(
-        _ question: BurnBarPendingQuestionSnapshot
-    ) -> BurnBarPendingQuestionSnapshot {
-        let normalizedStage = question.stageLabel?.nonEmpty ?? inferredStageLabel(for: question.prompt)
-        let normalizedOptions = question.suggestedOptions.isEmpty
-            ? inferredQuestionOptions(for: question.prompt)
-            : question.suggestedOptions
-        let normalizedDeepLink = question.deepLink
-            ?? question.sessionID.map {
-                BurnBarQuestionDeepLinkSnapshot(
-                    kind: .sessionLog,
-                    targetID: $0.rawValue,
-                    title: "Open related session log",
-                    subtitle: question.title
-                )
-            }
-            ?? BurnBarQuestionDeepLinkSnapshot(
-                kind: .project,
-                targetID: question.projectSlug,
-                title: "Open project in dashboard",
-                subtitle: question.projectSlug
-            )
-        let tracker = question.tracker ?? BurnBarQuestionTrackerSnapshot(
-            isUnread: question.status == .pending,
-            surfacedAt: question.askedAt
-        )
 
-        return BurnBarPendingQuestionSnapshot(
-            id: question.id,
-            projectSlug: question.projectSlug,
-            sessionID: question.sessionID,
-            title: question.title,
-            prompt: question.prompt,
-            stageLabel: normalizedStage,
-            status: question.status,
-            priority: question.priority,
-            askedAt: question.askedAt,
-            dueAt: question.dueAt,
-            latestAnswer: question.latestAnswer,
-            answerPlaceholder: question.answerPlaceholder?.nonEmpty ?? "Record the operator call OpenBurnBar should carry forward…",
-            contextSummary: question.contextSummary,
-            evidenceRefs: question.evidenceRefs,
-            suggestedOptions: normalizedOptions,
-            deepLink: normalizedDeepLink,
-            tracker: tracker,
-            metadata: question.metadata
-        )
-    }
-
-    private func deliverNewQuestionNotificationsIfNeeded(
-        _ question: BurnBarPendingQuestionSnapshot
-    ) async throws {
-        guard question.status == .pending else { return }
-        let tracker = question.tracker ?? BurnBarQuestionTrackerSnapshot(isUnread: true, surfacedAt: question.askedAt)
-        guard tracker.notificationCount == 0 else { return }
-
-        let config = try await store.notificationConfig()
-        let title = question.stageLabel?.nonEmpty.map { "\($0): \(question.title)" } ?? question.title
-        let body = question.prompt
-        var deliveredChannels: [BurnBarNotificationChannel] = []
-
-        if config.local.isEnabled {
-            do {
-                try await transport.deliverLocalNotification("New OpenBurnBar question", "\(title)\n\(body)")
-                deliveredChannels.append(.local)
-                try await store.recordTransportError(channel: .local, error: nil)
-            } catch {
-                try await store.recordTransportError(channel: .local, error: error.localizedDescription)
-            }
-        }
-
-        if config.telegram.isEnabled,
-           let botToken = config.telegram.botToken?.nonEmpty,
-           let chatID = config.telegram.chatID?.nonEmpty {
-            do {
-                let routeHint = question.deepLink?.title.nonEmpty.map { "\n\($0)" } ?? ""
-                try await transport.sendTelegramMessage(
-                    botToken,
-                    chatID,
-                    "[\(question.projectSlug.capitalized)] New question\n\(title)\n\(body)\(routeHint)"
-                )
-                deliveredChannels.append(.telegram)
-                try await store.recordTransportError(channel: .telegram, error: nil)
-            } catch {
-                try await store.recordTransportError(channel: .telegram, error: error.localizedDescription)
-            }
-        }
-
-        for channel in deliveredChannels {
-            _ = try await store.recordQuestionNotification(questionID: question.id, channel: channel)
-        }
-    }
-
-    private func inferredStageLabel(for prompt: String) -> String {
-        let lowered = prompt.lowercased()
-        if lowered.hasPrefix("should ")
-            || lowered.contains("keep ")
-            || lowered.contains("ship ")
-            || lowered.contains("continue ") {
-            return "Operator Decision"
-        }
-        if lowered.contains("why")
-            || lowered.contains("what happened")
-            || lowered.contains("investigate") {
-            return "Clarify Signal"
-        }
-        if lowered.contains("when")
-            || lowered.contains("follow up") {
-            return "Plan Followup"
-        }
-        return "Need Operator Input"
-    }
-
-    private func inferredQuestionOptions(for prompt: String) -> [BurnBarQuestionOptionSnapshot] {
-        let lowered = prompt.lowercased()
-        if lowered.hasPrefix("should ")
-            || lowered.contains("keep ")
-            || lowered.contains("ship ")
-            || lowered.contains("continue ") {
-            return [
-                BurnBarQuestionOptionSnapshot(
-                    id: "proceed",
-                    title: "Proceed",
-                    detail: "Keep the current direction moving.",
-                    answer: "Proceed with the current plan."
-                ),
-                BurnBarQuestionOptionSnapshot(
-                    id: "pause_and_reset",
-                    title: "Pause + Reset",
-                    detail: "Change direction before continuing.",
-                    answer: "Pause the current plan and reset direction before continuing."
-                )
-            ]
-        }
-        return []
-    }
-
-    private func inferredQuestionDeepLink(
-        for activityProject: BurnBarControllerActivityProject
-    ) -> BurnBarQuestionDeepLinkSnapshot? {
-        if let sessionID = activityProject.latestConversationSessionID?.rawValue {
-            return BurnBarQuestionDeepLinkSnapshot(
-                kind: .sessionLog,
-                targetID: sessionID,
-                title: "Open related session log",
-                subtitle: activityProject.latestConversationTitle
-            )
-        }
-        return BurnBarQuestionDeepLinkSnapshot(
-            kind: .project,
-            targetID: activityProject.projectSlug,
-            title: "Open project in dashboard",
-            subtitle: activityProject.displayName
-        )
-    }
-
-    private func buildReviewPrompt(
-        for project: BurnBarReviewProjectSnapshot,
-        cadence: BurnBarControllerReviewCadence
-    ) -> String {
-        let latestTitle = project.metadata["latest_conversation_title"]?.stringValue() ?? "No titled checkpoint yet"
-        let latestSummary = project.metadata["latest_conversation_summary"]?.stringValue() ?? project.summary
-        let sessions = project.metadata["session_count_last_7d"]?.numberValue().map { Int($0) } ?? 0
-        let totalCost = project.metadata["total_cost_last_7d"]?.numberValue() ?? 0
-        let totalTokens = project.metadata["total_tokens_last_7d"]?.numberValue().map { Int($0) } ?? 0
-
-        return """
-        OpenBurnBar \(cadence.rawValue) review for project \(project.displayName) (\(project.projectSlug)).
-
-        Latest checkpoint:
-        - Title: \(latestTitle)
-        - Summary: \(latestSummary)
-
-        Recent activity:
-        - Sessions in the last 7 days: \(sessions)
-        - Burn in the last 7 days: \(String(format: "%.2f", totalCost)) USD
-        - Tokens in the last 7 days: \(totalTokens)
-
-        Produce a concise operator review covering current state, the biggest risk, any open questions, and the next recommended step.
-        """
-    }
-
-    private func copy(
-        project: BurnBarReviewProjectSnapshot,
-        metadata: BurnBarMetadata
-    ) -> BurnBarReviewProjectSnapshot {
-        BurnBarReviewProjectSnapshot(
-            id: project.id,
-            projectSlug: project.projectSlug,
-            displayName: project.displayName,
-            summary: project.summary,
-            status: project.status,
-            preferredCadence: project.preferredCadence,
-            aliases: project.aliases,
-            automationMode: project.automationMode,
-            reviewModelID: project.reviewModelID,
-            scheduleHourLocal: project.scheduleHourLocal,
-            scheduleWeekdayLocal: project.scheduleWeekdayLocal,
-            freshness: project.freshness,
-            latestDailyReviewAt: project.latestDailyReviewAt,
-            latestWeeklyReviewAt: project.latestWeeklyReviewAt,
-            nextScheduledReviewAt: project.nextScheduledReviewAt,
-            pendingQuestionCount: project.pendingQuestionCount,
-            openFollowupCount: project.openFollowupCount,
-            activeMissionCount: project.activeMissionCount,
-            activeMissionID: project.activeMissionID,
-            needsOperatorAttention: project.needsOperatorAttention,
-            ingestionSource: project.ingestionSource,
-            metadata: metadata
-        )
-    }
-
-    private func defaultCadence(
-        for project: BurnBarControllerActivityProject
-    ) -> BurnBarControllerReviewCadence {
-        if project.sessionCountLast7Days >= 5 || project.totalCostLast7Days >= 5 {
-            return .daily
-        }
-        return .weekly
-    }
-
-    private func questionPriority(for prompt: String) -> BurnBarPendingQuestionPriority {
-        let lowered = prompt.lowercased()
-        if lowered.contains("blocked")
-            || lowered.contains("stuck")
-            || lowered.contains("error")
-            || lowered.contains("fail") {
-            return .high
-        }
-        return .medium
-    }
-
-    private func metadataDate(
-        _ key: String,
-        in metadata: BurnBarMetadata
-    ) -> Date? {
-        guard let rawValue = metadata[key]?.stringValue() else {
-            return nil
-        }
-        return ISO8601DateFormatter().date(from: rawValue)
-    }
-
-    private func deliverDueFollowups(_ followups: [BurnBarFollowupSnapshot]) async throws {
-        guard followups.isEmpty == false else { return }
-        let config = try await store.notificationConfig()
-
-        if config.local.isEnabled {
-            do {
-                for followup in followups {
-                    try await transport.deliverLocalNotification(
-                        "OpenBurnBar followup due",
-                        "\(followup.title)\n\(followup.summary)"
-                    )
-                }
-                try await store.recordTransportError(channel: .local, error: nil)
-            } catch {
-                try await store.recordTransportError(channel: .local, error: error.localizedDescription)
-                throw error
-            }
-        }
-
-        guard config.telegram.isEnabled,
-              let botToken = config.telegram.botToken?.nonEmpty,
-              let chatID = config.telegram.chatID?.nonEmpty else {
-            return
-        }
-
-        do {
-            for followup in followups {
-                let project = followup.projectSlug.capitalized
-                let message = "[\(project)] Followup due\n\(followup.title)\n\(followup.summary)"
-                try await transport.sendTelegramMessage(botToken, chatID, message)
-            }
-            try await store.recordTransportError(channel: .telegram, error: nil)
-        } catch {
-            try await store.recordTransportError(channel: .telegram, error: error.localizedDescription)
-            throw error
-        }
-    }
-
-    private func pollTelegramCommands() async throws {
-        let config = try await store.notificationConfig()
-        guard config.telegram.isEnabled,
-              let botToken = config.telegram.botToken?.nonEmpty,
-              let configuredChatID = config.telegram.chatID?.nonEmpty else {
-            return
-        }
-
-        do {
-            let updates = try await transport.fetchTelegramUpdates(botToken, try await store.telegramUpdateOffset())
-            guard updates.isEmpty == false else { return }
-
-            for update in updates.sorted(by: { $0.updateID < $1.updateID }) {
-                try await store.setTelegramUpdateOffset(update.updateID + 1)
-                guard update.chatID == configuredChatID,
-                      let request = parseTelegramCommand(text: update.text, actor: "telegram") else {
-                    continue
-                }
-                let response = try await notificationCommand(request)
-                try await transport.sendTelegramMessage(botToken, configuredChatID, response.message)
-            }
-            try await store.recordTransportError(channel: .telegram, error: nil)
-        } catch {
-            try await store.recordTransportError(channel: .telegram, error: error.localizedDescription)
-            throw error
-        }
-    }
-
-    private func parseTelegramCommand(text: String, actor: String) -> BurnBarNotificationCommandRequest? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false else { return nil }
-
-        let parts = trimmed
-            .split(whereSeparator: \.isWhitespace)
-            .map(String.init)
-        guard let rawCommand = parts.first else { return nil }
-
-        let normalized = rawCommand
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            .lowercased()
-
-        let command: BurnBarTelegramCommand?
-        switch normalized {
-        case "daily": command = .runDaily
-        case "weekly": command = .runWeekly
-        default: command = BurnBarTelegramCommand(rawValue: normalized)
-        }
-
-        guard let command else { return nil }
-        return BurnBarNotificationCommandRequest(
-            command: command,
-            arguments: Array(parts.dropFirst()),
-            actor: actor
-        )
-    }
-
-    // Back-compat names used by the current daemon server switch.
-    public func upsertProject(_ request: BurnBarControllerProjectUpsertRequest) async throws -> BurnBarControllerProjectResponse {
-        try await controllerProjectUpsert(request)
-    }
-
-    public func recordReviewRun(_ request: BurnBarControllerReviewRunRecordRequest) async throws -> BurnBarControllerReviewRunRecordResponse {
-        try await reviewRunRecord(request)
-    }
-
-    public func createQuestion(_ request: BurnBarQuestionCreateRequest) async throws -> BurnBarQuestionResponse {
-        try await questionCreate(request)
-    }
-
-    public func question(_ request: BurnBarQuestionGetRequest) async throws -> BurnBarQuestionResponse {
-        try await questionGet(request)
-    }
-
-    public func questions(_ request: BurnBarQuestionsListRequest) async throws -> BurnBarQuestionsListResponse {
-        try await questionsList(request)
-    }
-
-    public func answerQuestion(_ request: BurnBarQuestionAnswerRequest) async throws -> BurnBarQuestionAnswerResponse {
-        try await questionAnswer(request)
-    }
-
-    public func createFollowup(_ request: BurnBarFollowupCreateRequest) async throws -> BurnBarFollowupMutationResponse {
-        try await followupCreate(request)
-    }
-
-    public func followups(_ request: BurnBarFollowupsListRequest) async throws -> BurnBarFollowupsListResponse {
-        try await followupsList(request)
-    }
-
-    public func markFollowupDone(_ request: BurnBarFollowupDoneRequest) async throws -> BurnBarFollowupMutationResponse {
-        try await followupDone(request)
-    }
-
-    public func snoozeFollowup(_ request: BurnBarFollowupSnoozeRequest) async throws -> BurnBarFollowupMutationResponse {
-        try await followupSnooze(request)
-    }
-
-    public func scheduleFollowupCalendar(_ request: BurnBarFollowupCalendarRequest) async throws -> BurnBarFollowupMutationResponse {
-        try await followupCalendar(request)
-    }
-
-    public func createMission(_ request: BurnBarMissionCreateRequest) async throws -> BurnBarMissionMutationResponse {
-        try await missionCreate(request)
-    }
-
-    public func missions(_ request: BurnBarMissionListRequest) async throws -> BurnBarMissionListResponse {
-        try await missionsList(request)
-    }
-
-    public func mission(_ request: BurnBarMissionGetRequest) async throws -> BurnBarMissionResponse {
-        try await missionGet(request)
-    }
-
-    public func approveMission(_ request: BurnBarMissionApproveRequest) async throws -> BurnBarMissionMutationResponse {
-        try await missionApprove(request)
-    }
-
-    public func dispatchMissionPacket(_ request: BurnBarMissionDispatchPacketRequest) async throws -> BurnBarMissionMutationResponse {
-        try await missionDispatchPacket(request)
-    }
-
-    public func recordMissionResult(_ request: BurnBarMissionRecordResultRequest) async throws -> BurnBarMissionMutationResponse {
-        try await missionRecordResult(request)
-    }
-
-    public func notificationConfig(_ request: BurnBarNotificationConfigGetRequest) async throws -> BurnBarNotificationConfigResponse {
-        try await notificationConfigGet(request)
-    }
-
-    public func updateNotificationConfig(_ request: BurnBarNotificationConfigUpdateRequest) async throws -> BurnBarNotificationConfigResponse {
-        try await notificationConfigUpdate(request)
-    }
-
-    public func handleNotificationCommand(_ request: BurnBarNotificationCommandRequest) async throws -> BurnBarNotificationCommandResponse {
-        try await notificationCommand(request)
-    }
-
-    public func runSimulator(_ request: BurnBarSimulatorRunRequest) async throws -> BurnBarSimulatorRunResponse {
-        try await simulatorRun(request)
-    }
-
-    public func simulatorRuns(_ request: BurnBarSimulatorListRequest) async throws -> BurnBarSimulatorListResponse {
-        try await simulatorList(request)
-    }
-
-    public func replaySimulator(_ request: BurnBarSimulatorReplayRequest) async throws -> BurnBarSimulatorRunResponse {
-        try await simulatorReplay(request)
-    }
-
-    public func rebuildProjection(_ request: BurnBarProjectionRebuildRequest) async throws -> BurnBarProjectionRebuildResponse {
-        try await projectionRebuild(request)
-    }
 }
-
-private extension BurnBarJSONValue {
-    func boolValue() -> Bool? {
-        guard case .bool(let value) = self else {
-            return nil
-        }
-        return value
-    }
-
-    func stringValue() -> String? {
-        guard case .string(let value) = self else {
-            return nil
-        }
-        return value
-    }
-
-    func numberValue() -> Double? {
-        guard case .number(let value) = self else {
-            return nil
-        }
-        return value
-    }
-}
-
-private extension Dictionary where Key == String, Value == BurnBarJSONValue {
-    func stringValue(forKey key: String) -> String? {
-        self[key]?.stringValue()
-    }
-}
-

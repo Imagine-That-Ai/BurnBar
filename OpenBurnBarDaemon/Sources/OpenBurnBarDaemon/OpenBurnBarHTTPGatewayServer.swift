@@ -1,32 +1,40 @@
 import OpenBurnBarCore
+import CryptoKit
 import Foundation
+import Network
 
 /// HTTP gateway server exposing OpenAI-compatible endpoints for external clients.
 /// Binds to configurable host:port (default 127.0.0.1:8317) and routes requests
 /// through the daemon's existing provider router and config store.
+///
+/// Built on `Network.framework` (`NWListener`/`NWConnection`) for safe, reliable
+/// TCP handling — no hand-rolled `socket()`/`bind()`/`listen()`/`accept()` calls.
 public actor BurnBarHTTPGatewayServer {
     private static let maxHeaderBytes = 16 * 1024
     private static let maxBodyBytes = 1 * 1024 * 1024
-    private static let headerTerminator = Data([0x0D, 0x0A, 0x0D, 0x0A])
 
     private let configuration: BurnBarGatewayConfiguration
     private let configStore: BurnBarConfigStore
     private let logger: BurnBarDaemonLogger
-    private var serverSocket: Int32?
-    private var acceptLoopTask: Task<Void, Never>?
+    private let rateLimiter: BurnBarRateLimiter?
+    private var listener: NWListener?
 
     public init(
         configuration: BurnBarGatewayConfiguration,
         configStore: BurnBarConfigStore,
-        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "http-gateway")
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "http-gateway"),
+        rateLimiter: BurnBarRateLimiter? = nil
     ) {
         self.configuration = configuration
         self.configStore = configStore
         self.logger = logger
+        self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
+            BurnBarRateLimiter(configuration: $0)
+        }
     }
 
     public func start() throws {
-        guard serverSocket == nil else { return }
+        guard listener == nil else { return }
         guard configuration.isEnabled else {
             logger.debug("gateway_disabled", metadata: [:])
             return
@@ -36,144 +44,236 @@ public actor BurnBarHTTPGatewayServer {
             throw BurnBarHTTPGatewayError.invalidConfiguration(error)
         }
 
-        let socket = Darwin.socket(AF_INET, SOCK_STREAM, 0)
-        guard socket >= 0 else {
-            throw BurnBarHTTPGatewayError.socketCreationFailed(errno: errno)
+        let host = configuration.normalizedHost
+        let port = UInt16(configuration.port)
+        let nwPort = NWEndpoint.Port(rawValue: port)!
+        let params = NWParameters.tcp
+        params.requiredLocalEndpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: nwPort)
+
+        let nwListener: NWListener
+        do {
+            nwListener = try NWListener(using: params)
+        } catch {
+            throw BurnBarHTTPGatewayError.listenerCreationFailed(error: error)
         }
 
-        // Allow address reuse
-        var reuse: Int32 = 1
-        setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout.size(ofValue: reuse)))
-
-        let addr = try bindAddress(socket: socket)
-        guard listen(socket, 128) == 0 else {
-            Darwin.close(socket)
-            throw BurnBarHTTPGatewayError.listenFailed(errno: errno)
+        nwListener.newConnectionHandler = { [weak self] connection in
+            guard let self else { return }
+            Task { await self.handleConnection(connection) }
         }
 
-        self.serverSocket = socket
-
-        logger.notice(
-            "gateway_started",
-            metadata: [
-                "host": configuration.host,
-                "port": "\(configuration.port)",
-                "auth_required": "\(configuration.authToken != nil)"
-            ]
-        )
-
-        acceptLoopTask = Task { [weak self] in
-            var clientAddr = sockaddr_in()
-            var clientAddrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
-            while !Task.isCancelled {
-                guard let self else { break }
-                let clientSocket = withUnsafeMutablePointer(to: &clientAddr) { ptr in
-                    Darwin.accept(socket, UnsafeMutableRawPointer(ptr).assumingMemoryBound(to: sockaddr.self), &clientAddrLen)
-                }
-                guard clientSocket >= 0 else { continue }
-                await self.handleClient(socket: clientSocket)
-                Darwin.close(clientSocket)
+        nwListener.stateUpdateHandler = { [weak self] state in
+            guard let self else { return }
+            switch state {
+            case .ready:
+                self.logger.notice("gateway_started", metadata: [
+                    "host": host,
+                    "port": "\(self.configuration.port)",
+                    "auth_required": "\(self.configuration.authToken != nil)"
+                ])
+            case .failed(let error):
+                self.logger.error("gateway_listener_failed", metadata: ["error": "\(error)"])
+            default:
+                break
             }
         }
 
-        _ = addr // suppress unused warning
+        self.listener = nwListener
+        nwListener.start(queue: .global(qos: .utility))
     }
 
     public func stop() {
-        if let socket = serverSocket {
-            Darwin.close(socket)
-            serverSocket = nil
-        }
-        acceptLoopTask?.cancel()
-        acceptLoopTask = nil
+        listener?.cancel()
+        listener = nil
         logger.notice("gateway_stopped", metadata: [:])
     }
 
-    // MARK: - Private
+    // MARK: - Connection Handling
 
-    private func bindAddress(socket: Int32) throws -> String {
-        let host = configuration.normalizedHost
-        let port = configuration.port
-
-        var addr = sockaddr_in()
-        addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = in_port_t(port).bigEndian
-        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-
-        if host == "127.0.0.1" || host == "localhost" || host == "::1" {
-            addr.sin_addr.s_addr = 0x0100007F  // 127.0.0.1 in network byte order
-        } else {
-            guard inet_pton(AF_INET, host, &addr.sin_addr) == 1 else {
-                Darwin.close(socket)
-                throw BurnBarHTTPGatewayError.invalidHost(host)
-            }
-        }
-
-        let bindResult = withUnsafeMutablePointer(to: &addr) { ptr in
-            Darwin.bind(socket, UnsafeMutableRawPointer(ptr).assumingMemoryBound(to: sockaddr.self), socklen_t(MemoryLayout<sockaddr_in>.size))
-        }
-        guard bindResult == 0 else {
-            Darwin.close(socket)
-            throw BurnBarHTTPGatewayError.bindFailed(errno: errno)
-        }
-        return "\(configuration.host):\(port)"
+    private func handleConnection(_ connection: NWConnection) {
+        connection.start(queue: .global(qos: .utility))
+        readRequest(on: connection)
     }
 
-    private func handleClient(socket: Int32) async {
-        let request: HTTPRequest
-        do {
-            request = try readRequest(socket: socket)
-        } catch let error as HTTPRequestReadError {
-            switch error {
-            case .payloadTooLarge:
-                writeResponse(
-                    socket: socket,
-                    status: 413,
-                    headers: ["Content-Type": "application/json"],
-                    body: errorBody("request body exceeds \(Self.maxBodyBytes) bytes")
-                )
-            case .invalidRequest:
-                writeResponse(
-                    socket: socket,
+    private func readRequest(on connection: NWConnection) {
+        var buffer = Data()
+        buffer.reserveCapacity(4096)
+
+        readLoop(on: connection, buffer: buffer, headerRange: nil, expectedBodyLength: 0)
+    }
+
+    private func readLoop(
+        on connection: NWConnection,
+        buffer: Data,
+        headerRange: Range<Data.Index>?,
+        expectedBodyLength: Int
+    ) {
+        let chunkSize = 4096
+        connection.receive(minimumIncompleteLength: 1, maximumLength: chunkSize) { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+
+            if let error {
+                self.logger.error("gateway_connection_read_error", metadata: ["error": "\(error)"])
+                connection.cancel()
+                return
+            }
+
+            var mutableBuffer = buffer
+            if let data {
+                mutableBuffer.append(data)
+            }
+
+            if isComplete {
+                // Client closed connection — process whatever we have
+                Task { await self.processBuffer(mutableBuffer, headerRange: headerRange, connection: connection) }
+                return
+            }
+
+            Task { await self.processIncomingData(mutableBuffer, connection: connection, headerRange: headerRange, expectedBodyLength: expectedBodyLength) }
+        }
+    }
+
+    private func processIncomingData(
+        _ buffer: Data,
+        connection: NWConnection,
+        headerRange: Range<Data.Index>?,
+        expectedBodyLength: Int
+    ) async {
+        let headerTerminator = Data([0x0D, 0x0A, 0x0D, 0x0A])
+
+        // Check for header terminator
+        var currentHeaderRange = headerRange
+        if currentHeaderRange == nil {
+            if buffer.count > Self.maxHeaderBytes {
+                await writeResponse(
+                    on: connection,
                     status: 400,
                     headers: ["Content-Type": "application/json"],
                     body: errorBody("bad request")
                 )
+                connection.cancel()
+                return
             }
-            return
-        } catch {
-            writeResponse(
-                socket: socket,
-                status: 400,
-                headers: ["Content-Type": "application/json"],
-                body: errorBody("bad request")
-            )
+            if let range = buffer.range(of: headerTerminator) {
+                currentHeaderRange = range
+            }
+        }
+
+        guard let foundHeaderRange = currentHeaderRange else {
+            // Still waiting for headers
+            readLoop(on: connection, buffer: buffer, headerRange: nil, expectedBodyLength: 0)
             return
         }
 
+        // Parse headers to get content-length
+        let headerData = buffer.prefix(upTo: foundHeaderRange.lowerBound)
+        guard let parsed = try? parseRequestHead(headerData) else {
+            await writeResponse(on: connection, status: 400, headers: ["Content-Type": "application/json"], body: errorBody("bad request"))
+            connection.cancel()
+            return
+        }
+
+        if parsed.contentLength > Self.maxBodyBytes {
+            await writeResponse(on: connection, status: 413, headers: ["Content-Type": "application/json"], body: errorBody("request body exceeds \(Self.maxBodyBytes) bytes"))
+            connection.cancel()
+            return
+        }
+
+        let availableBody = buffer.count - foundHeaderRange.upperBound
+        if availableBody >= parsed.contentLength {
+            await processBuffer(buffer, headerRange: foundHeaderRange, connection: connection)
+        } else {
+            readLoop(on: connection, buffer: buffer, headerRange: foundHeaderRange, expectedBodyLength: parsed.contentLength)
+        }
+    }
+
+    private func processBuffer(_ buffer: Data, headerRange: Range<Data.Index>?, connection: NWConnection) async {
+        let headerTerminator = Data([0x0D, 0x0A, 0x0D, 0x0A])
+
+        guard let foundHeaderRange = headerRange ?? buffer.range(of: headerTerminator) else {
+            await writeResponse(on: connection, status: 400, headers: ["Content-Type": "application/json"], body: errorBody("bad request"))
+            connection.cancel()
+            return
+        }
+
+        let headerData = buffer.prefix(upTo: foundHeaderRange.lowerBound)
+        guard let parsed = try? parseRequestHead(headerData) else {
+            await writeResponse(on: connection, status: 400, headers: ["Content-Type": "application/json"], body: errorBody("bad request"))
+            connection.cancel()
+            return
+        }
+
+        if parsed.contentLength > Self.maxBodyBytes {
+            await writeResponse(on: connection, status: 413, headers: ["Content-Type": "application/json"], body: errorBody("request body exceeds \(Self.maxBodyBytes) bytes"))
+            connection.cancel()
+            return
+        }
+
+        let bodyData = buffer.suffix(from: foundHeaderRange.upperBound).prefix(parsed.contentLength)
+        let body: String?
+        if parsed.contentLength == 0 {
+            body = nil
+        } else if let decoded = String(data: bodyData, encoding: .utf8) {
+            body = decoded
+        } else {
+            await writeResponse(on: connection, status: 400, headers: ["Content-Type": "application/json"], body: errorBody("bad request"))
+            connection.cancel()
+            return
+        }
+
+        let request = HTTPRequest(method: parsed.method, path: parsed.path, headers: parsed.headers, body: body)
+        await handleRequest(request, connection: connection)
+    }
+
+    // MARK: - Request Routing
+
+    private func handleRequest(_ request: HTTPRequest, connection: NWConnection) async {
         if request.method == "OPTIONS" {
-            writeResponse(socket: socket, status: 204, headers: corsHeaders(for: request), body: "")
+            await writeResponse(on: connection, status: 204, headers: corsHeaders(for: request), body: "")
+            connection.cancel()
             return
         }
 
         if let requiredToken = configuration.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
             guard bearerToken(from: request.headers["authorization"]) == requiredToken else {
-                writeResponse(
-                    socket: socket,
-                    status: 401,
-                    headers: ["Content-Type": "application/json"],
-                    body: errorBody("unauthorized")
-                )
+                await writeResponse(on: connection, status: 401, headers: ["Content-Type": "application/json"], body: errorBody("unauthorized"))
+                connection.cancel()
                 return
             }
         }
 
-        let (status, body) = await routeRequest(request)
+        // Rate limiting check
+        if let rateLimiter {
+            let clientKey = rateLimitClientKey(for: request)
+            let limitResult = await rateLimiter.checkLimit(clientKey: clientKey)
+            if case .throttled(let retryAfter) = limitResult {
+                logger.warning(
+                    "gateway_rate_limit_exceeded",
+                    metadata: [
+                        "client_key": clientKey,
+                        "retry_after": "\(retryAfter)"
+                    ]
+                )
+                var rateLimitHeaders: [String: String] = [
+                    "Content-Type": "application/json",
+                    "Retry-After": "\(Int(ceil(retryAfter)))"
+                ]
+                for (key, value) in corsHeaders(for: request) {
+                    rateLimitHeaders[key] = value
+                }
+                await writeResponse(on: connection, status: 429, headers: rateLimitHeaders, body: errorBody("rate limit exceeded"))
+                connection.cancel()
+                return
+            }
+        }
+
+        let (status, responseBody) = await routeRequest(request)
         var headers: [String: String] = ["Content-Type": "application/json"]
         for (key, value) in corsHeaders(for: request) {
             headers[key] = value
         }
-        writeResponse(socket: socket, status: status, headers: headers, body: body)
+        await writeResponse(on: connection, status: status, headers: headers, body: responseBody)
+        connection.cancel()
     }
 
     private func routeRequest(_ request: HTTPRequest) async -> (Int, String) {
@@ -257,78 +357,51 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
-    // MARK: - HTTP I/O
+    // MARK: - HTTP I/O (NWConnection)
 
-    private enum HTTPRequestReadError: Error {
-        case invalidRequest
-        case payloadTooLarge
+    private func writeResponse(on connection: NWConnection, status: Int, headers: [String: String], body: String) async {
+        let statusText: String
+        switch status {
+        case 204: statusText = "No Content"
+        case 200: statusText = "OK"
+        case 400: statusText = "Bad Request"
+        case 401: statusText = "Unauthorized"
+        case 404: statusText = "Not Found"
+        case 413: statusText = "Payload Too Large"
+        case 429: statusText = "Too Many Requests"
+        case 500: statusText = "Internal Server Error"
+        case 502: statusText = "Bad Gateway"
+        default: statusText = "Unknown"
+        }
+
+        var response = "HTTP/1.1 \(status) \(statusText)\r\n"
+        for (key, value) in headers {
+            response += "\(key): \(value)\r\n"
+        }
+        response += "Content-Length: \(body.utf8.count)\r\n"
+        response += "Connection: close\r\n"
+        response += "\r\n"
+        response += body
+
+        guard let data = response.data(using: .utf8) else {
+            connection.cancel()
+            return
+        }
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            connection.send(content: data, completion: .contentProcessed { _ in
+                continuation.resume()
+            })
+        }
     }
+
+    // MARK: - HTTP Parsing
 
     private struct HTTPRequest {
         let method: String
         let path: String
         let headers: [String: String]
         let body: String?
-    }
-
-    private func readRequest(socket: Int32) throws -> HTTPRequest {
-        var requestData = Data()
-        var buffer = [UInt8](repeating: 0, count: 4096)
-        var headerRange: Range<Data.Index>?
-        var expectedBodyLength = 0
-
-        while true {
-            let bytesRead = recv(socket, &buffer, buffer.count, 0)
-            if bytesRead == 0 {
-                break
-            }
-            if bytesRead < 0 {
-                throw HTTPRequestReadError.invalidRequest
-            }
-
-            requestData.append(contentsOf: buffer.prefix(bytesRead))
-
-            if headerRange == nil {
-                if requestData.count > Self.maxHeaderBytes {
-                    throw HTTPRequestReadError.invalidRequest
-                }
-                if let discoveredRange = requestData.range(of: Self.headerTerminator) {
-                    headerRange = discoveredRange
-                    let headerData = requestData.prefix(upTo: discoveredRange.lowerBound)
-                    let parsed = try parseRequestHead(headerData)
-                    expectedBodyLength = parsed.contentLength
-                    if expectedBodyLength > Self.maxBodyBytes {
-                        throw HTTPRequestReadError.payloadTooLarge
-                    }
-
-                    let currentlyBufferedBody = requestData.count - discoveredRange.upperBound
-                    if currentlyBufferedBody >= expectedBodyLength {
-                        return try finalizeRequest(parsed: parsed, requestData: requestData, headerRange: discoveredRange)
-                    }
-                }
-                continue
-            }
-
-            guard let headerRange else {
-                throw HTTPRequestReadError.invalidRequest
-            }
-            let currentlyBufferedBody = requestData.count - headerRange.upperBound
-            if currentlyBufferedBody > Self.maxBodyBytes {
-                throw HTTPRequestReadError.payloadTooLarge
-            }
-            if currentlyBufferedBody >= expectedBodyLength {
-                return try finalizeRequest(parsed: parseRequestHead(requestData.prefix(upTo: headerRange.lowerBound)), requestData: requestData, headerRange: headerRange)
-            }
-        }
-
-        guard let headerRange else {
-            throw HTTPRequestReadError.invalidRequest
-        }
-        return try finalizeRequest(
-            parsed: try parseRequestHead(requestData.prefix(upTo: headerRange.lowerBound)),
-            requestData: requestData,
-            headerRange: headerRange
-        )
     }
 
     private struct ParsedRequestHead {
@@ -363,8 +436,8 @@ public actor BurnBarHTTPGatewayServer {
                 throw HTTPRequestReadError.invalidRequest
             }
             let key = line[..<separator].trimmingCharacters(in: .whitespaces).lowercased()
-            let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespaces)
-            headers[key] = String(value)
+            let value = String(line[line.index(after: separator)...]).trimmingCharacters(in: .whitespaces)
+            headers[key] = value
         }
 
         if let transferEncoding = headers["transfer-encoding"], transferEncoding.lowercased().contains("chunked") {
@@ -384,71 +457,6 @@ public actor BurnBarHTTPGatewayServer {
         return ParsedRequestHead(method: method, path: path, headers: headers, contentLength: contentLength)
     }
 
-    private func finalizeRequest(
-        parsed: ParsedRequestHead,
-        requestData: Data,
-        headerRange: Range<Data.Index>
-    ) throws -> HTTPRequest {
-        guard parsed.contentLength <= Self.maxBodyBytes else {
-            throw HTTPRequestReadError.payloadTooLarge
-        }
-
-        let availableBodyLength = max(0, requestData.count - headerRange.upperBound)
-        guard availableBodyLength >= parsed.contentLength else {
-            throw HTTPRequestReadError.invalidRequest
-        }
-
-        let bodyData = requestData
-            .suffix(from: headerRange.upperBound)
-            .prefix(parsed.contentLength)
-        let body: String?
-        if parsed.contentLength == 0 {
-            body = nil
-        } else if let decoded = String(data: bodyData, encoding: .utf8) {
-            body = decoded
-        } else {
-            throw HTTPRequestReadError.invalidRequest
-        }
-
-        return HTTPRequest(
-            method: parsed.method,
-            path: parsed.path,
-            headers: parsed.headers,
-            body: body
-        )
-    }
-
-    private func writeResponse(socket: Int32, status: Int, headers: [String: String], body: String) {
-        let statusText: String
-        switch status {
-        case 204: statusText = "No Content"
-        case 200: statusText = "OK"
-        case 400: statusText = "Bad Request"
-        case 401: statusText = "Unauthorized"
-        case 404: statusText = "Not Found"
-        case 413: statusText = "Payload Too Large"
-        case 500: statusText = "Internal Server Error"
-        case 502: statusText = "Bad Gateway"
-        default: statusText = "Unknown"
-        }
-
-        var response = "HTTP/1.1 \(status) \(statusText)\r\n"
-        for (key, value) in headers {
-            response += "\(key): \(value)\r\n"
-        }
-        response += "Content-Length: \(body.utf8.count)\r\n"
-        response += "Connection: close\r\n"
-        response += "\r\n"
-        response += body
-
-        guard let data = response.data(using: .utf8) else {
-            return
-        }
-        data.withUnsafeBytes { ptr in
-            _ = Darwin.send(socket, ptr.baseAddress, data.count, 0)
-        }
-    }
-
     private func bearerToken(from authorizationHeader: String?) -> String? {
         guard let authorizationHeader else { return nil }
         let parts = authorizationHeader.split(separator: " ", maxSplits: 1).map(String.init)
@@ -457,6 +465,18 @@ public actor BurnBarHTTPGatewayServer {
         }
         let token = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
         return token.isEmpty ? nil : token
+    }
+
+    private func rateLimitClientKey(for request: HTTPRequest) -> String {
+        if let token = bearerToken(from: request.headers["authorization"]) {
+            return "token:\(Self.stableDigest(token))"
+        }
+        return "anonymous"
+    }
+
+    private static func stableDigest(_ value: String) -> String {
+        let digest = SHA256.hash(data: Data(value.utf8))
+        return digest.prefix(12).map { String(format: "%02x", $0) }.joined()
     }
 
     private func corsHeaders(for request: HTTPRequest) -> [String: String] {
@@ -492,6 +512,11 @@ public actor BurnBarHTTPGatewayServer {
         } catch {
             return "{\"error\":\"internal error\"}"
         }
+    }
+
+    private enum HTTPRequestReadError: Error {
+        case invalidRequest
+        case payloadTooLarge
     }
 
     private struct HealthResponse: Encodable {
@@ -549,21 +574,15 @@ public actor BurnBarHTTPGatewayServer {
 
 public enum BurnBarHTTPGatewayError: Error, LocalizedError {
     case invalidConfiguration(String)
-    case socketCreationFailed(errno: Int32)
-    case bindFailed(errno: Int32)
-    case listenFailed(errno: Int32)
+    case listenerCreationFailed(error: Error)
     case invalidHost(String)
 
     public var errorDescription: String? {
         switch self {
         case .invalidConfiguration(let msg):
             return "Gateway configuration error: \(msg)"
-        case .socketCreationFailed(let err):
-            return "Failed to create gateway socket (errno \(err))."
-        case .bindFailed(let err):
-            return "Failed to bind gateway socket (errno \(err))."
-        case .listenFailed(let err):
-            return "Failed to listen on gateway socket (errno \(err))."
+        case .listenerCreationFailed(let error):
+            return "Failed to create gateway listener: \(error.localizedDescription)"
         case .invalidHost(let host):
             return "Invalid gateway host address: \(host)"
         }

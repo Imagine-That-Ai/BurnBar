@@ -200,7 +200,11 @@ public struct BurnBarProviderRouter: Sendable {
         }
 
         if let slotID = route.credentialSlotID {
-            try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
+            do {
+                try await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
+            } catch {
+                logger.silentFailure("record_credential_selection", error: error)
+            }
         }
         return route
     }
@@ -303,24 +307,32 @@ public struct BurnBarProviderRouter: Sendable {
             }
         }
 
-        try? await configStore.updateCredentialSlotStatus(
-            providerID: route.providerID,
-            slotID: slotID,
-            status: status,
-            cooldownUntil: cooldownUntil,
-            message: error.localizedDescription
-        )
+        do {
+            try await configStore.updateCredentialSlotStatus(
+                providerID: route.providerID,
+                slotID: slotID,
+                status: status,
+                cooldownUntil: cooldownUntil,
+                message: error.localizedDescription
+            )
+        } catch {
+            logger.silentFailure("update_credential_slot_status_failure", error: error)
+        }
     }
 
     public func markRouteSuccess(_ route: BurnBarProviderRoute) async {
         guard let slotID = route.credentialSlotID else { return }
-        try? await configStore.updateCredentialSlotStatus(
-            providerID: route.providerID,
-            slotID: slotID,
-            status: .ready,
-            cooldownUntil: nil,
-            message: nil
-        )
+        do {
+            try await configStore.updateCredentialSlotStatus(
+                providerID: route.providerID,
+                slotID: slotID,
+                status: .ready,
+                cooldownUntil: nil,
+                message: nil
+            )
+        } catch {
+            logger.silentFailure("update_credential_slot_status_success", error: error)
+        }
     }
 
     private func selectRoutes(

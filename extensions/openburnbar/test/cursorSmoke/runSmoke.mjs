@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { createConnection } from "node:net";
+import { randomBytes } from "node:crypto";
 
 const repoRoot = join(dirname(dirname(dirname(new URL(import.meta.url).pathname))), "..", "..");
 const extensionRoot = join(repoRoot, "extensions", "openburnbar");
@@ -147,10 +148,16 @@ execFileSync("security", [
   "openburnbar-smoke-secret"
 ]);
 
+// The daemon now hard-fails without an auth token (security hardening).
+// Mint a one-shot token here and propagate to the daemon, the health probe,
+// and the spawned Cursor process via OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN.
+const socketAuthToken = randomBytes(16).toString("hex");
+
 const daemon = spawn(daemonBinary, ["--socket-path", socketPath, "--version", "cursor-smoke"], {
   env: {
     ...process.env,
     OPENBURNBAR_DAEMON_SUPPORT_DIR: supportDir,
+    OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN: socketAuthToken,
     BURNBAR_FAKE_PROVIDER_OUTPUTS_FILE: fakeProviderOutputsPath
   },
   stdio: ["ignore", "ignore", "ignore"]
@@ -167,12 +174,13 @@ while (!existsSync(socketPath)) {
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
-await waitForDaemonHealth(socketPath, daemon);
+await waitForDaemonHealth(socketPath, daemon, socketAuthToken);
 
 const cursor = spawn(cursorBinary, [workspaceDir, "--new-window", "--user-data-dir", userDataDir, "--extensions-dir", extensionsDir, "--disable-gpu"], {
   env: {
     ...process.env,
-    OPENBURNBAR_DAEMON_SOCKET_PATH: socketPath
+    OPENBURNBAR_DAEMON_SOCKET_PATH: socketPath,
+    OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN: socketAuthToken
   },
   stdio: ["ignore", "ignore", "ignore"]
 });
@@ -221,12 +229,14 @@ if (previousSecret) {
 }
 
 if (!result.ok) {
+  console.error(JSON.stringify(result, null, 2));
+  console.error("Daemon log: ", logPath);
   throw new Error(result.error ?? `Unknown Cursor smoke failure (stage: ${result.stage ?? "unknown"}).`);
 }
 
 console.log(JSON.stringify(result));
 
-async function waitForDaemonHealth(socketPath, daemonProcess, timeoutMs = 60000) {
+async function waitForDaemonHealth(socketPath, daemonProcess, authToken, timeoutMs = 60000) {
   const startedAt = Date.now();
   let lastError = "Unknown daemon health error.";
 
@@ -236,7 +246,7 @@ async function waitForDaemonHealth(socketPath, daemonProcess, timeoutMs = 60000)
     }
 
     try {
-      await requestHealth(socketPath);
+      await requestHealth(socketPath, authToken);
       return;
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
@@ -247,8 +257,8 @@ async function waitForDaemonHealth(socketPath, daemonProcess, timeoutMs = 60000)
   throw new Error(lastError);
 }
 
-async function requestHealth(socketPath) {
-  const payload = `${JSON.stringify({ id: "smoke-health", method: "daemon.health" })}\n`;
+async function requestHealth(socketPath, authToken) {
+  const payload = `${JSON.stringify({ id: "smoke-health", method: "daemon.health", authToken })}\n`;
 
   return await new Promise((resolve, reject) => {
     const socket = createConnection(socketPath);

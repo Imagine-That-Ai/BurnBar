@@ -7,7 +7,7 @@ import GRDB
 /// Parses Copilot CLI sessions from ~/.copilot/session-state/*/events.jsonl.
 /// Post-Feb 2026 Copilot CLI persists assistant.usage and session.shutdown events with exact token counts.
 /// Falls back to CompactionProcessor log deltas for older CLI versions.
-final class CopilotParser: LogParser, @unchecked Sendable {
+final class CopilotParser: LogParser, Sendable {
     let provider: AgentProvider = .copilot
 
     func parse() async throws -> ParseResult {
@@ -327,7 +327,7 @@ private struct CopilotMetadataSummary {
 
 /// Parses Aider analytics JSONL logs for exact per-message token usage.
 /// Requires user to configure: `analytics-log: ~/.aider/analytics.jsonl` in .aider.conf.yml
-final class AiderParser: LogParser, @unchecked Sendable {
+final class AiderParser: LogParser, Sendable {
     let provider: AgentProvider = .aider
 
     func parse() async throws -> ParseResult {
@@ -498,7 +498,7 @@ private struct AiderSession {
 
 /// Parses Cursor's ai-code-tracking.db for code provenance data and model usage distribution.
 /// Token-level tracking requires the CursorConnector BYOK proxy.
-final class CursorParser: LogParser, @unchecked Sendable {
+final class CursorParser: LogParser, Sendable {
     let provider: AgentProvider = .cursor
 
     func parse() async throws -> ParseResult {
@@ -586,12 +586,13 @@ final class CursorParser: LogParser, @unchecked Sendable {
 
 /// Reads token usage from Codex's SQLite store and JSONL session files.
 /// Prefers exact token breakdowns from JSONL `token_count` events over the aggregate `tokens_used` in SQLite.
-final class CodexParser: LogParser, @unchecked Sendable {
+final class CodexParser: LogParser, Sendable {
     let provider: AgentProvider = .codex
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
     private let cacheURL: URL
     private let homeDirectoryURL: URL
+    private let cacheStore: ParserDiskCacheStore<CodexCacheEntry>
 
     init(
         fileManager: FileManager = .default,
@@ -602,6 +603,12 @@ final class CodexParser: LogParser, @unchecked Sendable {
         self.appPaths = appPaths
         self.homeDirectoryURL = homeDirectoryURL
         self.cacheURL = appPaths.supportDirectory.appendingPathComponent("codex_parser_cache.json")
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "CodexParser"
+        )
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
     }
 
@@ -621,7 +628,7 @@ final class CodexParser: LogParser, @unchecked Sendable {
 
     private func parseCodexDatabase(dbPath: String) throws -> [TokenUsage] {
         var usages: [TokenUsage] = []
-        var sessionCache = loadSessionCache()
+        var sessionCache = cacheStore.load()
         var activePaths = Set<String>()
         var cacheMutated = false
 
@@ -684,7 +691,7 @@ final class CodexParser: LogParser, @unchecked Sendable {
                     let cacheKey = URL(fileURLWithPath: expandedPath).standardizedFileURL.path
                     activePaths.insert(cacheKey)
 
-                    if let signature = fileSignature(forPath: expandedPath),
+                    if let signature = FileSignature(for: URL(fileURLWithPath: expandedPath)),
                        let cached = sessionCache.fileEntries[cacheKey],
                        cached.signature == signature {
                         if let tokenUsage = cached.tokenUsage {
@@ -702,11 +709,11 @@ final class CodexParser: LogParser, @unchecked Sendable {
                             foundExact = true
                         }
 
-                        if let signature = fileSignature(forPath: expandedPath) {
-                            sessionCache.fileEntries[cacheKey] = CodexSessionCacheEntry(
+                        if let signature = FileSignature(for: URL(fileURLWithPath: expandedPath)) {
+                            sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
                                 signature: signature,
                                 tokenUsage: parsed.map {
-                                    CodexSessionTokenUsage(
+                                    CodexTokenUsage(
                                         input: $0.input,
                                         output: $0.output,
                                         cacheRead: $0.cacheRead
@@ -763,7 +770,7 @@ final class CodexParser: LogParser, @unchecked Sendable {
         }
 
         if cacheMutated {
-            persistSessionCache(sessionCache)
+            cacheStore.persist(sessionCache)
         }
 
         return usages
@@ -803,15 +810,17 @@ final class CodexParser: LogParser, @unchecked Sendable {
             // VAL-TOKEN-010: Cumulative totals take precedence over delta events.
             // If we've already found cumulative totals, skip processing delta events.
             if let extracted = TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(info) {
-                // If we had previously accumulated delta values, replace with cumulative.
-                // This ensures cumulative > delta precedence for mixed logs.
+                // Codex reports `input_tokens` inclusive of `cached_input_tokens`.
+                // Subtract the cached portion so the non-cached input and cached
+                // buckets stay disjoint (VAL-TOKEN-002 / matches delta path below).
+                let nonCachedInput = max(extracted.input - extracted.cacheRead, 0)
                 if foundDelta {
-                    inputTokens = extracted.input
+                    inputTokens = nonCachedInput
                     outputTokens = extracted.output
                     cacheReadTokens = extracted.cacheRead
                     foundDelta = false
                 } else {
-                    inputTokens = extracted.input
+                    inputTokens = nonCachedInput
                     outputTokens = extracted.output
                     cacheReadTokens = extracted.cacheRead
                 }
@@ -841,85 +850,28 @@ final class CodexParser: LogParser, @unchecked Sendable {
         return foundDelta ? (input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens) : nil
     }
 
-    private func loadSessionCache() -> CodexSessionParserCache {
-        guard fileManager.fileExists(atPath: cacheURL.path) else { return .empty }
-        do {
-            let data = try Data(contentsOf: cacheURL)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let cache = try decoder.decode(CodexSessionParserCache.self, from: data)
-            guard cache.schemaVersion == CodexSessionParserCache.empty.schemaVersion else {
-                return .empty
-            }
-            return cache
-        } catch {
-            return .empty
-        }
-    }
-
-    private func persistSessionCache(_ cache: CodexSessionParserCache) {
-        do {
-            if !fileManager.fileExists(atPath: appPaths.supportDirectory.path) {
-                try fileManager.createDirectory(at: appPaths.supportDirectory, withIntermediateDirectories: true)
-            }
-            var persisted = cache
-            persisted.lastUpdatedAt = Date()
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(persisted)
-            try data.write(to: cacheURL, options: .atomic)
-        } catch {
-            AppLogger.parser.silentFailure("CodexParser: Failed to persist session cache", error: error)
-        }
-    }
-
-    private func fileSignature(forPath path: String) -> CodexSessionFileSignature? {
-        let fileURL = URL(fileURLWithPath: path)
-        let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey])
-        guard values?.isRegularFile == true else { return nil }
-        let modifiedAt = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
-        let sizeBytes = Int64(values?.fileSize ?? 0)
-        return CodexSessionFileSignature(modifiedAt: modifiedAt, sizeBytes: sizeBytes)
-    }
 }
 
-private struct CodexSessionFileSignature: Codable, Equatable {
-    let modifiedAt: TimeInterval
-    let sizeBytes: Int64
-}
-
-private struct CodexSessionTokenUsage: Codable, Equatable {
+private struct CodexTokenUsage: Codable, Equatable {
     let input: Int
     let output: Int
     let cacheRead: Int
 }
 
-private struct CodexSessionCacheEntry: Codable, Equatable {
-    let signature: CodexSessionFileSignature
-    let tokenUsage: CodexSessionTokenUsage?
-}
-
-private struct CodexSessionParserCache: Codable, Equatable {
-    var schemaVersion: Int
-    var fileEntries: [String: CodexSessionCacheEntry]
-    var lastUpdatedAt: Date?
-
-    static let empty = CodexSessionParserCache(
-        schemaVersion: 1,
-        fileEntries: [:],
-        lastUpdatedAt: nil
-    )
+private struct CodexCacheEntry: Codable, Equatable {
+    let signature: FileSignature
+    let tokenUsage: CodexTokenUsage?
 }
 
 // MARK: - Model Filter Parser (for Zai/MiniMax which use Factory sessions)
 
-final class ModelFilterParser: LogParser, @unchecked Sendable {
+final class ModelFilterParser: LogParser, Sendable {
     let provider: AgentProvider
     private let modelPattern: String
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
     private let cacheURL: URL
+    private let cacheStore: ParserDiskCacheStore<ModelFilterCacheEntry>
 
     init(
         modelPattern: String,
@@ -937,6 +889,12 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
             .replacingOccurrences(of: " ", with: "_")
         self.cacheURL = appPaths.supportDirectory
             .appendingPathComponent("model_filter_parser_\(providerKey).json")
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 2,
+            logLabel: "ModelFilterParser (\(provider.rawValue))"
+        )
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
     }
 
@@ -950,7 +908,7 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
-        var parseCache = loadParseCache()
+        var parseCache = cacheStore.load()
         var activePaths = Set<String>()
         var cacheMutated = false
 
@@ -987,7 +945,7 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
                         settingsFile: settingsFile,
                         metadataFile: metadataFile
                     ) {
-                        parseCache.fileEntries[cacheKey] = ModelFilterCachedSession(
+                        parseCache.fileEntries[cacheKey] = ModelFilterCacheEntry(
                             signature: signature,
                             usage: parsed?.usage,
                             conversation: parsed?.conversation
@@ -1007,7 +965,7 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
         }
 
         if cacheMutated {
-            persistParseCache(parseCache)
+            cacheStore.persist(parseCache)
         }
 
         return ParseResult(usages: usages, conversations: conversations)
@@ -1237,7 +1195,7 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
     }
 
     private func appendCached(
-        _ cached: ModelFilterCachedSession,
+        _ cached: ModelFilterCacheEntry,
         usages: inout [TokenUsage],
         conversations: inout [ConversationRecord]
     ) {
@@ -1263,84 +1221,20 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
         }
     }
 
-    private func loadParseCache() -> ModelFilterParserCache {
-        guard fileManager.fileExists(atPath: cacheURL.path) else { return .empty }
-        do {
-            let data = try Data(contentsOf: cacheURL)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let cache = try decoder.decode(ModelFilterParserCache.self, from: data)
-            guard cache.schemaVersion == ModelFilterParserCache.empty.schemaVersion else {
-                return .empty
-            }
-            return cache
-        } catch {
-            return .empty
-        }
-    }
-
-    private func persistParseCache(_ cache: ModelFilterParserCache) {
-        do {
-            if !fileManager.fileExists(atPath: appPaths.supportDirectory.path) {
-                try fileManager.createDirectory(at: appPaths.supportDirectory, withIntermediateDirectories: true)
-            }
-            var persisted = cache
-            persisted.lastUpdatedAt = Date()
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(persisted)
-            try data.write(to: cacheURL, options: .atomic)
-        } catch {
-            AppLogger.parser.silentFailure("ModelFilterParser (\(provider.rawValue)): Failed to persist parser cache", error: error)
-        }
-    }
-
     private func compositeSignature(
         jsonlFile: URL,
         settingsFile: URL,
         metadataFile: URL
-    ) -> ModelFilterCompositeSignature? {
-        guard let jsonl = fileSignature(for: jsonlFile) else { return nil }
-        let settings = fileSignature(for: settingsFile)
-        let metadata = fileSignature(for: metadataFile)
-        return ModelFilterCompositeSignature(jsonl: jsonl, settings: settings, metadata: metadata)
-    }
-
-    private func fileSignature(for file: URL) -> ModelFilterFileSignature? {
-        let values = try? file.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey])
-        guard values?.isRegularFile == true else { return nil }
-        let modifiedAt = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
-        let sizeBytes = Int64(values?.fileSize ?? 0)
-        return ModelFilterFileSignature(modifiedAt: modifiedAt, sizeBytes: sizeBytes)
+    ) -> CompositeFileSignature<FileSignature>? {
+        guard let jsonl = FileSignature(for: jsonlFile) else { return nil }
+        let settings = FileSignature(for: settingsFile)
+        let metadata = FileSignature(for: metadataFile)
+        return CompositeFileSignature(primary: jsonl, settings: settings, metadata: metadata)
     }
 }
 
-private struct ModelFilterFileSignature: Codable, Equatable {
-    let modifiedAt: TimeInterval
-    let sizeBytes: Int64
-}
-
-private struct ModelFilterCompositeSignature: Codable, Equatable {
-    let jsonl: ModelFilterFileSignature
-    let settings: ModelFilterFileSignature?
-    let metadata: ModelFilterFileSignature?
-}
-
-private struct ModelFilterCachedSession: Codable, Equatable {
-    let signature: ModelFilterCompositeSignature
+private struct ModelFilterCacheEntry: Codable, Equatable {
+    let signature: CompositeFileSignature<FileSignature>
     let usage: TokenUsage?
     let conversation: ConversationRecord?
-}
-
-private struct ModelFilterParserCache: Codable, Equatable {
-    var schemaVersion: Int
-    var fileEntries: [String: ModelFilterCachedSession]
-    var lastUpdatedAt: Date?
-
-    static let empty = ModelFilterParserCache(
-        schemaVersion: 2,
-        fileEntries: [:],
-        lastUpdatedAt: nil
-    )
 }

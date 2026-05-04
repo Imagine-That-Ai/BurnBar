@@ -35,6 +35,14 @@ struct PrivacyIndexingSettingsView: View {
                     isOn: $settingsManager.cliAssistantAllowed
                 )
 
+                Divider().background(DesignSystem.Colors.border)
+
+                SettingsToggle(
+                    title: "Back Up Chat Message Content",
+                    subtitle: chatContentBackupSubtitle,
+                    isOn: chatContentBackupBinding
+                )
+
                 if !retrievalHealthSnapshot.degradedModes.isEmpty {
                     Divider().background(DesignSystem.Colors.border)
 
@@ -458,7 +466,14 @@ struct PrivacyIndexingSettingsView: View {
 
     private var embeddingDetailText: String {
         if retrievalHealthSnapshot.semanticPipeline.indexedVectorCount > 0 {
-            return "\(retrievalHealthSnapshot.semanticPipeline.indexedVectorCount) vectors are available for semantic ranking."
+            var parts = ["\(retrievalHealthSnapshot.semanticPipeline.indexedVectorCount) vectors are available for semantic ranking."]
+            if let state = retrievalHealthSnapshot.semanticPipeline.snapshotState, state.isEmpty == false {
+                parts.append("Snapshot: \(state).")
+            }
+            if let bytes = retrievalHealthSnapshot.semanticPipeline.snapshotFileBytes, bytes > 0 {
+                parts.append("Disk: \(formatBytes(bytes)).")
+            }
+            return parts.joined(separator: " ")
         }
         return "Semantic ranking is waiting for chunk embeddings."
     }
@@ -492,6 +507,23 @@ struct PrivacyIndexingSettingsView: View {
             return openAIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         return false
+    }
+
+    private var chatContentBackupSubtitle: String {
+        if settingsManager.chatThreadContentCloudBackupEnabled {
+            return "OpenBurnBar Assistant thread titles, previews, and messages are included in cloud backup."
+        }
+        return "Cloud backup stores chat thread counts and dates only. Message text stays local until you enable this."
+    }
+
+    private var chatContentBackupBinding: Binding<Bool> {
+        Binding(
+            get: { settingsManager.chatThreadContentCloudBackupEnabled },
+            set: { enabled in
+                settingsManager.chatThreadContentCloudBackupEnabled = enabled
+                settingsManager.chatThreadContentCloudBackupConsentShown = true
+            }
+        )
     }
 
     // MARK: - Helper Views

@@ -23,7 +23,7 @@ protocol ProviderUsageAPI: Sendable {
 
 // MARK: - Usage Record (from provider APIs)
 
-struct ProviderUsageRecord: Sendable {
+struct ProviderUsageRecord: Sendable, Equatable {
     let providerName: String
     let model: String
     let date: Date
@@ -60,10 +60,18 @@ struct ProviderUsageRecord: Sendable {
 
     var mappedProvider: AgentProvider? {
         switch normalizedProviderName {
+        case "factory":
+            return .factory
+        case "anthropic", "claude", "claude code", "claude-code":
+            return .claudeCode
+        case "openai", "codex", "openai codex":
+            return .codex
         case "minimax":
             return .minimax
         case "z.ai", "zai":
             return .zai
+        case "ollama":
+            return .ollama
         case "github copilot", "copilot":
             return .copilot
         default:
@@ -155,11 +163,24 @@ final class ProviderUsageAPIService {
             active.append(MiniMaxUsageProbe(apiKey: key))
         }
 
+        // Ollama local probe — always attempt if server is running.
+        let ollamaHost = environment["OLLAMA_HOST"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let ollamaBase = ollamaHost.isEmpty ? "http://localhost:11434" : (ollamaHost.hasPrefix("http") ? ollamaHost : "http://\(ollamaHost)")
+        active.append(OllamaUsageProbe(baseURL: ollamaBase, apiKey: resolvedAPIKey(for: "ollama")))
+
         apis = active
     }
 
     var configuredProviders: [String] {
         apis.map(\.providerName)
+    }
+
+    /// Rebuilds APIs and returns a snapshot of the active `ProviderUsageAPI` instances.
+    /// Call this on `@MainActor` before entering a background context so billing
+    /// reconciliation can run without main-actor hops.
+    func snapshotAPIs() -> [any ProviderUsageAPI] {
+        rebuildAPIs()
+        return apis
     }
 
     /// Fetch usage from all configured provider APIs.
@@ -213,6 +234,9 @@ final class ProviderUsageAPIService {
             return nonEmpty(keyStore.apiKey(for: provider))
                 ?? connectorKey(for: "provider.minimax.apiKey")
                 ?? nonEmpty(environment["MINIMAX_API_KEY"])
+        case "ollama":
+            return nonEmpty(keyStore.apiKey(for: provider))
+                ?? nonEmpty(environment["OLLAMA_API_KEY"])
         default:
             return nonEmpty(keyStore.apiKey(for: provider))
         }

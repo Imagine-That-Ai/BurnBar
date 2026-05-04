@@ -34,8 +34,7 @@ enum OpenAIEmbeddingProviderError: LocalizedError {
 
 /// Embedding provider backed by OpenAI's embedding API.
 /// Supports text-embedding-3-small, text-embedding-3-large, and text-embedding-ada-002.
-// SAFETY: All stored properties are immutable lets; URLSession is thread-safe.
-final class OpenAIEmbeddingProvider: ChunkEmbeddingProviding, QueryEmbeddingProviding, @unchecked Sendable {
+final class OpenAIEmbeddingProvider: ChunkEmbeddingProviding, QueryEmbeddingProviding, Sendable {
     private struct EmbeddingResponse: Decodable {
         struct Item: Decodable {
             let embedding: [Float]

@@ -3,13 +3,21 @@ import Darwin
 import Dispatch
 import Foundation
 
+#if canImport(Sentry)
+import Sentry
+#endif
+
 @main
 struct OpenBurnBarDaemonExecutable {
     static func main() async throws {
+        #if canImport(Sentry)
+        configureSentryIfAvailable()
+        #endif
         let configuration = try BurnBarDaemonCommandLine.makeConfiguration(
             arguments: Array(CommandLine.arguments.dropFirst()),
             environment: ProcessInfo.processInfo.environment
         )
+        try configuration.validate()
         let logger = BurnBarDaemonLogger(category: "process")
         let server = BurnBarDaemonServer(configuration: configuration, logger: logger)
 
@@ -116,7 +124,7 @@ private enum BurnBarDaemonCommandLine {
                       --gateway-host HOST          Gateway bind host (default 127.0.0.1)
                       --gateway-port PORT          Gateway port (default 8317)
                       --gateway-auth-token TOKEN   Bearer token for gateway auth
-                      --socket-auth-token TOKEN    Shared token required for daemon socket RPC
+                      --socket-auth-token TOKEN    (Required) Auth token for daemon socket RPC
 
                     Environment overrides:
                       OPENBURNBAR_DAEMON_SOCKET_PATH
@@ -167,7 +175,28 @@ private enum BurnBarDaemonCommandLineError: Error, LocalizedError {
     }
 }
 
-private final class BurnBarSignalMonitor: @unchecked Sendable {
+#if canImport(Sentry)
+private func configureSentryIfAvailable() {
+    guard let dsn = ProcessInfo.processInfo.environment["OPENBURNBAR_SENTRY_DSN"],
+          !dsn.trimmingCharacters(in: .whitespaces).isEmpty else {
+        return
+    }
+    SentrySDK.start { options in
+        options.dsn = dsn
+        options.environment = "daemon"
+        options.releaseName = "openburnbar-daemon@\(BurnBarDaemonVersion.current)"
+        options.enableTracing = false
+        options.tracesSampleRate = 0.0
+        #if DEBUG
+        options.debug = false
+        #endif
+    }
+}
+#endif
+
+// All stored properties are let; DispatchSourceSignal sources are immutable after init.
+// Formally Sendable because no mutable state exists post-init.
+private final class BurnBarSignalMonitor: Sendable {
     private let queue: DispatchQueue
     private let continuation: AsyncStream<Int32>.Continuation
     private let stream: AsyncStream<Int32>

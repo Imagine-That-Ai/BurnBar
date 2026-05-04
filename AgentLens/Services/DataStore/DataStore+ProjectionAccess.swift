@@ -2,7 +2,7 @@ import Foundation
 import OpenBurnBarCore
 
 extension DataStore {
-    func enqueueConversationProjectionJob(
+    nonisolated func enqueueConversationProjectionJob(
         conversationID: String,
         jobType: ProjectionJobType = .reproject,
         priority: Int = 5,
@@ -34,33 +34,33 @@ extension DataStore {
         )
     }
 
-    func enqueueProjectionJob(_ job: ProjectionJobRecord) throws {
+    nonisolated func enqueueProjectionJob(_ job: ProjectionJobRecord) throws {
         try projectionStore.enqueueProjectionJob(job)
     }
 
-    func fetchProjectionJobs(
+    nonisolated func fetchProjectionJobs(
         statuses: [ProjectionJobStatus] = [.queued, .leased, .running, .failed],
         limit: Int = 100
     ) throws -> [ProjectionJobRecord] {
         try projectionStore.fetchProjectionJobs(statuses: statuses, limit: limit)
     }
 
-    func countProjectionJobs(statuses: [ProjectionJobStatus]? = nil) throws -> Int {
+    nonisolated func countProjectionJobs(statuses: [ProjectionJobStatus]? = nil) throws -> Int {
         try projectionStore.countProjectionJobs(statuses: statuses)
     }
 
-    func compactConversationProjectionBacklog() throws -> Int {
+    nonisolated func compactConversationProjectionBacklog() throws -> Int {
         try projectionStore.compactConversationProjectionBacklog()
     }
 
-    func hasProjectionJobs(
+    nonisolated func hasProjectionJobs(
         statuses: [ProjectionJobStatus],
         jobTypes: [ProjectionJobType]
     ) throws -> Bool {
         try projectionStore.hasProjectionJobs(statuses: statuses, jobTypes: jobTypes)
     }
 
-    func leaseNextProjectionJob(
+    nonisolated func leaseNextProjectionJob(
         leaseOwner: String,
         leaseDuration: TimeInterval,
         now: Date = Date()
@@ -72,7 +72,7 @@ extension DataStore {
         )
     }
 
-    func markProjectionJobLeased(
+    nonisolated func markProjectionJobLeased(
         id: String,
         leaseOwner: String,
         leaseDuration: TimeInterval,
@@ -86,11 +86,11 @@ extension DataStore {
         )
     }
 
-    func markProjectionJobCompleted(id: String, completedAt: Date = Date()) throws {
+    nonisolated func markProjectionJobCompleted(id: String, completedAt: Date = Date()) throws {
         try projectionStore.markJobCompleted(id: id, completedAt: completedAt)
     }
 
-    func markProjectionJobFailed(
+    nonisolated func markProjectionJobFailed(
         id: String,
         errorCode: String?,
         errorMessage: String?,
@@ -106,7 +106,7 @@ extension DataStore {
         )
     }
 
-    func markProjectionJobCanceled(
+    nonisolated func markProjectionJobCanceled(
         id: String,
         errorCode: String?,
         errorMessage: String?,
@@ -120,65 +120,103 @@ extension DataStore {
         )
     }
 
-    func upsertEmbeddingModel(_ model: EmbeddingModelRecord) throws {
+    nonisolated func upsertEmbeddingModel(_ model: EmbeddingModelRecord) throws {
         try projectionStore.upsertEmbeddingModel(model)
     }
 
-    func fetchEmbeddingModels() throws -> [EmbeddingModelRecord] {
+    nonisolated func fetchEmbeddingModels() throws -> [EmbeddingModelRecord] {
         try projectionStore.fetchEmbeddingModels()
     }
 
-    func countEmbeddingModels() throws -> Int {
+    nonisolated func countEmbeddingModels() throws -> Int {
         try projectionStore.countEmbeddingModels()
     }
 
-    func upsertEmbeddingVersion(_ version: EmbeddingVersionRecord) throws {
+    nonisolated func upsertEmbeddingVersion(_ version: EmbeddingVersionRecord) throws {
         try projectionStore.upsertEmbeddingVersion(version)
     }
 
-    func fetchEmbeddingVersions(modelID: String? = nil) throws -> [EmbeddingVersionRecord] {
+    nonisolated func fetchEmbeddingVersions(modelID: String? = nil) throws -> [EmbeddingVersionRecord] {
         try projectionStore.fetchEmbeddingVersions(modelID: modelID)
     }
 
-    func countEmbeddingVersions(modelID: String? = nil) throws -> Int {
+    nonisolated func countEmbeddingVersions(modelID: String? = nil) throws -> Int {
         try projectionStore.countEmbeddingVersions(modelID: modelID)
     }
 
-    func upsertChunkEmbedding(_ embedding: ChunkEmbeddingRecord) throws {
+    nonisolated func upsertChunkEmbedding(_ embedding: ChunkEmbeddingRecord) throws {
         try projectionStore.upsertChunkEmbedding(embedding)
     }
 
-    func fetchChunkEmbeddings(chunkID: String? = nil) throws -> [ChunkEmbeddingRecord] {
+    nonisolated func fetchChunkEmbeddings(chunkID: String? = nil) throws -> [ChunkEmbeddingRecord] {
         try projectionStore.fetchChunkEmbeddings(chunkID: chunkID)
     }
 
-    func fetchChunkEmbeddings(embeddingVersionID: String) throws -> [ChunkEmbeddingRecord] {
+    nonisolated func fetchChunkEmbeddings(embeddingVersionID: String) throws -> [ChunkEmbeddingRecord] {
         try projectionStore.fetchChunkEmbeddings(embeddingVersionID: embeddingVersionID)
     }
 
-    func countChunkEmbeddings(
+    nonisolated func fetchChunkEmbeddings(
+        embeddingVersionID: String,
+        limit: Int,
+        offset: Int
+    ) throws -> [ChunkEmbeddingRecord] {
+        try projectionStore.fetchChunkEmbeddings(
+            embeddingVersionID: embeddingVersionID,
+            limit: limit,
+            offset: offset
+        )
+    }
+
+    nonisolated func fetchChunkEmbeddings(
+        chunkIDs: [String],
+        embeddingVersionID: String
+    ) throws -> [ChunkEmbeddingRecord] {
+        try projectionStore.fetchChunkEmbeddings(chunkIDs: chunkIDs, embeddingVersionID: embeddingVersionID)
+    }
+
+    nonisolated func countChunkEmbeddings(
         chunkID: String? = nil,
         embeddingVersionID: String? = nil
     ) throws -> Int {
         try projectionStore.countChunkEmbeddings(chunkID: chunkID, embeddingVersionID: embeddingVersionID)
     }
 
-    func countChunkEmbeddings(
+    nonisolated func countChunkEmbeddings(
         documentID: String,
         embeddingVersionID: String? = nil
     ) throws -> Int {
         try projectionStore.countChunkEmbeddings(documentID: documentID, embeddingVersionID: embeddingVersionID)
     }
 
-    func upsertRetrievalHealth(_ health: RetrievalHealthRecord) throws {
+    nonisolated func chunkEmbeddingVersionStats(embeddingVersionID: String) throws -> ChunkEmbeddingVersionStats {
+        try projectionStore.chunkEmbeddingVersionStats(embeddingVersionID: embeddingVersionID)
+    }
+
+    nonisolated func upsertVectorIndexSnapshot(_ snapshot: VectorIndexSnapshotRecord) throws {
+        try projectionStore.upsertVectorIndexSnapshot(snapshot)
+    }
+
+    nonisolated func fetchVectorIndexSnapshot(
+        embeddingVersionID: String,
+        backendID: String
+    ) throws -> VectorIndexSnapshotRecord? {
+        try projectionStore.fetchVectorIndexSnapshot(embeddingVersionID: embeddingVersionID, backendID: backendID)
+    }
+
+    nonisolated func fetchVectorIndexSnapshots(embeddingVersionID: String? = nil) throws -> [VectorIndexSnapshotRecord] {
+        try projectionStore.fetchVectorIndexSnapshots(embeddingVersionID: embeddingVersionID)
+    }
+
+    nonisolated func upsertRetrievalHealth(_ health: RetrievalHealthRecord) throws {
         try projectionStore.upsertRetrievalHealth(health)
     }
 
-    func fetchRetrievalHealth() throws -> [RetrievalHealthRecord] {
+    nonisolated func fetchRetrievalHealth() throws -> [RetrievalHealthRecord] {
         try projectionStore.fetchRetrievalHealth()
     }
 
-    func localSearchSchemaInventory() throws -> LocalSearchSchemaInventory {
+    nonisolated func localSearchSchemaInventory() throws -> LocalSearchSchemaInventory {
         try projectionStore.schemaInventory()
     }
 }

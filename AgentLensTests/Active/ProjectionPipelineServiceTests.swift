@@ -2524,7 +2524,7 @@ extension ProjectionPipelineServiceTests {
         // ID drift reconciliation: writeCount reflects ID drift reconciliation for boundary shifts.
         // Write count is bounded for incremental partial edits because only tail chunks
         // and boundary chunks are affected, not all chunks.
-        if let diffResult = service.lastChunkDiffResult {
+        if let diffResult = await service.lastChunkDiffResult {
             // Allow higher writeCount due to ID drift reconciliation (rekeyed chunks cause writes).
             // But still bounded: only affected chunks are rewritten, not full document.
             XCTAssertLessThan(

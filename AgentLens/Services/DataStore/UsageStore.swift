@@ -5,10 +5,10 @@ import OpenBurnBarCore
 // MARK: - UsageStore
 
 /// Token-usage CRUD, sync helpers, refresh reads, and provider/model summary builders.
-final class UsageStore: @unchecked Sendable {
-    private let dbQueue: DatabaseQueue
+final class UsageStore: Sendable {
+    private let dbQueue: any DatabaseWriter
 
-    init(dbQueue: DatabaseQueue) {
+    init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 
@@ -50,9 +50,10 @@ final class UsageStore: @unchecked Sendable {
                         inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
                         reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
                         usageSource, sourceDeviceId, sourceDeviceName, isRemote, syncedAt,
+                        providerID, providerAccountID, providerAccountLabel, providerAccountSource,
                         provenanceMethod, provenanceConfidence, estimatorVersion
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
-                    ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, '')) DO UPDATE SET
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, '')) DO UPDATE SET
                         projectName = excluded.projectName,
                         inputTokens = excluded.inputTokens,
                         outputTokens = excluded.outputTokens,
@@ -86,6 +87,10 @@ final class UsageStore: @unchecked Sendable {
                             THEN excluded.usageSource
                             ELSE token_usage.usageSource
                         END,
+                        providerID = excluded.providerID,
+                        providerAccountID = excluded.providerAccountID,
+                        providerAccountLabel = excluded.providerAccountLabel,
+                        providerAccountSource = excluded.providerAccountSource,
                         provenanceMethod = excluded.provenanceMethod,
                         provenanceConfidence = CASE
                             WHEN
@@ -133,7 +138,11 @@ final class UsageStore: @unchecked Sendable {
                     usage.cacheReadTokens, usage.reasoningTokens, usage.totalTokens, usage.cost,
                     usage.startTime, usage.endTime, usage.createdAt,
                     usage.usageSource.rawValue,
-                    usage.sourceDeviceId, usage.sourceDeviceName, Date(),
+                    usage.sourceDeviceId, usage.sourceDeviceName, usage.isRemote, Date(),
+                    usage.providerID.rawValue,
+                    usage.providerAccountID,
+                    usage.providerAccountLabel,
+                    usage.providerAccountSource?.rawValue,
                     usage.provenanceMethod.rawValue,
                     usage.provenanceConfidence.rawValue,
                     usage.estimatorVersion
@@ -145,66 +154,17 @@ final class UsageStore: @unchecked Sendable {
     // MARK: - Refresh
 
     func fetchAllUsage() throws -> [TokenUsage] {
+        try fetchRecentUsage(limit: Int.max)
+    }
+
+    func fetchRecentUsage(limit: Int) throws -> [TokenUsage] {
         try dbQueue.read { db -> [TokenUsage] in
-            let rows = try Row.fetchAll(db, sql: "SELECT * FROM token_usage ORDER BY startTime DESC")
-            return rows.compactMap { row -> TokenUsage? in
-                guard let idString = row["id"] as? String,
-                      let id = UUID(uuidString: idString),
-                      let providerString = row["provider"] as? String,
-                      let provider = AgentProvider(rawValue: providerString),
-                      let sessionId = row["sessionId"] as? String,
-                      let projectName = row["projectName"] as? String,
-                      let model = row["model"] as? String else {
-                    return nil
-                }
-
-                let inputTokens = (row["inputTokens"] as? Int) ?? Int(row["inputTokens"] as? Int64 ?? 0)
-                let outputTokens = (row["outputTokens"] as? Int) ?? Int(row["outputTokens"] as? Int64 ?? 0)
-                let cacheCreationTokens = (row["cacheCreationTokens"] as? Int) ?? Int(row["cacheCreationTokens"] as? Int64 ?? 0)
-                let cacheReadTokens = (row["cacheReadTokens"] as? Int) ?? Int(row["cacheReadTokens"] as? Int64 ?? 0)
-                let reasoningTokens = (row["reasoningTokens"] as? Int) ?? Int(row["reasoningTokens"] as? Int64 ?? 0)
-                let usageSourceRaw = row["usageSource"] as? String
-                let usageSource = usageSourceRaw.flatMap { UsageSource(rawValue: $0) } ?? .unknown
-
-                let provenanceMethodRaw = row["provenanceMethod"] as? String
-                let provenanceMethod = provenanceMethodRaw.flatMap { UsageProvenanceMethod(rawValue: $0) } ?? .unknown
-                let provenanceConfidenceRaw = row["provenanceConfidence"] as? String
-                let provenanceConfidence = provenanceConfidenceRaw.flatMap { UsageProvenanceConfidence(rawValue: $0) } ?? .unknown
-                let estimatorVersion = row["estimatorVersion"] as? String ?? ""
-
-                let cost = (row["cost"] as? Double)
-                    ?? ((row["cost"] as? NSNumber)?.doubleValue)
-                    ?? 0
-
-                let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"])
-                let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"])
-                let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date()
-                guard let startTime, let endTime else { return nil }
-
-                return TokenUsage(
-                    id: id,
-                    provider: provider,
-                    sessionId: sessionId,
-                    projectName: projectName,
-                    model: model,
-                    inputTokens: inputTokens,
-                    outputTokens: outputTokens,
-                    cacheCreationTokens: cacheCreationTokens,
-                    cacheReadTokens: cacheReadTokens,
-                    reasoningTokens: reasoningTokens,
-                    costUSD: cost,
-                    startTime: startTime,
-                    endTime: endTime,
-                    createdAt: createdAt,
-                    usageSource: usageSource,
-                    sourceDeviceId: row["sourceDeviceId"] as? String,
-                    sourceDeviceName: row["sourceDeviceName"] as? String,
-                    isRemote: ((row["isRemote"] as? Int) ?? Int(row["isRemote"] as? Int64 ?? 0)) != 0,
-                    provenanceMethod: provenanceMethod,
-                    provenanceConfidence: provenanceConfidence,
-                    estimatorVersion: estimatorVersion
-                )
-            }
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM token_usage ORDER BY startTime DESC LIMIT ?",
+                arguments: [limit]
+            )
+            return rows.compactMap(Self.decodeUsage)
         }
     }
 
@@ -242,54 +202,7 @@ final class UsageStore: @unchecked Sendable {
                 db,
                 sql: "SELECT * FROM token_usage WHERE syncedAt IS NULL AND isRemote = 0 ORDER BY startTime ASC LIMIT 400"
             )
-            return rows.compactMap { row -> TokenUsage? in
-                guard let idString = row["id"] as? String,
-                      let id = UUID(uuidString: idString),
-                      let providerString = row["provider"] as? String,
-                      let provider = AgentProvider(rawValue: providerString),
-                      let sessionId = row["sessionId"] as? String,
-                      let projectName = row["projectName"] as? String,
-                      let model = row["model"] as? String else { return nil }
-
-                let inputTokens = (row["inputTokens"] as? Int) ?? Int(row["inputTokens"] as? Int64 ?? 0)
-                let outputTokens = (row["outputTokens"] as? Int) ?? Int(row["outputTokens"] as? Int64 ?? 0)
-                let cacheCreationTokens = (row["cacheCreationTokens"] as? Int) ?? Int(row["cacheCreationTokens"] as? Int64 ?? 0)
-                let cacheReadTokens = (row["cacheReadTokens"] as? Int) ?? Int(row["cacheReadTokens"] as? Int64 ?? 0)
-                let reasoningTokens = (row["reasoningTokens"] as? Int) ?? Int(row["reasoningTokens"] as? Int64 ?? 0)
-                let usageSourceRaw = row["usageSource"] as? String
-                let usageSource = usageSourceRaw.flatMap { UsageSource(rawValue: $0) } ?? .unknown
-                let provenanceMethodRaw = row["provenanceMethod"] as? String
-                let provenanceMethod = provenanceMethodRaw.flatMap { UsageProvenanceMethod(rawValue: $0) } ?? .unknown
-                let provenanceConfidenceRaw = row["provenanceConfidence"] as? String
-                let provenanceConfidence = provenanceConfidenceRaw.flatMap { UsageProvenanceConfidence(rawValue: $0) } ?? .unknown
-                let estimatorVersion = row["estimatorVersion"] as? String ?? ""
-                let cost = (row["cost"] as? Double) ?? ((row["cost"] as? NSNumber)?.doubleValue) ?? 0
-                let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"])
-                let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"])
-                let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date()
-                guard let startTime, let endTime else { return nil }
-
-                return TokenUsage(
-                    id: id,
-                    provider: provider,
-                    sessionId: sessionId,
-                    projectName: projectName,
-                    model: model,
-                    inputTokens: inputTokens,
-                    outputTokens: outputTokens,
-                    cacheCreationTokens: cacheCreationTokens,
-                    cacheReadTokens: cacheReadTokens,
-                    reasoningTokens: reasoningTokens,
-                    costUSD: cost,
-                    startTime: startTime,
-                    endTime: endTime,
-                    createdAt: createdAt,
-                    usageSource: usageSource,
-                    provenanceMethod: provenanceMethod,
-                    provenanceConfidence: provenanceConfidence,
-                    estimatorVersion: estimatorVersion
-                )
-            }
+            return rows.compactMap(Self.decodeUsage)
         }
     }
 
@@ -432,7 +345,8 @@ final class UsageStore: @unchecked Sendable {
                 modelBreakdown: modelBreakdown,
                 provenanceConfidence: dominantConfidence,
                 provenanceMethod: dominantMethod,
-                hasEstimatedContributions: hasAnyEstimated
+                hasEstimatedContributions: hasAnyEstimated,
+                cacheEfficiency: CacheEfficiency.aggregate(providerUsages)
             )
         }.sorted { $0.totalCost > $1.totalCost }
     }
@@ -457,7 +371,8 @@ final class UsageStore: @unchecked Sendable {
                     sessionCount: pUsages.count,
                     totalTokens: pTokens,
                     cost: pCost,
-                    percentage: totalCost > 0 ? (pCost / totalCost) * 100 : 0
+                    percentage: totalCost > 0 ? (pCost / totalCost) * 100 : 0,
+                    cacheEfficiency: CacheEfficiency.aggregate(pUsages)
                 )
             }.sorted { $0.cost > $1.cost }
 
@@ -469,7 +384,8 @@ final class UsageStore: @unchecked Sendable {
                 totalInputTokens: totalInputTokens,
                 totalOutputTokens: totalOutputTokens,
                 sessionCount: modelUsages.count,
-                providerBreakdown: providerBreakdown
+                providerBreakdown: providerBreakdown,
+                cacheEfficiency: CacheEfficiency.aggregate(modelUsages)
             )
         }.sorted { $0.totalCost > $1.totalCost }
     }
@@ -482,9 +398,10 @@ final class UsageStore: @unchecked Sendable {
                     inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
                     reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
                     usageSource, sourceDeviceId, sourceDeviceName, isRemote,
+                    providerID, providerAccountID, providerAccountLabel, providerAccountSource,
                     provenanceMethod, provenanceConfidence, estimatorVersion
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, '')) DO UPDATE SET
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, '')) DO UPDATE SET
                     projectName = excluded.projectName,
                     inputTokens = excluded.inputTokens,
                     outputTokens = excluded.outputTokens,
@@ -518,6 +435,10 @@ final class UsageStore: @unchecked Sendable {
                         THEN excluded.usageSource
                         ELSE token_usage.usageSource
                     END,
+                    providerID = excluded.providerID,
+                    providerAccountID = excluded.providerAccountID,
+                    providerAccountLabel = excluded.providerAccountLabel,
+                    providerAccountSource = excluded.providerAccountSource,
                     provenanceMethod = excluded.provenanceMethod,
                     provenanceConfidence = CASE
                         WHEN
@@ -569,6 +490,9 @@ final class UsageStore: @unchecked Sendable {
                         OR token_usage.startTime != excluded.startTime
                         OR token_usage.endTime != excluded.endTime
                         OR token_usage.usageSource != excluded.usageSource
+                        OR COALESCE(token_usage.providerAccountID, '') != COALESCE(excluded.providerAccountID, '')
+                        OR COALESCE(token_usage.providerAccountLabel, '') != COALESCE(excluded.providerAccountLabel, '')
+                        OR COALESCE(token_usage.providerAccountSource, '') != COALESCE(excluded.providerAccountSource, '')
                     )
                 """,
         )
@@ -593,10 +517,77 @@ final class UsageStore: @unchecked Sendable {
                 usage.sourceDeviceId,
                 usage.sourceDeviceName,
                 usage.isRemote ? 1 : 0,
+                usage.providerID.rawValue,
+                usage.providerAccountID,
+                usage.providerAccountLabel,
+                usage.providerAccountSource?.rawValue,
                 usage.provenanceMethod.rawValue,
                 usage.provenanceConfidence.rawValue,
                 usage.estimatorVersion
             ]
         )
+    }
+
+    private static func decodeUsage(row: Row) -> TokenUsage? {
+        guard let idString = row["id"] as? String,
+              let id = UUID(uuidString: idString),
+              let providerString = row["provider"] as? String,
+              let provider = AgentProvider(rawValue: providerString),
+              let sessionId = row["sessionId"] as? String,
+              let projectName = row["projectName"] as? String,
+              let model = row["model"] as? String else { return nil }
+
+        let inputTokens = intValue(row["inputTokens"])
+        let outputTokens = intValue(row["outputTokens"])
+        let cacheCreationTokens = intValue(row["cacheCreationTokens"])
+        let cacheReadTokens = intValue(row["cacheReadTokens"])
+        let reasoningTokens = intValue(row["reasoningTokens"])
+        let usageSourceRaw = row["usageSource"] as? String
+        let usageSource = usageSourceRaw.flatMap { UsageSource(rawValue: $0) } ?? .unknown
+        let provenanceMethodRaw = row["provenanceMethod"] as? String
+        let provenanceMethod = provenanceMethodRaw.flatMap { UsageProvenanceMethod(rawValue: $0) } ?? .unknown
+        let provenanceConfidenceRaw = row["provenanceConfidence"] as? String
+        let provenanceConfidence = provenanceConfidenceRaw.flatMap { UsageProvenanceConfidence(rawValue: $0) } ?? .unknown
+        let estimatorVersion = row["estimatorVersion"] as? String ?? ""
+        let cost = (row["cost"] as? Double) ?? ((row["cost"] as? NSNumber)?.doubleValue) ?? 0
+        let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"])
+        let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"])
+        let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date()
+        guard let startTime, let endTime else { return nil }
+
+        let providerID = (row["providerID"] as? String).map(ProviderID.init(rawValue:)) ?? provider.providerID
+        let providerAccountSourceRaw = row["providerAccountSource"] as? String
+
+        return TokenUsage(
+            id: id,
+            provider: provider,
+            sessionId: sessionId,
+            projectName: projectName,
+            model: model,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens,
+            reasoningTokens: reasoningTokens,
+            costUSD: cost,
+            startTime: startTime,
+            endTime: endTime,
+            createdAt: createdAt,
+            usageSource: usageSource,
+            sourceDeviceId: row["sourceDeviceId"] as? String,
+            sourceDeviceName: row["sourceDeviceName"] as? String,
+            isRemote: intValue(row["isRemote"]) != 0,
+            providerID: providerID,
+            providerAccountID: row["providerAccountID"] as? String,
+            providerAccountLabel: row["providerAccountLabel"] as? String,
+            providerAccountSource: providerAccountSourceRaw.flatMap { ProviderAccountStorageScope(rawValue: $0) },
+            provenanceMethod: provenanceMethod,
+            provenanceConfidence: provenanceConfidence,
+            estimatorVersion: estimatorVersion
+        )
+    }
+
+    private static func intValue(_ value: Any?) -> Int {
+        (value as? Int) ?? Int(value as? Int64 ?? 0)
     }
 }

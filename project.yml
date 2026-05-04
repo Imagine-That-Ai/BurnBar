@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.openburnbar
   deploymentTarget:
     macOS: "14.0"
+    iOS: "17.0"
   xcodeVersion: "16.0"
   generateEmptyDirectories: true
   groupSortPosition: top
@@ -12,7 +13,7 @@ settings:
     SWIFT_VERSION: "5.10"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_PREVIEWS: YES
-    MARKETING_VERSION: "0.1.2-beta"
+    MARKETING_VERSION: "0.1.3-beta.1"
     CURRENT_PROJECT_VERSION: 1
     CODE_SIGN_STYLE: Automatic
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
@@ -27,18 +28,26 @@ settings:
 packages:
   OpenBurnBarCore:
     path: OpenBurnBarCore
+  # SQLCipher-enabled GRDB (SPM). Must stay aligned with OpenBurnBarDaemon/Package.swift.
+  # Upstream: https://github.com/SahebRoy92/GRDB-SQLCipher (GRDB 6.29.3 + SQLCipher.swift)
   GRDB:
-    url: https://github.com/groue/GRDB.swift
-    from: "6.29.3"
+    url: https://github.com/SahebRoy92/GRDB-SQLCipher
+    exactVersion: 6.29.3
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
     from: "11.0.0"
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
     from: "8.0.0"
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    from: "8.0.0"
   ViewInspector:
     url: https://github.com/nalexn/ViewInspector
     from: "0.10.0"
+  SnapshotTesting:
+    url: https://github.com/pointfreeco/swift-snapshot-testing
+    from: "1.18.0"
 
 targets:
   OpenBurnBar:
@@ -65,27 +74,38 @@ targets:
       - path: AgentLens
         excludes:
           - "**/.DS_Store"
+          # Local split drafts that duplicate still-compiled root files. Keep
+          # them out of generated projects until their owning refactors land.
+          - Services/ProjectionPipeline/ProjectionPipelineService*.swift
+          - "**/Services/ProjectionPipeline/ProjectionPipelineService*.swift"
+          - Services/Search/SearchService*.swift
+          - "**/Services/Search/SearchService*.swift"
+          # Local Chat UI shim that duplicates types still declared by the main
+          # chat surface. Keep it out until the owning refactor lands.
+          - Views/Chat/ChatEngineUIStubs.swift
+          - "**/Views/Chat/ChatEngineUIStubs.swift"
     settings:
       base:
         PRODUCT_NAME: OpenBurnBar
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
+        DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
     postBuildScripts:
       - name: Configure Firebase Auth Resources
+        # GoogleService-Info.plist is bundled via the regular Copy Resources phase
+        # (it lives in AgentLens/Resources). This step only patches Info.plist's
+        # CFBundleURLTypes with the REVERSED_CLIENT_ID extracted from the plist.
         script: |
           set -euo pipefail
           SOURCE_PLIST="${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist"
-          DEST_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
           INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
 
           if [[ ! -f "${SOURCE_PLIST}" ]]; then
             echo "warning: GoogleService-Info.plist not found; Google, Apple, and email auth remain disabled."
             exit 0
           fi
-
-          /usr/bin/ditto "${SOURCE_PLIST}" "${DEST_PLIST}"
 
           REVERSED_CLIENT_ID="$(
             /usr/libexec/PlistBuddy -c "Print :REVERSED_CLIENT_ID" "${SOURCE_PLIST}" 2>/dev/null || true
@@ -96,8 +116,6 @@ targets:
         inputFiles:
           - $(PROJECT_DIR)/AgentLens/Resources/GoogleService-Info.plist
           - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
-        outputFiles:
-          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist
     dependencies:
       - target: OpenBurnBarDaemonExecutable
         link: false
@@ -110,8 +128,12 @@ targets:
         product: FirebaseAuth
       - package: Firebase
         product: FirebaseFirestore
+      - package: Firebase
+        product: FirebaseAppCheck
       - package: GoogleSignIn
         product: GoogleSignIn
+      - package: Sentry
+        product: Sentry
     scheme:
       testTargets:
         - OpenBurnBarTests
@@ -178,7 +200,12 @@ targets:
     platform: macOS
     sources:
       - path: AgentLensTests/Active
+        excludes:
+          - "**/*.swift.plist"
+
       - path: AgentLensTests/Support
+        excludes:
+          - "**/*.swift.plist"
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarTests
@@ -191,6 +218,8 @@ targets:
         product: OpenBurnBarCore
       - package: ViewInspector
         product: ViewInspector
+      - package: SnapshotTesting
+        product: SnapshotTesting
 
   OpenBurnBarDaemonTests:
     type: bundle.unit-test
@@ -206,5 +235,105 @@ targets:
       - target: OpenBurnBarDaemonExecutable
         link: false
         embed: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarCore
+
+  OpenBurnBarMobile:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: OpenBurnBarMobile
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_NAME: OpenBurnBarMobile
+        PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.app
+        DEVELOPMENT_TEAM: 4Y367DF25B
+        CODE_SIGN_STYLE: Automatic
+        # Apple sign-in + iOS Keychain access group; see
+        # OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements.
+        CODE_SIGN_ENTITLEMENTS: OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements
+        INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
+        INFOPLIST_KEY_CFBundleName: OpenBurnBar
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+    info:
+      path: OpenBurnBarMobile/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: com.burnbar.app.google-sign-in
+            CFBundleURLSchemes:
+              - com.googleusercontent.apps.246956661961-k53p0e4oln229kmmed459fm6i8i5vtoo
+    dependencies:
+      - target: OpenBurnBarWidget
+      - package: OpenBurnBarCore
+        product: OpenBurnBarCore
+        embed: true
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseFirestore
+      - package: Firebase
+        product: FirebaseFunctions
+      - package: Firebase
+        product: FirebaseAppCheck
+      - package: GoogleSignIn
+        product: GoogleSignIn
+      - package: Sentry
+        product: Sentry
+    scheme:
+      testTargets:
+        - OpenBurnBarMobileTests
+
+  OpenBurnBarMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: OpenBurnBarMobileTests
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_NAME: OpenBurnBarMobileTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.app.tests
+    dependencies:
+      - target: OpenBurnBarMobile
+      - package: OpenBurnBarCore
+        product: OpenBurnBarCore
+
+  OpenBurnBarWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: OpenBurnBarWidget
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_NAME: OpenBurnBarWidget
+        PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.app.widget
+        DEVELOPMENT_TEAM: 4Y367DF25B
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements
+        INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar Widget
+        INFOPLIST_KEY_CFBundleName: BurnBarWidget
+        SKIP_INSTALL: true
+    info:
+      path: OpenBurnBarWidget/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+          
+    dependencies:
+      - sdk: SwiftUI.framework
+      - sdk: WidgetKit.framework
       - package: OpenBurnBarCore
         product: OpenBurnBarCore

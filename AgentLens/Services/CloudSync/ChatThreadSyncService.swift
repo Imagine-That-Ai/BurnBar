@@ -4,7 +4,11 @@ import Foundation
 
 /// Sync domain for chat thread and message upload.
 ///
-/// Uploads local chat threads (metadata + recent messages) to Firestore for cross-device resume.
+/// Uploads local chat threads to Firestore for cross-device resume.
+///
+/// Message bodies, thread titles, and previews are backed up only after explicit
+/// `chatThreadContentCloudBackupEnabled` consent. Without that consent, the cloud
+/// record contains non-content metadata only.
 /// Layout: `users/{uid}/chat_threads/{deviceId}_{threadId}`
 ///
 /// Uses existing DataStore APIs:
@@ -44,46 +48,61 @@ final class ChatThreadSyncService: CloudSyncDomain {
             }
 
             let deviceId = context.deviceId
-            let batch = context.db.batch()
-            let collectionRef = context.db
+            let batch = context.firestoreGateway.batch()
+            let collectionRef = context.firestoreGateway
                 .collection("users")
                 .document(uid)
                 .collection("chat_threads")
 
+            let includeContent = context.settingsManager.chatThreadContentCloudBackupEnabled
             for thread in threads {
-                let messages = (try? context.dataStore.fetchChatMessages(threadID: thread.id)) ?? []
-                guard !messages.isEmpty else { continue }
+                let messages = includeContent
+                    ? ((try? context.dataStore.fetchChatMessages(threadID: thread.id)) ?? [])
+                    : []
 
                 let docId = "\(deviceId)_\(thread.id)"
                 let docRef = collectionRef.document(docId)
 
-                let encodedMessages: [[String: Any]] = messages.map { msg -> [String: Any] in
-                    var m: [String: Any] = [
-                        "id": msg.id,
-                        "role": msg.role == .user ? "user" : "assistant",
-                        "content": String(msg.content.prefix(4000)),
-                        "timestamp": Timestamp(date: msg.timestamp),
-                    ]
-                    if let cli = msg.cliUsed {
-                        m["cliUsed"] = cli
-                    }
-                    return m
-                }
-
-                let data: [String: Any] = [
+                var data: [String: Any] = [
                     "threadId": thread.id,
-                    "title": thread.title,
-                    "preview": String(thread.preview.prefix(500)),
                     "messageCount": thread.messageCount,
                     "createdAt": Timestamp(date: thread.createdAt),
                     "updatedAt": Timestamp(date: thread.lastActivityAt),
                     "deviceId": deviceId,
-                    "messages": encodedMessages,
+                    "contentIncluded": includeContent,
                 ]
+
+                if includeContent {
+                    let encodedMessages: [[String: Any]] = messages.map { msg -> [String: Any] in
+                        var m: [String: Any] = [
+                            "id": msg.id,
+                            "role": msg.role == .user ? "user" : "assistant",
+                            "content": String(msg.content.prefix(4000)),
+                            "timestamp": Timestamp(date: msg.timestamp),
+                        ]
+                        if let cli = msg.cliUsed {
+                            m["cliUsed"] = cli
+                        }
+                        return m
+                    }
+                    data["title"] = thread.title
+                    data["preview"] = String(thread.preview.prefix(500))
+                    data["messages"] = encodedMessages
+                } else {
+                    data["messages"] = FieldValue.delete()
+                    data["title"] = FieldValue.delete()
+                    data["preview"] = FieldValue.delete()
+                }
                 batch.setData(data, forDocument: docRef, merge: true)
             }
 
-            try await batch.commit()
+            try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "chatThread"
+            ) {
+                try await batch.commit()
+            }
             lastSyncDate = Date()
             lastSyncError = nil
         } catch {

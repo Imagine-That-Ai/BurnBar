@@ -1,10 +1,11 @@
 import Foundation
 import GRDB
+import OpenBurnBarCore
 
 // MARK: - Hermes Parser
 
 /// Parses Hermes sessions from SQLite first, then gateway/CLI fallback files.
-final class HermesParser: LogParser, @unchecked Sendable {
+final class HermesParser: LogParser, Sendable {
     let provider: AgentProvider = .hermes
     private let fileManager: FileManager
     private let hermesRootURL: URL?
@@ -13,18 +14,6 @@ final class HermesParser: LogParser, @unchecked Sendable {
         self.fileManager = fileManager
         self.hermesRootURL = hermesRootURL
     }
-
-    nonisolated(unsafe) private static let iso8601Basic: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-
-    nonisolated(unsafe) private static let iso8601Fractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
 
     private static let sqliteDateFormats: [DateFormatter] = {
         let formats = [
@@ -858,7 +847,7 @@ final class HermesParser: LogParser, @unchecked Sendable {
         case let value as Double:
             return TimestampNormalizationUtility.date(fromEpoch: value)
         case let value as String:
-            if let date = Self.iso8601Fractional.date(from: value) ?? Self.iso8601Basic.date(from: value) {
+            if let date = ThreadSafeISO8601DateFormatter.parse(value) {
                 return date
             }
             for formatter in Self.sqliteDateFormats {

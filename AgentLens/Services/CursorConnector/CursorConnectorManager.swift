@@ -144,6 +144,9 @@ final class CursorConnectorManager {
             try validateConfiguration()
             try ensureSupportDirectory()
             refreshSystemHealth()
+            // Generate a fresh rotation token for each session to invalidate any
+            // tokens that may have been exposed in previous sessions.
+            try generateRotationToken()
             try writeProxyScript()
             try writeProxyConfig()
             try await startProxy()
@@ -278,6 +281,14 @@ final class CursorConnectorManager {
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: supportDirectory.path)
     }
 
+    private func generateRotationToken() throws {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+            throw NSError(domain: "CursorConnector", code: 16, userInfo: [NSLocalizedDescriptionKey: "Failed to generate rotation token"])
+        }
+        config.tunnel.tunnelRotationToken = bytes.map { String(format: "%02x", $0) }.joined()
+    }
+
     private func writeProxyConfig() throws {
         struct RouteEntry: Codable {
             let provider: String
@@ -306,6 +317,11 @@ final class CursorConnectorManager {
         let payload: [String: Any] = [
             "port": Int(config.preferredPort),
             "session_token": sessionToken,
+            // Bearer token for proxy auth — required on all non-health endpoints.
+            // Regenerated on every connect; Cursor stores session_token separately.
+            "tunnel_rotation_token": config.tunnel.tunnelRotationToken ?? "",
+            "rate_limit_requests": config.tunnel.tunnelRateLimitRequests,
+            "rate_limit_window": config.tunnel.tunnelRateLimitWindow,
             "routes": routes.mapValues { [
                 "provider": $0.provider,
                 "base_url": $0.baseURL,
@@ -394,9 +410,26 @@ final class CursorConnectorManager {
         guard let url = URL(string: base + "/models") else {
             throw NSError(domain: "CursorConnector", code: 4, userInfo: [NSLocalizedDescriptionKey: "Invalid tunnel URL: \(base)"])
         }
-        let (data, response) = try await URLSession.shared.data(from: url)
+
+        // Step 1: Unauthenticated request — must be rejected (401).
+        // This verifies the tunnel is not publicly accessible without auth.
+        let (unauthData, unauthResponse) = try await URLSession.shared.data(from: url)
+        if let unauthHTTP = unauthResponse as? HTTPURLResponse, unauthHTTP.statusCode == 200 {
+            // Endpoint accepted an unauthenticated request — auth is not enforced.
+            throw NSError(domain: "CursorConnector", code: 9, userInfo: [
+                NSLocalizedDescriptionKey: "Tunnel authentication is not enforced. The public endpoint accepted an unauthenticated request. Do not use this tunnel. Reconnect to get a new tunnel URL."
+            ])
+        }
+
+        // Step 2: Authenticated request with bearer token — must succeed.
+        guard let bearerToken = config.tunnel.tunnelRotationToken else {
+            throw NSError(domain: "CursorConnector", code: 4, userInfo: [NSLocalizedDescriptionKey: "Tunnel rotation token is missing"])
+        }
+        var authRequest = URLRequest(url: url)
+        authRequest.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: authRequest)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw NSError(domain: "CursorConnector", code: 5, userInfo: [NSLocalizedDescriptionKey: "Public endpoint verification failed"])
+            throw NSError(domain: "CursorConnector", code: 5, userInfo: [NSLocalizedDescriptionKey: "Public endpoint verification failed (authenticated)"])
         }
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let modelObjects = object?["data"] as? [[String: Any]] ?? []
@@ -554,11 +587,15 @@ final class CursorConnectorManager {
                 provenanceMethod: .connectorBridge,
                 provenanceConfidence: .exact
             )
-            try? dataStore.insert(usage)
+            do {
+                try dataStore.insert(usage)
+            } catch {
+                AppLogger.dataStore.error("cursor_connector_usage_insert_failed", metadata: ["sessionId": usage.sessionId, "provider": usage.provider.rawValue, "error": String(describing: error)])
+            }
             insertedAny = true
         }
         if insertedAny {
-            dataStore.refresh()
+            await dataStore.refresh()
         }
     }
 
@@ -960,7 +997,7 @@ final class CursorConnectorManager {
     static func proxyScript() -> String {
         """
         #!/usr/bin/env python3
-        import json, ssl, subprocess, sys, uuid, datetime
+        import json, ssl, subprocess, sys, uuid, datetime, time, threading
         from http import HTTPStatus
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
         from urllib.error import HTTPError, URLError
@@ -1018,6 +1055,101 @@ final class CursorConnectorManager {
             if isinstance(content, dict) and isinstance(content.get("text"), str):
                 return [content["text"]]
             return []
+
+        def copy_passthrough_fields(source, target, fields):
+            if not isinstance(source, dict) or not isinstance(target, dict):
+                return target
+            for field in fields:
+                if field in source and source.get(field) is not None:
+                    target[field] = source.get(field)
+            return target
+
+        def response_item_to_chat_messages(item):
+            if not isinstance(item, dict):
+                return []
+
+            item_type = item.get("type")
+            if item_type in ("function_call", "custom_tool_call"):
+                call_id = item.get("call_id") or item.get("id") or f"call_{uuid.uuid4().hex}"
+                function_source = item.get("function") if isinstance(item.get("function"), dict) else {}
+                function_payload = {
+                    "name": item.get("name") or function_source.get("name") or "tool",
+                    "arguments": item.get("arguments") or item.get("input") or function_source.get("arguments") or "{}",
+                }
+                message = {
+                    "role": "assistant",
+                    "content": item.get("content") if item.get("content") is not None else "",
+                    "tool_calls": [{
+                        "id": call_id,
+                        "type": "function",
+                        "function": function_payload,
+                    }],
+                }
+                copy_passthrough_fields(item, message, ("reasoning_content", "thinking", "reasoning"))
+                return [message]
+
+            if item_type in ("function_call_output", "tool_result"):
+                message = {
+                    "role": "tool",
+                    "content": "\\n".join(extract_text_parts(item.get("output") if "output" in item else item.get("content"))),
+                    "tool_call_id": item.get("call_id") or item.get("tool_call_id") or item.get("id") or "",
+                }
+                copy_passthrough_fields(item, message, ("name",))
+                return [message]
+
+            role = item.get("role") or "user"
+            if role == "developer":
+                role = "system"
+            message = {"role": role}
+            text = "\\n".join(extract_text_parts(item.get("content")))
+            if item.get("content") is not None:
+                message["content"] = text
+            else:
+                message["content"] = item.get("output") if isinstance(item.get("output"), str) else ""
+            copy_passthrough_fields(
+                item,
+                message,
+                ("reasoning_content", "thinking", "reasoning", "tool_calls", "tool_call_id", "name")
+            )
+            if message.get("content") or message.get("reasoning_content") or message.get("tool_calls") or message.get("tool_call_id"):
+                return [message]
+            return []
+
+        def chat_message_to_response_output(message):
+            content = message.get("content")
+            if isinstance(content, str):
+                text = content
+            else:
+                text = "\\n".join(extract_text_parts(content))
+
+            output_items = []
+            message_item = {
+                "id": f"msg_{uuid.uuid4().hex}",
+                "type": "message",
+                "status": "completed",
+                "role": message.get("role") or "assistant",
+                "content": [{"type": "output_text", "text": text, "annotations": []}],
+            }
+            copy_passthrough_fields(message, message_item, ("reasoning_content", "thinking", "reasoning"))
+            output_items.append(message_item)
+
+            tool_calls = message.get("tool_calls")
+            if isinstance(tool_calls, list):
+                for tool_call in tool_calls:
+                    if not isinstance(tool_call, dict):
+                        continue
+                    function_payload = tool_call.get("function") if isinstance(tool_call.get("function"), dict) else {}
+                    call_id = tool_call.get("id") or f"call_{uuid.uuid4().hex}"
+                    call_item = {
+                        "id": call_id,
+                        "type": "function_call",
+                        "status": "completed",
+                        "call_id": call_id,
+                        "name": function_payload.get("name") or tool_call.get("name") or "tool",
+                        "arguments": function_payload.get("arguments") or tool_call.get("arguments") or "{}",
+                    }
+                    output_items.append(call_item)
+            return output_items, text
 
         def int_value(value):
             if value is None or isinstance(value, bool):
@@ -1230,12 +1362,7 @@ final class CursorConnectorManager {
                         continue
                     if not isinstance(item, dict):
                         continue
-                    role = item.get("role") or "user"
-                    if role == "developer":
-                        role = "system"
-                    text = "\\n".join(extract_text_parts(item.get("content")))
-                    if text:
-                        messages.append({"role": role, "content": text})
+                    messages.extend(response_item_to_chat_messages(item))
             chat = {"model": payload["model"], "messages": messages or [{"role":"user","content":""}]}
             for key in ("stream", "temperature", "top_p", "stop", "tools", "tool_choice", "parallel_tool_calls", "presence_penalty", "frequency_penalty", "metadata"):
                 if key in payload:
@@ -1249,11 +1376,7 @@ final class CursorConnectorManager {
         def chat_to_responses_payload(model, payload):
             choice = (payload.get("choices") or [{}])[0]
             message = choice.get("message") or {}
-            content = message.get("content")
-            if isinstance(content, str):
-                text = content
-            else:
-                text = "\\n".join(extract_text_parts(content))
+            output, text = chat_message_to_response_output(message if isinstance(message, dict) else {})
             normalized_usage = normalize_usage(payload.get("usage") or {})
             return {
                 "id": payload.get("id") or f"resp_{uuid.uuid4().hex}",
@@ -1261,13 +1384,7 @@ final class CursorConnectorManager {
                 "created_at": int(datetime.datetime.now().timestamp()),
                 "status": "completed",
                 "model": model,
-                "output": [{
-                    "id": f"msg_{uuid.uuid4().hex}",
-                    "type": "message",
-                    "status": "completed",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": text, "annotations": []}],
-                }],
+                "output": output,
                 "output_text": text,
                 "usage": {
                     "input_tokens": normalized_usage.get("prompt_tokens"),
@@ -1302,6 +1419,40 @@ final class CursorConnectorManager {
                 f.write(json.dumps(event) + "\\n")
 
         SESSION_TOKEN = load_config().get("session_token", "")
+        TUNNEL_ROTATION_TOKEN = load_config().get("tunnel_rotation_token", "")
+        RATE_LIMIT_REQUESTS = int(load_config().get("rate_limit_requests", 100) or 100)
+        RATE_LIMIT_WINDOW = int(load_config().get("rate_limit_window", 60) or 60)
+
+        # Sliding-window rate limiter: {client_ip: [(timestamp, count), ...]}
+        _rate_limit_lock = threading.Lock()
+        _rate_limit_state = {}
+
+        def _rate_limit_check(client_ip):
+            # Returns (allowed, current_count). thread-safe.
+            now = time.time()
+            window_start = now - RATE_LIMIT_WINDOW
+            with _rate_limit_lock:
+                entries = _rate_limit_state.get(client_ip, [])
+                # Prune old entries
+                entries = [(ts, cnt) for ts, cnt in entries if ts > window_start]
+                total = sum(cnt for _, cnt in entries)
+                if total >= RATE_LIMIT_REQUESTS:
+                    _rate_limit_state[client_ip] = entries
+                    return False, total
+                return True, total
+
+        def _rate_limit_record(client_ip, request_size=1):
+            # Record a request for rate limiting. thread-safe.
+            now = time.time()
+            with _rate_limit_lock:
+                entries = _rate_limit_state.get(client_ip, [])
+                entries.append((now, request_size))
+                _rate_limit_state[client_ip] = entries
+
+        def _get_client_ip():
+            # Returns the client IP from the thread, or "unknown".
+            t = threading.current_thread()
+            return getattr(t, 'client_ip', "unknown")
 
         class Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
@@ -1318,20 +1469,39 @@ final class CursorConnectorManager {
                 self.wfile.write(body)
 
             def check_auth(self):
-                if not SESSION_TOKEN:
-                    return True
-                auth = self.headers.get("Authorization", "")
-                if auth == f"Bearer {SESSION_TOKEN}":
-                    return True
-                # Also accept as query param for health checks
+                # Always allow health checks without auth (needed for startup verification).
                 if self.path in ("/health", "/healthz"):
                     return True
-                self.send_json(HTTPStatus.UNAUTHORIZED, {"error": {"message": "unauthorized"}})
-                return False
+
+                # Enforce bearer token auth for all other endpoints.
+                # Health checks are the only public endpoints.
+                if TUNNEL_ROTATION_TOKEN:
+                    auth = self.headers.get("Authorization", "")
+                    if auth != f"Bearer {TUNNEL_ROTATION_TOKEN}":
+                        self.send_json(HTTPStatus.UNAUTHORIZED, {"error": {"message": "unauthorized"}})
+                        return False
+
+                # Rate limiting on all requests (including health checks).
+                client_ip = self.client_address[0] if self.client_address else "unknown"
+                allowed, current = _rate_limit_check(client_ip)
+                if not allowed:
+                    retry_after = str(RATE_LIMIT_WINDOW)
+                    self.send_response(HTTPStatus.TOO_MANY_REQUESTS)
+                    self.send_header("Retry-After", retry_after)
+                    self.send_header("X-RateLimit-Limit", str(RATE_LIMIT_REQUESTS))
+                    self.send_header("X-RateLimit-Remaining", "0")
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return False
+
+                return True
 
             def do_GET(self):
                 if not self.check_auth():
                     return
+                # Record request for rate limiting after successful auth.
+                _rate_limit_record(self.client_address[0] if self.client_address else "unknown")
                 config = load_config()
                 if self.path in ("/health", "/healthz"):
                     self.send_json(HTTPStatus.OK, {"ok": True})
@@ -1345,6 +1515,8 @@ final class CursorConnectorManager {
             def do_POST(self):
                 if not self.check_auth():
                     return
+                # Record request for rate limiting after successful auth.
+                _rate_limit_record(self.client_address[0] if self.client_address else "unknown")
                 config = load_config()
                 is_chat = self.path.startswith("/v1/chat/completions")
                 is_responses = self.path.startswith("/v1/responses")

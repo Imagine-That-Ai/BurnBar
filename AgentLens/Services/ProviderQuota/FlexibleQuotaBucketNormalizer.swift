@@ -336,6 +336,8 @@ enum FlexibleQuotaBucketNormalizer {
                 return "Daily quota"
             case .monthly:
                 return "Monthly quota"
+            case .lifetime:
+                return "Lifetime quota"
             case .custom:
                 break
             }

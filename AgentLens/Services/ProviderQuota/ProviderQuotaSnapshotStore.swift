@@ -1,13 +1,17 @@
 import Foundation
+import OpenBurnBarCore
 
 enum ProviderQuotaPersistenceTarget: String, CaseIterable, Sendable {
     case snapshots
+    case routingEvents
     case codexRolloutScanCache
 
     var label: String {
         switch self {
         case .snapshots:
             return "provider quota snapshot store"
+        case .routingEvents:
+            return "provider routing event trail"
         case .codexRolloutScanCache:
             return "Codex rollout scan cache"
         }
@@ -24,7 +28,7 @@ struct ProviderQuotaSnapshotStore {
     let appPaths: OpenBurnBarAppPaths
     let fileManager: FileManager
 
-    func loadPersistedSnapshots() -> ProviderQuotaPersistenceLoadResult<(snapshots: [AgentProvider: ProviderQuotaSnapshot], lastFetch: Date?)> {
+    func loadPersistedSnapshots() -> ProviderQuotaPersistenceLoadResult<(snapshots: [AgentProvider: ProviderQuotaSnapshot], accountSnapshots: [String: ProviderQuotaSnapshot], lastFetch: Date?)> {
         guard fileManager.fileExists(atPath: appPaths.providerQuotaSnapshotsURL.path) else {
             return .missing
         }
@@ -33,9 +37,21 @@ struct ProviderQuotaSnapshotStore {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let snapshots = try decoder.decode([ProviderQuotaSnapshot].self, from: data)
-            let dict = Dictionary(uniqueKeysWithValues: snapshots.map { ($0.provider, $0) })
+            let dict = snapshots.reduce(into: [AgentProvider: ProviderQuotaSnapshot]()) { result, snapshot in
+                guard let existing = result[snapshot.provider] else {
+                    result[snapshot.provider] = snapshot
+                    return
+                }
+                if snapshot.fetchedAt > existing.fetchedAt {
+                    result[snapshot.provider] = snapshot
+                }
+            }
+            let accountSnapshots = Dictionary(
+                snapshots.map { (Self.accountSnapshotKey($0), $0) },
+                uniquingKeysWith: { lhs, rhs in lhs.fetchedAt >= rhs.fetchedAt ? lhs : rhs }
+            )
             let lastFetch = snapshots.map(\.fetchedAt).max()
-            return .loaded((dict, lastFetch))
+            return .loaded((dict, accountSnapshots, lastFetch))
         } catch {
             return .failed(
                 target: .snapshots,
@@ -44,18 +60,80 @@ struct ProviderQuotaSnapshotStore {
         }
     }
 
-    func persistSnapshots(_ snapshotsByProvider: [AgentProvider: ProviderQuotaSnapshot]) {
+    func persistSnapshots(
+        _ snapshotsByProvider: [AgentProvider: ProviderQuotaSnapshot],
+        accountSnapshots: [String: ProviderQuotaSnapshot] = [:]
+    ) {
         do {
             try ensureParentDirectory(for: appPaths.providerQuotaSnapshotsURL)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
+            let snapshots = Array(
+                (Array(snapshotsByProvider.values) + Array(accountSnapshots.values))
+                    .reduce(into: [String: ProviderQuotaSnapshot]()) { result, snapshot in
+                        let key = Self.accountSnapshotKey(snapshot)
+                        guard let existing = result[key] else {
+                            result[key] = snapshot
+                            return
+                        }
+                        if snapshot.fetchedAt >= existing.fetchedAt {
+                            result[key] = snapshot
+                        }
+                    }
+                    .values
+            )
             let data = try encoder.encode(
-                snapshotsByProvider.values.sorted { $0.provider.displayName < $1.provider.displayName }
+                snapshots.sorted {
+                    if $0.provider.displayName != $1.provider.displayName {
+                        return $0.provider.displayName < $1.provider.displayName
+                    }
+                    return Self.accountSnapshotKey($0) < Self.accountSnapshotKey($1)
+                }
             )
             try data.write(to: appPaths.providerQuotaSnapshotsURL, options: .atomic)
         } catch {
             AppLogger.dataStore.silentFailure("ProviderQuotaService: Failed to persist snapshots", error: error)
+        }
+    }
+
+    static func accountSnapshotKey(_ snapshot: ProviderQuotaSnapshot) -> String {
+        if let accountID = snapshot.accountID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !accountID.isEmpty {
+            return "\(snapshot.providerID.rawValue):\(accountID)"
+        }
+        return "\(snapshot.providerID.rawValue):\(snapshot.sourceId)"
+    }
+
+    func loadPersistedRoutingEvents(limit: Int = 100) -> ProviderQuotaPersistenceLoadResult<[ProviderRoutingDecisionEvent]> {
+        guard fileManager.fileExists(atPath: appPaths.providerRoutingEventsURL.path) else {
+            return .missing
+        }
+        do {
+            let data = try Data(contentsOf: appPaths.providerRoutingEventsURL)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let events = try decoder.decode([ProviderRoutingDecisionEvent].self, from: data)
+            return .loaded(Array(events.sorted { $0.occurredAt < $1.occurredAt }.suffix(limit)))
+        } catch {
+            return .failed(
+                target: .routingEvents,
+                message: "OpenBurnBar could not load the persisted \(ProviderQuotaPersistenceTarget.routingEvents.label): \(error.localizedDescription)"
+            )
+        }
+    }
+
+    func persistRoutingEvents(_ events: [ProviderRoutingDecisionEvent], limit: Int = 100) {
+        do {
+            try ensureParentDirectory(for: appPaths.providerRoutingEventsURL)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let cappedEvents = Array(events.sorted { $0.occurredAt < $1.occurredAt }.suffix(limit))
+            let data = try encoder.encode(cappedEvents)
+            try data.write(to: appPaths.providerRoutingEventsURL, options: .atomic)
+        } catch {
+            AppLogger.dataStore.silentFailure("ProviderQuotaService: Failed to persist routing events", error: error)
         }
     }
 

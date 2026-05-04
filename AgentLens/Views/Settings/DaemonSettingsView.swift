@@ -69,6 +69,36 @@ struct DaemonSettingsView: View {
                                 .foregroundStyle(DesignSystem.Colors.error)
                                 .textSelection(.enabled)
                         }
+
+                        if case .crashLoop(_, _, _) = daemonManager.supervisionState {
+                            Divider().background(DesignSystem.Colors.border)
+                            HStack(spacing: DesignSystem.Spacing.sm) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(DesignSystem.Colors.warning)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Daemon crash loop detected")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    Text("The daemon has failed \(daemonManager.supervisionState.consecutiveFailures) consecutive times. Click Repair to reinstall and restart.")
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                }
+                            }
+                        } else if case .retrying(let n, let nextRetry) = daemonManager.supervisionState {
+                            Divider().background(DesignSystem.Colors.border)
+                            HStack(spacing: DesignSystem.Spacing.sm) {
+                                Image(systemName: "arrow.clockwise")
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Retrying daemon health check")
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                    Text("Attempt \(n + 1) — next check at \(nextRetry, style: .time)")
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                }
+                            }
+                        }
                     }
                     .padding(DesignSystem.Spacing.lg)
                 }

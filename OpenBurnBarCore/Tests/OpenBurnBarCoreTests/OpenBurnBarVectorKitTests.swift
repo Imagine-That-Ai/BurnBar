@@ -223,6 +223,51 @@ final class BurnBarVectorKitTests: XCTestCase {
         XCTAssertNotEqual(c1, c3)
     }
 
+    func test_persistentVectorIndexKeyCodec_generatesStableUniqueKeys() throws {
+        let first = try BurnBarPersistentVectorIndexKeyCodec.makeMapping(chunkIDs: ["chunk-b", "chunk-a", "chunk-c"])
+        let second = try BurnBarPersistentVectorIndexKeyCodec.makeMapping(chunkIDs: ["chunk-c", "chunk-a", "chunk-b"])
+
+        XCTAssertEqual(first, second)
+        XCTAssertEqual(Set(first.values).count, 3)
+    }
+
+    func test_persistentVectorIndexSnapshot_roundTripsAndSearches() throws {
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true, attributes: nil)
+
+        let files = BurnBarPersistentVectorIndexFiles(directoryURL: directoryURL)
+        let backend = BurnBarMappedPersistentVectorIndexBackend()
+        let mapping = try BurnBarPersistentVectorIndexKeyCodec.makeMapping(chunkIDs: ["chunk-a", "chunk-b", "chunk-c"])
+        let writer = try backend.makeWritable(dimensions: 2, distanceMetric: .cosine)
+        try writer.reserve(3)
+        try writer.add(key: mapping["chunk-a"]!, vector: [1, 0])
+        try writer.add(key: mapping["chunk-b"]!, vector: [0.8, 0.2])
+        try writer.add(key: mapping["chunk-c"]!, vector: [0, 1])
+        try writer.save(to: files.indexURL)
+
+        let manifest = BurnBarPersistentVectorIndexManifest(
+            backendID: backend.backendID,
+            backendVersion: backend.backendVersion,
+            embeddingVersionID: "version-1",
+            fingerprint: "version-1|3|100",
+            dimensions: 2,
+            distanceMetric: .cosine,
+            vectorCount: 3,
+            builtAt: Date(timeIntervalSince1970: 1_742_000_000)
+        )
+        try BurnBarPersistentVectorIndexSnapshotIO.writeManifest(manifest, to: files.manifestURL)
+        try BurnBarPersistentVectorIndexSnapshotIO.writeKeyMapping(mapping, to: files.keyMappingURL)
+
+        let snapshot = try BurnBarPersistentVectorIndexSnapshot.open(files: files, backend: backend)
+        let candidates = try snapshot.candidates(for: [1, 0], limit: 2)
+
+        XCTAssertEqual(candidates.count, 2)
+        XCTAssertEqual(candidates.map(\.chunkID), ["chunk-a", "chunk-b"])
+    }
+
     // MARK: - BurnBarSemanticSearchConfig Tests
 
     func test_defaultConfig_hasReasonableDefaults() {

@@ -62,7 +62,7 @@ public enum BurnBarDaemonPaths {
 }
 
 public enum BurnBarDaemonVersion {
-    public static let current = "0.1.2-beta"
+    public static let current = "0.1.3-beta.1"
 }
 
 public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
@@ -74,19 +74,23 @@ public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {
     public var port: Int
     /// Optional bearer token for authentication. Required if binding to non-loopback.
     public var authToken: String?
+    /// Rate limiting configuration for the HTTP gateway.
+    /// Default: 30 req/s sustained, 50 burst.
+    public var rateLimit: BurnBarRateLimitConfiguration?
 
     public init(
         isEnabled: Bool = false,
         host: String = "127.0.0.1",
         port: Int = 8317,
-        authToken: String? = nil
+        authToken: String? = nil,
+        rateLimit: BurnBarRateLimitConfiguration? = nil
     ) {
         self.isEnabled = isEnabled
         self.host = host
         self.port = port
         self.authToken = authToken
+        self.rateLimit = rateLimit
     }
-
     public var normalizedHost: String {
         host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
@@ -136,6 +140,9 @@ public struct BurnBarDaemonConfiguration: Sendable {
     public let indexDatabasePath: String?
     /// HTTP gateway configuration for external client access (Vibe Proxy style).
     public let gateway: BurnBarGatewayConfiguration
+    /// Rate limiting configuration for Unix domain socket RPC.
+    /// Default: 60 req/s sustained, 100 burst.
+    public let socketRateLimit: BurnBarRateLimitConfiguration
 
     public init(
         socketPath: String = BurnBarDaemonPaths.defaultSocketPath,
@@ -143,7 +150,11 @@ public struct BurnBarDaemonConfiguration: Sendable {
         daemonVersion: String = BurnBarDaemonVersion.current,
         catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog,
         indexDatabasePath: String? = nil,
-        gateway: BurnBarGatewayConfiguration = BurnBarGatewayConfiguration()
+        gateway: BurnBarGatewayConfiguration = BurnBarGatewayConfiguration(),
+        socketRateLimit: BurnBarRateLimitConfiguration = BurnBarRateLimitConfiguration(
+            requestsPerSecond: 60,
+            burstCapacity: 100
+        )
     ) {
         self.socketPath = socketPath
         self.socketAuthToken = socketAuthToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
@@ -151,5 +162,27 @@ public struct BurnBarDaemonConfiguration: Sendable {
         self.catalog = catalog
         self.indexDatabasePath = indexDatabasePath
         self.gateway = gateway
+        self.socketRateLimit = socketRateLimit
+    }
+
+    /// Validates that required configuration is present.
+    /// The daemon refuses to start without a socket auth token to prevent
+    /// unauthenticated local processes from issuing RPC commands.
+    public enum ValidationError: Error, LocalizedError {
+        case missingSocketAuthToken
+
+        public var errorDescription: String? {
+            switch self {
+            case .missingSocketAuthToken:
+                return "Socket auth token is required. Provide it via --socket-auth-token TOKEN or OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN environment variable. The OpenBurnBar app automatically generates and passes a token."
+            }
+        }
+    }
+
+    /// Throws if the configuration is invalid (e.g., missing required auth token).
+    public func validate() throws {
+        guard let token = socketAuthToken, !token.isEmpty else {
+            throw ValidationError.missingSocketAuthToken
+        }
     }
 }

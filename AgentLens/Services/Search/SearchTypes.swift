@@ -88,6 +88,9 @@ struct SemanticPipelineHealthState: Equatable, Sendable {
     let indexedVectorCount: Int
     let fallbackToExact: Bool
     let candidateCount: Int
+    let snapshotState: String?
+    let snapshotFileBytes: Int64?
+    let snapshotBuiltAt: Date?
     let errorCode: String?
     let errorMessage: String?
 }
@@ -143,6 +146,9 @@ struct RetrievalSystemHealthSnapshot: Equatable, Sendable {
             indexedVectorCount: 0,
             fallbackToExact: false,
             candidateCount: 0,
+            snapshotState: nil,
+            snapshotFileBytes: nil,
+            snapshotBuiltAt: nil,
             errorCode: nil,
             errorMessage: nil
         ),

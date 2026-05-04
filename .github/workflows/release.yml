@@ -2,6 +2,7 @@ name: OpenBurnBar Release
 
 permissions:
   contents: write
+  id-token: write
 
 on:
   push:
@@ -13,6 +14,10 @@ on:
         description: "Existing v* tag to release (for manual reruns)"
         required: true
         type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   SCHEME: OpenBurnBar
@@ -27,6 +32,12 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 60
+    outputs:
+      dmg_path: ${{ steps.dmg.outputs.dmg_path }}
+      dmg_name: ${{ steps.dmg.outputs.dmg_name }}
+      zip_path: ${{ steps.zip.outputs.zip_path }}
+      zip_name: ${{ steps.zip.outputs.zip_name }}
+      version: ${{ steps.version.outputs.version }}
     env:
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
       HAS_SIGNING_SECRETS: ${{ secrets.APPLE_TEAM_ID != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE_P12 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
@@ -35,6 +46,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
 
       - name: Resolve release tag and version
         id: version
@@ -59,6 +72,14 @@ jobs:
 
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
           echo "version=${TAG_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out release tag
+        env:
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+        run: |
+          git fetch --force --tags origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}"
+          git checkout --detach "$TAG_NAME"
+          echo "Building release tag $TAG_NAME at $(git rev-parse HEAD)"
 
       - name: Release preflight summary
         env:
@@ -359,21 +380,277 @@ jobs:
           echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
           echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
 
+      - name: Compute artifact checksums
+        id: checksums
+        env:
+          DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
+          ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          CHECKSUMS_FILE="$RUNNER_TEMP/checksums-v${VERSION}.txt"
+
+          # Group writes (SC2129) so we open the output file once.
+          {
+            echo "# OpenBurnBar v${VERSION} release checksums"
+            echo "# Generated at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "# Commit: $(git rev-parse HEAD)"
+            echo ""
+            sha256sum "$DMG_PATH"
+            sha512sum "$DMG_PATH"
+            sha256sum "$ZIP_PATH"
+            sha512sum "$ZIP_PATH"
+          } > "$CHECKSUMS_FILE"
+
+          cat "$CHECKSUMS_FILE"
+
+          echo "checksums_path=$CHECKSUMS_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Sign checksums (release provenance)
+        id: sign-checksums
+        env:
+          CHECKSUMS_PATH: ${{ steps.checksums.outputs.checksums_path }}
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          VERSION: ${{ steps.version.outputs.version }}
+        if: env.RELEASE_SIGNING_KEY != ''
+        run: |
+          # Import the GPG signing key
+          echo "$RELEASE_SIGNING_KEY" | base64 --decode | gpg --import --batch --passphrase ""
+
+          # Create a detached signature for the checksums file
+          gpg --batch --yes --detach-sign --armor \
+            --local-user "OpenBurnBar Release" \
+            "$CHECKSUMS_PATH"
+
+          echo "sig_path=${CHECKSUMS_PATH}.asc" >> "$GITHUB_OUTPUT"
+          echo "Checksums signed successfully."
+
+      - name: Generate SBOM
+        id: sbom
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          SBOM_FILE="$RUNNER_TEMP/sbom-v${VERSION}.spdx.json"
+
+          python3 scripts/generate-sbom.py \
+            --version "$VERSION" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --output "$SBOM_FILE"
+
+          echo "sbom_path=$SBOM_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Write release metadata
+        id: metadata
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+        run: |
+          METADATA_FILE="$RUNNER_TEMP/release-metadata.json"
+
+          cat > "$METADATA_FILE" <<EOF
+          {
+            "version": "${VERSION}",
+            "tag": "${TAG_NAME}",
+            "commit": "$(git rev-parse HEAD)",
+            "build_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "runner_os": "macos-15"
+          }
+          EOF
+
+          echo "metadata_path=$METADATA_FILE" >> "$GITHUB_OUTPUT"
+          cat "$METADATA_FILE"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.dmg.outputs.dmg_name }}
+          path: ${{ steps.dmg.outputs.dmg_path }}
+          if-no-files-found: error
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.zip.outputs.zip_name }}
+          path: ${{ steps.zip.outputs.zip_path }}
+          if-no-files-found: error
+
+      - name: Upload checksums artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums-v${{ steps.version.outputs.version }}
+          path: ${{ steps.checksums.outputs.checksums_path }}
+          if-no-files-found: error
+
+      - name: Upload checksum signature artifact
+        if: steps.sign-checksums.outputs.sig_path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums-v${{ steps.version.outputs.version }}-signature
+          path: ${{ steps.sign-checksums.outputs.sig_path }}
+          if-no-files-found: error
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-v${{ steps.version.outputs.version }}
+          path: ${{ steps.sbom.outputs.sbom_path }}
+          if-no-files-found: error
+
+      - name: Upload release metadata artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata-v${{ steps.version.outputs.version }}
+          path: ${{ steps.metadata.outputs.metadata_path }}
+          if-no-files-found: error
+
+      - name: Clean up Firebase config
+        if: always()
+        run: bash ./scripts/ci/cleanup-firebase-config.sh
+
+  smoke-test:
+    needs: build-and-release
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Download DMG artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-and-release.outputs.dmg_name }}
+          path: ${{ runner.temp }}
+
+      - name: Mount DMG
+        env:
+          DMG_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.dmg_name }}
+        run: |
+          test -f "$DMG_PATH"
+          hdiutil attach "$DMG_PATH" \
+            -mountpoint /Volumes/OpenBurnBar \
+            -nobrowse
+
+      - name: Verify app launches and daemon starts
+        run: |
+          # Start the app in the background
+          open /Volumes/OpenBurnBar/OpenBurnBar.app
+          sleep 8
+
+          # Check the app process is running
+          if ! pgrep -x OpenBurnBar > /dev/null 2>&1; then
+            echo "::error::OpenBurnBar app failed to launch"
+            hdiutil detach /Volumes/OpenBurnBar -force 2>/dev/null || true
+            exit 1
+          fi
+
+          # Check the daemon Unix socket exists and is reachable
+          DAEMON_SOCKET="$HOME/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock"
+          # shellcheck disable=SC2034 # i is the canonical loop counter even though unused.
+          for _ in {1..10}; do
+            if [[ -S "$DAEMON_SOCKET" ]]; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ ! -S "$DAEMON_SOCKET" ]]; then
+            echo "::error::Daemon socket not found at $DAEMON_SOCKET after 20s"
+            hdiutil detach /Volumes/OpenBurnBar -force 2>/dev/null || true
+            exit 1
+          fi
+
+          LAUNCH_AGENT_PLIST="$HOME/Library/LaunchAgents/com.openburnbar.daemon.plist"
+          if [[ ! -f "$LAUNCH_AGENT_PLIST" ]]; then
+            echo "::error::Daemon LaunchAgent plist not found at $LAUNCH_AGENT_PLIST"
+            hdiutil detach /Volumes/OpenBurnBar -force 2>/dev/null || true
+            exit 1
+          fi
+
+          SOCKET_AUTH_TOKEN="$(
+            /usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN' "$LAUNCH_AGENT_PLIST" 2>/dev/null || true
+          )"
+          if [[ -z "$SOCKET_AUTH_TOKEN" ]]; then
+            echo "::error::Daemon socket auth token missing from LaunchAgent environment"
+            hdiutil detach /Volumes/OpenBurnBar -force 2>/dev/null || true
+            exit 1
+          fi
+
+          python3 - <<PY
+          import json
+          import socket
+          import sys
+
+          path = """$DAEMON_SOCKET"""
+          token = """$SOCKET_AUTH_TOKEN"""
+          client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+          client.settimeout(5)
+          client.connect(path)
+          client.sendall(json.dumps({
+              "id": "release-smoke-health",
+              "method": "daemon.health",
+              "authToken": token
+          }).encode() + b"\n")
+          response = client.recv(65536).decode().strip()
+          client.close()
+          if not response:
+              sys.exit("OpenBurnBar daemon returned an empty health response")
+          payload = json.loads(response)
+          if payload.get("error"):
+              sys.exit(f"OpenBurnBar daemon health smoke failed: {payload['error']}")
+          if not payload.get("result", {}).get("ok"):
+              sys.exit(f"OpenBurnBar daemon health smoke returned unhealthy payload: {payload}")
+          print("Authenticated daemon health RPC passed")
+          PY
+
+          echo "Smoke test passed: app launched, daemon socket active, authenticated daemon RPC succeeded"
+
+      - name: Eject DMG
+        run: |
+          hdiutil detach /Volumes/OpenBurnBar -force 2>/dev/null || true
+
+  publish:
+    needs: [build-and-release, smoke-test]
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}
+          merge-multiple: true
+
       - name: Publish prerelease assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ steps.version.outputs.tag_name }}
-          VERSION: ${{ steps.version.outputs.version }}
-          DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
-          ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
+          TAG_NAME: ${{ needs.build-and-release.outputs.version }}
+          VERSION: ${{ needs.build-and-release.outputs.version }}
+          DMG_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.dmg_name }}
+          ZIP_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.zip_name }}
         run: |
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" "$DMG_PATH" "$ZIP_PATH" --clobber
-            gh release edit "$TAG_NAME" --title "OpenBurnBar $VERSION" --prerelease --latest=false
+          # Checksums, SBOM, and metadata are also downloaded via merge-multiple.
+          # `find -print -quit` is shellcheck-clean (SC2012) and quoted to handle spaces (SC2086).
+          CHECKSUMS_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "checksums-v${VERSION}*.txt" -print -quit 2>/dev/null)
+          SBOM_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.spdx.json" -print -quit 2>/dev/null)
+          METADATA_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "release-metadata.json" -print -quit 2>/dev/null)
+          SIG_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.asc" -print -quit 2>/dev/null)
+
+          ASSETS=("$DMG_PATH" "$ZIP_PATH")
+          for asset in "${ASSETS[@]}"; do
+            if [[ ! -f "$asset" ]]; then
+              echo "::error::Release asset missing after artifact download: $asset"
+              exit 1
+            fi
+          done
+          [[ -n "$CHECKSUMS_PATH" && -f "$CHECKSUMS_PATH" ]] && ASSETS+=("$CHECKSUMS_PATH")
+          [[ -n "$SBOM_PATH" && -f "$SBOM_PATH" ]] && ASSETS+=("$SBOM_PATH")
+          [[ -n "$METADATA_PATH" && -f "$METADATA_PATH" ]] && ASSETS+=("$METADATA_PATH")
+          [[ -n "$SIG_PATH" && -f "$SIG_PATH" ]] && ASSETS+=("$SIG_PATH")
+
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            gh release upload "v${VERSION}" "${ASSETS[@]}" --clobber
+            gh release edit "v${VERSION}" --title "OpenBurnBar $VERSION" --prerelease --latest=false
           else
-            gh release create "$TAG_NAME" \
-              "$DMG_PATH" \
-              "$ZIP_PATH" \
+            gh release create "v${VERSION}" \
+              "${ASSETS[@]}" \
               --title "OpenBurnBar $VERSION" \
               --prerelease \
               --notes-file CHANGELOG.md

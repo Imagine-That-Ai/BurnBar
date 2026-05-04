@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import OpenBurnBarCore
 
 // MARK: - Provider Card
 
@@ -13,84 +14,84 @@ struct ProviderCard: View {
     private var theme: ProviderTheme { ProviderTheme.theme(for: summary.provider) }
 
     var body: some View {
-        GlassCard(interactive: true) {
-            HStack(spacing: DesignSystem.Spacing.lg) {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+        UnifiedGlassCard(interactive: true) {
+            HStack(spacing: UnifiedDesignSystem.Spacing.lg) {
+                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
                     Text(String(format: "%02d", rank))
-                            .font(DesignSystem.Typography.mono)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .font(UnifiedDesignSystem.Typography.mono)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
                         ZStack {
                             Circle()
                                 .fill(theme.primaryColor.opacity(0.15))
                                 .frame(width: 46, height: 46)
 
-                            ProviderLogoView(provider: summary.provider, size: 28, useFallbackColor: false)
+                            UnifiedProviderLogoView(provider: summary.provider, size: 28, useFallbackColor: false)
                         }
                     }
                     .frame(width: 54, alignment: .leading)
 
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                    VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+                        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
                             VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: DesignSystem.Spacing.sm) {
+                                HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                                     Text(summary.provider.displayName)
-                                        .font(DesignSystem.Typography.headline)
-                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                        .font(UnifiedDesignSystem.Typography.headline)
+                                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
 
                                     confidenceBadge(for: summary.provider.dataConfidence)
                                 }
 
                                 Text("\(summary.sessionCount) session\(summary.sessionCount == 1 ? "" : "s")")
-                                    .font(DesignSystem.Typography.caption)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .font(UnifiedDesignSystem.Typography.caption)
+                                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                             }
 
                             Spacer()
 
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text(settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens))
-                                    .font(DesignSystem.Typography.monoLarge)
+                                    .font(UnifiedDesignSystem.Typography.monoLarge)
                                     .foregroundStyle(theme.gradient)
 
                                 Text(settingsManager.usageDisplayMode == .currency ? "total spend" : "total tokens")
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .font(UnifiedDesignSystem.Typography.tiny)
+                                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                             }
                         }
 
-                        HStack(spacing: DesignSystem.Spacing.xl) {
-                            MiniStat(label: "Input", value: formatTokens(summary.totalInputTokens))
-                            MiniStat(label: "Output", value: formatTokens(summary.totalOutputTokens))
-                            MiniStat(label: "Cache R", value: formatTokens(summary.modelBreakdown.reduce(0) { $0 + $1.cacheReadTokens }))
+                        HStack(spacing: UnifiedDesignSystem.Spacing.xl) {
+                            UnifiedMiniStat(label: "Input", value: formatTokens(summary.totalInputTokens))
+                            UnifiedMiniStat(label: "Output", value: formatTokens(summary.totalOutputTokens))
+                            UnifiedMiniStat(label: "Cache R", value: formatTokens(summary.modelBreakdown.reduce(0) { $0 + $1.cacheReadTokens }))
                         }
 
                         if !summary.modelBreakdown.isEmpty {
-                            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
                                 Text("Top Models")
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .font(UnifiedDesignSystem.Typography.tiny)
+                                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                                     .textCase(.uppercase)
 
                                 ForEach(Array(summary.modelBreakdown.prefix(3).enumerated()), id: \.element.id) { index, model in
-                                    HStack(spacing: DesignSystem.Spacing.sm) {
+                                    HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                                         Capsule()
                                             .fill(theme.chartColors[index % theme.chartColors.count])
                                             .frame(width: 14, height: 5)
 
                                         Text(model.modelName)
-                                            .font(DesignSystem.Typography.caption)
-                                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                            .font(UnifiedDesignSystem.Typography.caption)
+                                            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                                             .lineLimit(1)
 
                                         Spacer()
 
                                         Text("\(model.percentage, specifier: "%.0f")%")
-                                            .font(DesignSystem.Typography.monoTiny)
-                                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                                            .font(UnifiedDesignSystem.Typography.monoTiny)
+                                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
                                         Text(formatTokens(model.totalTokens))
-                                            .font(DesignSystem.Typography.monoSmall)
+                                            .font(UnifiedDesignSystem.Typography.monoSmall)
                                             .foregroundStyle(theme.primaryColor)
                                     }
                                 }
@@ -98,7 +99,7 @@ struct ProviderCard: View {
                         }
                     }
                 }
-                .padding(DesignSystem.Spacing.lg)
+                .padding(UnifiedDesignSystem.Spacing.lg)
         }
         .onTapGesture(perform: onTap)
     }
@@ -108,16 +109,16 @@ struct ProviderCard: View {
         switch confidence {
         case .exact:
             Text("Exact")
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.success)
+                .font(UnifiedDesignSystem.Typography.tiny)
+                .foregroundStyle(UnifiedDesignSystem.Colors.success)
         case .estimated:
             Text("Estimated")
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.warning)
+                .font(UnifiedDesignSystem.Typography.tiny)
+                .foregroundStyle(UnifiedDesignSystem.Colors.warning)
         case .unavailable:
             Text("Unsupported")
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .font(UnifiedDesignSystem.Typography.tiny)
+                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
         }
     }
 
@@ -128,25 +129,6 @@ struct ProviderCard: View {
             return String(format: "%.1fK", Double(tokens) / 1_000)
         }
         return "\(tokens)"
-    }
-}
-
-// MARK: - Mini Stat
-
-private struct MiniStat: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-
-            Text(value)
-                .font(DesignSystem.Typography.monoSmall)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-        }
     }
 }
 
@@ -166,7 +148,7 @@ struct ProviderDashboardView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
                 providerHeader
 
                 ProviderDashboardQuotaPanel(
@@ -181,7 +163,7 @@ struct ProviderDashboardView: View {
 
                 sessionsSection
             }
-            .padding(DesignSystem.Spacing.xl)
+            .padding(UnifiedDesignSystem.Spacing.xl)
         }
         .background {
             LinearGradient(
@@ -202,9 +184,9 @@ struct ProviderDashboardView: View {
     }
 
     private var providerHeader: some View {
-        GlassCard {
+        UnifiedGlassCard {
             ZStack(alignment: .bottomTrailing) {
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.lg, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
@@ -217,7 +199,7 @@ struct ProviderDashboardView: View {
                         )
                     )
 
-                HStack(alignment: .top, spacing: DesignSystem.Spacing.xl) {
+                HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.xl) {
                     ZStack {
                         Circle()
                             .fill(theme.primaryColor.opacity(0.15))
@@ -226,31 +208,31 @@ struct ProviderDashboardView: View {
                         ProviderLogoView(provider: provider, size: 40, useFallbackColor: false)
                     }
 
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
                         Text(provider.displayName)
-                            .font(DesignSystem.Typography.display)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .font(UnifiedDesignSystem.Typography.display)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
 
                         Text("\(usages.count) sessions in range • \(totalTokens) tokens processed")
-                            .font(DesignSystem.Typography.body)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .font(UnifiedDesignSystem.Typography.body)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
 
-                        HStack(spacing: DesignSystem.Spacing.md) {
-                            providerMetric(
+                        HStack(spacing: UnifiedDesignSystem.Spacing.md) {
+                            UnifiedMiniStat(
                                 label: settingsManager.usageDisplayMode == .currency ? "Spend" : "Volume",
                                 value: primaryProviderMetric
                             )
-                            providerMetric(
+                            UnifiedMiniStat(
                                 label: settingsManager.usageDisplayMode == .currency ? "Avg session" : "Avg session (tokens)",
                                 value: averageSessionMetric
                             )
-                            providerMetric(label: "Top Model", value: topModelName)
+                            UnifiedMiniStat(label: "Top Model", value: topModelName)
                         }
                     }
 
                     Spacer()
                 }
-                .padding(DesignSystem.Spacing.xl)
+                .padding(UnifiedDesignSystem.Spacing.xl)
 
                 Circle()
                     .fill(theme.gradient.opacity(0.22))
@@ -262,8 +244,8 @@ struct ProviderDashboardView: View {
     }
 
     private var analyticsDeck: some View {
-        HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
-            HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
+        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.lg) {
+            HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.lg) {
                 TokenBreakdownChart(usages: usages, theme: theme)
                     .frame(minHeight: 260)
 
@@ -278,38 +260,38 @@ struct ProviderDashboardView: View {
     }
 
     private var modelStackPanel: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+        UnifiedGlassCard {
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
                 Text("Model Stack")
-                    .font(DesignSystem.Typography.headline)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .font(UnifiedDesignSystem.Typography.headline)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
 
                 Text("Dominant models for this provider in the selected window.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .font(UnifiedDesignSystem.Typography.caption)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
 
                 if topModels.isEmpty {
                     Text("No model data")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .font(UnifiedDesignSystem.Typography.caption)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 } else {
-                    VStack(spacing: DesignSystem.Spacing.md) {
+                    VStack(spacing: UnifiedDesignSystem.Spacing.md) {
                         ForEach(Array(topModels.enumerated()), id: \.element.id) { index, model in
-                            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                                HStack(spacing: DesignSystem.Spacing.sm) {
+                            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
+                                HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                                     Capsule()
                                         .fill(theme.chartColors[index % theme.chartColors.count])
                                         .frame(width: 16, height: 6)
 
                                     Text(model.modelName)
-                                        .font(DesignSystem.Typography.body)
-                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                        .font(UnifiedDesignSystem.Typography.body)
+                                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                                         .lineLimit(1)
 
                                     Spacer()
 
                                     Text(settingsManager.formatUsageMetric(cost: model.cost, tokens: model.totalTokens))
-                                        .font(DesignSystem.Typography.monoSmall)
+                                        .font(UnifiedDesignSystem.Typography.monoSmall)
                                         .foregroundStyle(theme.primaryColor)
                                 }
 
@@ -317,27 +299,27 @@ struct ProviderDashboardView: View {
                                     Text(settingsManager.usageDisplayMode == .currency
                                         ? "\(model.percentage, specifier: "%.0f")% of provider spend"
                                         : "\(model.percentage, specifier: "%.0f")% of provider tokens")
-                                        .font(DesignSystem.Typography.tiny)
-                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .font(UnifiedDesignSystem.Typography.tiny)
+                                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
                                     Spacer()
 
                                     Text(formatTokens(model.totalTokens))
-                                        .font(DesignSystem.Typography.monoTiny)
-                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                                 }
                             }
-                            .padding(.bottom, DesignSystem.Spacing.xs)
+                            .padding(.bottom, UnifiedDesignSystem.Spacing.xs)
                         }
                     }
                 }
             }
-            .padding(DesignSystem.Spacing.lg)
+            .padding(UnifiedDesignSystem.Spacing.lg)
         }
     }
 
     private var sessionsSection: some View {
-        GlassCard {
+        UnifiedGlassCard {
             SessionLedgerSection(
                 usages: usages,
                 theme: theme,
@@ -349,7 +331,7 @@ struct ProviderDashboardView: View {
             ) {
                 emptySessionsView
             }
-            .padding(DesignSystem.Spacing.lg)
+            .padding(UnifiedDesignSystem.Spacing.lg)
         }
     }
 
@@ -365,18 +347,18 @@ struct ProviderDashboardView: View {
     }
 
     private var emptySessionsView: some View {
-        VStack(spacing: DesignSystem.Spacing.md) {
+        VStack(spacing: UnifiedDesignSystem.Spacing.md) {
             Image(systemName: provider.supportLevel == .unsupported ? "eye.slash" : "clock")
                 .font(.system(size: 32))
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
             Text(emptyMessage)
-                .font(DesignSystem.Typography.body)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .font(UnifiedDesignSystem.Typography.body)
+                .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, DesignSystem.Spacing.xxl)
+        .padding(.vertical, UnifiedDesignSystem.Spacing.xxl)
     }
 
     private func openUsage(_ usage: TokenUsage) {
@@ -461,26 +443,6 @@ struct ProviderDashboardView: View {
         topModels.first?.modelName ?? "None"
     }
 
-    private func providerMetric(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-
-            Text(value)
-                .font(DesignSystem.Typography.monoSmall)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, DesignSystem.Spacing.md)
-        .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.surfaceElevated.opacity(0.82))
-        .clipShape(.rect(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                .stroke(DesignSystem.Colors.border.opacity(0.7), lineWidth: 0.5)
-        )
-    }
 
     private func formatTokens(_ tokens: Int) -> String {
         tokens.formatAsTokens()
@@ -494,15 +456,15 @@ struct TokenBreakdownChart: View {
     let theme: ProviderTheme
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+        UnifiedGlassCard {
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
                 Text("Token Breakdown")
-                    .font(DesignSystem.Typography.headline)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .font(UnifiedDesignSystem.Typography.headline)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
 
                 Text("Input, output, and cache token distribution.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .font(UnifiedDesignSystem.Typography.caption)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
 
                 if totalTokens > 0 {
                     Chart(tokenData, id: \.label) { item in
@@ -516,18 +478,18 @@ struct TokenBreakdownChart: View {
                     .chartXAxis {
                         AxisMarks { _ in
                             AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                                .foregroundStyle(DesignSystem.Colors.border)
+                                .foregroundStyle(UnifiedDesignSystem.Colors.border)
                         }
                     }
                     .chartYAxis {
                         AxisMarks(position: .leading) { value in
                             AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                                .foregroundStyle(DesignSystem.Colors.border)
+                                .foregroundStyle(UnifiedDesignSystem.Colors.border)
                             AxisValueLabel {
                                 if let v = value.as(Int.self) {
                                     Text(formatTokens(v))
-                                        .font(DesignSystem.Typography.monoTiny)
-                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                                 }
                             }
                         }
@@ -535,13 +497,13 @@ struct TokenBreakdownChart: View {
                     .frame(height: 170)
                 } else {
                     Text("No data")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .font(UnifiedDesignSystem.Typography.caption)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                         .frame(height: 170)
                         .frame(maxWidth: .infinity)
                 }
             }
-            .padding(DesignSystem.Spacing.lg)
+            .padding(UnifiedDesignSystem.Spacing.lg)
         }
     }
 
@@ -575,25 +537,25 @@ struct DailyTrendChart: View {
     var displayMode: UsageDisplayMode = .currency
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+        UnifiedGlassCard {
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
                 HStack {
                     Text("Daily Trend")
-                        .font(DesignSystem.Typography.headline)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .font(UnifiedDesignSystem.Typography.headline)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
 
                     Spacer()
 
                     Text("Last \(days) days")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .font(UnifiedDesignSystem.Typography.tiny)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                 }
 
                 Text(displayMode == .currency
                     ? "Daily spend velocity over the trailing window."
                     : "Daily token volume over the trailing window.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .font(UnifiedDesignSystem.Typography.caption)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
 
                 if !dailyDataPoints.isEmpty {
                     Chart(dailyDataPoints, id: \.date) { day in
@@ -619,18 +581,18 @@ struct DailyTrendChart: View {
                     .chartXAxis {
                         AxisMarks(values: .stride(by: .day, count: 7)) { _ in
                             AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                                .foregroundStyle(DesignSystem.Colors.border)
+                                .foregroundStyle(UnifiedDesignSystem.Colors.border)
                         }
                     }
                     .chartYAxis {
                         AxisMarks(position: .leading) { value in
                             AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                                .foregroundStyle(DesignSystem.Colors.border)
+                                .foregroundStyle(UnifiedDesignSystem.Colors.border)
                             AxisValueLabel {
                                 if let v = value.as(Double.self) {
                                     Text(axisLabel(for: v))
-                                        .font(DesignSystem.Typography.monoTiny)
-                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                                 }
                             }
                         }
@@ -638,20 +600,20 @@ struct DailyTrendChart: View {
                     .chartYScale(domain: 0...(maxDailyValue * 1.15))
                     .frame(height: 170)
 
-                    HStack(spacing: DesignSystem.Spacing.lg) {
-                        MiniStat(label: "Avg/Day", value: formatSummary(averageDailyValue))
-                        MiniStat(label: "Peak", value: formatSummary(peakDailyValue))
-                        MiniStat(label: "Total", value: formatSummary(totalValue))
+                    HStack(spacing: UnifiedDesignSystem.Spacing.lg) {
+                        UnifiedMiniStat(label: "Avg/Day", value: formatSummary(averageDailyValue))
+                        UnifiedMiniStat(label: "Peak", value: formatSummary(peakDailyValue))
+                        UnifiedMiniStat(label: "Total", value: formatSummary(totalValue))
                     }
                 } else {
                     Text("No data")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .font(UnifiedDesignSystem.Typography.caption)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                         .frame(height: 170)
                         .frame(maxWidth: .infinity)
                 }
             }
-            .padding(DesignSystem.Spacing.lg)
+            .padding(UnifiedDesignSystem.Spacing.lg)
         }
     }
 

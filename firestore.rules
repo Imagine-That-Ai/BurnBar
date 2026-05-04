@@ -1,8 +1,22 @@
 rules_version = '2';
-// OpenBurnBar currently syncs:
+// OpenBurnBar currently syncs explicit owner-scoped collections:
 // - users/{uid}/usage, conversations, chat_threads, session_logs (+ chunks), devices
+// - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups
+// - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
+// - users/{uid}/escrow_devices, escrow_public_keys, escrow_grants, escrow_envelopes, escrow_audit_events
+// - server-only: provider_account_secret_refs, users/{uid}/_rate_limits, users/{uid}/rollup_jobs
 // - workspaces/workspace-{uid}/teams/team-default/artifacts/{artifactID} (+ versions/{revisionID})
 // The shared-artifact rule below intentionally stays owner-scoped for this source release.
+//
+// App Check: `request.auth` below is not sufficient to block non-app clients. Enforce
+// App Check for Cloud Firestore in the Firebase console so only your app+attested
+// traffic reaches this ruleset. See: https://firebase.google.com/docs/app-check/enable-enforcement
+// and docs/FIREBASE_APP_CHECK_ENFORCEMENT.md in this repo.
+//
+// Escrow security: escrow_envelopes MUST contain ciphertext only. The rules below
+// reject documents that contain field names associated with plaintext credentials.
+// Client code is independently responsible for ensuring plaintext secrets are never
+// serialized into Firestore documents (validated by unit tests).
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {
@@ -14,8 +28,34 @@ service cloud.firestore {
         && request.resource.data.keys().size() < 80;
     }
 
+    function escrowDocumentLimits() {
+      return request.resource.size() < 51200
+        && request.resource.data.keys().size() < 20;
+    }
+
     function ownsUserNamespace(userId) {
       return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function hasNoPlaintextSecretFields() {
+      return !("apiKey" in request.resource.data)
+        && !("token" in request.resource.data)
+        && !("refreshToken" in request.resource.data)
+        && !("accessToken" in request.resource.data)
+        && !("idToken" in request.resource.data)
+        && !("cookie" in request.resource.data)
+        && !("password" in request.resource.data)
+        && !("secret" in request.resource.data)
+        && !("secretVersionName" in request.resource.data)
+        && !("authorization" in request.resource.data)
+        && !("bearer" in request.resource.data)
+        && !("credential" in request.resource.data);
+    }
+
+    function ownerWritableNonSecret(userId) {
+      return ownsUserNamespace(userId)
+        && requestWithinBasicLimits()
+        && hasNoPlaintextSecretFields();
     }
 
     function sharedArtifactOwnerRead() {
@@ -33,10 +73,173 @@ service cloud.firestore {
         && request.resource.data.teamID == teamId;
     }
 
-    match /users/{userId}/{document=**} {
+    // --- Server-only private provider credential references ---
+
+    // Cloud Functions store Secret Manager version names here. The Admin SDK
+    // bypasses rules; clients must never read or write these documents.
+    match /provider_account_secret_refs/{refId} {
+      allow read, write: if false;
+    }
+
+    // --- User-scoped data ---
+
+    match /users/{userId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if ownsUserNamespace(userId) && requestWithinBasicLimits();
     }
+
+    match /users/{userId}/usage/{usageId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/conversations/{conversationId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/chat_threads/{threadId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/session_logs/{logId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId);
+      allow delete: if ownsUserNamespace(userId);
+
+      match /chunks/{chunkId} {
+        allow read: if ownsUserNamespace(userId);
+        allow create, update: if ownerWritableNonSecret(userId);
+        allow delete: if ownsUserNamespace(userId);
+      }
+    }
+
+    match /users/{userId}/devices/{deviceId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/quota_snapshots/{snapshotId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/provider_connections/{providerId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/provider_accounts/{accountId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/usage_rollups/{rollupId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/rollup_jobs/{jobId} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/_rate_limits/{limitId} {
+      allow read, write: if false;
+    }
+
+    // --- Escrow: additional field-level rejection of plaintext-looking secret fields ---
+    // These collections use stricter size limits and explicit plaintext-field
+    // rejection where credentials could otherwise be mis-serialized.
+
+    match /users/{userId}/escrow_devices/{deviceId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/escrow_public_keys/{keyId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/escrow_grants/{grantId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/escrow_envelopes/{envelopeId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/escrow_audit_events/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/cloud_profile/{profileId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/sync_watermarks/{watermarkId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/sync_status/{deviceId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/cloud_settings/{settingsId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/recent_usage/{summaryId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // --- Shared artifacts (unchanged) ---
 
     match /workspaces/{workspaceId}/teams/{teamId}/artifacts/{artifactId} {
       allow read: if sharedArtifactOwnerRead();

@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Retrieval Health Detail Types
 
 /// Detailed health metrics for lexical retrieval operations.
-private struct LexicalRetrievalHealthDetails: Codable {
+struct LexicalRetrievalHealthDetails: Codable {
     let queryLength: Int
     let lexicalCandidateCount: Int
     let semanticCandidateCount: Int
@@ -19,7 +19,7 @@ private struct LexicalRetrievalHealthDetails: Codable {
 }
 
 /// Details captured when semantic search falls back to lexical-only.
-private struct SemanticFallbackHealthDetails: Codable {
+struct SemanticFallbackHealthDetails: Codable {
     let queryLength: Int
     let lexicalCandidateCount: Int
 }

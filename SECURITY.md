@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Before `1.0`, OpenBurnBar supports the current `main` branch and the version declared in the repo metadata (`0.1.2-beta` in this source release). Older commits may contain known issues and may not receive fixes.
+Before `1.0`, OpenBurnBar supports the current `main` branch and the version declared in the repo metadata (`0.1.3-beta.1` in this source release). Older commits may contain known issues and may not receive fixes.
 
 ## Reporting a Vulnerability
 
@@ -31,6 +31,8 @@ We do not promise formal SLA response times. Reports are handled on a best-effor
 ## Security Best Practices for OpenBurnBar Users
 
 - **Secrets**: Routed provider API keys, Hermes/OpenClaw bearer tokens, the controller Telegram bot token, and daemon-managed connector credentials use macOS Keychain with a device-local accessibility class.
+- **Daemon auth tokens**: Socket and gateway auth tokens are passed to the daemon via launchd `EnvironmentVariables`, not CLI arguments, to prevent exposure via process listings (`ps aux`). The launchd plist is written with `0o600` permissions.
+- **Encryption key recovery**: If the macOS Keychain entry for the SQLCipher encryption key is lost (e.g., during macOS migration or Keychain reset), the key is automatically recovered from an on-disk file at `~/Library/Application Support/OpenBurnBar/.encryption-key-recovery` (owner-only `0o600` permissions, SHA-256 integrity check). The key is re-imported into Keychain on recovery.
 - **Local data**: Default storage is local SQLite. Cloud sync (Firebase) is opt-in.
 - **Cloud sync scope**: When cloud sync is enabled, OpenBurnBar currently uploads usage rows and in-app OpenBurnBar chat threads for cross-device resume. The current source release also writes owner-scoped shared-artifact heads/revisions under `workspaces/workspace-{uid}/teams/team-default/artifacts/...`. Conversation metadata and full session-log backup remain separately gated by their own settings.
 - **OAuth flows**: Firebase Auth handles Google and Apple sign-in. Verify redirect URIs match `com.openburnbar.app`.

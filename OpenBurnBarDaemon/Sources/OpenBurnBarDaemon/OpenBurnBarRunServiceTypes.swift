@@ -3,6 +3,11 @@ import Foundation
 
 // Public error surface for `BurnBarRunService` (actor + execution state remain in BurnBarRunService.swift).
 
+public enum BurnBarRunRegistryEvictionPolicy: Sendable {
+    case none
+    case maxCount(Int)
+}
+
 public enum BurnBarRunServiceError: Error, LocalizedError {
     case runNotFound(BurnBarRunID)
     case retryRequiresFailedRun(BurnBarRunID)

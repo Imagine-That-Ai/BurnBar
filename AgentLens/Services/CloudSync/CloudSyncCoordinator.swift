@@ -40,6 +40,8 @@ final class CloudSyncCoordinator {
     private let conversationSync: ConversationSyncService
     private let chatThreadSync: ChatThreadSyncService
     private let sessionLogSync: SessionLogSyncService
+    private let providerAccountSync: ProviderAccountSyncService
+    private let quotaSnapshotSync: QuotaSnapshotSyncService
 
     // MARK: - Shared State
 
@@ -57,8 +59,8 @@ final class CloudSyncCoordinator {
     ///     and download sync. May be nil if those features are not needed.
     init(
         dataStore: DataStore,
-        accountManager: AccountManager,
-        settingsManager: SettingsManager,
+        accountManager: any AccountManaging,
+        settingsManager: any SettingsManagerProtocol,
         legacyCloudSync: CloudSyncService? = nil
     ) {
         self.context = CloudSyncContext(
@@ -71,6 +73,8 @@ final class CloudSyncCoordinator {
         self.conversationSync = ConversationSyncService(context: context)
         self.chatThreadSync = ChatThreadSyncService(context: context)
         self.sessionLogSync = SessionLogSyncService(context: context)
+        self.providerAccountSync = ProviderAccountSyncService(context: context)
+        self.quotaSnapshotSync = QuotaSnapshotSyncService(context: context)
     }
 
     // MARK: - Public API: Upload (Local → Cloud)
@@ -98,6 +102,24 @@ final class CloudSyncCoordinator {
     /// Gated on `sessionLogCloudBackupEnabled`.
     func syncSessionLogs() async {
         await propagateSessionLogErrors { await sessionLogSync.sync() }
+    }
+
+    /// Upload non-secret provider account metadata to Firestore for iOS visibility.
+    func syncProviderAccounts() async {
+        guard !isSyncing else { return }
+        isSyncing = true
+        lastSyncError = nil
+        await providerAccountSync.uploadAccounts()
+        isSyncing = false
+    }
+
+    /// Upload local quota snapshots to Firestore for iOS visibility.
+    func syncQuotaSnapshots(_ snapshots: [ProviderQuotaSnapshot]) async {
+        guard !isSyncing else { return }
+        isSyncing = true
+        lastSyncError = nil
+        await quotaSnapshotSync.uploadSnapshots(snapshots)
+        isSyncing = false
     }
 
     /// Synchronize shared/team artifacts between local cache and Firestore.
@@ -152,8 +174,8 @@ final class CloudSyncCoordinator {
     // MARK: - Memory Boundary
 
     static func currentMemorySyncBoundary(
-        settingsManager: SettingsManager = .shared,
-        accountManager: AccountManager = .shared
+        settingsManager: any SettingsManagerProtocol = SettingsManager.shared,
+        accountManager: any AccountManaging = AccountManager.shared
     ) -> OpenBurnBarMemorySyncBoundarySnapshot {
         OpenBurnBarMemorySyncBoundarySnapshot(
             mode: .localFirstOptionalCloud,

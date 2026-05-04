@@ -5,111 +5,95 @@ All notable changes to OpenBurnBar are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-## [0.1.2-beta.12] - 2026-04-18
-
-### Fixed
-- Keychain-backed provider secrets now verify non-interactive readability after write and rewrite interaction-locked entries so background quota refreshes keep working.
-- The dashboard Context Pack card now opens reliably when clicked and exposes button semantics for accessibility tooling.
-- CLI switcher startup errors now spell out missing-command (`exit 127`) failures instead of returning a generic launch error.
-
-### Changed
-- Dark-mode chrome now uses a cooler slate-blue surface ramp so warm accent colors read more cleanly against app backgrounds.
-- Dashboard and popover quick-switch target icons now use consistent system glyphs, preventing bundled logo stretching and layout drift.
-- Public contributor docs now link directly to repo-level `AGENTS.md` and `CLAUDE.md` guidance for AI coding tools.
-
-## [0.1.2-beta.2] - 2026-04-14
-
-### Changed
-- decomposed `AccountSwitcherSettingsView` into focused rendering, data-operation, row, form, destination-picker, and support files so the settings surface is easier to reason about and maintain
-- split `ProviderQuotaViews` into smaller bucket, popover, command-center, and strip view files to reduce SwiftUI complexity and tighten presentation boundaries
-- refactored `ProviderQuotaService` into a slimmer facade/coordinator while keeping provider-specific parsing and view-facing API behavior intact
-
-### Fixed
-- MiniMax token-plan refresh now preserves model labels for single `model_remains` payloads instead of collapsing them into a generic window label
-- provider quota API-key resolution now accepts the stable provider identifier variants used by the app and adapters, preventing missing-key refresh failures for MiniMax and Z.ai
+## [Unreleased] — iPadOS Port Phase 2 Hardening (2026-05-02)
 
 ### Added
-- active app-test coverage for the provider quota service refactor path
-
-## [0.1.2-beta] - 2026-04-13
-
-### Security
-- HTTP gateway auth token now consistently loads from Keychain, never from `UserDefaults`.
-- Daemon launch-agent wiring now forwards `--gateway-auth-token` when configured so gateway auth is actually enforced at runtime.
-- Threat model now documents the optional TCP HTTP gateway accurately instead of claiming no TCP listener exists.
-
-### Fixed
-- Daemon usage sync no longer misattributes unknown provider IDs as `.zai`; unmapped providers are ignored instead of mislabeled.
-- Version metadata is now aligned to `0.1.2-beta` across app, daemon, extension, and public-facing docs.
+- **Routing-aware provider account cockpit (Mac + Mobile):** every quota- and
+  account-bearing surface now shows which provider account is *currently* serving
+  traffic, the next fallback, and any blocked/cooling-down accounts with
+  sanitized switch reasons — never credential material. Mac surfaces in scope:
+  `ProvidersSettingsView`, `ProviderDashboardQuotaPanel`, expanded popover
+  rows. Mobile/iPad surfaces in scope: `QuotaView` cards, `QuotaDetailSheet`,
+  `ProviderConnectionsView` group sections (with per-account
+  Active/Next/Blocked chips), and `ProviderDashboardView` quota section.
+  Backed by the existing `ProviderRoutingPolicy.decide` contract — no new
+  routing semantics, just unified visualization.
+- **Single source of truth for `AgentProvider` / `TokenUsage`:** the
+  ~600-line macOS-only `AgentLens.AgentProvider` and `AgentLens.TokenUsage`
+  duplicate definitions are deleted. The macOS app now uses
+  `OpenBurnBarCore.AgentProvider`, `OpenBurnBarCore.TokenUsage`,
+  `UsageProvenanceMethod`, `UsageProvenanceConfidence`, and `UsageSource`
+  as the canonical types via thin module-level typealiases in
+  `AgentLens/Models/AgentProvider.swift`. Mac-only behaviors
+  (`logDirectory`, `filePattern`, `supportLevel`, `dataConfidence`,
+  per-row `cacheEfficiency`, `CacheEfficiency.aggregate(_:)`) live as
+  extensions on the package types so the macOS file watcher and dashboard
+  surfaces still compile. The Mac module shrank by **−421 lines (−56%)**
+  in `AgentProvider.swift`. RawValues, Codable keys, and init signatures
+  were verified byte-identical before the consolidation, so SQLite rows
+  and Firestore docs persist losslessly across the change. `ProviderSummary`,
+  `ModelSummary`, and `ProviderUsage` carry an aggregate
+  `OpenBurnBarCore.CacheEfficiency` so dashboard cache hit rate badges work
+  end-to-end.
+- **`scripts/clear-xcode-caches.sh`:** repo helper to clear DerivedData,
+  SwiftPM caches, and XCFramework device-support caches. Use after
+  shared-core migrations when SourceKit shows ghost errors or XCFramework
+  symbol mismatches between Mac and Mobile targets. Supports `--dry-run`,
+  `--derived-only`, `--xcframeworks`, `--packages`.
+- **First-class provider accounts:** shared `ProviderAccountDoc` contracts,
+  local SQLite persistence, account-aware quota snapshots, usage rollup account
+  summaries, Cloud Functions account APIs, and mobile provider/account lists.
+- **OpenAI provider accounts:** OpenAI is now a catalog-backed provider identity
+  with backend credential validation and usage refresh through the OpenAI
+  organization usage endpoint.
+- **iPad Onboarding Wizard (`iPadOnboardingWizardView`):** 4-step onboarding (Welcome → Cloud Connect → Hermes Setup → Complete) with staggered entrance animations, progress dots, skip functionality, and `@AppStorage` persistence. Presented from `AuthGateView` on first launch.
+- **Live Activity Infrastructure (`BurnBarLiveActivityAttributes`, `LiveActivityManager`, `BurnBarLiveActivityWidget`):** Lock screen banner + Dynamic Island with real-time cost, tokens, top provider, and pulsing session-active dot. Auto-managed by `DashboardStore`. All ActivityKit code guarded with `#available(iOS 16.1, *)`.
+- **Siri Shortcuts Intent (`BurnBarStatusIntent`):** Voice query "What's my burn today?" returns cost, tokens, and provider count.
+- **Deep Linking (`burnbar://dashboard`, `burnbar://settings`, `burnbar://chat`):** Handled in `OpenBurnBarMobileApp` via `.onOpenURL`. Widget tap routes to dashboard via `widgetURL`.
+- **iPad Navigation UI Tests (`iPadNavigationUITests`):** 14 tests covering route model, settings tabs, auth gate, provider aggregates, Hermes state, session search, and deep links.
+- **Keyboard Shortcuts:** ⌘1–4 (navigation), ⌘R (refresh), ⌘H (Hermes), ⌘, (settings), ⌘[ (back).
 
 ### Changed
-- Dependabot: Swift version updates now target `OpenBurnBarCore/` and `OpenBurnBarDaemon/` (SwiftPM manifests) instead of repo root
-- Public-facing remote branches were reduced to the cleaned `main` branch before OSS launch review, removing stale cleanup branches from the remote
-- Third-party notices now describe bundled provider/model logo assets and trademark usage expectations for redistributed builds
+- Provider quota sync now uploads non-secret provider account metadata and
+  account-scoped snapshots so iPhone/iPad can show cloud-refreshable and
+  Mac-local accounts honestly.
+- **`DashboardView`:** Staggered entrance animations, chart entrance, hover scale on all interactive rows.
+- **`ChatView`:** Real Hermes SSE streaming (`HermesService`), connection status bar, graceful error bubbles.
+- **Settings:** All 7 tabs have real data — live Firestore provider connections, alert sliders, system settings link, multi-profile switcher.
+- **Session search:** Expanded from 3 → 6 fields (session ID, cost, device name added).
+- **Widget `Info.plist`:** Removed invalid `NSExtensionPrincipalClass` that blocked simulator installs.
+
+### Fixed
+- Secret Manager version names are kept out of public provider account docs and
+  destroy-failure logs.
+- `ProviderDashboardStoreTests` compilation (`usages` access).
+- `FirestoreNormalizationTests` `TimeInterval?` coercion.
+- Auth identity label showing raw email instead of provider.
+
+## [0.1.3-beta.1] — 2026-05-01
 
 ### Added
-- `QUICKSTART.md` for new contributors
-- `bug_report.md` issue template
-- `feature_request.md` issue template
-- `PULL_REQUEST_TEMPLATE.md` for contributors
-- `BurnBarDaemonLogger.warning()` method for proper log level coverage
-- public release scaffolding for support, security, and third-party notices
+- **Warp provider (`AgentProvider.warp`):** New parser, quota adapter, brand identity, tests.
+- **App test driver (`scripts/test-openburnbar-app.sh`):** Retry logic, hang detection, JSONL telemetry.
+- **Test-host short-circuit (`AgentLensApp`):** Skips Firebase/Sentry/DataStore when XCTest-injected.
+- **Provider stable persistence token (`AgentProvider.persistedToken`).**
+- **Synchronous test mode for settings persistence.**
+- **Executable-path injection on `SwitcherCLIAuthCoordinator.Dependencies`.**
 
 ### Changed
-- project versioning aligned on `0.1.2-beta` for the app, daemon, and extension
-- docs now treat `v0.1.2-beta` as the current annotated experimental source-release tag
-- README and quick start copy updated for experimental-source-release positioning
-- public docs scrubbed to remove stale personal repository URLs and inaccurate storage/version claims
-- public docs now clarify the source-release model, current cloud-sync scope, and the current split between Keychain-backed secrets and non-secret local app-preference storage
-- the authoritative app XCTest surface is wired back into the checked-in Xcode project and repo-native scripts
-
-### Security
-- Hermes/OpenClaw bearer tokens and the controller Telegram bot token now migrate into macOS Keychain-backed storage instead of remaining in app preferences
+- `SettingsPersistenceCoordinator` legacy migration scoped to `UserDefaults.standard`.
+- Settings min-clamp policy falls back to default instead of floor.
+- `TokenExtractionUtility.normalizeModelName` case-insensitive `custom:` strip.
+- `TokenExtractionUtility.detectModelHint` captures first token only.
+- `AlertSettings.costAlertThreshold = nil` fully removes keys.
+- `SettingsSecretPersistence` no longer deletes legacy on keychain failure.
+- `KeychainStore.set` verifies write bytes.
+- `ProviderPathSettings` persists under `logPath_<persistedToken>`.
 
 ### Fixed
-- TypeScript build error in `panelViewModel.ts` (`state.workspace` possibly undefined)
-- TypeScript lint warnings (unused variables, missing defaults, empty methods)
-- Silent error handling in `encodeErrorResponse()` with proper logging
-- Swift `try?` in `BurnBarRunService.restorePersistedRunsIfNeeded()` replaced with explicit error handling
-- Release build failure caused by `providerDisplayName(for:)` helpers being scoped to `#if DEBUG` blocks in quick-switch views
-- Removed duplicate `CODEOWNERS` file (keeping `.github/CODEOWNERS`)
-- Removed personal tool configuration from `tools/`
-- Firebase credentials file removed from working tree
-- broken public-doc links and missing implementation-support docs
-- stale OpenRouter `HTTP-Referer` headers pointing at a private repository URL
-- Removed tracked generated validation logs and tracked local Cursor planning artifacts from source control
-
-### Security
-- Dependabot configured for npm, Swift, and GitHub Actions dependency updates
-- current `npm audit` status reports no known vulnerabilities in the checked-in extension dependency tree
-- Extension dependency tree no longer reports the prior high-severity transitive `vite` advisory after override + lock refresh
-
-### Infrastructure
-- GitHub Actions CI workflow for pull request validation
-- GitHub Actions release workflow for tagged prereleases
-
----
-
-## [Prior Releases]
-
-Prior to this changelog, releases were tracked informally. The following milestones are documented in commit history:
-
-- Initial macOS menu bar app (AgentLens → OpenBurnBar)
-- Claude Code parser and session log parsing
-- Factory/Droid session parsing
-- Codex SQLite log parsing
-- Kimi session parsing
-- Local daemon (JSON-RPC over UNIX socket)
-- GRDB/SQLite storage layer with migrations
-- Firebase Auth (Google + Apple Sign-In)
-- Firestore cloud sync
-- Projection pipeline (FTS5 + semantic search)
-- VS Code / Cursor extension
-- Cursor provider routing (Z.ai, MiniMax)
-- CLI command interface
-- Cloudflare tunnel support
-- InsightEngine and analytics
-- Daily digest notifications
-- iCloud session file mirror
+- DataStore-pollution test isolation.
+- Snapshot reference refresh (22 images).
+- `TimestampNormalizationTests` UTC-anchored calendar.
+- Mobile app data-loading after auth (Firestore shape mismatches, Timestamp→Double, ISO date→Double, `sanitizeForJSON`, `decodeWithDocID`).
+- `FirestoreRepository` reliability (typed errors, exponential backoff).
+- Protocol-oriented normalization (`FirestoreNormalizable`).

@@ -32,7 +32,7 @@ enum KeychainStoreError: Error {
     case writeVerificationFailed
 }
 
-protocol KeychainStoreBackend {
+protocol KeychainStoreBackend: Sendable {
     func set(_ value: Data, service: String, account: String) throws
     func data(for service: String, account: String, allowUserInteraction: Bool) throws -> Data?
     func delete(service: String, account: String) throws
@@ -121,7 +121,7 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
     }
 }
 
-struct KeychainStore: @unchecked Sendable {
+struct KeychainStore: Sendable {
     private let service: String
     private let legacyServices: [String]
     private let backend: any KeychainStoreBackend
@@ -178,14 +178,25 @@ struct KeychainStore: @unchecked Sendable {
     }
 
     private func ensureNonInteractiveReadability(for account: String, expectedData: Data) throws {
-        if try backend.data(for: service, account: account, allowUserInteraction: false) != nil {
+        if let stored = try backend.data(for: service, account: account, allowUserInteraction: false) {
+            // Reject silent corruption: the persisted bytes must match what we
+            // wrote. A mismatch indicates a backing store that pretends to
+            // accept the write but returns garbage on read (e.g. flaky
+            // keychain provisioning), and silently accepting it would lose
+            // the user's secret.
+            guard stored == expectedData else {
+                throw KeychainStoreError.writeVerificationFailed
+            }
             return
         }
 
         try backend.delete(service: service, account: account)
         try backend.set(expectedData, service: service, account: account)
 
-        guard try backend.data(for: service, account: account, allowUserInteraction: false) != nil else {
+        guard let stored = try backend.data(for: service, account: account, allowUserInteraction: false) else {
+            throw KeychainStoreError.writeVerificationFailed
+        }
+        guard stored == expectedData else {
             throw KeychainStoreError.writeVerificationFailed
         }
     }

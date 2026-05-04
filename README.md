@@ -5,7 +5,7 @@
 
   > A native macOS app that watches your AI coding agents so you don't have to wonder where all your money went.
 
-  **Status:** Experimental beta (`0.1.2-beta`) — best-effort support, feedback welcome.
+  **Status:** Experimental beta (`0.1.3-beta.1`) — best-effort support, feedback welcome.
 
 </div>
 
@@ -35,7 +35,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 | **Core** | macOS app (`AgentLens/`), `OpenBurnBarCore`, local daemon (`OpenBurnBarDaemon/`), Cursor/VS Code extension (`extensions/openburnbar/`), `OpenBurnBarCLI` | Built and exercised in CI where configured; local-first + daemon RPC are the product spine. |
 | **Experimental** | Optional Firestore sync, iCloud mirroring, Cursor connector + tunnel, optional cloud collaboration | Best-effort; opt-in; not canonical vs local SQLite/daemon state. |
 | **Adjacent tooling** | [`tools/openburnbar-mcp/`](tools/openburnbar-mcp/README.md) (read-only SQLite MCP helper) | Developer convenience; not required to run OpenBurnBar. |
-| **Parked** | `AgentLensTests/Parked/` | Present in-repo for future revival; **not compiled** in the active `OpenBurnBarTests` bundle — see [AgentLensTests/README.md](AgentLensTests/README.md) and [CONTRIBUTING.md](CONTRIBUTING.md). |
+| **Quarantined tests** | `AgentLensTests/Quarantine/` | Stale suites kept as migration reference only; **not compiled** in the active `OpenBurnBarTests` bundle until fixed and moved back to `Active/` — see [AgentLensTests/README.md](AgentLensTests/README.md) and [CONTRIBUTING.md](CONTRIBUTING.md). |
 
 **Cursor deep dives** (for humans and agents):
 
@@ -60,7 +60,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - **Per-provider breakdown** — see which agent is winning the "most expensive hobby" award and whether it's gaining on yesterday's champion.
 - **Daily digest** — optional notification at a time you pick, because future-you deserves a single sentence of truth instead of a billing surprise.
 - **Chat panel** — ask questions about *your* usage data inside the dashboard. Meta? A little. Useful? Also a little. Delightful? We think so.
-- **Optional cloud sync** — sign in with **Google or Apple** (Firebase under the hood), and selected OpenBurnBar data can follow you across Macs. Today that can include usage rows, in-app OpenBurnBar chat threads for cross-device resume, and any separately enabled conversation/session-log backups. Fully opt-in; flip it off anytime and your local world keeps spinning.
+- **Optional cloud sync** — sign in with **Google or Apple** (Firebase under the hood), and selected OpenBurnBar data can follow you across Macs. Today that can include usage rows, in-app OpenBurnBar chat-thread metadata for cross-device resume, and any separately enabled conversation/session-log backups. Chat message bodies require their own explicit setting. Fully opt-in; flip it off anytime and your local world keeps spinning.
 - **Optional Cursor connector** — route selected **Z.ai** and **MiniMax** models through a local OpenAI-shaped router plus a tunnel, because Cursor is picky about BYOK targets. OpenBurnBar logs those requests so you know where the bits actually went.
 - **Daemon-backed controller runtime** — project registry, questions, followups, missions, scheduled reviews, simulator replay, mission provenance, and auto-takeover now live behind the local daemon instead of a UI-only mirror.
 - **Operational tool plane** — OpenBurnBar exposes daemon-owned connector status/actions for GitHub, Slack, Linear, PostHog, Sentry, and Gmail, plus browser tooling status/actions for the system browser and daemon-side fetch/link extraction.
@@ -148,9 +148,9 @@ CloudSyncService merge decision (local vs synced vs remote hash)
 ### Test and eval entrypoints
 
 - `scripts/test-openburnbar-swift.sh` — Swift package tests (`OpenBurnBarCore`, `OpenBurnBarDaemon`)
-- `scripts/test-openburnbar-app.sh` — Xcode `OpenBurnBarTests` only (compiled from `AgentLensTests/Active/**` + `AgentLensTests/Support/**`; `AgentLensTests/Parked/**` stays out of CI)
+- `scripts/test-openburnbar-app.sh` — Xcode `OpenBurnBarTests` only (compiled from `AgentLensTests/Active/**` + `AgentLensTests/Support/**`; `AgentLensTests/Quarantine/**` stays out of CI until revived)
 - `scripts/test-openburnbar-retrieval-evals.sh` — retrieval + authoring replay/golden suites
-- `scripts/test-openburnbar-release-smoke.sh` — end-to-end release smoke (Swift + retrieval evals + extension tests + daemon health)
+- `scripts/test-openburnbar-release-smoke.sh` — end-to-end release smoke (Swift + retrieval evals + extension tests + authenticated daemon health)
 
 Implementation detail and rollout notes live in [`docs/OPENBURNBAR_SEARCH_ARCHITECTURE_SPINE.md`](docs/OPENBURNBAR_SEARCH_ARCHITECTURE_SPINE.md).
 
@@ -364,55 +364,35 @@ OpenBurnBar is a happy offline hermit by default. Cloud sync is for people who u
 
 **Pieces:**
 
-- **Primary store:** GRDB + SQLite — fast, local, yours
-- **Sync store:** Firestore under `users/{uid}/` — `usage`, `chat_threads` (OpenBurnBar in-app chat thread metadata + truncated messages for cross-device resume), `conversations` (optional metadata backup), `session_logs` (+ `chunks` for full log backup when enabled)
+- **Primary store:** GRDB + SQLite — fast, local, yours. **Optional at-rest encryption** uses SQLCipher (SPM `GRDB-SQLCipher`, pinned with the daemon); the encryption key lives in the Keychain. When encryption is on, the build must link SQLCipher — see [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) and [docs/RUNBOOK.md](docs/RUNBOOK.md). SQLCipher licensing: [Zetetic](https://www.zetetic.net/sqlcipher/license/).
+- **Sync store:** Firestore under `users/{uid}/` — `usage`, `chat_threads` (OpenBurnBar in-app chat thread metadata by default; message bodies only when **Back Up Chat Message Content** is enabled), `conversations` (optional metadata backup), `session_logs` (+ `chunks` for full log backup when enabled)
 - **Shared artifact sync:** Firestore under `workspaces/workspace-{uid}/teams/team-default/artifacts/{artifactID}` plus `versions/{revisionID}` for the current source-release collaboration head/history path
 - **Auth:** Firebase Auth — **Google** and/or **Sign in with Apple**
+- **App Check:** The app initializes App Check before Firebase; **production** Firebase projects must **enforce** App Check for **Cloud Firestore** in the console (Auth + rules are not enough). See [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md).
 - **Device identity:** random UUID stored in local app defaults and migrated from legacy OpenBurnBar/AgentLens defaults keys
 - **iCloud mirror (optional):** copies parsed session log files into your **personal** iCloud Drive folder for the app (`Documents/OpenBurnBar/SessionMirror/...`). Independent of Firebase; see below.
 
-**Current cloud behavior:** when cloud sync is enabled, OpenBurnBar uploads usage rows and OpenBurnBar chat threads for cross-device resume. The current source release also syncs shared-artifact heads/revisions through an owner-scoped Firestore path for local-first collaboration metadata. Conversation metadata and full session-log backup remain separately gated by their own settings.
+**Current cloud behavior:** when cloud sync is enabled, OpenBurnBar uploads usage rows and OpenBurnBar chat-thread metadata for cross-device resume. Chat titles, previews, and message bodies are uploaded only after enabling **Settings → Privacy & Indexing → Back Up Chat Message Content**. The current source release also syncs shared-artifact heads/revisions through an owner-scoped Firestore path for local-first collaboration metadata. Conversation metadata and full session-log backup remain separately gated by their own settings.
 
 **Setup:**
 
 1. Create a [Firebase](https://console.firebase.google.com) project and add a **macOS** app with bundle ID `com.openburnbar.app`.
 2. Enable **Authentication** providers: **Google** and **Apple** (and whatever else you need for your own sanity).
-3. Create a Firestore database (production mode) and deploy rules that cover **every** collection the app uses. In this source release that includes both the per-user `users/{uid}/...` collections and the current owner-scoped shared-artifact path under `workspaces/workspace-{uid}/teams/team-default/artifacts/...`. If rules allow only `usage`, enabling shared-artifact sync, **Back Up Session History**, or full session-log backup yields **“Missing or insufficient permissions.”** Use the checked-in rules from [firestore.rules](firestore.rules):
+3. Create a Firestore database (production mode) and deploy rules that cover **every** collection the app uses. In this source release that includes explicit per-user `users/{uid}/...` collections, first-class `provider_accounts`, the server-only `provider_account_secret_refs` collection used by Cloud Functions, and the current owner-scoped shared-artifact path under `workspaces/workspace-{uid}/teams/team-default/artifacts/...`. If rules allow only `usage`, enabling shared-artifact sync, **Back Up Session History**, provider-account quota refresh, or full session-log backup yields **“Missing or insufficient permissions.”** Deploy the checked-in [firestore.rules](firestore.rules), not a recursive `users/{uid}/{document=**}` shortcut:
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    match /workspaces/{workspaceId}/teams/{teamId}/artifacts/{artifactId} {
-      allow read, create, update, delete:
-        if request.auth != null
-        && (
-          resource.data.ownerUserID == request.auth.uid
-          || request.resource.data.ownerUserID == request.auth.uid
-        );
-      match /versions/{revisionId} {
-        allow read, create, update, delete:
-          if request.auth != null
-          && (
-            resource.data.ownerUserID == request.auth.uid
-            || request.resource.data.ownerUserID == request.auth.uid
-          );
-      }
-    }
-  }
-}
-```
+   ```bash
+   firebase deploy --only firestore:rules
+   ```
 
-   Paste into **Firebase Console → Firestore → Rules** and publish, or add `firestore.rules` to your Firebase CLI project and run `firebase deploy --only firestore:rules`. The checked-in rules intentionally keep the current shared-artifact path owner-scoped by default; broader multi-user team sharing will need a stricter project-specific policy later.
+   The checked-in rules intentionally keep the current shared-artifact path owner-scoped by default, reject plaintext-looking secret fields on client-writable sync documents, and deny all client access to provider credential reference documents. Broader multi-user team sharing will need a stricter project-specific policy later.
 
-4. Download `GoogleService-Info.plist` → `AgentLens/Resources/GoogleService-Info.plist` (gitignored; never commit). See `AgentLens/Resources/GoogleService-Info.plist.example` for the shape of the thing. In Xcode, use **File → Add Files to "OpenBurnBar"…**, select that plist, and check the **OpenBurnBar** target so it is copied into the app bundle.
-5. Configure the **Google Sign-In** URL scheme / OAuth client as Firebase/Google Cloud demand (the app ships `OpenBurnBar-Info.plist` entries for the bundled client; yours will differ in a fork).
-6. `xcodegen generate` and rebuild.
+4. **App Check for Firestore (production):** After reviewing [App Check metrics](https://firebase.google.com/docs/app-check/monitor-metrics), **enforce** App Check for **Cloud Firestore** in the Firebase console. Register your [CI debug token](docs/RELEASE_MACOS.md) in App Check if you use `FIREBASE_APP_CHECK_DEBUG_TOKEN` / `FirebaseAppCheckDebugToken`. See [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md).
 
-**Privacy:** synced payloads can include **project directory names**, **model names**, and **OpenBurnBar in-app chat thread content**. If you also enable conversation/session-log backup, synced data can additionally include conversation metadata and full Markdown session-log bodies that may contain prompts or code snippets. You can disable sync in **Settings → Account** without sacrificing local history.
+5. Download `GoogleService-Info.plist` → `AgentLens/Resources/GoogleService-Info.plist` (gitignored; never commit). See `AgentLens/Resources/GoogleService-Info.plist.example` for the shape of the thing. In Xcode, use **File → Add Files to "OpenBurnBar"…**, select that plist, and check the **OpenBurnBar** target so it is copied into the app bundle.
+6. Configure the **Google Sign-In** URL scheme / OAuth client as Firebase/Google Cloud demand (the app ships `OpenBurnBar-Info.plist` entries for the bundled client; yours will differ in a fork).
+7. `xcodegen generate` and rebuild.
+
+**Privacy:** synced payloads can include **project directory names** and **model names**. **OpenBurnBar in-app chat message content** is excluded unless you explicitly enable **Back Up Chat Message Content**. If you also enable conversation/session-log backup, synced data can additionally include conversation metadata and full Markdown session-log bodies that may contain prompts or code snippets. You can disable sync in **Settings → Account** without sacrificing local history.
 
 ### iCloud session file mirror (optional)
 
@@ -423,7 +403,25 @@ Use this when you want session logs in **your** Apple ID’s iCloud storage inst
 - **Apple Developer:** Enable **iCloud** for the macOS app ID `com.openburnbar.app` with **iCloud Documents** and container `iCloud.com.openburnbar.app`, matching [AgentLens/Resources/OpenBurnBar.entitlements](AgentLens/Resources/OpenBurnBar.entitlements).
 - **Privacy:** mirrored files can contain paths, prompts, and code snippets. They are **not** uploaded to OpenBurnBar-operated Firebase storage by this feature (they sync through Apple’s iCloud like any other document).
 - **Conflicts:** editing the same mirrored file on two Macs can produce iCloud “conflict” copies; OpenBurnBar does not merge those automatically.
-- **“Missing or insufficient permissions”:** if this appears during **Firestore** sync or dashboard refresh, update your Firestore security rules for the signed-in user. If it appears only when **mirroring to iCloud**, the Mac build usually needs the **iCloud Documents** capability and matching **provisioning profile** for container `iCloud.com.openburnbar.app` (see Apple Developer → Identifiers → your App ID).
+- **“Missing or insufficient permissions”:** if this appears during **Firestore** sync or dashboard refresh, update your Firestore security rules for the signed-in user, confirm **App Check enforcement** and a registered [debug token](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md) for CI/local builds, and that the app bundle includes App Check (see [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md)). If it appears only when **mirroring to iCloud**, the Mac build usually needs the **iCloud Documents** capability and matching **provisioning profile** for container `iCloud.com.openburnbar.app` (see Apple Developer → Identifiers → your App ID).
+
+---
+
+## What mobile shows you
+
+`OpenBurnBarMobile` is a SwiftUI iOS 17+ companion that becomes useful immediately after sign-in. It mirrors the summaries and provider accounts your Mac publishes to Firestore, and it can add cloud-refreshable provider accounts directly when the provider supports backend refresh. Mac-local accounts stay visible as local-only snapshots, and encrypted credential transfer remains explicit.
+
+After signing in with Apple or Google on the same Firebase account you use on Mac:
+
+- **Dashboard** shows hero spend, period totals, top providers and models, and a sync-health pill. Empty until your Mac publishes — never tells you everything looks fine when it doesn't.
+- **Quota Watch** lists urgency-sorted provider totals and account-level snapshots with provenance and a stale banner if quota data is older than the freshness threshold.
+- **Activity** paginates the raw usage ledger, classifies errors into permission denied / App Check blocked / network / Firestore-unavailable rather than swallowing them.
+- **Account → Devices** lets you approve this iPhone (after your Mac signs in and approves it from the new **Devices & Sync** tab in macOS Settings).
+- **Account → Encrypted credential transfer** surfaces only the credentials your Mac has explicitly exported, decrypts them on this device with the iOS Keychain, and never reports success until provider readback confirms the credential works.
+
+Provider account behavior is documented in [docs/PROVIDER_ACCOUNTS.md](docs/PROVIDER_ACCOUNTS.md). Architectural mobile details and screen-by-screen behavior live in [docs/IOS_APP_ARCHITECTURE.md](docs/IOS_APP_ARCHITECTURE.md).
+
+If mobile shows "No Mac data has been published yet" but the Mac is signed in, see Incidents 9–12 in the [Runbook](docs/RUNBOOK.md).
 
 ---
 

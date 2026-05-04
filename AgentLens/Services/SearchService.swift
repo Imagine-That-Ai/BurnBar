@@ -1,5 +1,4 @@
 import Foundation
-import Dispatch
 import OpenBurnBarCore
 
 // Retrieval flow (shared service path):
@@ -11,21 +10,38 @@ import OpenBurnBarCore
 
 // MARK: - Search Service
 
-@MainActor
-final class SearchService {
+/// Hybrid retrieval is intentionally **not** `@MainActor` so FTS, fusion, hydration, and cross-encoder
+/// work do not run on the main thread. `MainActor` is only used to snapshot `SharedArtifactAccessContext`.
+///
+/// `SearchService` is an actor: all mutable state (including `_lastHealthWriteError`) is protected by
+/// actor isolation. Callers `await` all public methods. The `SearchRetrievalGate` private actor that
+/// previously serialized calls is now redundant and has been removed.
+actor SearchService {
     private let dataStore: DataStore
     private let semanticProvider: SemanticCandidateProviding?
     private let reranker: RetrievalRerankProviding?
     private let sharedArtifactAccessContextProvider: @MainActor () -> SharedArtifactAccessContext?
     private let nowProvider: () -> Date
-    private(set) var lastHealthWriteError: String?
 
+    private var _lastHealthWriteError: String?
+
+    /// May be read from the main thread or tests while retrieval runs in the background.
+    public var lastHealthWriteError: String? {
+        get { _lastHealthWriteError }
+    }
+
+    private func setLastHealthWriteError(_ value: String?) {
+        _lastHealthWriteError = value
+    }
+
+    /// Preferred initializer when shared-artifact access should resolve against the live account; requires a
+    /// `MainActor` snapshotter (use ``makeConversationSearchService(dataStore:settingsManager:providerAPIKeyStore:nowProvider:)`` in app code).
     init(
         dataStore: DataStore,
         semanticProvider: SemanticCandidateProviding? = nil,
         reranker: RetrievalRerankProviding? = nil,
-        sharedArtifactAccessContextProvider: @escaping @MainActor () -> SharedArtifactAccessContext? = SearchService.defaultSharedArtifactAccessContext,
-        nowProvider: @escaping () -> Date = Date.init
+        sharedArtifactAccessContextProvider: @escaping @MainActor () -> SharedArtifactAccessContext?,
+        nowProvider: @escaping () -> Date
     ) {
         self.dataStore = dataStore
         self.semanticProvider = semanticProvider
@@ -34,11 +50,28 @@ final class SearchService {
         self.nowProvider = nowProvider
     }
 
+    /// Tests and call sites that do not use shared artifacts may omit the provider; context resolves to `nil`.
+    convenience init(
+        dataStore: DataStore,
+        semanticProvider: SemanticCandidateProviding? = nil,
+        reranker: RetrievalRerankProviding? = nil,
+        nowProvider: @escaping () -> Date = { Date() }
+    ) {
+        self.init(
+            dataStore: dataStore,
+            semanticProvider: semanticProvider,
+            reranker: reranker,
+            sharedArtifactAccessContextProvider: { nil },
+            nowProvider: nowProvider
+        )
+    }
+
+    @MainActor
     static func makeConversationSearchService(
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
         providerAPIKeyStore: ProviderAPIKeyStore = .shared,
-        nowProvider: @escaping () -> Date = Date.init
+        nowProvider: @escaping () -> Date = { Date() }
     ) -> SearchService {
         let selection = resolvedEmbeddingSelection(
             dataStore: dataStore,
@@ -70,6 +103,7 @@ final class SearchService {
         )
     }
 
+    @MainActor
     private static func makeReranker(
         settingsManager: SettingsManager,
         providerAPIKeyStore: ProviderAPIKeyStore
@@ -144,9 +178,23 @@ final class SearchService {
                 maxCharsPerCandidate: settingsManager.crossEncoderMaxCharsPerCandidate,
                 maxCandidatesPerRequest: settingsManager.crossEncoderMaxCandidates
             )
+
+        case .ollama:
+            guard let baseURL = provider.baseURL else {
+                return nil
+            }
+            return OpenAICompatibleCrossEncoderReranker(
+                apiKey: "",
+                requiresAPIKey: false,
+                modelName: model,
+                baseURL: baseURL,
+                maxCharsPerCandidate: settingsManager.crossEncoderMaxCharsPerCandidate,
+                maxCandidatesPerRequest: settingsManager.crossEncoderMaxCandidates
+            )
         }
     }
 
+    @MainActor
     private static func resolveCrossEncoderAPIKey(
         for provider: CrossEncoderProviderID,
         providerAPIKeyStore: ProviderAPIKeyStore
@@ -179,11 +227,15 @@ final class SearchService {
             return nonEmpty(providerAPIKeyStore.apiKey(for: "zai"))
                 ?? cursorConnectorKey(for: "provider.zai.apiKey")
                 ?? nonEmpty(env["ZAI_API_KEY"])
+        case .ollama:
+            return nonEmpty(providerAPIKeyStore.apiKey(for: "ollama"))
+                ?? nonEmpty(env["OLLAMA_API_KEY"])
         case .codexCLI, .claudeCLI, .hermes:
             return nil
         }
     }
 
+    @MainActor
     private static func makeQueryEmbedder(
         selection: (model: EmbeddingModelRecord, version: EmbeddingVersionRecord)?,
         providerAPIKeyStore: ProviderAPIKeyStore
@@ -254,16 +306,18 @@ final class SearchService {
         return SharedArtifactAccessContext.defaultScope(for: userID)
     }
 
-    func recentConversations(limit: Int = 80) -> [ConversationRecord] {
+    /// `nonisolated` because `dataStore` is an immutable `let` and `fetchConversations`
+    /// uses GRDB's synchronous `read` — no actor isolation needed.
+    public nonisolated func recentConversations(limit: Int = 80) -> [ConversationRecord] {
         let bounded = max(1, min(limit, 1_000))
         return (try? dataStore.fetchConversations(limit: bounded)) ?? []
     }
 
-    func latestConversation(limit: Int = 200) -> ConversationRecord? {
+    public nonisolated func latestConversation(limit: Int = 200) -> ConversationRecord? {
         latestConversation(in: recentConversations(limit: limit))
     }
 
-    func latestConversation(in conversations: [ConversationRecord]) -> ConversationRecord? {
+    public nonisolated func latestConversation(in conversations: [ConversationRecord]) -> ConversationRecord? {
         conversations.max(by: { a, b in
             let ad = a.endTime ?? a.startTime ?? .distantPast
             let bd = b.endTime ?? b.startTime ?? .distantPast
@@ -271,7 +325,17 @@ final class SearchService {
         })
     }
 
-    func runBurnBarQuery(_ query: RetrievalQuery) async -> OpenBurnBarQueryRunResult {
+    public func runBurnBarQuery(_ query: RetrievalQuery) async -> OpenBurnBarQueryRunResult {
+        let start = Date()
+        let result = await runBurnBarQueryInGate(query)
+        let durationMs = Int(Date().timeIntervalSince(start) * 1000)
+        let status: TelemetryOutcome = result.retrievalResults.isEmpty && result.aggregateOccurrenceCount == nil ? .degraded : .success
+        TelemetryService.shared.record(feature: .searchRetrieval, outcome: status, durationMs: durationMs)
+        OpenBurnBarMetrics.histogram(name: "search_latency_ms", value: Double(durationMs), labels: ["mode": result.plan.mode.rawValue])
+        return result
+    }
+
+    private func runBurnBarQueryInGate(_ query: RetrievalQuery) async -> OpenBurnBarQueryRunResult {
         let plan = BurnBarSearchPlan.plan(userText: query.text)
         let now = nowProvider()
         var filters = query.filters
@@ -317,7 +381,8 @@ final class SearchService {
             resultLimit: query.resultLimit,
             hybridFusionStrategy: query.hybridFusionStrategy
         )
-        let results = await retrieve(subQuery)
+        let accessContext = await MainActor.run { self.sharedArtifactAccessContextProvider() }
+        let results = await retrieveInGate(subQuery, sharedArtifactAccessContext: accessContext)
         return OpenBurnBarQueryRunResult(
             plan: plan,
             retrievalResults: results,
@@ -326,7 +391,16 @@ final class SearchService {
         )
     }
 
-    func retrieve(_ query: RetrievalQuery) async -> [RetrievalResult] {
+    public func retrieve(_ query: RetrievalQuery) async -> [RetrievalResult] {
+        let trimmed = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return [] }
+        let accessContext = await MainActor.run { self.sharedArtifactAccessContextProvider() }
+        return await retrieveInGate(query, sharedArtifactAccessContext: accessContext)
+    }
+
+    /// Core retrieval, invoked on the actor's serial executor; `sharedArtifactAccessContext` is
+    /// pre-snapshoted on the main actor by callers.
+    private func retrieveInGate(_ query: RetrievalQuery, sharedArtifactAccessContext: SharedArtifactAccessContext?) async -> [RetrievalResult] {
         let trimmed = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return [] }
         let queryStartedAt = OpenBurnBarPerformanceTimer.now()
@@ -338,7 +412,6 @@ final class SearchService {
 
         let sourceKinds = normalizedSourceKinds(query.filters.artifactTypes)
         let sourceIDs = normalizedSourceIDs(query.filters.sourceIDs)
-        let sharedArtifactAccessContext = sharedArtifactAccessContextProvider()
         var semanticFallbackUsed = false
         var semanticCandidateCount = 0
         var indexStale = false
@@ -634,7 +707,27 @@ final class SearchService {
             readableSharedSourceIDs = nil
         }
 
+        // Batch preload conversations to eliminate N+1 queries during scoring.
+        // Extract all unique conversation sourceIDs from the candidate set.
         var conversationCache: [String: ConversationRecord?] = [:]
+        let conversationSourceIDs = Set(boundedChunkIDs.compactMap { chunkID -> String? in
+            guard let chunk = chunkMap[chunkID],
+                  let document = documentMap[chunk.documentID],
+                  document.sourceKind == .conversation else { return nil }
+            return document.sourceID
+        })
+        if !conversationSourceIDs.isEmpty {
+            do {
+                let batchConversations = try dataStore.fetchConversations(ids: Array(conversationSourceIDs))
+                for conv in batchConversations {
+                    conversationCache[conv.id] = conv
+                }
+            } catch {
+                indexStale = true
+                indexStaleError = indexStaleError ?? error.localizedDescription
+            }
+        }
+
         var scoredResults: [RetrievalResult] = []
         scoredResults.reserveCapacity(boundedChunkIDs.count)
 
@@ -651,20 +744,7 @@ final class SearchService {
 
             let conversation: ConversationRecord?
             if document.sourceKind == .conversation {
-                if let cached = conversationCache[document.sourceID] {
-                    conversation = cached
-                } else {
-                    do {
-                        let loaded = try dataStore.fetchConversation(id: document.sourceID)
-                        conversationCache[document.sourceID] = loaded
-                        conversation = loaded
-                    } catch {
-                        indexStale = true
-                        indexStaleError = indexStaleError ?? error.localizedDescription
-                        conversationCache[document.sourceID] = .some(nil)
-                        conversation = nil
-                    }
-                }
+                conversation = conversationCache[document.sourceID] ?? nil
             } else {
                 conversation = nil
             }
@@ -781,7 +861,7 @@ final class SearchService {
             } catch {
                 // Fall back to pre-rerank order on error; mark health as degraded
                 crossEncoderLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: crossEncoderStartedAt)
-                lastHealthWriteError = "Cross-encoder reranking failed: \(error.localizedDescription)"
+                setLastHealthWriteError("Cross-encoder reranking failed: \(error.localizedDescription)")
                 // scoredResults remains unchanged — this is the graceful fallback
             }
         }
@@ -826,7 +906,7 @@ final class SearchService {
         return dedupedResults
     }
 
-    func search(
+    public func search(
         query: String,
         provider: AgentProvider? = nil,
         projectName: String? = nil,
@@ -948,9 +1028,9 @@ final class SearchService {
                     updatedAt: now
                 )
             )
-            lastHealthWriteError = nil
+            setLastHealthWriteError(nil)
         } catch {
-            lastHealthWriteError = error.localizedDescription
+            setLastHealthWriteError(error.localizedDescription)
         }
     }
 
@@ -978,9 +1058,9 @@ final class SearchService {
                     updatedAt: now
                 )
             )
-            lastHealthWriteError = nil
+            setLastHealthWriteError(nil)
         } catch {
-            lastHealthWriteError = error.localizedDescription
+            setLastHealthWriteError(error.localizedDescription)
         }
     }
 
@@ -1174,26 +1254,6 @@ final class SearchService {
         ]
         return patterns.contains { lower.range(of: $0, options: .regularExpression) != nil }
     }
-}
-
-private struct LexicalRetrievalHealthDetails: Codable {
-    let queryLength: Int
-    let lexicalCandidateCount: Int
-    let semanticCandidateCount: Int
-    let resultCount: Int
-    let indexStale: Bool
-    let semanticFallbackUsed: Bool
-    let totalQueryLatencyMs: Double?
-    let lexicalQueryLatencyMs: Double?
-    let semanticQueryLatencyMs: Double?
-    let rerankLatencyMs: Double?
-    let hydrationLatencyMs: Double?
-    let crossEncoderLatencyMs: Double?
-}
-
-private struct SemanticFallbackHealthDetails: Codable {
-    let queryLength: Int
-    let lexicalCandidateCount: Int
 }
 
 private struct CandidateAccumulator {

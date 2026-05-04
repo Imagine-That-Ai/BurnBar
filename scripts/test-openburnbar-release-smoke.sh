@@ -21,6 +21,7 @@ socket_path="/tmp/openburnbar-release-smoke-$uid.sock"
 launch_plist="/tmp/openburnbar-release-smoke-$uid.plist"
 launch_label="com.openburnbar.daemon.release-smoke"
 log_path="/tmp/openburnbar-release-smoke-$uid.log"
+socket_auth_token="$(uuidgen | tr -d '-' | tr '[:upper:]' '[:lower:]')"
 
 make -C "$repo_root" build
 
@@ -51,6 +52,9 @@ import plistlib
 plist = {
     "Label": "${launch_label}",
     "ProgramArguments": ["${daemon_bin}", "--socket-path", "${socket_path}", "--version", "release-smoke"],
+    "EnvironmentVariables": {
+        "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "${socket_auth_token}"
+    },
     "RunAtLoad": True,
     "KeepAlive": True,
     "WorkingDirectory": "/tmp",
@@ -61,6 +65,7 @@ plist = {
 with Path("${launch_plist}").open("wb") as fh:
     plistlib.dump(plist, fh)
 PY
+chmod 600 "$launch_plist"
 
 cleanup() {
   launchctl bootout "gui/$uid" "$launch_plist" >/dev/null 2>&1 || true
@@ -78,15 +83,23 @@ import socket
 import time
 
 path = "${socket_path}"
+auth_token = "${socket_auth_token}"
 for _ in range(50):
     try:
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         client.connect(path)
-        client.sendall(json.dumps({"id": "health-smoke", "method": "daemon.health"}).encode() + b"\\n")
+        client.sendall(json.dumps({
+            "id": "health-smoke",
+            "method": "daemon.health",
+            "authToken": auth_token
+        }).encode() + b"\\n")
         response = client.recv(65536).decode().strip()
         client.close()
         if not response:
             raise SystemExit("OpenBurnBar daemon returned an empty health response")
+        payload = json.loads(response)
+        if payload.get("error"):
+            raise SystemExit(f"OpenBurnBar daemon health smoke failed: {payload['error']}")
         print(response)
         break
     except Exception:

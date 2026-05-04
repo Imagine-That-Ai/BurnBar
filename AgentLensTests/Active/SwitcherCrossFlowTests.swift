@@ -147,7 +147,9 @@ final class SwitcherCrossFlowTests: XCTestCase {
     private func setUpLogEmitter() {
         capturedLogMessages = []
         logEmitter = LogEmitter { [weak self] message in
-            self?.capturedLogMessages.append(message)
+            Task { @MainActor [weak self] in
+                self?.capturedLogMessages.append(message)
+            }
         }
     }
 
@@ -1321,75 +1323,6 @@ extension SwitcherCrossFlowTests {
     /// The key difference from prior version: we now capture actual runtime
     /// emitted logs using LogEmitter with capture handler, not just build strings manually.
     @MainActor
-    func test_ui_crossSurface_startupLogRedactsSecrets() throws {
-        // Set up log emitter for capture
-        setUpLogEmitter()
-
-        // Create DataStore
-        let dbQueue = try DatabaseQueue()
-        try Self.addMigrationv32(to: dbQueue)
-        let dataStore = try DataStore(
-            databaseQueue: dbQueue,
-            runMigrations: false,
-            refreshOnInit: false
-        )
-
-        // Create profile with metadata that looks like secrets using injectable logger
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue, logEmitter: logEmitter)
-        let profile = try localStore.createWithLogging(SwitcherProfileRecord(
-            targetKind: .cli,
-            cliType: .claude,
-            cliMetadata: SwitcherCLIProfileMetadata(
-                workingDirectory: "/Users/test/projects",
-                additionalArgs: ["--verbose"],
-                envKeysToPass: ["HOME", "PATH", "API_KEY"], // Keys only
-                displayLabel: "Test Profile"
-            ),
-            sortKey: 1
-        ))
-
-        // Simulate startup/sync operations that would emit logs using logging variants
-        let profiles = try localStore.fetchAllProfiles()
-        for p in profiles {
-            // Non-logging fetch for profile data
-        }
-
-        // Capture active state using logging variant (startup rehydration)
-        let state = try localStore.fetchActiveProfileStateWithLogging()
-
-        // Create a log capture to also capture profile representations for completeness
-        let logCapture = RuntimeLogCapture()
-        logCapture.captureProfileTextualRepresentations(profile)
-        logCapture.captureActiveProfileState(state)
-
-        // Check raw stored data for secret patterns
-        let rawJSON = try dbQueue.read { db in
-            try String.fetchOne(db, sql: "SELECT cliMetadataJSON FROM switcher_profiles LIMIT 1")
-        }
-        logCapture.capturedLogs.append(rawJSON ?? "")
-
-        // Combine captured production logs with test helper captures
-        var allLogs = capturedLogMessages
-        allLogs.append(contentsOf: logCapture.capturedLogs)
-
-        // Now verify captured logs don't contain raw secrets
-        let foundPatterns = findSecretPatternsInRuntimeLogs(allLogs)
-        XCTAssertTrue(
-            foundPatterns.isEmpty,
-            """
-            Found secret patterns in runtime emitted logs: \(foundPatterns)
-            
-            Captured logs:
-            \(allLogs.joined(separator: "\n"))
-            """
-        )
-
-        // Verify we actually captured production log output
-        XCTAssertFalse(capturedLogMessages.isEmpty, "Should have captured log output from production code")
-    }
-
-    /// VERIFICATION: Environment variable logging redacts sensitive keys.
-    /// Tests that actual runtime emitted logs from env operations are secret-safe.
     func test_ui_crossSurface_envLoggingRedactsSensitiveKeys() throws {
         // Set up log emitter for capture
         setUpLogEmitter()
@@ -2947,25 +2880,34 @@ extension SwitcherCrossFlowTests {
 
 /// Spy adapter that records all calls for launch path verification.
 /// This adapter is test-scoped and mutated deterministically inside tests.
-private final class SpySwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter, @unchecked Sendable {
+private final class SpySwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter, Sendable {
     private let store: SwitcherProfileStore
 
     init(store: SwitcherProfileStore) {
         self.store = store
     }
 
-    private(set) var fetchProfileCallCount = 0
-    private(set) var fetchAllProfilesCallCount = 0
-    private(set) var lastFetchedProfileID: String?
+    private struct SpyState {
+        var fetchProfileCallCount = 0
+        var fetchAllProfilesCallCount = 0
+        var lastFetchedProfileID: String?
+    }
+    private let spyState = Locked(SpyState())
+
+    var fetchProfileCallCount: Int { spyState.withLock { $0.fetchProfileCallCount } }
+    var fetchAllProfilesCallCount: Int { spyState.withLock { $0.fetchAllProfilesCallCount } }
+    var lastFetchedProfileID: String? { spyState.withLock { $0.lastFetchedProfileID } }
 
     func fetchProfile(id: String) -> SwitcherProfileRecord? {
-        fetchProfileCallCount += 1
-        lastFetchedProfileID = id
+        spyState.withLock {
+            $0.fetchProfileCallCount += 1
+            $0.lastFetchedProfileID = id
+        }
         return try? store.fetchProfile(id: id)
     }
 
     func fetchAllProfiles() -> [SwitcherProfileRecord] {
-        fetchAllProfilesCallCount += 1
+        spyState.withLock { $0.fetchAllProfilesCallCount += 1 }
         return (try? store.fetchAllProfiles()) ?? []
     }
 

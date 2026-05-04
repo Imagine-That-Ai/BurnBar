@@ -13,7 +13,7 @@ OpenBurnBar is more than the macOS app:
 | MCP helper (optional) | `tools/openburnbar-mcp/` | Read-only SQLite bridge for MCP clients |
 
 Canonical architecture: [docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md](docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md).  
-Support tiers (core vs experimental vs parked tests): [README.md](README.md) and [AgentLensTests/README.md](AgentLensTests/README.md).
+Support tiers (core vs experimental vs quarantined tests): [README.md](README.md) and [AgentLensTests/README.md](AgentLensTests/README.md).
 
 **AI coding agents** (Cursor, Claude Code, Codex, etc.): read **[AGENTS.md](AGENTS.md)** first — completion standard, testing and documentation expectations, and scope discipline. **[CLAUDE.md](CLAUDE.md)** mirrors the same bar for tools that prefer that filename.
 
@@ -48,7 +48,27 @@ AgentLens/
 
 - **Xcode project** is generated from **`project.yml`** (XcodeGen). After editing `project.yml`, run `xcodegen generate` if you maintain `OpenBurnBar.xcodeproj` locally.
 - **Swift packages**: `swift test --package-path OpenBurnBarCore`, `swift test --package-path OpenBurnBarDaemon`.
-- **App tests**: `./scripts/test-openburnbar-app.sh` runs **`OpenBurnBarTests` only** — the target compiles `AgentLensTests/Active/**` plus `AgentLensTests/Support/**`; anything under `AgentLensTests/Parked/**` is archival until re-enabled.
+- **App tests**: `./scripts/test-openburnbar-app.sh` runs **`OpenBurnBarTests` only** — the target compiles `AgentLensTests/Active/**` plus `AgentLensTests/Support/**`; anything under `AgentLensTests/Quarantine/**` is archival until fixed and moved back to `Active/`.
+
+### Stale Xcode caches after shared-core migrations
+
+After large `OpenBurnBarCore` migrations (new public types, fields, or
+provider/account contracts), Xcode and SwiftPM occasionally hold stale
+binary artifacts that surface as ghost errors like *"value of type 'X' has
+no member 'Y'"* or XCFramework symbol mismatches between the macOS and
+iOS targets. If the on-disk source clearly defines the missing member but
+the build keeps failing, run:
+
+```sh
+./scripts/clear-xcode-caches.sh            # full reset (DerivedData + SwiftPM + device support)
+./scripts/clear-xcode-caches.sh --dry-run  # preview the plan first
+./scripts/clear-xcode-caches.sh --derived-only
+./scripts/clear-xcode-caches.sh --packages
+./scripts/clear-xcode-caches.sh --xcframeworks
+```
+
+Every cache the script touches is recreated by Xcode on the next build;
+the operation is safe and idempotent.
 
 ## Adding a New Provider Parser
 

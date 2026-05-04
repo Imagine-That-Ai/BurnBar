@@ -10,6 +10,8 @@ struct ProvidersSettingsView: View {
     @State private var quotaService = ProviderQuotaService.shared
 
     @State private var wizardProviderID: ProviderWizardTarget?
+    @State private var providerAccounts: [ProviderAccountDoc] = []
+    @State private var providerAccountLoadError: String?
 
     private var providers: [AgentProvider] {
         AgentProvider.allCases.sorted { $0.displayName < $1.displayName }
@@ -65,6 +67,10 @@ struct ProvidersSettingsView: View {
                     quotaSourceSummary: quotaSourceSummary(for:)
                 )
 
+                SettingsSectionHeader(title: "Provider Accounts")
+
+                providerAccountsSection
+
                 SettingsSectionHeader(title: "CLI Connections")
 
                 CLIConnectionsSettingsSection()
@@ -102,7 +108,276 @@ struct ProvidersSettingsView: View {
         }
         .task {
             await daemonManager.refreshHealth()
+            loadProviderAccounts()
+            await quotaService.refreshIfNeeded(dataStore: dataStore)
         }
+    }
+
+    @ViewBuilder
+    private var providerAccountsSection: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Account inventory")
+                            .font(DesignSystem.Typography.body)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("Each provider can hold multiple accounts. OpenBurnBar shows where each one is stored and who refreshes its quota — credentials never appear here.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: DesignSystem.Spacing.md)
+
+                    Button {
+                        loadProviderAccounts()
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Re-read provider accounts from this Mac's local store")
+                    .accessibilityLabel("Refresh provider accounts")
+                }
+
+                if let providerAccountLoadError {
+                    HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(DesignSystem.Colors.error)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Could not load provider accounts")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            Text(providerAccountLoadError)
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                    }
+                    .padding(DesignSystem.Spacing.md)
+                    .background(DesignSystem.Colors.error.opacity(0.08))
+                    .clipShape(.rect(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+                } else if providerAccounts.isEmpty {
+                    providerAccountsEmptyState
+                } else {
+                    VStack(spacing: DesignSystem.Spacing.md) {
+                        ForEach(groupedProviderAccounts, id: \.providerID) { group in
+                            providerAccountGroup(providerID: group.providerID, accounts: group.accounts)
+                        }
+                    }
+                }
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+    }
+
+    private var providerAccountsEmptyState: some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.whimsy.opacity(0.10))
+                    .frame(width: 36, height: 36)
+                Image(systemName: "person.crop.circle.badge.plus")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.whimsy)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("No provider accounts yet")
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("Connect a provider plan above or sign in on iPhone to start populating this list. Plans saved in the daemon appear here as Mac Keychain accounts.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surfaceElevated.opacity(0.40))
+        .clipShape(.rect(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+    }
+
+    private var groupedProviderAccounts: [(providerID: ProviderID, accounts: [ProviderAccountDoc])] {
+        Dictionary(grouping: providerAccounts, by: \.providerID)
+            .map { providerID, accounts in
+                (
+                    providerID,
+                    accounts.sorted {
+                        if $0.status != $1.status {
+                            return statusSortOrder($0.status) < statusSortOrder($1.status)
+                        }
+                        if $0.isDefault != $1.isDefault { return $0.isDefault && !$1.isDefault }
+                        if $0.sortKey != $1.sortKey { return $0.sortKey < $1.sortKey }
+                        return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+                    }
+                )
+            }
+            .sorted { providerDisplayName($0.providerID) < providerDisplayName($1.providerID) }
+    }
+
+    @ViewBuilder
+    private func providerAccountGroup(providerID: ProviderID, accounts: [ProviderAccountDoc]) -> some View {
+        let provider = AgentProvider.fromProviderID(providerID)
+        let activeAccounts = accounts.filter { $0.status != .deleted }
+        let removedAccounts = accounts.filter { $0.status == .deleted }
+        let routingState = quotaService.routingStatesByProviderID[providerID]
+
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
+                if let provider {
+                    ZStack {
+                        Circle()
+                            .fill(DesignSystem.Colors.primary(for: provider).opacity(0.12))
+                            .frame(width: 28, height: 28)
+                        ProviderLogoView(provider: provider, size: 18, useFallbackColor: false)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(providerDisplayName(providerID))
+                        .font(DesignSystem.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(activeAccountSummary(activeAccounts))
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                Spacer(minLength: DesignSystem.Spacing.sm)
+                ProviderAccountStorageSummary(accounts: activeAccounts)
+            }
+
+            if let provider,
+               let routingState,
+               shouldShowCockpit(activeAccounts: activeAccounts, routingState: routingState) {
+                ProviderRoutingCockpit(provider: provider, state: routingState)
+            }
+
+            if activeAccounts.isEmpty {
+                Text("All accounts for this provider have been removed.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .padding(.leading, 36)
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(activeAccounts) { account in
+                        ProviderAccountRow(
+                            account: account,
+                            routingHint: routingHint(for: account, in: routingState)
+                        )
+                    }
+                }
+            }
+
+            if !removedAccounts.isEmpty {
+                DisclosureGroup {
+                    VStack(spacing: 6) {
+                        ForEach(removedAccounts) { account in
+                            ProviderAccountRow(account: account)
+                                .opacity(0.6)
+                        }
+                    }
+                    .padding(.top, DesignSystem.Spacing.xs)
+                } label: {
+                    Text("\(removedAccounts.count) removed account\(removedAccounts.count == 1 ? "" : "s")")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                .padding(.leading, 36)
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surfaceElevated.opacity(0.30))
+        .clipShape(.rect(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
+        )
+    }
+
+    private func activeAccountSummary(_ accounts: [ProviderAccountDoc]) -> String {
+        let count = accounts.count
+        if count == 0 { return "No accounts connected" }
+        let stale = accounts.filter { $0.status == .stale }.count
+        let errors = accounts.filter { $0.status == .error }.count
+        var parts: [String] = ["\(count) account\(count == 1 ? "" : "s")"]
+        if errors > 0 { parts.append("\(errors) needs attention") }
+        else if stale > 0 { parts.append("\(stale) stale") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func statusSortOrder(_ status: ProviderAccountStatus) -> Int {
+        switch status {
+        case .error: return 0
+        case .stale: return 1
+        case .connected: return 2
+        case .disconnected: return 3
+        case .disabled: return 4
+        case .deleted: return 5
+        }
+    }
+
+    private func loadProviderAccounts() {
+        do {
+            providerAccounts = try dataStore.providerAccountStore.fetchAll()
+            providerAccountLoadError = nil
+        } catch {
+            providerAccounts = []
+            providerAccountLoadError = error.localizedDescription
+        }
+        quotaService.refreshRoutingState(dataStore: dataStore)
+    }
+
+    private func providerDisplayName(_ providerID: ProviderID) -> String {
+        AgentProvider.fromProviderID(providerID)?.displayName ?? providerID.rawValue
+    }
+
+    /// The cockpit only earns its space when it actually adds information.
+    /// A single, healthy account already says everything via its row chips, so
+    /// we suppress the cockpit there to keep the Settings list calm. As soon
+    /// as there are multiple accounts, or any blocked/non-healthy account
+    /// across the group, the cockpit appears so the user can see who is on
+    /// deck and why.
+    private func shouldShowCockpit(
+        activeAccounts: [ProviderAccountDoc],
+        routingState: ProviderRoutingStateSnapshot
+    ) -> Bool {
+        guard !activeAccounts.isEmpty else { return false }
+        if activeAccounts.count > 1 { return true }
+        return routingState.hasMeaningfulRoutingDetail
+    }
+
+    /// Picks the per-account hint shown next to a settings row so the same
+    /// account reads consistently between the routing cockpit, the storage
+    /// chip, and the row footer.
+    private func routingHint(
+        for account: ProviderAccountDoc,
+        in state: ProviderRoutingStateSnapshot?
+    ) -> ProviderAccountRoutingHint? {
+        guard let state else { return nil }
+        if state.activeAccount?.accountID == account.id {
+            return ProviderAccountRoutingHint(
+                role: .active,
+                quotaState: state.activeAccount?.quotaState ?? .unknown,
+                cooldownUntil: state.activeAccount?.cooldownUntil
+            )
+        }
+        if state.nextFallback?.accountID == account.id {
+            return ProviderAccountRoutingHint(
+                role: .nextFallback,
+                quotaState: state.nextFallback?.quotaState ?? .unknown,
+                cooldownUntil: state.nextFallback?.cooldownUntil
+            )
+        }
+        if let blocked = state.exhaustedOrCoolingDownAccounts.first(where: { $0.accountID == account.id }) {
+            return ProviderAccountRoutingHint(
+                role: .blocked,
+                quotaState: blocked.quotaState,
+                cooldownUntil: blocked.cooldownUntil
+            )
+        }
+        return nil
     }
 
     // MARK: - Provider Card
@@ -219,6 +494,229 @@ struct ProvidersSettingsView: View {
 private struct ProviderWizardTarget: Identifiable {
     let providerID: String
     var id: String { providerID }
+}
+
+// MARK: - Provider Account Row
+
+/// Tells the settings row which lane an account currently occupies in the
+/// router. Allows the row to mirror cockpit copy without re-deriving routing
+/// state on every redraw.
+struct ProviderAccountRoutingHint {
+    enum Role {
+        case active
+        case nextFallback
+        case blocked
+    }
+
+    let role: Role
+    let quotaState: ProviderRoutingQuotaState
+    let cooldownUntil: Date?
+}
+
+private struct ProviderAccountRow: View {
+    let account: ProviderAccountDoc
+    var routingHint: ProviderAccountRoutingHint?
+
+    private var statusTint: Color {
+        ProviderAccountStatusVisual.tint(account.status)
+    }
+
+    private var detailLine: String? {
+        // Prefer human-readable identity hint over the redacted credential
+        // descriptor, but never both. Empty values fall back to nil so the
+        // row collapses cleanly under Dynamic Type.
+        let hint = account.identityHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let hint, !hint.isEmpty, hint != account.label {
+            return hint
+        }
+        let redacted = account.redactedLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !redacted.isEmpty, redacted != account.label {
+            return redacted
+        }
+        return nil
+    }
+
+    private var refreshSubtext: String? {
+        if account.status == .deleted {
+            return "Removed from this Mac. Quota refresh is paused."
+        }
+        if let lastError = account.lastErrorCode?.trimmingCharacters(in: .whitespacesAndNewlines), !lastError.isEmpty {
+            return "Last error: \(lastError)"
+        }
+        if let last = account.lastRefreshAt {
+            return "Refreshed \(last.formatted(.relative(presentation: .named)))"
+        }
+        if let validated = account.lastValidatedAt {
+            return "Validated \(validated.formatted(.relative(presentation: .named)))"
+        }
+        return nil
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+            // Left rail: status indicator
+            VStack(spacing: 0) {
+                Circle()
+                    .fill(statusTint)
+                    .frame(width: 8, height: 8)
+                    .padding(.top, 6)
+            }
+            .frame(width: 12)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.xs) {
+                    Text(account.label)
+                        .font(DesignSystem.Typography.body)
+                        .fontWeight(.medium)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    if account.isDefault {
+                        Text("Default")
+                            .font(DesignSystem.Typography.tiny)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.blaze)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(DesignSystem.Colors.blaze.opacity(0.12))
+                            .clipShape(Capsule())
+                            .accessibilityLabel("Default account for this provider")
+                    }
+
+                    if let routingHint {
+                        routingHintChip(routingHint)
+                    }
+
+                    Spacer(minLength: DesignSystem.Spacing.sm)
+
+                    ProviderAccountStatusChip(status: account.status, compact: true)
+                }
+
+                if let detailLine {
+                    Text(detailLine)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    ProviderAccountStorageChip(scope: account.storageScope, compact: true)
+
+                    if let refreshSubtext {
+                        Text("·")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                        Text(refreshSubtext)
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(account.status == .error ? DesignSystem.Colors.warning : DesignSystem.Colors.textMuted)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.sm)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.background.opacity(0.45))
+        .clipShape(.rect(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.30), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(Text(ProviderAccountStorage.description(account.storageScope)))
+    }
+
+    private var accessibilityLabel: String {
+        var parts: [String] = [account.label]
+        if account.isDefault { parts.append("default") }
+        if let routingHint {
+            parts.append(routingHintAccessibilityFragment(routingHint))
+        }
+        parts.append(ProviderAccountStatusVisual.label(account.status))
+        parts.append("stored in \(ProviderAccountStorage.label(account.storageScope))")
+        if let hint = account.identityHint, !hint.isEmpty, hint != account.label {
+            parts.append(hint)
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    @ViewBuilder
+    private func routingHintChip(_ hint: ProviderAccountRoutingHint) -> some View {
+        let style = routingHintStyle(hint)
+        HStack(spacing: 3) {
+            Image(systemName: style.icon)
+                .font(.system(size: 9, weight: .semibold))
+            Text(style.label)
+                .font(DesignSystem.Typography.tiny)
+                .fontWeight(.semibold)
+        }
+        .foregroundStyle(style.tint)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(style.tint.opacity(0.12))
+        .clipShape(Capsule())
+        .help(style.help)
+    }
+
+    private struct RoutingHintStyle {
+        let label: String
+        let icon: String
+        let tint: Color
+        let help: String
+    }
+
+    private func routingHintStyle(_ hint: ProviderAccountRoutingHint) -> RoutingHintStyle {
+        switch hint.role {
+        case .active:
+            return RoutingHintStyle(
+                label: "Active now",
+                icon: "arrowtriangle.right.circle.fill",
+                tint: DesignSystem.Colors.success,
+                help: "Router is sending traffic to this account."
+            )
+        case .nextFallback:
+            return RoutingHintStyle(
+                label: "Next fallback",
+                icon: "arrow.triangle.branch",
+                tint: DesignSystem.Colors.amber,
+                help: "Router will switch to this account if the active one becomes unavailable."
+            )
+        case .blocked:
+            return RoutingHintStyle(
+                label: ProviderRoutingVisual.label(hint.quotaState),
+                icon: ProviderRoutingVisual.iconName(hint.quotaState),
+                tint: ProviderRoutingVisual.tint(hint.quotaState),
+                help: blockedHintHelp(hint)
+            )
+        }
+    }
+
+    private func blockedHintHelp(_ hint: ProviderAccountRoutingHint) -> String {
+        var parts = [ProviderRoutingVisual.label(hint.quotaState)]
+        if let cooldown = hint.cooldownUntil, cooldown > Date() {
+            parts.append("Resumes \(cooldown.formatted(.relative(presentation: .named)))")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func routingHintAccessibilityFragment(_ hint: ProviderAccountRoutingHint) -> String {
+        switch hint.role {
+        case .active:
+            return "currently active"
+        case .nextFallback:
+            return "next fallback"
+        case .blocked:
+            return "blocked: \(ProviderRoutingVisual.label(hint.quotaState).lowercased())"
+        }
+    }
 }
 
 private struct ProviderObservationRow: View {

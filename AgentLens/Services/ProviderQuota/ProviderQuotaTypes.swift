@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Quota Domain
 
@@ -38,6 +39,9 @@ enum ProviderQuotaUnit: String, Codable {
     case percent
     case requests
     case tokens
+    case sessions
+    case lines
+    case files
     case count
 
     var shortLabel: String {
@@ -45,6 +49,9 @@ enum ProviderQuotaUnit: String, Codable {
         case .percent: return "%"
         case .requests: return "req"
         case .tokens: return "tok"
+        case .sessions: return "sessions"
+        case .lines: return "lines"
+        case .files: return "files"
         case .count: return ""
         }
     }
@@ -56,6 +63,7 @@ enum ProviderQuotaWindowKind: String, Codable {
     case daily
     case weekly
     case monthly
+    case lifetime
     case custom
 }
 
@@ -134,7 +142,7 @@ struct ProviderQuotaBucket: Codable, Hashable, Identifiable {
                 return String(format: "%.1fK", value / 1_000)
             }
             return "\(Int(value.rounded()))"
-        case .requests, .count:
+        case .requests, .sessions, .lines, .files, .count:
             if value >= 1_000 {
                 return String(format: "%.1fK", value / 1_000)
             }
@@ -148,12 +156,112 @@ struct ProviderQuotaBucket: Codable, Hashable, Identifiable {
 
 struct ProviderQuotaSnapshot: Codable, Hashable {
     let provider: AgentProvider
+    let providerID: ProviderID
+    let accountID: String?
+    let accountLabel: String?
+    let accountStorageScope: ProviderAccountStorageScope?
     let fetchedAt: Date
     let source: ProviderQuotaSourceKind
+    /// Backend-compatible source kind (new field; defaults to `source` for backward compat).
+    var sourceKind: ProviderQuotaSourceKind { source }
+    /// Source identifier — device ID for desktop, credential ID for backend.
+    let sourceId: String
+    var sourceID: String { sourceId }
+    /// Firestore payload schema for cross-surface quota snapshots.
+    let schemaVersion: Int
     let confidence: ProviderQuotaConfidence
     let managementURL: String?
     let statusMessage: String
     let buckets: [ProviderQuotaBucket]
+
+    init(
+        provider: AgentProvider,
+        providerID: ProviderID? = nil,
+        accountID: String? = nil,
+        accountLabel: String? = nil,
+        accountStorageScope: ProviderAccountStorageScope? = nil,
+        fetchedAt: Date,
+        source: ProviderQuotaSourceKind,
+        sourceId: String? = nil,
+        confidence: ProviderQuotaConfidence,
+        managementURL: String?,
+        statusMessage: String,
+        buckets: [ProviderQuotaBucket],
+        schemaVersion: Int = 2
+    ) {
+        self.provider = provider
+        self.providerID = providerID ?? provider.providerID
+        self.accountID = accountID
+        self.accountLabel = accountLabel
+        self.accountStorageScope = accountStorageScope
+        self.fetchedAt = fetchedAt
+        self.source = source
+        self.sourceId = sourceId ?? accountID ?? "default"
+        self.confidence = confidence
+        self.managementURL = managementURL
+        self.statusMessage = statusMessage
+        self.buckets = buckets
+        self.schemaVersion = schemaVersion
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case provider
+        case providerID
+        case accountID
+        case accountLabel
+        case accountStorageScope
+        case fetchedAt
+        case source
+        case sourceKind
+        case sourceId
+        case sourceID
+        case schemaVersion
+        case confidence
+        case managementURL
+        case statusMessage
+        case buckets
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let provider = try container.decode(AgentProvider.self, forKey: .provider)
+        self.provider = provider
+        self.providerID = try container.decodeIfPresent(ProviderID.self, forKey: .providerID) ?? provider.providerID
+        self.accountID = try container.decodeIfPresent(String.self, forKey: .accountID)
+        self.accountLabel = try container.decodeIfPresent(String.self, forKey: .accountLabel)
+        self.accountStorageScope = try container.decodeIfPresent(ProviderAccountStorageScope.self, forKey: .accountStorageScope)
+        self.fetchedAt = try container.decode(Date.self, forKey: .fetchedAt)
+        let decodedSource = try container.decodeIfPresent(ProviderQuotaSourceKind.self, forKey: .source)
+        let decodedSourceKind = try container.decodeIfPresent(ProviderQuotaSourceKind.self, forKey: .sourceKind)
+        self.source = decodedSource ?? decodedSourceKind ?? .unavailable
+        let decodedSourceId = try container.decodeIfPresent(String.self, forKey: .sourceId)
+        let decodedSourceID = try container.decodeIfPresent(String.self, forKey: .sourceID)
+        self.sourceId = decodedSourceId ?? decodedSourceID ?? accountID ?? "default"
+        self.schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        self.confidence = try container.decode(ProviderQuotaConfidence.self, forKey: .confidence)
+        self.managementURL = try container.decodeIfPresent(String.self, forKey: .managementURL)
+        self.statusMessage = try container.decode(String.self, forKey: .statusMessage)
+        self.buckets = try container.decodeIfPresent([ProviderQuotaBucket].self, forKey: .buckets) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(provider, forKey: .provider)
+        try container.encode(providerID, forKey: .providerID)
+        try container.encodeIfPresent(accountID, forKey: .accountID)
+        try container.encodeIfPresent(accountLabel, forKey: .accountLabel)
+        try container.encodeIfPresent(accountStorageScope, forKey: .accountStorageScope)
+        try container.encode(fetchedAt, forKey: .fetchedAt)
+        try container.encode(source, forKey: .source)
+        try container.encode(source, forKey: .sourceKind)
+        try container.encode(sourceId, forKey: .sourceId)
+        try container.encode(sourceId, forKey: .sourceID)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(confidence, forKey: .confidence)
+        try container.encodeIfPresent(managementURL, forKey: .managementURL)
+        try container.encode(statusMessage, forKey: .statusMessage)
+        try container.encode(buckets, forKey: .buckets)
+    }
 
     var managementLink: URL? {
         guard let managementURL else { return nil }
@@ -198,6 +306,30 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
 
     func isStale(relativeTo now: Date = Date()) -> Bool {
         now.timeIntervalSince(fetchedAt) > 12 * 60 * 60
+    }
+
+    func withAccountMetadata(
+        providerID: ProviderID,
+        accountID: String,
+        accountLabel: String?,
+        accountStorageScope: ProviderAccountStorageScope,
+        sourceId: String
+    ) -> ProviderQuotaSnapshot {
+        ProviderQuotaSnapshot(
+            provider: provider,
+            providerID: providerID,
+            accountID: accountID,
+            accountLabel: accountLabel,
+            accountStorageScope: accountStorageScope,
+            fetchedAt: fetchedAt,
+            source: source,
+            sourceId: sourceId,
+            confidence: confidence,
+            managementURL: managementURL,
+            statusMessage: statusMessage,
+            buckets: buckets,
+            schemaVersion: schemaVersion
+        )
     }
 
     /// Returns the bucket representing the hourly/5h window (windowKind == .rollingHours)

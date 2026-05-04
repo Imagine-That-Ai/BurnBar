@@ -508,9 +508,25 @@ private struct ProviderListRow: View {
                         .font(DesignSystem.Typography.body)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                    Text("\(summary.sessionCount) session\(summary.sessionCount == 1 ? "" : "s")")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    HStack(spacing: DesignSystem.Spacing.xs) {
+                        Text("\(summary.sessionCount) session\(summary.sessionCount == 1 ? "" : "s")")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                        if summary.cacheEfficiency.hasSignal {
+                            let tier = CacheHitRateTier(summary.cacheEfficiency)
+                            HStack(spacing: 3) {
+                                Circle()
+                                    .fill(tier.color)
+                                    .frame(width: 4, height: 4)
+                                Text("\(summary.cacheEfficiency.formattedHitRate) cache")
+                                    .font(DesignSystem.Typography.tiny)
+                                    .foregroundStyle(tier.color)
+                                    .monospacedDigit()
+                            }
+                            .help("Cache hit rate for \(summary.provider.displayName)")
+                        }
+                    }
                 }
 
                 Spacer()

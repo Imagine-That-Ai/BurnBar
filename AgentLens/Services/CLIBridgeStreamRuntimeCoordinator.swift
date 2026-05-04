@@ -19,6 +19,12 @@ actor CLIBridgeStreamRuntimeCoordinator {
         runningProcess = nil
     }
 
+    func cancelRunningProcess(token: UInt64) {
+        guard runningProcessToken == token else { return }
+        runningProcess?.terminate()
+        runningProcess = nil
+    }
+
     func nextHTTPStreamID() -> UInt64 {
         nextHTTPStreamToken += 1
         return nextHTTPStreamToken
@@ -33,6 +39,13 @@ actor CLIBridgeStreamRuntimeCoordinator {
     func clearHTTPStreamTask(streamID: UInt64) {
         guard activeHTTPStreamToken == streamID else { return }
         httpStreamTask = nil
+    }
+
+    func cancelHTTPStreamTask(streamID: UInt64) {
+        guard activeHTTPStreamToken == streamID else { return }
+        httpStreamTask?.cancel()
+        httpStreamTask = nil
+        activeHTTPStreamToken = 0
     }
 
     func cancelAll() {

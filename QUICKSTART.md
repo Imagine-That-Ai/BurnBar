@@ -98,9 +98,10 @@ To try the extension locally:
 2. Add a macOS app with bundle ID `com.openburnbar.app`
 3. Enable Google and/or Apple Sign-In
 4. Set up Firestore with the rules from `firestore.rules` so both `users/{uid}/...` sync and the current shared-artifact path `workspaces/workspace-{uid}/teams/team-default/artifacts/...` are allowed for the signed-in owner
-5. Download `GoogleService-Info.plist` → `AgentLens/Resources/GoogleService-Info.plist`
-6. Add your **DEVELOPMENT_TEAM** to `project.yml` under the OpenBurnBar target
-7. Rebuild
+5. In Firebase, **enforce App Check for Cloud Firestore** and register any CI/local [debug token](docs/RELEASE_MACOS.md) per [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md)
+6. Download `GoogleService-Info.plist` → `AgentLens/Resources/GoogleService-Info.plist`
+7. Add your **DEVELOPMENT_TEAM** to `project.yml` under the OpenBurnBar target
+8. Rebuild
 
 With cloud sync enabled today, OpenBurnBar uploads usage rows and in-app OpenBurnBar chat threads for cross-device resume. The current source release also syncs shared-artifact heads/revisions through an owner-scoped Firestore path. Conversation metadata backup and full session-log backup are controlled separately in Settings.
 

@@ -42,6 +42,24 @@ public struct CLIAuthInfo: Identifiable, Equatable, Sendable {
         self.configDirectory = configDirectory
         self.accountDescription = accountDescription
     }
+
+    public init(
+        cliType: SwitcherCLIProfileType,
+        authState: CLIAuthState,
+        isInstalled: Bool,
+        accountDescription: String?,
+        configDirectory: String?,
+        executablePath: String?
+    ) {
+        self.init(
+            cliType: cliType,
+            isInstalled: isInstalled,
+            executablePath: executablePath,
+            authState: authState,
+            configDirectory: configDirectory,
+            accountDescription: accountDescription
+        )
+    }
 }
 
 // MARK: - CLI Auth Discovery
@@ -52,6 +70,12 @@ public struct CLIAuthInfo: Identifiable, Equatable, Sendable {
 /// Raw API keys, OAuth tokens, and credentials are never stored or surfaced.
 /// When token-backed auth is present, only safe identity claims like name/email
 /// are extracted in-memory for UI labels.
+///
+/// Platform note: this enum drives the Mac-side CLI auth panel. The active
+/// surface relies on Mac-only Foundation APIs (`Process`,
+/// `homeDirectoryForCurrentUser`) and the Mac-only `CLILaunchAdapter`. iOS
+/// builds (`OpenBurnBarMobile`) ship the type as a no-op so this file can
+/// stay in the shared `OpenBurnBarCore` package.
 public enum CLIAuthDiscovery {
 
     /// Scans all CLI types and returns their auth states.
@@ -66,6 +90,19 @@ public enum CLIAuthDiscovery {
         for cliType: SwitcherCLIProfileType,
         configDirectoryOverride: String? = nil
     ) -> CLIAuthInfo {
+        #if !os(macOS)
+        // iOS / non-Mac builds never run CLIs locally. Return an "unauthenticated"
+        // record so the iOS app can still surface CLI provider summaries
+        // without depending on AppKit-only Foundation APIs.
+        return CLIAuthInfo(
+            cliType: cliType,
+            isInstalled: false,
+            executablePath: nil,
+            authState: .notInstalled,
+            configDirectory: nil,
+            accountDescription: nil
+        )
+        #else
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let executablePath = CLILaunchAdapter.executablePath(for: cliType)
 
@@ -118,6 +155,7 @@ public enum CLIAuthDiscovery {
                 authState: executablePath != nil ? .notAuthenticated : .notInstalled
             )
         }
+        #endif
     }
 
     // MARK: - Codex Auth Detection
@@ -386,6 +424,7 @@ public enum CLIAuthDiscovery {
         environment: [String: String] = [:],
         timeout: TimeInterval
     ) -> Data? {
+        #if os(macOS)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executablePath)
         process.arguments = arguments
@@ -399,7 +438,7 @@ public enum CLIAuthDiscovery {
         process.standardError = Pipe()
 
         let semaphore = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in
+        process.terminationHandler = { (_: Process) in
             semaphore.signal()
         }
 
@@ -419,6 +458,10 @@ public enum CLIAuthDiscovery {
         }
 
         return stdout.fileHandleForReading.readDataToEndOfFile()
+        #else
+        // iOS / non-Mac targets do not run local CLIs.
+        return nil
+        #endif
     }
 
     // MARK: - Date Parsing

@@ -240,6 +240,7 @@ struct SummarizingStatusStrip: View {
             case .openrouter: return .openAI
             case .minimax: return .miniMax
             case .zai: return .qwen
+            case .ollama: return .ollama
             case .mlx: return .apple
             case .local, nil: return .unknown
             }

@@ -12,6 +12,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         let providerIDs = snapshot.providers.map(\.providerID)
         XCTAssertTrue(providerIDs.contains("zai"), "Expected zai in defaults")
         XCTAssertTrue(providerIDs.contains("minimax"), "Expected minimax in defaults")
+        XCTAssertTrue(providerIDs.contains("ollama"), "Expected ollama in defaults")
         XCTAssertTrue(providerIDs.contains("anthropic"), "Expected anthropic in defaults")
         XCTAssertTrue(providerIDs.contains("openai"), "Expected openai in defaults")
         XCTAssertEqual(snapshot.providerSettings(id: "zai")?.preferredModelIDs, ["glm-5-turbo", "glm-5"])

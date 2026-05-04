@@ -41,8 +41,8 @@ final class ConversationSyncService: CloudSyncDomain {
                 return
             }
 
-            let batch = context.db.batch()
-            let collectionRef = context.db.collection("users").document(uid).collection("conversations")
+            let batch = context.firestoreGateway.batch()
+            let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("conversations")
 
             for record in unsynced {
                 let docId = "\(context.deviceId)_\(record.id)"
@@ -51,7 +51,13 @@ final class ConversationSyncService: CloudSyncDomain {
                 batch.setData(data, forDocument: docRef, merge: true)
             }
 
-            try await batch.commit()
+            try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "conversation"
+            ) {
+                try await batch.commit()
+            }
 
             let ids = unsynced.map(\.id)
             try context.dataStore.markConversationsSynced(ids: ids)

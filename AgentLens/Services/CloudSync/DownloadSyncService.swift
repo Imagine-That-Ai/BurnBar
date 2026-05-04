@@ -1,6 +1,7 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarCore
 
 /// Sync domain for downloading remote data from Firestore.
 ///
@@ -33,39 +34,52 @@ final class DownloadSyncService: CloudSyncDomain {
         defer { isSyncing = false }
 
         await syncDeviceRegistry(uid: resolvedUid, localDeviceId: localDeviceId)
+        await downloadRemoteProviderAccounts(uid: resolvedUid, localDeviceId: localDeviceId)
         await downloadRemoteUsage(uid: resolvedUid, localDeviceId: localDeviceId)
         let newConversationIds = await downloadRemoteConversations(uid: resolvedUid, localDeviceId: localDeviceId)
         await downloadRemoteSessionLogBodies(uid: resolvedUid, conversationIds: newConversationIds)
         enqueueProjectionForRemoteConversations(newConversationIds)
 
         lastSyncDate = Date()
-        await MainActor.run { context.dataStore.refresh() }
+        await context.dataStore.refresh()
     }
 
     /// Updates the local device name in Firestore (called from Settings).
     func updateLocalDeviceName(_ name: String) async {
         guard context.accountManager.isFirebaseAvailable, let uid = context.currentUID else { return }
-        let devicesRef = context.db.collection("users").document(uid).collection("devices")
+        let devicesRef = context.firestoreGateway.collection("users").document(uid).collection("devices")
         try? await devicesRef.document(context.deviceId).setData(["deviceName": name], merge: true)
     }
 
     // MARK: - Device Registry
 
     private func syncDeviceRegistry(uid: String, localDeviceId: String) async {
-        let devicesRef = context.db.collection("users").document(uid).collection("devices")
+        let devicesRef = context.firestoreGateway.collection("users").document(uid).collection("devices")
         let localName = Host.current().localizedName ?? "This Mac"
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
 
         do {
-            try await devicesRef.document(localDeviceId).setData([
-                "deviceName": localName, "platform": "macOS",
-                "lastActiveAt": FieldValue.serverTimestamp(), "appVersion": version,
-                "hardwareModel": DeviceHardwareIcon.localHardwareModel
-            ], merge: true)
+            try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "download.deviceRegistry.write"
+            ) {
+                try await devicesRef.document(localDeviceId).setData([
+                    "deviceName": localName, "platform": "macOS",
+                    "lastActiveAt": FieldValue.serverTimestamp(), "appVersion": version,
+                    "hardwareModel": DeviceHardwareIcon.localHardwareModel
+                ], merge: true)
+            }
         } catch { /* non-fatal */ }
 
         do {
-            let snapshot = try await devicesRef.getDocuments()
+            let snapshot = try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "download.deviceRegistry.read"
+            ) {
+                try await devicesRef.getDocuments()
+            }
             for doc in snapshot.documents {
                 let data = doc.data()
                 let device = DeviceRecord(
@@ -80,6 +94,79 @@ final class DownloadSyncService: CloudSyncDomain {
                 try context.dataStore.upsertDevice(device)
             }
         } catch { /* non-fatal */ }
+    }
+
+    // MARK: - Provider Account Download
+
+    private func downloadRemoteProviderAccounts(uid: String, localDeviceId: String) async {
+        do {
+            let snapshot = try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "download.providerAccounts"
+            ) {
+                try await context.firestoreGateway
+                    .collection("users")
+                    .document(uid)
+                    .collection("provider_accounts")
+                    .getDocuments()
+            }
+
+            for doc in snapshot.documents {
+                let data = doc.data()
+                guard let account = providerAccount(from: data, documentID: doc.documentID) else { continue }
+
+                if account.sourceDeviceID == localDeviceId,
+                   account.storageScope == .deviceKeychain || account.storageScope == .localOnly {
+                    continue
+                }
+
+                try context.dataStore.providerAccountStore.upsert(account)
+            }
+        } catch { /* non-fatal */ }
+    }
+
+    private func providerAccount(from data: [String: Any], documentID: String) -> ProviderAccountDoc? {
+        guard let providerIDRaw = data["providerID"] as? String,
+              let label = data["label"] as? String,
+              let statusRaw = data["status"] as? String,
+              let status = ProviderAccountStatus(rawValue: statusRaw),
+              let credentialKindRaw = data["credentialKind"] as? String,
+              let credentialKind = CredentialKind(rawValue: credentialKindRaw),
+              let storageScopeRaw = data["storageScope"] as? String,
+              let storageScope = ProviderAccountStorageScope(rawValue: storageScopeRaw),
+              let redactedLabel = data["redactedLabel"] as? String else {
+            return nil
+        }
+
+        let now = Date()
+        return ProviderAccountDoc(
+            id: data["id"] as? String ?? documentID,
+            providerID: ProviderID(rawValue: providerIDRaw),
+            label: label,
+            identityHint: data["identityHint"] as? String,
+            status: status,
+            credentialKind: credentialKind,
+            storageScope: storageScope,
+            redactedLabel: redactedLabel,
+            sourceDeviceID: data["sourceDeviceID"] as? String ?? data["deviceId"] as? String,
+            linkedSwitcherProfileID: data["linkedSwitcherProfileID"] as? String,
+            isDefault: data["isDefault"] as? Bool ?? false,
+            sortKey: data["sortKey"] as? Double ?? Double(data["sortKey"] as? Int ?? 0),
+            lastValidatedAt: dateValue(data["lastValidatedAt"]),
+            lastRefreshAt: dateValue(data["lastRefreshAt"]),
+            lastErrorCode: data["lastErrorCode"] as? String,
+            schemaVersion: data["schemaVersion"] as? Int ?? 1,
+            createdAt: dateValue(data["createdAt"]) ?? now,
+            updatedAt: dateValue(data["updatedAt"]) ?? now
+        )
+    }
+
+    private func dateValue(_ value: Any?) -> Date? {
+        if let timestamp = value as? Timestamp {
+            return timestamp.dateValue()
+        }
+        return value as? Date
     }
 
     // MARK: - Usage Download
@@ -108,17 +195,27 @@ final class DownloadSyncService: CloudSyncDomain {
 
         defer {
             if syncTx.processedCount > 0 {
-                try? syncTx.commit()
+                do {
+                    try syncTx.commit()
+                } catch {
+                    AppLogger.sync.error("download_sync_tx_commit_failed", metadata: ["accountUid": uid, "collectionKind": "usage", "error": String(describing: error)])
+                }
             }
         }
 
         do {
-            var query = context.db.collection("users").document(uid).collection("usage")
+            var query = context.firestoreGateway.collection("users").document(uid).collection("usage")
                 .whereField("startTime", isGreaterThan: Timestamp(date: cutoff))
             if watermark > cutoff {
                 query = query.whereField("updatedAt", isGreaterThan: Timestamp(date: watermark))
             }
-            let snapshot = try await query.getDocuments()
+            let snapshot = try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "download.usage"
+            ) {
+                try await query.getDocuments()
+            }
             let devices = try context.dataStore.fetchDevices()
             let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.deviceId, $0.deviceName) })
 
@@ -133,6 +230,9 @@ final class DownloadSyncService: CloudSyncDomain {
                 let reasoning = data["reasoningTokens"] as? Int ?? 0
                 let srcRaw = data["usageSource"] as? String
                 let usageSource = srcRaw.flatMap { UsageSource(rawValue: $0) } ?? .unknown
+                let providerID = (data["providerID"] as? String).map { ProviderID(rawValue: $0) } ?? provider.providerID
+                let providerAccountSource = (data["providerAccountSource"] as? String)
+                    .flatMap { ProviderAccountStorageScope(rawValue: $0) }
 
                 let usage = TokenUsage(
                     id: id, provider: provider, sessionId: sessionId,
@@ -150,6 +250,10 @@ final class DownloadSyncService: CloudSyncDomain {
                     sourceDeviceId: remoteDeviceId,
                     sourceDeviceName: nameMap[remoteDeviceId] ?? remoteDeviceId,
                     isRemote: true,
+                    providerID: providerID,
+                    providerAccountID: data["providerAccountID"] as? String,
+                    providerAccountLabel: data["providerAccountLabel"] as? String,
+                    providerAccountSource: providerAccountSource,
                     provenanceMethod: .cloudSync,
                     provenanceConfidence: .exact
                 )
@@ -188,20 +292,30 @@ final class DownloadSyncService: CloudSyncDomain {
 
         defer {
             if syncTx.processedCount > 0 {
-                try? syncTx.commit()
+                do {
+                    try syncTx.commit()
+                } catch {
+                    AppLogger.sync.error("download_sync_tx_commit_failed", metadata: ["accountUid": uid, "collectionKind": "conversations", "error": String(describing: error)])
+                }
             }
         }
 
         do {
-            var query: Query
+            var query: any CloudSyncQueryGateway
             if watermark > Date.distantPast {
-                query = context.db.collection("users").document(uid).collection("conversations")
+                query = context.firestoreGateway.collection("users").document(uid).collection("conversations")
                     .whereField("updatedAt", isGreaterThan: Timestamp(date: watermark)).limit(to: 500)
             } else {
-                query = context.db.collection("users").document(uid).collection("conversations")
+                query = context.firestoreGateway.collection("users").document(uid).collection("conversations")
                     .order(by: "updatedAt", descending: true).limit(to: 500)
             }
-            let snapshot = try await query.getDocuments()
+            let snapshot = try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "download.conversations"
+            ) {
+                try await query.getDocuments()
+            }
             let devices = try context.dataStore.fetchDevices()
             let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.deviceId, $0.deviceName) })
 
@@ -250,7 +364,7 @@ final class DownloadSyncService: CloudSyncDomain {
     /// and updates their fullText so FTS can index them.
     private func downloadRemoteSessionLogBodies(uid: String, conversationIds: [String]) async {
         guard !conversationIds.isEmpty else { return }
-        let logsRef = context.db.collection("users").document(uid).collection("session_logs")
+        let logsRef = context.firestoreGateway.collection("users").document(uid).collection("session_logs")
 
         for conversationId in conversationIds.prefix(20) {
             guard let colonIdx = conversationId.firstIndex(of: ":"),
@@ -258,10 +372,16 @@ final class DownloadSyncService: CloudSyncDomain {
             let devicePrefix = String(conversationId[conversationId.startIndex..<colonIdx])
 
             do {
-                let snapshot = try await logsRef
-                    .whereField("deviceId", isEqualTo: devicePrefix)
-                    .limit(to: 200)
-                    .getDocuments()
+                let snapshot = try await withCloudSyncRetry(
+                    policy: context.retryPolicy,
+                    circuitBreaker: context.circuitBreaker,
+                    domain: "download.sessionLogBodies"
+                ) {
+                    try await logsRef
+                        .whereField("deviceId", isEqualTo: devicePrefix)
+                        .limit(to: 200)
+                        .getDocuments()
+                }
 
                 for doc in snapshot.documents {
                     let data = doc.data()
@@ -284,14 +404,20 @@ final class DownloadSyncService: CloudSyncDomain {
     func fetchCloudSessionLogBody(docId: String) async throws -> String {
         guard context.accountManager.isFirebaseAvailable, let uid = context.currentUID else { return "" }
 
-        let snapshot = try await context.db
-            .collection("users")
-            .document(uid)
-            .collection("session_logs")
-            .document(docId)
-            .collection("chunks")
-            .order(by: "index")
-            .getDocuments()
+        let snapshot = try await withCloudSyncRetry(
+            policy: context.retryPolicy,
+            circuitBreaker: context.circuitBreaker,
+            domain: "download.sessionLogChunks"
+        ) {
+            try await context.firestoreGateway
+                .collection("users")
+                .document(uid)
+                .collection("session_logs")
+                .document(docId)
+                .collection("chunks")
+                .order(by: "index", descending: false)
+                .getDocuments()
+        }
 
         return snapshot.documents
             .compactMap { $0.data()["body"] as? String }
@@ -310,19 +436,23 @@ final class DownloadSyncService: CloudSyncDomain {
                 sourceID: id,
                 sourceVersionID: ""
             )
-            try? context.dataStore.enqueueProjectionJob(
-                ProjectionJobRecord(
-                    id: jobId,
-                    jobType: .reproject,
-                    sourceKind: .conversation,
-                    sourceID: id,
-                    sourceVersionID: "",
-                    status: .queued,
-                    priority: 0,
-                    createdAt: Date(),
-                    updatedAt: Date()
+            do {
+                try context.dataStore.enqueueProjectionJob(
+                    ProjectionJobRecord(
+                        id: jobId,
+                        jobType: .reproject,
+                        sourceKind: .conversation,
+                        sourceID: id,
+                        sourceVersionID: "",
+                        status: .queued,
+                        priority: 0,
+                        createdAt: Date(),
+                        updatedAt: Date()
+                    )
                 )
-            )
+            } catch {
+                AppLogger.dataStore.silentFailure("enqueueProjectionJob", error: error)
+            }
         }
     }
 }

@@ -5,10 +5,10 @@ import OpenBurnBarCore
 // MARK: - SearchIndexStore
 
 /// Search documents, chunks, FTS-based lexical search, and document-level deletion.
-final class SearchIndexStore {
-    private let dbQueue: DatabaseQueue
+final class SearchIndexStore: Sendable {
+    private let dbQueue: any DatabaseWriter
 
-    init(dbQueue: DatabaseQueue) {
+    init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
     }
 
@@ -629,7 +629,7 @@ final class SearchIndexStore {
         }
 
         if let normalizedProject, normalizedProject.isEmpty == false {
-            clauses.append("d.projectName = ?")
+            clauses.append("LOWER(COALESCE(d.projectName, '')) = LOWER(?)")
             args.append(normalizedProject)
         }
 
@@ -882,7 +882,7 @@ final class SearchIndexStore {
         }
 
         if let normalizedProjectName {
-            clauses.append("projectName = ?")
+            clauses.append("LOWER(COALESCE(projectName, '')) = LOWER(?)")
             args.append(normalizedProjectName)
         }
 

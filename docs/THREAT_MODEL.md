@@ -18,7 +18,7 @@ This document describes the security boundaries, permissions, and trust model fo
 │         │  └────────────────────────┘                                        │
 │         │                                                                    │
 │         │  ┌────────────────────────┐                                        │
-│         ├──│  Local SQLite (GRDB)   │  canonical data store                  │
+│         ├──│  Local SQLite (GRDB)   │  canonical; optional SQLCipher at rest  │
 │         │  └────────────────────────┘                                        │
 │         │                                                                    │
 │         │  ┌────────────────────────┐    opt-in                              │
@@ -60,7 +60,7 @@ A local JSON-RPC server listening on a UNIX domain socket at `~/Library/Applicat
 ### What it cannot do
 
 - By default it serves only the local UNIX socket (no network-accessible TCP listener).
-- Optional HTTP gateway mode can bind on TCP (`127.0.0.1:8317` by default); non-loopback binds require a bearer token.
+- Optional HTTP gateway mode can bind on TCP (`127.0.0.1:8317` by default); wildcard binds are rejected, non-loopback binds require a bearer token, and rate-limit identities use token digests instead of raw token-derived log labels.
 - It does not execute shell commands or spawn subprocesses on behalf of RPC callers.
 - It does not modify files outside its own support directory.
 - It does not require root or elevated privileges.
@@ -69,9 +69,10 @@ A local JSON-RPC server listening on a UNIX domain socket at `~/Library/Applicat
 
 | Threat | Mitigation | Residual risk |
 |---|---|---|
-| Local user impersonation via socket | Socket is filesystem-permission-protected; only the owning user can connect. | Another process running as the same user can send RPC calls. This is inherent to single-user UNIX socket IPC. |
+| Local user impersonation via socket | Socket is filesystem-permission-protected (`0o600`); only the owning user can connect. Auth token required on every RPC request from app, extension, CLI, and smoke scripts. The auth token is passed via launchd `EnvironmentVariables` (not CLI arguments) to prevent `ps aux` exposure. | Another process running as the same user and able to read the user's LaunchAgent plist can send RPC calls. This is inherent to single-user UNIX socket IPC. |
 | Daemon compromise exposes Keychain secrets | Keychain items use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. Attacker with daemon code execution can read secrets for the current user. | Equivalent to any unsandboxed app running as that user. |
 | Malicious RPC input | Request size capped at 64 KB (`BurnBarDaemonServer.maxRequestBytes`). Typed Codable deserialization rejects malformed payloads. | No known injection vectors; RPC methods are enumerated, not dynamic dispatch. |
+| Daemon auth token leak via process listing | Auth token is passed via `EnvironmentVariables` in the launchd plist, not as a CLI argument. The plist file is written with `0o600` permissions (owner read/write only). | launchd plist is visible to the owning user. Other local users cannot read it. The plist path is `~/Library/LaunchAgents/` which has `0o755` directory permissions — a local admin could escalate. |
 
 ## Extension (VS Code / Cursor)
 
@@ -122,14 +123,23 @@ If the app is compromised, the attacker has full access to the user's home direc
 - App does not execute untrusted code
 - App is distributed via Developer ID signing (Gatekeeper + notarization provide an alternative security boundary)
 
+### Local database (GRDB and optional SQLCipher)
+
+- **Default:** The on-disk file at `~/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite` is a standard SQLite database opened via GRDB.
+- **Optional encryption:** When the user enables database encryption in Settings, production builds use **SQLCipher** (linked through the SPM `GRDB-SQLCipher` package in `project.yml`, aligned with the daemon’s GRDB pin). A `PRAGMA key` is applied on every connection; the key material is held in the Keychain (`DatabaseEncryptionService`). The app checks `PRAGMA cipher_version` and refuses to use a silent plaintext path when encryption is requested but the library is not SQLCipher.
+- **License:** SQLCipher is a community / commercial dual-licensed product; see [Zetetic’s SQLCipher licensing page](https://www.zetetic.net/sqlcipher/license/) for distribution terms. OpenBurnBar does not modify SQLCipher itself.
+- **Migration:** Toggling encryption on for an **existing** plaintext database is a destructive migration path: users should rely on in-app or documented backup/restore flows rather than only flipping the switch on an old file (see [RUNBOOK](RUNBOOK.md)).
+- **Key recovery (SOTA):** There is no automatic plaintext recovery file. The SQLCipher key is stored exclusively in the macOS Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, meaning it is unavailable when the device is locked and cannot migrate to another device via iCloud Keychain. If the Keychain is lost (macOS migration, Keychain reset, device loss), the encrypted database is unrecoverable. Users who want a recovery path must explicitly export a passphrase-protected recovery bundle (`DatabaseEncryptionService.exportRecoveryBundle(password:)`). The bundle uses PBKDF2-HMAC-SHA256 (100k iterations, random 16-byte salt) to derive a 256-bit AES key from the user passphrase, then encrypts the database key with AES-GCM. The bundle is safe to write to disk or transfer because it cannot be decrypted without the passphrase. Recovery is performed with `importRecoveryBundle(data:password:)`, which re-imports the unwrapped key into the Keychain. This design trades automatic convenience for genuine security: a same-user local compromise cannot read the key from a plaintext file.
+
 ## Cloud Surfaces (Opt-In)
 
 ### Firebase
 
 - **Auth:** Google and Apple Sign-In via Firebase Auth. OAuth tokens managed by Firebase SDK.
-- **Firestore:** Owner-scoped rules: `users/{uid}/...` and `workspaces/workspace-{uid}/...` are readable/writable only by the authenticated owner. Basic size limits enforced.
-- **What syncs:** Usage rows, chat threads (for cross-device resume), and owner-scoped shared-artifact heads/revisions. Conversation metadata and full session-log backup are separately gated.
-- **Privacy note:** Synced data can include project directory names, model names, chat content, and (if backup is enabled) full session log bodies with prompts or code.
+- **App Check (Firestore):** The macOS app initializes App Check before Firebase. **Production** projects must **enforce** App Check for **Cloud Firestore** in the Firebase console so traffic without a valid attestation is rejected; Auth alone is not a substitute (see [FIREBASE_APP_CHECK_ENFORCEMENT.md](FIREBASE_APP_CHECK_ENFORCEMENT.md)).
+- **Firestore:** Owner-scoped explicit collection rules cover supported `users/{uid}/...` sync paths and `workspaces/workspace-{uid}/...` shared-artifact paths. Client-writable sync documents reject plaintext-looking secret field names. Usage rollups, rate-limit docs, and top-level `provider_account_secret_refs` credential reference docs are server-only. Basic size limits are enforced. Authorization is expressed in rules; **app attestation** is expected via console App Check enforcement.
+- **What syncs:** Usage rows, chat-thread metadata (for cross-device resume), and owner-scoped shared-artifact heads/revisions. Chat message bodies, conversation metadata, and full session-log backup are separately gated.
+- **Privacy note:** Synced data can include project directory names and model names. Chat content requires **Back Up Chat Message Content**; full session log bodies with prompts or code require the session-log backup setting.
 
 ### iCloud
 
@@ -167,7 +177,7 @@ The app makes outbound network requests in the following categories:
 |---|---|---|---|
 | Provider logos | `raw.githubusercontent.com/lobehub/lobe-icons/...` | On UI render (SwiftUI `AsyncImage`) | None (standard HTTP metadata only) |
 | Quota/usage APIs | Provider endpoints (MiniMax, Cursor, Factory, Z.ai) | When quota polling is enabled | Provider API keys (in auth headers) |
-| Firebase | Google Cloud | When cloud sync is enabled | Usage rows, chat threads, auth tokens |
+| Firebase | Google Cloud | When cloud sync is enabled | Usage rows, chat-thread metadata by default; chat content and session logs only behind their explicit backup settings |
 | iCloud | Apple iCloud | When iCloud mirroring is enabled | Session log file copies |
 | Connector APIs | GitHub, Slack, Linear, PostHog, Sentry, Gmail | When individual connectors are configured and tested | Connector-specific auth tokens |
 | Telegram | `api.telegram.org` | When Telegram bot is configured | Bot token, notification payloads |
@@ -184,3 +194,36 @@ All network requests except provider logos are opt-in and require explicit user 
 4. Cloud features are opt-in and do not replace local state.
 5. The extension trusts VS Code's workspace trust API for tool gating.
 6. External API calls use provider-specific auth (API keys, bearer tokens, OAuth) — OpenBurnBar does not proxy credentials through its own servers.
+
+## Mobile Escrow & Device Trust
+
+### Encrypted Credential Transfer
+
+Provider credentials only move between devices through an opt-in encrypted escrow system:
+- Each device generates a durable P-256 encryption keypair on first launch. Private keys stay in platform Keychain (macOS Keychain / iOS Keychain).
+- Public keys sync through Firestore (`users/{uid}/escrow_public_keys/{deviceId}_{keyVersion}`).
+- When a user opts to transfer a provider credential, the source device encrypts it for the destination device's public key using ECIES (P-256 + AES-GCM). Only ciphertext is written to Firestore (`users/{uid}/escrow_envelopes/{envelopeId}`).
+- The destination device downloads the ciphertext, decrypts locally with its private key, stores the credential in its platform Keychain, and validates against the provider API.
+- Success is proven only after provider readback — not optimistic transport success.
+
+### Device Trust Model
+
+| Phase | Description |
+|---|---|
+| **Registration** | A device signing into Firebase automatically registers as `pending` in `users/{uid}/escrow_devices/{deviceId}`. It can view synced stats but cannot import credentials. |
+| **Approval (normal)** | An existing trusted device approves the pending device. This creates an `EscrowGrant` and updates the device trust state to `trusted`. |
+| **Bootstrap (first device)** | If no trusted device exists, the user explicitly confirms "this is my first device" to bootstrap trust. No silent auto-approval. |
+| **Revocation** | A trusted device can revoke another device's trust. All outstanding grants to the revoked device are invalidated. |
+
+### Firestore Secret Prohibition
+
+- Firestore rules reject client-writable sync documents containing fields named `apiKey`, `token`, `refreshToken`, `accessToken`, `idToken`, `cookie`, `password`, `secret`, `secretVersionName`, `authorization`, `bearer`, or `credential`; `provider_account_secret_refs` is denied to clients entirely.
+- Unit tests prove plaintext secret strings are never serialized into Firestore-bound documents.
+- Firebase never sees plaintext provider credentials — only ciphertext and non-sensitive metadata (provider ID, account label, credential kind, device IDs, timestamps).
+
+### Key Management
+
+- Private keys live exclusively in the platform Keychain (iOS Keychain / macOS Keychain) with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
+- Key versioning supports rotation. Old keys are retained for decrypting historic envelopes.
+- Missing private key is a recoverable state — surfaced as a classified error, not a crash.
+- Encryption keys are not derivable by Firebase, Firestore rules, Cloud Functions, or backend infrastructure.

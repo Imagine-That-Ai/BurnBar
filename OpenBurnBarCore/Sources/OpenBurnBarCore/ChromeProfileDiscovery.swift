@@ -6,6 +6,8 @@ import AppKit
 // MARK: - Chrome Profile Info
 
 /// Non-sensitive metadata about a Chrome profile discovered from Local State.
+#if os(macOS)
+
 public struct ChromeProfileInfo: Identifiable, Equatable, Sendable {
     /// The profile folder key (e.g., "Default", "Profile 1").
     public let folderKey: String
@@ -289,3 +291,6 @@ private extension BrowserServiceProvider {
         storageMarkers[0]
     }
 }
+
+
+#endif

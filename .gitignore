@@ -64,6 +64,10 @@ xcuserdata/
 *.env
 *.pem
 *.p12
+.encryption-key-recovery
+
+# Sentry — DSN is non-secret but keep local overrides out of source
+sentry.properties
 
 # Firebase — never commit the real plist; drop it locally as GoogleService-Info.plist
 GoogleService-Info.plist
@@ -87,10 +91,26 @@ tools/burnbar-mcp/.venv/
 # Local Xcode/SwiftPM caches used by scripts/build.sh
 .spm-cache/
 .derived-data/
+.derived-data-*/
+derived-data/
+
+# Local-only Factory skills and xcodegen scratch
+.factory/skills/
+.xcodegen-validate/
 .gstack/
+
+# Accidental SwiftPM/protobuf checkouts at repo root
+/Sources/protobuf/
 
 # Generated Xcode derived data emitted by factory validation runs
 .factory/validation/**/user-testing/derived-data/
 
 # Generated SwiftPM checkout/artifact mirrors from factory validations
 .factory/validation/**/derived-data/**/SourcePackages/
+
+# Per-test UserDefaults plists Xcode emits next to source files when running
+# tests from inside the IDE (NSUserDefaults host-app simulation).
+*.swift.plist
+
+# QA harness output (qa skill writes timestamped reports + screenshots)
+qa-results/

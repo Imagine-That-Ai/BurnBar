@@ -93,6 +93,9 @@ final class RetrievalHealthService {
             indexedVectorCount: 0,
             fallbackToExact: false,
             candidateCount: 0,
+            snapshotState: nil,
+            snapshotFileBytes: nil,
+            snapshotBuiltAt: nil,
             errorCode: "RETRIEVAL_HEALTH_FETCH_FAILED",
             errorMessage: error.localizedDescription
         )
@@ -179,6 +182,9 @@ final class RetrievalHealthService {
         var indexedVectorCount = 0
         var fallbackToExact = false
         var candidateCount = 0
+        var snapshotState: String?
+        var snapshotFileBytes: Int64?
+        var snapshotBuiltAt: Date?
 
         if let rawDetails = decodeJSONDictionary(from: row.detailsJSON) {
             backend = stringValue(from: rawDetails["backend"])
@@ -188,6 +194,15 @@ final class RetrievalHealthService {
                 ?? 0
             fallbackToExact = boolValue(from: rawDetails["fallbackToExact"]) ?? false
             candidateCount = intValue(from: rawDetails["candidateCount"]) ?? 0
+            snapshotState = stringValue(from: rawDetails["snapshotState"])
+            if let intValue = intValue(from: rawDetails["snapshotFileBytes"]) {
+                snapshotFileBytes = Int64(intValue)
+            } else if let stringValue = stringValue(from: rawDetails["snapshotFileBytes"]) {
+                snapshotFileBytes = Int64(stringValue)
+            }
+            if let builtAtRaw = stringValue(from: rawDetails["snapshotBuiltAt"]) {
+                snapshotBuiltAt = OpenBurnBarDatabase.parseDateValue(builtAtRaw)
+            }
         }
 
         return SemanticPipelineHealthState(
@@ -197,6 +212,9 @@ final class RetrievalHealthService {
             indexedVectorCount: max(0, indexedVectorCount),
             fallbackToExact: fallbackToExact,
             candidateCount: max(0, candidateCount),
+            snapshotState: snapshotState,
+            snapshotFileBytes: snapshotFileBytes,
+            snapshotBuiltAt: snapshotBuiltAt,
             errorCode: row.errorCode,
             errorMessage: row.errorMessage
         )

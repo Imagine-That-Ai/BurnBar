@@ -1,7 +1,24 @@
 import SwiftUI
 import Foundation
+import OpenBurnBarCore
 
-// MARK: - Provider Support Level
+// MARK: - Module Aliases (Mac side ↔ OpenBurnBarCore canonical)
+//
+// `AgentProvider`, `TokenUsage`, and the three usage-provenance enums live in
+// `OpenBurnBarCore` so the macOS app, iOS/iPad app, and shared core agree on
+// rawValues, Codable keys, and accessor names. Re-exporting them here keeps
+// the ~100 macOS call sites that reference `AgentProvider` (etc.) without an
+// explicit `OpenBurnBarCore.` qualifier — they resolve through these
+// typealiases. Mac-only behaviors (log directories, file patterns, support
+// levels) live as extensions on the package types further down in this file.
+
+typealias AgentProvider = OpenBurnBarCore.AgentProvider
+typealias TokenUsage = OpenBurnBarCore.TokenUsage
+typealias UsageProvenanceMethod = OpenBurnBarCore.UsageProvenanceMethod
+typealias UsageProvenanceConfidence = OpenBurnBarCore.UsageProvenanceConfidence
+typealias UsageSource = OpenBurnBarCore.UsageSource
+
+// MARK: - Provider Support Level (Mac-only)
 
 enum ProviderSupportLevel {
     /// Full token data parsed from logs (exact counts)
@@ -12,7 +29,7 @@ enum ProviderSupportLevel {
     case unsupported
 }
 
-// MARK: - Data Confidence
+// MARK: - Data Confidence (Mac-only)
 
 enum DataConfidence {
     /// Token counts come directly from API/log data
@@ -23,174 +40,19 @@ enum DataConfidence {
     case unavailable
 }
 
-// MARK: - Usage Provenance Method
+// MARK: - Mac-only AgentProvider behaviors
 
-/// Describes how token usage values were obtained for a given row.
-/// Used alongside `UsageProvenanceConfidence` to audit exact vs estimated origin.
-enum UsageProvenanceMethod: String, Codable, Hashable, CaseIterable, Sendable, Comparable {
-    /// Token counts parsed directly from provider logs or API responses.
-    case providerLog = "provider_log"
-    /// Token counts from a connector bridge (e.g. Cursor connector).
-    case connectorBridge = "connector_bridge"
-    /// Token counts from the daemon (e.g. OpenBurnBar daemon events).
-    case daemonBridge = "daemon_bridge"
-    /// Token counts from in-app chat session tracking.
-    case inAppChat = "in_app_chat"
-    /// Token counts from a billing/provider usage API.
-    case billingAPI = "billing_api"
-    /// Token counts derived from character/content heuristics when exact data is unavailable.
-    case heuristicEstimate = "heuristic_estimate"
-    /// Token counts from cloud sync (remote device), preserving original provenance.
-    case cloudSync = "cloud_sync"
-    /// Provenance is unknown (legacy rows or data with unclear origin).
-    case unknown = "unknown"
-
-    /// Numeric precedence for comparison. Higher value = more authoritative.
-    /// Used to determine which method "wins" when merging rows with equal confidence.
-    var precedence: Int {
-        switch self {
-        case .providerLog: return 6
-        case .billingAPI: return 5
-        case .connectorBridge: return 4
-        case .daemonBridge: return 4
-        case .inAppChat: return 3
-        case .cloudSync: return 2
-        case .heuristicEstimate: return 1
-        case .unknown: return 0
-        }
-    }
-
-    static func < (lhs: UsageProvenanceMethod, rhs: UsageProvenanceMethod) -> Bool {
-        lhs.precedence < rhs.precedence
-    }
-}
-
-// MARK: - Usage Provenance Confidence
-
-/// Confidence level for the provenance of a token usage row.
-/// Ordered from most to least authoritative. Used to prevent downgrades.
-enum UsageProvenanceConfidence: String, Codable, Hashable, CaseIterable, Comparable, Sendable {
-    /// Token counts are exact and authoritative (from provider logs, APIs, or bridges).
-    case exact = "exact"
-    /// Token counts are derived from exact totals via normalization (e.g. splitting total_tokens into input/output).
-    case derivedExact = "derived_exact"
-    /// Token counts are high-confidence estimates (e.g. language-aware heuristic).
-    case highConfidenceEstimate = "high_confidence_estimate"
-    /// Token counts are lower-confidence estimates (e.g. coarse heuristic without language context).
-    case lowConfidenceEstimate = "low_confidence_estimate"
-    /// Confidence is unknown (legacy rows).
-    case unknown = "unknown"
-
-    /// Numeric precedence for comparison. Higher value = more authoritative.
-    var precedence: Int {
-        switch self {
-        case .exact: return 4
-        case .derivedExact: return 3
-        case .highConfidenceEstimate: return 2
-        case .lowConfidenceEstimate: return 1
-        case .unknown: return 0
-        }
-    }
-
-    static func < (lhs: UsageProvenanceConfidence, rhs: UsageProvenanceConfidence) -> Bool {
-        lhs.precedence < rhs.precedence
-    }
-}
-
-// MARK: - Usage Source
-
-/// Where a `TokenUsage` row was produced (analytics / deduplication).
-enum UsageSource: String, Codable, Hashable, CaseIterable {
-    case providerLog = "provider_log"
-    case inAppChat = "in_app_chat"
-    case cursorBridge = "cursor_bridge"
-    case billingAPI = "billing_api"
-    case daemon = "daemon"
-    /// Legacy rows or cloud documents without this field.
-    case unknown = "unknown"
-}
-
-// MARK: - Agent Provider Enum
-
-enum AgentProvider: String, Codable, CaseIterable, Identifiable {
-    case factory = "Factory"
-    case claudeCode = "Claude Code"
-    case copilot = "Copilot"
-    case aider = "Aider"
-    case cursor = "Cursor"
-    case codex = "Codex"
-    case zai = "Zai"
-    case minimax = "MiniMax"
-    case kimi = "Kimi"
-    case cline = "Cline"
-    case kiloCode = "Kilo Code"
-    case rooCode = "Roo Code"
-    case forgeDev = "Forge"
-    case augment = "Augment"
-    case hermes = "Hermes"
-    case geminiCLI = "Gemini CLI"
-    case goose = "Goose"
-    case openClaw = "OpenClaw"
-    case windsurf = "Windsurf"
-
-    var id: String { rawValue }
-    
-    /// Bundled asset catalog image name for every provider.
-    var bundledLogoName: String {
-        switch self {
-        case .factory:    return "FactoryLogo"
-        case .claudeCode: return "ClaudeCodeLogo"
-        case .copilot:    return "CopilotLogo"
-        case .aider:      return "AiderLogo"
-        case .cursor:     return "CursorLogo"
-        case .codex:      return "CodexLogo"
-        case .zai:        return "ZaiLogo"
-        case .minimax:    return "MiniMaxLogo"
-        case .kimi:       return "KimiLogo"
-        case .cline:      return "ClineLogo"
-        case .kiloCode:   return "KiloCodeLogo"
-        case .rooCode:    return "RooCodeLogo"
-        case .forgeDev:   return "ForgeLogo"
-        case .augment:    return "AugmentLogo"
-        case .hermes:     return "HermesLogo"
-        case .geminiCLI:  return "GeminiCLILogo"
-        case .goose:      return "GooseLogo"
-        case .openClaw:   return "OpenClawLogo"
-        case .windsurf:   return "WindsurfLogo"
-        }
-    }
-
-    /// Remote logo URLs are deprecated in favor of bundled assets.
-    /// Kept for backward compatibility but no longer used by ProviderLogoView.
-    @available(*, deprecated, message: "Use bundledLogoName instead")
-    var logoURL: URL? { nil }
-
-    var iconName: String {
-        switch self {
-        case .factory: return "cpu.fill"
-        case .claudeCode: return "bubble.left.and.bubble.right.fill"
-        case .copilot: return "sparkles"
-        case .aider: return "terminal.fill"
-        case .cursor: return "cursor.rays"
-        case .codex: return "hammer.fill"
-        case .zai: return "bolt.fill"
-        case .minimax: return "star.fill"
-        case .kimi: return "moon.fill"
-        case .cline: return "brain.head.profile"
-        case .kiloCode: return "k.circle.fill"
-        case .rooCode: return "hare.fill"
-        case .forgeDev: return "flame.fill"
-        case .augment: return "arrow.trianglehead.2.counterclockwise.rotate.90"
-        case .hermes: return "wind"
-        case .geminiCLI: return "diamond.fill"
-        case .goose: return "bird.fill"
-        case .openClaw: return "point.3.connected.trianglepath.dotted"
-        case .windsurf: return "sailboat.fill"
-        }
-    }
-    
-    var displayName: String { rawValue }
-    
+/// Mac-only extensions on the canonical `OpenBurnBarCore.AgentProvider`.
+///
+/// These describe how the macOS app reads local provider artifacts on disk
+/// and how it grades the resulting token data. The mobile target doesn't
+/// watch local logs, so these accessors only ship on macOS.
+extension AgentProvider {
+    /// Filesystem directory where the provider writes session logs the
+    /// macOS file watcher can scrape. Some providers (e.g. `.openAI`) have
+    /// no local logs at all — they reuse another path so the file watcher's
+    /// exhaustive switch never crashes; the `filePattern` for those entries
+    /// pins a non-matching glob so no files are ever read.
     var logDirectory: String {
         switch self {
         case .factory: return "~/.factory/sessions"
@@ -198,6 +60,12 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .copilot: return "~/.copilot/session-state"
         case .aider: return "~/.aider"
         case .cursor: return "~/.cursor/ai-tracking"
+        // OpenAI is an org-billing identity (refreshed via API), not a local
+        // log source. Reuse the Codex log dir so the file watcher's switch
+        // doesn't crash when an OpenAI account row is iterated; the parser
+        // never matches files under it because the OpenAI adapter pulls
+        // remotely instead of parsing local logs.
+        case .openAI: return "~/.codex"
         case .codex: return "~/.codex"
         case .zai: return "~/.factory/sessions"
         case .minimax: return "~/.factory/sessions"
@@ -211,10 +79,14 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .geminiCLI: return "~/.gemini/tmp"
         case .goose: return "~/.local/share/goose/sessions"
         case .openClaw: return "~/.openclaw/sessions"
+        case .ollama: return "~/.ollama/logs"
         case .windsurf: return "~/Library/Application Support/Windsurf - Next/User/globalStorage"
+        case .warp: return "~/Library/Application Support/dev.warp.Warp-Stable"
         }
     }
 
+    /// Glob pattern paired with `logDirectory` that the file watcher uses
+    /// to discover session log files for the provider.
     var filePattern: String {
         switch self {
         case .factory: return "*.jsonl"
@@ -222,6 +94,10 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .copilot: return "*.jsonl"
         case .aider: return "*.jsonl"
         case .cursor: return "*.db"
+        // OpenAI usage data flows through the OpenAI organization usage API,
+        // not local log files. Pin a non-matching pattern so the file
+        // watcher never spuriously reads files for this provider.
+        case .openAI: return "openai-no-local-logs"
         case .codex: return "state_5.sqlite"
         case .zai: return "*.jsonl"
         case .minimax: return "*.jsonl"
@@ -232,230 +108,42 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .geminiCLI: return "*.json"
         case .goose: return "sessions.db"
         case .openClaw: return "*.jsonl"
+        case .ollama: return "server*.log"
         case .windsurf: return "state.vscdb"
+        case .warp: return "warp_network*.log"
         }
     }
 
+    /// How well the macOS app supports this provider's local data.
     var supportLevel: ProviderSupportLevel {
         switch self {
         case .factory, .claudeCode, .codex, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose:
             return .supported
-        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf:
+        // OpenAI is supported via the official org usage endpoint — no log
+        // parsing, but exact aggregate counts.
+        case .openAI:
+            return .supported
+        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp, .ollama:
             return .partial
         case .augment:
             return .unsupported
         }
     }
 
+    /// Confidence the macOS app assigns to token counts derived from this
+    /// provider's local artifacts.
     var dataConfidence: DataConfidence {
         switch self {
         case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose, .openClaw:
             return .exact
-        case .zai, .minimax, .copilot, .cursor, .windsurf:
+        // OpenAI exposes exact tokens-used per org via the usage API.
+        case .openAI:
+            return .exact
+        case .zai, .minimax, .copilot, .cursor, .windsurf, .warp, .ollama:
             return .estimated
         case .augment:
             return .unavailable
         }
-    }
-}
-
-// MARK: - Token Usage Record
-
-struct TokenUsage: Codable, Identifiable, Hashable {
-    let id: UUID
-    let provider: AgentProvider
-    let sessionId: String
-    let projectName: String
-    let model: String
-    let inputTokens: Int
-    let outputTokens: Int
-    let cacheCreationTokens: Int
-    let cacheReadTokens: Int
-    /// Output-class tokens reported separately (e.g. OpenAI `reasoning_tokens`); billed at output rates.
-    let reasoningTokens: Int
-    let totalTokens: Int
-    let cost: Double
-    let startTime: Date
-    let endTime: Date
-    let createdAt: Date
-    /// Origin of this row (log parser, in-app chat, connector, API, daemon).
-    let usageSource: UsageSource
-    /// Non-nil for rows downloaded from another device via cloud sync.
-    let sourceDeviceId: String?
-    /// Human-readable name of the source device (e.g. "MacBook Pro (Work)").
-    let sourceDeviceName: String?
-    /// True for rows downloaded from Firestore; excluded from upload sync.
-    let isRemote: Bool
-    /// How the token counts were obtained (log parser, API, heuristic, etc.).
-    let provenanceMethod: UsageProvenanceMethod
-    /// Confidence level for the token counts (exact, derived, estimated, unknown).
-    let provenanceConfidence: UsageProvenanceConfidence
-    /// Version identifier of the estimator/normalizer that produced these counts.
-    /// Empty string when counts are from exact provider data.
-    let estimatorVersion: String
-
-    // Alias for backwards compatibility
-    var costUSD: Double { cost }
-
-    init(
-        id: UUID = UUID(),
-        provider: AgentProvider,
-        sessionId: String,
-        projectName: String,
-        model: String,
-        inputTokens: Int,
-        outputTokens: Int,
-        cacheCreationTokens: Int = 0,
-        cacheReadTokens: Int = 0,
-        reasoningTokens: Int = 0,
-        costUSD: Double = 0,
-        startTime: Date,
-        endTime: Date,
-        createdAt: Date = Date(),
-        usageSource: UsageSource = .providerLog,
-        sourceDeviceId: String? = nil,
-        sourceDeviceName: String? = nil,
-        isRemote: Bool = false,
-        provenanceMethod: UsageProvenanceMethod = .unknown,
-        provenanceConfidence: UsageProvenanceConfidence = .unknown,
-        estimatorVersion: String = ""
-    ) {
-        self.id = id
-        self.provider = provider
-        self.sessionId = sessionId
-        self.projectName = projectName
-        self.model = model
-        self.inputTokens = inputTokens
-        self.outputTokens = outputTokens
-        self.cacheCreationTokens = cacheCreationTokens
-        self.cacheReadTokens = cacheReadTokens
-        self.reasoningTokens = reasoningTokens
-        self.totalTokens = Self.billedTotalTokens(
-            input: inputTokens,
-            output: outputTokens,
-            cacheCreation: cacheCreationTokens,
-            cacheRead: cacheReadTokens,
-            reasoning: reasoningTokens
-        )
-        self.cost = costUSD
-        self.startTime = startTime
-        self.endTime = endTime
-        self.createdAt = createdAt
-        self.usageSource = usageSource
-        self.sourceDeviceId = sourceDeviceId
-        self.sourceDeviceName = sourceDeviceName
-        self.isRemote = isRemote
-        self.provenanceMethod = provenanceMethod
-        self.provenanceConfidence = provenanceConfidence
-        self.estimatorVersion = estimatorVersion
-    }
-
-    /// Sum of billable token buckets (matches provider invoices when all fields are populated).
-    static func billedTotalTokens(
-        input: Int,
-        output: Int,
-        cacheCreation: Int,
-        cacheRead: Int,
-        reasoning: Int
-    ) -> Int {
-        max(0, input) + max(0, output) + max(0, cacheCreation) + max(0, cacheRead) + max(0, reasoning)
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case id, provider, sessionId, projectName, model
-        case inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, reasoningTokens
-        case totalTokens, cost, startTime, endTime, createdAt, usageSource
-        case sourceDeviceId, sourceDeviceName, isRemote
-        case provenanceMethod, provenanceConfidence, estimatorVersion
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(UUID.self, forKey: .id)
-        provider = try c.decode(AgentProvider.self, forKey: .provider)
-        sessionId = try c.decode(String.self, forKey: .sessionId)
-        projectName = try c.decode(String.self, forKey: .projectName)
-        model = try c.decode(String.self, forKey: .model)
-        inputTokens = try c.decode(Int.self, forKey: .inputTokens)
-        outputTokens = try c.decode(Int.self, forKey: .outputTokens)
-        cacheCreationTokens = try c.decodeIfPresent(Int.self, forKey: .cacheCreationTokens) ?? 0
-        cacheReadTokens = try c.decodeIfPresent(Int.self, forKey: .cacheReadTokens) ?? 0
-        reasoningTokens = try c.decodeIfPresent(Int.self, forKey: .reasoningTokens) ?? 0
-        totalTokens = try c.decodeIfPresent(Int.self, forKey: .totalTokens)
-            ?? Self.billedTotalTokens(
-                input: inputTokens,
-                output: outputTokens,
-                cacheCreation: cacheCreationTokens,
-                cacheRead: cacheReadTokens,
-                reasoning: reasoningTokens
-            )
-        cost = try c.decode(Double.self, forKey: .cost)
-        startTime = try c.decode(Date.self, forKey: .startTime)
-        endTime = try c.decode(Date.self, forKey: .endTime)
-        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
-        usageSource = try c.decodeIfPresent(UsageSource.self, forKey: .usageSource) ?? .unknown
-        sourceDeviceId = try c.decodeIfPresent(String.self, forKey: .sourceDeviceId)
-        sourceDeviceName = try c.decodeIfPresent(String.self, forKey: .sourceDeviceName)
-        isRemote = try c.decodeIfPresent(Bool.self, forKey: .isRemote) ?? false
-        provenanceMethod = try c.decodeIfPresent(UsageProvenanceMethod.self, forKey: .provenanceMethod) ?? .unknown
-        provenanceConfidence = try c.decodeIfPresent(UsageProvenanceConfidence.self, forKey: .provenanceConfidence) ?? .unknown
-        estimatorVersion = try c.decodeIfPresent(String.self, forKey: .estimatorVersion) ?? ""
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(id, forKey: .id)
-        try c.encode(provider, forKey: .provider)
-        try c.encode(sessionId, forKey: .sessionId)
-        try c.encode(projectName, forKey: .projectName)
-        try c.encode(model, forKey: .model)
-        try c.encode(inputTokens, forKey: .inputTokens)
-        try c.encode(outputTokens, forKey: .outputTokens)
-        try c.encode(cacheCreationTokens, forKey: .cacheCreationTokens)
-        try c.encode(cacheReadTokens, forKey: .cacheReadTokens)
-        try c.encode(reasoningTokens, forKey: .reasoningTokens)
-        try c.encode(totalTokens, forKey: .totalTokens)
-        try c.encode(cost, forKey: .cost)
-        try c.encode(startTime, forKey: .startTime)
-        try c.encode(endTime, forKey: .endTime)
-        try c.encode(createdAt, forKey: .createdAt)
-        try c.encode(usageSource, forKey: .usageSource)
-        try c.encodeIfPresent(sourceDeviceId, forKey: .sourceDeviceId)
-        try c.encodeIfPresent(sourceDeviceName, forKey: .sourceDeviceName)
-        try c.encode(isRemote, forKey: .isRemote)
-        try c.encode(provenanceMethod, forKey: .provenanceMethod)
-        try c.encode(provenanceConfidence, forKey: .provenanceConfidence)
-        try c.encode(estimatorVersion, forKey: .estimatorVersion)
-    }
-    
-    // Computed properties
-    var duration: TimeInterval {
-        endTime.timeIntervalSince(startTime)
-    }
-    
-    var formattedDuration: String {
-        let interval = Int(duration)
-        let hours = interval / 3600
-        let minutes = (interval % 3600) / 60
-        let seconds = interval % 60
-        
-        if hours > 0 {
-            return String(format: "%dh %dm", hours, minutes)
-        } else if minutes > 0 {
-            return String(format: "%dm %ds", minutes, seconds)
-        } else {
-            return String(format: "%ds", seconds)
-        }
-    }
-
-    /// Whether this session's time span overlaps `dateRange` (inclusive `ClosedRange` semantics).
-    /// Using interval overlap instead of `range.contains(startTime)` includes sessions that
-    /// started before the window but ended inside it (or span it), matching user expectations
-    /// for "Today" / "Last 7 days" etc.
-    func intersects(dateRange: ClosedRange<Date>) -> Bool {
-        let s = min(startTime, endTime)
-        let e = max(startTime, endTime)
-        return s <= dateRange.upperBound && e >= dateRange.lowerBound
     }
 }
 
@@ -505,6 +193,9 @@ struct ProviderSummary: Identifiable, Hashable {
     /// Whether any row contributing to this summary has estimated (non-exact/derived-exact) provenance.
     /// This reflects mixed-confidence composition rather than dominant-row confidence.
     let hasEstimatedContributions: Bool
+    /// Aggregate cache hit rate signal across all rows feeding this summary.
+    /// Drives `UnifiedCacheHitRateBadge` next to provider rows in dashboard surfaces.
+    let cacheEfficiency: OpenBurnBarCore.CacheEfficiency
 
     var formattedCost: String {
         totalCost.formatAsCost()
@@ -546,6 +237,15 @@ struct ModelUsage: Identifiable, Hashable {
     var hasEstimatedData: Bool {
         hasEstimatedContributions
     }
+
+    /// Per-row `CacheEfficiency` projection matching `TokenUsage` contract.
+    var cacheEfficiency: OpenBurnBarCore.CacheEfficiency {
+        OpenBurnBarCore.CacheEfficiency(
+            inputTokens: inputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens
+        )
+    }
 }
 
 // MARK: - Dashboard View Mode
@@ -575,6 +275,8 @@ struct ModelSummary: Identifiable, Hashable {
     let totalOutputTokens: Int
     let sessionCount: Int
     let providerBreakdown: [ProviderUsage]
+    /// Aggregate cache hit rate signal across all rows in this model summary.
+    let cacheEfficiency: OpenBurnBarCore.CacheEfficiency
 
     var formattedCost: String {
         totalCost.formatAsCost()
@@ -590,4 +292,48 @@ struct ProviderUsage: Identifiable, Hashable {
     let totalTokens: Int
     let cost: Double
     let percentage: Double
+    /// Aggregate cache hit rate signal across this provider's contribution to a model summary.
+    let cacheEfficiency: OpenBurnBarCore.CacheEfficiency
+}
+
+// MARK: - Cache Efficiency Aggregation
+
+extension OpenBurnBarCore.CacheEfficiency {
+    /// Sums the input/cache-creation/cache-read tokens across `usages` so a
+    /// single `CacheEfficiency` value can represent a provider, model, or
+    /// session group. Returns `.zero` for an empty input.
+    ///
+    /// Mirrors the canonical `CacheEfficiency` shape from `OpenBurnBarCore`;
+    /// this aggregation extension is Mac-only because it operates on the Mac
+    /// `TokenUsage` row type. The mobile target uses an analogous helper on
+    /// the package's `TokenUsage`.
+    static func aggregate(_ usages: [TokenUsage]) -> OpenBurnBarCore.CacheEfficiency {
+        guard !usages.isEmpty else { return .zero }
+        var input = 0
+        var creation = 0
+        var read = 0
+        for usage in usages {
+            input += max(0, usage.inputTokens)
+            creation += max(0, usage.cacheCreationTokens)
+            read += max(0, usage.cacheReadTokens)
+        }
+        return OpenBurnBarCore.CacheEfficiency(
+            inputTokens: input,
+            cacheCreationTokens: creation,
+            cacheReadTokens: read
+        )
+    }
+}
+
+extension TokenUsage {
+    /// Per-row `CacheEfficiency` projection that keeps row-level cache hit
+    /// rate badges (Session Detail, History) using the same canonical type
+    /// as the aggregated provider/model summaries.
+    var cacheEfficiency: OpenBurnBarCore.CacheEfficiency {
+        OpenBurnBarCore.CacheEfficiency(
+            inputTokens: inputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens
+        )
+    }
 }

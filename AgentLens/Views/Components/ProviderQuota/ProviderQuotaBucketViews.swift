@@ -15,6 +15,7 @@ struct ProviderQuotaBucketRow: View {
         case .daily: return "Daily"
         case .weekly: return "Weekly"
         case .monthly: return "Monthly"
+        case .lifetime: return "Lifetime"
         case .custom: return nil
         }
     }
@@ -104,6 +105,12 @@ struct QuotaFigureTile: View {
             return "requests left"
         case .tokens:
             return "tokens left"
+        case .sessions:
+            return "sessions left"
+        case .lines:
+            return "lines left"
+        case .files:
+            return "files left"
         case .count:
             return "remaining"
         }

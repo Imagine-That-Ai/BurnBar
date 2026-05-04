@@ -687,7 +687,6 @@ final class HybridRetrievalServiceTests: XCTestCase {
             backend: .ann,
             exactRerankEnabled: true,
             exactRerankLimit: 256,
-            annCandidateMultiplier: 32,
             nowProvider: { base }
         )
         let exactProvider = VectorSemanticCandidateProvider(
@@ -704,7 +703,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
         let annCandidates = try await annProvider.semanticCandidates(for: query, filters: RetrievalFilters(), limit: 20)
         let exactCandidates = try await exactProvider.semanticCandidates(for: query, filters: RetrievalFilters(), limit: 20)
 
-        XCTAssertEqual(annCandidates.map(\.chunkID), exactCandidates.map(\.chunkID))
+        XCTAssertEqual(annCandidates.map(\SemanticCandidate.chunkID), exactCandidates.map(\SemanticCandidate.chunkID))
         XCTAssertEqual(annCandidates.count, exactCandidates.count)
         if let annTop = annCandidates.first?.score, let exactTop = exactCandidates.first?.score {
             XCTAssertEqual(annTop, exactTop, accuracy: 0.000001)

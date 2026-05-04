@@ -113,20 +113,15 @@ public actor BurnBarParallelDAGScheduler {
     public static let defaultMaxConcurrency = 4
 
     /// Tracks all active schedulers by mission ID.
-    private final class ActiveSchedulerRegistry: @unchecked Sendable {
-        private var schedulers: [BurnBarMissionID: BurnBarParallelDAGScheduler] = [:]
-        private let lock = NSLock()
+    private final class ActiveSchedulerRegistry: Sendable {
+        private let state = Locked<[BurnBarMissionID: BurnBarParallelDAGScheduler]>([:])
 
         func set(_ scheduler: BurnBarParallelDAGScheduler, for missionID: BurnBarMissionID) {
-            lock.lock()
-            defer { lock.unlock() }
-            schedulers[missionID] = scheduler
+            state.withLock { $0[missionID] = scheduler }
         }
 
         func scheduler(for missionID: BurnBarMissionID) -> BurnBarParallelDAGScheduler? {
-            lock.lock()
-            defer { lock.unlock() }
-            return schedulers[missionID]
+            state.withLock { $0[missionID] }
         }
     }
 
@@ -616,7 +611,7 @@ public actor BurnBarParallelDAGScheduler {
 
     /// Updates the critical path based on current execution state.
     private func updateCriticalPath(nodeID: BurnBarDAGNodeID, success: Bool) async {
-        var criticalPath = state.criticalPath ?? BurnBarCriticalPathArtifact(missionID: missionID)
+        let criticalPath = state.criticalPath ?? BurnBarCriticalPathArtifact(missionID: missionID)
 
         // Update node timing
         var updatedTimings = criticalPath.nodeTimings
@@ -669,7 +664,7 @@ public actor BurnBarParallelDAGScheduler {
 
     /// Updates the timing for a node when it starts.
     private func updateNodeTiming(_ nodeID: BurnBarDAGNodeID, startedAt: Date) {
-        var criticalPath = state.criticalPath ?? BurnBarCriticalPathArtifact(missionID: missionID)
+        let criticalPath = state.criticalPath ?? BurnBarCriticalPathArtifact(missionID: missionID)
         var updatedTimings = criticalPath.nodeTimings
 
         let existingTiming = updatedTimings[nodeID.rawValue]

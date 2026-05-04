@@ -1,7 +1,7 @@
 import XCTest
 @testable import OpenBurnBar
 
-private final class ActiveTestableClaudeCodeParser: LogParser, @unchecked Sendable {
+private final class ActiveTestableClaudeCodeParser: LogParser, Sendable {
     let provider: AgentProvider = .claudeCode
     private let testProjectsPath: URL
     private let fileManager: FileManager

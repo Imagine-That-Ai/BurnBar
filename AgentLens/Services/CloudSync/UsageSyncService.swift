@@ -39,8 +39,8 @@ final class UsageSyncService: CloudSyncDomain {
                 return
             }
 
-            let batch = context.db.batch()
-            let collectionRef = context.db.collection("users").document(uid).collection("usage")
+            let batch = context.firestoreGateway.batch()
+            let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("usage")
 
             for usage in unsynced {
                 let docId = "\(context.deviceId)_\(usage.id.uuidString)"
@@ -49,7 +49,13 @@ final class UsageSyncService: CloudSyncDomain {
                 batch.setData(data, forDocument: docRef, merge: true)
             }
 
-            try await batch.commit()
+            try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "usage"
+            ) {
+                try await batch.commit()
+            }
 
             let syncedIds = unsynced.map { $0.id }
             try context.dataStore.markSynced(ids: syncedIds)
@@ -74,10 +80,11 @@ final class UsageSyncService: CloudSyncDomain {
     }
 
     private func encodeUsage(_ usage: TokenUsage, deviceId: String) -> [String: Any] {
-        [
+        var data: [String: Any] = [
             "id": usage.id.uuidString,
             "deviceId": deviceId,
             "provider": usage.provider.rawValue,
+            "providerID": usage.providerID.rawValue,
             "sessionId": usage.sessionId,
             "projectName": usage.projectName,
             "model": usage.model,
@@ -93,5 +100,15 @@ final class UsageSyncService: CloudSyncDomain {
             "endTime": Timestamp(date: usage.endTime),
             "updatedAt": FieldValue.serverTimestamp()
         ]
+        if let providerAccountID = usage.providerAccountID {
+            data["providerAccountID"] = providerAccountID
+        }
+        if let providerAccountLabel = usage.providerAccountLabel {
+            data["providerAccountLabel"] = providerAccountLabel
+        }
+        if let providerAccountSource = usage.providerAccountSource {
+            data["providerAccountSource"] = providerAccountSource.rawValue
+        }
+        return data
     }
 }

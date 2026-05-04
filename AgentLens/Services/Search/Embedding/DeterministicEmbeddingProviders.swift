@@ -76,8 +76,7 @@ struct DeterministicFakeEmbeddingProvider: ChunkEmbeddingProviding, Sendable {
 
 /// A query embedding provider backed by a deterministic fake embedder.
 /// Used for testing and fallback when no real embedding provider is available.
-// SAFETY: All stored properties are immutable lets.
-final class DeterministicQueryEmbeddingProvider: QueryEmbeddingProviding, @unchecked Sendable {
+final class DeterministicQueryEmbeddingProvider: QueryEmbeddingProviding, Sendable {
     private let embedder: DeterministicFakeEmbeddingProvider
 
     init(embedder: DeterministicFakeEmbeddingProvider = DeterministicFakeEmbeddingProvider()) {

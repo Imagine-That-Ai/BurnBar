@@ -3,15 +3,16 @@
 # To use this formula, the maintainer should:
 # 1. Create a GitHub repo: Ajnunezg/homebrew-tap
 # 2. Copy this file to: Casks/openburnbar.rb
-# 3. Update the version, url, and sha256 for each release
+# 3. Update the version and sha256 for each release
 # 4. Users install with: brew install --cask Ajnunezg/tap/openburnbar
 #
-# The sha256 and url are updated automatically by the release workflow
-# once notarized DMGs are being produced.
+# After each release, run:
+#   scripts/update-homebrew.sh <version>
+# This downloads the release DMG, computes the SHA256, and updates this file.
 
 cask "openburnbar" do
-  version "0.1.0-beta"
-  sha256 :no_check # Replace with actual SHA256 once notarized builds exist
+  version "0.1.3-beta.1"
+  sha256 "0000000000000000000000000000000000000000000000000000000000000000" # Updated by scripts/update-homebrew.sh
 
   url "https://github.com/Ajnunezg/BurnBar/releases/download/v#{version}/OpenBurnBar-#{version}-macOS.dmg"
   name "OpenBurnBar"

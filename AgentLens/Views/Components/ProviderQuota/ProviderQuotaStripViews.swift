@@ -37,6 +37,7 @@ struct QuotaDualWindowStrip: View {
         case .weekly:       return ("7d", "calendar")
         case .rollingDays:  return ("7d", "calendar")
         case .monthly:      return ("30d", "calendar")
+        case .lifetime:     return ("All", "infinity")
         case .custom:       return (defaultLabel, defaultIcon)
         }
     }

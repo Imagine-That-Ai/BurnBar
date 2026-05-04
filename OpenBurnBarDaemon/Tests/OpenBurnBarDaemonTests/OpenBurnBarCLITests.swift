@@ -4,6 +4,50 @@ import Foundation
 import XCTest
 
 final class BurnBarCLITests: XCTestCase {
+    func testStartupPreflightReturnsUsageBeforeRunnerConstruction() {
+        for arguments in [[], ["help"], ["--help"], ["-h"], ["--", "help"]] {
+            let result = BurnBarCLIRunner.startupPreflightResult(
+                arguments: arguments,
+                invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+            )
+
+            XCTAssertEqual(result?.exitCode, EXIT_SUCCESS)
+            XCTAssertEqual(result?.writesToStandardError, false)
+            XCTAssertTrue(result?.output.contains("openburnbar-cli <command>") == true)
+        }
+    }
+
+    func testStartupPreflightRejectsInvalidCanonicalCommandBeforeRunnerConstruction() {
+        let result = BurnBarCLIRunner.startupPreflightResult(
+            arguments: ["definitely-not-a-command"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        )
+
+        XCTAssertEqual(result?.exitCode, EXIT_FAILURE)
+        XCTAssertEqual(result?.writesToStandardError, true)
+        XCTAssertTrue(result?.output.contains("Unsupported OpenBurnBar CLI command 'definitely-not-a-command'.") == true)
+        XCTAssertTrue(result?.output.contains("openburnbar-cli <command>") == true)
+    }
+
+    func testStartupPreflightAllowsKnownCommandsAndShellShimInvocations() {
+        XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
+            arguments: ["health"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        ))
+        XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
+            arguments: ["--model", "gpt-5"],
+            invokedExecutablePath: "/tmp/codex"
+        ))
+        XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
+            arguments: ["--help"],
+            invokedExecutablePath: "/tmp/codex"
+        ))
+        XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
+            arguments: [],
+            invokedExecutablePath: "/tmp/codex"
+        ))
+    }
+
     func testHealthCommandFormatsDaemonStatus() throws {
         let runner = BurnBarCLIRunner(client: FakeCLIClient())
         let output = try runner.run(arguments: ["health"])

@@ -90,9 +90,15 @@ enum BillingUsageReconciliation {
             return localKey == apiKey || localKey.contains(apiKey) || apiKey.contains(localKey)
         case .some(.copilot):
             return usage.provider == .copilot
+        case .some(let provider):
+            guard usage.provider == provider else {
+                return false
+            }
+
+            let localKey = TokenExtractionUtility.normalizeModelKey(usage.model)
+            let apiKey = TokenExtractionUtility.normalizeModelKey(record.model)
+            return localKey == apiKey || localKey.contains(apiKey) || apiKey.contains(localKey)
         case .none:
-            return false
-        default:
             return false
         }
     }
