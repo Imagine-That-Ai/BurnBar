@@ -2,7 +2,7 @@
 
 OpenBurnBar ships the **Firebase App Check** SDK and installs a provider **before** `FirebaseApp.configure()` (see `OpenBurnBarAppCheckProviderFactory` and `AgentLensApp.swift`). That alone does **not** protect Firestore: you must **enforce** App Check for **Cloud Firestore** in the Firebase project used by your `GoogleService-Info.plist`.
 
-Without enforcement, a caller who obtains a **valid Firebase Auth ID token** (e.g. from another signed-in context) can still use the Firestore API against your project, because your [firestore.rules](../firestore.rules) only express **authentication and owner scoping**—not app attestation.
+Without enforcement, a caller who obtains a **valid Firebase Auth ID token** (e.g. from another signed-in context) can still use the Firestore API against your project, because your [firestore.rules](../firestore.rules) express **authentication, owner scoping, client-write limits, and server-only private paths**—not app attestation.
 
 **Primary control:** [Enable App Check enforcement](https://firebase.google.com/docs/app-check/enable-enforcement) for **Cloud Firestore** in the Firebase console. The Firestore service then rejects traffic that is not accompanied by a valid App Check attestation, before (or in addition to) your security rules.
 

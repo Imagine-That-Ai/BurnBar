@@ -1085,6 +1085,72 @@ final class OpenBurnBarDatabase: Sendable {
             )
         }
 
+        migrator.registerMigration("v35_provider_accounts") { db in
+            try db.create(table: "provider_accounts") { t in
+                t.column("id", .text).primaryKey()
+                t.column("providerID", .text).notNull().indexed()
+                t.column("label", .text).notNull()
+                t.column("identityHint", .text)
+                t.column("status", .text).notNull()
+                t.column("credentialKind", .text).notNull()
+                t.column("storageScope", .text).notNull().indexed()
+                t.column("redactedLabel", .text).notNull()
+                t.column("sourceDeviceID", .text)
+                t.column("linkedSwitcherProfileID", .text)
+                t.column("isDefault", .boolean).notNull().defaults(to: false).indexed()
+                t.column("sortKey", .double).notNull().defaults(to: 0)
+                t.column("lastValidatedAt", .datetime)
+                t.column("lastRefreshAt", .datetime)
+                t.column("lastErrorCode", .text)
+                t.column("schemaVersion", .integer).notNull().defaults(to: 1)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(
+                index: "provider_accounts_provider_sort_idx",
+                on: "provider_accounts",
+                columns: ["providerID", "sortKey", "createdAt"]
+            )
+            try db.create(
+                index: "provider_accounts_provider_default_idx",
+                on: "provider_accounts",
+                columns: ["providerID", "isDefault"]
+            )
+
+            try db.alter(table: "token_usage") { t in
+                t.add(column: "providerID", .text)
+                t.add(column: "providerAccountID", .text)
+                t.add(column: "providerAccountLabel", .text)
+                t.add(column: "providerAccountSource", .text)
+            }
+            try db.execute(sql: """
+                UPDATE token_usage
+                SET providerID = CASE
+                    WHEN provider = 'Claude Code' THEN 'claude-code'
+                    WHEN provider = 'Codex' THEN 'codex'
+                    ELSE lower(replace(provider, ' ', ''))
+                END
+                WHERE providerID IS NULL
+                """)
+            try db.execute(sql: "DROP INDEX IF EXISTS token_usage_unique_session_model_device_idx")
+            try db.execute(
+                sql: """
+                CREATE UNIQUE INDEX token_usage_unique_session_model_device_account_idx
+                ON token_usage(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, ''))
+                """
+            )
+            try db.create(
+                index: "token_usage_provider_account_idx",
+                on: "token_usage",
+                columns: ["provider", "providerAccountID"]
+            )
+            try db.create(
+                index: "token_usage_account_time_idx",
+                on: "token_usage",
+                columns: ["providerAccountID", "startTime"]
+            )
+        }
+
         return migrator
     }
 

@@ -160,6 +160,17 @@ final class FirestoreRepository {
             result["providerSummaries"] = providers.map { var p = $0; if p["id"] == nil { p["id"] = p["provider"] }; return p }
         }
 
+        // accountSummaries: inject id from accountID, or the unattributed provider bucket.
+        if let accounts = result["accountSummaries"] as? [[String: Any]] {
+            result["accountSummaries"] = accounts.map {
+                var account = $0
+                if account["id"] == nil {
+                    account["id"] = account["accountID"] ?? "\(account["providerID"] ?? account["provider"] ?? "provider"):unattributed"
+                }
+                return account
+            }
+        }
+
         // modelSummaries: inject id from "provider:model"
         if let models = result["modelSummaries"] as? [[String: Any]] {
             result["modelSummaries"] = models.map { var m = $0; if m["id"] == nil { m["id"] = "\(m["provider"] ?? ""):\(m["model"] ?? "")" }; return m }
@@ -305,6 +316,19 @@ final class FirestoreRepository {
             decodeWithDocID(ProviderConnectionDoc.self, from: doc.data(), docID: doc.documentID)
         }
         logger.info("Fetched \(results.count) provider connections")
+        return results
+    }
+
+    func fetchProviderAccounts() async throws -> [ProviderAccountDoc] {
+        let uid = try uid()
+        let snapshot = try await db.collection("users/\(uid)/provider_accounts")
+            .order(by: "providerID")
+            .order(by: "sortKey")
+            .getDocuments()
+        let results = snapshot.documents.compactMap { doc -> ProviderAccountDoc? in
+            decodeWithDocID(ProviderAccountDoc.self, from: doc.data(), docID: doc.documentID)
+        }
+        logger.info("Fetched \(results.count) provider accounts")
         return results
     }
 }

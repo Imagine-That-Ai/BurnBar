@@ -104,6 +104,7 @@ struct CodexRolloutEnvelope: Decodable {
 
 struct CursorUsageSummary: Decodable {
     let billingCycleEnd: String?
+    let membershipType: String?
     let isUnlimited: Bool?
     let individualUsage: CursorIndividualUsage?
 }
@@ -127,7 +128,9 @@ struct CursorOnDemandUsage: Decodable {
 }
 
 struct CursorUserInfo: Decodable {
-    let id: String
+    let id: String?
+    let email: String?
+    let name: String?
 }
 
 struct CursorLegacyUsageResponse: Decodable {

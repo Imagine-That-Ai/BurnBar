@@ -80,10 +80,11 @@ final class UsageSyncService: CloudSyncDomain {
     }
 
     private func encodeUsage(_ usage: TokenUsage, deviceId: String) -> [String: Any] {
-        [
+        var data: [String: Any] = [
             "id": usage.id.uuidString,
             "deviceId": deviceId,
             "provider": usage.provider.rawValue,
+            "providerID": usage.providerID.rawValue,
             "sessionId": usage.sessionId,
             "projectName": usage.projectName,
             "model": usage.model,
@@ -99,5 +100,15 @@ final class UsageSyncService: CloudSyncDomain {
             "endTime": Timestamp(date: usage.endTime),
             "updatedAt": FieldValue.serverTimestamp()
         ]
+        if let providerAccountID = usage.providerAccountID {
+            data["providerAccountID"] = providerAccountID
+        }
+        if let providerAccountLabel = usage.providerAccountLabel {
+            data["providerAccountLabel"] = providerAccountLabel
+        }
+        if let providerAccountSource = usage.providerAccountSource {
+            data["providerAccountSource"] = providerAccountSource.rawValue
+        }
+        return data
     }
 }

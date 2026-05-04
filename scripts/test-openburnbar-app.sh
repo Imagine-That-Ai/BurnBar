@@ -18,6 +18,8 @@
 #   OPENBURNBAR_ENABLE_COVERAGE=YES   Capture xcresult at canonical path.
 #   OPENBURNBAR_APP_TEST_ATTEMPTS=N   Override max attempts (default 4).
 #   OPENBURNBAR_APP_TEST_FILTER=...   Pass a custom -only-testing target.
+#   OPENBURNBAR_APP_TEST_DERIVED_DATA_ROOT=...
+#                                      Override runnable derived-data root.
 #
 # Exit status:
 #   0  — at least one attempt completed all tests successfully.
@@ -27,8 +29,14 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cache_dir="$repo_root/.spm-cache"
-derived_data_root="$repo_root/.derived-data"
-attempt_log_path="$derived_data_root/test-openburnbar-app-attempts.jsonl"
+artifact_root="$repo_root/.derived-data"
+
+# Keep runnable app/test-host products out of the repo's Documents path. macOS
+# can launch test hosts via launchd/testmanagerd, and those child processes do
+# not always inherit the caller's TCC grant for Documents, which can wedge dyld
+# before XCTest starts. Repo-local artifacts remain under .derived-data.
+derived_data_root="${OPENBURNBAR_APP_TEST_DERIVED_DATA_ROOT:-${TMPDIR:-/tmp}/openburnbar-app-tests}"
+attempt_log_path="$artifact_root/test-openburnbar-app-attempts.jsonl"
 
 # Test runner timeouts (seconds). Defensive guards against hung individual
 # test methods or stuck setup. Real CI overrides these via env if needed.
@@ -45,6 +53,7 @@ max_test_attempts="${OPENBURNBAR_APP_TEST_ATTEMPTS:-4}"
 test_filter="${OPENBURNBAR_APP_TEST_FILTER:-OpenBurnBarTests}"
 
 mkdir -p "$cache_dir"
+mkdir -p "$artifact_root"
 mkdir -p "$derived_data_root"
 
 # Per-invocation state
@@ -203,7 +212,7 @@ populate_xcodebuild_args() {
 }
 
 # Canonical coverage xcresult location consumed by extract-coverage.sh
-canonical_xcresult_path="$derived_data_root/OpenBurnBar_TestCoverage.xcresult"
+canonical_xcresult_path="$artifact_root/OpenBurnBar_TestCoverage.xcresult"
 if [[ "${OPENBURNBAR_ENABLE_COVERAGE:-}" == "YES" ]]; then
     rm -rf "$canonical_xcresult_path"
 fi

@@ -22,6 +22,16 @@ extension Double {
         if self < 0.01 { return String(format: "$%.4f", self) }
         return String(format: "$%.2f", self)
     }
+
+    /// Display a 0–1 ratio as a percent. Whole numbers when ≥ 10%, one decimal below.
+    /// Returns "—" if the value is not finite.
+    func formatAsPercent() -> String {
+        guard self.isFinite else { return "—" }
+        let pct = self * 100
+        if pct >= 10 || pct <= -10 { return String(format: "%.0f%%", pct) }
+        if abs(pct) < 0.1 && pct != 0 { return String(format: "%.2f%%", pct) }
+        return String(format: "%.1f%%", pct)
+    }
 }
 
 extension Int {

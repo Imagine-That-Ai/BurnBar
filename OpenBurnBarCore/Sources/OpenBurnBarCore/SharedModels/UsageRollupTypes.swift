@@ -25,6 +25,7 @@ public enum RollupWindowKey: String, Codable, CaseIterable, Sendable {
 public struct RollupProviderSummary: Codable, Identifiable, Hashable, Sendable {
     public let id: String
     public let provider: String
+    public let providerID: ProviderID
     public let totalRequests: Int
     public let totalTokens: Int
     public let totalCost: Double?
@@ -32,12 +33,62 @@ public struct RollupProviderSummary: Codable, Identifiable, Hashable, Sendable {
     public init(
         id: String? = nil,
         provider: String,
+        providerID: ProviderID? = nil,
         totalRequests: Int,
         totalTokens: Int,
         totalCost: Double? = nil
     ) {
         self.id = id ?? provider
         self.provider = provider
+        self.providerID = providerID ?? ProviderID(rawValue: provider)
+        self.totalRequests = totalRequests
+        self.totalTokens = totalTokens
+        self.totalCost = totalCost
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, provider, providerID, totalRequests, totalTokens, totalCost
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        provider = try c.decode(String.self, forKey: .provider)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? provider
+        providerID = try c.decodeIfPresent(ProviderID.self, forKey: .providerID) ?? ProviderID(rawValue: provider)
+        totalRequests = try c.decode(Int.self, forKey: .totalRequests)
+        totalTokens = try c.decode(Int.self, forKey: .totalTokens)
+        totalCost = try c.decodeIfPresent(Double.self, forKey: .totalCost)
+    }
+}
+
+// MARK: - Provider Account Summary
+
+public struct RollupProviderAccountSummary: Codable, Identifiable, Hashable, Sendable {
+    public let id: String
+    public let providerID: ProviderID
+    public let accountID: String?
+    public let accountLabel: String
+    public let storageScope: ProviderAccountStorageScope?
+    public let totalRequests: Int
+    public let totalTokens: Int
+    public let totalCost: Double?
+
+    public init(
+        id: String? = nil,
+        providerID: ProviderID,
+        accountID: String?,
+        accountLabel: String,
+        storageScope: ProviderAccountStorageScope? = nil,
+        totalRequests: Int,
+        totalTokens: Int,
+        totalCost: Double? = nil
+    ) {
+        let summaryID = accountID ?? "\(providerID.rawValue):unattributed"
+        self.id = id ?? summaryID
+        self.providerID = providerID
+        self.accountID = accountID
+        self.accountLabel = accountLabel
+        self.storageScope = storageScope
         self.totalRequests = totalRequests
         self.totalTokens = totalTokens
         self.totalCost = totalCost
@@ -112,6 +163,7 @@ public struct UsageRollupDoc: Codable, Identifiable, Hashable, Sendable {
     public let windowKey: RollupWindowKey
     public let totals: RollupTotals
     public let providerSummaries: [RollupProviderSummary]
+    public let accountSummaries: [RollupProviderAccountSummary]
     public let modelSummaries: [RollupModelSummary]
     public let deviceSummaries: [RollupDeviceSummary]
     public let dailyPoints: [RollupDailyPoint]
@@ -122,6 +174,7 @@ public struct UsageRollupDoc: Codable, Identifiable, Hashable, Sendable {
         windowKey: RollupWindowKey,
         totals: RollupTotals,
         providerSummaries: [RollupProviderSummary],
+        accountSummaries: [RollupProviderAccountSummary] = [],
         modelSummaries: [RollupModelSummary],
         deviceSummaries: [RollupDeviceSummary],
         dailyPoints: [RollupDailyPoint],
@@ -132,11 +185,31 @@ public struct UsageRollupDoc: Codable, Identifiable, Hashable, Sendable {
         self.windowKey = windowKey
         self.totals = totals
         self.providerSummaries = providerSummaries
+        self.accountSummaries = accountSummaries
         self.modelSummaries = modelSummaries
         self.deviceSummaries = deviceSummaries
         self.dailyPoints = dailyPoints
         self.computedAt = computedAt
         self.schemaVersion = schemaVersion
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case windowKey, totals, providerSummaries, accountSummaries
+        case modelSummaries, deviceSummaries, dailyPoints, computedAt, schemaVersion
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        windowKey = try c.decode(RollupWindowKey.self, forKey: .windowKey)
+        id = windowKey.rawValue
+        totals = try c.decode(RollupTotals.self, forKey: .totals)
+        providerSummaries = try c.decode([RollupProviderSummary].self, forKey: .providerSummaries)
+        accountSummaries = try c.decodeIfPresent([RollupProviderAccountSummary].self, forKey: .accountSummaries) ?? []
+        modelSummaries = try c.decode([RollupModelSummary].self, forKey: .modelSummaries)
+        deviceSummaries = try c.decode([RollupDeviceSummary].self, forKey: .deviceSummaries)
+        dailyPoints = try c.decode([RollupDailyPoint].self, forKey: .dailyPoints)
+        computedAt = try c.decode(Date.self, forKey: .computedAt)
+        schemaVersion = try c.decode(Int.self, forKey: .schemaVersion)
     }
 }
 

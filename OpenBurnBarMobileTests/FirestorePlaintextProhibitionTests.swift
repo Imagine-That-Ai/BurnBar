@@ -7,7 +7,7 @@ final class FirestorePlaintextProhibitionTests: XCTestCase {
     /// Forbidden field names that must never appear as keys in Firestore-bound JSON.
     private let forbiddenFields = Set([
         "apiKey", "token", "refreshToken", "accessToken", "idToken",
-        "cookie", "password", "secret", "authorization", "bearer", "credential"
+        "cookie", "password", "secret", "secretVersionName", "authorization", "bearer", "credential"
     ])
 
     func testEscrowEnvelopeContainsNoPlaintextSecretFields() throws {

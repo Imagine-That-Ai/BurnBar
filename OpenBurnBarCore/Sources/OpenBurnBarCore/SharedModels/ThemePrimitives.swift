@@ -133,6 +133,7 @@ public enum DesignSystemColors {
         case .copilot:    return Color(hex: "23EA3B")
         case .aider:      return Color(hex: "FF6B35")
         case .cursor:     return Color(hex: "AC8C57")
+        case .openAI:     return Color(hex: "00A67E")
         case .codex:      return Color(hex: "00A67E")
         case .zai:        return Color(hex: "8B5CF6")
         case .minimax:    return Color(hex: "F59E0B")
@@ -159,6 +160,7 @@ public enum DesignSystemColors {
         case .copilot:    return Color(hex: "0969DA")
         case .aider:      return blaze
         case .cursor:     return Color(hex: "007AFF")
+        case .openAI:     return Color(hex: "00C48C")
         case .codex:      return Color(hex: "00C48C")
         case .zai:        return Color(hex: "A78BFA")
         case .minimax:    return Color(hex: "FCD34D")
@@ -179,13 +181,68 @@ public enum DesignSystemColors {
     }
     public static func colorForModel(_ modelName: String) -> Color {
         let key = modelName.lowercased()
+
+        // Known brand colors — deterministic, human-meaningful mapping.
+        if key.contains("claude") || key.contains("anthropic") {
+            return Color(hex: "CC785C")
+        }
+        if key.contains("gpt") || key.contains("openai") || key.contains("chatgpt") {
+            return Color(hex: "00A67E")
+        }
+        if key.contains("gemini") || key.contains("google") {
+            return Color(hex: "4285F4")
+        }
+        if key.contains("deepseek") {
+            return Color(hex: "6366F1")
+        }
+        if key.contains("kimi") || key.contains("moonshot") {
+            return Color(hex: "6366F1")
+        }
+        if key.contains("minimax") || key.contains("abab") {
+            return Color(hex: "F59E0B")
+        }
+        if key.contains("llama") || key.contains("meta") {
+            return Color(hex: "0668E1")
+        }
+        if key.contains("mistral") || key.contains("mixtral") {
+            return Color(hex: "FF7000")
+        }
+        if key.contains("qwen") || key.contains("qwq") {
+            return Color(hex: "615EFF")
+        }
+        if key.contains("grok") || key.contains("xai") {
+            return Color(hex: "1A1A1A")
+        }
+        if key.contains("cohere") || key.contains("command") {
+            return Color(hex: "39594D")
+        }
+        if key.contains("perplexity") || key.contains("sonar") {
+            return Color(hex: "20808D")
+        }
+        if key.contains("mlx") || key.contains("apple") {
+            return Color(hex: "A2AAAD")
+        }
+        if key.contains("nova") || key.contains("amazon") || key.contains("bedrock") {
+            return Color(hex: "FF9900")
+        }
+        if key.contains("alibaba") || key.contains("tongyi") {
+            return Color(hex: "FF6A00")
+        }
+        if key.contains("ollama") {
+            return Color(hex: "8B8589")
+        }
+
+        // Deterministic fallback palette for unknown models.
         let palette: [Color] = [
             Color(hex: "D4A373"), Color(hex: "10B981"), Color(hex: "EC4899"),
             Color(hex: "F97316"), Color(hex: "3B82F6"), Color(hex: "A855F7"),
             Color(hex: "EF4444"), Color(hex: "14B8A6"), Color(hex: "F59E0B"),
             Color(hex: "8B5CF6"), Color(hex: "06B6D4"), Color(hex: "84CC16"),
         ]
-        let hash = abs(key.hashValue)
-        return palette[hash % palette.count]
+        var hash = UInt64(5381)
+        for byte in key.utf8 {
+            hash = ((hash << 5) &+ hash) &+ UInt64(byte)
+        }
+        return palette[Int(hash % UInt64(palette.count))]
     }
 }

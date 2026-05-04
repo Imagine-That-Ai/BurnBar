@@ -10,6 +10,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case copilot = "Copilot"
     case aider = "Aider"
     case cursor = "Cursor"
+    case openAI = "OpenAI"
     case codex = "Codex"
     case zai = "Zai"
     case minimax = "MiniMax"
@@ -34,10 +35,41 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         rawValue.lowercased().replacingOccurrences(of: " ", with: "")
     }
 
+    /// Catalog/cloud provider identity used by first-class provider accounts.
+    public var providerID: ProviderID {
+        switch self {
+        case .openAI:
+            return .openAI
+        case .claudeCode:
+            return .claudeCode
+        case .codex:
+            return .codex
+        default:
+            return ProviderID(rawValue: persistedToken)
+        }
+    }
+
     /// Resolves a provider from either its persisted token or display name.
     public static func fromPersistedToken(_ token: String) -> AgentProvider? {
         let normalized = token.lowercased().replacingOccurrences(of: " ", with: "")
         return AgentProvider.allCases.first { $0.persistedToken == normalized }
+    }
+
+    /// Resolves display/log parser providers from canonical provider IDs.
+    ///
+    /// OpenAI billing/account contracts use `ProviderID.openAI`, while local
+    /// Codex logs remain `AgentProvider.codex`.
+    public static func fromProviderID(_ providerID: ProviderID) -> AgentProvider? {
+        switch providerID.rawValue {
+        case "openai":
+            return .openAI
+        case "claude-code":
+            return .claudeCode
+        case "codex":
+            return .codex
+        default:
+            return AgentProvider.allCases.first { $0.providerID == providerID }
+        }
     }
 
     /// Bundled asset catalog image name for every provider.
@@ -48,6 +80,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .copilot:    return "CopilotLogo"
         case .aider:      return "AiderLogo"
         case .cursor:     return "CursorLogo"
+        case .openAI:     return "OpenAILogo"
         case .codex:      return "CodexLogo"
         case .zai:        return "ZaiLogo"
         case .minimax:    return "MiniMaxLogo"
@@ -75,6 +108,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .copilot: return "sparkles"
         case .aider: return "terminal.fill"
         case .cursor: return "cursor.rays"
+        case .openAI: return "sparkles"
         case .codex: return "hammer.fill"
         case .zai: return "bolt.fill"
         case .minimax: return "star.fill"

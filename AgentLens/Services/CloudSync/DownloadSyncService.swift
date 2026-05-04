@@ -1,6 +1,7 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarCore
 
 /// Sync domain for downloading remote data from Firestore.
 ///
@@ -33,6 +34,7 @@ final class DownloadSyncService: CloudSyncDomain {
         defer { isSyncing = false }
 
         await syncDeviceRegistry(uid: resolvedUid, localDeviceId: localDeviceId)
+        await downloadRemoteProviderAccounts(uid: resolvedUid, localDeviceId: localDeviceId)
         await downloadRemoteUsage(uid: resolvedUid, localDeviceId: localDeviceId)
         let newConversationIds = await downloadRemoteConversations(uid: resolvedUid, localDeviceId: localDeviceId)
         await downloadRemoteSessionLogBodies(uid: resolvedUid, conversationIds: newConversationIds)
@@ -94,6 +96,79 @@ final class DownloadSyncService: CloudSyncDomain {
         } catch { /* non-fatal */ }
     }
 
+    // MARK: - Provider Account Download
+
+    private func downloadRemoteProviderAccounts(uid: String, localDeviceId: String) async {
+        do {
+            let snapshot = try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "download.providerAccounts"
+            ) {
+                try await context.firestoreGateway
+                    .collection("users")
+                    .document(uid)
+                    .collection("provider_accounts")
+                    .getDocuments()
+            }
+
+            for doc in snapshot.documents {
+                let data = doc.data()
+                guard let account = providerAccount(from: data, documentID: doc.documentID) else { continue }
+
+                if account.sourceDeviceID == localDeviceId,
+                   account.storageScope == .deviceKeychain || account.storageScope == .localOnly {
+                    continue
+                }
+
+                try context.dataStore.providerAccountStore.upsert(account)
+            }
+        } catch { /* non-fatal */ }
+    }
+
+    private func providerAccount(from data: [String: Any], documentID: String) -> ProviderAccountDoc? {
+        guard let providerIDRaw = data["providerID"] as? String,
+              let label = data["label"] as? String,
+              let statusRaw = data["status"] as? String,
+              let status = ProviderAccountStatus(rawValue: statusRaw),
+              let credentialKindRaw = data["credentialKind"] as? String,
+              let credentialKind = CredentialKind(rawValue: credentialKindRaw),
+              let storageScopeRaw = data["storageScope"] as? String,
+              let storageScope = ProviderAccountStorageScope(rawValue: storageScopeRaw),
+              let redactedLabel = data["redactedLabel"] as? String else {
+            return nil
+        }
+
+        let now = Date()
+        return ProviderAccountDoc(
+            id: data["id"] as? String ?? documentID,
+            providerID: ProviderID(rawValue: providerIDRaw),
+            label: label,
+            identityHint: data["identityHint"] as? String,
+            status: status,
+            credentialKind: credentialKind,
+            storageScope: storageScope,
+            redactedLabel: redactedLabel,
+            sourceDeviceID: data["sourceDeviceID"] as? String ?? data["deviceId"] as? String,
+            linkedSwitcherProfileID: data["linkedSwitcherProfileID"] as? String,
+            isDefault: data["isDefault"] as? Bool ?? false,
+            sortKey: data["sortKey"] as? Double ?? Double(data["sortKey"] as? Int ?? 0),
+            lastValidatedAt: dateValue(data["lastValidatedAt"]),
+            lastRefreshAt: dateValue(data["lastRefreshAt"]),
+            lastErrorCode: data["lastErrorCode"] as? String,
+            schemaVersion: data["schemaVersion"] as? Int ?? 1,
+            createdAt: dateValue(data["createdAt"]) ?? now,
+            updatedAt: dateValue(data["updatedAt"]) ?? now
+        )
+    }
+
+    private func dateValue(_ value: Any?) -> Date? {
+        if let timestamp = value as? Timestamp {
+            return timestamp.dateValue()
+        }
+        return value as? Date
+    }
+
     // MARK: - Usage Download
 
     private func downloadRemoteUsage(uid: String, localDeviceId: String) async {
@@ -151,6 +226,9 @@ final class DownloadSyncService: CloudSyncDomain {
                 let reasoning = data["reasoningTokens"] as? Int ?? 0
                 let srcRaw = data["usageSource"] as? String
                 let usageSource = srcRaw.flatMap { UsageSource(rawValue: $0) } ?? .unknown
+                let providerID = (data["providerID"] as? String).map { ProviderID(rawValue: $0) } ?? provider.providerID
+                let providerAccountSource = (data["providerAccountSource"] as? String)
+                    .flatMap { ProviderAccountStorageScope(rawValue: $0) }
 
                 let usage = TokenUsage(
                     id: id, provider: provider, sessionId: sessionId,
@@ -168,6 +246,10 @@ final class DownloadSyncService: CloudSyncDomain {
                     sourceDeviceId: remoteDeviceId,
                     sourceDeviceName: nameMap[remoteDeviceId] ?? remoteDeviceId,
                     isRemote: true,
+                    providerID: providerID,
+                    providerAccountID: data["providerAccountID"] as? String,
+                    providerAccountLabel: data["providerAccountLabel"] as? String,
+                    providerAccountSource: providerAccountSource,
                     provenanceMethod: .cloudSync,
                     provenanceConfidence: .exact
                 )

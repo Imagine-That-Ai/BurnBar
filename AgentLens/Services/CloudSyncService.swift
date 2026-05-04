@@ -2,6 +2,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - CloudSyncService
 
@@ -481,6 +482,9 @@ final class CloudSyncService {
                 let reasoning = data["reasoningTokens"] as? Int ?? 0
                 let srcRaw = data["usageSource"] as? String
                 let usageSource = srcRaw.flatMap { UsageSource(rawValue: $0) } ?? .unknown
+                let providerID = (data["providerID"] as? String).map { ProviderID(rawValue: $0) } ?? provider.providerID
+                let providerAccountSource = (data["providerAccountSource"] as? String)
+                    .flatMap { ProviderAccountStorageScope(rawValue: $0) }
 
                 let usage = TokenUsage(
                     id: id, provider: provider, sessionId: sessionId,
@@ -498,6 +502,10 @@ final class CloudSyncService {
                     sourceDeviceId: remoteDeviceId,
                     sourceDeviceName: nameMap[remoteDeviceId] ?? remoteDeviceId,
                     isRemote: true,
+                    providerID: providerID,
+                    providerAccountID: data["providerAccountID"] as? String,
+                    providerAccountLabel: data["providerAccountLabel"] as? String,
+                    providerAccountSource: providerAccountSource,
                     provenanceMethod: .cloudSync,
                     provenanceConfidence: .exact
                 )
@@ -697,10 +705,11 @@ final class CloudSyncService {
         let safeEndCandidate = TimestampNormalizationUtility.firestoreSafeDate(usage.endTime, fallback: safeStart)
         let safeEnd = max(safeStart, safeEndCandidate)
 
-        return [
+        var data: [String: Any] = [
             "id": usage.id.uuidString,
             "deviceId": deviceId,
             "provider": usage.provider.rawValue,
+            "providerID": usage.providerID.rawValue,
             "sessionId": usage.sessionId,
             "projectName": usage.projectName,
             "model": usage.model,
@@ -716,6 +725,16 @@ final class CloudSyncService {
             "endTime": Timestamp(date: safeEnd),
             "updatedAt": FieldValue.serverTimestamp()
         ]
+        if let providerAccountID = usage.providerAccountID {
+            data["providerAccountID"] = providerAccountID
+        }
+        if let providerAccountLabel = usage.providerAccountLabel {
+            data["providerAccountLabel"] = providerAccountLabel
+        }
+        if let providerAccountSource = usage.providerAccountSource {
+            data["providerAccountSource"] = providerAccountSource.rawValue
+        }
+        return data
     }
 
     private static func encodeConversation(_ record: ConversationRecord, deviceId: String) -> [String: Any] {

@@ -24,8 +24,8 @@ public actor BurnBarRateLimiter {
     private let config: BurnBarRateLimitConfiguration
     private var buckets: [String: TokenBucket] = [:]
     private var lastPruned: ContinuousClock.Instant?
-    private let pruneInterval: Duration = .seconds(300) // 5 minutes
-    private let bucketIdleTimeout: Duration = .seconds(300) // 5 minutes
+    private let pruneIntervalSeconds: Double = 300 // 5 minutes
+    private let bucketIdleTimeoutSeconds: Double = 300 // 5 minutes
 
     public init(configuration: BurnBarRateLimitConfiguration) {
         self.config = configuration
@@ -41,8 +41,7 @@ public actor BurnBarRateLimiter {
             lastUpdated: now
         )
 
-        let elapsed = bucket.lastUpdated.duration(to: now)
-        let elapsedSeconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        let elapsedSeconds = Self.seconds(from: bucket.lastUpdated.duration(to: now))
         let tokensToAdd = elapsedSeconds * config.requestsPerSecond
 
         bucket.tokens = min(Double(config.burstCapacity), bucket.tokens + tokensToAdd)
@@ -60,13 +59,13 @@ public actor BurnBarRateLimiter {
     }
 
     private func pruneIfNeeded(now: ContinuousClock.Instant) {
-        if let lastPruned, lastPruned.duration(to: now) < pruneInterval {
+        if let lastPruned, Self.seconds(from: lastPruned.duration(to: now)) < pruneIntervalSeconds {
             return
         }
 
         var pruned = 0
         for (key, bucket) in buckets {
-            if bucket.lastUpdated.duration(to: now) > bucketIdleTimeout {
+            if Self.seconds(from: bucket.lastUpdated.duration(to: now)) > bucketIdleTimeoutSeconds {
                 buckets.removeValue(forKey: key)
                 pruned += 1
             }
@@ -76,5 +75,9 @@ public actor BurnBarRateLimiter {
         if pruned > 0 {
             // Silent prune; no logger available in this actor to avoid coupling
         }
+    }
+
+    private static func seconds(from duration: Duration) -> Double {
+        Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
     }
 }

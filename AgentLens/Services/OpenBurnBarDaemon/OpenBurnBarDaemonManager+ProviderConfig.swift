@@ -286,6 +286,8 @@ extension OpenBurnBarDaemonManager {
             return .zai
         case "ollama":
             return .ollama
+        case "openai":
+            return .openAI
         default:
             return nil
         }

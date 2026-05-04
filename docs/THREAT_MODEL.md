@@ -137,7 +137,7 @@ If the app is compromised, the attacker has full access to the user's home direc
 
 - **Auth:** Google and Apple Sign-In via Firebase Auth. OAuth tokens managed by Firebase SDK.
 - **App Check (Firestore):** The macOS app initializes App Check before Firebase. **Production** projects must **enforce** App Check for **Cloud Firestore** in the Firebase console so traffic without a valid attestation is rejected; Auth alone is not a substitute (see [FIREBASE_APP_CHECK_ENFORCEMENT.md](FIREBASE_APP_CHECK_ENFORCEMENT.md)).
-- **Firestore:** Owner-scoped rules: `users/{uid}/...` and `workspaces/workspace-{uid}/...` are readable/writable only by the authenticated owner. Basic size limits enforced. Authorization is expressed in rules; **app attestation** is expected via console App Check enforcement.
+- **Firestore:** Owner-scoped explicit collection rules cover supported `users/{uid}/...` sync paths and `workspaces/workspace-{uid}/...` shared-artifact paths. Client-writable sync documents reject plaintext-looking secret field names. Usage rollups, rate-limit docs, and top-level `provider_account_secret_refs` credential reference docs are server-only. Basic size limits are enforced. Authorization is expressed in rules; **app attestation** is expected via console App Check enforcement.
 - **What syncs:** Usage rows, chat-thread metadata (for cross-device resume), and owner-scoped shared-artifact heads/revisions. Chat message bodies, conversation metadata, and full session-log backup are separately gated.
 - **Privacy note:** Synced data can include project directory names and model names. Chat content requires **Back Up Chat Message Content**; full session log bodies with prompts or code require the session-log backup setting.
 
@@ -217,7 +217,7 @@ Provider credentials only move between devices through an opt-in encrypted escro
 
 ### Firestore Secret Prohibition
 
-- Firestore rules reject documents containing fields named `apiKey`, `token`, `refreshToken`, `accessToken`, `idToken`, `cookie`, `password`, `secret`, `authorization`, `bearer`, or `credential` within `escrow_envelopes`.
+- Firestore rules reject client-writable sync documents containing fields named `apiKey`, `token`, `refreshToken`, `accessToken`, `idToken`, `cookie`, `password`, `secret`, `secretVersionName`, `authorization`, `bearer`, or `credential`; `provider_account_secret_refs` is denied to clients entirely.
 - Unit tests prove plaintext secret strings are never serialized into Firestore-bound documents.
 - Firebase never sees plaintext provider credentials — only ciphertext and non-sensitive metadata (provider ID, account label, credential kind, device IDs, timestamps).
 

@@ -87,99 +87,132 @@ enum DesignSystem {
 
         static func primary(for provider: AgentProvider) -> Color {
             switch provider {
-            case .factory: return whimsy
+            case .factory:    return Color(hex: "8B5CF6")
             case .claudeCode: return Color(hex: "CC785C")
-            case .copilot: return Color(hex: "23EA3B")
-            case .aider: return Color(hex: "FF6B35")
-            case .cursor: return Color(hex: "AC8C57")
-            case .codex: return Color(hex: "00A67E")
-            case .zai: return Color(hex: "8B5CF6")
-            case .minimax: return Color(hex: "F59E0B")
-            case .kimi: return Color(hex: "6366F1")
-            case .cline: return Color(hex: "D4A373")
-            case .kiloCode: return Color(hex: "10B981")
-            case .rooCode: return Color(hex: "EC4899")
-            case .forgeDev: return Color(hex: "F97316")
-            case .augment: return Color(hex: "3B82F6")
-            case .hermes: return Color(hex: "A855F7")
-            case .geminiCLI: return Color(hex: "4285F4")
-            case .goose: return Color(hex: "0D9488")
-            case .openClaw: return Color(hex: "FF6B6B")
-            case .ollama:   return Color(hex: "8B8589")
-            case .windsurf: return Color(hex: "06B6D4")
-            case .warp: return Color(hex: "F5A623")
+            case .copilot:    return Color(hex: "23EA3B")
+            case .aider:      return Color(hex: "FF6B35")
+            case .cursor:     return Color(hex: "AC8C57")
+            case .openAI:     return Color(hex: "00A67E")
+            case .codex:      return Color(hex: "00A67E")
+            case .zai:        return Color(hex: "8B5CF6")
+            case .minimax:    return Color(hex: "F59E0B")
+            case .kimi:       return Color(hex: "6366F1")
+            case .cline:      return Color(hex: "D4A373")
+            case .kiloCode:   return Color(hex: "10B981")
+            case .rooCode:    return Color(hex: "EC4899")
+            case .forgeDev:   return Color(hex: "F97316")
+            case .augment:    return Color(hex: "3B82F6")
+            case .hermes:     return Color(hex: "A855F7")
+            case .geminiCLI:  return Color(hex: "4285F4")
+            case .goose:      return Color(hex: "0D9488")
+            case .openClaw:   return Color(hex: "FF6B6B")
+            case .ollama:     return Color(hex: "6B7280")
+            case .windsurf:   return Color(hex: "06B6D4")
+            case .warp:       return Color(hex: "DDE4EA")
             }
         }
 
         static func accent(for provider: AgentProvider) -> Color {
             switch provider {
-            case .factory: return ember
+            case .factory:    return ember
             case .claudeCode: return Color(hex: "D4A574")
-            case .copilot: return Color(hex: "0969DA")
-            case .aider: return blaze
-            case .cursor: return Color(hex: "007AFF")
-            case .codex: return Color(hex: "00C48C")
-            case .zai: return Color(hex: "A78BFA")
-            case .minimax: return Color(hex: "FCD34D")
-            case .kimi: return Color(hex: "818CF8")
-            case .cline: return Color(hex: "E8C4A0")
-            case .kiloCode: return Color(hex: "34D399")
-            case .rooCode: return Color(hex: "F472B6")
-            case .forgeDev: return Color(hex: "FB923C")
-            case .augment: return Color(hex: "60A5FA")
-            case .hermes: return Color(hex: "C084FC")
-            case .geminiCLI: return Color(hex: "8AB4F8")
-            case .goose: return Color(hex: "2DD4BF")
-            case .openClaw: return Color(hex: "F472B6")
-            case .ollama:   return Color(hex: "B8A9A0")
-            case .windsurf: return Color(hex: "22D3EE")
-            case .warp: return Color(hex: "FFD700")
+            case .copilot:    return Color(hex: "0969DA")
+            case .aider:      return blaze
+            case .cursor:     return Color(hex: "007AFF")
+            case .openAI:     return Color(hex: "00C48C")
+            case .codex:      return Color(hex: "00C48C")
+            case .zai:        return Color(hex: "A78BFA")
+            case .minimax:    return Color(hex: "FCD34D")
+            case .kimi:       return Color(hex: "818CF8")
+            case .cline:      return Color(hex: "E8C4A0")
+            case .kiloCode:   return Color(hex: "34D399")
+            case .rooCode:    return Color(hex: "F472B6")
+            case .forgeDev:   return Color(hex: "FB923C")
+            case .augment:    return Color(hex: "60A5FA")
+            case .hermes:     return Color(hex: "C084FC")
+            case .geminiCLI:  return Color(hex: "8AB4F8")
+            case .goose:      return Color(hex: "2DD4BF")
+            case .openClaw:   return Color(hex: "F472B6")
+            case .ollama:     return Color(hex: "9CA3AF")
+            case .windsurf:   return Color(hex: "22D3EE")
+            case .warp:       return Color(hex: "111111")
             }
         }
 
         static func chartPalette(for provider: AgentProvider) -> [Color] {
-            switch provider {
-            case .factory: return [whimsy, ember, amber, Color(hex: "A78BFA")]
-            case .claudeCode: return [Color(hex: "CC785C"), Color(hex: "D4A574"), Color(hex: "8B949E"), Color(hex: "E8C4A0")]
-            case .copilot: return [Color(hex: "23EA3B"), Color(hex: "0969DA"), ember, whimsy]
-            case .aider: return [Color(hex: "FF6B35"), blaze, ember, whimsy]
-            case .cursor: return [Color(hex: "AC8C57"), Color(hex: "007AFF"), amber, ember]
-            case .codex: return [Color(hex: "00A67E"), Color(hex: "00C48C"), Color(hex: "7FDBDA"), Color(hex: "66CDAA")]
-            case .zai: return [Color(hex: "8B5CF6"), Color(hex: "A78BFA"), Color(hex: "6366F1"), Color(hex: "7C3AED")]
-            case .minimax: return [Color(hex: "F59E0B"), Color(hex: "FCD34D"), Color(hex: "D97706"), Color(hex: "FBBF24")]
-            case .kimi: return [Color(hex: "6366F1"), Color(hex: "818CF8"), Color(hex: "A5B4FC"), Color(hex: "C7D2FE")]
-            case .cline: return [Color(hex: "D4A373"), Color(hex: "E8C4A0"), Color(hex: "C08B5C"), Color(hex: "A67B5B")]
-            case .kiloCode: return [Color(hex: "10B981"), Color(hex: "34D399"), Color(hex: "059669"), Color(hex: "6EE7B7")]
-            case .rooCode: return [Color(hex: "EC4899"), Color(hex: "F472B6"), Color(hex: "DB2777"), Color(hex: "F9A8D4")]
-            case .forgeDev: return [Color(hex: "F97316"), Color(hex: "FB923C"), Color(hex: "EA580C"), Color(hex: "FDBA74")]
-            case .augment: return [Color(hex: "3B82F6"), Color(hex: "60A5FA"), Color(hex: "2563EB"), Color(hex: "93C5FD")]
-            case .hermes: return [Color(hex: "A855F7"), Color(hex: "C084FC"), Color(hex: "9333EA"), Color(hex: "D8B4FE")]
-            case .geminiCLI: return [Color(hex: "4285F4"), Color(hex: "8AB4F8"), Color(hex: "1A73E8"), Color(hex: "669DF6")]
-            case .goose: return [Color(hex: "0D9488"), Color(hex: "2DD4BF"), Color(hex: "0F766E"), Color(hex: "5EEAD4")]
-            case .openClaw: return [Color(hex: "FF6B6B"), Color(hex: "F472B6"), Color(hex: "F9A8D4"), Color(hex: "FBBF24")]
-            case .ollama:   return [Color(hex: "8B8589"), Color(hex: "B8A9A0"), Color(hex: "6E6368"), Color(hex: "9A8F94")]
-            case .windsurf: return [Color(hex: "06B6D4"), Color(hex: "22D3EE"), Color(hex: "0891B2"), Color(hex: "67E8F9")]
-            case .warp: return [Color(hex: "F5A623"), Color(hex: "FFD700"), Color(hex: "E8951A"), Color(hex: "FFEAA7")]
-            }
+            let p = primary(for: provider)
+            let a = accent(for: provider)
+            return [p, a, p.opacity(0.6), a.opacity(0.5)]
         }
 
         // MARK: - Model Colors
 
         /// Deterministic color for a model name. Known families get brand colors; others hash into a palette.
         static func colorForModel(_ modelName: String) -> Color {
-            let brand = LLMModelBrand.infer(fromModelKey: modelName)
-            if brand != .unknown { return brand.emblemColor }
-
             let key = modelName.lowercased()
-            // Deterministic hash for unknown models
+
+            // Known brand colors — deterministic, human-meaningful mapping.
+            if key.contains("claude") || key.contains("anthropic") {
+                return Color(hex: "CC785C")
+            }
+            if key.contains("gpt") || key.contains("openai") || key.contains("chatgpt") {
+                return Color(hex: "00A67E")
+            }
+            if key.contains("gemini") || key.contains("google") {
+                return Color(hex: "4285F4")
+            }
+            if key.contains("deepseek") {
+                return Color(hex: "6366F1")
+            }
+            if key.contains("kimi") || key.contains("moonshot") {
+                return Color(hex: "6366F1")
+            }
+            if key.contains("minimax") || key.contains("abab") {
+                return Color(hex: "F59E0B")
+            }
+            if key.contains("llama") || key.contains("meta") {
+                return Color(hex: "0668E1")
+            }
+            if key.contains("mistral") || key.contains("mixtral") {
+                return Color(hex: "FF7000")
+            }
+            if key.contains("qwen") || key.contains("qwq") {
+                return Color(hex: "615EFF")
+            }
+            if key.contains("grok") || key.contains("xai") {
+                return Color(hex: "1A1A1A")
+            }
+            if key.contains("cohere") || key.contains("command") {
+                return Color(hex: "39594D")
+            }
+            if key.contains("perplexity") || key.contains("sonar") {
+                return Color(hex: "20808D")
+            }
+            if key.contains("mlx") || key.contains("apple") {
+                return Color(hex: "A2AAAD")
+            }
+            if key.contains("nova") || key.contains("amazon") || key.contains("bedrock") {
+                return Color(hex: "FF9900")
+            }
+            if key.contains("alibaba") || key.contains("tongyi") {
+                return Color(hex: "FF6A00")
+            }
+            if key.contains("ollama") {
+                return Color(hex: "8B8589")
+            }
+
+            // Deterministic fallback palette for unknown models.
             let palette: [Color] = [
                 Color(hex: "D4A373"), Color(hex: "10B981"), Color(hex: "EC4899"),
                 Color(hex: "F97316"), Color(hex: "3B82F6"), Color(hex: "A855F7"),
                 Color(hex: "EF4444"), Color(hex: "14B8A6"), Color(hex: "F59E0B"),
                 Color(hex: "8B5CF6"), Color(hex: "06B6D4"), Color(hex: "84CC16"),
             ]
-            let hash = abs(key.hashValue)
-            return palette[hash % palette.count]
+            var hash = UInt64(5381)
+            for byte in key.utf8 {
+                hash = ((hash << 5) &+ hash) &+ UInt64(byte)
+            }
+            return palette[Int(hash % UInt64(palette.count))]
         }
 
         static func gradientForModel(_ modelName: String) -> LinearGradient {

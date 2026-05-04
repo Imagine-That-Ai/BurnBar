@@ -150,17 +150,21 @@ async function decryptEnvelope(envelope: string): Promise<string> {
 }
 
 /**
- * Build a deterministic Secret Manager secret ID for a user+provider pair.
+ * Build a deterministic Secret Manager secret ID for a user+provider/account pair.
  *
  * @param uid - Firebase Auth UID.
  * @param provider - Provider key.
+ * @param accountID - Optional provider account ID for multi-account secrets.
  * @returns Secret ID string.
  */
-function secretIdFor(uid: string, provider: string): string {
+function secretIdFor(uid: string, provider: string, accountID?: string): string {
   // Secret Manager IDs must match ^[a-zA-Z0-9_\-]{1,255}$
   // UIDs from Firebase Auth are typically alphanumeric; we sanitize just in case.
   const safeUid = uid.replace(/[^a-zA-Z0-9]/g, "-");
-  return `obb-${safeUid}-${provider}`;
+  const safeAccountID = accountID?.replace(/[^a-zA-Z0-9_-]/g, "-");
+  return safeAccountID
+    ? `obb-${safeUid}-${provider}-${safeAccountID}`
+    : `obb-${safeUid}-${provider}`;
 }
 
 /**
@@ -169,16 +173,18 @@ function secretIdFor(uid: string, provider: string): string {
  * @param uid - Firebase Auth UID.
  * @param provider - Provider key.
  * @param plaintext - Raw credential to protect.
+ * @param accountID - Optional provider account ID for first-class accounts.
  * @returns Resource name of the new secret version (e.g. projects/…/secrets/…/versions/1).
  */
 export async function storeCredential(
   uid: string,
   provider: string,
-  plaintext: string
+  plaintext: string,
+  accountID?: string
 ): Promise<string> {
   const { projectId } = getConfig();
   const sm = await getSecretManager();
-  const secretId = secretIdFor(uid, provider);
+  const secretId = secretIdFor(uid, provider, accountID);
   const parent = `projects/${projectId}`;
   const secretName = `${parent}/secrets/${secretId}`;
 
@@ -196,6 +202,7 @@ export async function storeCredential(
           labels: {
             app: "openburnbar",
             provider,
+            ...(accountID ? { account_id: accountID } : {}),
           },
         },
       });
@@ -252,9 +259,18 @@ export async function destroyCredential(secretVersionName: string): Promise<void
  *
  * @param uid - Firebase Auth UID.
  * @param provider - Provider key.
+ * @param accountID - Optional provider account ID for multi-account secrets.
  * @returns Secret version resource name.
  */
-export function initialSecretVersionName(uid: string, provider: string): string {
+export function initialSecretVersionName(
+  uid: string,
+  provider: string,
+  accountID?: string
+): string {
   const { projectId } = getConfig();
-  return `projects/${projectId}/secrets/${secretIdFor(uid, provider)}/versions/1`;
+  return `projects/${projectId}/secrets/${secretIdFor(
+    uid,
+    provider,
+    accountID
+  )}/versions/1`;
 }

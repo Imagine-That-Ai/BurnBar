@@ -279,43 +279,8 @@ struct iPadGeneralSettingsView: View {
 }
 
 struct iPadProvidersSettingsView: View {
-    @State private var store = ProviderConnectionStore()
-
     var body: some View {
-        Form {
-            Section("Connections") {
-                if store.connections.isEmpty {
-                    Text("No provider connections yet. Add connections on your Mac to see them here.")
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                } else {
-                    ForEach(store.connections) { conn in
-                        HStack {
-                            if let provider = AgentProvider.fromPersistedToken(conn.provider) {
-                                ProviderBadge(provider: provider, size: 28)
-                            }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(conn.provider)
-                                    .font(MobileTheme.Typography.body)
-                                Text(conn.redactedLabel)
-                                    .font(MobileTheme.Typography.caption)
-                                    .foregroundStyle(MobileTheme.Colors.textMuted)
-                            }
-                            Spacer()
-                            Text(conn.status.rawValue.capitalized)
-                                .font(MobileTheme.Typography.caption)
-                                .foregroundStyle(conn.status == .connected ? MobileTheme.Colors.success : MobileTheme.Colors.textMuted)
-                        }
-                    }
-                }
-            }
-            Section("Plan Tiers") {
-                Text("Manage provider plan tiers and quota tracking on your Mac.")
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-            }
-        }
-        .formStyle(.grouped)
-        .task { await store.load() }
-        .refreshable { await store.load() }
+        ProviderConnectionsView(showsDoneButton: false)
     }
 }
 

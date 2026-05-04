@@ -181,6 +181,14 @@ final class DashboardUsageViewModel {
         }
     }
 
+    // MARK: - Cache Efficiency
+
+    /// Aggregate cache reuse across every row in the optional date range.
+    /// Used for the dashboard hero so users see a single window-level cache hit rate.
+    func cacheEfficiency(in dateRange: ClosedRange<Date>?) -> CacheEfficiency {
+        CacheEfficiency.aggregate(usages(in: dateRange))
+    }
+
     // MARK: - Update
 
     func replaceUsages(_ newUsages: [TokenUsage]) {
@@ -369,7 +377,8 @@ final class DashboardUsageViewModel {
                 modelBreakdown: modelBreakdown,
                 provenanceConfidence: dominantConfidence,
                 provenanceMethod: dominantMethod,
-                hasEstimatedContributions: hasAnyEstimated
+                hasEstimatedContributions: hasAnyEstimated,
+                cacheEfficiency: CacheEfficiency.aggregate(providerUsages)
             )
         }
         .sorted { $0.totalCost > $1.totalCost }
@@ -399,7 +408,8 @@ final class DashboardUsageViewModel {
                     sessionCount: providerUsages.count,
                     totalTokens: providerTokens,
                     cost: providerCost,
-                    percentage: totalCost > 0 ? (providerCost / totalCost) * 100 : 0
+                    percentage: totalCost > 0 ? (providerCost / totalCost) * 100 : 0,
+                    cacheEfficiency: CacheEfficiency.aggregate(providerUsages)
                 )
             }
             .sorted { $0.cost > $1.cost }
@@ -412,7 +422,8 @@ final class DashboardUsageViewModel {
                 totalInputTokens: totalInputTokens,
                 totalOutputTokens: totalOutputTokens,
                 sessionCount: modelUsages.count,
-                providerBreakdown: providerBreakdown
+                providerBreakdown: providerBreakdown,
+                cacheEfficiency: CacheEfficiency.aggregate(modelUsages)
             )
         }
         .sorted { $0.totalCost > $1.totalCost }

@@ -23,6 +23,7 @@ actor DataStoreActor {
     nonisolated let remoteSyncWatermarkStore: RemoteSyncWatermarkStore
     nonisolated let switcherStore: SwitcherProfileStore
     nonisolated let backfillCursorStore: BackfillCursorStore
+    nonisolated let providerAccountStore: ProviderAccountStore
 
     init(databaseQueue: any DatabaseWriter, runMigrations: Bool = true) throws {
         dbQueue = databaseQueue
@@ -38,6 +39,7 @@ actor DataStoreActor {
         remoteSyncWatermarkStore = RemoteSyncWatermarkStore(dbQueue: databaseQueue)
         switcherStore = SwitcherProfileStore(dbQueue: databaseQueue)
         backfillCursorStore = BackfillCursorStore(dbQueue: databaseQueue)
+        providerAccountStore = ProviderAccountStore(dbQueue: databaseQueue)
 
         if runMigrations {
             try database.runMigrationsSafely()

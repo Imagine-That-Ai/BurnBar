@@ -60,6 +60,60 @@ final class CloudModelCodableTests: XCTestCase {
         XCTAssertEqual(decoded.topProviders.count, 1)
     }
 
+    func testProviderAccountDocCodable() throws {
+        let account = ProviderAccountDoc(
+            id: "openai_work",
+            providerID: .openAI,
+            label: "Work",
+            identityHint: "work@example.com",
+            status: .connected,
+            credentialKind: .bearer,
+            storageScope: .cloudRefreshable,
+            redactedLabel: "sk-...1234",
+            isDefault: true,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+
+        let data = try JSONEncoder().encode(account)
+        let decoded = try JSONDecoder().decode(ProviderAccountDoc.self, from: data)
+
+        XCTAssertEqual(decoded.id, "openai_work")
+        XCTAssertEqual(decoded.providerID, .openAI)
+        XCTAssertEqual(decoded.label, "Work")
+        XCTAssertEqual(decoded.storageScope, .cloudRefreshable)
+        XCTAssertTrue(decoded.isDefault)
+    }
+
+    func testQuotaSnapshotCodablePreservesProviderAccountFields() throws {
+        let snapshot = ProviderQuotaSnapshot(
+            id: "openai_openai_work_backend",
+            provider: "openai",
+            providerID: .openAI,
+            accountID: "openai_work",
+            accountLabel: "Work",
+            accountStorageScope: .cloudRefreshable,
+            sourceKind: .provider,
+            sourceId: "backend",
+            fetchedAt: Date(),
+            source: "cloud",
+            confidence: .high,
+            buckets: [
+                ProviderQuotaBucket(name: "Requests", used: 20, limit: 100, remaining: 80, window: "daily")
+            ],
+            schemaVersion: 2,
+            updatedAt: Date()
+        )
+
+        let data = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(ProviderQuotaSnapshot.self, from: data)
+
+        XCTAssertEqual(decoded.providerID, .openAI)
+        XCTAssertEqual(decoded.accountID, "openai_work")
+        XCTAssertEqual(decoded.accountLabel, "Work")
+        XCTAssertEqual(decoded.accountStorageScope, .cloudRefreshable)
+    }
+
     func testEscrowEnvelopeCodable() throws {
         let envelope = EscrowSecretEnvelope(
             grantId: "grant-1",

@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 #if canImport(AppKit)
 import AppKit
@@ -85,11 +86,13 @@ struct QuotaPopoverBar: View {
         let isActive = quotaService.isRefreshing(provider)
         let isExpanded = expandedProvider == provider
         let needsSetup = snapshot?.buckets.isEmpty == true && !isActive
+        let routingState = quotaService.routingStatesByProviderID[provider.providerID]
+        let hasRoutingDetail = routingState?.hasMeaningfulRoutingDetail ?? false
 
         VStack(spacing: 0) {
             // Main row — always visible
             Button {
-                if needsSetup || isExpanded {
+                if needsSetup || isExpanded || hasRoutingDetail {
                     withAnimation(DesignSystem.Animation.gentle) {
                         expandedProvider = isExpanded ? nil : provider
                         if !isExpanded { loadLocalState(for: provider) }
@@ -106,13 +109,19 @@ struct QuotaPopoverBar: View {
                     }
 
                     // Dual-window bars
-                    QuotaDualWindowStrip(
-                        hourlyBucket: snapshot?.hourlyBucket,
-                        weeklyBucket: snapshot?.weeklyBucket,
-                        fallbackBucket: snapshot?.primaryBucket,
-                        provider: provider,
-                        isActive: isActive
-                    )
+                    VStack(alignment: .leading, spacing: 2) {
+                        QuotaDualWindowStrip(
+                            hourlyBucket: snapshot?.hourlyBucket,
+                            weeklyBucket: snapshot?.weeklyBucket,
+                            fallbackBucket: snapshot?.primaryBucket,
+                            provider: provider,
+                            isActive: isActive
+                        )
+
+                        if let routingState, hasRoutingDetail {
+                            routingHintLine(provider: provider, state: routingState)
+                        }
+                    }
 
                     // Setup / action indicator for unconfigured providers
                     if needsSetup {
@@ -132,6 +141,14 @@ struct QuotaPopoverBar: View {
                         Image(systemName: "chevron.up")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(DesignSystem.Colors.textMuted)
+                    } else if hasRoutingDetail {
+                        // Subtle chevron so the user can tell the row is
+                        // tappable when routing complexity exists. We render
+                        // it muted so it doesn't compete with the active
+                        // refresh badge or "Set up" call-to-action.
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.65))
                     }
 
                     // Activity indicator
@@ -145,12 +162,67 @@ struct QuotaPopoverBar: View {
 
             // Expanded inline setup
             if isExpanded {
-                providerSetupPanel(provider: provider)
-                    .padding(.top, DesignSystem.Spacing.xs)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                VStack(spacing: DesignSystem.Spacing.sm) {
+                    if let routingState, hasRoutingDetail {
+                        ProviderRoutingCockpit(provider: provider, state: routingState, compact: true)
+                            .padding(.leading, DesignSystem.Spacing.xl)
+                            .padding(.trailing, DesignSystem.Spacing.sm)
+                    }
+
+                    providerSetupPanel(provider: provider)
+                }
+                .padding(.top, DesignSystem.Spacing.xs)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .animation(DesignSystem.Animation.gentle, value: expandedProvider)
+    }
+
+
+
+    @ViewBuilder
+    private func routingHintLine(provider: AgentProvider, state: ProviderRoutingStateSnapshot) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "point.3.connected.trianglepath.dotted")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.primary(for: provider))
+
+            if let active = state.activeAccount {
+                Text(active.accountLabel)
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            } else {
+                Text("No active account")
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.warning)
+            }
+
+            if let fallback = state.nextFallback {
+                Text("→")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Text(fallback.accountLabel)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            if !state.exhaustedOrCoolingDownAccounts.isEmpty {
+                Text("·")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Text("\(state.exhaustedOrCoolingDownAccounts.count) blocked")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.warning)
+            }
+
+            Spacer(minLength: 0)
+        }
     }
 
     // MARK: - Provider Setup Panels

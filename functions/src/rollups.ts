@@ -11,12 +11,13 @@ import type {
   UsageEventDoc,
   UsageRollupDoc,
   ProviderSummary,
+  ProviderAccountSummary,
   ModelSummary,
   DeviceSummary,
   RollupJobDoc,
 } from "./types.js";
 
-const ROLLUP_SCHEMA_VERSION = 1;
+const ROLLUP_SCHEMA_VERSION = 2;
 
 /** Window keys in ascending granularity order. */
 const WINDOW_KEYS = ["today", "7d", "30d", "90d", "all_time"] as const;
@@ -38,6 +39,14 @@ function eventCost(ev: UsageEventDoc): number | undefined {
   const v = ev.costUsd ?? ev.cost;
   if (typeof v === "number") return v;
   return undefined;
+}
+
+function eventProviderID(ev: UsageEventDoc): string {
+  return ev.providerID ?? ev.provider;
+}
+
+function accountSummaryKey(ev: UsageEventDoc): string {
+  return ev.providerAccountID ?? `${eventProviderID(ev)}:unattributed`;
 }
 
 /**
@@ -94,6 +103,7 @@ export async function computeUserRollups(
     const filtered = events.filter((e) => pred(e.timestamp));
 
     const providerMap = new Map<string, ProviderSummary>();
+    const accountMap = new Map<string, ProviderAccountSummary>();
     const modelMap = new Map<string, ModelSummary>();
     const deviceMap = new Map<string, DeviceSummary>();
     const dailyPoints = new Map<string, number>();
@@ -110,6 +120,7 @@ export async function computeUserRollups(
 
       // Provider
       const pKey = ev.provider;
+      const providerID = eventProviderID(ev);
       const pEx = providerMap.get(pKey);
       if (pEx) {
         pEx.totalRequests += 1;
@@ -118,6 +129,29 @@ export async function computeUserRollups(
       } else {
         providerMap.set(pKey, {
           provider: ev.provider,
+          providerID,
+          totalRequests: 1,
+          totalTokens: tokens,
+          totalCost: evCost ?? undefined,
+        });
+      }
+
+      // Provider account. Legacy/unattributed usage stays visible under
+      // provider-level totals and gets an explicit unattributed drill-down row.
+      const aKey = accountSummaryKey(ev);
+      const aEx = accountMap.get(aKey);
+      if (aEx) {
+        aEx.totalRequests += 1;
+        aEx.totalTokens += tokens;
+        if (evCost != null) aEx.totalCost = (aEx.totalCost ?? 0) + evCost;
+      } else {
+        accountMap.set(aKey, {
+          id: aKey,
+          providerID,
+          accountID: ev.providerAccountID,
+          accountLabel:
+            ev.providerAccountLabel ?? "Usage not linked to an account yet",
+          storageScope: ev.providerAccountSource,
           totalRequests: 1,
           totalTokens: tokens,
           totalCost: evCost ?? undefined,
@@ -175,6 +209,7 @@ export async function computeUserRollups(
         costUsd: Math.round(totalCost * 1e6) / 1e6,
       },
       providerSummaries: Array.from(providerMap.values()),
+      accountSummaries: Array.from(accountMap.values()),
       modelSummaries: Array.from(modelMap.values()),
       deviceSummaries: Array.from(deviceMap.values()),
       dailyPoints: Object.fromEntries(dailyPoints),

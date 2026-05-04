@@ -652,6 +652,8 @@ struct ProviderPlanWizardView: View {
             return "Token Plan or OpenAPI key via MiniMax"
         case .codex:
             return "OpenAI API key for Codex models"
+        case .openAI:
+            return "OpenAI organization admin key for usage reporting"
         case .claudeCode:
             return "Anthropic API key for Claude models"
         case .geminiCLI:
@@ -854,6 +856,7 @@ struct ProviderPlanWizardView: View {
         switch providerID.lowercased() {
         case "minimax": return .minimax
         case "zai": return .zai
+        case "openai": return .openAI
         default: return nil
         }
     }

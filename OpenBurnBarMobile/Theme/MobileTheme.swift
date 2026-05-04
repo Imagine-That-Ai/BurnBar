@@ -1,124 +1,89 @@
 import SwiftUI
 import OpenBurnBarCore
 
+/// Mobile theme — now delegates to `UnifiedDesignSystem` for visual parity.
 enum MobileTheme {
-    // MARK: - Brand Accents
-    static let ember   = Color.adaptive(light: "F45B69", dark: "FA5053")
-    static let amber   = Color.adaptive(light: "F28C38", dark: "FFA800")
-    static let blaze   = Color.adaptive(light: "E86100", dark: "E86100")
-    static let whimsy  = Color.adaptive(light: "6A5ACD", dark: "8B7FE8")
+    // MARK: - Delegated Tokens
+    static let ember   = UnifiedDesignSystem.Colors.ember
+    static let amber   = UnifiedDesignSystem.Colors.amber
+    static let blaze   = UnifiedDesignSystem.Colors.blaze
+    static let whimsy  = UnifiedDesignSystem.Colors.whimsy
 
-    // MARK: - Surfaces
-    static let background      = Color.adaptive(light: "F3E8E6", dark: "0D1117")
-    static let surface         = Color.adaptive(light: "FAF5F2", dark: "161B22")
-    static let surfaceElevated = Color.adaptive(light: "FDF8F5", dark: "1F2630")
-    static let border          = Color.adaptive(light: "E8BFB5", dark: "30363D")
-    static let borderSubtle    = Color.adaptive(light: "F2E0DA", dark: "21262D")
+    static let background      = UnifiedDesignSystem.Colors.background
+    static let surface         = UnifiedDesignSystem.Colors.surface
+    static let surfaceElevated = UnifiedDesignSystem.Colors.surfaceElevated
+    static let border          = UnifiedDesignSystem.Colors.border
+    static let borderSubtle    = UnifiedDesignSystem.Colors.borderSubtle
 
-    // MARK: - Text
-    static let textPrimary   = Color.adaptive(light: "2A1816", dark: "E6EDF3")
-    static let textSecondary = Color.adaptive(light: "6E4E48", dark: "8B949E")
-    static let textMuted     = Color.adaptive(light: "9A756D", dark: "6E7681")
+    static let textPrimary   = UnifiedDesignSystem.Colors.textPrimary
+    static let textSecondary = UnifiedDesignSystem.Colors.textSecondary
+    static let textMuted     = UnifiedDesignSystem.Colors.textMuted
 
-    // MARK: - Semantic
-    static let success = Color.adaptive(light: "3A7835", dark: "38D898")
-    static let warning = Color.adaptive(light: "C47800", dark: "FFA800")
-    static let error   = Color.adaptive(light: "D43030", dark: "FA5053")
+    static let success = UnifiedDesignSystem.Colors.success
+    static let warning = UnifiedDesignSystem.Colors.warning
+    static let error   = UnifiedDesignSystem.Colors.error
 
-    // MARK: - Hermes Mercury Identity
-    static let hermesMercury  = Color.adaptive(light: "AEA69C", dark: "C8BFB5")
-    static let hermesAureate  = Color.adaptive(light: "B8942E", dark: "D4AA3C")
+    static let hermesMercury = UnifiedDesignSystem.Colors.hermesMercury
+    static let hermesAureate = UnifiedDesignSystem.Colors.hermesAureate
+    static let mercuryGradient = UnifiedDesignSystem.mercuryGradient
 
-    static let mercuryGradient = LinearGradient(
-        colors: [hermesMercury, hermesAureate],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
+    static let chatUserStroke      = UnifiedDesignSystem.Colors.chatUserStroke
+    static let chatAssistantStroke = UnifiedDesignSystem.Colors.chatAssistantStroke
 
-    // MARK: - Chat Strokes
-    static let chatUserStroke      = Color(hex: "6A5ACD")
-    static let chatAssistantStroke = Color(hex: "F45B69")
+    static let primaryGradient = UnifiedDesignSystem.primaryGradient
+    static let accentGradient  = UnifiedDesignSystem.accentGradient
+    static let cardGradient    = UnifiedDesignSystem.cardGradient
+    static let whimsyGradient  = UnifiedDesignSystem.whimsyGradient
 
-    // MARK: - Gradients
-    static let primaryGradient = LinearGradient(
-        colors: [ember, amber],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-
-    static let accentGradient = LinearGradient(
-        colors: [whimsy, ember],
-        startPoint: .leading,
-        endPoint: .trailing
-    )
-
-    static let cardGradient = LinearGradient(
-        colors: [
-            ember.opacity(0.06),
-            amber.opacity(0.04),
-            blaze.opacity(0.03)
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-
-    static let whimsyGradient = LinearGradient(
-        colors: [whimsy, whimsy.opacity(0.6)],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-
-    // MARK: - Spacing
-    static let spacingSmall: CGFloat = 8
-    static let spacingMedium: CGFloat = 16
-    static let spacingLarge: CGFloat = 24
-    static let cornerRadius: CGFloat = 16
-    static let cornerRadiusSmall: CGFloat = 12
+    // MARK: - Spacing / Radius / Typography / Animation
+    static let spacingSmall: CGFloat = UnifiedDesignSystem.Spacing.sm
+    static let spacingMedium: CGFloat = UnifiedDesignSystem.Spacing.md
+    static let spacingLarge: CGFloat = UnifiedDesignSystem.Spacing.lg
+    static let cornerRadius: CGFloat = UnifiedDesignSystem.Radius.lg
+    static let cornerRadiusSmall: CGFloat = UnifiedDesignSystem.Radius.sm
 
     enum Radius {
-        static let sm: CGFloat = 6
-        static let md: CGFloat = 10
-        static let lg: CGFloat = 16
-        static let xl: CGFloat = 22
-        static let full: CGFloat = 9999
+        static let sm = UnifiedDesignSystem.Radius.sm
+        static let md = UnifiedDesignSystem.Radius.md
+        static let lg = UnifiedDesignSystem.Radius.lg
+        static let xl = UnifiedDesignSystem.Radius.xl
+        static let full = UnifiedDesignSystem.Radius.full
     }
 
     enum Spacing {
-        static let xxs: CGFloat = 2
-        static let xs: CGFloat = 4
-        static let sm: CGFloat = 8
-        static let md: CGFloat = 12
-        static let lg: CGFloat = 16
-        static let xl: CGFloat = 24
-        static let xxl: CGFloat = 32
-        static let xxxl: CGFloat = 48
+        static let xxs = UnifiedDesignSystem.Spacing.xxs
+        static let xs  = UnifiedDesignSystem.Spacing.xs
+        static let sm  = UnifiedDesignSystem.Spacing.sm
+        static let md  = UnifiedDesignSystem.Spacing.md
+        static let lg  = UnifiedDesignSystem.Spacing.lg
+        static let xl  = UnifiedDesignSystem.Spacing.xl
+        static let xxl = UnifiedDesignSystem.Spacing.xxl
+        static let xxxl = UnifiedDesignSystem.Spacing.xxxl
     }
 
     enum Typography {
-        static let displayLarge = Font.system(size: 36, weight: .bold, design: .rounded)
-        static let display    = Font.system(size: 32, weight: .bold,     design: .rounded)
-        static let title      = Font.system(size: 20, weight: .semibold, design: .rounded)
-        static let headline   = Font.system(size: 17, weight: .semibold, design: .rounded)
-        static let body       = Font.system(size: 15, weight: .regular,  design: .rounded)
-        static let footnote   = Font.system(size: 13, weight: .regular,  design: .rounded)
-        static let caption    = Font.system(size: 12, weight: .medium,   design: .rounded)
-        static let tiny       = Font.system(size: 11, weight: .medium,   design: .rounded)
+        static let displayLarge = UnifiedDesignSystem.Typography.displayLarge
+        static let display    = UnifiedDesignSystem.Typography.display
+        static let title      = UnifiedDesignSystem.Typography.title
+        static let headline   = UnifiedDesignSystem.Typography.headline
+        static let body       = UnifiedDesignSystem.Typography.body
+        static let footnote   = UnifiedDesignSystem.Typography.caption
+        static let caption    = UnifiedDesignSystem.Typography.caption
+        static let tiny       = UnifiedDesignSystem.Typography.tiny
 
-        static let monoLarge = Font.system(size: 28, weight: .bold,     design: .monospaced)
-        static let mono       = Font.system(size: 14, weight: .medium,   design: .monospaced)
-        static let monoSmall  = Font.system(size: 12, weight: .medium,   design: .monospaced)
-        static let monoTiny   = Font.system(size: 11, weight: .medium,   design: .monospaced)
+        static let monoLarge = UnifiedDesignSystem.Typography.monoLarge
+        static let mono       = UnifiedDesignSystem.Typography.mono
+        static let monoSmall  = UnifiedDesignSystem.Typography.monoSmall
+        static let monoTiny   = UnifiedDesignSystem.Typography.monoTiny
     }
 
-    // MARK: - Animation
     enum Animation {
-        static let standard = SwiftUI.Animation.spring(response: 0.35, dampingFraction: 0.75)
-        static let gentle   = SwiftUI.Animation.spring(response: 0.4, dampingFraction: 0.85)
-        static let snappy   = SwiftUI.Animation.easeOut(duration: 0.15)
-        static let hover    = SwiftUI.Animation.spring(response: 0.25, dampingFraction: 0.8)
-
-        static let mercuryShimmer = SwiftUI.Animation.linear(duration: 3.0).repeatForever(autoreverses: false)
-        static let mercuryPulse   = SwiftUI.Animation.easeInOut(duration: 1.5).repeatForever(autoreverses: true)
+        static let standard = UnifiedDesignSystem.Animation.standard
+        static let gentle   = UnifiedDesignSystem.Animation.gentle
+        static let snappy   = UnifiedDesignSystem.Animation.snappy
+        static let hover    = UnifiedDesignSystem.Animation.hover
+        static let mercuryShimmer = UnifiedDesignSystem.Animation.mercuryShimmer
+        static let mercuryPulse   = UnifiedDesignSystem.Animation.mercuryPulse
     }
 
     // MARK: - Colors Namespace
@@ -152,124 +117,19 @@ enum MobileTheme {
         static let whimsyGradient  = MobileTheme.whimsyGradient
 
         static func primary(for provider: AgentProvider) -> Color {
-            switch provider {
-            case .claudeCode:  return MobileTheme.ember
-            case .factory:     return MobileTheme.whimsy
-            case .codex:       return Color(hex: "10A37F")
-            case .cursor:      return Color(hex: "1DAAAF")
-            case .kimi:        return Color(hex: "2CCAC0")
-            case .minimax:     return Color(hex: "D49A3A")
-            case .zai:         return Color(hex: "D49A3A")
-            case .geminiCLI:   return Color(hex: "4285F4")
-            case .copilot:     return Color(hex: "8E86D0")
-            case .aider:       return Color(hex: "C8604E")
-            case .cline:       return MobileTheme.amber
-            case .kiloCode:    return MobileTheme.blaze
-            case .rooCode:     return Color(hex: "9080D8")
-            case .forgeDev:    return Color(hex: "C8604E")
-            case .augment:     return Color(hex: "8E86D0")
-            case .hermes:      return Color(hex: "C8BFB5")
-            case .goose:       return Color(hex: "8E86D0")
-            case .openClaw:    return Color(hex: "E87060")
-            case .ollama:      return Color(hex: "8B8589")
-            case .windsurf:    return Color(hex: "1DAAAF")
-            case .warp:        return Color(hex: "E87060")
-            }
+            UnifiedDesignSystem.Colors.primary(for: provider)
         }
 
         static func accent(for provider: AgentProvider) -> Color {
-            switch provider {
-            case .factory:     return MobileTheme.ember
-            case .claudeCode:  return Color(hex: "D4A574")
-            case .copilot:     return Color(hex: "0969DA")
-            case .aider:       return MobileTheme.blaze
-            case .cursor:      return Color(hex: "007AFF")
-            case .codex:       return Color(hex: "00C48C")
-            case .zai:         return Color(hex: "A78BFA")
-            case .minimax:     return Color(hex: "FCD34D")
-            case .kimi:        return Color(hex: "818CF8")
-            case .cline:       return Color(hex: "E8C4A0")
-            case .kiloCode:    return Color(hex: "34D399")
-            case .rooCode:     return Color(hex: "F472B6")
-            case .forgeDev:    return Color(hex: "FB923C")
-            case .augment:     return Color(hex: "60A5FA")
-            case .hermes:      return Color(hex: "C084FC")
-            case .geminiCLI:   return Color(hex: "8AB4F8")
-            case .goose:       return Color(hex: "2DD4BF")
-            case .openClaw:    return Color(hex: "F472B6")
-            case .ollama:      return Color(hex: "B8A9A0")
-            case .windsurf:    return Color(hex: "22D3EE")
-            case .warp:        return Color(hex: "FFD700")
-            }
+            UnifiedDesignSystem.Colors.accent(for: provider)
         }
 
         static func chartPalette(for provider: AgentProvider) -> [Color] {
-            switch provider {
-            case .factory:
-                return [MobileTheme.whimsy, MobileTheme.ember, MobileTheme.amber, Color(hex: "A78BFA")]
-            case .claudeCode:
-                return [Color(hex: "CC785C"), Color(hex: "D4A574"), Color(hex: "8B949E"), Color(hex: "E8C4A0")]
-            case .copilot:
-                return [Color(hex: "23EA3B"), Color(hex: "0969DA"), MobileTheme.ember, MobileTheme.whimsy]
-            case .aider:
-                return [Color(hex: "FF6B35"), MobileTheme.blaze, MobileTheme.ember, MobileTheme.whimsy]
-            case .cursor:
-                return [Color(hex: "AC8C57"), Color(hex: "007AFF"), MobileTheme.amber, MobileTheme.ember]
-            case .codex:
-                return [Color(hex: "00A67E"), Color(hex: "00C48C"), Color(hex: "7FDBDA"), Color(hex: "66CDAA")]
-            case .zai:
-                return [Color(hex: "8B5CF6"), Color(hex: "A78BFA"), Color(hex: "6366F1"), Color(hex: "7C3AED")]
-            case .minimax:
-                return [Color(hex: "F59E0B"), Color(hex: "FCD34D"), Color(hex: "D97706"), Color(hex: "FBBF24")]
-            case .kimi:
-                return [Color(hex: "6366F1"), Color(hex: "818CF8"), Color(hex: "A5B4FC"), Color(hex: "C7D2FE")]
-            case .cline:
-                return [Color(hex: "D4A373"), Color(hex: "E8C4A0"), Color(hex: "C08B5C"), Color(hex: "A67B5B")]
-            case .kiloCode:
-                return [Color(hex: "10B981"), Color(hex: "34D399"), Color(hex: "059669"), Color(hex: "6EE7B7")]
-            case .rooCode:
-                return [Color(hex: "EC4899"), Color(hex: "F472B6"), Color(hex: "DB2777"), Color(hex: "F9A8D4")]
-            case .forgeDev:
-                return [Color(hex: "F97316"), Color(hex: "FB923C"), Color(hex: "EA580C"), Color(hex: "FDBA74")]
-            case .augment:
-                return [Color(hex: "3B82F6"), Color(hex: "60A5FA"), Color(hex: "2563EB"), Color(hex: "93C5FD")]
-            case .hermes:
-                return [Color(hex: "A855F7"), Color(hex: "C084FC"), Color(hex: "9333EA"), Color(hex: "D8B4FE")]
-            case .geminiCLI:
-                return [Color(hex: "4285F4"), Color(hex: "8AB4F8"), Color(hex: "1A73E8"), Color(hex: "669DF6")]
-            case .goose:
-                return [Color(hex: "0D9488"), Color(hex: "2DD4BF"), Color(hex: "0F766E"), Color(hex: "5EEAD4")]
-            case .openClaw:
-                return [Color(hex: "FF6B6B"), Color(hex: "F472B6"), Color(hex: "F9A8D4"), Color(hex: "FBBF24")]
-            case .ollama:
-                return [Color(hex: "8B8589"), Color(hex: "B8A9A0"), Color(hex: "6E6368"), Color(hex: "9A8F94")]
-            case .windsurf:
-                return [Color(hex: "06B6D4"), Color(hex: "22D3EE"), Color(hex: "0891B2"), Color(hex: "67E8F9")]
-            case .warp:
-                return [Color(hex: "F5A623"), Color(hex: "FFD700"), Color(hex: "E8951A"), Color(hex: "FFEAA7")]
-            }
+            UnifiedDesignSystem.Colors.chartPalette(for: provider)
         }
 
-        // MARK: - Model Colors
-
-        /// Deterministic color for a model name. Known families get brand colors;
-        /// others hash into a palette.
         static func colorForModel(_ modelName: String) -> Color {
-            let brand = LLMModelBrand.infer(fromModelKey: modelName)
-            if brand != .unknown { return brand.emblemColor }
-
-            let key = modelName.lowercased()
-            let palette: [Color] = [
-                Color(hex: "D4A373"), Color(hex: "10B981"), Color(hex: "EC4899"),
-                Color(hex: "F97316"), Color(hex: "3B82F6"), Color(hex: "A855F7"),
-                Color(hex: "EF4444"), Color(hex: "14B8A6"), Color(hex: "F59E0B"),
-                Color(hex: "8B5CF6"), Color(hex: "06B6D4"), Color(hex: "84CC16"),
-            ]
-            var hash = UInt64(5381)
-            for byte in key.utf8 {
-                hash = ((hash << 5) &+ hash) &+ UInt64(byte)
-            }
-            return palette[Int(hash % UInt64(palette.count))]
+            UnifiedDesignSystem.Colors.colorForModel(modelName)
         }
 
         static func gradientForModel(_ modelName: String) -> LinearGradient {

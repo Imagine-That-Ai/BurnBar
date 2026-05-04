@@ -2,6 +2,99 @@ import Foundation
 
 struct WarpQuotaAdapter: ProviderQuotaAdapter {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+        // Try the Warp GraphQL API first (real source of truth).
+        if let apiKey = WarpAPIFetcher.resolveAPIKey(
+            environment: context.environment,
+            resolvedAPIKeys: context.resolvedAPIKeys
+        ) {
+            do {
+                let credits = try await WarpAPIFetcher.fetchCredits(
+                    apiKey: apiKey,
+                    session: context.session
+                )
+
+                var buckets: [ProviderQuotaBucket] = []
+
+                // Primary: request credits
+                if credits.isUnlimited {
+                    buckets.append(ProviderQuotaBucket(
+                        key: "warp-credits",
+                        label: "AI requests",
+                        windowKind: .monthly,
+                        usedValue: Double(credits.requestsUsed),
+                        limitValue: 0,
+                        remainingValue: nil,
+                        usedPercent: 0,
+                        resetsAt: nil,
+                        unit: .requests,
+                        isEstimated: false
+                    ))
+                } else if credits.requestLimit > 0 {
+                    let remaining = max(Double(credits.requestLimit - credits.requestsUsed), 0)
+                    let usedPercent = (Double(credits.requestsUsed) / Double(credits.requestLimit)) * 100
+                    buckets.append(ProviderQuotaBucket(
+                        key: "warp-credits",
+                        label: "AI requests",
+                        windowKind: .monthly,
+                        usedValue: Double(credits.requestsUsed),
+                        limitValue: Double(credits.requestLimit),
+                        remainingValue: remaining,
+                        usedPercent: usedPercent,
+                        resetsAt: credits.nextRefreshTime,
+                        unit: .requests,
+                        isEstimated: false
+                    ))
+                }
+
+                // Secondary: bonus credits (if any)
+                if credits.bonusCreditsTotal > 0 {
+                    let bonusUsed = Double(credits.bonusCreditsTotal - credits.bonusCreditsRemaining)
+                    let bonusPct = credits.bonusCreditsTotal > 0
+                        ? (bonusUsed / Double(credits.bonusCreditsTotal)) * 100
+                        : 0.0
+                    buckets.append(ProviderQuotaBucket(
+                        key: "warp-bonus",
+                        label: "Bonus credits",
+                        windowKind: .custom,
+                        usedValue: bonusUsed,
+                        limitValue: Double(credits.bonusCreditsTotal),
+                        remainingValue: Double(credits.bonusCreditsRemaining),
+                        usedPercent: bonusPct,
+                        resetsAt: nil,
+                        unit: .count,
+                        isEstimated: false
+                    ))
+                }
+
+                guard !buckets.isEmpty else {
+                    return ProviderQuotaSnapshot(
+                        provider: .warp,
+                        fetchedAt: Date(),
+                        source: .officialAPI,
+                        confidence: .exact,
+                        managementURL: "https://app.warp.dev/",
+                        statusMessage: "Warp API returned no rate-limit windows.",
+                        buckets: []
+                    )
+                }
+
+                return ProviderQuotaSnapshot(
+                    provider: .warp,
+                    fetchedAt: Date(),
+                    source: .officialAPI,
+                    confidence: .exact,
+                    managementURL: "https://app.warp.dev/",
+                    statusMessage: credits.isUnlimited
+                        ? "Warp unlimited plan — \(credits.requestsUsed) requests used this period."
+                        : "Warp request quota from Warp GraphQL API.",
+                    buckets: buckets
+                )
+            } catch {
+                // Fall through to local telemetry parsing on API failure.
+            }
+        }
+
+        // Fallback: local telemetry parsing (kept for users without API keys)
         let directory = context.homeDirectoryURL
             .appendingPathComponent("Library/Application Support/dev.warp.Warp-Stable", isDirectory: true)
         let logFiles = candidateLogFiles(in: directory, fileManager: context.fileManager)
@@ -18,9 +111,9 @@ struct WarpQuotaAdapter: ProviderQuotaAdapter {
                         provider: .warp,
                         fetchedAt: Date(),
                         source: .localSession,
-                        confidence: bucket.isEstimated ? .estimated : .exact,
+                        confidence: .unavailable,
                         managementURL: "https://app.warp.dev/",
-                        statusMessage: "Warp credit quota inferred from local Warp app telemetry.",
+                        statusMessage: "Warp credit quota inferred from local Warp app telemetry. Set a Warp API key for exact quota data.",
                         buckets: [bucket]
                     )
                 }
@@ -139,7 +232,7 @@ struct WarpQuotaAdapter: ProviderQuotaAdapter {
             usedPercent: usedPercent,
             resetsAt: date(in: dictionary, keys: ["resets_at", "resetsAt", "reset_at", "resetAt", "period_end", "periodEnd"]),
             unit: .count,
-            isEstimated: used == nil || limit == nil
+            isEstimated: false  // telemetry fallback already returns .unavailable
         )
     }
 

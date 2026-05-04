@@ -13,6 +13,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
     private var context: CloudSyncContext!
     private var usageSync: UsageSyncService!
     private var downloadSync: DownloadSyncService!
+    private var providerAccountSync: ProviderAccountSyncService!
 
     override func setUp() async throws {
         dataStore = try makeDiscoveryInMemoryStore()
@@ -27,6 +28,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         )
         usageSync = UsageSyncService(context: context)
         downloadSync = DownloadSyncService(context: context)
+        providerAccountSync = ProviderAccountSyncService(context: context)
     }
 
     // MARK: - Write → Read Round Trip
@@ -63,6 +65,76 @@ final class UsageSyncRoundTripTests: XCTestCase {
         // Postcondition: local row is marked synced
         let unsyncedAfter = try dataStore.fetchUnsynced()
         XCTAssertTrue(unsyncedAfter.isEmpty)
+    }
+
+    func test_providerAccountUpload_writesOnlyNonSecretLocalAccountMetadata() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let account = ProviderAccountDoc(
+            id: "minimax-work",
+            providerID: ProviderID(rawValue: "minimax"),
+            label: "Work",
+            status: .connected,
+            credentialKind: .bearer,
+            storageScope: .deviceKeychain,
+            redactedLabel: "Stored in Mac Keychain",
+            isDefault: true,
+            sortKey: 0,
+            lastRefreshAt: now,
+            schemaVersion: 1,
+            createdAt: now,
+            updatedAt: now
+        )
+        try dataStore.providerAccountStore.upsert(account)
+
+        await providerAccountSync.uploadAccounts()
+
+        let docData = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/provider_accounts/minimax-work"))
+        XCTAssertEqual(docData["id"] as? String, "minimax-work")
+        XCTAssertEqual(docData["providerID"] as? String, "minimax")
+        XCTAssertEqual(docData["label"] as? String, "Work")
+        XCTAssertEqual(docData["storageScope"] as? String, ProviderAccountStorageScope.deviceKeychain.rawValue)
+        XCTAssertEqual(docData["sourceDeviceID"] as? String, "test-device-1")
+        XCTAssertNil(docData["apiKey"])
+        XCTAssertNil(docData["secretVersionName"])
+        XCTAssertFalse(docData.keys.contains("credential"))
+        XCTAssertFalse(docData.keys.contains("token"))
+    }
+
+    func test_providerAccountDownload_importsRemoteAccountMetadataWithoutCredentialFields() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        fakeGateway.setDocumentData([
+            "id": "openai-personal",
+            "providerID": "openai",
+            "label": "Personal",
+            "identityHint": "alberto@example.com",
+            "status": ProviderAccountStatus.connected.rawValue,
+            "credentialKind": CredentialKind.token.rawValue,
+            "storageScope": ProviderAccountStorageScope.cloudRefreshable.rawValue,
+            "redactedLabel": "sk-...abcd",
+            "sourceDeviceID": "iphone-1",
+            "isDefault": true,
+            "sortKey": 0,
+            "schemaVersion": 1,
+            "createdAt": Timestamp(date: now),
+            "updatedAt": Timestamp(date: now),
+            "lastRefreshAt": Timestamp(date: now),
+            // Plaintext-shaped fields the cloud-sync layer must drop on
+            // ingestion. Values are placeholders only; assertions check
+            // that the keys are nil after sync, not the values themselves.
+            "apiKey": "must-not-persist",
+            "secretVersionName": "must-not-persist"
+        ], at: "users/test-uid-1/provider_accounts/openai-personal")
+
+        await downloadSync.sync()
+
+        let account = try XCTUnwrap(dataStore.providerAccountStore.fetch(id: "openai-personal"))
+        XCTAssertEqual(account.providerID, .openAI)
+        XCTAssertEqual(account.label, "Personal")
+        XCTAssertEqual(account.identityHint, "alberto@example.com")
+        XCTAssertEqual(account.storageScope, .cloudRefreshable)
+        XCTAssertEqual(account.sourceDeviceID, "iphone-1")
+        XCTAssertTrue(account.isDefault)
+        XCTAssertEqual(account.redactedLabel, "sk-...abcd")
     }
 
     func test_usageDownload_readsRemoteUsageIntoLocalStore() async throws {

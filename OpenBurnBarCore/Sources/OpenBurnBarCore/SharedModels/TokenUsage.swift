@@ -88,6 +88,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
     public let sourceDeviceId: String?
     public let sourceDeviceName: String?
     public let isRemote: Bool
+    public let providerID: ProviderID
+    public let providerAccountID: String?
+    public let providerAccountLabel: String?
+    public let providerAccountSource: ProviderAccountStorageScope?
     public let provenanceMethod: UsageProvenanceMethod
     public let provenanceConfidence: UsageProvenanceConfidence
     public let estimatorVersion: String
@@ -113,6 +117,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         sourceDeviceId: String? = nil,
         sourceDeviceName: String? = nil,
         isRemote: Bool = false,
+        providerID: ProviderID? = nil,
+        providerAccountID: String? = nil,
+        providerAccountLabel: String? = nil,
+        providerAccountSource: ProviderAccountStorageScope? = nil,
         provenanceMethod: UsageProvenanceMethod = .unknown,
         provenanceConfidence: UsageProvenanceConfidence = .unknown,
         estimatorVersion: String = ""
@@ -142,6 +150,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         self.sourceDeviceId = sourceDeviceId
         self.sourceDeviceName = sourceDeviceName
         self.isRemote = isRemote
+        self.providerID = providerID ?? provider.providerID
+        self.providerAccountID = providerAccountID
+        self.providerAccountLabel = providerAccountLabel
+        self.providerAccountSource = providerAccountSource
         self.provenanceMethod = provenanceMethod
         self.provenanceConfidence = provenanceConfidence
         self.estimatorVersion = estimatorVersion
@@ -162,6 +174,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         case inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, reasoningTokens
         case totalTokens, cost, startTime, endTime, createdAt, usageSource
         case sourceDeviceId, sourceDeviceName, isRemote
+        case providerID, providerAccountID, providerAccountLabel, providerAccountSource
         case provenanceMethod, provenanceConfidence, estimatorVersion
     }
 
@@ -193,6 +206,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         sourceDeviceId = try c.decodeIfPresent(String.self, forKey: .sourceDeviceId)
         sourceDeviceName = try c.decodeIfPresent(String.self, forKey: .sourceDeviceName)
         isRemote = try c.decodeIfPresent(Bool.self, forKey: .isRemote) ?? false
+        providerID = try c.decodeIfPresent(ProviderID.self, forKey: .providerID) ?? provider.providerID
+        providerAccountID = try c.decodeIfPresent(String.self, forKey: .providerAccountID)
+        providerAccountLabel = try c.decodeIfPresent(String.self, forKey: .providerAccountLabel)
+        providerAccountSource = try c.decodeIfPresent(ProviderAccountStorageScope.self, forKey: .providerAccountSource)
         provenanceMethod = try c.decodeIfPresent(UsageProvenanceMethod.self, forKey: .provenanceMethod) ?? .unknown
         provenanceConfidence = try c.decodeIfPresent(UsageProvenanceConfidence.self, forKey: .provenanceConfidence) ?? .unknown
         estimatorVersion = try c.decodeIfPresent(String.self, forKey: .estimatorVersion) ?? ""
@@ -219,6 +236,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         try c.encodeIfPresent(sourceDeviceId, forKey: .sourceDeviceId)
         try c.encodeIfPresent(sourceDeviceName, forKey: .sourceDeviceName)
         try c.encode(isRemote, forKey: .isRemote)
+        try c.encode(providerID, forKey: .providerID)
+        try c.encodeIfPresent(providerAccountID, forKey: .providerAccountID)
+        try c.encodeIfPresent(providerAccountLabel, forKey: .providerAccountLabel)
+        try c.encodeIfPresent(providerAccountSource, forKey: .providerAccountSource)
         try c.encode(provenanceMethod, forKey: .provenanceMethod)
         try c.encode(provenanceConfidence, forKey: .provenanceConfidence)
         try c.encode(estimatorVersion, forKey: .estimatorVersion)

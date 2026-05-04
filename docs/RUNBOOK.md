@@ -189,7 +189,7 @@ curl -s -o /dev/null -w "%{http_code}" https://firestore.googleapis.com/
 
 2. **Firestore rules mismatch**: Verify rules match expected schema
    - Check Firebase Console → Firestore → Rules
-   - Use the same logic as the checked-in [firestore.rules](../firestore.rules) (owner-scoped `users/{uid}/...` and shared-artifact paths)
+   - Use the same logic as the checked-in [firestore.rules](../firestore.rules): explicit owner-scoped user sync collections, owner-scoped shared-artifact paths, server-only rollups/rate limits, and no client access to `provider_account_secret_refs`
 
 3. **App Check / `PERMISSION_DENIED` after policy changes**
    - If **App Check** was recently **enforced** for Firestore, confirm the macOS app is a build that initializes App Check before Firebase, and (for CI or plist-injected debug) that the [debug token is registered](FIREBASE_APP_CHECK_ENFORCEMENT.md) in Firebase **App Check**.

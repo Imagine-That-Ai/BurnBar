@@ -139,9 +139,10 @@ actor RefreshOrchestrator {
         // 2a. Upload quota snapshots for iOS visibility
         if let coordinator = cloudSyncCoordinator {
             let desktopSnapshots = await MainActor.run {
-                quotaService.snapshotsByProvider.values
+                quotaService.snapshotsForCloudSync
                     .filter { $0.source != .unavailable }
             }
+            await coordinator.syncProviderAccounts()
             await coordinator.syncQuotaSnapshots(Array(desktopSnapshots))
         }
 

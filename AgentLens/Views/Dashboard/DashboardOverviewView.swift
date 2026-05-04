@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 struct DashboardOverviewView: View {
     let providerSummaries: [ProviderSummary]
@@ -23,6 +24,10 @@ struct DashboardOverviewView: View {
 
     private var activeProviderCount: Int {
         Set(filteredUsages.map(\.provider)).count
+    }
+
+    private var cacheEfficiency: CacheEfficiency {
+        CacheEfficiency.aggregate(filteredUsages)
     }
 
     private var heroSubheadline: String {
@@ -62,6 +67,7 @@ struct DashboardOverviewView: View {
                 accent: DesignSystem.Colors.amber,
                 detail: "\(dataStore.usages.count) total tracked"
             )
+            CacheHitStatCard(efficiency: cacheEfficiency)
         }
     }
 

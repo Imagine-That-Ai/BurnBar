@@ -8,10 +8,12 @@ final class ProviderConnectionStore {
     private let firestore: FirestoreRepository
 
     private(set) var connectingProvider: String?
-    private(set) var deletingProvider: String?
-    private(set) var refreshingProvider: String?
+    private(set) var deletingAccountID: String?
+    private(set) var refreshingAccountID: String?
     private(set) var error: String?
+    private(set) var accounts: [ProviderAccountDoc] = []
     private(set) var connections: [ProviderConnectionDoc] = []
+    private(set) var quotaSnapshots: [ProviderQuotaSnapshot] = []
     private(set) var isLoading = false
 
     init(
@@ -28,13 +30,47 @@ final class ProviderConnectionStore {
         defer { isLoading = false }
 
         do {
-            connections = try await firestore.fetchProviderConnections()
+            async let accountsTask = firestore.fetchProviderAccounts()
+            async let connectionsTask = firestore.fetchProviderConnections()
+            async let snapshotsTask = firestore.fetchQuotaSnapshots()
+            accounts = try await accountsTask
+            connections = try await connectionsTask
+            // Quota snapshots are best-effort — they only enrich the routing
+            // cockpit and account row hints. Failing here must not break the
+            // connections list.
+            quotaSnapshots = (try? await snapshotsTask) ?? quotaSnapshots
         } catch {
             self.error = error.localizedDescription
         }
     }
 
-    func connect(provider: String, credential: String, kind: CredentialKind) async {
+    func routingState(for providerID: ProviderID) -> ProviderRoutingStateSnapshot? {
+        ProviderRoutingStateBuilder.build(
+            providerID: providerID,
+            accounts: accounts,
+            snapshots: quotaSnapshots
+        )
+    }
+
+    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async {
+        connectingProvider = providerID.rawValue
+        error = nil
+        defer { connectingProvider = nil }
+
+        do {
+            _ = try await functions.connectProviderAccount(
+                providerID: providerID,
+                credential: credential,
+                kind: kind,
+                label: label
+            )
+            await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func connectLegacy(provider: String, credential: String, kind: CredentialKind) async {
         connectingProvider = provider
         error = nil
         defer { connectingProvider = nil }
@@ -51,10 +87,23 @@ final class ProviderConnectionStore {
         }
     }
 
-    func delete(provider: String) async {
-        deletingProvider = provider
+    func delete(account: ProviderAccountDoc) async {
+        deletingAccountID = account.id
         error = nil
-        defer { deletingProvider = nil }
+        defer { deletingAccountID = nil }
+
+        do {
+            try await functions.deleteProviderAccount(accountID: account.id)
+            await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func deleteLegacy(provider: String) async {
+        deletingAccountID = provider
+        error = nil
+        defer { deletingAccountID = nil }
 
         do {
             try await functions.deleteProviderCredential(provider: provider)
@@ -64,10 +113,23 @@ final class ProviderConnectionStore {
         }
     }
 
-    func refresh(provider: String) async {
-        refreshingProvider = provider
+    func refresh(account: ProviderAccountDoc) async {
+        refreshingAccountID = account.id
         error = nil
-        defer { refreshingProvider = nil }
+        defer { refreshingAccountID = nil }
+
+        do {
+            _ = try await functions.refreshProviderAccountQuota(accountID: account.id)
+            await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func refreshLegacy(provider: String) async {
+        refreshingAccountID = provider
+        error = nil
+        defer { refreshingAccountID = nil }
 
         do {
             _ = try await functions.refreshProviderQuota(provider: provider)
@@ -84,5 +146,24 @@ final class ProviderConnectionStore {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    var accountsByProvider: [(providerID: ProviderID, accounts: [ProviderAccountDoc])] {
+        Dictionary(grouping: accounts, by: \.providerID)
+            .map { providerID, accounts in
+                (
+                    providerID,
+                    accounts.sorted {
+                        if $0.isDefault != $1.isDefault { return $0.isDefault && !$1.isDefault }
+                        if $0.sortKey != $1.sortKey { return $0.sortKey < $1.sortKey }
+                        return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+                    }
+                )
+            }
+            .sorted { lhs, rhs in providerDisplayName(lhs.providerID) < providerDisplayName(rhs.providerID) }
+    }
+
+    func providerDisplayName(_ providerID: ProviderID) -> String {
+        AgentProvider.fromProviderID(providerID)?.displayName ?? providerID.rawValue
     }
 }

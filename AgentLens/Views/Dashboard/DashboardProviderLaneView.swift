@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - Provider / Model / Activity Lanes
 
@@ -8,32 +9,32 @@ struct DashboardProviderLaneView: View {
     var onNavigateToProvider: (AgentProvider) -> Void = { _ in }
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+        UnifiedGlassCard {
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
                 HStack {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
                         Text("Provider Ranking")
-                            .font(DesignSystem.Typography.headline)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .font(UnifiedDesignSystem.Typography.headline)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
 
                         Text("Cost, session volume, and token mix across all tracked agents.")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .font(UnifiedDesignSystem.Typography.caption)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     }
 
                     Spacer()
                 }
 
-                VStack(spacing: DesignSystem.Spacing.sm) {
+                VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                     ForEach(Array(summaries.enumerated()), id: \.element.id) { index, summary in
                         ProviderCard(summary: summary, rank: index + 1) {
-                            withAnimation(DesignSystem.Animation.standard) {
+                            withAnimation(UnifiedDesignSystem.Animation.standard) {
                                 onNavigateToProvider(summary.provider)
                             }
                         }
                         .opacity(overviewAppeared ? 1 : 0)
                         .offset(y: overviewAppeared ? 0 : 8)
-                        .animation(DesignSystem.Animation.standard.delay(Double(index) * 0.06), value: overviewAppeared)
+                        .animation(UnifiedDesignSystem.Animation.standard.delay(Double(index) * 0.06), value: overviewAppeared)
                     }
                 }
             }
@@ -42,39 +43,39 @@ struct DashboardProviderLaneView: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .opacity(overviewAppeared ? 1 : 0)
         .offset(y: overviewAppeared ? 0 : 8)
-        .animation(DesignSystem.Animation.standard.delay(0.24), value: overviewAppeared)
+        .animation(UnifiedDesignSystem.Animation.standard.delay(0.24), value: overviewAppeared)
     }
 }
 
 extension DashboardView {
 
     var providerLane: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+        UnifiedGlassCard {
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
                 HStack {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
                         Text("Provider Ranking")
-                            .font(DesignSystem.Typography.headline)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .font(UnifiedDesignSystem.Typography.headline)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
 
                         Text("Cost, session volume, and token mix across all tracked agents.")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .font(UnifiedDesignSystem.Typography.caption)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     }
 
                     Spacer()
                 }
 
-                VStack(spacing: DesignSystem.Spacing.sm) {
+                VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                     ForEach(Array(dashboardProviderSummaries.enumerated()), id: \.element.id) { index, summary in
                         ProviderCard(summary: summary, rank: index + 1) {
-                            withAnimation(DesignSystem.Animation.standard) {
+                            withAnimation(UnifiedDesignSystem.Animation.standard) {
                                 navigate(to: .provider(summary.provider))
                             }
                         }
                         .opacity(overviewAppeared ? 1 : 0)
                         .offset(y: overviewAppeared ? 0 : 8)
-                        .animation(DesignSystem.Animation.standard.delay(Double(index) * 0.06), value: overviewAppeared)
+                        .animation(UnifiedDesignSystem.Animation.standard.delay(Double(index) * 0.06), value: overviewAppeared)
                     }
                 }
             }
@@ -83,36 +84,36 @@ extension DashboardView {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .opacity(overviewAppeared ? 1 : 0)
         .offset(y: overviewAppeared ? 0 : 8)
-        .animation(DesignSystem.Animation.standard.delay(0.24), value: overviewAppeared)
+        .animation(UnifiedDesignSystem.Animation.standard.delay(0.24), value: overviewAppeared)
     }
 
     var modelLane: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+        UnifiedGlassCard {
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
                 HStack {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
                         Text("Model Ranking")
-                            .font(DesignSystem.Typography.headline)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .font(UnifiedDesignSystem.Typography.headline)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
 
                         Text("Cost, session volume, and agent mix across all tracked models.")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .font(UnifiedDesignSystem.Typography.caption)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     }
 
                     Spacer()
                 }
 
-                VStack(spacing: DesignSystem.Spacing.sm) {
+                VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                     ForEach(Array(dashboardModelSummaries.enumerated()), id: \.element.id) { index, summary in
                         ModelCard(summary: summary, rank: index + 1) {
-                            withAnimation(DesignSystem.Animation.standard) {
+                            withAnimation(UnifiedDesignSystem.Animation.standard) {
                                 navigate(to: .model(summary.modelName))
                             }
                         }
                         .opacity(overviewAppeared ? 1 : 0)
                         .offset(y: overviewAppeared ? 0 : 8)
-                        .animation(DesignSystem.Animation.standard.delay(Double(index) * 0.06), value: overviewAppeared)
+                        .animation(UnifiedDesignSystem.Animation.standard.delay(Double(index) * 0.06), value: overviewAppeared)
                     }
                 }
             }
@@ -121,18 +122,18 @@ extension DashboardView {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .opacity(overviewAppeared ? 1 : 0)
         .offset(y: overviewAppeared ? 0 : 8)
-        .animation(DesignSystem.Animation.standard.delay(0.24), value: overviewAppeared)
+        .animation(UnifiedDesignSystem.Animation.standard.delay(0.24), value: overviewAppeared)
     }
 
     var activityLane: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            GlassCard {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
+            UnifiedGlassCard {
+                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
                     Text("Recent Sessions")
-                        .font(DesignSystem.Typography.headline)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .font(UnifiedDesignSystem.Typography.headline)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
 
-                    VStack(spacing: DesignSystem.Spacing.sm) {
+                    VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                         ForEach(Array(filteredUsages.prefix(6))) { usage in
                             SessionPreviewRow(usage: usage, settingsManager: settingsManager)
                         }
@@ -142,37 +143,37 @@ extension DashboardView {
             }
             .opacity(overviewAppeared ? 1 : 0)
             .offset(y: overviewAppeared ? 0 : 8)
-            .animation(DesignSystem.Animation.standard.delay(0.28), value: overviewAppeared)
+            .animation(UnifiedDesignSystem.Animation.standard.delay(0.28), value: overviewAppeared)
 
-            GlassCard {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+            UnifiedGlassCard {
+                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
                     Text("Model Leaders")
-                        .font(DesignSystem.Typography.headline)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .font(UnifiedDesignSystem.Typography.headline)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
 
-                    VStack(spacing: DesignSystem.Spacing.md) {
+                    VStack(spacing: UnifiedDesignSystem.Spacing.md) {
                         ForEach(Array(topModels.prefix(4).enumerated()), id: \.offset) { index, item in
-                            HStack(spacing: DesignSystem.Spacing.md) {
+                            HStack(spacing: UnifiedDesignSystem.Spacing.md) {
                                 Text("\(index + 1)")
-                                    .font(DesignSystem.Typography.monoSmall)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .font(UnifiedDesignSystem.Typography.monoSmall)
+                                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                                     .frame(width: 16, alignment: .leading)
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(item.model)
-                                        .font(DesignSystem.Typography.body)
-                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                        .font(UnifiedDesignSystem.Typography.body)
+                                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
 
                                     Text(item.provider.displayName)
-                                        .font(DesignSystem.Typography.tiny)
-                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .font(UnifiedDesignSystem.Typography.tiny)
+                                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                                 }
 
                                 Spacer()
 
                                 Text(settingsManager.formatUsageMetric(cost: item.cost, tokens: item.tokens))
-                                    .font(DesignSystem.Typography.monoSmall)
-                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    .font(UnifiedDesignSystem.Typography.monoSmall)
+                                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                             }
                         }
                     }
@@ -181,7 +182,7 @@ extension DashboardView {
             }
             .opacity(overviewAppeared ? 1 : 0)
             .offset(y: overviewAppeared ? 0 : 8)
-            .animation(DesignSystem.Animation.standard.delay(0.34), value: overviewAppeared)
+            .animation(UnifiedDesignSystem.Animation.standard.delay(0.34), value: overviewAppeared)
         }
         .frame(width: 320, alignment: .topLeading)
     }

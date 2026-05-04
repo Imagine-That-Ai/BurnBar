@@ -1,7 +1,23 @@
 import Foundation
 import GRDB
+import OpenBurnBarCore
 
 // MARK: - Quota Refresh Actor
+
+struct ProviderQuotaRefreshBatch {
+    let providerSnapshots: [AgentProvider: ProviderQuotaSnapshot]
+    let accountSnapshots: [String: ProviderQuotaSnapshot]
+}
+
+private struct ProviderQuotaAccountCredential: Sendable {
+    let provider: AgentProvider
+    let providerID: ProviderID
+    let accountID: String
+    let label: String
+    let storageScope: ProviderAccountStorageScope
+    let sourceID: String
+    let apiKey: String
+}
 
 /// Actor that owns all HTTP fetching for provider quota adapters.
 /// Heavy I/O runs here, off the main thread.
@@ -16,6 +32,7 @@ actor QuotaRefreshActor {
     let miniMaxModeProvider: () -> MiniMaxQuotaMode
     let factoryPlanProvider: () -> FactoryQuotaPlanTier
     let adapters: [AgentProvider: any ProviderQuotaAdapter]
+    let refreshProviders: [AgentProvider]
 
     private var codexRolloutScanCache: CodexRolloutScanCache
 
@@ -29,7 +46,8 @@ actor QuotaRefreshActor {
         environment: [String: String],
         homeDirectoryURL: URL,
         miniMaxModeProvider: @escaping () -> MiniMaxQuotaMode,
-        factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier
+        factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier,
+        refreshProviders: [AgentProvider]
     ) {
         self.keyStore = keyStore
         self.providerRuntimeKeyStore = providerRuntimeKeyStore
@@ -40,16 +58,31 @@ actor QuotaRefreshActor {
         self.homeDirectoryURL = homeDirectoryURL
         self.miniMaxModeProvider = miniMaxModeProvider
         self.factoryPlanProvider = factoryPlanProvider
+        self.refreshProviders = refreshProviders
 
         self.adapters = [
+            .aider: AiderQuotaAdapter(),
             .codex: CodexQuotaAdapter(),
+            .openAI: OpenAIQuotaAdapter(),
             .claudeCode: ClaudeQuotaAdapter(),
+            .copilot: CopilotQuotaAdapter(),
             .minimax: MiniMaxQuotaAdapter(),
             .zai: ZAIQuotaAdapter(),
             .factory: FactoryQuotaAdapter(),
             .cursor: CursorQuotaAdapter(),
             .warp: WarpQuotaAdapter(),
             .ollama: OllamaQuotaAdapter(),
+            .kimi: KimiQuotaAdapter(),
+            .forgeDev: ForgeQuotaAdapter(),
+            .hermes: HermesQuotaAdapter(),
+            .cline: ClineQuotaAdapter(),
+            .kiloCode: KiloCodeQuotaAdapter(),
+            .rooCode: RooCodeQuotaAdapter(),
+            .augment: AugmentQuotaAdapter(),
+            .geminiCLI: GeminiCLIQuotaAdapter(),
+            .goose: GooseQuotaAdapter(),
+            .openClaw: OpenClawQuotaAdapter(),
+            .windsurf: WindsurfQuotaAdapter(),
         ]
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
@@ -81,7 +114,31 @@ actor QuotaRefreshActor {
         return try await adapter.fetch(context: context)
     }
 
-    func fetchAllSnapshots(dataStoreActor: DataStoreActor) async -> [AgentProvider: ProviderQuotaSnapshot] {
+    func fetchAllSnapshots(dataStoreActor: DataStoreActor) async -> ProviderQuotaRefreshBatch {
+        let context = await makeContext(dataStoreActor: dataStoreActor)
+        let providerSnapshots = await fetchProviderSnapshots(for: refreshProviders, context: context)
+        let accountSnapshots = await fetchAccountSnapshots(
+            using: context,
+            providers: Set(refreshProviders)
+        )
+        return ProviderQuotaRefreshBatch(
+            providerSnapshots: providerSnapshots,
+            accountSnapshots: accountSnapshots
+        )
+    }
+
+    func fetchAccountSnapshots(
+        for provider: AgentProvider,
+        dataStoreActor: DataStoreActor
+    ) async -> [String: ProviderQuotaSnapshot] {
+        let context = await makeContext(dataStoreActor: dataStoreActor)
+        return await fetchAccountSnapshots(
+            using: context,
+            providers: [provider]
+        )
+    }
+
+    private func makeContext(dataStoreActor: DataStoreActor) async -> ProviderQuotaAdapterContext {
         let snapshotStore = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
         let bridgeManager = ClaudeQuotaBridgeManager(
             appPaths: appPaths,
@@ -120,9 +177,14 @@ actor QuotaRefreshActor {
             refreshClaudeBridgeStatus: { claudeBridgeStatus },
             resolvedAPIKeys: resolvedKeys
         )
+        return context
+    }
 
+    private func fetchProviderSnapshots(
+        for providers: [AgentProvider],
+        context: ProviderQuotaAdapterContext
+    ) async -> [AgentProvider: ProviderQuotaSnapshot] {
         var snapshots: [AgentProvider: ProviderQuotaSnapshot] = [:]
-        let providers: [AgentProvider] = [.codex, .claudeCode, .minimax, .zai, .factory, .cursor, .warp, .ollama]
         await withTaskGroup(of: (AgentProvider, ProviderQuotaSnapshot).self) { group in
             for provider in providers {
                 group.addTask {
@@ -146,6 +208,65 @@ actor QuotaRefreshActor {
 
             for await (provider, snapshot) in group {
                 snapshots[provider] = snapshot
+            }
+        }
+
+        return snapshots
+    }
+
+    private func fetchAccountSnapshots(
+        using context: ProviderQuotaAdapterContext,
+        providers: Set<AgentProvider>
+    ) async -> [String: ProviderQuotaSnapshot] {
+        let runtimeKeyStore = self.providerRuntimeKeyStore
+        let credentials = await MainActor.run {
+            resolveDaemonAccountCredentials(providerRuntimeKeyStore: runtimeKeyStore)
+                .filter { providers.contains($0.provider) }
+        }
+        guard !credentials.isEmpty else { return [:] }
+
+        var snapshots: [String: ProviderQuotaSnapshot] = [:]
+        await withTaskGroup(of: (String, ProviderQuotaSnapshot).self) { group in
+            for credential in credentials {
+                group.addTask {
+                    var resolvedKeys = context.resolvedAPIKeys
+                    for identifier in quotaKeyIdentifiers(for: credential.provider) {
+                        resolvedKeys[identifier] = credential.apiKey
+                    }
+
+                    let accountContext = context.withResolvedAPIKeys(resolvedKeys)
+                    let snapshot: ProviderQuotaSnapshot
+                    do {
+                        snapshot = try await self.fetchSnapshot(for: credential.provider, context: accountContext)
+                            .withAccountMetadata(
+                                providerID: credential.providerID,
+                                accountID: credential.accountID,
+                                accountLabel: credential.label,
+                                accountStorageScope: credential.storageScope,
+                                sourceId: credential.sourceID
+                            )
+                    } catch {
+                        snapshot = ProviderQuotaSnapshot(
+                            provider: credential.provider,
+                            providerID: credential.providerID,
+                            accountID: credential.accountID,
+                            accountLabel: credential.label,
+                            accountStorageScope: credential.storageScope,
+                            fetchedAt: Date(),
+                            source: .unavailable,
+                            sourceId: credential.sourceID,
+                            confidence: .unavailable,
+                            managementURL: nil,
+                            statusMessage: error.localizedDescription,
+                            buckets: []
+                        )
+                    }
+                    return (ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot), snapshot)
+                }
+            }
+
+            for await (key, snapshot) in group {
+                snapshots[key] = snapshot
             }
         }
 
@@ -231,6 +352,61 @@ private func daemonProviderID(for provider: AgentProvider) -> String? {
         return "minimax"
     case .zai:
         return "zai"
+    case .ollama:
+        return "ollama"
+    case .openAI:
+        return "openai"
+    default:
+        return nil
+    }
+}
+
+@MainActor
+private func resolveDaemonAccountCredentials(
+    providerRuntimeKeyStore: KeychainStore
+) -> [ProviderQuotaAccountCredential] {
+    var credentials: [ProviderQuotaAccountCredential] = []
+
+    for configuration in OpenBurnBarDaemonManager.shared.providerConfigurations {
+        guard configuration.isEnabled,
+              let provider = quotaCapableProvider(for: configuration.providerID) else {
+            continue
+        }
+        let normalizedProviderID = ProviderID(rawValue: configuration.providerID)
+
+        for slot in configuration.credentialSlots where slot.isEnabled {
+            let secretAccount = "provider.\(configuration.providerID).slot.\(slot.slotID).apiKey"
+            guard let key = try? providerRuntimeKeyStore.string(for: secretAccount, allowUserInteraction: false),
+                  let normalizedKey = quotaNonEmpty(key) else {
+                continue
+            }
+
+            let normalizedSlotID = ProviderID.normalize(slot.slotID)
+            credentials.append(ProviderQuotaAccountCredential(
+                provider: provider,
+                providerID: normalizedProviderID,
+                accountID: "\(normalizedProviderID.rawValue)-\(normalizedSlotID)",
+                label: slot.label,
+                storageScope: .deviceKeychain,
+                sourceID: "daemon-slot:\(normalizedProviderID.rawValue):\(slot.slotID)",
+                apiKey: normalizedKey
+            ))
+        }
+    }
+
+    return credentials
+}
+
+private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
+    switch ProviderID.normalize(providerID) {
+    case "minimax":
+        return .minimax
+    case "zai", "z-ai":
+        return .zai
+    case "ollama":
+        return .ollama
+    case "openai":
+        return .openAI
     default:
         return nil
     }
@@ -249,6 +425,8 @@ private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {
         identifiers.append("minimax")
     case .zai:
         identifiers.append(contentsOf: ["zai", "z_ai"])
+    case .openAI:
+        identifiers.append(contentsOf: ["openai", "open_ai"])
     default:
         break
     }

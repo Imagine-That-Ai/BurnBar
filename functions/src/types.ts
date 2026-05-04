@@ -10,8 +10,12 @@
 // Provider identity
 // ---------------------------------------------------------------------------
 
+/** Stable lowercase catalog/provider key used by provider accounts. */
+export type ProviderID = string;
+
 /** Supported provider kinds. */
 export const SUPPORTED_PROVIDERS = [
+  "openai",
   "minimax",
   "zai",
   "factory",
@@ -24,6 +28,7 @@ export type Provider = (typeof SUPPORTED_PROVIDERS)[number];
 
 /** Providers that support backend quota refresh. */
 export const BACKEND_REFRESH_PROVIDERS: readonly Provider[] = [
+  "openai",
   "minimax",
   "zai",
   "factory",
@@ -38,6 +43,87 @@ export const LOCAL_ONLY_PROVIDERS: readonly Provider[] = ["claude-code", "codex"
 // ---------------------------------------------------------------------------
 
 export type CredentialKind = "token" | "bearer" | "session" | "cookie" | "plan";
+
+export type ProviderAccountStatus =
+  | "connected"
+  | "disconnected"
+  | "stale"
+  | "error"
+  | "disabled"
+  | "deleted";
+
+export type ProviderAccountStorageScope =
+  | "cloud_refreshable"
+  | "local_only"
+  | "device_keychain"
+  | "server_private";
+
+export type ProviderAccountRefreshState =
+  | "connected"
+  | "refreshing"
+  | "stale"
+  | "error"
+  | "disabled"
+  | "local_only";
+
+export interface ProviderAccountCredentialDescriptor {
+  credentialKind: CredentialKind;
+  storageScope: ProviderAccountStorageScope;
+  redactedLabel: string;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: provider_accounts/{accountID}
+// ---------------------------------------------------------------------------
+
+export interface ProviderAccountDoc {
+  /** Stable account ID unique within a user namespace. */
+  id: string;
+
+  /** Canonical provider key from the catalog/cloud contract. */
+  providerID: ProviderID;
+
+  /** User-visible account label, e.g. "Work" or "Personal". */
+  label: string;
+
+  /** Optional non-secret identity hint such as email/org/team name. */
+  identityHint?: string;
+
+  status: ProviderAccountStatus;
+  credentialKind: CredentialKind;
+  storageScope: ProviderAccountStorageScope;
+
+  /** Redacted display label only. Raw secrets and secret refs are forbidden. */
+  redactedLabel: string;
+
+  /** Device that owns a local-only credential/session, if any. */
+  sourceDeviceID?: string;
+
+  /** Optional switcher/browser/CLI profile linkage. Not a credential. */
+  linkedSwitcherProfileID?: string;
+
+  isDefault: boolean;
+  sortKey: number;
+  lastValidatedAt?: string;
+  lastRefreshAt?: string;
+  lastErrorCode?: string;
+  schemaVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: provider_account_secret_refs/{uid}_{accountID} (server-private)
+// ---------------------------------------------------------------------------
+
+export interface ProviderAccountSecretRefDoc {
+  uid: string;
+  providerID: ProviderID;
+  accountID: string;
+  secretVersionName: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 // ---------------------------------------------------------------------------
 // Firestore: provider_connections/{provider}
@@ -106,6 +192,18 @@ export interface QuotaSnapshotDoc {
   /** Provider key. */
   provider: Provider;
 
+  /** Canonical provider catalog/cloud key. Defaults to provider for legacy docs. */
+  providerID?: ProviderID;
+
+  /** Provider account this snapshot belongs to. Missing means legacy/provider-level. */
+  accountID?: string;
+
+  /** Denormalized account label at fetch time for stable display/history. */
+  accountLabel?: string;
+
+  /** Storage scope of the account that produced this snapshot. */
+  accountStorageScope?: ProviderAccountStorageScope;
+
   /** ISO 8601 timestamp when this snapshot was fetched. */
   fetchedAt: string;
 
@@ -137,6 +235,18 @@ export interface QuotaSnapshotDoc {
 
 export interface ProviderSummary {
   provider: Provider;
+  providerID?: ProviderID;
+  totalRequests: number;
+  totalTokens: number;
+  totalCost?: number;
+}
+
+export interface ProviderAccountSummary {
+  id: string;
+  providerID: ProviderID;
+  accountID?: string;
+  accountLabel: string;
+  storageScope?: ProviderAccountStorageScope;
   totalRequests: number;
   totalTokens: number;
   totalCost?: number;
@@ -169,6 +279,9 @@ export interface UsageRollupDoc {
 
   /** Per-provider summaries. */
   providerSummaries: ProviderSummary[];
+
+  /** Per-account summaries. Missing on legacy docs. */
+  accountSummaries?: ProviderAccountSummary[];
 
   /** Per-model summaries. */
   modelSummaries: ModelSummary[];
@@ -211,6 +324,18 @@ export interface RollupJobDoc {
 export interface UsageEventDoc {
   /** Provider that served the request. */
   provider: Provider;
+
+  /** Canonical provider account namespace. Defaults to provider when absent. */
+  providerID?: ProviderID;
+
+  /** Optional provider account attribution. Missing means unattributed/legacy. */
+  providerAccountID?: string;
+
+  /** Denormalized account label at ingestion time. */
+  providerAccountLabel?: string;
+
+  /** Account storage/source class. */
+  providerAccountSource?: ProviderAccountStorageScope;
 
   /** Model identifier. */
   model?: string;

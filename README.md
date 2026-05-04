@@ -378,36 +378,13 @@ OpenBurnBar is a happy offline hermit by default. Cloud sync is for people who u
 
 1. Create a [Firebase](https://console.firebase.google.com) project and add a **macOS** app with bundle ID `com.openburnbar.app`.
 2. Enable **Authentication** providers: **Google** and **Apple** (and whatever else you need for your own sanity).
-3. Create a Firestore database (production mode) and deploy rules that cover **every** collection the app uses. In this source release that includes both the per-user `users/{uid}/...` collections and the current owner-scoped shared-artifact path under `workspaces/workspace-{uid}/teams/team-default/artifacts/...`. If rules allow only `usage`, enabling shared-artifact sync, **Back Up Session History**, or full session-log backup yields **“Missing or insufficient permissions.”** Use the checked-in rules from [firestore.rules](firestore.rules):
+3. Create a Firestore database (production mode) and deploy rules that cover **every** collection the app uses. In this source release that includes explicit per-user `users/{uid}/...` collections, first-class `provider_accounts`, the server-only `provider_account_secret_refs` collection used by Cloud Functions, and the current owner-scoped shared-artifact path under `workspaces/workspace-{uid}/teams/team-default/artifacts/...`. If rules allow only `usage`, enabling shared-artifact sync, **Back Up Session History**, provider-account quota refresh, or full session-log backup yields **“Missing or insufficient permissions.”** Deploy the checked-in [firestore.rules](firestore.rules), not a recursive `users/{uid}/{document=**}` shortcut:
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    match /workspaces/{workspaceId}/teams/{teamId}/artifacts/{artifactId} {
-      allow read, create, update, delete:
-        if request.auth != null
-        && (
-          resource.data.ownerUserID == request.auth.uid
-          || request.resource.data.ownerUserID == request.auth.uid
-        );
-      match /versions/{revisionId} {
-        allow read, create, update, delete:
-          if request.auth != null
-          && (
-            resource.data.ownerUserID == request.auth.uid
-            || request.resource.data.ownerUserID == request.auth.uid
-          );
-      }
-    }
-  }
-}
-```
+   ```bash
+   firebase deploy --only firestore:rules
+   ```
 
-   Paste into **Firebase Console → Firestore → Rules** and publish, or add `firestore.rules` to your Firebase CLI project and run `firebase deploy --only firestore:rules`. The checked-in rules intentionally keep the current shared-artifact path owner-scoped by default; broader multi-user team sharing will need a stricter project-specific policy later.
+   The checked-in rules intentionally keep the current shared-artifact path owner-scoped by default, reject plaintext-looking secret fields on client-writable sync documents, and deny all client access to provider credential reference documents. Broader multi-user team sharing will need a stricter project-specific policy later.
 
 4. **App Check for Firestore (production):** After reviewing [App Check metrics](https://firebase.google.com/docs/app-check/monitor-metrics), **enforce** App Check for **Cloud Firestore** in the Firebase console. Register your [CI debug token](docs/RELEASE_MACOS.md) in App Check if you use `FIREBASE_APP_CHECK_DEBUG_TOKEN` / `FirebaseAppCheckDebugToken`. See [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md).
 
@@ -432,17 +409,17 @@ Use this when you want session logs in **your** Apple ID’s iCloud storage inst
 
 ## What mobile shows you
 
-`OpenBurnBarMobile` is a SwiftUI iOS 17+ companion that becomes useful immediately after sign-in. It does not ask you to re-add the providers you already configured on Mac — it mirrors the summaries your Mac publishes to Firestore and lets you opt into encrypted credential transfer when (and only when) you want it.
+`OpenBurnBarMobile` is a SwiftUI iOS 17+ companion that becomes useful immediately after sign-in. It mirrors the summaries and provider accounts your Mac publishes to Firestore, and it can add cloud-refreshable provider accounts directly when the provider supports backend refresh. Mac-local accounts stay visible as local-only snapshots, and encrypted credential transfer remains explicit.
 
 After signing in with Apple or Google on the same Firebase account you use on Mac:
 
 - **Dashboard** shows hero spend, period totals, top providers and models, and a sync-health pill. Empty until your Mac publishes — never tells you everything looks fine when it doesn't.
-- **Quota Watch** lists urgency-sorted snapshots with provenance and a stale banner if quota data is older than the freshness threshold.
+- **Quota Watch** lists urgency-sorted provider totals and account-level snapshots with provenance and a stale banner if quota data is older than the freshness threshold.
 - **Activity** paginates the raw usage ledger, classifies errors into permission denied / App Check blocked / network / Firestore-unavailable rather than swallowing them.
 - **Account → Devices** lets you approve this iPhone (after your Mac signs in and approves it from the new **Devices & Sync** tab in macOS Settings).
 - **Account → Encrypted credential transfer** surfaces only the credentials your Mac has explicitly exported, decrypts them on this device with the iOS Keychain, and never reports success until provider readback confirms the credential works.
 
-Architectural details and screen-by-screen behavior live in [docs/IOS_APP_ARCHITECTURE.md](docs/IOS_APP_ARCHITECTURE.md).
+Provider account behavior is documented in [docs/PROVIDER_ACCOUNTS.md](docs/PROVIDER_ACCOUNTS.md). Architectural mobile details and screen-by-screen behavior live in [docs/IOS_APP_ARCHITECTURE.md](docs/IOS_APP_ARCHITECTURE.md).
 
 If mobile shows "No Mac data has been published yet" but the Mac is signed in, see Incidents 9–12 in the [Runbook](docs/RUNBOOK.md).
 

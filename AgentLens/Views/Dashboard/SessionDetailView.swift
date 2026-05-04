@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - Session Detail View
 
@@ -312,6 +313,18 @@ struct SessionDetailView: View {
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                     .contentTransition(.numericText())
                     .animation(DesignSystem.Animation.gentle, value: session.totalTokens)
+            }
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("Cache Hit")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                Text(session.cacheEfficiency.formattedHitRate)
+                    .font(DesignSystem.Typography.mono)
+                    .foregroundStyle(CacheHitRateTier(session.cacheEfficiency).color)
+                    .contentTransition(.numericText())
+                    .animation(DesignSystem.Animation.gentle, value: session.cacheReadTokens)
             }
         }
         .padding(.vertical, DesignSystem.Spacing.md)

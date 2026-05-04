@@ -1,3 +1,6 @@
+// ActivityKit's `ActivityAttributes` protocol is unavailable on macOS, so this
+// type is only compiled for platforms that support Live Activities.
+#if os(iOS)
 import ActivityKit
 import Foundation
 
@@ -23,3 +26,4 @@ public struct BurnBarLiveActivityAttributes: ActivityAttributes {
         self.heroTitle = heroTitle
     }
 }
+#endif

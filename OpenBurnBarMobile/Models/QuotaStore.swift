@@ -10,6 +10,7 @@ final class QuotaStore {
     private(set) var isLoading = false
     private(set) var error: String?
     private(set) var snapshots: [ProviderQuotaSnapshot] = []
+    private(set) var accounts: [ProviderAccountDoc] = []
     private var listener: ListenerRegistration?
 
     init(firestore: FirestoreRepository = FirestoreRepository()) {
@@ -28,7 +29,12 @@ final class QuotaStore {
         defer { isLoading = false }
 
         do {
-            snapshots = try await firestore.fetchQuotaSnapshots()
+            async let snapshotsTask = firestore.fetchQuotaSnapshots()
+            async let accountsTask = firestore.fetchProviderAccounts()
+            snapshots = try await snapshotsTask
+            // Account fetch is best-effort — routing visualization is
+            // additive, never required.
+            accounts = (try? await accountsTask) ?? accounts
         } catch {
             self.error = error.localizedDescription
         }
@@ -50,6 +56,11 @@ final class QuotaStore {
                 case .success(let snaps):
                     self.snapshots = snaps
                     self.error = nil
+                    // Refresh accounts opportunistically so the routing
+                    // cockpit reflects new accounts without an extra fetch.
+                    if let docs = try? await self.firestore.fetchProviderAccounts() {
+                        self.accounts = docs
+                    }
                 case .failure(let err):
                     self.error = err.localizedDescription
                 }
@@ -63,15 +74,40 @@ final class QuotaStore {
         listener = nil
     }
 
+    func accounts(for providerID: ProviderID) -> [ProviderAccountDoc] {
+        accounts.filter { $0.providerID == providerID && $0.status != .deleted }
+    }
+
+    func routingState(for providerID: ProviderID) -> ProviderRoutingStateSnapshot? {
+        ProviderRoutingStateBuilder.build(
+            providerID: providerID,
+            accounts: accounts,
+            snapshots: snapshots
+        )
+    }
+
     var urgencySorted: [ProviderQuotaSnapshot] {
         snapshots.sorted {
             remainingFraction(for: $0) < remainingFraction(for: $1)
         }
     }
 
-    /// Snapshots grouped by their persisted-token provider key.
+    /// Snapshots grouped by canonical provider key.
     var snapshotsByProvider: [String: [ProviderQuotaSnapshot]] {
-        Dictionary(grouping: snapshots, by: \.provider)
+        Dictionary(grouping: snapshots, by: { $0.providerID.rawValue })
+    }
+
+    func sortedSnapshots(for provider: String) -> [ProviderQuotaSnapshot] {
+        (snapshotsByProvider[provider] ?? []).sorted {
+            let lhs = ($0.accountLabel ?? $0.accountID ?? $0.sourceID).localizedCaseInsensitiveCompare($1.accountLabel ?? $1.accountID ?? $1.sourceID)
+            if lhs != .orderedSame { return lhs == .orderedAscending }
+            return $0.fetchedAt > $1.fetchedAt
+        }
+    }
+
+    func accountCount(for provider: String) -> Int {
+        let ids = Set((snapshotsByProvider[provider] ?? []).compactMap(\.accountID))
+        return max(ids.count, snapshotsByProvider[provider]?.isEmpty == false ? 1 : 0)
     }
 
     /// Provider keys sorted by urgency where any bucket has < 25% remaining.
@@ -93,7 +129,7 @@ final class QuotaStore {
     }
 
     func snapshots(for provider: AgentProvider) -> [ProviderQuotaSnapshot] {
-        snapshots.filter { $0.provider == provider.rawValue }
+        snapshots.filter { $0.providerID == provider.providerID || $0.provider == provider.rawValue }
     }
 
     /// Fraction `0...1` representing the most-pressured bucket on a snapshot.

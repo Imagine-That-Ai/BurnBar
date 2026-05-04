@@ -50,6 +50,26 @@ AgentLens/
 - **Swift packages**: `swift test --package-path OpenBurnBarCore`, `swift test --package-path OpenBurnBarDaemon`.
 - **App tests**: `./scripts/test-openburnbar-app.sh` runs **`OpenBurnBarTests` only** — the target compiles `AgentLensTests/Active/**` plus `AgentLensTests/Support/**`; anything under `AgentLensTests/Quarantine/**` is archival until fixed and moved back to `Active/`.
 
+### Stale Xcode caches after shared-core migrations
+
+After large `OpenBurnBarCore` migrations (new public types, fields, or
+provider/account contracts), Xcode and SwiftPM occasionally hold stale
+binary artifacts that surface as ghost errors like *"value of type 'X' has
+no member 'Y'"* or XCFramework symbol mismatches between the macOS and
+iOS targets. If the on-disk source clearly defines the missing member but
+the build keeps failing, run:
+
+```sh
+./scripts/clear-xcode-caches.sh            # full reset (DerivedData + SwiftPM + device support)
+./scripts/clear-xcode-caches.sh --dry-run  # preview the plan first
+./scripts/clear-xcode-caches.sh --derived-only
+./scripts/clear-xcode-caches.sh --packages
+./scripts/clear-xcode-caches.sh --xcframeworks
+```
+
+Every cache the script touches is recreated by Xcode on the next build;
+the operation is safe and idempotent.
+
 ## Adding a New Provider Parser
 
 1. **Add a case to `AgentProvider`** in `AgentProvider.swift`:

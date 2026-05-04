@@ -14,6 +14,7 @@ struct OpenBurnBarDaemonProviderConfiguration: Equatable, Identifiable {
         let lastQuotaRemainingPercent: Double?
         let lastQuotaResetsAt: Date?
         let lastStatusMessage: String?
+        var updatedAt: Date = Date()
 
         var id: String { slotID }
     }
@@ -187,7 +188,8 @@ final class OpenBurnBarDaemonUsageSyncService {
                             lastSelectedAt: slot.lastSelectedAt,
                             lastQuotaRemainingPercent: slot.lastQuotaRemainingPercent,
                             lastQuotaResetsAt: slot.lastQuotaResetsAt,
-                            lastStatusMessage: slot.lastStatusMessage
+                            lastStatusMessage: slot.lastStatusMessage,
+                            updatedAt: slot.updatedAt
                         )
                     }
                 )
@@ -309,7 +311,7 @@ final class OpenBurnBarDaemonUsageSyncService {
         case "zai":       return .zai
         case "minimax":   return .minimax
         case "ollama":    return .ollama
-        case "openai":    return .codex
+        case "openai":    return .openAI
         case "anthropic": return .claudeCode
         case "google":    return .geminiCLI
         case "deepseek":  return .kimi

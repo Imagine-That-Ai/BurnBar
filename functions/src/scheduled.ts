@@ -14,7 +14,10 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getFirestore } from "firebase-admin/firestore";
 import { getConfig } from "./config.js";
 import { computeUserRollups, writeUserRollups } from "./rollups.js";
-import { refreshUserProviderQuota } from "./quota.js";
+import {
+  refreshUserProviderAccountQuota,
+  refreshUserProviderQuota,
+} from "./quota.js";
 import type { Provider } from "./types.js";
 
 /**
@@ -77,8 +80,10 @@ export const rebuildRollups = onSchedule(
 /**
  * Scheduled worker: refresh provider quotas for all active connections.
  *
- * Iterates over provider_connections documents with status === "connected",
- * refreshes each in a bounded batch, and updates the connection metadata.
+ * Iterates over first-class provider_accounts with status === "connected",
+ * refreshes each cloud-refreshable account in a bounded batch, and updates
+ * account/quota metadata. Legacy provider_connections remain as a fallback
+ * for older installs that have not produced account docs yet.
  */
 export const refreshAllProviderQuotas = onSchedule(
   {
@@ -89,32 +94,62 @@ export const refreshAllProviderQuotas = onSchedule(
     const db = getFirestore();
     const { quotaRefreshBatchSize } = getConfig();
 
-    // We cannot filter collectionGroup by a sub-field with a simple query
-    // unless we add a composite index.  Instead, query all connections
-    // and filter in-memory.  For moderate scale this is fine; at scale
-    // shard by status into a top-level collection or use Datastore.
-    const connQuery = db
-      .collectionGroup("provider_connections")
+    const accountQuery = db
+      .collectionGroup("provider_accounts")
       .where("status", "==", "connected")
       .limit(quotaRefreshBatchSize);
 
-    const snapshot = await connQuery.get();
-    if (snapshot.empty) {
+    const accountSnapshot = await accountQuery.get();
+    const refreshedLegacyKeys = new Set<string>();
+
+    for (const doc of accountSnapshot.docs) {
+      // Path: users/{uid}/provider_accounts/{accountID}
+      const parts = doc.ref.path.split("/");
+      const uid = parts[1];
+      const accountID = parts[3];
+      const data = doc.data();
+      if (data.storageScope !== "cloud_refreshable") {
+        continue;
+      }
+      refreshedLegacyKeys.add(`${uid}/${data.providerID}`);
+
+      try {
+        await refreshUserProviderAccountQuota(db, uid, accountID);
+      } catch (err) {
+        console.error(`Quota refresh failed for ${uid}/${accountID}:`, err);
+        // Update account doc with error state but do NOT disconnect
+        // automatically — transient failures should not punish the user.
+        await doc.ref.update({
+          lastErrorCode: (err as Error).message,
+          lastRefreshAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    const legacyRemaining = Math.max(0, quotaRefreshBatchSize - accountSnapshot.size);
+    if (legacyRemaining === 0) {
       return;
     }
 
-    for (const doc of snapshot.docs) {
+    const connSnapshot = await db
+      .collectionGroup("provider_connections")
+      .where("status", "==", "connected")
+      .limit(legacyRemaining)
+      .get();
+
+    for (const doc of connSnapshot.docs) {
       // Path: users/{uid}/provider_connections/{provider}
       const parts = doc.ref.path.split("/");
       const uid = parts[1];
       const provider = parts[3] as Provider;
+      if (refreshedLegacyKeys.has(`${uid}/${provider}`)) {
+        continue;
+      }
 
       try {
         await refreshUserProviderQuota(db, uid, provider);
       } catch (err) {
-        console.error(`Quota refresh failed for ${uid}/${provider}:`, err);
-        // Update connection doc with error state but do NOT disconnect
-        // automatically — transient failures should not punish the user.
+        console.error(`Legacy quota refresh failed for ${uid}/${provider}:`, err);
         await doc.ref.update({
           lastErrorCode: (err as Error).message,
           lastRefreshAt: new Date().toISOString(),

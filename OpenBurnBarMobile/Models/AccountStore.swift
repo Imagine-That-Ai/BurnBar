@@ -13,6 +13,7 @@ final class AccountStore {
     private(set) var isLoading = false
     private(set) var error: String?
     private(set) var connections: [ProviderConnectionDoc] = []
+    private(set) var providerAccounts: [ProviderAccountDoc] = []
     private(set) var syncHealth: SyncHealth = .unknown
 
     // MARK: - Multi-profile support (iPad Settings)
@@ -49,7 +50,10 @@ final class AccountStore {
         defer { isLoading = false }
 
         do {
-            connections = try await firestore.fetchProviderConnections()
+            async let connectionsTask = firestore.fetchProviderConnections()
+            async let accountsTask = firestore.fetchProviderAccounts()
+            connections = try await connectionsTask
+            providerAccounts = try await accountsTask
             syncHealth = .healthy
         } catch {
             self.error = error.localizedDescription
@@ -61,6 +65,7 @@ final class AccountStore {
         do {
             try authRepo.signOut()
             connections = []
+            providerAccounts = []
             syncHealth = .unknown
         } catch {
             self.error = error.localizedDescription

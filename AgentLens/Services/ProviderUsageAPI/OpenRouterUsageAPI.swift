@@ -83,15 +83,15 @@ final class OpenRouterUsageAPI: ProviderUsageAPI, Sendable {
         let cost = activity["total_cost"] as? Double ?? activity["cost"] as? Double ?? 0
         let requests = activity["num_requests"] as? Int ?? activity["count"] as? Int ?? 1
 
-        // If only total_tokens, estimate split
+        // If only total_tokens is available, report output as total tokens without fabricating a split.
         let finalInput: Int
         let finalOutput: Int
         if inputTokens > 0 || outputTokens > 0 {
             finalInput = inputTokens
             finalOutput = outputTokens
         } else if tokens > 0 {
-            finalInput = Int(Double(tokens) * 0.8)
-            finalOutput = max(tokens - finalInput, 0)
+            finalInput = 0
+            finalOutput = tokens
         } else {
             return nil
         }

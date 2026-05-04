@@ -26,18 +26,24 @@ import { enforceAuthAndAppCheck } from "./auth.js";
 import {
   storeCredential,
   destroyCredential,
-  initialSecretVersionName,
 } from "./secrets.js";
-import { refreshUserProviderQuota } from "./quota.js";
+import {
+  providerAccountSecretRefPath,
+  refreshUserProviderAccountQuota,
+  refreshUserProviderQuota,
+} from "./quota.js";
 import { computeUserRollups, writeUserRollups } from "./rollups.js";
 import { minimaxAdapter } from "./providers/minimax.js";
 import { zaiAdapter } from "./providers/zai.js";
 import { factoryAdapter } from "./providers/factory.js";
 import { cursorAdapter } from "./providers/cursor.js";
+import { openaiAdapter } from "./providers/openai.js";
 
 import type {
   Provider,
   SUPPORTED_PROVIDERS,
+  ProviderAccountDoc,
+  ProviderAccountSecretRefDoc,
   ProviderConnectionDoc,
   RollupJobDoc,
 } from "./types.js";
@@ -55,6 +61,7 @@ const db = getFirestore();
 // Provider adapter registry
 // ---------------------------------------------------------------------------
 const ADAPTERS = {
+  openai: openaiAdapter,
   minimax: minimaxAdapter,
   zai: zaiAdapter,
   factory: factoryAdapter,
@@ -62,6 +69,7 @@ const ADAPTERS = {
 } as const;
 
 const ALLOWED_PROVIDERS = new Set<string>([
+  "openai",
   "minimax",
   "zai",
   "factory",
@@ -71,6 +79,7 @@ const ALLOWED_PROVIDERS = new Set<string>([
 ]);
 
 const CONNECTION_SCHEMA_VERSION = 1;
+const ACCOUNT_SCHEMA_VERSION = 1;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -84,6 +93,134 @@ function assertProvider(provider: unknown): asserts provider is Provider {
 
 function nowISO(): string {
   return new Date().toISOString();
+}
+
+function accountIDFor(provider: string, requestedAccountID?: string): string {
+  const raw = requestedAccountID?.trim() || `${provider}_default`;
+  const safe = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (!safe) {
+    throw new Error("invalid-argument: accountID must contain letters or numbers.");
+  }
+  return safe;
+}
+
+function connectionDocFromAccount(account: ProviderAccountDoc): ProviderConnectionDoc {
+  return {
+    provider: account.providerID as Provider,
+    status:
+      account.status === "disabled" || account.status === "deleted"
+        ? "disconnected"
+        : account.status,
+    lastValidatedAt: account.lastValidatedAt,
+    lastRefreshAt: account.lastRefreshAt,
+    lastErrorCode: account.lastErrorCode,
+    credentialKind: account.credentialKind,
+    redactedLabel: account.redactedLabel,
+    schemaVersion: CONNECTION_SCHEMA_VERSION,
+  };
+}
+
+async function writePrivateSecretRef(
+  uid: string,
+  accountID: string,
+  provider: Provider,
+  secretVersionName: string,
+  createdAt: string,
+  updatedAt: string
+): Promise<void> {
+  const refDoc: ProviderAccountSecretRefDoc = {
+    uid,
+    providerID: provider,
+    accountID,
+    secretVersionName,
+    createdAt,
+    updatedAt,
+  };
+  await db.doc(providerAccountSecretRefPath(uid, accountID)).set(refDoc, { merge: true });
+}
+
+async function connectProviderAccountInternal(params: {
+  uid: string;
+  provider: Provider;
+  credential: string;
+  label?: string;
+  accountID?: string;
+  isDefault?: boolean;
+}): Promise<ProviderAccountDoc> {
+  const { uid, provider, credential } = params;
+  const accountID = accountIDFor(provider, params.accountID);
+  const label = params.label?.trim() || "Default";
+
+  const adapter = ADAPTERS[provider as keyof typeof ADAPTERS];
+  if (!adapter) {
+    if (provider === "claude-code" || provider === "codex") {
+      throw new Error("invalid-argument: Claude Code / Codex do not support backend credential connections.");
+    }
+    throw new Error("internal: no adapter for provider.");
+  }
+
+  const testResult = await adapter.testCredential(credential);
+  if (!testResult.valid) {
+    throw new Error(`invalid-argument: ${testResult.errorCode} — ${testResult.errorMessage}`);
+  }
+
+  const now = nowISO();
+  const existing = await db.doc(`users/${uid}/provider_accounts/${accountID}`).get();
+  const secretVersionName = await storeCredential(uid, provider, credential, accountID);
+  await writePrivateSecretRef(
+    uid,
+    accountID,
+    provider,
+    secretVersionName,
+    existing.exists ? (existing.get("createdAt") as string | undefined) ?? now : now,
+    now
+  );
+
+  const accountDoc: ProviderAccountDoc = {
+    id: accountID,
+    providerID: provider,
+    label,
+    identityHint: undefined,
+    status: "connected",
+    credentialKind: testResult.credentialKind,
+    storageScope: "cloud_refreshable",
+    redactedLabel: testResult.redactedLabel,
+    sourceDeviceID: undefined,
+    linkedSwitcherProfileID: undefined,
+    isDefault: params.isDefault ?? accountID.endsWith("_default"),
+    sortKey: accountID.endsWith("_default") ? 0 : Date.now(),
+    lastValidatedAt: now,
+    lastRefreshAt: now,
+    lastErrorCode: undefined,
+    schemaVersion: ACCOUNT_SCHEMA_VERSION,
+    createdAt: existing.exists ? (existing.get("createdAt") as string | undefined) ?? now : now,
+    updatedAt: now,
+  };
+
+  await db.runTransaction(async (tx) => {
+    const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
+    tx.set(accountRef, accountDoc, { merge: true });
+
+    if (accountDoc.isDefault) {
+      const legacyRef = db.doc(`users/${uid}/provider_connections/${provider}`);
+      tx.set(legacyRef, connectionDocFromAccount(accountDoc), { merge: true });
+    }
+  });
+
+  try {
+    await refreshUserProviderAccountQuota(db, uid, accountID);
+    if (accountDoc.isDefault) {
+      await refreshUserProviderQuota(db, uid, provider);
+    }
+  } catch (quotaErr) {
+    console.warn(`Initial quota refresh failed for ${uid}/${accountID}:`, quotaErr);
+  }
+
+  return accountDoc;
 }
 
 /**
@@ -115,7 +252,52 @@ async function checkRefreshRateLimit(
 }
 
 // ---------------------------------------------------------------------------
-// Callable: connectProviderCredential
+// Callable: connectProviderAccount
+// ---------------------------------------------------------------------------
+
+export const connectProviderAccount = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      provider: string;
+      credential: string;
+      label?: string;
+      accountID?: string;
+    }>
+  ) => {
+    const { provider, credential, label, accountID } = request.data;
+    const uid = request.auth?.uid;
+
+    if (!uid) {
+      throw new Error("unauthenticated");
+    }
+    enforceAuthAndAppCheck(request, uid);
+    assertProvider(provider);
+
+    if (typeof credential !== "string" || !credential) {
+      throw new Error("invalid-argument: credential must be a non-empty string.");
+    }
+    if (credential.length > getConfig().maxCredentialLength) {
+      throw new Error("invalid-argument: credential exceeds max length.");
+    }
+
+    return connectProviderAccountInternal({
+      uid,
+      provider,
+      credential,
+      label,
+      accountID,
+      isDefault: accountID == null,
+    });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Callable: connectProviderCredential (legacy compatibility)
 // ---------------------------------------------------------------------------
 
 export const connectProviderCredential = onCall(
@@ -142,57 +324,189 @@ export const connectProviderCredential = onCall(
       throw new Error("invalid-argument: credential exceeds max length.");
     }
 
-    // Test credential before storing anything.
-    const adapter = ADAPTERS[provider as keyof typeof ADAPTERS];
-    if (!adapter) {
-      // Local-only providers do not support backend credential testing.
-      if (provider === "claude-code" || provider === "codex") {
-        throw new Error("invalid-argument: Claude Code / Codex do not support backend credential connections.");
-      }
-      throw new Error("internal: no adapter for provider.");
-    }
-
-    const testResult = await adapter.testCredential(credential);
-    if (!testResult.valid) {
-      throw new Error(`invalid-argument: ${testResult.errorCode} — ${testResult.errorMessage}`);
-    }
-
-    // Store encrypted credential in Secret Manager.
-    const secretVersionName = await storeCredential(uid, provider, credential);
-
-    const now = nowISO();
-    const connDoc: ProviderConnectionDoc = {
+    const accountDoc = await connectProviderAccountInternal({
+      uid,
       provider: provider as Provider,
-      status: "connected",
-      lastValidatedAt: now,
-      lastRefreshAt: now,
-      credentialKind: testResult.credentialKind,
-      redactedLabel: testResult.redactedLabel,
-      schemaVersion: CONNECTION_SCHEMA_VERSION,
-      warningMessage: testResult.warningMessage,
-    };
-
-    // Write connection metadata + secret reference atomically.
-    await db.runTransaction(async (tx) => {
-      const connRef = db.doc(`users/${uid}/provider_connections/${provider}`);
-      tx.set(connRef, { ...connDoc, secretVersionName }, { merge: true });
+      credential,
+      label: "Default",
+      accountID: `${provider}_default`,
+      isDefault: true,
     });
 
-    // Immediately write a backend quota snapshot.
-    try {
-      await refreshUserProviderQuota(db, uid, provider as Provider);
-    } catch (quotaErr) {
-      // Non-fatal: connection succeeded even if initial quota fetch fails.
-      console.warn(`Initial quota refresh failed for ${uid}/${provider}:`, quotaErr);
+    return connectionDocFromAccount(accountDoc);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Callable: updateProviderAccount
+// ---------------------------------------------------------------------------
+
+export const updateProviderAccount = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      accountID: string;
+      label?: string;
+      isDefault?: boolean;
+      disabled?: boolean;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new Error("unauthenticated");
+    }
+    enforceAuthAndAppCheck(request, uid);
+
+    const accountID = accountIDFor("account", request.data.accountID);
+    const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
+    const snap = await accountRef.get();
+    if (!snap.exists) {
+      throw new Error("not-found: provider account does not exist.");
+    }
+    const current = snap.data() as ProviderAccountDoc;
+    const now = nowISO();
+    const next: Partial<ProviderAccountDoc> = {
+      updatedAt: now,
+    };
+    if (typeof request.data.label === "string" && request.data.label.trim()) {
+      next.label = request.data.label.trim();
+    }
+    if (typeof request.data.isDefault === "boolean") {
+      next.isDefault = request.data.isDefault;
+    }
+    if (typeof request.data.disabled === "boolean") {
+      next.status = request.data.disabled ? "disabled" : "connected";
     }
 
-    return { success: true, provider, redactedLabel: testResult.redactedLabel };
+    await db.runTransaction(async (tx) => {
+      if (next.isDefault === true) {
+        const siblingSnap = await db
+          .collection(`users/${uid}/provider_accounts`)
+          .where("providerID", "==", current.providerID)
+          .where("isDefault", "==", true)
+          .get();
+
+        for (const sibling of siblingSnap.docs) {
+          if (sibling.id !== accountID) {
+            tx.set(sibling.ref, { isDefault: false, updatedAt: now }, { merge: true });
+          }
+        }
+      }
+
+      tx.set(accountRef, next, { merge: true });
+    });
+
+    const updatedSnap = await accountRef.get();
+    const updated = updatedSnap.data() as ProviderAccountDoc;
+    if (updated.isDefault) {
+      await db.doc(`users/${uid}/provider_connections/${updated.providerID}`).set(
+        connectionDocFromAccount(updated),
+        { merge: true }
+      );
+    }
+    if (current.isDefault && !updated.isDefault) {
+      await db.doc(`users/${uid}/provider_connections/${updated.providerID}`).set(
+        { status: "disconnected", updatedAt: now },
+        { merge: true }
+      );
+    }
+    return updated;
   }
 );
 
 // ---------------------------------------------------------------------------
 // Callable: deleteProviderCredential
 // ---------------------------------------------------------------------------
+
+export const deleteProviderAccount = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (request: CallableRequest<{ accountID: string }>) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new Error("unauthenticated");
+    }
+    enforceAuthAndAppCheck(request, uid);
+
+    const accountID = accountIDFor("account", request.data.accountID);
+    const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
+    const accountSnap = await accountRef.get();
+    if (!accountSnap.exists) {
+      throw new Error("not-found: provider account does not exist.");
+    }
+    const account = accountSnap.data() as ProviderAccountDoc;
+
+    const privateRef = db.doc(providerAccountSecretRefPath(uid, accountID));
+    const privateSnap = await privateRef.get();
+    const secretVersionName = privateSnap.exists
+      ? (privateSnap.get("secretVersionName") as string | undefined)
+      : undefined;
+
+    if (secretVersionName) {
+      try {
+        await destroyCredential(secretVersionName);
+      } catch (err) {
+        console.warn(`Failed to destroy provider account secret for ${accountID}:`, err);
+      }
+    }
+
+    const now = nowISO();
+    await db.runTransaction(async (tx) => {
+      tx.delete(privateRef);
+      tx.set(
+        accountRef,
+        {
+          status: "deleted",
+          lastValidatedAt: null,
+          lastRefreshAt: null,
+          lastErrorCode: null,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+      if (account.isDefault) {
+        tx.set(
+          db.doc(`users/${uid}/provider_connections/${account.providerID}`),
+          {
+            status: "disconnected",
+            lastValidatedAt: null,
+            lastRefreshAt: null,
+            lastErrorCode: null,
+            updatedAt: now,
+          },
+          { merge: true }
+        );
+      }
+    });
+
+    const snapshotQuery = await db
+      .collection(`users/${uid}/quota_snapshots`)
+      .where("accountID", "==", accountID)
+      .get();
+    const batch = db.batch();
+    for (const doc of snapshotQuery.docs) {
+      batch.set(
+        doc.ref,
+        {
+          confidence: "stale",
+          statusMessage: "Credential deleted; snapshot is stale.",
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+    }
+    await batch.commit();
+
+    return { success: true, accountID };
+  }
+);
 
 export const deleteProviderCredential = onCall(
   {
@@ -210,10 +524,11 @@ export const deleteProviderCredential = onCall(
     enforceAuthAndAppCheck(request, uid);
     assertProvider(provider);
 
-    const connRef = db.doc(`users/${uid}/provider_connections/${provider}`);
-    const snap = await connRef.get();
-    const secretVersionName = snap.exists
-      ? (snap.get("secretVersionName") as string | undefined)
+    const accountID = `${provider}_default`;
+    const privateRef = db.doc(providerAccountSecretRefPath(uid, accountID));
+    const privateSnap = await privateRef.get();
+    const secretVersionName = privateSnap.exists
+      ? (privateSnap.get("secretVersionName") as string | undefined)
       : undefined;
 
     // Destroy the secret payload if we know where it lives.
@@ -221,17 +536,28 @@ export const deleteProviderCredential = onCall(
       try {
         await destroyCredential(secretVersionName);
       } catch (err) {
-        console.warn(`Failed to destroy secret ${secretVersionName}:`, err);
+        console.warn(`Failed to destroy provider credential secret for ${uid}/${accountID}:`, err);
       }
     }
 
     const now = nowISO();
+    await privateRef.delete();
+    await db.doc(`users/${uid}/provider_accounts/${accountID}`).set(
+      {
+        status: "deleted",
+        lastValidatedAt: null,
+        lastRefreshAt: null,
+        lastErrorCode: null,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+    const connRef = db.doc(`users/${uid}/provider_connections/${provider}`);
     await connRef.set(
       {
         status: "disconnected",
         lastValidatedAt: null,
         lastRefreshAt: null,
-        secretVersionName: null,
         lastErrorCode: null,
         updatedAt: now,
       },
@@ -257,6 +583,28 @@ export const deleteProviderCredential = onCall(
 // Callable: refreshProviderQuota
 // ---------------------------------------------------------------------------
 
+export const refreshProviderAccountQuota = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (request: CallableRequest<{ accountID: string }>) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new Error("unauthenticated");
+    }
+    enforceAuthAndAppCheck(request, uid);
+
+    const accountID = accountIDFor("account", request.data.accountID);
+    const snapshot = await refreshUserProviderAccountQuota(db, uid, accountID);
+    if (!snapshot) {
+      throw new Error("failed-precondition: quota refresh returned no snapshot.");
+    }
+    return snapshot;
+  }
+);
+
 export const refreshProviderQuota = onCall(
   {
     region: "us-central1",
@@ -275,12 +623,68 @@ export const refreshProviderQuota = onCall(
 
     await checkRefreshRateLimit(db, uid, provider);
 
-    const snapshot = await refreshUserProviderQuota(db, uid, provider as Provider);
-    if (!snapshot) {
-      throw new Error("failed-precondition: quota refresh returned no snapshot.");
+    const accountSnapshot = await db
+      .collection(`users/${uid}/provider_accounts`)
+      .where("providerID", "==", provider)
+      .where("status", "==", "connected")
+      .get();
+
+    if (!accountSnapshot.empty) {
+      const snapshots = [];
+      const skippedAccountIDs: string[] = [];
+      const errors: Array<{ accountID: string; message: string }> = [];
+
+      for (const doc of accountSnapshot.docs) {
+        const account = doc.data() as ProviderAccountDoc;
+        if (account.storageScope !== "cloud_refreshable") {
+          skippedAccountIDs.push(account.id);
+          continue;
+        }
+
+        try {
+          const snapshot = await refreshUserProviderAccountQuota(db, uid, account.id);
+          if (snapshot) {
+            snapshots.push(snapshot);
+          }
+        } catch (err) {
+          errors.push({
+            accountID: account.id,
+            message: (err as Error).message,
+          });
+        }
+      }
+
+      if (snapshots.length === 0 && errors.length > 0) {
+        throw new Error(
+          `failed-precondition: no ${provider} accounts refreshed: ${errors
+            .map((err) => `${err.accountID}: ${err.message}`)
+            .join("; ")}`
+        );
+      }
+
+      return {
+        success: true,
+        provider,
+        refreshedAccountIDs: snapshots.map((snapshot) => snapshot.accountID),
+        skippedAccountIDs,
+        errorAccountIDs: errors.map((err) => err.accountID),
+        snapshots,
+      };
     }
 
-    return { success: true, provider, fetchedAt: snapshot.fetchedAt };
+    const snapshot = await refreshUserProviderQuota(db, uid, provider as Provider);
+    if (!snapshot) {
+      throw new Error("failed-precondition: legacy quota refresh returned no snapshot.");
+    }
+
+    return {
+      success: true,
+      provider,
+      refreshedAccountIDs: [snapshot.accountID ?? `${provider}_default`],
+      skippedAccountIDs: [],
+      errorAccountIDs: [],
+      snapshots: [snapshot],
+    };
   }
 );
 

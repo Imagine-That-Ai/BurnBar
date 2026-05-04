@@ -31,7 +31,7 @@ OpenBurnBar is an unsandboxed macOS utility that parses local AI agent logs, agg
 - **HTTP Gateway:** Bearer token auth is required when binding to non-loopback addresses. The gateway rejects wildcard binds (`0.0.0.0`, `::`).
 
 ### Firestore Authorization
-- **Rules (`firestore.rules`):** Owner-scoped — `users/{uid}/...` and `workspaces/workspace-{uid}/...` are readable/writable only by the authenticated owner. Basic size limits (`< 1 MB`, `< 80 keys`) are enforced.
+- **Rules (`firestore.rules`):** Owner-scoped explicit collection rules cover the supported `users/{uid}/...` sync paths and `workspaces/workspace-{uid}/...` shared-artifact paths. Client-writable sync documents reject plaintext-looking secret field names, usage rollups and rate-limit docs are server-only, and provider credential reference docs live in top-level `provider_account_secret_refs` with all client access denied. Basic size limits (`< 1 MB`, `< 80 keys`) are enforced.
 - **App Check dependency:** The rules file correctly includes a comment that `request.auth` alone is insufficient and App Check must be enforced in the Firebase console. **This is an operational gap:** there is no runtime verification that App Check is actually enforced in the target project.
 
 **Verdict:** Authentication and authorization architecture is sound. The operational gap is ensuring the production Firebase console has App Check enforcement turned on for Firestore.

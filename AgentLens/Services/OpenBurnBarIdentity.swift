@@ -95,6 +95,10 @@ struct OpenBurnBarAppPaths {
         supportDirectory.appendingPathComponent("provider_quotas.json")
     }
 
+    var providerRoutingEventsURL: URL {
+        supportDirectory.appendingPathComponent("provider_routing_events.json")
+    }
+
     var codexRolloutScanCacheURL: URL {
         supportDirectory.appendingPathComponent("codex_rollout_scan_cache.json")
     }

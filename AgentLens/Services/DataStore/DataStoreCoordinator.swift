@@ -34,6 +34,7 @@ final class DataStoreCoordinator {
     nonisolated var remoteSyncWatermarkStore: RemoteSyncWatermarkStore { actor.remoteSyncWatermarkStore }
     nonisolated var switcherStore: SwitcherProfileStore { actor.switcherStore }
     nonisolated var backfillCursorStore: BackfillCursorStore { actor.backfillCursorStore }
+    nonisolated var providerAccountStore: ProviderAccountStore { actor.providerAccountStore }
 
     /// Presentation-layer view model for dashboard aggregate metrics.
     /// Rebuilt automatically whenever usages change.
@@ -102,6 +103,10 @@ final class DataStoreCoordinator {
 
     func modelSummaries(in dateRange: ClosedRange<Date>?) -> [ModelSummary] {
         usageViewModel.modelSummaries(in: dateRange)
+    }
+
+    func cacheEfficiency(in dateRange: ClosedRange<Date>?) -> CacheEfficiency {
+        usageViewModel.cacheEfficiency(in: dateRange)
     }
 
     func usages(in dateRange: ClosedRange<Date>?) -> [TokenUsage] {

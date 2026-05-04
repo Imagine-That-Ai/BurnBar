@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 struct DashboardModelLaneView: View {
     var models: [ModelSummary]
@@ -6,33 +7,33 @@ struct DashboardModelLaneView: View {
     var onNavigateToModel: (String) -> Void = { _ in }
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+        UnifiedGlassCard {
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
                 HStack {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                        Text("Model Ranking").font(DesignSystem.Typography.headline).foregroundStyle(DesignSystem.Colors.textPrimary)
-                        Text("Cost, session volume, and agent mix across all tracked models.").font(DesignSystem.Typography.caption).foregroundStyle(DesignSystem.Colors.textSecondary)
+                    VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
+                        Text("Model Ranking").font(UnifiedDesignSystem.Typography.headline).foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                        Text("Cost, session volume, and agent mix across all tracked models.").font(UnifiedDesignSystem.Typography.caption).foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     }
                     Spacer()
                 }
-                VStack(spacing: DesignSystem.Spacing.sm) {
+                VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                     ForEach(Array(models.enumerated()), id: \.element.id) { index, summary in
                         ModelCard(summary: summary, rank: index + 1) {
-                            withAnimation(DesignSystem.Animation.standard) {
+                            withAnimation(UnifiedDesignSystem.Animation.standard) {
                                 onNavigateToModel(summary.modelName)
                             }
                         }
                         .opacity(overviewAppeared ? 1 : 0)
                         .offset(y: overviewAppeared ? 0 : 8)
-                        .animation(DesignSystem.Animation.standard.delay(Double(index) * 0.06), value: overviewAppeared)
+                        .animation(UnifiedDesignSystem.Animation.standard.delay(Double(index) * 0.06), value: overviewAppeared)
                     }
                 }
             }
-            .padding(DesignSystem.Spacing.lg)
+            .padding(UnifiedDesignSystem.Spacing.lg)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .opacity(overviewAppeared ? 1 : 0)
         .offset(y: overviewAppeared ? 0 : 8)
-        .animation(DesignSystem.Animation.standard.delay(0.24), value: overviewAppeared)
+        .animation(UnifiedDesignSystem.Animation.standard.delay(0.24), value: overviewAppeared)
     }
 }

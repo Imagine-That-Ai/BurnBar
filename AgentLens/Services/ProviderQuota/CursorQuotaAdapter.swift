@@ -1,117 +1,175 @@
 import Foundation
 
+// MARK: - Cursor Quota Adapter
+
+/// Fetches real Cursor usage/quota from `cursor.com/api/usage-summary`.
+///
+/// Ground truth source: `GET https://cursor.com/api/usage-summary` with
+/// `Cookie: WorkosCursorSessionToken={userId}::{jwt}` header.
+///
+/// The session JWT and user ID are extracted from Cursor's own SQLite database
+/// at `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`.
+/// This database is always readable without Full Disk Access (unlike Safari's
+/// binarycookies), making this a zero-config, zero-permission approach.
+///
+/// ## Resolution chain (first wins)
+/// 1. `CURSOR_COOKIE_HEADER` environment variable
+/// 2. Keychain-stored `cursor_cookie` value
+/// 3. Auto-extract JWT from `state.vscdb` via `CursorCookieExtractor.readSession()`
+/// 4. `CursorLoginHelper` — WKWebView login window (user signs in, cookies captured)
+///
+/// If no source yields a session: returns `confidence: .unavailable` (NOT estimated).
+///
+/// ## Data returned
+/// - Primary bucket: "Included usage" — `totalPercentUsed` from plan usage
+/// - Secondary bucket: "Auto + Composer" — `autoPercentUsed`
+/// - API bucket: "API usage" — `apiPercentUsed`
+/// - All values in cents divided by 100 for USD display
+///
+/// Reference: CodexBar `CursorStatusProbe.swift` — same endpoint, same cookie format.
 
 struct CursorQuotaAdapter: ProviderQuotaAdapter {
+
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        if let cookieHeader = resolveCursorCookieHeader(context: context) {
+        // 1. Try cookie header resolution (env → keychain → SQLite JWT → WKWebView login)
+        if let credential = await resolveCursorCookieHeader(context: context) {
             do {
-                let usageSummary = try await fetchCursorUsageSummary(cookieHeader: cookieHeader, session: context.session)
-                let userInfo = try await fetchCursorUserInfo(cookieHeader: cookieHeader, session: context.session)
-                let requestUsage = try? await fetchCursorLegacyRequestUsage(
-                    userID: userInfo.id,
+                let usageSummary = try await fetchCursorUsageSummary(
+                    cookieHeader: credential.cookieHeader,
+                    session: context.session
+                )
+                let userInfo = try? await fetchCursorUserInfo(
+                    cookieHeader: credential.cookieHeader,
+                    session: context.session
+                )
+                return buildExactSnapshot(
+                    usageSummary: usageSummary,
+                    userEmail: userInfo?.email,
+                    cookieHeader: credential.cookieHeader
+                )
+            } catch {
+                if credential.source == .configured, isAuthenticationRejection(error) {
+                    return unavailableSnapshot(
+                        statusMessage: "Cursor rejected the configured cookie. Update the Cursor cookie in Settings or sign in to Cursor again."
+                    )
+                }
+                // If an auto-discovered cookie is invalid, try the next source.
+            }
+        }
+
+        // 2. Try WKWebView login flow (opens cursor.com in a window, captures cookies)
+        if !isAutoAuthDisabled(context: context),
+           let cookieHeader = await CursorLoginHelper.runLoginFlow() {
+            do {
+                let usageSummary = try await fetchCursorUsageSummary(
                     cookieHeader: cookieHeader,
                     session: context.session
                 )
-                let snapshot = makeCursorSnapshot(
+                return buildExactSnapshot(
                     usageSummary: usageSummary,
-                    requestUsage: requestUsage
-                )
-                if !snapshot.buckets.isEmpty {
-                    return snapshot
-                }
-            } catch let error as QuotaServiceError {
-                if case .httpStatus(_, let code) = error, code == 401 || code == 403 {
-                    return await fallbackCursorEstimate(
-                        message: "Cursor rejected the configured cookie header. Refresh the session cookie from cursor.com and try again."
-                    )
-                }
-                return await fallbackCursorEstimate(
-                    message: error.localizedDescription
+                    userEmail: nil,
+                    cookieHeader: cookieHeader
                 )
             } catch {
-                return await fallbackCursorEstimate(
-                    message: "Cursor web quota fetch failed. OpenBurnBar is showing recent routed-token estimates instead."
-                )
+                // Fall through to unavailable
             }
         }
 
-        return await fallbackCursorEstimate(
-            message: "Add a Cursor cookie header to fetch billing-cycle quota. OpenBurnBar can still estimate routed tokens from the local connector."
+        // No session available — return unavailable, NOT an estimate
+        return unavailableSnapshot(
+            statusMessage: "Sign in to Cursor to see usage. Open Cursor and sign in, or set CURSOR_COOKIE_HEADER in your environment."
         )
     }
 
-    // MARK: - Cursor Helpers
+    // MARK: - Credential Resolution
 
-    private func fallbackCursorEstimate(message: String) async -> ProviderQuotaSnapshot {
-        let (isConnected, statusMessage, buckets) = await MainActor.run {
-            let cursorManager = CursorConnectorManager.shared
-            let isConnected = cursorManager.config.isEnabled
-            let statusMessage: String
-            var buckets: [ProviderQuotaBucket] = []
+    private enum CursorCookieSource {
+        case configured
+        case extracted
+    }
 
-            if isConnected {
-                statusMessage = "\(message) Connector active · \(cursorManager.config.exposedModels.count) model(s) routed."
-                let events = cursorManager.recentUsageEvents
-                let totalTokens = events.reduce(0) { $0 + $1.totalTokens }
+    private struct ResolvedCursorCookie {
+        let cookieHeader: String
+        let source: CursorCookieSource
+    }
 
-                if totalTokens > 0 {
-                    let bucket = ProviderQuotaBucket(
-                        key: "cursor-session-estimate",
-                        label: "Recent routed tokens",
-                        windowKind: .rollingHours,
-                        usedValue: Double(totalTokens),
-                        limitValue: nil,
-                        remainingValue: nil,
-                        usedPercent: nil,
-                        resetsAt: nil,
-                        unit: .tokens,
-                        isEstimated: true
-                    )
-                    buckets = [bucket]
-                }
-            } else {
-                statusMessage = message
+    private func resolveCursorCookieHeader(context: ProviderQuotaAdapterContext) async -> ResolvedCursorCookie? {
+        // 1. Environment variable override (CURSOR_COOKIE_HEADER)
+        if let envValue = context.environment["CURSOR_COOKIE_HEADER"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !envValue.isEmpty {
+            return ResolvedCursorCookie(cookieHeader: envValue, source: .configured)
+        }
+
+        // 2. Stored API key (manual paste via Settings)
+        if let rawStoredValue = context.resolvedAPIKeys["cursor_cookie"] ?? nil {
+            let storedValue = rawStoredValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !storedValue.isEmpty {
+                return ResolvedCursorCookie(cookieHeader: storedValue, source: .configured)
             }
-
-            return (isConnected, statusMessage, buckets)
         }
 
-        return ProviderQuotaSnapshot(
-            provider: .cursor,
-            fetchedAt: Date(),
-            source: isConnected ? .localSession : .unavailable,
-            confidence: isConnected ? .estimated : .unavailable,
-            managementURL: "https://cursor.com/pricing",
-            statusMessage: statusMessage,
-            buckets: buckets
-        )
-    }
+        guard !isAutoAuthDisabled(context: context) else {
+            return nil
+        }
 
-    private func resolveCursorCookieHeader(context: ProviderQuotaAdapterContext) -> String? {
-        if let environmentValue = context.environment["CURSOR_COOKIE_HEADER"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !environmentValue.isEmpty {
-            return environmentValue
+        // 3. Auto-extract from Cursor's SQLite database (zero-config, no FDA needed)
+        if let session = CursorCookieExtractor.readSession() {
+            return ResolvedCursorCookie(cookieHeader: session.cookieHeader, source: .extracted)
         }
-        if let storedValue = (context.resolvedAPIKeys["cursor_cookie"] ?? nil)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !storedValue.isEmpty {
-            return storedValue
-        }
+
         return nil
     }
 
-    private func fetchCursorUsageSummary(cookieHeader: String, session: URLSession) async throws -> CursorUsageSummary {
-        guard let url = URL(string: "https://cursor.com/api/usage-summary") else {
+    private func isAutoAuthDisabled(context: ProviderQuotaAdapterContext) -> Bool {
+        context.environment["OPENBURNBAR_DISABLE_CURSOR_AUTO_AUTH"] == "1"
+    }
+
+    private func isAuthenticationRejection(_ error: any Error) -> Bool {
+        guard case let QuotaServiceError.httpStatus(provider, code) = error,
+              provider == .cursor else {
+            return false
+        }
+        return code == 401 || code == 403
+    }
+
+    private func unavailableSnapshot(statusMessage: String) -> ProviderQuotaSnapshot {
+        ProviderQuotaSnapshot(
+            provider: .cursor,
+            fetchedAt: Date(),
+            source: .unavailable,
+            confidence: .unavailable,
+            managementURL: "https://cursor.com/dashboard",
+            statusMessage: statusMessage,
+            buckets: []
+        )
+    }
+
+    // MARK: - API Calls
+
+    private func fetchCursorUsageSummary(
+        cookieHeader: String,
+        session: URLSession
+    ) async throws -> CursorUsageSummary {
+        guard let url = URL(string: "https://cursor.sh/api/usage-summary") else {
             throw QuotaServiceError.invalidResponse("Cursor usage-summary URL is invalid.")
         }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
 
         let (data, response) = try await session.data(for: request)
+
         guard let http = response as? HTTPURLResponse else {
-            throw QuotaServiceError.invalidResponse("Cursor returned a non-HTTP response for usage summary.")
+            throw QuotaServiceError.invalidResponse("Cursor returned a non-HTTP response.")
         }
+
+        if http.statusCode == 401 || http.statusCode == 403 {
+            throw QuotaServiceError.httpStatus(provider: .cursor, code: http.statusCode)
+        }
+
         guard (200..<300).contains(http.statusCode) else {
             throw QuotaServiceError.httpStatus(provider: .cursor, code: http.statusCode)
         }
@@ -121,21 +179,22 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
         return try decoder.decode(CursorUsageSummary.self, from: data)
     }
 
-    private func fetchCursorUserInfo(cookieHeader: String, session: URLSession) async throws -> CursorUserInfo {
-        guard let url = URL(string: "https://cursor.com/api/auth/me") else {
+    private func fetchCursorUserInfo(
+        cookieHeader: String,
+        session: URLSession
+    ) async throws -> CursorUserInfo {
+        guard let url = URL(string: "https://cursor.sh/api/auth/me") else {
             throw QuotaServiceError.invalidResponse("Cursor auth URL is invalid.")
         }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
 
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw QuotaServiceError.invalidResponse("Cursor returned a non-HTTP response for auth.")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw QuotaServiceError.httpStatus(provider: .cursor, code: http.statusCode)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw QuotaServiceError.invalidResponse("Cursor user info request failed.")
         }
 
         let decoder = JSONDecoder()
@@ -143,138 +202,111 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
         return try decoder.decode(CursorUserInfo.self, from: data)
     }
 
-    private func fetchCursorLegacyRequestUsage(
-        userID: String,
-        cookieHeader: String,
-        session: URLSession
-    ) async throws -> CursorLegacyUsageResponse {
-        guard var components = URLComponents(string: "https://cursor.com/api/usage") else {
-            throw QuotaServiceError.invalidResponse("Cursor legacy usage URL is invalid.")
-        }
-        components.queryItems = [URLQueryItem(name: "user", value: userID)]
-        guard let url = components.url else {
-            throw QuotaServiceError.invalidResponse("Cursor legacy usage request URL is invalid.")
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+    // MARK: - Snapshot Building
 
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw QuotaServiceError.invalidResponse("Cursor returned a non-HTTP response for legacy usage.")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw QuotaServiceError.httpStatus(provider: .cursor, code: http.statusCode)
-        }
-
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode(CursorLegacyUsageResponse.self, from: data)
-    }
-
-    private func makeCursorSnapshot(
+    private func buildExactSnapshot(
         usageSummary: CursorUsageSummary,
-        requestUsage: CursorLegacyUsageResponse?
+        userEmail: String?,
+        cookieHeader _: String
     ) -> ProviderQuotaSnapshot {
-        let billingCycleEnd = usageSummary.billingCycleEnd.flatMap(FlexibleQuotaBucketNormalizer.parseDateValue)
+        var buckets: [ProviderQuotaBucket] = []
+
         let plan = usageSummary.individualUsage?.plan
         let onDemand = usageSummary.individualUsage?.onDemand
 
-        let normalizedAutoPercent = normalizeCursorPercent(plan?.autoPercentUsed)
-        let normalizedAPIPercent = normalizeCursorPercent(plan?.apiPercentUsed)
-        let planPercentUsed = normalizeCursorPercent(plan?.totalPercentUsed)
-            ?? {
-                switch (normalizedAutoPercent, normalizedAPIPercent) {
-                case let (auto?, api?):
-                    return (auto + api) / 2
-                case let (auto?, nil):
-                    return auto
-                case let (nil, api?):
-                    return api
-                case (nil, nil):
-                    if let used = plan?.used, let limit = plan?.limit, limit > 0 {
-                        return (Double(used) / Double(limit)) * 100
-                    }
-                    return nil
+        // Parse billing cycle end
+        let resetsAt = usageSummary.billingCycleEnd
+            .flatMap { ISO8601DateFormatter().date(from: $0) }
+
+        // Primary: Total included usage
+        if let plan {
+            let planUsed = Double(plan.used ?? 0) / 100.0
+            let planLimit = Double(plan.limit ?? 0) / 100.0
+            let totalPercent = plan.totalPercentUsed
+                ?? plan.autoPercentUsed.map { a in
+                    plan.apiPercentUsed.map { b in (a + b) / 2 } ?? a
                 }
-            }()
 
-        let requestsUsed = requestUsage?.gpt4?.numRequestsTotal ?? requestUsage?.gpt4?.numRequests
-        let requestsLimit = requestUsage?.gpt4?.maxRequestUsage
-        let onDemandUsedUSD = Double(onDemand?.used ?? 0) / 100
-        let onDemandLimitUSD = onDemand?.limit.map { Double($0) / 100 }
-
-        var buckets: [ProviderQuotaBucket] = []
-
-        if let requestsLimit, requestsLimit > 0 {
-            let used = Double(requestsUsed ?? 0)
-            let limit = Double(requestsLimit)
-            buckets.append(
-                ProviderQuotaBucket(
-                    key: "cursor-included-requests",
-                    label: "Included requests",
-                    windowKind: .monthly,
-                    usedValue: used,
-                    limitValue: limit,
-                    remainingValue: max(limit - used, 0),
-                    usedPercent: limit > 0 ? (used / limit) * 100 : nil,
-                    resetsAt: billingCycleEnd,
-                    unit: .requests,
-                    isEstimated: false
-                )
-            )
-        } else if let planPercentUsed {
-            buckets.append(
-                ProviderQuotaBucket(
-                    key: "cursor-included-plan",
+            if planLimit > 0 || planUsed > 0 {
+                buckets.append(ProviderQuotaBucket(
+                    key: "cursor-plan",
                     label: "Included usage",
                     windowKind: .monthly,
-                    usedValue: planPercentUsed,
-                    limitValue: 100,
-                    remainingValue: max(0, 100 - planPercentUsed),
-                    usedPercent: planPercentUsed,
-                    resetsAt: billingCycleEnd,
+                    usedValue: planUsed,
+                    limitValue: planLimit,
+                    remainingValue: max(planLimit - planUsed, 0),
+                    usedPercent: totalPercent,
+                    resetsAt: resetsAt,
                     unit: .percent,
                     isEstimated: false
-                )
-            )
+                ))
+            }
+
+            // Secondary: Auto + Composer
+            if let autoPct = plan.autoPercentUsed, autoPct > 0 {
+                buckets.append(ProviderQuotaBucket(
+                    key: "cursor-auto",
+                    label: "Auto + Composer",
+                    windowKind: .monthly,
+                    usedValue: autoPct,
+                    limitValue: 100,
+                    remainingValue: max(100 - autoPct, 0),
+                    usedPercent: autoPct,
+                    resetsAt: resetsAt,
+                    unit: .percent,
+                    isEstimated: false
+                ))
+            }
+
+            // API usage
+            if let apiPct = plan.apiPercentUsed, apiPct > 0 {
+                buckets.append(ProviderQuotaBucket(
+                    key: "cursor-api",
+                    label: "API usage",
+                    windowKind: .monthly,
+                    usedValue: apiPct,
+                    limitValue: 100,
+                    remainingValue: max(100 - apiPct, 0),
+                    usedPercent: apiPct,
+                    resetsAt: resetsAt,
+                    unit: .percent,
+                    isEstimated: false
+                ))
+            }
         }
 
-        if let onDemandLimitUSD, onDemandLimitUSD > 0 || onDemandUsedUSD > 0 {
-            let remaining = max(onDemandLimitUSD - onDemandUsedUSD, 0)
-            let usedPercent = onDemandLimitUSD > 0 ? (onDemandUsedUSD / onDemandLimitUSD) * 100 : nil
-            buckets.append(
-                ProviderQuotaBucket(
-                    key: "cursor-on-demand",
-                    label: "On-demand spend",
+        // On-demand usage (separate from plan)
+        if let onDemand, ((onDemand.used ?? 0) > 0 || (onDemand.limit ?? 0) > 0) {
+            let odUsed = Double(onDemand.used ?? 0) / 100.0
+            let odLimit = Double(onDemand.limit ?? 0) / 100.0
+            if odUsed > 0 || odLimit > 0 {
+                let odPct = odLimit > 0 ? (odUsed / odLimit) * 100 : 0.0
+                buckets.append(ProviderQuotaBucket(
+                    key: "cursor-ondemand",
+                    label: "On-demand",
                     windowKind: .monthly,
-                    usedValue: onDemandUsedUSD,
-                    limitValue: onDemandLimitUSD,
-                    remainingValue: remaining,
-                    usedPercent: usedPercent,
-                    resetsAt: billingCycleEnd,
+                    usedValue: odUsed,
+                    limitValue: odLimit,
+                    remainingValue: odLimit > 0 ? max(odLimit - odUsed, 0) : nil,
+                    usedPercent: odPct,
+                    resetsAt: resetsAt,
                     unit: .count,
                     isEstimated: false
-                )
-            )
+                ))
+            }
         }
+
+        let tier = usageSummary.membershipType?.capitalized ?? "Cursor"
+        let emailSuffix = userEmail.map { " (\($0))" } ?? ""
 
         return ProviderQuotaSnapshot(
             provider: .cursor,
             fetchedAt: Date(),
             source: .officialAPI,
             confidence: .exact,
-            managementURL: "https://cursor.com/pricing",
-            statusMessage: usageSummary.isUnlimited == true
-                ? "Cursor reports an unlimited included plan for the current billing cycle."
-                : "Quota fetched from Cursor web billing for the current billing cycle.",
+            managementURL: "https://cursor.com/dashboard",
+            statusMessage: "\(tier)\(emailSuffix) — \(usageSummary.isUnlimited == true ? "Unlimited" : "Capped") plan.",
             buckets: buckets
         )
-    }
-
-    private func normalizeCursorPercent(_ value: Double?) -> Double? {
-        guard let value else { return nil }
-        return min(max(value, 0), 100)
     }
 }

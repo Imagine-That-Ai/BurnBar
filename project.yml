@@ -80,10 +80,6 @@ targets:
           - "**/Services/ProjectionPipeline/ProjectionPipelineService*.swift"
           - Services/Search/SearchService*.swift
           - "**/Services/Search/SearchService*.swift"
-          # Local provider-usage drafts are not part of generated projects
-          # until their owning implementation lands.
-          - Services/ProviderUsageAPI/OllamaUsageProbe.swift
-          - "**/Services/ProviderUsageAPI/OllamaUsageProbe.swift"
           # Local Chat UI shim that duplicates types still declared by the main
           # chat surface. Keep it out until the owning refactor lands.
           - Views/Chat/ChatEngineUIStubs.swift
@@ -92,23 +88,24 @@ targets:
       base:
         PRODUCT_NAME: OpenBurnBar
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
+        DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
     postBuildScripts:
       - name: Configure Firebase Auth Resources
+        # GoogleService-Info.plist is bundled via the regular Copy Resources phase
+        # (it lives in AgentLens/Resources). This step only patches Info.plist's
+        # CFBundleURLTypes with the REVERSED_CLIENT_ID extracted from the plist.
         script: |
           set -euo pipefail
           SOURCE_PLIST="${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist"
-          DEST_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
           INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
 
           if [[ ! -f "${SOURCE_PLIST}" ]]; then
             echo "warning: GoogleService-Info.plist not found; Google, Apple, and email auth remain disabled."
             exit 0
           fi
-
-          /usr/bin/ditto "${SOURCE_PLIST}" "${DEST_PLIST}"
 
           REVERSED_CLIENT_ID="$(
             /usr/libexec/PlistBuddy -c "Print :REVERSED_CLIENT_ID" "${SOURCE_PLIST}" 2>/dev/null || true
@@ -119,8 +116,6 @@ targets:
         inputFiles:
           - $(PROJECT_DIR)/AgentLens/Resources/GoogleService-Info.plist
           - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
-        outputFiles:
-          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist
     dependencies:
       - target: OpenBurnBarDaemonExecutable
         link: false
