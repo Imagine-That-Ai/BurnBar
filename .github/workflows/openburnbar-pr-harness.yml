@@ -13,7 +13,10 @@ on:
 
 jobs:
   openburnbar-pr:
-    runs-on: macos-15
+    # Use the current GA macOS/Xcode image for the app target. The macOS 15
+    # image's Xcode 16.4 Swift frontend crashes while lowering lazy global
+    # initializers in the large OpenBurnBar SwiftUI target, before tests run.
+    runs-on: macos-26
     timeout-minutes: 30
     env:
       INTERNAL_RUN: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
