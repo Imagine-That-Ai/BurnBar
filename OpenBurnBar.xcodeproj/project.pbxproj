@@ -7,6 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D41A4E4DA20EB0B0792B834B /* SettingsHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91642276CEA4D70CB294C440 /* SettingsHubView.swift */; };
+		37DCDEC1610E3F85735D49FC /* ConnectedDevicesRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD63A9E297C5D51827B4DC37 /* ConnectedDevicesRow.swift */; };
+		5D85A12A6CC2535F1D710F66 /* IdentityHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = B92463070B8F53217F635542 /* IdentityHero.swift */; };
+		AC7E8043DC7894082EA4B7A1 /* YouView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03212DCACC5DEAFEC3805263 /* YouView.swift */; };
+		EABDE7D1C0E36D04115B6DB3 /* HermesTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6FEC7F32ED349FADEBBC748 /* HermesTabView.swift */; };
+		3681C1C28A9E4837DC505676 /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D21A99AB274E029C4F8A6EE /* ProjectDetailView.swift */; };
+		2F172DE5C2B2FD50762C09C9 /* StreamsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E35EA0B8B62EF67CB48C958 /* StreamsView.swift */; };
+		C6E85C7B58BE8366F7719AF3 /* BurnView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B66CBB3C0E73312E9D2C530D /* BurnView.swift */; };
+		11F26193788DF5FCB22A31EB /* PulseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 817D61C77DE05FAD0C5E965B /* PulseView.swift */; };
 		001289D1A83EAEA491CCBA17 /* ContextPackExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2160E456635E56C5239CE5B /* ContextPackExporter.swift */; };
 		002AEEE00FDE89E5CE8E3B04 /* DashboardNavigationModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EDB456F6AA4A4FF134C4ACB /* DashboardNavigationModel.swift */; };
 		00AEBDF4E55AC836EE0C982E /* CloudSyncFirestoreFakeGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2392EE51FF9FA26D965D7D5 /* CloudSyncFirestoreFakeGateway.swift */; };
@@ -832,6 +841,15 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		91642276CEA4D70CB294C440 /* SettingsHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsHubView.swift; sourceTree = "<group>"; };
+		AD63A9E297C5D51827B4DC37 /* ConnectedDevicesRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedDevicesRow.swift; sourceTree = "<group>"; };
+		B92463070B8F53217F635542 /* IdentityHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityHero.swift; sourceTree = "<group>"; };
+		03212DCACC5DEAFEC3805263 /* YouView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouView.swift; sourceTree = "<group>"; };
+		F6FEC7F32ED349FADEBBC748 /* HermesTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesTabView.swift; sourceTree = "<group>"; };
+		9D21A99AB274E029C4F8A6EE /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
+		8E35EA0B8B62EF67CB48C958 /* StreamsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamsView.swift; sourceTree = "<group>"; };
+		B66CBB3C0E73312E9D2C530D /* BurnView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnView.swift; sourceTree = "<group>"; };
+		817D61C77DE05FAD0C5E965B /* PulseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulseView.swift; sourceTree = "<group>"; };
 		000A1148B7E3BFE9A96ADFEB /* SettingsManagerSecretStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManagerSecretStorageTests.swift; sourceTree = "<group>"; };
 		006ACC48E5F5610156972DD3 /* AuroraGlassCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraGlassCard.swift; sourceTree = "<group>"; };
 		00D04B9DFB295A5377F83F2A /* ModelPricingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPricingTests.swift; sourceTree = "<group>"; };
@@ -1925,6 +1943,8 @@
 				ADA9B3A1D5923CFBA13B0761 /* RecentSessionsStripCard.swift */,
 				EE52FB4C970B769CEB16591E /* TrendSparkCard.swift */,
 				E971E25CDC4484B4BC1A0A9A /* VelocityForecastCard.swift */,
+
+				817D61C77DE05FAD0C5E965B /* PulseView.swift */,
 			);
 			path = Pulse;
 			sourceTree = "<group>";
@@ -1932,6 +1952,14 @@
 		254E92A5722426B09B0B2627 /* You */ = {
 			isa = PBXGroup;
 			children = (
+
+				03212DCACC5DEAFEC3805263 /* YouView.swift */,
+
+				B92463070B8F53217F635542 /* IdentityHero.swift */,
+
+				AD63A9E297C5D51827B4DC37 /* ConnectedDevicesRow.swift */,
+
+				91642276CEA4D70CB294C440 /* SettingsHubView.swift */,
 			);
 			path = You;
 			sourceTree = "<group>";
@@ -2230,6 +2258,8 @@
 		532B5564D31380BFAA128CF3 /* Hermes */ = {
 			isa = PBXGroup;
 			children = (
+
+				F6FEC7F32ED349FADEBBC748 /* HermesTabView.swift */,
 			);
 			path = Hermes;
 			sourceTree = "<group>";
@@ -2432,6 +2462,8 @@
 		7F5A547F10C7AD4DD1284F1B /* Burn */ = {
 			isa = PBXGroup;
 			children = (
+
+				B66CBB3C0E73312E9D2C530D /* BurnView.swift */,
 			);
 			path = Burn;
 			sourceTree = "<group>";
@@ -2648,6 +2680,10 @@
 		B5204891E190AA7124EA46E1 /* Streams */ = {
 			isa = PBXGroup;
 			children = (
+
+				8E35EA0B8B62EF67CB48C958 /* StreamsView.swift */,
+
+				9D21A99AB274E029C4F8A6EE /* ProjectDetailView.swift */,
 			);
 			path = Streams;
 			sourceTree = "<group>";
@@ -3676,6 +3712,24 @@
 				657A371DF4E58B586A6D720F /* iPadAccountSettingsView.swift in Sources */,
 				246D2AEBA4BACDE7BEDCDDF0 /* iPadDevicesSettingsView.swift in Sources */,
 				6B3731CF747D86480130E009 /* iPadOnboardingWizardView.swift in Sources */,
+
+				11F26193788DF5FCB22A31EB /* PulseView.swift in Sources */,
+
+				C6E85C7B58BE8366F7719AF3 /* BurnView.swift in Sources */,
+
+				2F172DE5C2B2FD50762C09C9 /* StreamsView.swift in Sources */,
+
+				3681C1C28A9E4837DC505676 /* ProjectDetailView.swift in Sources */,
+
+				EABDE7D1C0E36D04115B6DB3 /* HermesTabView.swift in Sources */,
+
+				AC7E8043DC7894082EA4B7A1 /* YouView.swift in Sources */,
+
+				5D85A12A6CC2535F1D710F66 /* IdentityHero.swift in Sources */,
+
+				37DCDEC1610E3F85735D49FC /* ConnectedDevicesRow.swift in Sources */,
+
+				D41A4E4DA20EB0B0792B834B /* SettingsHubView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

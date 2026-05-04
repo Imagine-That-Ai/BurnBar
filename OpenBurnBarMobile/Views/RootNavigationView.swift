@@ -2,6 +2,10 @@ import SwiftUI
 import OpenBurnBarCore
 
 // MARK: - Root Navigation View (iPad)
+//
+// Aurora-shaped sidebar layout. Five primary destinations match the iPhone
+// tabs (Pulse / Burn / Streams / Hermes / You). The sidebar gains a brand
+// block, a permanent sync pill, and an inline Hermes shortcut.
 
 struct RootNavigationView: View {
     let authStore: AuthStore
@@ -10,565 +14,238 @@ struct RootNavigationView: View {
     let devicesStore: DevicesStore
     let transferStore: CredentialTransferStore
 
-    @State private var navigationModel = DashboardNavigationModel()
-    @State private var showSettings = false
-    @State private var showChat = false
+    @State private var selection: SidebarDestination = .pulse
+    @State private var router = PulseRouter()
+    @State private var hermesService = HermesService()
+    @State private var motionStore = MotionStore()
+    @State private var showHermesSheet = false
+
+    enum SidebarDestination: Hashable, Identifiable {
+        case pulse, burn, streams, hermes, you, settings, devices, providers
+        var id: String { String(describing: self) }
+        var label: String {
+            switch self {
+            case .pulse:    return "Pulse"
+            case .burn:     return "Burn"
+            case .streams:  return "Streams"
+            case .hermes:   return "Hermes"
+            case .you:      return "You"
+            case .settings: return "Settings"
+            case .devices:  return "Devices"
+            case .providers: return "Providers"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .pulse:    return "waveform.path.ecg.rectangle.fill"
+            case .burn:     return "flame.fill"
+            case .streams:  return "rectangle.stack.fill"
+            case .hermes:   return "wand.and.stars"
+            case .you:      return "person.crop.circle.fill"
+            case .settings: return "gearshape.fill"
+            case .devices:  return "macbook.and.iphone"
+            case .providers: return "externaldrive.connected.to.line.below"
+            }
+        }
+        var accent: Color {
+            switch self {
+            case .pulse:    return MobileTheme.ember
+            case .burn:     return MobileTheme.amber
+            case .streams:  return MobileTheme.whimsy
+            case .hermes:   return MobileTheme.hermesAureate
+            case .you:      return MobileTheme.blaze
+            case .settings: return MobileTheme.amber
+            case .devices:  return MobileTheme.whimsy
+            case .providers: return MobileTheme.ember
+            }
+        }
+    }
 
     var body: some View {
         NavigationSplitView {
-            DashboardSidebar(
-                syncHealthStore: syncHealthStore,
-                navigationModel: navigationModel,
-                onShowSettings: { showSettings = true },
-                onShowChat: { showChat = true }
-            )
+            sidebar
+                .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
         } detail: {
-            NavigationStack {
-                detailContent(for: navigationModel.currentRoute)
-                    .navigationTitle(navigationModel.routeTitle(navigationModel.currentRoute))
-                    .toolbar {
-                        if navigationModel.canGoBack {
-                            ToolbarItem(placement: .navigationBarLeading) {
-                                Button(action: { navigationModel.goBack() }) {
-                                    Label(navigationModel.backButtonHelpText, systemImage: "chevron.left")
-                                }
-                            }
-                        }
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button(action: { showChat = true }) {
-                                Label("Hermes", systemImage: "bubble.left.and.bubble.right.fill")
-                            }
-                        }
+            detail
+        }
+        .environment(\.motionStore, motionStore)
+        .onChange(of: router.pendingDestination) { _, destination in
+            handleRouter(destination)
+        }
+    }
+
+    // MARK: - Sidebar
+
+    private var sidebar: some View {
+        ZStack {
+            AuroraBackdrop(density: .subtle)
+            List {
+                Section {
+                    ForEach([SidebarDestination.pulse, .burn, .streams, .hermes], id: \.self) { destination in
+                        sidebarItem(destination)
                     }
-            }
-        }
-        .sheet(isPresented: $showSettings) {
-            NavigationStack {
-                iPadSettingsView()
-                    .navigationTitle("Settings")
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showSettings = false }
-                        }
+                }
+                Section("Account") {
+                    ForEach([SidebarDestination.you, .providers, .devices, .settings], id: \.self) { destination in
+                        sidebarItem(destination)
                     }
-            }
-        }
-        .sheet(isPresented: $showChat) {
-            NavigationStack {
-                ChatView()
-                    .navigationTitle("Hermes")
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showChat = false }
-                        }
-                    }
-            }
-        }
-        .keyboardShortcutDiscovery()
-    }
-
-    @ViewBuilder private func detailContent(for route: iPadDashboardRoute) -> some View {
-        switch route {
-        case .overview: DashboardView()
-        case .provider(let p): ProviderDashboardView(provider: p)
-        case .model(let m): ModelDashboardView(modelName: m)
-        case .sessionLogs: SessionLogsView()
-        case .projects: ProjectsView()
-        case .missions: MissionsView()
-        case .activity: ActivityView()
-        case .quota: QuotaView()
-        case .account: AccountView()
-        case .settings, .chat: EmptyView()
-        }
-    }
-}
-
-// MARK: - Dashboard Sidebar
-
-struct DashboardSidebar: View {
-    let syncHealthStore: CloudSyncHealthStore
-    @Bindable var navigationModel: DashboardNavigationModel
-    let onShowSettings: () -> Void
-    let onShowChat: () -> Void
-
-    var body: some View {
-        List(selection: Binding(
-            get: { navigationModel.currentRoute },
-            set: { if let route = $0 { navigationModel.currentRoute = route } }
-        )) {
-            Section {
-                sidebarItem(.overview, icon: "chart.bar.fill", label: "Overview")
-                    .keyboardShortcut("1", modifiers: .command)
-                sidebarItem(.activity, icon: "list.bullet.rectangle", label: "Activity")
-                    .keyboardShortcut("2", modifiers: .command)
-                sidebarItem(.quota, icon: "gauge.with.dots.needle.67percent", label: "Quota")
-                    .keyboardShortcut("3", modifiers: .command)
-            }
-            Section("Insights") {
-                sidebarItem(.sessionLogs, icon: "doc.text.magnifyingglass", label: "Session Logs")
-                    .keyboardShortcut("4", modifiers: .command)
-                sidebarItem(.projects, icon: "folder.fill", label: "Projects")
-                sidebarItem(.missions, icon: "bolt.fill", label: "Missions")
-            }
-            Section("Account") {
-                sidebarItem(.account, icon: "person.fill", label: "Account")
-                Button(action: onShowSettings) {
-                    Label("Settings", systemImage: "gearshape.fill")
                 }
-                .keyboardShortcut(",", modifiers: .command)
-                Button(action: onShowChat) {
-                    Label("Hermes", systemImage: "bubble.left.and.bubble.right.fill")
-                }
-                .keyboardShortcut("h", modifiers: .command)
             }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .navigationTitle("OpenBurnBar")
+            .toolbarBackground(.hidden, for: .navigationBar)
         }
-        .listStyle(.sidebar)
-        .navigationTitle("OpenBurnBar")
-        .overlay(alignment: .bottom) {
-            SyncHealthPill(store: syncHealthStore)
-                .padding(.horizontal, MobileTheme.Spacing.md)
-                .padding(.bottom, MobileTheme.Spacing.md)
-        }
-    }
-
-    private func sidebarItem(_ route: iPadDashboardRoute, icon: String, label: String) -> some View {
-        NavigationLink(value: route) { Label(label, systemImage: icon) }
-    }
-}
-
-// MARK: - Sync Health Pill
-
-private struct SyncHealthPill: View {
-    let store: CloudSyncHealthStore
-
-    var body: some View {
-        HStack(spacing: MobileTheme.Spacing.sm) {
-            PulsingStatusDot(color: statusColor)
-            Text(statusText)
-                .font(MobileTheme.Typography.tiny)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-                .lineLimit(1)
-            if let lastSync = store.lastPublishedAt {
-                Text("· \(lastSync, style: .relative)")
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textMuted.opacity(0.7))
-                    .lineLimit(1)
-            }
-        }
-        .padding(.horizontal, MobileTheme.Spacing.md)
-        .padding(.vertical, MobileTheme.Spacing.sm)
-        .background(
-            UnifiedGlassCard {
-                EmptyView()
-            }
-            .padding(-MobileTheme.Spacing.md)
-        )
-    }
-
-    private var statusColor: Color {
-        switch store.health {
-        case .healthy: return MobileTheme.Colors.success
-        case .syncing: return MobileTheme.Colors.warning
-        case .degraded, .offline, .unknown: return MobileTheme.Colors.warning
-        case .permissionDenied, .appCheckBlocked, .firebaseUnavailable: return MobileTheme.Colors.error
+        .safeAreaInset(edge: .bottom) {
+            sidebarFooter
         }
     }
 
-    private var statusText: String {
-        switch store.health {
-        case .healthy: return "Synced"
-        case .syncing: return "Syncing…"
-        case .degraded: return "Degraded"
-        case .offline: return "Offline"
-        case .permissionDenied: return "Permission denied"
-        case .appCheckBlocked: return "App Check blocked"
-        case .firebaseUnavailable: return "Firebase unavailable"
-        case .unknown: return "Checking…"
-        }
-    }
-}
-
-// MARK: - Pulsing Status Dot
-
-private struct PulsingStatusDot: View {
-    let color: Color
-    @State private var isPulsing = false
-
-    var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 6, height: 6)
-            .scaleEffect(isPulsing ? 1.4 : 1.0)
-            .opacity(isPulsing ? 0.5 : 1.0)
-            .animation(
-                .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
-                value: isPulsing
-            )
-            .onAppear { isPulsing = true }
-    }
-}
-
-// MARK: - Placeholder Views
-
-struct ProjectsView: View {
-    var body: some View {
-        ScrollView {
-            VStack(spacing: MobileTheme.Spacing.xxl) {
-                Image(systemName: "folder.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(MobileTheme.Colors.accent.opacity(0.4))
-                    .symbolEffect(.pulse, options: .repeating)
-
-                Text("Projects")
-                    .font(MobileTheme.Typography.title)
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
-
-                Text("Track missions, questions, followups, and scheduled reviews across your codebase.")
-                    .font(MobileTheme.Typography.footnote)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, MobileTheme.Spacing.xl)
-
-                Text("Coming in v0.2")
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.accent)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                    .background(
-                        Capsule()
-                            .fill(MobileTheme.Colors.accent.opacity(0.12))
-                    )
-            }
-            .padding(MobileTheme.Spacing.xxxl)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .background(EmberSurfaceBackground().ignoresSafeArea())
-    }
-}
-
-struct MissionsView: View {
-    var body: some View {
-        ScrollView {
-            VStack(spacing: MobileTheme.Spacing.xxl) {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(MobileTheme.amber.opacity(0.5))
-                    .symbolEffect(.pulse, options: .repeating)
-
-                Text("Missions")
-                    .font(MobileTheme.Typography.title)
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
-
-                Text("Active missions and operational workflows from your Mac's daemon.")
-                    .font(MobileTheme.Typography.footnote)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, MobileTheme.Spacing.xl)
-
-                Text("Coming in v0.2")
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.amber)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                    .background(
-                        Capsule()
-                            .fill(MobileTheme.amber.opacity(0.12))
-                    )
-            }
-            .padding(MobileTheme.Spacing.xxxl)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .background(EmberSurfaceBackground().ignoresSafeArea())
-    }
-}
-
-struct ModelDashboardView: View {
-    let modelName: String
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: MobileTheme.Spacing.xxl) {
-                Circle()
-                    .fill(MobileTheme.Colors.colorForModel(modelName).opacity(0.15))
-                    .frame(width: 64, height: 64)
-                    .overlay(
-                        Image(systemName: "cpu")
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundStyle(MobileTheme.Colors.colorForModel(modelName))
-                    )
-                    .padding(.top, MobileTheme.Spacing.xxxl)
-
-                Text(modelName)
-                    .font(MobileTheme.Typography.title)
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
-
-                Text("Model usage breakdown across providers")
-                    .font(MobileTheme.Typography.footnote)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, MobileTheme.Spacing.xl)
-
-                HStack(spacing: MobileTheme.Spacing.lg) {
-                    MiniStatPill(label: "Providers", value: "—")
-                    MiniStatPill(label: "Sessions", value: "—")
-                    MiniStatPill(label: "Tokens", value: "—")
-                }
-                .padding(.top, MobileTheme.Spacing.lg)
-            }
-            .padding(MobileTheme.Spacing.xxxl)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .background(EmberSurfaceBackground().ignoresSafeArea())
-    }
-}
-
-private struct MiniStatPill: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(MobileTheme.Typography.mono)
-                .foregroundStyle(MobileTheme.Colors.textPrimary)
-            Text(label)
-                .font(MobileTheme.Typography.tiny)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
-                .fill(MobileTheme.Colors.surfaceElevated)
-        )
-    }
-}
-
-// MARK: - iPad Settings View
-
-struct iPadSettingsView: View {
-    @State private var selectedTab: iPadSettingsTab? = .general
-
-    var body: some View {
-        NavigationSplitView {
-            List(iPadSettingsTab.allCases, selection: $selectedTab) { tab in
+    private func sidebarItem(_ destination: SidebarDestination) -> some View {
+        Button {
+            selection = destination
+        } label: {
+            HStack {
                 Label {
-                    Text(tab.title)
+                    Text(destination.label)
+                        .font(MobileTheme.Typography.body)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
                 } icon: {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(tab.accentColor)
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(destination.accent)
                             .frame(width: 26, height: 26)
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 12, weight: .semibold))
+                        Image(systemName: destination.icon)
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                     }
                 }
-                .tag(tab)
+                Spacer()
+                if selection == destination {
+                    Image(systemName: "circle.fill")
+                        .font(.system(size: 6))
+                        .foregroundStyle(destination.accent)
+                }
             }
-            .listStyle(.sidebar)
-            .navigationTitle("Settings")
-            .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 280)
-        } detail: {
-            detailContent
-                .navigationTitle(selectedTab?.title ?? "")
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(
+            selection == destination
+                ? destination.accent.opacity(0.14)
+                : Color.clear
+        )
+    }
+
+    private var sidebarFooter: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(syncDotColor)
+                    .frame(width: 8, height: 8)
+                Text(syncStatusText)
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .lineLimit(1)
+                if let lastSync = syncHealthStore.lastPublishedAt {
+                    Text("· \(lastSync, style: .relative)")
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textMuted.opacity(0.7))
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .auroraGlass(.compact, cornerRadius: 12)
+            .padding(.horizontal, 12)
+
+            Button {
+                showHermesSheet = true
+            } label: {
+                HStack(spacing: 6) {
+                    Text("☿")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Quick ask Hermes")
+                        .font(MobileTheme.Typography.tiny)
+                        .fontWeight(.semibold)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.aurora(.hermes, fullWidth: true))
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
+        }
+        .background(.ultraThinMaterial)
+        .sheet(isPresented: $showHermesSheet) {
+            NavigationStack {
+                HermesTabView(service: hermesService)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showHermesSheet = false }
+                        }
+                    }
+            }
+            .presentationDetents([.large])
         }
     }
+
+    // MARK: - Detail
 
     @ViewBuilder
-    private var detailContent: some View {
-        switch selectedTab ?? .general {
-        case .general: iPadGeneralSettingsView()
-        case .account: iPadAccountSettingsView()
-        case .providers: iPadProvidersSettingsView()
-        case .alerts: iPadAlertsSettingsView()
-        case .notifications: iPadNotificationsSettingsView()
-        case .devicesAndSync: iPadDevicesSettingsView()
-        case .switcher: iPadAccountSwitcherSettingsView()
-        }
-    }
-}
-
-// MARK: - Settings Detail Views
-
-struct iPadGeneralSettingsView: View {
-    @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
-    @AppStorage("usageDisplayMode") private var usageDisplayMode: String = "currency"
-    @AppStorage("dailyDigestEnabled") private var dailyDigestEnabled: Bool = false
-    @AppStorage("dailyDigestHour") private var dailyDigestHour: Int = 9
-
-    var body: some View {
-        Form {
-            Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Appearance")
-                        .font(MobileTheme.Typography.headline)
-                    Text("Choose how OpenBurnBar looks and feels")
-                        .font(MobileTheme.Typography.footnote)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                }
-                .padding(.vertical, 4)
-            }
-
-            Section {
-                Picker("Theme", selection: $preferredAppearance) {
-                    Text("System").tag("system")
-                    Text("Light").tag("light")
-                    Text("Dark").tag("dark")
-                }
-                Picker("Usage Display", selection: $usageDisplayMode) {
-                    Text("Currency").tag("currency")
-                    Text("Tokens").tag("tokens")
-                }
-            }
-
-            Section("Daily Digest") {
-                Toggle("Enable Digest", isOn: $dailyDigestEnabled)
-                if dailyDigestEnabled {
-                    Picker("Delivery Time", selection: $dailyDigestHour) {
-                        ForEach(6..<24, id: \.self) { hour in Text("\(hour):00").tag(hour) }
-                    }
-                }
+    private var detail: some View {
+        NavigationStack {
+            switch selection {
+            case .pulse:    PulseView(router: router)
+            case .burn:     BurnView()
+            case .streams:  StreamsView()
+            case .hermes:   HermesTabView(service: hermesService)
+            case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
+            case .settings: SettingsHubView()
+            case .devices:  iPadDevicesSettingsView()
+            case .providers: ProviderConnectionsView(showsDoneButton: false)
             }
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .background(EmberSurfaceBackground().ignoresSafeArea())
     }
-}
 
-struct iPadProvidersSettingsView: View {
-    var body: some View {
-        ProviderConnectionsView(showsDoneButton: false)
-    }
-}
+    // MARK: - Router
 
-struct iPadAlertsSettingsView: View {
-    @AppStorage("dailyBudget") private var dailyBudget: Double = 50.0
-    @AppStorage("tokenAlertEnabled") private var tokenAlertEnabled: Bool = false
-    @AppStorage("tokenAlertThreshold") private var tokenAlertThreshold: Int = 100_000
-    @AppStorage("costAlertEnabled") private var costAlertEnabled: Bool = false
-    @AppStorage("costAlertThreshold") private var costAlertThreshold: Double = 10.0
-
-    var body: some View {
-        Form {
-            Section("Budget") {
-                LabeledContent("Daily Budget") {
-                    Text("$\(dailyBudget, specifier: "%.2f")")
-                        .foregroundStyle(MobileTheme.Colors.textSecondary)
-                }
-                Slider(value: $dailyBudget, in: 1...500, step: 5) {
-                    Text("Daily Budget")
-                } minimumValueLabel: {
-                    Text("$1").font(MobileTheme.Typography.caption)
-                } maximumValueLabel: {
-                    Text("$500").font(MobileTheme.Typography.caption)
-                }
-            }
-            Section("Token Alerts") {
-                Toggle("Enable Token Alerts", isOn: $tokenAlertEnabled)
-                if tokenAlertEnabled {
-                    Stepper("Threshold: \(tokenAlertThreshold.formatted()) tokens", value: $tokenAlertThreshold, step: 10_000)
-                }
-            }
-            Section("Cost Alerts") {
-                Toggle("Enable Cost Alerts", isOn: $costAlertEnabled)
-                if costAlertEnabled {
-                    Stepper("Threshold: $\(costAlertThreshold, specifier: "%.2f")", value: $costAlertThreshold, step: 1)
-                }
-            }
+    private func handleRouter(_ destination: PulseRouter.Destination?) {
+        guard let destination else { return }
+        switch destination {
+        case .burn:     selection = .burn
+        case .streams:  selection = .streams
+        case .hermes:   selection = .hermes
+        case .session:  selection = .streams
+        case .project:  selection = .streams
+        case .provider: selection = .burn
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .background(EmberSurfaceBackground().ignoresSafeArea())
+        router.clear()
     }
-}
 
-struct iPadNotificationsSettingsView: View {
-    @AppStorage("dailyDigestEnabled") private var dailyDigestEnabled: Bool = false
-    @AppStorage("dailyDigestHour") private var dailyDigestHour: Int = 9
-    @AppStorage("sessionNotifications") private var sessionNotifications: Bool = false
+    // MARK: - Sync Helpers
 
-    var body: some View {
-        Form {
-            Section("Digest") {
-                Toggle("Daily Spend Digest", isOn: $dailyDigestEnabled)
-                if dailyDigestEnabled {
-                    Picker("Delivery Time", selection: $dailyDigestHour) {
-                        ForEach(6..<24, id: \.self) { hour in Text("\(hour):00").tag(hour) }
-                    }
-                }
-            }
-            Section("Session") {
-                Toggle("Notify on New Sessions", isOn: $sessionNotifications)
-            }
-            Section {
-                Button("Open System Settings") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                }
-                .foregroundStyle(MobileTheme.Colors.accent)
-            }
+    private var syncStatusText: String {
+        switch syncHealthStore.health {
+        case .healthy: return "Synced"
+        case .syncing: return "Syncing…"
+        case .offline: return "Offline"
+        case .firebaseUnavailable: return "Firebase unavailable"
+        case .appCheckBlocked: return "App Check blocked"
+        case .permissionDenied: return "Permission denied"
+        case .degraded(_): return "Degraded"
+        case .unknown: return "Checking…"
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .background(EmberSurfaceBackground().ignoresSafeArea())
     }
-}
 
-struct iPadAccountSwitcherSettingsView: View {
-    @State private var store = AccountStore()
-    @State private var showAddSheet = false
-
-    var body: some View {
-        Form {
-            Section("Active Profile") {
-                if let profile = store.activeProfile {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(profile.displayName)
-                                .font(MobileTheme.Typography.body)
-                            Text(profile.email ?? "No email")
-                                .font(MobileTheme.Typography.footnote)
-                                .foregroundStyle(MobileTheme.Colors.textMuted)
-                        }
-                        Spacer()
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(MobileTheme.Colors.success)
-                    }
-                } else {
-                    Text("No active profile")
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                }
-            }
-            Section("All Profiles") {
-                if store.profiles.isEmpty {
-                    Text("Sign in with additional accounts to manage profiles here.")
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                } else {
-                    ForEach(store.profiles) { profile in
-                        Button {
-                            Task { await store.switchTo(profile) }
-                        } label: {
-                            HStack {
-                                Text(profile.displayName)
-                                Spacer()
-                                if profile.id == store.activeProfile?.id {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(MobileTheme.Colors.accent)
-                                }
-                            }
-                        }
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    }
-                }
-            }
+    private var syncDotColor: Color {
+        switch syncHealthStore.health {
+        case .healthy: return MobileTheme.success
+        case .syncing: return MobileTheme.amber
+        case .offline, .degraded(_): return MobileTheme.warning
+        case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return MobileTheme.error
+        case .unknown: return MobileTheme.Colors.textMuted
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .background(EmberSurfaceBackground().ignoresSafeArea())
-        .task { await store.loadProfiles() }
     }
 }
 

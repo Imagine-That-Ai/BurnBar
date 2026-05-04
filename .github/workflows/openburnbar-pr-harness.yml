@@ -81,17 +81,20 @@ jobs:
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
 
       - name: Run OpenBurnBar app tests
-        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
+        # Xcode 16.4 can crash in SwiftEmitModule when the large macOS app
+        # target is built with coverage instrumentation. Keep this as a real
+        # test gate; collect coverage from coverage-capable lanes separately.
+        run: ./scripts/test-openburnbar-app.sh
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
 
       - name: Extract code coverage
-        if: always()
+        if: always() && hashFiles('.derived-data/OpenBurnBar_TestCoverage.xcresult/**') != ''
         run: ./scripts/extract-coverage.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-coverage.json"
 
       - name: Compute diff coverage
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && hashFiles('openburnbar-coverage.json') != ''
         run: ./scripts/diff-coverage.sh origin/main "$GITHUB_WORKSPACE/openburnbar-coverage.json" > "$GITHUB_WORKSPACE/openburnbar-diff-coverage.json"
 
       - name: Post coverage summary

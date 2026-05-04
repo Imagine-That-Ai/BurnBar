@@ -129,7 +129,7 @@ struct YouView: View {
         case .syncing: return "arrow.triangle.2.circlepath.icloud.fill"
         case .offline: return "icloud.slash.fill"
         case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return "exclamationmark.icloud.fill"
-        case .degraded: return "icloud.fill"
+        case .degraded(_): return "icloud.fill"
         case .unknown: return "questionmark.circle.fill"
         }
     }
@@ -140,7 +140,7 @@ struct YouView: View {
         case .syncing: return MobileTheme.amber
         case .offline: return MobileTheme.warning
         case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return MobileTheme.error
-        case .degraded: return MobileTheme.warning
+        case .degraded(_): return MobileTheme.warning
         case .unknown: return MobileTheme.Colors.textMuted
         }
     }
