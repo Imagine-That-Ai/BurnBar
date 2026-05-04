@@ -18,11 +18,15 @@ struct SessionSummaryWizardView: View {
         self._localConfig = State(initialValue: config.wrappedValue)
     }
 
-    enum WizardStep: Int, CaseIterable {
+    enum WizardStep: Int {
         case model
         case topics
         case tone
         case review
+
+        static var orderedSteps: [WizardStep] {
+            [.model, .topics, .tone, .review]
+        }
     }
 
     var body: some View {
@@ -56,9 +60,9 @@ struct SessionSummaryWizardView: View {
     private var wizardHeader: some View {
         VStack(spacing: DesignSystem.Spacing.md) {
             HStack {
-                ForEach(WizardStep.allCases, id: \.rawValue) { step in
+                ForEach(WizardStep.orderedSteps, id: \.rawValue) { step in
                     stepIndicator(step)
-                    if step != WizardStep.allCases.last {
+                    if step != WizardStep.orderedSteps.last {
                         Spacer()
                     }
                 }
@@ -467,9 +471,29 @@ enum SummaryTone {
 }
 
 struct SummaryConfig {
-    var modelType: SummaryModelType = .balanced
-    var topics: Set<SummaryTopic> = [.code, .decisions, .errors]
-    var tone: SummaryTone = .concise
+    var modelType: SummaryModelType
+    var topics: Set<SummaryTopic>
+    var tone: SummaryTone
+
+    init(
+        modelType: SummaryModelType = .balanced,
+        topics: Set<SummaryTopic>? = nil,
+        tone: SummaryTone = .concise
+    ) {
+        self.modelType = modelType
+        self.topics = topics ?? SummaryTopic.defaultTopics()
+        self.tone = tone
+    }
+}
+
+private extension SummaryTopic {
+    static func defaultTopics() -> Set<SummaryTopic> {
+        var topics = Set<SummaryTopic>()
+        topics.insert(.code)
+        topics.insert(.decisions)
+        topics.insert(.errors)
+        return topics
+    }
 }
 
 extension SessionSummaryWizardView.WizardStep {
