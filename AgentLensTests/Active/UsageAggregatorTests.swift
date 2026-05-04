@@ -10,17 +10,31 @@ final class UsageAggregatorTests: XCTestCase {
     // MARK: - Test Helpers
 
     private func makeTestDataStore() throws -> DataStore {
-        try DataStore()
+        let queue = try DatabaseQueue()
+        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+    }
+
+    private func makeTestQuotaService() -> ProviderQuotaService {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-usage-aggregator-\(UUID().uuidString)", isDirectory: true)
+        let home = root.appendingPathComponent("home", isDirectory: true)
+        return ProviderQuotaService(
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: root),
+            homeDirectoryURL: home,
+            refreshProviders: []
+        )
     }
 
     private func makeTestAggregator(
         dataStore: DataStore,
         parserOverrides: [AgentProvider: any LogParser]? = nil,
-        usageAPIService: ProviderUsageAPIService? = nil
+        usageAPIService: ProviderUsageAPIService? = nil,
+        quotaService: ProviderQuotaService? = nil
     ) -> UsageAggregator {
         UsageAggregator(
             dataStore: dataStore,
             usageAPIService: usageAPIService,
+            quotaService: quotaService ?? makeTestQuotaService(),
             parserOverrides: parserOverrides
         )
     }
@@ -310,6 +324,8 @@ final class UsageAggregatorTests: XCTestCase {
 
         // After recount, usages should be from parser (empty in this case)
         // The old session should be replaced
+        XCTAssertEqual(mockParser.parseCallCount, 1)
+        XCTAssertTrue(dataStore.usages.isEmpty)
     }
 }
 
@@ -1396,12 +1412,14 @@ private final class MockParser: LogParser, @unchecked Sendable {
     var parseResult = ParseResult(usages: [], conversations: [])
     var shouldThrowError = false
     var errorToThrow: Error?
+    private(set) var parseCallCount = 0
 
     init(provider: AgentProvider) {
         self.provider = provider
     }
 
     func parse() async throws -> ParseResult {
+        parseCallCount += 1
         if shouldThrowError {
             throw errorToThrow ?? NSError(domain: "MockParser", code: -1, userInfo: nil)
         }
