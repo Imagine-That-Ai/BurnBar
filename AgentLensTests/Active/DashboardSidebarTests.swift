@@ -60,7 +60,8 @@ final class DashboardSidebarTests: XCTestCase {
             modelBreakdown: [],
             provenanceConfidence: .exact,
             provenanceMethod: .providerLog,
-            hasEstimatedContributions: false
+            hasEstimatedContributions: false,
+            cacheEfficiency: .zero
         )
         let view = makeSidebar(providerSummaries: [summary])
         let sut = try view.inspect()
@@ -76,7 +77,8 @@ final class DashboardSidebarTests: XCTestCase {
             totalInputTokens: 900,
             totalOutputTokens: 600,
             sessionCount: 2,
-            providerBreakdown: []
+            providerBreakdown: [],
+            cacheEfficiency: .zero
         )
         let view = makeSidebar(viewMode: .models, modelSummaries: [summary])
         let sut = try view.inspect()
@@ -95,7 +97,8 @@ final class DashboardSidebarTests: XCTestCase {
             modelBreakdown: [],
             provenanceConfidence: .exact,
             provenanceMethod: .providerLog,
-            hasEstimatedContributions: false
+            hasEstimatedContributions: false,
+            cacheEfficiency: .zero
         )
         let view = makeSidebar(
             providerSummaries: [summary],

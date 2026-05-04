@@ -22,7 +22,8 @@ final class DashboardLaneViewTests: XCTestCase {
             modelBreakdown: [],
             provenanceConfidence: .exact,
             provenanceMethod: .providerLog,
-            hasEstimatedContributions: false
+            hasEstimatedContributions: false,
+            cacheEfficiency: .zero
         )
         let view = DashboardProviderLaneView(
             summaries: [summary],
@@ -53,7 +54,8 @@ final class DashboardLaneViewTests: XCTestCase {
             totalInputTokens: 900,
             totalOutputTokens: 600,
             sessionCount: 2,
-            providerBreakdown: []
+            providerBreakdown: [],
+            cacheEfficiency: .zero
         )
         let view = DashboardModelLaneView(
             models: [model],

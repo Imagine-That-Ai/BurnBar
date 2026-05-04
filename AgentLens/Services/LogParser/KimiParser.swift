@@ -7,10 +7,15 @@ import Foundation
 /// Falls back to character-based estimation from context.jsonl for older sessions.
 final class KimiParser: LogParser, Sendable {
     let provider: AgentProvider = .kimi
+    let logDirectoryOverride: String?
+
+    init(logDirectoryOverride: String? = nil) {
+        self.logDirectoryOverride = logDirectoryOverride
+    }
 
     func parse() async throws -> ParseResult {
         let fileManager = FileManager.default
-        let sessionsPath = NSString(string: provider.logDirectory).expandingTildeInPath
+        let sessionsPath = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
 
         guard fileManager.fileExists(atPath: sessionsPath) else {

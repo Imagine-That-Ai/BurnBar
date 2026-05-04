@@ -3,11 +3,16 @@ import XCTest
 
 final class KimiParserStandaloneTests: XCTestCase {
     func testParseEmptyDirectory() async throws {
-        // Skipped: KimiParser scans the host user's actual `~/.kimi` (or
-        // equivalent) directory. Any developer with prior Kimi sessions on
-        // disk will surface usages/conversations and break the assertion.
-        // Re-enable once `KimiParser` can be pointed at a hermetic temp dir.
-        try XCTSkipIf(true, "Environmental — requires a hermetic directory.")
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-kimi-parser-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let parser = KimiParser(logDirectoryOverride: tempDir.path)
+        let result = try await parser.parse()
+
+        XCTAssertTrue(result.usages.isEmpty, "Empty directory should yield no usages")
+        XCTAssertTrue(result.conversations.isEmpty, "Empty directory should yield no conversations")
     }
     
     func testProviderReturnsCorrectValue() {

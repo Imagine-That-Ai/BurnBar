@@ -89,7 +89,7 @@ fi
 
 PROJECT_YML="$REPO_ROOT/project.yml"
 if [[ -f "$PROJECT_YML" ]]; then
-  PROJECT_VERSION="$(grep -E '^\s+MARKETING_VERSION:' "$PROJECT_YML" | head -1 | sed 's/.*: *//;s/ *//;s/"//g;s/'//g')"
+  PROJECT_VERSION="$(grep -E '^\s+MARKETING_VERSION:' "$PROJECT_YML" | head -1 | sed 's/.*: *//' | tr -d ' "' | tr -d "'")"
   if [[ -n "$PROJECT_VERSION" && "$PROJECT_VERSION" != "$VERSION" ]]; then
     echo "ERROR: Version mismatch:" >&2
     echo "  Tag version:      $VERSION" >&2

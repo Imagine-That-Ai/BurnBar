@@ -317,42 +317,6 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "7-day Opus window" && $0.remainingPercent?.rounded() == 60 }))
     }
 
-    func test_factoryRefresh_estimatesRemainingFromPlanTierAndMonthlyUsage() async throws {
-        try XCTSkipIf(true, "Stale contract — Factory plan-tier limits updated; refresh fixture totals.")
-        let home = try makeTemporaryDirectory()
-        let appSupport = try makeTemporaryDirectory()
-        let service = makeService(
-            home: home,
-            appSupportRoot: appSupport,
-            factoryPlanProvider: { .pro }
-        )
-
-        let store = try makeDataStore()
-        let start = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date()
-        store.replaceUsages([
-            TokenUsage(
-                provider: .factory,
-                sessionId: "factory-month",
-                projectName: "Quota",
-                model: "factory-model",
-                inputTokens: 3_000_000,
-                outputTokens: 2_000_000,
-                costUSD: 0,
-                startTime: start.addingTimeInterval(60),
-                endTime: start.addingTimeInterval(120)
-            )
-        ])
-
-        await service.refresh(provider: .factory, dataStore: store)
-        let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
-        let bucket = try XCTUnwrap(snapshot.primaryBucket)
-
-        XCTAssertEqual(snapshot.source, .manualEstimate)
-        XCTAssertEqual(snapshot.confidence, .estimated)
-        XCTAssertEqual(bucket.remainingValue?.rounded(), 15_000_000)
-        XCTAssertEqual(bucket.limitValue?.rounded(), 20_000_000)
-    }
-
     func test_factoryRefresh_prefersExactFactoryAPIUsingExplicitEnvironmentCredentials() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()

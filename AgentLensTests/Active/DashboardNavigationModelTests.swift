@@ -73,7 +73,7 @@ final class DashboardNavigationModelTests: XCTestCase {
     func test_sidebarRouteOrder_agentsMode() {
         let nav = DashboardNavigationModel()
         let summaries = [
-            ProviderSummary(provider: .cursor, totalCost: 1, totalTokens: 100, totalInputTokens: 50, totalOutputTokens: 50, sessionCount: 1, modelBreakdown: [], provenanceConfidence: .exact, provenanceMethod: .providerLog, hasEstimatedContributions: false)
+            ProviderSummary(provider: .cursor, totalCost: 1, totalTokens: 100, totalInputTokens: 50, totalOutputTokens: 50, sessionCount: 1, modelBreakdown: [], provenanceConfidence: .exact, provenanceMethod: .providerLog, hasEstimatedContributions: false, cacheEfficiency: .zero)
         ]
         let order = nav.sidebarRouteOrder(providerSummaries: summaries, modelSummaries: [])
         XCTAssertEqual(order, [.overview, .provider(.cursor)])
@@ -83,7 +83,7 @@ final class DashboardNavigationModelTests: XCTestCase {
         let nav = DashboardNavigationModel()
         nav.viewMode = .models
         let summaries = [
-            ModelSummary(modelName: "gpt-4", displayName: "GPT-4", totalCost: 1, totalTokens: 100, totalInputTokens: 50, totalOutputTokens: 50, sessionCount: 1, providerBreakdown: [])
+            ModelSummary(modelName: "gpt-4", displayName: "GPT-4", totalCost: 1, totalTokens: 100, totalInputTokens: 50, totalOutputTokens: 50, sessionCount: 1, providerBreakdown: [], cacheEfficiency: .zero)
         ]
         let order = nav.sidebarRouteOrder(providerSummaries: [], modelSummaries: summaries)
         XCTAssertEqual(order, [.overview, .model("gpt-4")])

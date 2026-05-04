@@ -793,15 +793,26 @@ actor ProjectionPipelineService {
             guard let hash = chunk.contentHash, let existing = embeddingByHash[hash] else {
                 continue
             }
-            try? dataStore.upsertChunkEmbedding(
-                ChunkEmbeddingRecord(
-                    chunkID: chunk.id,
-                    embeddingVersionID: embeddingVersionID,
-                    vectorBlob: existing.vectorBlob,
-                    createdAt: now,
-                    updatedAt: now
+            do {
+                try dataStore.upsertChunkEmbedding(
+                    ChunkEmbeddingRecord(
+                        chunkID: chunk.id,
+                        embeddingVersionID: embeddingVersionID,
+                        vectorBlob: existing.vectorBlob,
+                        createdAt: now,
+                        updatedAt: now
+                    )
                 )
-            )
+            } catch {
+                AppLogger.dataStore.silentFailure(
+                    "upsert_chunk_embedding_failed",
+                    error: error,
+                    context: [
+                        "chunkID": chunk.id,
+                        "embeddingVersionID": embeddingVersionID,
+                    ]
+                )
+            }
             reusedEmbeddingCount += 1
         }
         if reusedEmbeddingCount > 0 {
@@ -891,15 +902,26 @@ actor ProjectionPipelineService {
             guard let hash = chunk.contentHash, let existing = embeddingByHash[hash] else {
                 continue
             }
-            try? dataStore.upsertChunkEmbedding(
-                ChunkEmbeddingRecord(
-                    chunkID: chunk.id,
-                    embeddingVersionID: embeddingVersionID,
-                    vectorBlob: existing.vectorBlob,
-                    createdAt: now,
-                    updatedAt: now
+            do {
+                try dataStore.upsertChunkEmbedding(
+                    ChunkEmbeddingRecord(
+                        chunkID: chunk.id,
+                        embeddingVersionID: embeddingVersionID,
+                        vectorBlob: existing.vectorBlob,
+                        createdAt: now,
+                        updatedAt: now
+                    )
                 )
-            )
+            } catch {
+                AppLogger.dataStore.silentFailure(
+                    "upsert_chunk_embedding_failed",
+                    error: error,
+                    context: [
+                        "chunkID": chunk.id,
+                        "embeddingVersionID": embeddingVersionID,
+                    ]
+                )
+            }
             reusedEmbeddingCount += 1
         }
         if reusedEmbeddingCount > 0 {

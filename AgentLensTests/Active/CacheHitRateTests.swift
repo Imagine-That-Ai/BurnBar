@@ -1,4 +1,5 @@
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 // MARK: - CacheHitRateTests

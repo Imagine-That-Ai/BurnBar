@@ -954,14 +954,6 @@ final class SettingsManagerTests: XCTestCase {
 
     // MARK: - Provider Detection
 
-    func test_detectAvailableProviders_returnsFalseForAllOnCleanSystem() throws {
-        // Skipped: `detectAvailableProviders` walks the host file system for
-        // every provider's log directory (e.g. `~/.codex/sessions`). Any
-        // developer running this on a machine that has even one provider
-        // installed will fail. Re-enable inside a hermetic FS sandbox.
-        try XCTSkipIf(true, "Environmental — requires a hermetic FS sandbox.")
-    }
-
     func test_pathExists_forNonExistentPath() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)

@@ -36,7 +36,8 @@ final class DashboardOverviewViewTests: XCTestCase {
             modelBreakdown: [],
             provenanceConfidence: .exact,
             provenanceMethod: .providerLog,
-            hasEstimatedContributions: false
+            hasEstimatedContributions: false,
+            cacheEfficiency: .zero
         )
         let modelSummary = ModelSummary(
             modelName: "claude-3-opus",
@@ -46,7 +47,8 @@ final class DashboardOverviewViewTests: XCTestCase {
             totalInputTokens: 600,
             totalOutputTokens: 400,
             sessionCount: 5,
-            providerBreakdown: []
+            providerBreakdown: [],
+            cacheEfficiency: .zero
         )
         return DashboardOverviewView(
             providerSummaries: [providerSummary],

@@ -237,6 +237,15 @@ struct ModelUsage: Identifiable, Hashable {
     var hasEstimatedData: Bool {
         hasEstimatedContributions
     }
+
+    /// Per-row `CacheEfficiency` projection matching `TokenUsage` contract.
+    var cacheEfficiency: OpenBurnBarCore.CacheEfficiency {
+        OpenBurnBarCore.CacheEfficiency(
+            inputTokens: inputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens
+        )
+    }
 }
 
 // MARK: - Dashboard View Mode

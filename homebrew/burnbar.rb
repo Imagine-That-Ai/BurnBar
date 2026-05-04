@@ -11,7 +11,7 @@
 # This downloads the release DMG, computes the SHA256, and updates this file.
 
 cask "openburnbar" do
-  version "0.1.2-beta"
+  version "0.1.3-beta.1"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000" # Updated by scripts/update-homebrew.sh
 
   url "https://github.com/Ajnunezg/BurnBar/releases/download/v#{version}/OpenBurnBar-#{version}-macOS.dmg"

@@ -146,7 +146,7 @@ final class DataStoreCoordinator {
         let defaults = UserDefaults.standard
         let encryptionEnabled = defaults.bool(forKey: "databaseEncryptionEnabled")
         let encryptionKey: String? = encryptionEnabled
-            ? DatabaseEncryptionService.getOrCreateKey(recoveryURL: DatabaseEncryptionService.defaultRecoveryURL)
+            ? DatabaseEncryptionService.getOrCreateKey()
             : nil
         let config = DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
         return try DatabasePool(path: path, configuration: config)

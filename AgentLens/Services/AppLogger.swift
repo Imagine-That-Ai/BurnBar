@@ -37,6 +37,65 @@ public struct AppLogger: Sendable {
         self.category = category
     }
     
+    // MARK: - Sanitization
+    
+    /// Keys whose values should be fully redacted from telemetry.
+    private static let sensitiveKeys: Set<String> = [
+        "token", "apiKey", "api_key", "apikey", "auth", "authorization", "bearer",
+        "password", "secret", "cookie", "refreshToken", "accessToken", "idToken",
+        "credential", "privateKey", "x-api-key", "x_auth_token", "firebase_auth",
+        "prompt", "message", "content", "body", "chatBody", "projectName", "model",
+        "project_name", "model_name", "model_id", "path", "filePath", "file_path",
+        "directory", "url", "home", "HOME", "ssh_key", "key_path", "private_key",
+        "cert", "certificate", "session_log", "log_path", "db_path", "database_path",
+    ]
+    
+    /// Substrings that indicate a value contains sensitive material.
+    private static let sensitiveValuePatterns: [String] = [
+        "sk-", "bearer ", "token=", "apikey=", "secret=", "password=",
+        "/Users/", "~", ".ssh", ".aws", ".env", "keychain", "BEGIN RSA",
+        "BEGIN OPENSSH", "-----BEGIN",
+    ]
+    
+    /// Sanitizes metadata before it leaves the process boundary (e.g. to Sentry).
+    /// - Redacts values for known sensitive keys.
+    /// - Redacts values that look like paths, tokens, or auth headers.
+    /// - Truncates free-form text fields that may contain user content.
+    ///
+    /// This is a defense-in-depth layer: OSLog already uses `.private` hashing,
+    /// but Sentry breadcrumbs receive raw dictionaries unless we scrub them first.
+    public static func sanitizeMetadata(_ metadata: [String: String]) -> [String: String] {
+        metadata.reduce(into: [String: String]()) { result, entry in
+            let key = entry.key.lowercased()
+            let value = entry.value
+            
+            // Full redaction for known sensitive keys
+            if sensitiveKeys.contains(key) || sensitiveKeys.contains(entry.key.lowercased()) {
+                result[entry.key] = "[REDACTED]"
+                return
+            }
+            
+            // Partial pattern match on key name
+            let keyContainsSensitive = sensitiveKeys.contains(where: { key.contains($0) })
+            
+            // Check value for sensitive patterns
+            let lowerValue = value.lowercased()
+            let valueLooksSensitive = sensitiveValuePatterns.contains(where: { lowerValue.contains($0.lowercased()) })
+            
+            if keyContainsSensitive || valueLooksSensitive {
+                result[entry.key] = "[REDACTED]"
+                return
+            }
+            
+            // Truncate long free-form values that could contain prompts or logs
+            if value.count > 500 {
+                result[entry.key] = String(value.prefix(500)) + "...[TRUNCATED]"
+            } else {
+                result[entry.key] = value
+            }
+        }
+    }
+    
     // MARK: - Logging Methods
     
     /// Log a debug message (only in DEBUG builds).
@@ -66,7 +125,7 @@ public struct AppLogger: Sendable {
         #if canImport(Sentry)
         let breadcrumb = Breadcrumb(level: .error, category: category)
         breadcrumb.message = event
-        breadcrumb.data = metadata
+        breadcrumb.data = Self.sanitizeMetadata(metadata)
         SentrySDK.addBreadcrumb(breadcrumb)
         #endif
     }
@@ -87,7 +146,7 @@ public struct AppLogger: Sendable {
         #if canImport(Sentry)
         let breadcrumb = Breadcrumb(level: .warning, category: category)
         breadcrumb.message = operation
-        breadcrumb.data = metadata
+        breadcrumb.data = Self.sanitizeMetadata(metadata)
         SentrySDK.addBreadcrumb(breadcrumb)
         #endif
     }

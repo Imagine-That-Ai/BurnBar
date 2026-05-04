@@ -3,8 +3,20 @@ import XCTest
 
 @testable import OpenBurnBar
 
-/// Verifies the GRDB+SQLCipher SPM build applies `PRAGMA key` and reports `cipher_version`.
+/// Verifies the GRDB+SQLCipher SPM build applies `PRAGMA key` and reports `cipher_version`,
+/// and validates the SOTA key recovery design (Keychain-only + explicit passphrase bundle).
 final class DatabaseEncryptionServiceTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // Ensure a clean state for each test
+        DatabaseEncryptionService.deleteKey()
+    }
+
+    override func tearDown() {
+        DatabaseEncryptionService.deleteKey()
+        super.tearDown()
+    }
+
     func testMakeConfigurationWithKey_reportsCipherVersion() throws {
         try XCTSkipIf(true, "Stale contract — SQLCipher PRAGMA cipher_version reporting requires a release build configuration.")
         let key = "k3y-" + String(repeating: "a", count: 32)
@@ -35,104 +47,111 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         XCTAssertEqual(count, 1)
     }
 
-    // MARK: - Recovery File Tests
+    // MARK: - Key Lifecycle Tests
 
-    private func tempRecoveryURL() -> URL {
-        let tempDir = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-recovery-tests-\(UUID().uuidString)")
-        return URL(fileURLWithPath: tempDir).appendingPathComponent(".encryption-key-recovery")
+    func testGetOrCreateKey_generatesNewKey() {
+        let key1 = DatabaseEncryptionService.getOrCreateKey()
+        XCTAssertFalse(key1.isEmpty)
+        XCTAssertEqual(key1.count, 44, "Base64 encoding of 32 bytes should be 44 characters")
+
+        let key2 = DatabaseEncryptionService.getOrCreateKey()
+        XCTAssertEqual(key1, key2, "Second call should return the existing key")
     }
 
-    func testPersistKeyRecovery_createsFile() throws {
-        let recoveryURL = tempRecoveryURL()
-        let tempDir = recoveryURL.deletingLastPathComponent()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+    func testDeleteKey_removesKey() {
+        _ = DatabaseEncryptionService.getOrCreateKey()
+        XCTAssertNotNil(DatabaseEncryptionService.getKey())
 
-        let key = "test-recovery-key-base64-value=="
-        let success = DatabaseEncryptionService.persistKeyRecovery(key: key, to: recoveryURL)
-        XCTAssertTrue(success, "persistKeyRecovery should return true on success")
-
-        // Verify file exists and has correct permissions
-        let attrs = try FileManager.default.attributesOfItem(atPath: recoveryURL.path)
-        let perms = attrs[.posixPermissions] as? UInt16 ?? 0
-        XCTAssertEqual(perms & 0o777, 0o600, "Recovery file should have 0o600 permissions")
-
-        // Verify file content format
-        let content = try String(contentsOf: recoveryURL, encoding: .utf8)
-        XCTAssertTrue(content.hasPrefix("sha256:"), "Recovery file should start with sha256: prefix")
-        XCTAssertTrue(content.contains(key), "Recovery file should contain the key")
+        DatabaseEncryptionService.deleteKey()
+        XCTAssertNil(DatabaseEncryptionService.getKey())
     }
 
-    func testRecoverKeyFromRecoveryFile_succeedsAfterKeychainLoss() throws {
-        let recoveryURL = tempRecoveryURL()
-        let tempDir = recoveryURL.deletingLastPathComponent()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let key = "dGhpcyBpcyBhIHRlc3Qga2V5" // base64-looking test key
-        let success = DatabaseEncryptionService.persistKeyRecovery(key: key, to: recoveryURL)
-        XCTAssertTrue(success)
-
-        let recovered = DatabaseEncryptionService.recoverKeyFromRecoveryFile(at: recoveryURL)
-        XCTAssertEqual(recovered, key, "Recovered key should match the original")
+    func testGetKey_returnsNilAfterDeletion() {
+        XCTAssertNil(DatabaseEncryptionService.getKey())
+        let key = DatabaseEncryptionService.getOrCreateKey()
+        XCTAssertEqual(DatabaseEncryptionService.getKey(), key)
+        DatabaseEncryptionService.deleteKey()
+        XCTAssertNil(DatabaseEncryptionService.getKey())
     }
 
-    func testRecoverKeyFromRecoveryFile_returnsNilForMissingFile() throws {
-        let recoveryURL = URL(fileURLWithPath: "/tmp/obb-nonexistent-\(UUID().uuidString)/.encryption-key-recovery")
-        let recovered = DatabaseEncryptionService.recoverKeyFromRecoveryFile(at: recoveryURL)
-        XCTAssertNil(recovered, "Recovery should return nil for nonexistent file")
+    // MARK: - Recovery Bundle Tests
+
+    func testExportRecoveryBundle_roundTripsKey() {
+        let originalKey = DatabaseEncryptionService.getOrCreateKey()
+        let password = "correct-horse-battery-staple-42"
+
+        guard let bundle = DatabaseEncryptionService.exportRecoveryBundle(password: password) else {
+            XCTFail("exportRecoveryBundle should return non-nil data")
+            return
+        }
+        XCTAssertGreaterThan(bundle.count, 21, "Bundle must contain header + salt + iterations + ciphertext")
+
+        // Simulate key loss
+        DatabaseEncryptionService.deleteKey()
+        XCTAssertNil(DatabaseEncryptionService.getKey())
+
+        let recovered = DatabaseEncryptionService.importRecoveryBundle(data: bundle, password: password)
+        XCTAssertEqual(recovered, originalKey, "Recovered key should match original")
+        XCTAssertEqual(DatabaseEncryptionService.getKey(), originalKey, "Key should be re-imported into Keychain")
     }
 
-    func testRecoverKeyFromRecoveryFile_returnsNilForCorruptedContent() throws {
-        let recoveryURL = tempRecoveryURL()
-        let tempDir = recoveryURL.deletingLastPathComponent()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+    func testImportRecoveryBundle_wrongPasswordReturnsNil() {
+        let originalKey = DatabaseEncryptionService.getOrCreateKey()
+        let bundle = DatabaseEncryptionService.exportRecoveryBundle(password: "right-password")
+        XCTAssertNotNil(bundle)
 
-        // Write a corrupted recovery file with wrong hash
-        let corruptedContent = "sha256:0000000000000000\ncorrupted-key"
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        try corruptedContent.write(to: recoveryURL, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: recoveryURL.path)
-
-        let recovered = DatabaseEncryptionService.recoverKeyFromRecoveryFile(at: recoveryURL)
-        XCTAssertNil(recovered, "Recovery should return nil when integrity check fails")
+        DatabaseEncryptionService.deleteKey()
+        let recovered = DatabaseEncryptionService.importRecoveryBundle(data: bundle!, password: "wrong-password")
+        XCTAssertNil(recovered, "Wrong password should fail to decrypt")
     }
 
-    func testRecoverKeyFromRecoveryFile_returnsNilForOverlyPermissiveFile() throws {
-        let recoveryURL = tempRecoveryURL()
-        let tempDir = recoveryURL.deletingLastPathComponent()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+    func testImportRecoveryBundle_corruptedDataReturnsNil() {
+        let bundle = DatabaseEncryptionService.exportRecoveryBundle(password: "any-password")
+        XCTAssertNotNil(bundle)
 
-        // Create a valid recovery file but with overly permissive permissions
-        let key = "test-key-for-perm-check=="
-        _ = DatabaseEncryptionService.persistKeyRecovery(key: key, to: recoveryURL)
+        var corrupted = bundle!
+        if corrupted.count > 22 {
+            corrupted[22] = corrupted[22] ^ 0xFF // flip bits in ciphertext
+        }
 
-        // Loosen permissions to world-readable
-        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: recoveryURL.path)
-
-        let recovered = DatabaseEncryptionService.recoverKeyFromRecoveryFile(at: recoveryURL)
-        XCTAssertNil(recovered, "Recovery should refuse to use a world-readable recovery file")
+        let recovered = DatabaseEncryptionService.importRecoveryBundle(data: corrupted, password: "any-password")
+        XCTAssertNil(recovered, "Corrupted bundle should fail authentication")
     }
 
-    func testRemoveKeyRecoveryFile_deletesFile() throws {
-        let recoveryURL = tempRecoveryURL()
-        let tempDir = recoveryURL.deletingLastPathComponent()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+    func testImportRecoveryBundle_unsupportedVersionReturnsNil() {
+        var fakeBundle = Data([0xFF]) // unsupported version
+        fakeBundle.append(contentsOf: [UInt8](repeating: 0, count: 20))
+        fakeBundle.append(contentsOf: [UInt8](repeating: 0, count: 16)) // minimum ciphertext + tag
 
-        let key = "key-to-be-removed"
-        _ = DatabaseEncryptionService.persistKeyRecovery(key: key, to: recoveryURL)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: recoveryURL.path))
+        let recovered = DatabaseEncryptionService.importRecoveryBundle(data: fakeBundle, password: "irrelevant")
+        XCTAssertNil(recovered, "Unsupported version should be rejected")
+    }
 
-        DatabaseEncryptionService.removeKeyRecoveryFile(at: recoveryURL)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: recoveryURL.path))
+    func testExportRecoveryBundle_withoutKeyReturnsNil() {
+        DatabaseEncryptionService.deleteKey()
+        XCTAssertNil(DatabaseEncryptionService.exportRecoveryBundle(password: "password"))
+    }
+
+    func testRecoveryBundle_cannotBeRecoveredWithDifferentSalt() {
+        let password = "shared-password"
+        let bundle1 = DatabaseEncryptionService.exportRecoveryBundle(password: password)
+        XCTAssertNotNil(bundle1)
+
+        // Export again — should get a different salt and thus different bundle bytes
+        let bundle2 = DatabaseEncryptionService.exportRecoveryBundle(password: password)
+        XCTAssertNotNil(bundle2)
+        XCTAssertNotEqual(bundle1, bundle2, "Each export should use a fresh random salt")
+
+        // Both should still decrypt to the same key
+        DatabaseEncryptionService.deleteKey()
+        let recovered1 = DatabaseEncryptionService.importRecoveryBundle(data: bundle1!, password: password)
+        DatabaseEncryptionService.deleteKey()
+        let recovered2 = DatabaseEncryptionService.importRecoveryBundle(data: bundle2!, password: password)
+        XCTAssertEqual(recovered1, recovered2)
     }
 
     func testDatabaseOpensAfterKeychainRecovery() throws {
-        // This test simulates a full keychain loss/recovery cycle:
-        // 1. Create an encrypted database with a key
-        // 2. The recovery file is persisted alongside
-        // 3. Simulate Keychain loss by deleting the key
-        // 4. getOrCreateKey() recovers from file and re-imports to Keychain
-        // 5. Database opens successfully with the recovered key
-        let testKey = "recovery-cycle-test-key-" + String(repeating: "x", count: 20)
+        let testKey = DatabaseEncryptionService.getOrCreateKey()
         let config = DatabaseEncryptionService.makeConfiguration(encryptionKey: testKey)
         let dbPath = (NSTemporaryDirectory() as NSString).appendingPathComponent("obb-recovery-\(UUID().uuidString).sqlite")
         defer { try? FileManager.default.removeItem(atPath: dbPath) }
@@ -144,18 +163,17 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         }
         try pool.close()
 
-        // Persist recovery file
-        let recoveryURL = tempRecoveryURL()
-        let tempDir = recoveryURL.deletingLastPathComponent()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-        XCTAssertTrue(DatabaseEncryptionService.persistKeyRecovery(key: testKey, to: recoveryURL))
-
-        // Simulate Keychain loss: delete key, then recover from file
+        // Simulate Keychain loss: export bundle, delete key, then recover
+        let password = "recovery-passphrase-99"
+        guard let bundle = DatabaseEncryptionService.exportRecoveryBundle(password: password) else {
+            XCTFail("Export should succeed")
+            return
+        }
         DatabaseEncryptionService.deleteKey()
+        XCTAssertNil(DatabaseEncryptionService.getKey())
 
-        // getOrCreateKey should recover from the file
-        let recoveredKey = DatabaseEncryptionService.getOrCreateKey(recoveryURL: recoveryURL)
-        XCTAssertEqual(recoveredKey, testKey, "getOrCreateKey should return the recovered key")
+        let recoveredKey = DatabaseEncryptionService.importRecoveryBundle(data: bundle, password: password)
+        XCTAssertEqual(recoveredKey, testKey)
 
         // Verify the database can be opened with the recovered key
         let recoveredConfig = DatabaseEncryptionService.makeConfiguration(encryptionKey: recoveredKey)

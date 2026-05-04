@@ -86,14 +86,26 @@ actor SummaryWorker {
                             model: settings.localModel,
                             estimatedCostUSD: 0
                         )
-                        try? dataStoreActor.updateConversationSummary(
-                            id: conversation.id,
-                            title: result.title,
-                            summary: result.summary,
-                            provider: result.provider.rawValue,
-                            model: result.model,
-                            runCostUSD: result.estimatedCostUSD
-                        )
+                        do {
+                            try dataStoreActor.updateConversationSummary(
+                                id: conversation.id,
+                                title: result.title,
+                                summary: result.summary,
+                                provider: result.provider.rawValue,
+                                model: result.model,
+                                runCostUSD: result.estimatedCostUSD
+                            )
+                        } catch {
+                            AppLogger.dataStore.silentFailure(
+                                "summary_worker_update_failed",
+                                error: error,
+                                context: [
+                                    "conversationId": conversation.id,
+                                    "provider": result.provider.rawValue,
+                                    "model": result.model,
+                                ]
+                            )
+                        }
                         return result
                     }
                 }
@@ -115,14 +127,26 @@ actor SummaryWorker {
                     fallbackTitle: conversation.inferredTaskTitle,
                     settings: settings
                 ) {
-                    try? dataStoreActor.updateConversationSummary(
-                        id: conversation.id,
-                        title: result.title,
-                        summary: result.summary,
-                        provider: result.provider.rawValue,
-                        model: result.model,
-                        runCostUSD: result.estimatedCostUSD
-                    )
+                    do {
+                        try dataStoreActor.updateConversationSummary(
+                            id: conversation.id,
+                            title: result.title,
+                            summary: result.summary,
+                            provider: result.provider.rawValue,
+                            model: result.model,
+                            runCostUSD: result.estimatedCostUSD
+                        )
+                    } catch {
+                        AppLogger.dataStore.silentFailure(
+                            "summary_worker_update_failed",
+                            error: error,
+                            context: [
+                                "conversationId": conversation.id,
+                                "provider": result.provider.rawValue,
+                                "model": result.model,
+                            ]
+                        )
+                    }
                     return result
                 }
 
@@ -138,14 +162,26 @@ actor SummaryWorker {
                     fallbackTitle: conversation.inferredTaskTitle,
                     settings: settings
                 ) {
-                    try? dataStoreActor.updateConversationSummary(
-                        id: conversation.id,
-                        title: result.title,
-                        summary: result.summary,
-                        provider: result.provider.rawValue,
-                        model: result.model,
-                        runCostUSD: result.estimatedCostUSD
-                    )
+                    do {
+                        try dataStoreActor.updateConversationSummary(
+                            id: conversation.id,
+                            title: result.title,
+                            summary: result.summary,
+                            provider: result.provider.rawValue,
+                            model: result.model,
+                            runCostUSD: result.estimatedCostUSD
+                        )
+                    } catch {
+                        AppLogger.dataStore.silentFailure(
+                            "summary_worker_update_failed",
+                            error: error,
+                            context: [
+                                "conversationId": conversation.id,
+                                "provider": result.provider.rawValue,
+                                "model": result.model,
+                            ]
+                        )
+                    }
                     return result
                 }
 
@@ -166,14 +202,26 @@ actor SummaryWorker {
                         openRouterHeaders: true,
                         settings: settings
                     ) {
-                        try? dataStoreActor.updateConversationSummary(
-                            id: conversation.id,
-                            title: result.title,
-                            summary: result.summary,
-                            provider: result.provider.rawValue,
-                            model: result.model,
-                            runCostUSD: result.estimatedCostUSD
-                        )
+                        do {
+                            try dataStoreActor.updateConversationSummary(
+                                id: conversation.id,
+                                title: result.title,
+                                summary: result.summary,
+                                provider: result.provider.rawValue,
+                                model: result.model,
+                                runCostUSD: result.estimatedCostUSD
+                            )
+                        } catch {
+                            AppLogger.dataStore.silentFailure(
+                                "summary_worker_update_failed",
+                                error: error,
+                                context: [
+                                    "conversationId": conversation.id,
+                                    "provider": result.provider.rawValue,
+                                    "model": result.model,
+                                ]
+                            )
+                        }
                         return result
                     }
                 }
@@ -190,14 +238,26 @@ actor SummaryWorker {
                     fallbackTitle: conversation.inferredTaskTitle,
                     settings: settings
                 ) {
-                    try? dataStoreActor.updateConversationSummary(
-                        id: conversation.id,
-                        title: result.title,
-                        summary: result.summary,
-                        provider: result.provider.rawValue,
-                        model: result.model,
-                        runCostUSD: result.estimatedCostUSD
-                    )
+                    do {
+                        try dataStoreActor.updateConversationSummary(
+                            id: conversation.id,
+                            title: result.title,
+                            summary: result.summary,
+                            provider: result.provider.rawValue,
+                            model: result.model,
+                            runCostUSD: result.estimatedCostUSD
+                        )
+                    } catch {
+                        AppLogger.dataStore.silentFailure(
+                            "summary_worker_update_failed",
+                            error: error,
+                            context: [
+                                "conversationId": conversation.id,
+                                "provider": result.provider.rawValue,
+                                "model": result.model,
+                            ]
+                        )
+                    }
                     return result
                 }
 
@@ -217,20 +277,36 @@ actor SummaryWorker {
                     fallbackTitle: conversation.inferredTaskTitle,
                     settings: settings
                 ) {
-                    try? dataStoreActor.updateConversationSummary(
-                        id: conversation.id,
-                        title: result.title,
-                        summary: result.summary,
-                        provider: result.provider.rawValue,
-                        model: result.model,
-                        runCostUSD: result.estimatedCostUSD
-                    )
+                    do {
+                        try dataStoreActor.updateConversationSummary(
+                            id: conversation.id,
+                            title: result.title,
+                            summary: result.summary,
+                            provider: result.provider.rawValue,
+                            model: result.model,
+                            runCostUSD: result.estimatedCostUSD
+                        )
+                    } catch {
+                        AppLogger.dataStore.silentFailure(
+                            "summary_worker_update_failed",
+                            error: error,
+                            context: [
+                                "conversationId": conversation.id,
+                                "provider": result.provider.rawValue,
+                                "model": result.model,
+                            ]
+                        )
+                    }
                     return result
                 }
             }
         }
 
-        try? dataStoreActor.markConversationSummaryAttempt(id: conversation.id)
+        do {
+            try dataStoreActor.markConversationSummaryAttempt(id: conversation.id)
+        } catch {
+            AppLogger.dataStore.silentFailure("mark_summary_attempt_failed", error: error, context: ["conversationId": conversation.id])
+        }
         return nil
     }
 

@@ -195,7 +195,11 @@ final class DownloadSyncService: CloudSyncDomain {
 
         defer {
             if syncTx.processedCount > 0 {
-                try? syncTx.commit()
+                do {
+                    try syncTx.commit()
+                } catch {
+                    AppLogger.sync.error("download_sync_tx_commit_failed", metadata: ["accountUid": uid, "collectionKind": "usage", "error": String(describing: error)])
+                }
             }
         }
 
@@ -288,7 +292,11 @@ final class DownloadSyncService: CloudSyncDomain {
 
         defer {
             if syncTx.processedCount > 0 {
-                try? syncTx.commit()
+                do {
+                    try syncTx.commit()
+                } catch {
+                    AppLogger.sync.error("download_sync_tx_commit_failed", metadata: ["accountUid": uid, "collectionKind": "conversations", "error": String(describing: error)])
+                }
             }
         }
 

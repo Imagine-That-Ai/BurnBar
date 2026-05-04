@@ -19,11 +19,8 @@ final class ProviderLogoViewTests: XCTestCase {
         }
     }
 
-    func test_rendersForProviderWithoutLogoURL() throws {
-        let providersWithoutURL = AgentProvider.allCases.filter { $0.logoURL == nil }
-        XCTAssertFalse(providersWithoutURL.isEmpty, "At least some providers should lack logo URLs")
-
-        for provider in providersWithoutURL {
+    func test_rendersForProviderWithFallbackEnabled() throws {
+        for provider in AgentProvider.allCases {
             let view = ProviderLogoView(provider: provider, size: 32, useFallbackColor: true)
             XCTAssertNoThrow(try view.inspect(), "Failed for \(provider.displayName)")
         }

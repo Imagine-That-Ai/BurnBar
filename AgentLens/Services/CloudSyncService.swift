@@ -457,7 +457,11 @@ final class CloudSyncService {
             // Commit the transaction to advance watermark
             // This happens even if some items fail, as long as we processed anything
             if syncTx.processedCount > 0 {
-                try? syncTx.commit()
+                do {
+                    try syncTx.commit()
+                } catch {
+                    AppLogger.sync.error("sync_tx_commit_failed", metadata: ["accountUid": uid, "collectionKind": "usage", "error": String(describing: error)])
+                }
             }
         }
 
@@ -548,7 +552,11 @@ final class CloudSyncService {
         defer {
             // Commit the transaction to advance watermark
             if syncTx.processedCount > 0 {
-                try? syncTx.commit()
+                do {
+                    try syncTx.commit()
+                } catch {
+                    AppLogger.sync.error("sync_tx_commit_failed", metadata: ["accountUid": uid, "collectionKind": "conversations", "error": String(describing: error)])
+                }
             }
         }
 

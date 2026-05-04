@@ -35,7 +35,7 @@ final class EscrowCryptoRoundTripTests: XCTestCase {
         // suite; here we only verify that the constructor stays deterministic.
         XCTAssertEqual(keypair1.publicKeyFingerprint, keypair2.publicKeyFingerprint,
                        "iOSDeviceKeypair should resolve the same Keychain entry")
-        try XCTSkipIf(true, "Cross-device decryption requires a second simulator instance")
+        try XCTSkipIf(ProcessInfo.processInfo.environment["BURNBAR_SECOND_SIMULATOR"] == nil, "Cross-device decryption requires a second simulator instance")
     }
 
     func testInvalidCiphertextFails() {

@@ -2,12 +2,16 @@ import CryptoKit
 import Foundation
 import GRDB
 import Security
+#if canImport(CommonCrypto)
+import CommonCrypto
+#endif
 
 // MARK: - Database Encryption Service
 //
 // Manages the SQLCipher encryption key lifecycle in the macOS Keychain.
 // When database encryption is enabled, the key is stored in the Keychain with
-// kSecAttrAccessibleAfterFirstUnlock so the app can open the database on launch.
+// kSecAttrAccessibleWhenUnlockedThisDeviceOnly so the app can open the database
+// only when the device is unlocked and the key never leaves this device.
 //
 // The key is generated once using CryptoKit (SymmetricKey → 256-bit AES) and
 // stored as a base64-encoded string. A UUID-based identifier is used as the
@@ -16,6 +20,11 @@ import Security
 // SECURITY: The PRAGMA key is applied using hex encoding (x'' notation) to
 // prevent SQL injection through string interpolation. Hex encoding is safe
 // because the output charset is limited to [0-9a-f], making injection impossible.
+//
+// RECOVERY: There is no automatic plaintext recovery file. Keychain loss means
+// data loss. Users may explicitly export an encrypted recovery bundle protected
+// by a user-chosen passphrase (PBKDF2 + AES-GCM). See exportRecoveryBundle
+// and importRecoveryBundle.
 
 enum DatabaseEncryptionService {
     private static let service = "com.openburnbar.database-encryption"
@@ -42,6 +51,10 @@ enum DatabaseEncryptionService {
 
     /// Generates a new 256-bit AES key, stores it in the Keychain, and returns it.
     /// If a key already exists, returns the existing key without generating a new one.
+    ///
+    /// The Keychain item uses `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
+    /// so the key is unavailable when the device is locked and cannot migrate
+    /// to other devices via iCloud Keychain.
     static func getOrCreateKey() -> String {
         if let existing = getKey() {
             return existing
@@ -57,7 +70,7 @@ enum DatabaseEncryptionService {
             kSecAttrService as String: service,
             kSecAttrAccount as String: keyIdentifierAccount,
             kSecValueData as String: Data(key.utf8),
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
         let status = SecItemAdd(addQuery as CFDictionary, nil)
         if status != errSecSuccess {
@@ -77,133 +90,151 @@ enum DatabaseEncryptionService {
         SecItemDelete(query as CFDictionary)
     }
 
-    /// Gets the existing key from the Keychain, or recovers it from a recovery file
-    /// if the Keychain entry is missing. If neither source has a key, generates a new one.
+    /// Legacy overload. Recovery file support has been removed; this now
+    /// delegates to `getOrCreateKey()` and ignores the URL parameter.
     ///
-    /// When a key is recovered from the file, it is re-imported into the Keychain so
-    /// subsequent accesses don't need the file. The recovery file is then removed.
+    /// If you need recovery, use `exportRecoveryBundle(password:)` to create
+    /// an explicit passphrase-protected backup, or `importRecoveryBundle(data:password:)`
+    /// to restore from one.
+    @available(*, deprecated, message: "Recovery file support removed. Use getOrCreateKey() or exportRecoveryBundle(password:).")
     static func getOrCreateKey(recoveryURL: URL) -> String {
-        // 1. Try Keychain first
-        if let existing = getKey() {
-            return existing
-        }
+        _ = recoveryURL
+        return getOrCreateKey()
+    }
 
-        // 2. Try recovery file
-        if let recovered = recoverKeyFromRecoveryFile(at: recoveryURL) {
-            // Re-import to Keychain for future accesses
+    // MARK: - Explicit Recovery Bundle
+
+    /// Recovery bundle format version (1 byte at head of exported data).
+    private static let recoveryBundleVersion: UInt8 = 1
+
+    /// Minimum PBKDF2 iterations for recovery-bundle key derivation.
+    private static let recoveryBundleIterations: UInt32 = 100_000
+
+    /// Exports the current database encryption key as a passphrase-wrapped
+    /// recovery bundle. The user must provide and remember the passphrase;
+    /// without it the bundle cannot be decrypted.
+    ///
+    /// The bundle uses PBKDF2-HMAC-SHA256 (100k iterations, random 16-byte salt)
+    /// to derive a 256-bit AES key from the passphrase, then encrypts the
+    /// database key with AES-GCM. The returned data is safe to write to disk or
+    /// transfer because it cannot be decrypted without the passphrase.
+    ///
+    /// - Returns: The wrapped recovery bundle as opaque data, or `nil` if the
+    ///   key cannot be retrieved or wrapping fails.
+    static func exportRecoveryBundle(password: String) -> Data? {
+        guard let key = getKey() else { return nil }
+        #if canImport(CommonCrypto)
+        let salt = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
+        var derivedKeyData = Data(count: 32)
+        let passwordData = Data(password.utf8)
+        let iterations = recoveryBundleIterations
+
+        let result = passwordData.withUnsafeBytes { passwordBytes in
+            salt.withUnsafeBytes { saltBytes in
+                derivedKeyData.withUnsafeMutableBytes { keyBytes in
+                    CCKeyDerivationPBKDF(
+                        CCPBKDFAlgorithm(kCCPBKDF2),
+                        passwordBytes.baseAddress?.assumingMemoryBound(to: Int8.self),
+                        passwordData.count,
+                        saltBytes.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                        salt.count,
+                        CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+                        iterations,
+                        keyBytes.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                        32
+                    )
+                }
+            }
+        }
+        guard result == kCCSuccess else { return nil }
+        let symmetricKey = SymmetricKey(data: derivedKeyData)
+        let keyData = Data(key.utf8)
+        do {
+            let sealedBox = try AES.GCM.seal(keyData, using: symmetricKey)
+            guard let combined = sealedBox.combined else { return nil }
+            var bundle = Data()
+            bundle.append(contentsOf: [recoveryBundleVersion])
+            bundle.append(salt)
+            bundle.append(contentsOf: withUnsafeBytes(of: iterations.bigEndian, Array.init))
+            bundle.append(combined)
+            return bundle
+        } catch {
+            AppLogger.dataStore.error("Failed to seal recovery bundle: \(error.localizedDescription)")
+            return nil
+        }
+        #else
+        AppLogger.dataStore.error("Recovery bundle export requires CommonCrypto (PBKDF2)")
+        return nil
+        #endif
+    }
+
+    /// Imports a database encryption key from a passphrase-wrapped recovery bundle.
+    ///
+    /// - Parameters:
+    ///   - data: The recovery bundle produced by `exportRecoveryBundle(password:)`.
+    ///   - password: The passphrase the user chose when exporting.
+    /// - Returns: The unwrapped database key string, or `nil` if decryption fails
+    ///   (wrong passphrase, corrupted bundle, or unsupported version).
+    @discardableResult
+    static func importRecoveryBundle(data: Data, password: String) -> String? {
+        #if canImport(CommonCrypto)
+        guard data.count > 21 else { return nil }
+        let version = data[0]
+        guard version == recoveryBundleVersion else { return nil }
+
+        let salt = data.subdata(in: 1..<17)
+        let iterations = data.subdata(in: 17..<21).withUnsafeBytes { ptr in
+            ptr.load(as: UInt32.self).bigEndian
+        }
+        let combined = data.subdata(in: 21..<data.count)
+
+        var derivedKeyData = Data(count: 32)
+        let passwordData = Data(password.utf8)
+        let result = passwordData.withUnsafeBytes { passwordBytes in
+            salt.withUnsafeBytes { saltBytes in
+                derivedKeyData.withUnsafeMutableBytes { keyBytes in
+                    CCKeyDerivationPBKDF(
+                        CCPBKDFAlgorithm(kCCPBKDF2),
+                        passwordBytes.baseAddress?.assumingMemoryBound(to: Int8.self),
+                        passwordData.count,
+                        saltBytes.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                        salt.count,
+                        CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+                        iterations,
+                        keyBytes.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                        32
+                    )
+                }
+            }
+        }
+        guard result == kCCSuccess else { return nil }
+        let symmetricKey = SymmetricKey(data: derivedKeyData)
+        do {
+            let sealedBox = try AES.GCM.SealedBox(combined: combined)
+            let decrypted = try AES.GCM.open(sealedBox, using: symmetricKey)
+            guard let key = String(data: decrypted, encoding: .utf8) else { return nil }
+            // Re-import the recovered key into the Keychain for future use.
             let addQuery: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service,
                 kSecAttrAccount as String: keyIdentifierAccount,
-                kSecValueData as String: Data(recovered.utf8),
-                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+                kSecValueData as String: Data(key.utf8),
+                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
             ]
-            let status = SecItemAdd(addQuery as CFDictionary, nil)
-            if status != errSecSuccess {
-                AppLogger.dataStore.error("Failed to re-import recovered encryption key to Keychain: \(status)", metadata: ["status": "\(status)"])
+            SecItemDelete(addQuery as CFDictionary) // overwrite if present
+            let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            if addStatus != errSecSuccess {
+                AppLogger.dataStore.error("Failed to re-import recovered key to Keychain: \(addStatus)", metadata: ["status": "\(addStatus)"])
             }
-
-            // Remove recovery file after successful re-import
-            removeKeyRecoveryFile(at: recoveryURL)
-
-            return recovered
-        }
-
-        // 3. Generate new key
-        let newKey = getOrCreateKey()
-
-        // Persist recovery file for future Keychain loss scenarios
-        _ = persistKeyRecovery(key: newKey, to: recoveryURL)
-
-        return newKey
-    }
-
-    // MARK: - Key Recovery File
-
-    /// The default recovery file URL: `~/.encryption-key-recovery`.
-    /// Used when Keychain access is lost and the user needs to recover their
-    /// database encryption key from a file backup.
-    static var defaultRecoveryURL: URL {
-        URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".encryption-key-recovery")
-    }
-
-    /// Persists the encryption key to a recovery file with SHA-256 integrity check
-    /// and restricted file permissions (0o600).
-    ///
-    /// The file format is:
-    /// ```
-    /// sha256:<hex_sha256_of_key>
-    /// <base64_key>
-    /// ```
-    ///
-    /// - Returns: `true` if the file was written successfully, `false` otherwise.
-    static func persistKeyRecovery(key: String, to url: URL = defaultRecoveryURL) -> Bool {
-        let dirURL = url.deletingLastPathComponent()
-        do {
-            try FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
-
-            let keyData = Data(key.utf8)
-            let sha256 = SHA256.hash(data: keyData)
-            let sha256Hex = sha256.compactMap { String(format: "%02x", $0) }.joined()
-            let content = "sha256:\(sha256Hex)\n\(key)"
-
-            try content.write(to: url, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes(
-                [.posixPermissions: 0o600],
-                ofItemAtPath: url.path
-            )
-            return true
+            return key
         } catch {
-            AppLogger.dataStore.error("Failed to persist encryption key recovery file: \(error.localizedDescription)")
-            return false
-        }
-    }
-
-    /// Recovers the encryption key from a recovery file.
-    ///
-    /// Validates the SHA-256 integrity check and file permissions (must be 0o600 or more restrictive).
-    /// Returns `nil` if the file doesn't exist, is corrupted, has wrong permissions, or fails integrity check.
-    static func recoverKeyFromRecoveryFile(at url: URL = defaultRecoveryURL) -> String? {
-        guard FileManager.default.fileExists(atPath: url.path) else {
+            AppLogger.dataStore.error("Failed to open recovery bundle: \(error.localizedDescription)")
             return nil
         }
-
-        // Verify file permissions — refuse to use overly permissive recovery files.
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-           let perms = attrs[.posixPermissions] as? UInt16,
-           (perms & 0o077) != 0 {
-            AppLogger.dataStore.error("Encryption key recovery file has overly permissive permissions (\(String(perms, radix: 8))), refusing to use it")
-            return nil
-        }
-
-        guard let content = try? String(contentsOf: url, encoding: .utf8) else {
-            return nil
-        }
-
-        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
-        guard lines.count >= 2 else { return nil }
-
-        let prefix = "sha256:"
-        guard lines[0].hasPrefix(prefix) else { return nil }
-        let expectedHex = String(lines[0].dropFirst(prefix.count))
-
-        let key = String(lines[1])
-        let keyData = Data(key.utf8)
-        let sha256 = SHA256.hash(data: keyData)
-        let actualHex = sha256.compactMap { String(format: "%02x", $0) }.joined()
-
-        guard expectedHex == actualHex else {
-            AppLogger.dataStore.error("Encryption key recovery file integrity check failed")
-            return nil
-        }
-
-        return key
-    }
-
-    /// Removes the encryption key recovery file from disk.
-    static func removeKeyRecoveryFile(at url: URL = defaultRecoveryURL) {
-        try? FileManager.default.removeItem(at: url)
+        #else
+        AppLogger.dataStore.error("Recovery bundle import requires CommonCrypto (PBKDF2)")
+        return nil
+        #endif
     }
 }
 
