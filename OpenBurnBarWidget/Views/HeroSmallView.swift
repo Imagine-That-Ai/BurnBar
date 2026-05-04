@@ -18,6 +18,10 @@ struct HeroSmallView: View {
         snap?.topProviders.first ?? "—"
     }
 
+    var providerEnum: AgentProvider? {
+        AgentProvider.fromPersistedToken(topProvider)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
@@ -51,10 +55,16 @@ struct HeroSmallView: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary.opacity(0.6))
 
-                Text(topProvider)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.accentColor)
-                    .lineLimit(1)
+                // Use provider logo if available
+                if let providerEnum,
+                   UIImage(named: providerEnum.bundledLogoName) != nil {
+                    UnifiedProviderLogoView(provider: providerEnum, size: 14)
+                } else {
+                    Text(topProvider)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.accentColor)
+                        .lineLimit(1)
+                }
             }
         }
         .padding(.horizontal, 14)

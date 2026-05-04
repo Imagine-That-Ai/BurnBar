@@ -131,7 +131,7 @@ struct ProviderConnectionsView: View {
                 }
             }
 
-            Section("Add Account") {
+            Section {
                 ForEach(availableProviders) { provider in
                     AvailableProviderRow(
                         provider: provider,
@@ -141,11 +141,17 @@ struct ProviderConnectionsView: View {
                         showAddSheet = true
                     }
                 }
+            } header: {
+                Text("Add Account")
+            } footer: {
+                Text("Accounts added here appear on signed-in Macs. Providers with backend refresh update from cloud; local-session providers refresh from the Mac once usable there.")
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
             }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(MobileTheme.Colors.background.ignoresSafeArea())
+        .background(EmberSurfaceBackground().ignoresSafeArea())
     }
 
     private var connectedSectionHeader: some View {
@@ -206,7 +212,7 @@ private struct ConnectionLoadingPlaceholder: View {
     var body: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
             ForEach(0..<2, id: \.self) { _ in
-                SkeletonView(height: 72, cornerRadius: MobileTheme.Radius.md)
+                EmberSkeleton(height: 72, cornerRadius: MobileTheme.Radius.md)
             }
         }
         .padding(.vertical, MobileTheme.Spacing.sm)
@@ -291,7 +297,7 @@ private struct ProviderAccountGroupSection: View {
     private var providerHeaderRow: some View {
         HStack(spacing: MobileTheme.Spacing.md) {
             if let providerEnum {
-                ProviderBadge(provider: providerEnum, size: 36)
+                ProviderAvatar(provider: providerEnum, mode: .aurora, size: 36)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(providerEnum?.displayName ?? providerID.rawValue)
@@ -353,7 +359,11 @@ private struct AccountRow: View {
     let onDelete: () -> Void
 
     private var canRefreshFromMobile: Bool {
-        ProviderAccountStorageVisual.canRefreshFromMobile(account.storageScope)
+        if account.storageScope == .localOnly,
+           account.providerID == .claudeCode || account.providerID == .codex {
+            return true
+        }
+        return ProviderAccountStorageVisual.canRefreshFromMobile(account.storageScope)
     }
 
     private var detailLine: String? {
@@ -555,7 +565,7 @@ private struct LegacyConnectionRow: View {
     var body: some View {
         HStack(spacing: MobileTheme.Spacing.md) {
             if let providerEnum {
-                ProviderBadge(provider: providerEnum, size: 36)
+                ProviderAvatar(provider: providerEnum, mode: .aurora, size: 36)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(providerEnum?.displayName ?? connection.provider)
@@ -629,7 +639,7 @@ private struct AvailableProviderRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: MobileTheme.Spacing.md) {
-                ProviderBadge(provider: provider, size: 36)
+                ProviderAvatar(provider: provider, mode: .aurora, size: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(provider.displayName)
                         .font(MobileTheme.Typography.body)

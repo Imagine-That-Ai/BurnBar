@@ -32,7 +32,7 @@ struct SessionLogsView: View {
                 if store.isLoading && store.usages.isEmpty {
                     Section {
                         ForEach(0..<5, id: \.self) { _ in
-                            SkeletonView(height: 72, cornerRadius: MobileTheme.Radius.md)
+                            EmberSkeleton(height: 72, cornerRadius: MobileTheme.Radius.md)
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                         }
@@ -79,7 +79,8 @@ struct SessionLogsView: View {
                 }
             }
             .listStyle(.plain)
-            .background(MobileTheme.Colors.background.ignoresSafeArea())
+            .scrollContentBackground(.hidden)
+            .background(EmberSurfaceBackground().ignoresSafeArea())
             .navigationTitle("Session Logs")
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search sessions")
             .toolbar {
@@ -104,7 +105,7 @@ struct SessionLogsView: View {
                     title: "Select a Session",
                     message: "Tap a session from the list to view details."
                 )
-                .background(MobileTheme.Colors.background.ignoresSafeArea())
+                .background(EmberSurfaceBackground().ignoresSafeArea())
             }
         }
         .navigationSplitViewStyle(.balanced)

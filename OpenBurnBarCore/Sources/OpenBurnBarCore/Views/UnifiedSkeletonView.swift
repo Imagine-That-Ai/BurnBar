@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// Cross-platform skeleton loading view with shimmer animation.
+/// Cross-platform skeleton loading view with ember-tinted shimmer animation.
+/// Respects `accessibilityReduceMotion`.
 public struct UnifiedSkeletonView: View {
     public var height: CGFloat = 16
     public var cornerRadius: CGFloat = 8
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAnimating = false
 
     public init(height: CGFloat = 16, cornerRadius: CGFloat = 8) {
@@ -19,7 +21,12 @@ public struct UnifiedSkeletonView: View {
             .overlay(
                 GeometryReader { geo in
                     LinearGradient(
-                        colors: [.clear, Color.white.opacity(0.3), .clear],
+                        colors: [
+                            .clear,
+                            UnifiedDesignSystem.Colors.ember.opacity(0.12),
+                            UnifiedDesignSystem.Colors.amber.opacity(0.08),
+                            .clear
+                        ],
                         startPoint: .leading,
                         endPoint: .trailing
                     )
@@ -29,9 +36,19 @@ public struct UnifiedSkeletonView: View {
                 .mask(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             )
             .onAppear {
-                withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                guard !reduceMotion else { return }
+                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
                     isAnimating = true
                 }
             }
     }
+}
+
+#Preview {
+    VStack(spacing: 12) {
+        UnifiedSkeletonView(height: 120, cornerRadius: 16)
+        UnifiedSkeletonView(height: 16)
+        UnifiedSkeletonView(height: 16)
+    }
+    .padding()
 }

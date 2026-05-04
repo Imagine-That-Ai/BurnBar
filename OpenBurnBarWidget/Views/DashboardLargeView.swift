@@ -85,12 +85,21 @@ private struct ProviderRow: View {
     let name: String
     let tokens: Int
 
+    var providerEnum: AgentProvider? {
+        AgentProvider.fromPersistedToken(name)
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             Text("\(rank)")
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(.secondary.opacity(0.7))
                 .frame(width: 16, alignment: .center)
+
+            if let providerEnum,
+               UIImage(named: providerEnum.bundledLogoName) != nil {
+                UnifiedProviderLogoView(provider: providerEnum, size: 16)
+            }
 
             Text(name)
                 .font(.system(size: 14, weight: .semibold, design: .rounded))

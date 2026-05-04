@@ -17,7 +17,7 @@ struct ChatView: View {
                 .background(MobileTheme.Colors.border)
             inputBar
         }
-        .background(MobileTheme.Colors.background.ignoresSafeArea())
+        .background(emberBackground.ignoresSafeArea())
         .navigationTitle("Hermes")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -55,21 +55,35 @@ struct ChatView: View {
         }
     }
 
+    private var emberBackground: some View {
+        EmberSurfaceBackground()
+    }
+
     // MARK: - Connection Status
 
     private var connectionStatusBar: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(service.isReachable ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
-                .frame(width: 6, height: 6)
-            Text(service.isReachable ? "Hermes connected" : "Hermes not reachable")
-                .font(MobileTheme.Typography.tiny)
-                .foregroundStyle(service.isReachable ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
+        Button {
+            Task { await service.checkReachability() }
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(service.isReachable ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
+                    .frame(width: 6, height: 6)
+                Text(service.isReachable ? "Hermes connected" : "Hermes not reachable — tap to retry")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(service.isReachable ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
+            }
+            .padding(.horizontal, MobileTheme.Spacing.md)
+            .padding(.vertical, MobileTheme.Spacing.xs)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                UnifiedGlassCard {
+                    EmptyView()
+                }
+                .padding(-MobileTheme.Spacing.md)
+            )
         }
-        .padding(.horizontal, MobileTheme.Spacing.md)
-        .padding(.vertical, MobileTheme.Spacing.xs)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MobileTheme.Colors.surfaceElevated.opacity(0.5))
+        .buttonStyle(.plain)
     }
 
     // MARK: - Message List
@@ -87,8 +101,10 @@ struct ChatView: View {
                             ))
                     }
                     if service.isStreaming {
-                        HermesThinkingIndicator()
-                            .id("thinking")
+                        HStack(spacing: 4) {
+                            MercuryThinkingIndicator()
+                        }
+                        .id("thinking")
                     }
                 }
                 .padding(MobileTheme.Spacing.lg)
@@ -118,7 +134,22 @@ struct ChatView: View {
             sendButton
         }
         .padding(MobileTheme.Spacing.md)
-        .background(MobileTheme.Colors.surface.ignoresSafeArea())
+        .background(
+            inputBarBackground
+                .ignoresSafeArea()
+        )
+    }
+
+    @ViewBuilder
+    private var inputBarBackground: some View {
+        if #available(iOS 26.0, *) {
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .glassEffect(.regular)
+        } else {
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .fill(.ultraThinMaterial)
+        }
     }
 
     private var textField: some View {
@@ -168,6 +199,7 @@ struct ChatView: View {
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        Haptics.rigid()
         inputText = ""
         service.sendMessage(text)
     }
@@ -186,7 +218,18 @@ struct HermesChatBubble: View {
                 Spacer(minLength: 48)
                 bubble
             } else {
-                bubble
+                VStack(alignment: .leading, spacing: 2) {
+                    // "via Hermes" badge
+                    HStack(spacing: 4) {
+                        Text("☿")
+                            .font(.system(size: 10))
+                        Text("via Hermes")
+                            .font(MobileTheme.Typography.tiny)
+                    }
+                    .foregroundStyle(MobileTheme.hermesAureate.opacity(0.7))
+                    .padding(.leading, MobileTheme.Spacing.sm)
+                    bubble
+                }
                 Spacer(minLength: 48)
             }
         }
@@ -204,36 +247,31 @@ struct HermesChatBubble: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .stroke(bubbleStrokeColor, lineWidth: message.isError ? 1.5 : 1)
+                    .stroke(bubbleStroke, lineWidth: message.isError ? 1.5 : 1)
+            )
+            .overlay(
+                Group {
+                    if !isUser {
+                        MercuryShimmerOverlay()
+                            .clipShape(RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous))
+                    }
+                }
             )
     }
 
-    private var bubbleStrokeColor: Color {
-        if message.isError { return MobileTheme.Colors.error }
-        return isUser ? MobileTheme.Colors.chatUserStroke : MobileTheme.Colors.chatAssistantStroke
+    private var bubbleStroke: some ShapeStyle {
+        if message.isError {
+            return MobileTheme.Colors.error
+        }
+        if isUser {
+            return MobileTheme.Colors.chatUserStroke
+        }
+        return MobileTheme.mercuryGradient
     }
 }
 
-// MARK: - Hermes Thinking Indicator
-
-struct HermesThinkingIndicator: View {
-    @State private var phase = 0.0
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(0..<3) { index in
-                Circle()
-                    .fill(MobileTheme.mercuryGradient)
-                    .frame(width: 8, height: 8)
-                    .scaleEffect(1 + 0.3 * sin(phase + Double(index) * 1.2))
-                    .opacity(0.5 + 0.5 * sin(phase + Double(index) * 1.2))
-            }
-        }
-        .padding(MobileTheme.Spacing.md)
-        .onAppear {
-            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                phase = .pi * 2
-            }
-        }
+#Preview {
+    NavigationStack {
+        ChatView()
     }
 }

@@ -36,10 +36,16 @@ struct CostSparklineMediumView: View {
                 }
 
                 if let first = snap?.topProviders.first {
-                    Text(first)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.accentColor)
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        if let providerEnum = AgentProvider.fromPersistedToken(first),
+                           UIImage(named: providerEnum.bundledLogoName) != nil {
+                            UnifiedProviderLogoView(provider: providerEnum, size: 12)
+                        }
+                        Text(first)
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(Color.accentColor)
+                            .lineLimit(1)
+                    }
                 }
             }
             .frame(width: 130, alignment: .leading)
@@ -88,19 +94,7 @@ struct TokenSparkline: View {
             let h = geo.size.height
             let stepX = w / CGFloat(max(normalized.count - 1, 1))
 
-            Path { path in
-                for (i, val) in normalized.enumerated() {
-                    let x = CGFloat(i) * stepX
-                    let y = h - (CGFloat(val) * h)
-                    if i == 0 {
-                        path.move(to: CGPoint(x: x, y: y))
-                    } else {
-                        path.addLine(to: CGPoint(x: x, y: y))
-                    }
-                }
-            }
-            .stroke(color.opacity(0.9), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-
+            // Area fill with soft gradient
             Path { path in
                 for (i, val) in normalized.enumerated() {
                     let x = CGFloat(i) * stepX
@@ -117,9 +111,36 @@ struct TokenSparkline: View {
                     }
                 }
             }
-            .fill(color.opacity(0.12))
+            .fill(
+                LinearGradient(
+                    colors: [color.opacity(0.2), color.opacity(0.02)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
 
+            // Line
+            Path { path in
+                for (i, val) in normalized.enumerated() {
+                    let x = CGFloat(i) * stepX
+                    let y = h - (CGFloat(val) * h)
+                    if i == 0 {
+                        path.move(to: CGPoint(x: x, y: y))
+                    } else {
+                        path.addLine(to: CGPoint(x: x, y: y))
+                    }
+                }
+            }
+            .stroke(color.opacity(0.9), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+
+            // Glow on trailing dot
             if let last = normalized.last {
+                Circle()
+                    .fill(color.opacity(0.3))
+                    .frame(width: 12, height: 12)
+                    .position(x: w, y: h - (CGFloat(last) * h))
+                    .blur(radius: 4)
+
                 Circle()
                     .fill(color)
                     .frame(width: 6, height: 6)

@@ -1,10 +1,8 @@
 import SwiftUI
 import OpenBurnBarCore
 
-// MARK: - iPad Onboarding Wizard (Placeholder)
+// MARK: - iPad Onboarding Wizard
 
-/// Full onboarding wizard for iPad. Skips provider scan (no log access).
-/// Steps: Welcome → Cloud Connect → Hermes Setup → Complete.
 struct iPadOnboardingWizardView: View {
     @Binding var isPresented: Bool
     @State private var currentStep: OnboardingStep = .welcome
@@ -23,7 +21,7 @@ struct iPadOnboardingWizardView: View {
 
     var body: some View {
         ZStack {
-            MobileTheme.Colors.background.ignoresSafeArea()
+            EmberSurfaceBackground()
 
             VStack(spacing: 0) {
                 Spacer()
@@ -42,14 +40,10 @@ struct iPadOnboardingWizardView: View {
     @ViewBuilder
     private var stepContent: some View {
         switch currentStep {
-        case .welcome:
-            welcomeStep
-        case .cloudConnect:
-            cloudConnectStep
-        case .hermesSetup:
-            hermesSetupStep
-        case .complete:
-            completeStep
+        case .welcome: welcomeStep
+        case .cloudConnect: cloudConnectStep
+        case .hermesSetup: hermesSetupStep
+        case .complete: completeStep
         }
     }
 
@@ -59,23 +53,25 @@ struct iPadOnboardingWizardView: View {
                 Circle()
                     .fill(MobileTheme.primaryGradient)
                     .frame(width: 120, height: 120)
+                    .blur(radius: 30)
+                    .opacity(0.5)
+
                 Image(systemName: "flame.fill")
                     .font(.system(size: 56, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(MobileTheme.primaryGradient)
+                    .symbolEffect(.bounce, options: .repeating)
             }
-            .staggeredEntrance(delay: 0)
+            .frame(height: 140)
 
             Text("Welcome to OpenBurnBar")
                 .font(MobileTheme.Typography.display)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                 .multilineTextAlignment(.center)
-                .staggeredEntrance(delay: 0.05)
 
-            Text("Your AI coding agent burn tracker, now on iPad.")
+            Text("Track, budget, and optimize your AI agent spend across every provider.")
                 .font(MobileTheme.Typography.body)
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
-                .staggeredEntrance(delay: 0.10)
         }
     }
 
@@ -83,35 +79,26 @@ struct iPadOnboardingWizardView: View {
         VStack(spacing: MobileTheme.Spacing.xl) {
             ZStack {
                 Circle()
-                    .fill(MobileTheme.whimsyGradient)
-                    .frame(width: 80, height: 80)
-                Image(systemName: "icloud.and.arrow.up.fill")
-                    .font(.system(size: 36, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            .staggeredEntrance(delay: 0)
+                    .fill(Color.blue.opacity(0.2))
+                    .frame(width: 120, height: 120)
+                    .blur(radius: 30)
 
-            Text("Connect to the Cloud")
-                .font(MobileTheme.Typography.title)
+                Image(systemName: "cloud.fill")
+                    .font(.system(size: 56, weight: .bold))
+                    .foregroundStyle(.blue)
+                    .symbolEffect(.variableColor, options: .repeating)
+            }
+            .frame(height: 140)
+
+            Text("Connect Your Cloud")
+                .font(MobileTheme.Typography.display)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
-                .staggeredEntrance(delay: 0.05)
+                .multilineTextAlignment(.center)
 
-            if authStore.state.isSignedIn {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(MobileTheme.Colors.success)
-                    Text("Connected as \(authStore.currentIdentity?.email ?? "User")")
-                        .font(MobileTheme.Typography.body)
-                        .foregroundStyle(MobileTheme.Colors.textSecondary)
-                }
-                .staggeredEntrance(delay: 0.10)
-            } else {
-                Text("Sign in to sync your burn data from your Mac.")
-                    .font(MobileTheme.Typography.body)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .staggeredEntrance(delay: 0.10)
-            }
+            Text("Sync usage data across devices with end-to-end encryption.")
+                .font(MobileTheme.Typography.body)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
         }
     }
 
@@ -120,36 +107,26 @@ struct iPadOnboardingWizardView: View {
             ZStack {
                 Circle()
                     .fill(MobileTheme.mercuryGradient)
-                    .frame(width: 80, height: 80)
-                Image(systemName: "bubble.left.and.bubble.right.fill")
-                    .font(.system(size: 36, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .frame(width: 120, height: 120)
+                    .blur(radius: 30)
+                    .opacity(0.4)
+
+                Text("☿")
+                    .font(.system(size: 56, weight: .bold))
+                    .foregroundStyle(MobileTheme.hermesAureate)
+                    .symbolEffect(.pulse, options: .repeating)
             }
-            .staggeredEntrance(delay: 0)
+            .frame(height: 140)
 
             Text("Meet Hermes")
-                .font(MobileTheme.Typography.title)
+                .font(MobileTheme.Typography.display)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
-                .staggeredEntrance(delay: 0.05)
+                .multilineTextAlignment(.center)
 
-            Text("Hermes is your AI assistant for burn analysis. It runs on your Mac. On iPad, connect to your Mac's Hermes instance at localhost:8642 when on the same Wi-Fi network.")
+            Text("Your AI assistant for navigating spend, quotas, and insights.")
                 .font(MobileTheme.Typography.body)
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
-                .staggeredEntrance(delay: 0.10)
-
-            HStack(spacing: MobileTheme.Spacing.lg) {
-                Image(systemName: "macpro.gen3")
-                    .font(.system(size: 32))
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-                Image(systemName: "wifi")
-                    .font(.system(size: 20))
-                    .foregroundStyle(MobileTheme.Colors.accent)
-                Image(systemName: "ipad.landscape")
-                    .font(.system(size: 32))
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-            }
-            .staggeredEntrance(delay: 0.15)
         }
     }
 
@@ -157,25 +134,26 @@ struct iPadOnboardingWizardView: View {
         VStack(spacing: MobileTheme.Spacing.xl) {
             ZStack {
                 Circle()
-                    .fill(MobileTheme.Colors.success.opacity(0.15))
-                    .frame(width: 100, height: 100)
-                Image(systemName: "checkmark")
-                    .font(.system(size: 48, weight: .bold))
-                    .foregroundStyle(MobileTheme.Colors.success)
-            }
-            .scaleEffect(1.0)
-            .staggeredEntrance(delay: 0)
+                    .fill(MobileTheme.Colors.success.opacity(0.2))
+                    .frame(width: 120, height: 120)
+                    .blur(radius: 30)
 
-            Text("You're all set!")
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 56, weight: .bold))
+                    .foregroundStyle(MobileTheme.Colors.success)
+                    .symbolEffect(.bounce)
+            }
+            .frame(height: 140)
+
+            Text("You're All Set")
                 .font(MobileTheme.Typography.display)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
-                .staggeredEntrance(delay: 0.05)
+                .multilineTextAlignment(.center)
 
-            Text("Your Mac will sync usage data here automatically.")
+            Text("OpenBurnBar is ready to help you burn smarter.")
                 .font(MobileTheme.Typography.body)
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
-                .staggeredEntrance(delay: 0.10)
         }
     }
 
@@ -183,83 +161,76 @@ struct iPadOnboardingWizardView: View {
 
     private var bottomControls: some View {
         VStack(spacing: MobileTheme.Spacing.lg) {
-            // Progress dots
-            HStack(spacing: 8) {
-                ForEach(0..<OnboardingStep.allCases.count, id: \.self) { index in
-                    Circle()
-                        .fill(index == currentStep.index ? MobileTheme.ember : MobileTheme.Colors.border)
-                        .frame(width: 8, height: 8)
-                        .animation(.spring(duration: 0.3), value: currentStep.index)
-                }
-            }
+            // Progress capsule
+            progressCapsule
 
-            // Buttons
-            HStack(spacing: MobileTheme.Spacing.md) {
-                if currentStep != .complete {
-                    Button("Skip for now") {
-                        isPresented = false
+            HStack {
+                if currentStep != .welcome {
+                    Button("Back") {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            if let prev = OnboardingStep.allCases.dropLast(currentStep.index).last {
+                                currentStep = prev
+                            }
+                        }
                     }
-                    .font(MobileTheme.Typography.body)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
                 }
 
                 Spacer()
 
-                if currentStep != .welcome {
-                    Button("Back") {
-                        if let previous = OnboardingStep.allCases[safe: currentStep.index - 1] {
-                            withAnimation(MobileTheme.Animation.standard) {
-                                currentStep = previous
-                            }
-                        }
-                    }
-                    .font(MobileTheme.Typography.body)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                }
-
-                Button(action: advanceStep) {
-                    Text(buttonTitle)
-                        .font(MobileTheme.Typography.body)
-                        .fontWeight(.semibold)
+                Button(action: nextAction) {
+                    Text(currentStep == .complete ? "Get Started" : "Next")
+                        .font(MobileTheme.Typography.headline)
                         .foregroundStyle(.white)
                         .padding(.horizontal, MobileTheme.Spacing.xl)
                         .padding(.vertical, MobileTheme.Spacing.md)
                         .background(
-                            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                            Capsule()
                                 .fill(MobileTheme.primaryGradient)
                         )
                 }
-                .disabled(currentStep == .cloudConnect && !authStore.state.isSignedIn)
+                .buttonStyle(.plain)
             }
         }
     }
 
-    private var buttonTitle: String {
-        switch currentStep {
-        case .welcome: return "Get Started"
-        case .cloudConnect: return "Continue"
-        case .hermesSetup: return "Continue"
-        case .complete: return "Open Dashboard"
+    private var progressCapsule: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(MobileTheme.Colors.surfaceElevated)
+                    .frame(height: 4)
+
+                Capsule()
+                    .fill(MobileTheme.primaryGradient)
+                    .frame(
+                        width: geo.size.width * progressFraction,
+                        height: 4
+                    )
+                    .animation(.spring(response: 0.4, dampingFraction: 0.85), value: currentStep)
+            }
         }
+        .frame(height: 4)
     }
 
-    private func advanceStep() {
-        if currentStep == .complete {
-            isPresented = false
-            return
-        }
-        if let next = OnboardingStep.allCases[safe: currentStep.index + 1] {
-            withAnimation(MobileTheme.Animation.standard) {
+    private var progressFraction: CGFloat {
+        let index = CGFloat(currentStep.index)
+        let total = CGFloat(OnboardingStep.allCases.count - 1)
+        guard total > 0 else { return 1 }
+        return index / total
+    }
+
+    private func nextAction() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            if currentStep == .complete {
+                isPresented = false
+            } else if let next = OnboardingStep.allCases.dropFirst(currentStep.index + 1).first {
                 currentStep = next
             }
         }
     }
 }
 
-// MARK: - Array Safe Index
-
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
-    }
+#Preview {
+    iPadOnboardingWizardView(isPresented: .constant(true))
 }

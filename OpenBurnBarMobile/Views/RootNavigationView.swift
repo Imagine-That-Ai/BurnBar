@@ -98,18 +98,28 @@ struct DashboardSidebar: View {
         )) {
             Section {
                 sidebarItem(.overview, icon: "chart.bar.fill", label: "Overview")
+                    .keyboardShortcut("1", modifiers: .command)
                 sidebarItem(.activity, icon: "list.bullet.rectangle", label: "Activity")
+                    .keyboardShortcut("2", modifiers: .command)
                 sidebarItem(.quota, icon: "gauge.with.dots.needle.67percent", label: "Quota")
+                    .keyboardShortcut("3", modifiers: .command)
             }
             Section("Insights") {
                 sidebarItem(.sessionLogs, icon: "doc.text.magnifyingglass", label: "Session Logs")
+                    .keyboardShortcut("4", modifiers: .command)
                 sidebarItem(.projects, icon: "folder.fill", label: "Projects")
                 sidebarItem(.missions, icon: "bolt.fill", label: "Missions")
             }
             Section("Account") {
                 sidebarItem(.account, icon: "person.fill", label: "Account")
-                Button(action: onShowSettings) { Label("Settings", systemImage: "gearshape.fill") }
-                Button(action: onShowChat) { Label("Hermes", systemImage: "bubble.left.and.bubble.right.fill") }
+                Button(action: onShowSettings) {
+                    Label("Settings", systemImage: "gearshape.fill")
+                }
+                .keyboardShortcut(",", modifiers: .command)
+                Button(action: onShowChat) {
+                    Label("Hermes", systemImage: "bubble.left.and.bubble.right.fill")
+                }
+                .keyboardShortcut("h", modifiers: .command)
             }
         }
         .listStyle(.sidebar)
@@ -133,15 +143,25 @@ private struct SyncHealthPill: View {
 
     var body: some View {
         HStack(spacing: MobileTheme.Spacing.sm) {
-            Circle().fill(statusColor).frame(width: 8, height: 8)
-            Text(statusText).font(MobileTheme.Typography.tiny).foregroundStyle(MobileTheme.Colors.textMuted).lineLimit(1)
+            PulsingStatusDot(color: statusColor)
+            Text(statusText)
+                .font(MobileTheme.Typography.tiny)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .lineLimit(1)
+            if let lastSync = store.lastPublishedAt {
+                Text("· \(lastSync, style: .relative)")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted.opacity(0.7))
+                    .lineLimit(1)
+            }
         }
         .padding(.horizontal, MobileTheme.Spacing.md)
         .padding(.vertical, MobileTheme.Spacing.sm)
         .background(
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.full, style: .continuous)
-                .fill(MobileTheme.Colors.surfaceElevated)
-                .overlay(RoundedRectangle(cornerRadius: MobileTheme.Radius.full, style: .continuous).stroke(MobileTheme.Colors.border, lineWidth: 0.5))
+            UnifiedGlassCard {
+                EmptyView()
+            }
+            .padding(-MobileTheme.Spacing.md)
         )
     }
 
@@ -168,39 +188,159 @@ private struct SyncHealthPill: View {
     }
 }
 
+// MARK: - Pulsing Status Dot
+
+private struct PulsingStatusDot: View {
+    let color: Color
+    @State private var isPulsing = false
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 6, height: 6)
+            .scaleEffect(isPulsing ? 1.4 : 1.0)
+            .opacity(isPulsing ? 0.5 : 1.0)
+            .animation(
+                .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
+                value: isPulsing
+            )
+            .onAppear { isPulsing = true }
+    }
+}
+
 // MARK: - Placeholder Views
 
 struct ProjectsView: View {
     var body: some View {
-        EmptyStateView(icon: "folder.fill", title: "Projects", message: "Track missions, questions, followups, and scheduled reviews across your codebase.")
-            .background(MobileTheme.Colors.background.ignoresSafeArea())
+        ScrollView {
+            VStack(spacing: MobileTheme.Spacing.xxl) {
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(MobileTheme.Colors.accent.opacity(0.4))
+                    .symbolEffect(.pulse, options: .repeating)
+
+                Text("Projects")
+                    .font(MobileTheme.Typography.title)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+
+                Text("Track missions, questions, followups, and scheduled reviews across your codebase.")
+                    .font(MobileTheme.Typography.footnote)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, MobileTheme.Spacing.xl)
+
+                Text("Coming in v0.2")
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.accent)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(MobileTheme.Colors.accent.opacity(0.12))
+                    )
+            }
+            .padding(MobileTheme.Spacing.xxxl)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(EmberSurfaceBackground().ignoresSafeArea())
     }
 }
 
 struct MissionsView: View {
     var body: some View {
-        EmptyStateView(icon: "bolt.fill", title: "Missions", message: "Active missions and operational workflows from your Mac's daemon.")
-            .background(MobileTheme.Colors.background.ignoresSafeArea())
+        ScrollView {
+            VStack(spacing: MobileTheme.Spacing.xxl) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(MobileTheme.amber.opacity(0.5))
+                    .symbolEffect(.pulse, options: .repeating)
+
+                Text("Missions")
+                    .font(MobileTheme.Typography.title)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+
+                Text("Active missions and operational workflows from your Mac's daemon.")
+                    .font(MobileTheme.Typography.footnote)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, MobileTheme.Spacing.xl)
+
+                Text("Coming in v0.2")
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.amber)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(MobileTheme.amber.opacity(0.12))
+                    )
+            }
+            .padding(MobileTheme.Spacing.xxxl)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(EmberSurfaceBackground().ignoresSafeArea())
     }
 }
 
 struct ModelDashboardView: View {
     let modelName: String
+
     var body: some View {
         ScrollView {
             VStack(spacing: MobileTheme.Spacing.xxl) {
                 Circle()
                     .fill(MobileTheme.Colors.colorForModel(modelName).opacity(0.15))
                     .frame(width: 64, height: 64)
-                    .overlay(Image(systemName: "cpu").font(.system(size: 28, weight: .semibold)).foregroundStyle(MobileTheme.Colors.colorForModel(modelName)))
+                    .overlay(
+                        Image(systemName: "cpu")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(MobileTheme.Colors.colorForModel(modelName))
+                    )
                     .padding(.top, MobileTheme.Spacing.xxxl)
-                Text(modelName).font(MobileTheme.Typography.title).foregroundStyle(MobileTheme.Colors.textPrimary)
-                Text("Model usage breakdown across providers").font(MobileTheme.Typography.footnote).foregroundStyle(MobileTheme.Colors.textMuted).multilineTextAlignment(.center)
+
+                Text(modelName)
+                    .font(MobileTheme.Typography.title)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+
+                Text("Model usage breakdown across providers")
+                    .font(MobileTheme.Typography.footnote)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, MobileTheme.Spacing.xl)
+
+                HStack(spacing: MobileTheme.Spacing.lg) {
+                    MiniStatPill(label: "Providers", value: "—")
+                    MiniStatPill(label: "Sessions", value: "—")
+                    MiniStatPill(label: "Tokens", value: "—")
+                }
+                .padding(.top, MobileTheme.Spacing.lg)
             }
             .padding(MobileTheme.Spacing.xxxl)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(MobileTheme.Colors.background.ignoresSafeArea())
+        .background(EmberSurfaceBackground().ignoresSafeArea())
+    }
+}
+
+private struct MiniStatPill: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(MobileTheme.Typography.mono)
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+            Text(label)
+                .font(MobileTheme.Typography.tiny)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
+                .fill(MobileTheme.Colors.surfaceElevated)
+        )
     }
 }
 
@@ -216,8 +356,12 @@ struct iPadSettingsView: View {
                     Text(tab.title)
                 } icon: {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous).fill(tab.accentColor).frame(width: 26, height: 26)
-                        Image(systemName: tab.icon).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(tab.accentColor)
+                            .frame(width: 26, height: 26)
+                        Image(systemName: tab.icon)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white)
                     }
                 }
                 .tag(tab)
@@ -226,7 +370,8 @@ struct iPadSettingsView: View {
             .navigationTitle("Settings")
             .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 280)
         } detail: {
-            detailContent.navigationTitle(selectedTab?.title ?? "")
+            detailContent
+                .navigationTitle(selectedTab?.title ?? "")
         }
     }
 
@@ -254,7 +399,18 @@ struct iPadGeneralSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Appearance") {
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Appearance")
+                        .font(MobileTheme.Typography.headline)
+                    Text("Choose how OpenBurnBar looks and feels")
+                        .font(MobileTheme.Typography.footnote)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
                 Picker("Theme", selection: $preferredAppearance) {
                     Text("System").tag("system")
                     Text("Light").tag("light")
@@ -265,6 +421,7 @@ struct iPadGeneralSettingsView: View {
                     Text("Tokens").tag("tokens")
                 }
             }
+
             Section("Daily Digest") {
                 Toggle("Enable Digest", isOn: $dailyDigestEnabled)
                 if dailyDigestEnabled {
@@ -275,6 +432,8 @@ struct iPadGeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(EmberSurfaceBackground().ignoresSafeArea())
     }
 }
 
@@ -294,7 +453,10 @@ struct iPadAlertsSettingsView: View {
     var body: some View {
         Form {
             Section("Budget") {
-                LabeledContent("Daily Budget") { Text("$\(dailyBudget, specifier: "%.2f")").foregroundStyle(MobileTheme.Colors.textSecondary) }
+                LabeledContent("Daily Budget") {
+                    Text("$\(dailyBudget, specifier: "%.2f")")
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                }
                 Slider(value: $dailyBudget, in: 1...500, step: 5) {
                     Text("Daily Budget")
                 } minimumValueLabel: {
@@ -317,6 +479,8 @@ struct iPadAlertsSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(EmberSurfaceBackground().ignoresSafeArea())
     }
 }
 
@@ -348,6 +512,8 @@ struct iPadNotificationsSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(EmberSurfaceBackground().ignoresSafeArea())
     }
 }
 
@@ -400,6 +566,18 @@ struct iPadAccountSwitcherSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(EmberSurfaceBackground().ignoresSafeArea())
         .task { await store.loadProfiles() }
     }
+}
+
+#Preview {
+    RootNavigationView(
+        authStore: AuthStore(),
+        syncHealthStore: CloudSyncHealthStore(),
+        providerSummaryStore: ProviderSummaryStore(),
+        devicesStore: DevicesStore(),
+        transferStore: CredentialTransferStore()
+    )
 }
