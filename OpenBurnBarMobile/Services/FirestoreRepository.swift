@@ -74,6 +74,9 @@ final class FirestoreRepository {
     /// remaps `deviceId` → `sourceDeviceId`, sanitizes for JSON, then decodes.
     nonisolated func decodeWithDocID<T: Decodable>(_ type: T.Type, from data: [String: Any], docID: String) -> T? {
         var enriched = data
+        if T.self == TokenUsage.self {
+            enriched = normalizeTokenUsageData(enriched)
+        }
         if enriched["id"] == nil {
             enriched["id"] = docID
         }
@@ -91,6 +94,27 @@ final class FirestoreRepository {
             logger.error("Failed to decode \(String(describing: T.self)) for document \(docID): \(error.localizedDescription)")
             return nil
         }
+    }
+
+    /// Desktop sync writes canonical provider IDs (`claude-code`, `codex`, `openai`),
+    /// while the legacy `TokenUsage.provider` field decodes `AgentProvider` display
+    /// values. Keep the bridge tolerant without changing Firestore payloads.
+    nonisolated private func normalizeTokenUsageData(_ data: [String: Any]) -> [String: Any] {
+        var result = data
+        guard let rawProvider = result["provider"] as? String else { return result }
+
+        let resolvedProvider =
+            AgentProvider(rawValue: rawProvider)
+            ?? AgentProvider.fromProviderID(ProviderID(rawValue: rawProvider))
+            ?? AgentProvider.fromPersistedToken(rawProvider)
+
+        if let resolvedProvider {
+            result["provider"] = resolvedProvider.rawValue
+            if result["providerID"] == nil {
+                result["providerID"] = resolvedProvider.providerID.rawValue
+            }
+        }
+        return result
     }
 
     /// Decodes a usage rollup with full field normalization.

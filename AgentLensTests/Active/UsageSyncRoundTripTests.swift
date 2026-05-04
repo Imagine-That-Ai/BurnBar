@@ -67,6 +67,28 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertTrue(unsyncedAfter.isEmpty)
     }
 
+    func test_usageUpload_drainsMultipleLocalBatchesInOneSync() async throws {
+        for i in 0..<405 {
+            let usage = TokenUsage(
+                provider: .claudeCode,
+                sessionId: "backlog-\(i)",
+                projectName: "BacklogProject",
+                model: "claude-3-5-sonnet",
+                inputTokens: 100 + i,
+                outputTokens: 50,
+                startTime: Date(timeIntervalSince1970: 1_700_000_000 + TimeInterval(i)),
+                endTime: Date(timeIntervalSince1970: 1_700_000_100 + TimeInterval(i))
+            )
+            try dataStore.insert(usage)
+        }
+
+        await usageSync.sync()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertEqual(docs.count, 405)
+        XCTAssertTrue(try dataStore.fetchUnsynced().isEmpty)
+    }
+
     func test_providerAccountUpload_writesOnlyNonSecretLocalAccountMetadata() async throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let account = ProviderAccountDoc(

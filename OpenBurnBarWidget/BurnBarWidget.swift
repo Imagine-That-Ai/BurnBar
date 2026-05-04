@@ -16,6 +16,7 @@ struct BurnBarWidget: Widget {
             .systemSmall,
             .systemMedium,
             .systemLarge,
+            .systemExtraLarge,
             .accessoryInline,
             .accessoryCircular,
             .accessoryRectangular

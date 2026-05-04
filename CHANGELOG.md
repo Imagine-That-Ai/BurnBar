@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] — iPadOS Port Phase 2 Hardening (2026-05-02)
 
 ### Added
+- **Hosted + self-hosted Claude Code/Codex quota sync:** iOS/iPadOS can now add
+  hosted or self-hosted quota accounts and refresh Claude Code/Codex quota on
+  demand without requiring the macOS app to refresh snapshots. The backend adds
+  hosted entitlement sync, server-private account storage, remote snapshot
+  upload, and a separate `quota-runner` package for Codex app-server reads and
+  Claude Code `/usage` probes.
 - **Routing-aware provider account cockpit (Mac + Mobile):** every quota- and
   account-bearing surface now shows which provider account is *currently* serving
   traffic, the next fallback, and any blocked/cooling-down accounts with

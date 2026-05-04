@@ -20,6 +20,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { onCall, type CallableRequest } from "firebase-functions/v2/https";
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
+import { createHash } from "node:crypto";
 
 import { getConfig } from "./config.js";
 import { enforceAuthAndAppCheck } from "./auth.js";
@@ -29,8 +30,10 @@ import {
 } from "./secrets.js";
 import {
   providerAccountSecretRefPath,
+  retrieveAccountSecret,
   refreshUserProviderAccountQuota,
   refreshUserProviderQuota,
+  uploadUserProviderAccountQuotaSnapshot,
 } from "./quota.js";
 import { computeUserRollups, writeUserRollups } from "./rollups.js";
 import { minimaxAdapter } from "./providers/minimax.js";
@@ -41,11 +44,13 @@ import { openaiAdapter } from "./providers/openai.js";
 
 import type {
   Provider,
-  SUPPORTED_PROVIDERS,
+  CredentialKind,
+  HostedQuotaEntitlementDoc,
   ProviderAccountDoc,
   ProviderAccountSecretRefDoc,
   ProviderConnectionDoc,
-  RollupJobDoc,
+  QuotaSnapshotDoc,
+  UploadedQuotaSnapshotInput,
 } from "./types.js";
 
 import { onUsageWritten } from "./triggers.js";
@@ -80,6 +85,10 @@ const ALLOWED_PROVIDERS = new Set<string>([
 
 const CONNECTION_SCHEMA_VERSION = 1;
 const ACCOUNT_SCHEMA_VERSION = 1;
+const HOSTED_QUOTA_ENTITLEMENT_SCHEMA_VERSION = 1;
+const REMOTE_QUOTA_PROVIDERS = new Set<string>(["claude-code", "codex"]);
+const HOSTED_QUOTA_PROVIDERS = new Set<string>(["codex"]);
+const CREDENTIAL_KINDS = new Set<string>(["token", "bearer", "session", "cookie", "plan"]);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -95,6 +104,16 @@ function nowISO(): string {
   return new Date().toISOString();
 }
 
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function withoutUndefined<T extends object>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(([, entryValue]) => entryValue !== undefined)
+  ) as T;
+}
+
 function accountIDFor(provider: string, requestedAccountID?: string): string {
   const raw = requestedAccountID?.trim() || `${provider}_default`;
   const safe = raw
@@ -106,6 +125,165 @@ function accountIDFor(provider: string, requestedAccountID?: string): string {
     throw new Error("invalid-argument: accountID must contain letters or numbers.");
   }
   return safe;
+}
+
+function assertHostedQuotaProvider(provider: unknown): asserts provider is Provider {
+  assertProvider(provider);
+  if (!HOSTED_QUOTA_PROVIDERS.has(provider)) {
+    throw new Error(`invalid-argument: ${provider} is not supported by hosted quota sync.`);
+  }
+}
+
+function assertRemoteQuotaProvider(provider: unknown): asserts provider is Provider {
+  assertProvider(provider);
+  if (!REMOTE_QUOTA_PROVIDERS.has(provider)) {
+    throw new Error(`invalid-argument: ${provider} is not supported by remote quota sync.`);
+  }
+}
+
+function credentialKindFor(kind: unknown, fallback: CredentialKind): CredentialKind {
+  return typeof kind === "string" && CREDENTIAL_KINDS.has(kind)
+    ? (kind as CredentialKind)
+    : fallback;
+}
+
+function hostedQuotaEntitlementRef(uid: string) {
+  return db.doc(`users/${uid}/entitlements/hosted_quota_sync`);
+}
+
+async function requireHostedQuotaEntitlement(uid: string): Promise<HostedQuotaEntitlementDoc> {
+  const snap = await hostedQuotaEntitlementRef(uid).get();
+  if (!snap.exists) {
+    throw new Error("permission-denied: hosted quota sync subscription is not active.");
+  }
+  const doc = snap.data() as HostedQuotaEntitlementDoc;
+  const expiresAt = doc.expiresAt ? Date.parse(doc.expiresAt) : Number.POSITIVE_INFINITY;
+  if (!doc.active || expiresAt <= Date.now()) {
+    throw new Error("permission-denied: hosted quota sync subscription is not active.");
+  }
+  return doc;
+}
+
+function hostedRunnerURL(): string {
+  const url = getConfig().hostedQuotaRunnerURL.trim().replace(/\/+$/g, "");
+  if (!url) {
+    throw new Error("failed-precondition: HOSTED_QUOTA_RUNNER_URL is not configured.");
+  }
+  return url;
+}
+
+function safeRunnerSnapshotPayload(
+  provider: Provider,
+  accountID: string,
+  account: ProviderAccountDoc,
+  raw: unknown
+): UploadedQuotaSnapshotInput {
+  const data = raw && typeof raw === "object" && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : {};
+  const snapshot = data.snapshot && typeof data.snapshot === "object" && !Array.isArray(data.snapshot)
+    ? (data.snapshot as Record<string, unknown>)
+    : data;
+  return {
+    ...snapshot,
+    provider,
+    providerID: provider,
+    accountID,
+    accountStorageScope: "server_private",
+    source: typeof snapshot.source === "string"
+      ? snapshot.source
+      : "OpenBurnBar Hosted Quota Runner",
+    sourceId: typeof snapshot.sourceId === "string"
+      ? snapshot.sourceId
+      : typeof snapshot.sourceID === "string"
+        ? snapshot.sourceID
+        : "hosted-runner",
+    confidence: typeof snapshot.confidence === "string" ? snapshot.confidence : "high",
+    statusMessage: typeof snapshot.statusMessage === "string"
+      ? snapshot.statusMessage
+      : `Fetched on demand for ${account.label}.`,
+  };
+}
+
+async function callHostedQuotaRunner(params: {
+  provider: Provider;
+  accountID: string;
+  credential: string;
+}): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45_000);
+  try {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+    };
+    const token = getConfig().hostedQuotaRunnerToken.trim();
+    if (token) {
+      headers.authorization = `Bearer ${token}`;
+    }
+    const response = await fetch(`${hostedRunnerURL()}/v1/quota/refresh`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        provider: params.provider,
+        accountID: params.accountID,
+        credential: params.credential,
+      }),
+      signal: controller.signal,
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = body && typeof body === "object" && "error" in body
+        ? String((body as { error?: unknown }).error)
+        : `hosted runner returned ${response.status}`;
+      throw new Error(`hosted-runner: ${message}`);
+    }
+    return body;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function refreshHostedQuotaAccount(uid: string, accountID: string): Promise<QuotaSnapshotDoc> {
+  await requireHostedQuotaEntitlement(uid);
+  const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
+  const accountSnap = await accountRef.get();
+  if (!accountSnap.exists) {
+    throw new Error("not-found: provider account does not exist.");
+  }
+  const account = accountSnap.data() as ProviderAccountDoc;
+  assertHostedQuotaProvider(account.providerID);
+  if (account.storageScope !== "server_private") {
+    throw new Error("failed-precondition: account is not a hosted quota account.");
+  }
+  if (account.status !== "connected" && account.status !== "stale" && account.status !== "error") {
+    throw new Error(`failed-precondition: account is not refreshable (${account.status}).`);
+  }
+
+  const now = nowISO();
+  try {
+    const credential = await retrieveAccountSecret(db, uid, accountID);
+    const raw = await callHostedQuotaRunner({
+      provider: account.providerID as Provider,
+      accountID,
+      credential,
+    });
+    return uploadUserProviderAccountQuotaSnapshot(
+      db,
+      uid,
+      safeRunnerSnapshotPayload(account.providerID as Provider, accountID, account, raw)
+    );
+  } catch (err) {
+    await accountRef.set(
+      {
+        status: "error",
+        lastRefreshAt: now,
+        lastErrorCode: "hosted_runner_failed",
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+    throw err;
+  }
 }
 
 function connectionDocFromAccount(account: ProviderAccountDoc): ProviderConnectionDoc {
@@ -201,26 +379,28 @@ async function connectProviderAccountInternal(params: {
     updatedAt: now,
   };
 
+  const cleanAccountDoc = withoutUndefined(accountDoc);
+
   await db.runTransaction(async (tx) => {
     const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
-    tx.set(accountRef, accountDoc, { merge: true });
+    tx.set(accountRef, cleanAccountDoc, { merge: true });
 
-    if (accountDoc.isDefault) {
+    if (cleanAccountDoc.isDefault) {
       const legacyRef = db.doc(`users/${uid}/provider_connections/${provider}`);
-      tx.set(legacyRef, connectionDocFromAccount(accountDoc), { merge: true });
+      tx.set(legacyRef, connectionDocFromAccount(cleanAccountDoc), { merge: true });
     }
   });
 
   try {
     await refreshUserProviderAccountQuota(db, uid, accountID);
-    if (accountDoc.isDefault) {
+    if (cleanAccountDoc.isDefault) {
       await refreshUserProviderQuota(db, uid, provider);
     }
   } catch (quotaErr) {
     console.warn(`Initial quota refresh failed for ${uid}/${accountID}:`, quotaErr);
   }
 
-  return accountDoc;
+  return cleanAccountDoc;
 }
 
 /**
@@ -334,6 +514,212 @@ export const connectProviderCredential = onCall(
     });
 
     return connectionDocFromAccount(accountDoc);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Callable: syncHostedQuotaEntitlement
+// ---------------------------------------------------------------------------
+
+export const syncHostedQuotaEntitlement = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      productID: string;
+      transactionID?: string;
+      originalTransactionID?: string;
+      expiresAt?: string;
+      signedTransactionJWS?: string;
+      active?: boolean;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new Error("unauthenticated");
+    }
+    enforceAuthAndAppCheck(request, uid);
+
+    const productID = request.data.productID;
+    if (productID !== getConfig().hostedQuotaProductID) {
+      throw new Error("invalid-argument: unsupported hosted quota product.");
+    }
+
+    const now = nowISO();
+    let expiresAt: string | undefined;
+    if (typeof request.data.expiresAt === "string") {
+      const parsedExpiresAt = new Date(request.data.expiresAt);
+      if (Number.isNaN(parsedExpiresAt.getTime())) {
+        throw new Error("invalid-argument: expiresAt must be an ISO date string.");
+      }
+      expiresAt = parsedExpiresAt.toISOString();
+    }
+    const signedTransactionJWS = typeof request.data.signedTransactionJWS === "string"
+      ? request.data.signedTransactionJWS.trim()
+      : "";
+    if (Boolean(request.data.active)) {
+      if (!request.data.transactionID || !request.data.originalTransactionID || !expiresAt) {
+        throw new Error("invalid-argument: active hosted entitlement requires transaction IDs and expiration.");
+      }
+      if (!signedTransactionJWS || signedTransactionJWS.split(".").length !== 3) {
+        throw new Error("invalid-argument: active hosted entitlement requires a StoreKit signed transaction JWS.");
+      }
+    }
+    const active = Boolean(request.data.active) &&
+      (expiresAt == null || Date.parse(expiresAt) > Date.now());
+
+    const doc: HostedQuotaEntitlementDoc = {
+      id: "hosted_quota_sync",
+      active,
+      productID,
+      transactionID: request.data.transactionID,
+      originalTransactionID: request.data.originalTransactionID,
+      expiresAt,
+      signedTransactionHash: signedTransactionJWS ? sha256Hex(signedTransactionJWS) : undefined,
+      lastVerifiedAt: now,
+      source: "storekit_local_verified",
+      schemaVersion: HOSTED_QUOTA_ENTITLEMENT_SCHEMA_VERSION,
+      updatedAt: now,
+    };
+    const cleanDoc = withoutUndefined(doc);
+    await hostedQuotaEntitlementRef(uid).set(cleanDoc, { merge: true });
+    return cleanDoc;
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Callable: connectHostedQuotaAccount
+// ---------------------------------------------------------------------------
+
+export const connectHostedQuotaAccount = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      provider: string;
+      credential: string;
+      credentialKind?: string;
+      label?: string;
+      accountID?: string;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new Error("unauthenticated");
+    }
+    enforceAuthAndAppCheck(request, uid);
+    await requireHostedQuotaEntitlement(uid);
+
+    const { provider, credential } = request.data;
+    assertHostedQuotaProvider(provider);
+    if (typeof credential !== "string" || !credential.trim()) {
+      throw new Error("invalid-argument: credential must be a non-empty string.");
+    }
+    if (credential.length > getConfig().maxCredentialLength) {
+      throw new Error("invalid-argument: credential exceeds max length.");
+    }
+
+    const accountID = accountIDFor(provider, request.data.accountID);
+    const label = request.data.label?.trim() || "Hosted";
+    const now = nowISO();
+    const existing = await db.doc(`users/${uid}/provider_accounts/${accountID}`).get();
+    const secretVersionName = await storeCredential(uid, provider, credential, accountID);
+    await writePrivateSecretRef(
+      uid,
+      accountID,
+      provider,
+      secretVersionName,
+      existing.exists ? (existing.get("createdAt") as string | undefined) ?? now : now,
+      now
+    );
+
+    const accountDoc: ProviderAccountDoc = {
+      id: accountID,
+      providerID: provider,
+      label,
+      identityHint: undefined,
+      status: "connected",
+      credentialKind: credentialKindFor(
+        request.data.credentialKind,
+        "session"
+      ),
+      storageScope: "server_private",
+      redactedLabel: "Hosted Codex auth.json",
+      sourceDeviceID: undefined,
+      linkedSwitcherProfileID: undefined,
+      isDefault: request.data.accountID == null,
+      sortKey: request.data.accountID == null ? 0 : Date.now(),
+      lastValidatedAt: now,
+      lastRefreshAt: undefined,
+      lastErrorCode: undefined,
+      schemaVersion: ACCOUNT_SCHEMA_VERSION,
+      createdAt: existing.exists ? (existing.get("createdAt") as string | undefined) ?? now : now,
+      updatedAt: now,
+    };
+
+    const cleanAccountDoc = withoutUndefined(accountDoc);
+    await db.doc(`users/${uid}/provider_accounts/${accountID}`).set(cleanAccountDoc, { merge: true });
+    return cleanAccountDoc;
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Callable: connectSelfHostedQuotaAccount
+// ---------------------------------------------------------------------------
+
+export const connectSelfHostedQuotaAccount = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      provider: string;
+      label?: string;
+      accountID?: string;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new Error("unauthenticated");
+    }
+    enforceAuthAndAppCheck(request, uid);
+
+    const { provider } = request.data;
+    assertRemoteQuotaProvider(provider);
+    const accountID = accountIDFor(provider, request.data.accountID);
+    const now = nowISO();
+    const existing = await db.doc(`users/${uid}/provider_accounts/${accountID}`).get();
+    const accountDoc: ProviderAccountDoc = {
+      id: accountID,
+      providerID: provider,
+      label: request.data.label?.trim() || "Self-hosted",
+      identityHint: undefined,
+      status: "connected",
+      credentialKind: provider === "codex" ? "session" : "bearer",
+      storageScope: "local_only",
+      redactedLabel: "Self-hosted quota runner",
+      sourceDeviceID: "self-hosted-runner",
+      linkedSwitcherProfileID: undefined,
+      isDefault: request.data.accountID == null,
+      sortKey: request.data.accountID == null ? 0 : Date.now(),
+      lastValidatedAt: now,
+      lastRefreshAt: undefined,
+      lastErrorCode: undefined,
+      schemaVersion: ACCOUNT_SCHEMA_VERSION,
+      createdAt: existing.exists ? (existing.get("createdAt") as string | undefined) ?? now : now,
+      updatedAt: now,
+    };
+    const cleanAccountDoc = withoutUndefined(accountDoc);
+    await db.doc(`users/${uid}/provider_accounts/${accountID}`).set(cleanAccountDoc, { merge: true });
+    return cleanAccountDoc;
   }
 );
 
@@ -580,6 +966,96 @@ export const deleteProviderCredential = onCall(
 );
 
 // ---------------------------------------------------------------------------
+// Callable: deleteHostedQuotaCredentials
+// ---------------------------------------------------------------------------
+
+export const deleteHostedQuotaCredentials = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (request: CallableRequest<Record<string, never>>) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new Error("unauthenticated");
+    }
+    enforceAuthAndAppCheck(request, uid);
+
+    const accountSnapshot = await db
+      .collection(`users/${uid}/provider_accounts`)
+      .where("storageScope", "==", "server_private")
+      .get();
+    const deletedAccountIDs: string[] = [];
+
+    for (const doc of accountSnapshot.docs) {
+      const account = doc.data() as ProviderAccountDoc;
+      if (!HOSTED_QUOTA_PROVIDERS.has(account.providerID)) {
+        continue;
+      }
+      const privateRef = db.doc(providerAccountSecretRefPath(uid, account.id));
+      const privateSnap = await privateRef.get();
+      const secretVersionName = privateSnap.exists
+        ? (privateSnap.get("secretVersionName") as string | undefined)
+        : undefined;
+      if (secretVersionName) {
+        try {
+          await destroyCredential(secretVersionName);
+        } catch (err) {
+          console.warn(`Failed to destroy hosted quota secret for ${account.id}:`, err);
+        }
+      }
+      const now = nowISO();
+      await db.runTransaction(async (tx) => {
+        tx.delete(privateRef);
+        tx.set(
+          doc.ref,
+          {
+            status: "deleted",
+            lastValidatedAt: null,
+            lastRefreshAt: null,
+            lastErrorCode: null,
+            updatedAt: now,
+          },
+          { merge: true }
+        );
+      });
+      deletedAccountIDs.push(account.id);
+    }
+
+    return { success: true, deletedAccountIDs };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Callable: uploadProviderQuotaSnapshot
+// ---------------------------------------------------------------------------
+
+export const uploadProviderQuotaSnapshot = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (request: CallableRequest<Record<string, unknown>>) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new Error("unauthenticated");
+    }
+    enforceAuthAndAppCheck(request, uid);
+
+    const payload =
+      request.data.snapshot &&
+      typeof request.data.snapshot === "object" &&
+      !Array.isArray(request.data.snapshot)
+        ? (request.data.snapshot as Record<string, unknown>)
+        : request.data;
+
+    return uploadUserProviderAccountQuotaSnapshot(db, uid, payload);
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Callable: refreshProviderQuota
 // ---------------------------------------------------------------------------
 
@@ -597,7 +1073,15 @@ export const refreshProviderAccountQuota = onCall(
     enforceAuthAndAppCheck(request, uid);
 
     const accountID = accountIDFor("account", request.data.accountID);
-    const snapshot = await refreshUserProviderAccountQuota(db, uid, accountID);
+    const accountSnap = await db.doc(`users/${uid}/provider_accounts/${accountID}`).get();
+    if (!accountSnap.exists) {
+      throw new Error("not-found: provider account does not exist.");
+    }
+    const account = accountSnap.data() as ProviderAccountDoc;
+    const snapshot = account.storageScope === "server_private" &&
+      HOSTED_QUOTA_PROVIDERS.has(account.providerID)
+      ? await refreshHostedQuotaAccount(uid, accountID)
+      : await refreshUserProviderAccountQuota(db, uid, accountID);
     if (!snapshot) {
       throw new Error("failed-precondition: quota refresh returned no snapshot.");
     }
@@ -636,13 +1120,18 @@ export const refreshProviderQuota = onCall(
 
       for (const doc of accountSnapshot.docs) {
         const account = doc.data() as ProviderAccountDoc;
-        if (account.storageScope !== "cloud_refreshable") {
+        if (
+          account.storageScope !== "cloud_refreshable" &&
+          !(account.storageScope === "server_private" && HOSTED_QUOTA_PROVIDERS.has(account.providerID))
+        ) {
           skippedAccountIDs.push(account.id);
           continue;
         }
 
         try {
-          const snapshot = await refreshUserProviderAccountQuota(db, uid, account.id);
+          const snapshot = account.storageScope === "server_private"
+            ? await refreshHostedQuotaAccount(uid, account.id)
+            : await refreshUserProviderAccountQuota(db, uid, account.id);
           if (snapshot) {
             snapshots.push(snapshot);
           }

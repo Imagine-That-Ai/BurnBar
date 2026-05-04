@@ -17,8 +17,8 @@ import SQLite3
 /// `state.vscdb` is readable by any process without Full Disk Access.
 /// Safari's `Cookies.binarycookies` requires Full Disk Access (TCC).
 /// CodexBar accesses Cursor auth via browser cookies from Chrome/Safari
-/// using `SweetCookieKit`; this is the zero-dependency equivalent that
-/// reads directly from Cursor's own database.
+/// using `SweetCookieKit`; OpenBurnBar intentionally does not import those
+/// browser stores and instead reads directly from Cursor's own database.
 ///
 /// ## Cookie format
 ///

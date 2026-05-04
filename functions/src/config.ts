@@ -3,9 +3,14 @@
  *
  * Reads from `firebase functions:config:set` values and process env, providing
  * typed defaults and validation on cold start.
+ *
+ * App Store Server JWS verification reads its credentials lazily from
+ * `defineSecret(...)` parameters declared in `appstore/config.ts`; those
+ * are not surfaced through this module so a hot path that does not need
+ * them never causes a Secret Manager read.
  */
 
-import type { EnvConfig } from "./types.js";
+import type { AppStoreEnvironment, EnvConfig } from "./types.js";
 
 /** Cached config object computed once per function instance. */
 let cached: EnvConfig | undefined;
@@ -69,6 +74,75 @@ function buildConfig(): EnvConfig {
         cfg.openburnbar?.quota_refresh_batch_size,
       20
     ),
+    hostedQuotaRunnerURL:
+      process.env.HOSTED_QUOTA_RUNNER_URL ||
+      cfg.openburnbar?.hosted_quota_runner_url ||
+      "",
+    hostedQuotaRunnerToken:
+      process.env.HOSTED_QUOTA_RUNNER_TOKEN ||
+      cfg.openburnbar?.hosted_quota_runner_token ||
+      "",
+    hostedQuotaProductID:
+      process.env.HOSTED_QUOTA_PRODUCT_ID ||
+      cfg.openburnbar?.hosted_quota_product_id ||
+      "com.burnbar.hostedQuotaSync.monthly",
+
+    appStore: {
+      bundleId:
+        process.env.APP_STORE_BUNDLE_ID ||
+        cfg.openburnbar?.app_store_bundle_id ||
+        "com.burnbar.app",
+      appAppleId: (() => {
+        const raw =
+          process.env.APP_STORE_APPLE_APP_ID ??
+          cfg.openburnbar?.app_store_apple_app_id;
+        if (raw == null || raw === "") return undefined;
+        const n = Number(raw);
+        return Number.isFinite(n) && n > 0 ? n : undefined;
+      })(),
+      environment: ((): AppStoreEnvironment => {
+        const raw = String(
+          process.env.APP_STORE_ENV ??
+            cfg.openburnbar?.app_store_env ??
+            "Sandbox"
+        );
+        if (
+          raw === "Production" ||
+          raw === "Sandbox" ||
+          raw === "Xcode" ||
+          raw === "LocalTesting"
+        ) {
+          return raw;
+        }
+        return "Sandbox";
+      })(),
+      enableOnlineChecks: toBool(
+        process.env.APP_STORE_ENABLE_ONLINE_CHECKS ??
+          cfg.openburnbar?.app_store_enable_online_checks,
+        true
+      ),
+      webhookAllowedClockSkewMs: toNum(
+        process.env.APP_STORE_CLOCK_SKEW_MS ??
+          cfg.openburnbar?.app_store_clock_skew_ms,
+        5_000
+      ),
+      autoFallbackEnvironment: toBool(
+        process.env.APP_STORE_AUTO_FALLBACK_ENV ??
+          cfg.openburnbar?.app_store_auto_fallback_env,
+        true
+      ),
+      asc: {
+        keyId: process.env.APP_STORE_ASC_KEY_ID || cfg.openburnbar?.app_store_asc_key_id || "",
+        issuerId:
+          process.env.APP_STORE_ASC_ISSUER_ID ||
+          cfg.openburnbar?.app_store_asc_issuer_id ||
+          "",
+        privateKeyP8:
+          process.env.APP_STORE_ASC_KEY_P8 ||
+          cfg.openburnbar?.app_store_asc_key_p8 ||
+          "",
+      },
+    },
   };
 }
 

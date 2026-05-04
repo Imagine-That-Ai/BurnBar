@@ -15,6 +15,7 @@ final class AccountStore {
     private(set) var connections: [ProviderConnectionDoc] = []
     private(set) var providerAccounts: [ProviderAccountDoc] = []
     private(set) var syncHealth: SyncHealth = .unknown
+    private(set) var lastPublishedAt: Date?
 
     // MARK: - Multi-profile support (iPad Settings)
     private(set) var profiles: [BurnBarProfile] = []
@@ -54,6 +55,7 @@ final class AccountStore {
             async let accountsTask = firestore.fetchProviderAccounts()
             connections = try await connectionsTask
             providerAccounts = try await accountsTask
+            lastPublishedAt = Self.latestConnectionTimestamp(connections: connections, accounts: providerAccounts)
             syncHealth = .healthy
         } catch {
             self.error = error.localizedDescription
@@ -67,6 +69,7 @@ final class AccountStore {
             connections = []
             providerAccounts = []
             syncHealth = .unknown
+            lastPublishedAt = nil
         } catch {
             self.error = error.localizedDescription
         }
@@ -105,6 +108,15 @@ final class AccountStore {
             return p
         }
         activeProfile = profile
+    }
+
+    private static func latestConnectionTimestamp(
+        connections: [ProviderConnectionDoc],
+        accounts: [ProviderAccountDoc]
+    ) -> Date? {
+        let connectionDates = connections.flatMap { [$0.lastValidatedAt, $0.lastRefreshAt] }.compactMap { $0 }
+        let accountDates = accounts.flatMap { [$0.lastValidatedAt, $0.lastRefreshAt, $0.updatedAt] }.compactMap { $0 }
+        return (connectionDates + accountDates).max()
     }
 }
 

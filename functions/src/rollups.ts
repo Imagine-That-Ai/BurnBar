@@ -23,12 +23,78 @@ const ROLLUP_SCHEMA_VERSION = 2;
 const WINDOW_KEYS = ["today", "7d", "30d", "90d", "all_time"] as const;
 export type WindowKey = (typeof WINDOW_KEYS)[number];
 
+type TimestampLike = {
+  toDate?: () => Date;
+  toMillis?: () => number;
+  seconds?: number;
+  nanoseconds?: number;
+  _seconds?: number;
+  _nanoseconds?: number;
+};
+
 /**
- * Return the UTC date string (YYYY-MM-DD) for a given ISO timestamp.
+ * Normalize the timestamp shapes written by mobile, desktop, Admin SDK reads,
+ * and serialized Firestore values. Invalid timestamps are treated as absent so
+ * a single bad usage event cannot blank every dashboard rollup.
  */
-function toUtcDate(iso: string): string {
-  const d = new Date(iso);
+function coerceDate(value: unknown): Date | undefined {
+  if (value == null) return undefined;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? undefined : value;
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? undefined : d;
+  }
+
+  if (typeof value === "object") {
+    const ts = value as TimestampLike;
+    if (typeof ts.toDate === "function") {
+      const d = ts.toDate();
+      return Number.isNaN(d.getTime()) ? undefined : d;
+    }
+    if (typeof ts.toMillis === "function") {
+      const d = new Date(ts.toMillis());
+      return Number.isNaN(d.getTime()) ? undefined : d;
+    }
+    const seconds = ts.seconds ?? ts._seconds;
+    const nanos = ts.nanoseconds ?? ts._nanoseconds ?? 0;
+    if (typeof seconds === "number") {
+      const d = new Date(seconds * 1000 + Math.floor(nanos / 1_000_000));
+      return Number.isNaN(d.getTime()) ? undefined : d;
+    }
+  }
+
+  return undefined;
+}
+
+function eventDate(ev: UsageEventDoc): Date | undefined {
+  return (
+    coerceDate(ev.timestamp) ??
+    coerceDate(ev.startTime) ??
+    coerceDate(ev.endTime) ??
+    coerceDate(ev.createdAt) ??
+    coerceDate(ev.updatedAt)
+  );
+}
+
+function toUtcDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+function eventTokens(ev: UsageEventDoc): number {
+  if (typeof ev.totalTokens === "number" && Number.isFinite(ev.totalTokens)) {
+    return ev.totalTokens;
+  }
+  return [
+    ev.inputTokens,
+    ev.outputTokens,
+    ev.cacheCreationTokens,
+    ev.cacheReadTokens,
+    ev.reasoningTokens,
+  ].reduce<number>((sum, value) => {
+    return typeof value === "number" && Number.isFinite(value) ? sum + value : sum;
+  }, 0);
 }
 
 /**
@@ -39,6 +105,20 @@ function eventCost(ev: UsageEventDoc): number | undefined {
   const v = ev.costUsd ?? ev.cost;
   if (typeof v === "number") return v;
   return undefined;
+}
+
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUndefined(item)) as T;
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entryValue]) => entryValue !== undefined)
+        .map(([key, entryValue]) => [key, stripUndefined(entryValue)])
+    ) as T;
+  }
+  return value;
 }
 
 function eventProviderID(ev: UsageEventDoc): string {
@@ -52,24 +132,24 @@ function accountSummaryKey(ev: UsageEventDoc): string {
 /**
  * Build inclusive date-range predicate for a window key.
  */
-function windowPredicate(key: WindowKey, now: Date): (iso: string) => boolean {
+function windowPredicate(key: WindowKey, now: Date): (date: Date) => boolean {
   const nowTs = now.getTime();
   switch (key) {
     case "today": {
-      const today = toUtcDate(now.toISOString());
-      return (iso: string) => toUtcDate(iso) === today;
+      const today = toUtcDate(now);
+      return (date: Date) => toUtcDate(date) === today;
     }
     case "7d": {
       const cutoff7 = nowTs - 7 * 24 * 60 * 60 * 1000;
-      return (iso: string) => new Date(iso).getTime() >= cutoff7;
+      return (date: Date) => date.getTime() >= cutoff7;
     }
     case "30d": {
       const cutoff30 = nowTs - 30 * 24 * 60 * 60 * 1000;
-      return (iso: string) => new Date(iso).getTime() >= cutoff30;
+      return (date: Date) => date.getTime() >= cutoff30;
     }
     case "90d": {
       const cutoff90 = nowTs - 90 * 24 * 60 * 60 * 1000;
-      return (iso: string) => new Date(iso).getTime() >= cutoff90;
+      return (date: Date) => date.getTime() >= cutoff90;
     }
     case "all_time":
       return () => true;
@@ -91,16 +171,19 @@ export async function computeUserRollups(
   // Read all usage docs. In production with >10k events this should paginate
   // or use an hourly pre-aggregate; for the MVP we read the whole stream.
   const snapshot = await usageRef.get();
-  const events: UsageEventDoc[] = snapshot.docs.map(
-    (d) => d.data() as UsageEventDoc
-  );
+  const events = snapshot.docs
+    .map((d) => d.data() as UsageEventDoc)
+    .map((event) => ({ event, date: eventDate(event) }))
+    .filter((entry): entry is { event: UsageEventDoc; date: Date } => {
+      return entry.date != null;
+    });
 
   const now = new Date();
   const results = {} as Record<WindowKey, UsageRollupDoc>;
 
   for (const key of WINDOW_KEYS) {
     const pred = windowPredicate(key, now);
-    const filtered = events.filter((e) => pred(e.timestamp));
+    const filtered = events.filter((entry) => pred(entry.date));
 
     const providerMap = new Map<string, ProviderSummary>();
     const accountMap = new Map<string, ProviderAccountSummary>();
@@ -111,9 +194,9 @@ export async function computeUserRollups(
     let totalTokens = 0;
     let totalCost = 0;
 
-    for (const ev of filtered) {
+    for (const { event: ev, date } of filtered) {
       totalRequests += 1;
-      const tokens = (ev.inputTokens ?? 0) + (ev.outputTokens ?? 0);
+      const tokens = eventTokens(ev);
       totalTokens += tokens;
       const evCost = eventCost(ev);
       if (evCost != null) totalCost += evCost;
@@ -178,14 +261,15 @@ export async function computeUserRollups(
       }
 
       // Device
-      if (ev.deviceId) {
-        const dEx = deviceMap.get(ev.deviceId);
+      const deviceId = ev.deviceId ?? ev.sourceDeviceId;
+      if (deviceId) {
+        const dEx = deviceMap.get(deviceId);
         if (dEx) {
           dEx.requests += 1;
           dEx.tokens += tokens;
         } else {
-          deviceMap.set(ev.deviceId, {
-            deviceId: ev.deviceId,
+          deviceMap.set(deviceId, {
+            deviceId,
             requests: 1,
             tokens,
           });
@@ -193,7 +277,7 @@ export async function computeUserRollups(
       }
 
       // Daily points
-      const day = toUtcDate(ev.timestamp);
+      const day = toUtcDate(date);
       dailyPoints.set(day, (dailyPoints.get(day) ?? 0) + tokens);
     }
 
@@ -237,14 +321,13 @@ export async function writeUserRollups(
 
   for (const key of WINDOW_KEYS) {
     const ref = db.doc(`users/${uid}/usage_rollups/${key}`);
-    batch.set(ref, rollups[key], { merge: true });
+    batch.set(ref, stripUndefined(rollups[key]), { merge: true });
   }
 
   const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
   const job: RollupJobDoc = {
     dirty: false,
     lastComputedAt: new Date().toISOString(),
-    lastErrorCode: undefined,
   };
   batch.set(jobRef, job, { merge: true });
 

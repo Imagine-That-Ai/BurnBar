@@ -105,9 +105,25 @@ final class QuotaStore {
         }
     }
 
+    var visibleProviders: [String] {
+        let providerKeys = Set(snapshotsByProvider.keys).union(
+            accounts
+                .filter { $0.status != .deleted }
+                .map(\.providerID.rawValue)
+        )
+        let urgent = Set(urgentProviders)
+        return providerKeys.sorted { lhs, rhs in
+            let lhsUrgent = urgent.contains(lhs)
+            let rhsUrgent = urgent.contains(rhs)
+            if lhsUrgent != rhsUrgent { return lhsUrgent && !rhsUrgent }
+            return lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
+        }
+    }
+
     func accountCount(for provider: String) -> Int {
         let ids = Set((snapshotsByProvider[provider] ?? []).compactMap(\.accountID))
-        return max(ids.count, snapshotsByProvider[provider]?.isEmpty == false ? 1 : 0)
+        let knownAccounts = accounts.filter { $0.providerID.rawValue == provider && $0.status != .deleted }
+        return max(ids.count, knownAccounts.count, snapshotsByProvider[provider]?.isEmpty == false ? 1 : 0)
     }
 
     /// Provider keys sorted by urgency where any bucket has < 25% remaining.
@@ -123,7 +139,7 @@ final class QuotaStore {
     /// Provider keys whose worst bucket has at least 25% headroom.
     var healthyProviders: [String] {
         let urgent = Set(urgentProviders)
-        return snapshotsByProvider.keys
+        return visibleProviders
             .filter { !urgent.contains($0) }
             .sorted()
     }

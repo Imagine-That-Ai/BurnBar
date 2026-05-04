@@ -9,6 +9,7 @@ import OpenBurnBarCore
 /// These tests use the real `decodeUsageRollup`, `decodeWithDocID`, and `normalizeRollupData`
 /// methods from FirestoreRepository (via @testable import) so there is no duplicated
 /// normalization logic that could drift from production.
+@MainActor
 final class FirestoreNormalizationTests: XCTestCase {
 
     // The repository instance is only used to access the nonisolated decode helpers.
@@ -134,7 +135,7 @@ final class FirestoreNormalizationTests: XCTestCase {
     }
 
     func test_decodeWithDocID_injectsIDWhenMissing() throws {
-        var data = Self.cloudFunctionQuotaDoc
+        let data = Self.cloudFunctionQuotaDoc
         // Cloud Function does not write an `id` field
         XCTAssertNil(data["id"])
         let snap = repo.decodeWithDocID(
@@ -154,10 +155,12 @@ final class FirestoreNormalizationTests: XCTestCase {
                              "Raw Cloud Function rollup should fail to decode without normalization")
     }
 
-    func testRollupProviderSummaryRequiresID() throws {
+    func testRollupProviderSummaryDefaultsIDFromProvider() throws {
         let summaryJSON: [String: Any] = ["provider": "minimax", "totalRequests": 20, "totalTokens": 2500]
         let jsonData = try JSONSerialization.data(withJSONObject: summaryJSON)
-        XCTAssertThrowsError(try JSONDecoder().decode(RollupProviderSummary.self, from: jsonData))
+        let summary = try JSONDecoder().decode(RollupProviderSummary.self, from: jsonData)
+        XCTAssertEqual(summary.id, "minimax")
+        XCTAssertEqual(summary.providerID, ProviderID(rawValue: "minimax"))
     }
 
     // MARK: - Normalized decoding using real FirestoreRepository methods
@@ -400,4 +403,3 @@ final class FirestoreNormalizationTests: XCTestCase {
                        "lastRefreshAt should decode from ISO 8601 string")
     }
 }
-

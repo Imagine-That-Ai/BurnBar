@@ -104,7 +104,7 @@ struct AccountView: View {
                 AngularGradient(
                     colors: [
                         MobileTheme.Colors.accent.opacity(0.3),
-                        MobileTheme.Colors.amber.opacity(0.2),
+                        MobileTheme.amber.opacity(0.2),
                         MobileTheme.Colors.accent.opacity(0.0),
                         MobileTheme.Colors.accent.opacity(0.3)
                     ],
@@ -182,7 +182,7 @@ struct AccountView: View {
                 }
 
                 if let lastSync = store.lastPublishedAt {
-                    Text("Last successful write: \(lastSync, style: .relative) ago")
+                    Text("Last provider update: \(lastSync, style: .relative) ago")
                         .font(MobileTheme.Typography.footnote)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
@@ -241,10 +241,11 @@ struct AccountView: View {
 
     private var overlappingAvatars: some View {
         let providers = store.connections.prefix(5).compactMap {
-            AgentProvider.fromProviderID(ProviderID(rawValue: $0.providerID))
+            AgentProvider.fromProviderID(ProviderID(rawValue: $0.provider))
         }
         return ZStack {
-            ForEach(Array(providers.enumerated()), id: \.offset) { index, provider in
+            ForEach(providers.indices, id: \.self) { index in
+                let provider = providers[index]
                 ProviderAvatar(provider: provider, mode: .aurora, size: 28)
                     .offset(x: CGFloat(index) * -20)
                     .zIndex(Double(providers.count - index))

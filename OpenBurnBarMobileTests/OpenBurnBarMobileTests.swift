@@ -69,12 +69,26 @@ final class OpenBurnBarMobileTests: XCTestCase {
     func testCostFormatting() {
         XCTAssertEqual(1.5.formatAsCost(), "$1.50")
         XCTAssertEqual(0.0.formatAsCost(), "$0.00")
+        XCTAssertEqual(1234.5.formatAsCost(), "$1,234.50")
+        XCTAssertEqual(1_500_000.0.formatAsCost(), "$1,500,000.00")
+    }
+
+    func testCostCompactFormatting() {
+        XCTAssertEqual(1.5.formatAsCostCompact(), "$1.50")
+        XCTAssertEqual(1234.5.formatAsCostCompact(), "$1,234.50")
     }
 
     func testTokenFormatting() {
         XCTAssertEqual(1500.formatAsTokens(), "1.5K")
         XCTAssertEqual(1_500_000.formatAsTokens(), "1.5M")
         XCTAssertEqual(500.formatAsTokens(), "500")
+        XCTAssertEqual(1234.formatAsTokens(), "1.2K")
+    }
+
+    func testTokenRawFormatting() {
+        XCTAssertEqual(500.formatAsTokensRaw(), "500")
+        XCTAssertEqual(1234.formatAsTokensRaw(), "1,234")
+        XCTAssertEqual(1_500_000.formatAsTokensRaw(), "1,500,000")
     }
 
     // MARK: - Provider Connection Types

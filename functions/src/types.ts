@@ -126,6 +126,131 @@ export interface ProviderAccountSecretRefDoc {
 }
 
 // ---------------------------------------------------------------------------
+// Firestore: users/{uid}/entitlements/hosted_quota_sync
+// ---------------------------------------------------------------------------
+
+/**
+ * Source of the entitlement document.
+ *
+ * - `storekit_local_verified` — legacy v1 path. The client supplied a
+ *   signed JWS, the server stored only its SHA-256, and trusted the
+ *   client-supplied `expiresAt`/`active`. Retained as a literal so old
+ *   docs round-trip; never written by the v2 pipeline.
+ * - `apple_jws_verified` — v2 path. The server verified the JWS chain
+ *   to AppleRootCA-G3, asserted bundleId/environment, and reconciled
+ *   live state via the App Store Server API. Always server-written.
+ */
+export type HostedQuotaEntitlementSource =
+  | "storekit_local_verified"
+  | "apple_jws_verified";
+
+export type AppStoreEnvironment =
+  | "Production"
+  | "Sandbox"
+  | "Xcode"
+  | "LocalTesting";
+
+export type EntitlementOwnershipType = "PURCHASED" | "FAMILY_SHARED";
+
+export interface HostedQuotaEntitlementDoc {
+  id: "hosted_quota_sync";
+  active: boolean;
+  productID: string;
+  transactionID?: string;
+  originalTransactionID?: string;
+  expiresAt?: string;
+
+  /** Set when the latest reconciled transaction has a revocationDate. */
+  revokedAt?: string;
+  /** Apple `RevocationReason` numeric enum, when present. */
+  revocationReason?: number;
+
+  /** App Store environment of the most recently reconciled transaction. */
+  environment?: AppStoreEnvironment;
+  ownershipType?: EntitlementOwnershipType;
+
+  /** Optional `appAccountToken` (UUID) bound to the Firebase UID. */
+  appAccountToken?: string;
+
+  /** SHA-256 of the most recently observed signed transaction JWS. Audit only. */
+  signedTransactionHash?: string;
+
+  /** Apple `notificationUUID` of the last server-to-server event we applied. */
+  lastNotificationUUID?: string;
+
+  lastVerifiedAt: string;
+
+  /** Trust pipeline that wrote this doc. See `HostedQuotaEntitlementSource`. */
+  source: HostedQuotaEntitlementSource;
+
+  /**
+   * Bumped each time the verification pipeline gains a new invariant.
+   * v1 → client-trusted hash. v2 → full Apple JWS chain + ASC reconciliation.
+   */
+  verificationVersion?: number;
+
+  schemaVersion: number;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: users/{uid}/entitlement_bindings/{appAccountToken}
+// ---------------------------------------------------------------------------
+
+/**
+ * Binds an `appAccountToken` UUID minted by the server to a Firebase UID
+ * before the StoreKit purchase happens. The reconciler uses this collection
+ * to map an incoming JWS payload back to the correct user without trusting
+ * the in-flight callable.
+ *
+ * Server-only: rules deny client read/write.
+ */
+export interface EntitlementBindingDoc {
+  /** Document ID = the `appAccountToken` UUID itself (lowercased). */
+  id: string;
+  uid: string;
+  productID: string;
+  createdAt: string;
+  /** Set the first time we observe this token in a verified JWS. */
+  consumedAt?: string;
+  /** Optional client-side hint for diagnostics; not trust-bearing. */
+  clientPlatform?: "ios" | "ipados" | "macos";
+  schemaVersion: number;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: users/{uid}/entitlement_events/{notificationUUID}
+// ---------------------------------------------------------------------------
+
+/**
+ * Append-only audit log of every verified entitlement event the server has
+ * processed. Idempotency key:
+ *   - Apple S2S events: `notificationUUID`
+ *   - Client-driven verifications: `transactionId.signedDate`
+ *
+ * Server-only writer. Owners may read for support/debug.
+ */
+export interface EntitlementEventDoc {
+  id: string;
+  uid: string;
+  source: "client_callable" | "apple_s2s" | "scheduled_reconcile";
+  notificationType?: string;
+  notificationSubtype?: string;
+  transactionId: string;
+  originalTransactionId: string;
+  productId: string;
+  environment: AppStoreEnvironment;
+  expiresAt?: string;
+  revokedAt?: string;
+  revocationReason?: number;
+  rawJWSHash: string;
+  observedAt: string;
+  /** Verified, redacted snapshot of the decoded payload for forensics. */
+  decoded: Record<string, unknown>;
+  schemaVersion: number;
+}
+
+// ---------------------------------------------------------------------------
 // Firestore: provider_connections/{provider}
 // ---------------------------------------------------------------------------
 
@@ -183,6 +308,9 @@ export interface QuotaBucket {
 }
 
 export interface QuotaSnapshotDoc {
+  /** Firestore document ID, included by callable responses for client decoding. */
+  id?: string;
+
   /** Kind of source (always "provider" today; reserved for future expansion). */
   sourceKind: "provider";
 
@@ -343,11 +471,26 @@ export interface UsageEventDoc {
   /** Device that originated the request. */
   deviceId?: string;
 
+  /** Canonical desktop/mobile device field used by shared clients. */
+  sourceDeviceId?: string;
+
   /** Number of input tokens. */
   inputTokens?: number;
 
   /** Number of output tokens. */
   outputTokens?: number;
+
+  /** Number of cache creation tokens. */
+  cacheCreationTokens?: number;
+
+  /** Number of cache read tokens. */
+  cacheReadTokens?: number;
+
+  /** Number of reasoning tokens. */
+  reasoningTokens?: number;
+
+  /** Canonical total written by desktop sync. */
+  totalTokens?: number;
 
   /** Estimated cost in USD (optional, canonical field). */
   costUsd?: number;
@@ -355,8 +498,18 @@ export interface UsageEventDoc {
   /** Cost in USD (legacy field written by desktop UsageSyncService). */
   cost?: number;
 
-  /** ISO 8601 timestamp of the event. */
-  timestamp: string;
+  /** Event timestamps may arrive as ISO strings or Firestore Timestamp values. */
+  timestamp?: unknown;
+
+  /** Desktop sync start time, usually a Firestore Timestamp. */
+  startTime?: unknown;
+
+  /** Desktop sync end time, usually a Firestore Timestamp. */
+  endTime?: unknown;
+
+  /** Server/client write timestamps used as a last-resort fallback. */
+  createdAt?: unknown;
+  updatedAt?: unknown;
 
   /** Schema version. */
   schemaVersion: number;
@@ -402,6 +555,21 @@ export interface QuotaRefreshResult {
   errorMessage?: string;
 }
 
+export interface UploadedQuotaSnapshotInput {
+  provider?: unknown;
+  providerID?: unknown;
+  accountID?: unknown;
+  accountStorageScope?: unknown;
+  sourceId?: unknown;
+  sourceID?: unknown;
+  fetchedAt?: unknown;
+  source?: unknown;
+  confidence?: unknown;
+  managementURL?: unknown;
+  statusMessage?: unknown;
+  buckets?: unknown;
+}
+
 /** Every provider adapter must satisfy this interface. */
 export interface ProviderAdapter {
   readonly provider: Provider;
@@ -441,4 +609,49 @@ export interface EnvConfig {
 
   /** Max batch size for scheduled quota refresh (default 20). */
   quotaRefreshBatchSize: number;
+
+  /** Hosted quota runner URL. Empty disables central hosted refresh. */
+  hostedQuotaRunnerURL: string;
+
+  /** Optional bearer secret for hosted quota runner calls. */
+  hostedQuotaRunnerToken: string;
+
+  /** StoreKit product id for hosted quota sync. */
+  hostedQuotaProductID: string;
+
+  /** Apple App Store JWS verification + Server API configuration. */
+  appStore: AppStoreConfig;
+}
+
+/**
+ * Trust pipeline configuration for Apple App Store JWS verification and
+ * App Store Server API access. Resolved on cold start; the verifier and
+ * client modules cache singletons keyed off this object.
+ */
+export interface AppStoreConfig {
+  /** App's bundle identifier (e.g. com.burnbar.app). Asserted on every JWS. */
+  bundleId: string;
+
+  /** Numeric App Store ID (`appAppleId`), required for production notifications. */
+  appAppleId: number | undefined;
+
+  /** Default environment. Sandbox until production verification has soaked. */
+  environment: AppStoreEnvironment;
+
+  /** Toggle OCSP/expiration checks. Defaults to true; disabled in unit tests. */
+  enableOnlineChecks: boolean;
+
+  /** Allowed clock skew (ms) when checking signedDate / expiresDate. */
+  webhookAllowedClockSkewMs: number;
+
+  /** Whether to additionally probe the *other* environment if the first rejects. */
+  autoFallbackEnvironment: boolean;
+
+  /** App Store Connect API credentials for server-to-server calls. */
+  asc: {
+    keyId: string;
+    issuerId: string;
+    /** PEM-encoded ES256 private key downloaded from App Store Connect. */
+    privateKeyP8: string;
+  };
 }

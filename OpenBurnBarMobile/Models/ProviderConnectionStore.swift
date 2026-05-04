@@ -52,21 +52,61 @@ final class ProviderConnectionStore {
         )
     }
 
-    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async {
+    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc? {
         connectingProvider = providerID.rawValue
         error = nil
         defer { connectingProvider = nil }
 
         do {
-            _ = try await functions.connectProviderAccount(
+            let account = try await functions.connectProviderAccount(
                 providerID: providerID,
                 credential: credential,
                 kind: kind,
                 label: label
             )
             await load()
+            return account
         } catch {
             self.error = error.localizedDescription
+            return nil
+        }
+    }
+
+    func connectHosted(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc? {
+        connectingProvider = providerID.rawValue
+        error = nil
+        defer { connectingProvider = nil }
+
+        do {
+            let account = try await functions.connectHostedQuotaAccount(
+                providerID: providerID,
+                credential: credential,
+                kind: kind,
+                label: label
+            )
+            await load()
+            return account
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
+    }
+
+    func connectSelfHosted(providerID: ProviderID, label: String?) async -> ProviderAccountDoc? {
+        connectingProvider = providerID.rawValue
+        error = nil
+        defer { connectingProvider = nil }
+
+        do {
+            let account = try await functions.connectSelfHostedQuotaAccount(
+                providerID: providerID,
+                label: label
+            )
+            await load()
+            return account
+        } catch {
+            self.error = error.localizedDescription
+            return nil
         }
     }
 
@@ -119,7 +159,12 @@ final class ProviderConnectionStore {
         defer { refreshingAccountID = nil }
 
         do {
-            _ = try await functions.refreshProviderAccountQuota(accountID: account.id)
+            if account.storageScope == .localOnly,
+               account.providerID == .claudeCode || account.providerID == .codex {
+                _ = try await SelfHostedQuotaRunnerStore.shared.refresh(account: account)
+            } else {
+                _ = try await functions.refreshProviderAccountQuota(accountID: account.id)
+            }
             await load()
         } catch {
             self.error = error.localizedDescription

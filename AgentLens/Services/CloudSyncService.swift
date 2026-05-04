@@ -112,31 +112,27 @@ final class CloudSyncService {
         let start = Date()
 
         do {
-            let unsynced = try dataStore.fetchUnsynced()
-            guard !unsynced.isEmpty else {
-                isSyncing = false
-                lastSyncDate = Date()
-                TelemetryService.shared.record(feature: .cloudSync, outcome: .success, durationMs: Int(Date().timeIntervalSince(start) * 1000))
-                return
-            }
-
             let deviceId = accountManager.deviceId
+            while true {
+                let unsynced = try dataStore.fetchUnsynced()
+                if unsynced.isEmpty { break }
 
-            // Firestore batch limit is 500 ops; we fetch max 400 rows at a time
-            let batch = db.batch()
-            let collectionRef = db.collection("users").document(uid).collection("usage")
+                // Firestore batch limit is 500 ops; we fetch max 400 rows at a time.
+                let batch = db.batch()
+                let collectionRef = db.collection("users").document(uid).collection("usage")
 
-            for usage in unsynced {
-                let docId = "\(deviceId)_\(usage.id.uuidString)"
-                let docRef = collectionRef.document(docId)
-                let data = encodeUsage(usage, deviceId: deviceId)
-                batch.setData(data, forDocument: docRef, merge: true)
+                for usage in unsynced {
+                    let docId = "\(deviceId)_\(usage.id.uuidString)"
+                    let docRef = collectionRef.document(docId)
+                    let data = encodeUsage(usage, deviceId: deviceId)
+                    batch.setData(data, forDocument: docRef, merge: true)
+                }
+
+                try await batch.commit()
+
+                let syncedIds = unsynced.map { $0.id }
+                try dataStore.markSynced(ids: syncedIds)
             }
-
-            try await batch.commit()
-
-            let syncedIds = unsynced.map { $0.id }
-            try dataStore.markSynced(ids: syncedIds)
 
             lastSyncDate = Date()
             lastSyncError = nil

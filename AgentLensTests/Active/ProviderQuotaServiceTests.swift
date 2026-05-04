@@ -1658,9 +1658,9 @@ extension ProviderQuotaServiceTests {
     // MARK: - Ollama Cloud
 
     func test_ollamaCloud_parsesSettingsHTML() async throws {
-        // NOTE: OllamaCloudScraper requires real Chrome cookies.
+        // NOTE: OllamaCloudScraper requires an explicit OpenBurnBar login session.
         // This test verifies that when cloud models exist but scraping
-        // is unavailable (no cookies), the adapter still reports .exact
+        // is unavailable (no app-owned session), the adapter still reports .exact
         // with model counts — never .estimated.
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
@@ -1696,6 +1696,7 @@ extension ProviderQuotaServiceTests {
         let cloudBucket = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "ollama-cloud" }))
         XCTAssertEqual(cloudBucket.isEstimated, false)
         XCTAssertEqual(cloudBucket.label, "Cloud models")
+    }
 
     func test_ollamaCloud_noCookies_fallsBackToModelCounting() async throws {
         let home = try makeTemporaryDirectory()
@@ -1732,6 +1733,39 @@ extension ProviderQuotaServiceTests {
         // Should have local model bucket
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.key.contains("local") }), "Expected local model bucket")
     }
-}
 
+    func test_quotaAndConnectorSources_doNotReintroduceSystemPasswordPromptMechanisms() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repoRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let relativePaths = [
+            "AgentLens/Services/ProviderQuota/FactoryCookieExtractor.swift",
+            "AgentLens/Services/ProviderQuota/OllamaCloudScraper.swift",
+            "AgentLens/Services/ProviderQuota/FactoryDashboardScraper.swift",
+            "AgentLens/Services/ProviderQuota/FactoryQuotaAdapter.swift",
+            "AgentLens/Services/ProviderQuota/OllamaQuotaAdapter.swift",
+            "AgentLens/Services/ProviderQuota/KimiQuotaAdapter.swift",
+            "AgentLens/Services/ProviderQuota/CursorQuotaAdapter.swift",
+            "AgentLens/Services/CursorConnector/CursorConnectorManager.swift",
+        ]
+        let forbidden = [
+            "SecKeychainFindGenericPassword",
+            "ChromeCookieReader",
+            "find-generic-password",
+            "/usr/bin/security",
+        ]
+
+        for relativePath in relativePaths {
+            let sourceURL = repoRoot.appendingPathComponent(relativePath)
+            let source = try String(contentsOf: sourceURL, encoding: .utf8)
+            for token in forbidden {
+                XCTAssertFalse(
+                    source.contains(token),
+                    "\(relativePath) must not contain \(token)"
+                )
+            }
+        }
+    }
 }
