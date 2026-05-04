@@ -6,6 +6,10 @@ enum SwitcherOnboardingLimits {
     static var providerCap: Int { 3 }
 }
 
+var onboardingProviderCap: Int {
+    SwitcherOnboardingLimits.providerCap
+}
+
 struct SwitcherOnboardingScanAddStep: View {
     @ObservedObject var discoveryService: SwitcherDiscoveryService
     let dataStore: DataStore
