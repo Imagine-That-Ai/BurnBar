@@ -49,7 +49,7 @@ final class AutoSummaryEngine {
     // MARK: - Internal State
 
     private var hasCompletedInitialSummarySweep: Bool
-    static let summaryFailureRetryCooldown: TimeInterval = 60 * 60
+    static var summaryFailureRetryCooldown: TimeInterval { 60 * 60 }
 
     // MARK: - Init
 
