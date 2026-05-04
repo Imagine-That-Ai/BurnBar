@@ -1,13 +1,22 @@
 import Foundation
 
 /// User-selected chat engine (replaces the old Index vs Hermes mode split).
-enum ChatBackendID: String, CaseIterable, Identifiable, Codable {
+enum ChatBackendID: String, Identifiable, Codable {
     case codex
     case claude
     case hermes
     case openclaw
 
     var id: String { rawValue }
+
+    static var allCases: [ChatBackendID] {
+        var backends: [ChatBackendID] = []
+        backends.append(.codex)
+        backends.append(.claude)
+        backends.append(.hermes)
+        backends.append(.openclaw)
+        return backends
+    }
 
     var displayName: String {
         switch self {
