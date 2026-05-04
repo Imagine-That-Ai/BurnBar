@@ -1,0 +1,12 @@
+{
+  "name": "openburnbar-asc-setup",
+  "version": "1.0.0",
+  "description": "App Store Connect setup automation for OpenBurnBar",
+  "scripts": {
+    "setup": "node setup-asc.js",
+    "setup:ios": "node setup-asc.js --platform ios"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0"
+  }
+}
