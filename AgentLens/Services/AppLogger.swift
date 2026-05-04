@@ -41,14 +41,17 @@ public struct AppLogger: Sendable {
     
     /// Keys whose values should be fully redacted from telemetry.
     private static let sensitiveKeys: Set<String> = [
-        "token", "apiKey", "api_key", "apikey", "auth", "authorization", "bearer",
-        "password", "secret", "cookie", "refreshToken", "accessToken", "idToken",
-        "credential", "privateKey", "x-api-key", "x_auth_token", "firebase_auth",
-        "prompt", "message", "content", "body", "chatBody", "projectName", "model",
-        "project_name", "model_name", "model_id", "path", "filePath", "file_path",
-        "directory", "url", "home", "HOME", "ssh_key", "key_path", "private_key",
+        "token", "apikey", "api_key", "auth", "authorization", "bearer",
+        "password", "secret", "cookie", "refreshtoken", "accesstoken", "idtoken",
+        "credential", "privatekey", "x-api-key", "x_auth_token", "firebase_auth",
+        "prompt", "message", "content", "body", "chatbody", "projectname", "model",
+        "project_name", "model_name", "model_id", "path", "filepath", "file_path",
+        "directory", "url", "home", "ssh_key", "key_path", "private_key",
         "cert", "certificate", "session_log", "log_path", "db_path", "database_path",
     ]
+
+    private static let truncatedValueSuffix = "...[TRUNCATED]"
+    private static let maxSanitizedValueLength = 513
     
     /// Substrings that indicate a value contains sensitive material.
     private static let sensitiveValuePatterns: [String] = [
@@ -70,7 +73,7 @@ public struct AppLogger: Sendable {
             let value = entry.value
             
             // Full redaction for known sensitive keys
-            if sensitiveKeys.contains(key) || sensitiveKeys.contains(entry.key.lowercased()) {
+            if sensitiveKeys.contains(key) {
                 result[entry.key] = "[REDACTED]"
                 return
             }
@@ -89,7 +92,8 @@ public struct AppLogger: Sendable {
             
             // Truncate long free-form values that could contain prompts or logs
             if value.count > 500 {
-                result[entry.key] = String(value.prefix(500)) + "...[TRUNCATED]"
+                let prefixLength = maxSanitizedValueLength - truncatedValueSuffix.count
+                result[entry.key] = String(value.prefix(prefixLength)) + truncatedValueSuffix
             } else {
                 result[entry.key] = value
             }

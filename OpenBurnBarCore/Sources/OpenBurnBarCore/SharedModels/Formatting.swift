@@ -39,22 +39,32 @@ private let tokenFormatter: NumberFormatter = {
 
 public extension Double {
     func formatAsCost() -> String {
-        if abs(self) < 1e-9 {
+        let magnitude = abs(self)
+        if magnitude < 1e-9 {
             return "$0.00"
         }
-        if self < 0.01 {
-            return String(format: "$.4f", self)
+        let formatted: String
+        if magnitude < 0.01 {
+            formatted = String(format: "$%.4f", magnitude)
+        } else {
+            costFormatter.maximumFractionDigits = 2
+            formatted = costFormatter.string(from: NSNumber(value: magnitude)) ?? String(format: "$%.2f", magnitude)
         }
-        costFormatter.maximumFractionDigits = 2
-        return costFormatter.string(from: NSNumber(value: self)) ?? String(format: "$%.2f", self)
+        return self < 0 ? "-\(formatted)" : formatted
     }
 
     /// Compact cost for tight widget spaces.
     func formatAsCostCompact() -> String {
-        if abs(self) < 1e-9 { return "$0" }
-        if self < 0.01 { return String(format: "$.4f", self) }
-        costFormatter.maximumFractionDigits = 2
-        return costFormatter.string(from: NSNumber(value: self)) ?? String(format: "$%.2f", self)
+        let magnitude = abs(self)
+        if magnitude < 1e-9 { return "$0" }
+        let formatted: String
+        if magnitude < 0.01 {
+            formatted = String(format: "$%.4f", magnitude)
+        } else {
+            costFormatter.maximumFractionDigits = 2
+            formatted = costFormatter.string(from: NSNumber(value: magnitude)) ?? String(format: "$%.2f", magnitude)
+        }
+        return self < 0 ? "-\(formatted)" : formatted
     }
 }
 

@@ -680,6 +680,10 @@ final class HybridRetrievalServiceTests: XCTestCase {
         }
 
         let queryEmbedder = DeterministicQueryEmbeddingProvider(embedder: embedder)
+        let vectorIndexRootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenBurnBarHybridRetrievalVectorIndex-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: vectorIndexRootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: vectorIndexRootURL) }
         let annProvider = VectorSemanticCandidateProvider(
             dataStore: store,
             queryEmbedder: queryEmbedder,
@@ -687,7 +691,8 @@ final class HybridRetrievalServiceTests: XCTestCase {
             backend: .ann,
             exactRerankEnabled: true,
             exactRerankLimit: 256,
-            nowProvider: { base }
+            nowProvider: { base },
+            storageRootURL: vectorIndexRootURL
         )
         let exactProvider = VectorSemanticCandidateProvider(
             dataStore: store,
@@ -696,7 +701,8 @@ final class HybridRetrievalServiceTests: XCTestCase {
             backend: .exact,
             exactRerankEnabled: true,
             exactRerankLimit: 256,
-            nowProvider: { base }
+            nowProvider: { base },
+            storageRootURL: vectorIndexRootURL
         )
 
         let query = "reliability hardening checklist rollout"

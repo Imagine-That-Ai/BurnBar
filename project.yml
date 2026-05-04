@@ -92,6 +92,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
+        SWIFT_ENABLE_EXPLICIT_MODULES: NO
     postBuildScripts:
       - name: Configure Firebase Auth Resources
         # GoogleService-Info.plist is bundled via the regular Copy Resources phase
@@ -212,6 +213,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.tests
         BUNDLE_LOADER: "$(BUILT_PRODUCTS_DIR)/OpenBurnBar.app/Contents/MacOS/OpenBurnBar"
         TEST_HOST: "$(BUNDLE_LOADER)"
+        SWIFT_ENABLE_EXPLICIT_MODULES: NO
     dependencies:
       - target: OpenBurnBar
       - package: OpenBurnBarCore

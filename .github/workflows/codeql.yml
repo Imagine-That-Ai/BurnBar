@@ -84,10 +84,11 @@ jobs:
           xcodebuild -project OpenBurnBar.xcodeproj \
             -scheme OpenBurnBar \
             -configuration Debug \
-            -destination 'platform=macOS,arch=arm64' \
+            -destination 'platform=macOS' \
             -derivedDataPath .codeql-derived-data \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
+            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
             build
 
       - name: Perform CodeQL analysis

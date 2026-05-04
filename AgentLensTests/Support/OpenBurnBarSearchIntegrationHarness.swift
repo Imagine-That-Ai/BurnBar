@@ -27,6 +27,7 @@ final class OpenBurnBarSearchIntegrationHarness {
 
     let rootURL: URL
     let databaseURL: URL
+    let vectorIndexRootURL: URL
     let fileRoots: FileRoots
     let dataStore: DataStore
     let clock: OpenBurnBarFakeClock
@@ -68,6 +69,8 @@ final class OpenBurnBarSearchIntegrationHarness {
         let dbDirectory = root.appendingPathComponent("db", isDirectory: true)
         try fileManager.createDirectory(at: dbDirectory, withIntermediateDirectories: true)
         databaseURL = dbDirectory.appendingPathComponent("openburnbar-search-harness.sqlite", isDirectory: false)
+        vectorIndexRootURL = root.appendingPathComponent("vector-indexes", isDirectory: true)
+        try fileManager.createDirectory(at: vectorIndexRootURL, withIntermediateDirectories: true)
 
         let registeredRoot = root.appendingPathComponent("registered-root", isDirectory: true)
         let sharedRoot = root.appendingPathComponent("shared-root", isDirectory: true)
@@ -122,7 +125,8 @@ final class OpenBurnBarSearchIntegrationHarness {
                 backend: semanticBackend,
                 exactRerankEnabled: exactRerankEnabled,
                 exactRerankLimit: exactRerankLimit,
-                nowProvider: { [clock] in clock.now() }
+                nowProvider: { [clock] in clock.now() },
+                storageRootURL: vectorIndexRootURL
             )
         } else {
             semanticProvider = nil

@@ -328,7 +328,8 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             backend: .ann,
             exactRerankEnabled: true,
             exactRerankLimit: 256,
-            nowProvider: { harness.clock.now() }
+            nowProvider: { harness.clock.now() },
+            storageRootURL: harness.vectorIndexRootURL
         )
         let exactProvider = VectorSemanticCandidateProvider(
             dataStore: harness.dataStore,
@@ -336,7 +337,8 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             backend: .exact,
             exactRerankEnabled: true,
             exactRerankLimit: 256,
-            nowProvider: { harness.clock.now() }
+            nowProvider: { harness.clock.now() },
+            storageRootURL: harness.vectorIndexRootURL
         )
 
         let query = "reliability hardening checklist rollout"

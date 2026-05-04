@@ -106,6 +106,7 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
     }
 
     func testImportRecoveryBundle_corruptedDataReturnsNil() {
+        _ = DatabaseEncryptionService.getOrCreateKey()
         let bundle = DatabaseEncryptionService.exportRecoveryBundle(password: "any-password")
         XCTAssertNotNil(bundle)
 
@@ -134,6 +135,7 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
 
     func testRecoveryBundle_cannotBeRecoveredWithDifferentSalt() {
         let password = "shared-password"
+        _ = DatabaseEncryptionService.getOrCreateKey()
         let bundle1 = DatabaseEncryptionService.exportRecoveryBundle(password: password)
         XCTAssertNotNil(bundle1)
 

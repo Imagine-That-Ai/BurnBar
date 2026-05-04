@@ -288,9 +288,10 @@ final class AtomicIngestionTransaction {
                         inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
                         reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
                         usageSource, sourceDeviceId, sourceDeviceName, isRemote,
+                        providerID, providerAccountID, providerAccountLabel, providerAccountSource,
                         provenanceMethod, provenanceConfidence, estimatorVersion
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, '')) DO UPDATE SET
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, '')) DO UPDATE SET
                         projectName = excluded.projectName,
                         inputTokens = excluded.inputTokens,
                         outputTokens = excluded.outputTokens,
@@ -324,6 +325,10 @@ final class AtomicIngestionTransaction {
                             THEN excluded.usageSource
                             ELSE token_usage.usageSource
                         END,
+                        providerID = excluded.providerID,
+                        providerAccountID = excluded.providerAccountID,
+                        providerAccountLabel = excluded.providerAccountLabel,
+                        providerAccountSource = excluded.providerAccountSource,
                         provenanceMethod = excluded.provenanceMethod,
                         provenanceConfidence = CASE
                             WHEN
@@ -383,6 +388,10 @@ final class AtomicIngestionTransaction {
                         usage.sourceDeviceId,
                         usage.sourceDeviceName,
                         usage.isRemote ? 1 : 0,
+                        usage.providerID.rawValue,
+                        usage.providerAccountID,
+                        usage.providerAccountLabel,
+                        usage.providerAccountSource?.rawValue,
                         usage.provenanceMethod.rawValue,
                         usage.provenanceConfidence.rawValue,
                         usage.estimatorVersion

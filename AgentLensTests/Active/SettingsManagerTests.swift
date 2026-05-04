@@ -613,10 +613,10 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertTrue(settings.autoSessionSummariesEnabled)
     }
 
-    func test_summaryProviderOrderCSV_defaultValue_isLocalMLXMiniMaxOpenRouterZai() {
+    func test_summaryProviderOrderCSV_defaultValue_isLocalMLXMiniMaxOpenRouterZaiOllama() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
-        XCTAssertEqual(settings.summaryProviderOrderCSV, "local,mlx,minimax,openrouter,zai")
+        XCTAssertEqual(settings.summaryProviderOrderCSV, "local,mlx,minimax,openrouter,zai,ollama")
     }
 
     func test_summaryProviderOrder_parsesAndDedups() {
@@ -625,7 +625,7 @@ final class SettingsManagerTests: XCTestCase {
         let settings = makeSettingsManager(defaults: defaults)
 
         let order = settings.summaryProviderOrder
-        XCTAssertEqual(order, [.local, .mlx, .minimax, .openrouter, .zai])
+        XCTAssertEqual(order, [.local, .mlx, .minimax, .openrouter, .zai, .ollama])
     }
 
     func test_summaryProviderOrder_fallsBackToDefaultWhenEmpty() {
@@ -633,7 +633,7 @@ final class SettingsManagerTests: XCTestCase {
         defaults.set("", forKey: "summaryProviderOrderCSV")
         let settings = makeSettingsManager(defaults: defaults)
 
-        XCTAssertEqual(settings.summaryProviderOrder, [.local, .mlx, .minimax, .openrouter, .zai])
+        XCTAssertEqual(settings.summaryProviderOrder, [.local, .mlx, .minimax, .openrouter, .zai, .ollama])
     }
 
     func test_summaryProviderOrder_appendsMissingProviders() {
@@ -647,6 +647,7 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertTrue(order.contains(.minimax))
         XCTAssertTrue(order.contains(.openrouter))
         XCTAssertTrue(order.contains(.zai))
+        XCTAssertTrue(order.contains(.ollama))
     }
 
     func test_setSummaryProviderOrder_encodesToCSV() {
