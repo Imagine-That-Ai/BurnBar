@@ -69,12 +69,26 @@ final class OpenBurnBarMobileTests: XCTestCase {
     func testCostFormatting() {
         XCTAssertEqual(1.5.formatAsCost(), "$1.50")
         XCTAssertEqual(0.0.formatAsCost(), "$0.00")
+        XCTAssertEqual(1234.5.formatAsCost(), "$1,234.50")
+        XCTAssertEqual(1_500_000.0.formatAsCost(), "$1,500,000.00")
+    }
+
+    func testCostCompactFormatting() {
+        XCTAssertEqual(1.5.formatAsCostCompact(), "$1.50")
+        XCTAssertEqual(1234.5.formatAsCostCompact(), "$1,234.50")
     }
 
     func testTokenFormatting() {
         XCTAssertEqual(1500.formatAsTokens(), "1.5K")
         XCTAssertEqual(1_500_000.formatAsTokens(), "1.5M")
         XCTAssertEqual(500.formatAsTokens(), "500")
+        XCTAssertEqual(1234.formatAsTokens(), "1.2K")
+    }
+
+    func testTokenRawFormatting() {
+        XCTAssertEqual(500.formatAsTokensRaw(), "500")
+        XCTAssertEqual(1234.formatAsTokensRaw(), "1,234")
+        XCTAssertEqual(1_500_000.formatAsTokensRaw(), "1,500,000")
     }
 
     // MARK: - Provider Connection Types
@@ -82,5 +96,88 @@ final class OpenBurnBarMobileTests: XCTestCase {
     func testProviderConnectionStatusRawValue() {
         XCTAssertEqual(ProviderConnectionStatus.connected.rawValue, "connected")
         XCTAssertEqual(ProviderConnectionStatus.error.rawValue, "error")
+    }
+
+    // MARK: - Self-hosted Runner URL Validation
+
+    func testValidatedRunnerURLAcceptsHTTPS() {
+        XCTAssertNotNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("https://runner.example.com"))
+        XCTAssertNotNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("  https://runner.example.com/path  "))
+    }
+
+    func testValidatedRunnerURLAcceptsLocalhost() {
+        XCTAssertNotNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("http://localhost:8080"))
+        XCTAssertNotNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("http://127.0.0.1:3000"))
+    }
+
+    func testValidatedRunnerURLRejectsInvalidSchemes() {
+        XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("ftp://runner.example.com"))
+        XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("http://192.168.1.1"))
+        XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL(""))
+        XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("not-a-url"))
+    }
+
+    // MARK: - Mobile Refresh Policy
+
+    func testCanRefreshFromMobileForCloudAccounts() {
+        let account = ProviderAccountDoc(
+            id: "test-cloud",
+            providerID: .openAI,
+            label: "Test",
+            status: .connected,
+            credentialKind: .bearer,
+            storageScope: .cloudRefreshable,
+            redactedLabel: "t***",
+            schemaVersion: 2,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        XCTAssertTrue(ProviderAccountStorageVisual.canRefreshFromMobile(account: account))
+    }
+
+    func testCanRefreshFromMobileForLocalOnlySelfHosted() {
+        let claudeAccount = ProviderAccountDoc(
+            id: "test-claude",
+            providerID: .claudeCode,
+            label: "Test",
+            status: .connected,
+            credentialKind: .bearer,
+            storageScope: .localOnly,
+            redactedLabel: "t***",
+            schemaVersion: 2,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        XCTAssertTrue(ProviderAccountStorageVisual.canRefreshFromMobile(account: claudeAccount))
+
+        let codexAccount = ProviderAccountDoc(
+            id: "test-codex",
+            providerID: .codex,
+            label: "Test",
+            status: .connected,
+            credentialKind: .session,
+            storageScope: .localOnly,
+            redactedLabel: "t***",
+            schemaVersion: 2,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        XCTAssertTrue(ProviderAccountStorageVisual.canRefreshFromMobile(account: codexAccount))
+    }
+
+    func testCanRefreshFromMobileForLocalOnlyOtherProviders() {
+        let openAIAccount = ProviderAccountDoc(
+            id: "test-local",
+            providerID: .openAI,
+            label: "Test",
+            status: .connected,
+            credentialKind: .bearer,
+            storageScope: .localOnly,
+            redactedLabel: "t***",
+            schemaVersion: 2,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+        XCTAssertFalse(ProviderAccountStorageVisual.canRefreshFromMobile(account: openAIAccount))
     }
 }

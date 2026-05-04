@@ -17,6 +17,8 @@ struct BurnBarWidgetView: View {
                 CostSparklineMediumView(snap: entry.snapshot)
             case .systemLarge:
                 DashboardLargeView(snap: entry.snapshot)
+            case .systemExtraLarge:
+                DashboardExtraLargeView(snap: entry.snapshot)
             case .accessoryRectangular:
                 RectangularLockScreenView(snap: entry.snapshot)
             case .accessoryCircular:

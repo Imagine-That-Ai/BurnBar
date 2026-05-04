@@ -128,7 +128,7 @@ struct DashboardLargeView: View {
 
 // MARK: - Provider Row
 
-private struct ProviderRow: View {
+struct ProviderRow: View {
     let rank: Int
     let name: String
     let tokens: Int
@@ -140,7 +140,31 @@ private struct ProviderRow: View {
 
     var color: Color {
         if let providerEnum {
-            return DesignSystem.Colors.primary(for: providerEnum)
+            // Deterministic provider colors (mirrors DesignSystem)
+            switch providerEnum {
+            case .factory:    return Color(hex: "8B5CF6")
+            case .claudeCode: return Color(hex: "CC785C")
+            case .copilot:    return Color(hex: "23EA3B")
+            case .aider:      return Color(hex: "FF6B35")
+            case .cursor:     return Color(hex: "AC8C57")
+            case .openAI:     return Color(hex: "00A67E")
+            case .codex:      return Color(hex: "00A67E")
+            case .zai:        return Color(hex: "8B5CF6")
+            case .minimax:    return Color(hex: "F59E0B")
+            case .kimi:       return Color(hex: "6366F1")
+            case .cline:      return Color(hex: "D4A373")
+            case .kiloCode:   return Color(hex: "10B981")
+            case .rooCode:    return Color(hex: "EC4899")
+            case .forgeDev:   return Color(hex: "F97316")
+            case .augment:    return Color(hex: "3B82F6")
+            case .hermes:     return Color(hex: "A855F7")
+            case .geminiCLI:  return Color(hex: "4285F4")
+            case .goose:      return Color(hex: "0D9488")
+            case .openClaw:   return Color(hex: "FF6B6B")
+            case .ollama:     return Color(hex: "6B7280")
+            case .windsurf:   return Color(hex: "06B6D4")
+            case .warp:       return Color(hex: "DDE4EA")
+            }
         }
         return WidgetDesignSystem.Colors.amber
     }
@@ -181,7 +205,7 @@ private struct ProviderRow: View {
     }
 }
 
-private extension Array {
+extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
     }
