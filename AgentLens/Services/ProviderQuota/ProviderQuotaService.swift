@@ -9,30 +9,37 @@ import OpenBurnBarCore
 final class ProviderQuotaService {
     static let shared = ProviderQuotaService()
 
-    static let supportedProviders: [AgentProvider] = [
-        .aider,
-        .codex,
-        .openAI,
-        .claudeCode,
-        .copilot,
-        .minimax,
-        .zai,
-        .factory,
-        .cursor,
-        .warp,
-        .ollama,
-        .kimi,
-        .forgeDev,
-        .hermes,
-        .cline,
-        .kiloCode,
-        .rooCode,
-        .augment,
-        .geminiCLI,
-        .goose,
-        .openClaw,
-        .windsurf,
-    ]
+    static var supportedProviders: [AgentProvider] {
+        makeSupportedProviders()
+    }
+
+    private static func makeSupportedProviders() -> [AgentProvider] {
+        var providers: [AgentProvider] = []
+        providers.reserveCapacity(22)
+        providers.append(.aider)
+        providers.append(.codex)
+        providers.append(.openAI)
+        providers.append(.claudeCode)
+        providers.append(.copilot)
+        providers.append(.minimax)
+        providers.append(.zai)
+        providers.append(.factory)
+        providers.append(.cursor)
+        providers.append(.warp)
+        providers.append(.ollama)
+        providers.append(.kimi)
+        providers.append(.forgeDev)
+        providers.append(.hermes)
+        providers.append(.cline)
+        providers.append(.kiloCode)
+        providers.append(.rooCode)
+        providers.append(.augment)
+        providers.append(.geminiCLI)
+        providers.append(.goose)
+        providers.append(.openClaw)
+        providers.append(.windsurf)
+        return providers
+    }
 
     private let keyStore: ProviderAPIKeyStore
     private let providerRuntimeKeyStore: KeychainStore

@@ -800,7 +800,7 @@ final class SwitcherDiscoveryService: ObservableObject {
     }
 
     /// Checks whether adding another account for the given provider kind would exceed the cap.
-    func canAddAnother(for kind: OnboardingProvider.Kind, cap: Int = onboardingProviderCap) -> Bool {
+    func canAddAnother(for kind: OnboardingProvider.Kind, cap: Int = SwitcherOnboardingLimits.providerCap) -> Bool {
         (sessionAddedCount(for: kind) + preExistingCount(for: kind)) < cap
     }
 
