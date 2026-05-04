@@ -195,6 +195,8 @@ populate_xcodebuild_args() {
         -default-test-execution-time-allowance "$default_test_execution_allowance"
         -maximum-test-execution-time-allowance "$maximum_test_execution_allowance"
         SWIFT_ENABLE_EXPLICIT_MODULES=NO
+        SWIFT_COMPILATION_MODE=singlefile
+        SWIFT_ENABLE_BATCH_MODE=NO
         CODE_SIGNING_ALLOWED=NO
         CODE_SIGNING_REQUIRED=NO
         -only-testing:"$test_filter"

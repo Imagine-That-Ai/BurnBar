@@ -81,9 +81,9 @@ jobs:
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
 
       - name: Run OpenBurnBar app tests
-        # Xcode 16.4 can crash in SwiftEmitModule when the large macOS app
-        # target is built with coverage instrumentation. Keep this as a real
-        # test gate; collect coverage from coverage-capable lanes separately.
+        # Xcode 16.4 can crash in SwiftEmitModule while lowering lazy global
+        # initializers for this large SwiftUI app target. The script keeps this
+        # as a real test gate while disabling the brittle batch compile path.
         run: ./scripts/test-openburnbar-app.sh
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
