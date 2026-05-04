@@ -158,6 +158,7 @@ struct AddProviderConnectionView: View {
                         Image(systemName: syncMode == .hosted ? "cloud.fill" : "server.rack")
                             .font(.system(size: 18))
                             .foregroundStyle(syncMode == .hosted ? MobileTheme.whimsy : MobileTheme.amber)
+                            .accessibilityHidden(true)
                         Text(syncMode == .hosted
                              ? "Credentials stored server-side. Quota refreshes on request."
                              : "Credentials stay on your runner. Sanitized snapshots only.")
@@ -167,11 +168,13 @@ struct AddProviderConnectionView: View {
                         Spacer()
                     }
                     .padding(.vertical, 4)
+                    .accessibilityElement(children: .combine)
                 } else {
                     HStack(spacing: MobileTheme.Spacing.md) {
                         Image(systemName: "server.rack")
                             .font(.system(size: 24))
                             .foregroundStyle(MobileTheme.Colors.accent)
+                            .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Self-hosted runner")
                                 .font(MobileTheme.Typography.body)
@@ -185,6 +188,7 @@ struct AddProviderConnectionView: View {
                         Spacer()
                     }
                     .padding(.vertical, 4)
+                    .accessibilityElement(children: .combine)
                 }
             } footer: {
                 Text(syncMode.footerText(provider: provider.displayName))

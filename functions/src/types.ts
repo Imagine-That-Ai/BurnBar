@@ -343,11 +343,26 @@ export interface UsageEventDoc {
   /** Device that originated the request. */
   deviceId?: string;
 
+  /** Source device identifier used by synced records from another device. */
+  sourceDeviceId?: string;
+
   /** Number of input tokens. */
   inputTokens?: number;
 
   /** Number of output tokens. */
   outputTokens?: number;
+
+  /** Number of cache creation/write tokens. */
+  cacheCreationTokens?: number;
+
+  /** Number of cache read tokens. */
+  cacheReadTokens?: number;
+
+  /** Number of reasoning/thinking tokens. */
+  reasoningTokens?: number;
+
+  /** Total tokens as written by legacy clients. */
+  totalTokens?: number;
 
   /** Estimated cost in USD (optional, canonical field). */
   costUsd?: number;
@@ -356,7 +371,19 @@ export interface UsageEventDoc {
   cost?: number;
 
   /** ISO 8601 timestamp of the event. */
-  timestamp: string;
+  timestamp?: unknown;
+
+  /** Legacy desktop event start timestamp. */
+  startTime?: unknown;
+
+  /** Legacy desktop event end timestamp. */
+  endTime?: unknown;
+
+  /** Legacy or server create timestamp. */
+  createdAt?: unknown;
+
+  /** Legacy or server update timestamp. */
+  updatedAt?: unknown;
 
   /** Schema version. */
   schemaVersion: number;

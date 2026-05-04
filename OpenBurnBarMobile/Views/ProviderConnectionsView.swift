@@ -359,11 +359,7 @@ private struct AccountRow: View {
     let onDelete: () -> Void
 
     private var canRefreshFromMobile: Bool {
-        if account.storageScope == .localOnly,
-           account.providerID == .claudeCode || account.providerID == .codex {
-            return true
-        }
-        return ProviderAccountStorageVisual.canRefreshFromMobile(account.storageScope)
+        ProviderAccountStorageVisual.canRefreshFromMobile(account: account)
     }
 
     private var detailLine: String? {

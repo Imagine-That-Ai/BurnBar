@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
+    "test:rollups": "npm run build && node scripts/test-rollups.mjs",
     "lint": "eslint src/**/*.ts",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",

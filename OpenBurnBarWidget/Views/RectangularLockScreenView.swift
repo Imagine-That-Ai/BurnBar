@@ -9,13 +9,13 @@ struct RectangularLockScreenView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(snap?.heroTotalCost.formatAsCost() ?? "—")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.75)
                     .widgetAccentable()
 
-                Text("\(snap?.heroTotalTokens ?? 0) tokens")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                Text("\(snap?.heroTotalTokens.formatAsTokensRaw() ?? "0") tokens")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -25,16 +25,23 @@ struct RectangularLockScreenView: View {
             if let first = snap?.topProviders.first {
                 HStack(spacing: 4) {
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 8, weight: .semibold))
 
                     Text(first)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .lineLimit(1)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Color.secondary.opacity(0.12))
-                .clipShape(Capsule())
+                .background(
+                    Capsule()
+                        .fill(WidgetDesignSystem.Colors.amber.opacity(0.15))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(WidgetDesignSystem.Colors.amber.opacity(0.35), lineWidth: 1)
+                )
+                .foregroundStyle(WidgetDesignSystem.Colors.amber)
                 .widgetAccentable()
             }
         }

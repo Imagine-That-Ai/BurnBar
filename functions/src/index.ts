@@ -721,3 +721,18 @@ export const rebuildUsageRollups = onCall(
 // them up from a single entry point.
 // ---------------------------------------------------------------------------
 export { onUsageWritten, rebuildRollups, refreshAllProviderQuotas };
+
+// ---------------------------------------------------------------------------
+// Apple App Store JWS verification surface.
+//
+// Trust pipeline: every entitlement field is derived from a JWS verified
+// against AppleRootCA-G3 / G2 / AppleInc Root, then reconciled with live
+// state from the App Store Server API. See `appstore/` for details.
+// ---------------------------------------------------------------------------
+export {
+  beginEntitlementBinding,
+  verifyHostedQuotaEntitlement,
+  restoreHostedQuotaEntitlement,
+  appStoreServerNotificationsV2,
+  reconcileHostedEntitlementsDaily,
+} from "./appstore/index.js";
