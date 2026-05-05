@@ -9,11 +9,17 @@ struct QuotaView: View {
         ScrollView {
             if store.isLoading && store.visibleProviders.isEmpty {
                 loadingPlaceholder
+            } else if let error = store.error, store.visibleProviders.isEmpty {
+                EmptyStateView(
+                    icon: "exclamationmark.icloud.fill",
+                    title: "Quota Sync Error",
+                    message: "\(error)\n\(signedInDiagnostic)"
+                )
             } else if store.visibleProviders.isEmpty {
                 EmptyStateView(
                     icon: "gauge.with.dots.needle.67percent",
                     title: "No Quota Data",
-                    message: "Open the Mac app to sync provider quota snapshots."
+                    message: "Open the Mac app to sync provider quota snapshots. Make sure this iPhone is signed into the same OpenBurnBar account as your Mac.\n\(signedInDiagnostic)"
                 )
             } else {
                 VStack(spacing: MobileTheme.Spacing.xl) {
@@ -52,6 +58,13 @@ struct QuotaView: View {
 
     private var emberBackground: some View {
         EmberSurfaceBackground()
+    }
+
+    private var signedInDiagnostic: String {
+        if let account = store.currentUserDisplayID, account.isEmpty == false {
+            return "Signed into account \(account)."
+        }
+        return "Not signed in."
     }
 
     // MARK: - Urgent Section

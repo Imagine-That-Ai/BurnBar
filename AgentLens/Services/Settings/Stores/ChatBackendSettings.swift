@@ -36,6 +36,14 @@ final class ChatBackendSettings {
         didSet { persistence.set(hermesChatModelOverride, forKey: "hermesChatModelOverride") }
     }
 
+    var hermesGatewayBaseURL: String = "http://127.0.0.1:8642" {
+        didSet { persistence.set(hermesGatewayBaseURL, forKey: "hermesGatewayBaseURL") }
+    }
+
+    var hermesRemoteRelayEnabled: Bool = false {
+        didSet { persistence.set(hermesRemoteRelayEnabled, forKey: "hermesRemoteRelayEnabled") }
+    }
+
     var chatBackendOnboardingCompleted: Bool = false {
         didSet { persistence.set(chatBackendOnboardingCompleted, forKey: "chatBackendOnboardingCompleted") }
     }
@@ -89,6 +97,8 @@ final class ChatBackendSettings {
             legacyDefaultsKey: SettingsSecretDefaultsKey.hermesBearerToken
         )
         self.hermesChatModelOverride = persistence.string(forKey: "hermesChatModelOverride")
+        self.hermesGatewayBaseURL = persistence.string(forKey: "hermesGatewayBaseURL", defaultValue: "http://127.0.0.1:8642")
+        self.hermesRemoteRelayEnabled = persistence.bool(forKey: "hermesRemoteRelayEnabled")
         self.chatBackendOnboardingCompleted = persistence.bool(forKey: "chatBackendOnboardingCompleted")
         self.switcherOnboardingCompleted = persistence.bool(forKey: "switcherOnboardingCompleted")
         self.selectedOnboardingProvidersCSV = persistence.string(forKey: "selectedOnboardingProvidersCSV")

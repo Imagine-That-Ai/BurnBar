@@ -841,3 +841,24 @@ final class SharedArtifactCloudCodecTests: XCTestCase {
         XCTAssertNil(result)
     }
 }
+
+final class HermesRelayHostServiceTests: XCTestCase {
+    func test_relayDataFragments_preservesLargePayloadWithoutTruncation() {
+        let payload = String(repeating: "abcdef", count: 25_000)
+
+        let fragments = HermesRelayHostService.relayDataFragments(payload)
+
+        XCTAssertGreaterThan(fragments.count, 1)
+        XCTAssertEqual(fragments.joined(), payload)
+        XCTAssertTrue(fragments.allSatisfy { $0.utf8.count <= HermesRelayHostService.maxRelayChunkDataBytes })
+    }
+
+    func test_relayDataFragments_preservesUnicodeBoundaries() {
+        let payload = String(repeating: "Hermes ☿ ", count: 15_000)
+
+        let fragments = HermesRelayHostService.relayDataFragments(payload)
+
+        XCTAssertEqual(fragments.joined(), payload)
+        XCTAssertTrue(fragments.allSatisfy { $0.utf8.count <= HermesRelayHostService.maxRelayChunkDataBytes })
+    }
+}

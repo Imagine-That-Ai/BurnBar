@@ -4,6 +4,16 @@ import Foundation
 
 public enum ProviderQuotaSourceKind: String, Codable, Sendable {
     case provider
+    case officialAPI
+    case localCLI
+    case localSession
+    case manualEstimate
+    case unavailable
+
+    public init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        self = Self(rawValue: value) ?? .provider
+    }
 }
 
 // MARK: - Provider Quota Confidence
@@ -13,6 +23,22 @@ public enum ProviderQuotaConfidence: String, Codable, Sendable {
     case medium
     case low
     case stale
+
+    public init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        switch value {
+        case Self.high.rawValue, "exact":
+            self = .high
+        case Self.medium.rawValue, "estimated":
+            self = .medium
+        case Self.low.rawValue:
+            self = .low
+        case Self.stale.rawValue, "unavailable":
+            self = .stale
+        default:
+            self = .stale
+        }
+    }
 }
 
 // MARK: - Provider Quota Unit

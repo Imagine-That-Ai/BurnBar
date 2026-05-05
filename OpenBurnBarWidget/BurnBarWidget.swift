@@ -3,7 +3,7 @@ import WidgetKit
 
 @main
 struct BurnBarWidget: Widget {
-    let kind: String = "com.burnbar.app.widget"
+    let kind: String = "com.openburnbar.app.widget"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: BurnBarProvider()) { entry in

@@ -14,7 +14,8 @@ struct RootTabView: View {
     let devicesStore: DevicesStore
     let transferStore: CredentialTransferStore
 
-    @State private var selection: TabSelection = .pulse
+    @State private var selection: AuroraNavDestination = .pulse
+    @State private var didApplyScreenshotRoute = false
     @State private var router = PulseRouter()
     @State private var motionStore = MotionStore()
     @State private var hermesService = HermesService()
@@ -25,114 +26,38 @@ struct RootTabView: View {
     @State private var streamsPath = NavigationPath()
     @State private var youPath = NavigationPath()
 
-    enum TabSelection: Hashable, Equatable, Identifiable {
-        case pulse
-        case burn
-        case streams
-        case hermes
-        case you
-
-        var id: String {
-            switch self {
-            case .pulse:   return "pulse"
-            case .burn:    return "burn"
-            case .streams: return "streams"
-            case .hermes:  return "hermes"
-            case .you:     return "you"
-            }
-        }
-
-        var label: String {
-            switch self {
-            case .pulse:   return "Pulse"
-            case .burn:    return "Burn"
-            case .streams: return "Streams"
-            case .hermes:  return "Hermes"
-            case .you:     return "You"
-            }
-        }
-
-        var symbol: String {
-            switch self {
-            case .pulse:   return "waveform.path.ecg.rectangle.fill"
-            case .burn:    return "flame.fill"
-            case .streams: return "rectangle.stack.fill"
-            case .hermes:  return "wand.and.stars"
-            case .you:     return "person.crop.circle.fill"
-            }
-        }
-    }
+    private let destinations = AuroraNavDestination.allCases
 
     var body: some View {
-        Group {
-            if #available(iOS 18.0, *) {
-                modernTabView
-            } else {
-                legacyTabView
+        ZStack {
+            contentForSelection
+                .ignoresSafeArea(.keyboard)
+
+            VStack(spacing: 0) {
+                Spacer()
+                AuroraNavigationTray(
+                    selection: $selection,
+                    destinations: destinations
+                )
             }
         }
         .environment(\.motionStore, motionStore)
+        .onAppear {
+            applyScreenshotRouteIfNeeded()
+        }
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
         }
-        .onChange(of: selection) { _, _ in
-            HapticBus.tabChange()
-        }
     }
 
-    // MARK: - iOS 18+ Modern Tab Shape
-
-    @available(iOS 18.0, *)
     @ViewBuilder
-    private var modernTabView: some View {
-        if #available(iOS 26.0, *) {
-            modernTabContent
-                .tabBarMinimizeBehavior(.onScrollDown)
-        } else {
-            modernTabContent
-        }
-    }
-
-    @available(iOS 18.0, *)
-    private var modernTabContent: some View {
-        TabView(selection: $selection) {
-            Tab(TabSelection.pulse.label, systemImage: TabSelection.pulse.symbol, value: TabSelection.pulse) {
-                pulseStack
-            }
-            Tab(TabSelection.burn.label, systemImage: TabSelection.burn.symbol, value: TabSelection.burn) {
-                burnStack
-            }
-            Tab(TabSelection.streams.label, systemImage: TabSelection.streams.symbol, value: TabSelection.streams) {
-                streamsStack
-            }
-            Tab(TabSelection.hermes.label, systemImage: TabSelection.hermes.symbol, value: TabSelection.hermes) {
-                hermesStack
-            }
-            Tab(TabSelection.you.label, systemImage: TabSelection.you.symbol, value: TabSelection.you) {
-                youStack
-            }
-        }
-    }
-
-    // MARK: - iOS 17 Legacy Tab Shape
-
-    private var legacyTabView: some View {
-        TabView(selection: $selection) {
-            pulseStack
-                .tabItem { Label(TabSelection.pulse.label, systemImage: TabSelection.pulse.symbol) }
-                .tag(TabSelection.pulse)
-            burnStack
-                .tabItem { Label(TabSelection.burn.label, systemImage: TabSelection.burn.symbol) }
-                .tag(TabSelection.burn)
-            streamsStack
-                .tabItem { Label(TabSelection.streams.label, systemImage: TabSelection.streams.symbol) }
-                .tag(TabSelection.streams)
-            hermesStack
-                .tabItem { Label(TabSelection.hermes.label, systemImage: TabSelection.hermes.symbol) }
-                .tag(TabSelection.hermes)
-            youStack
-                .tabItem { Label(TabSelection.you.label, systemImage: TabSelection.you.symbol) }
-                .tag(TabSelection.you)
+    private var contentForSelection: some View {
+        switch selection {
+        case .pulse:   pulseStack
+        case .burn:    burnStack
+        case .streams: streamsStack
+        case .hermes:  hermesStack
+        case .you:     youStack
         }
     }
 
@@ -156,6 +81,7 @@ struct RootTabView: View {
     private var streamsStack: some View {
         NavigationStack(path: $streamsPath) {
             StreamsView()
+                .navigationDestination(for: TokenUsage.self) { SessionDetailView(usage: $0) }
         }
     }
 
@@ -174,6 +100,7 @@ struct RootTabView: View {
             )
             .navigationDestination(for: YouRoute.self) { route in
                 switch route {
+                case .sync: CloudSyncDetailsView(syncStore: syncHealthStore)
                 case .settings: SettingsHubView()
                 case .devices:  iPadDevicesSettingsView()
                 }
@@ -206,6 +133,40 @@ struct RootTabView: View {
             pulsePath.append(provider)
         }
         router.clear()
+    }
+
+    private func applyScreenshotRouteIfNeeded() {
+        guard AppStoreScreenshotMode.isEnabled, !didApplyScreenshotRoute else { return }
+        didApplyScreenshotRoute = true
+        switch AppStoreScreenshotMode.route {
+        case "burn", "quota":
+            selection = .burn
+        case "streams", "activity":
+            selection = .streams
+        case "hermes", "chat":
+            selection = .hermes
+        case "you", "account":
+            selection = .you
+        default:
+            selection = .pulse
+        }
+    }
+
+    // MARK: - Destination Mapping (for external router compatibility)
+
+    enum TabSelection: Hashable, Equatable, Identifiable {
+        case pulse, burn, streams, hermes, you
+
+        var id: String { String(describing: self) }
+        var label: String {
+            switch self {
+            case .pulse:   return "Pulse"
+            case .burn:    return "Burn"
+            case .streams: return "Streams"
+            case .hermes:  return "Hermes"
+            case .you:     return "You"
+            }
+        }
     }
 }
 

@@ -767,6 +767,12 @@ struct OpenBurnBarApp: App {
                             settingsManager: context.settingsManager
                         )
                         context.cloudSyncService = sync
+                        let hermesRelayHost = HermesRelayHostService(
+                            accountManager: context.accountManager,
+                            settingsManager: context.settingsManager
+                        )
+                        context.hermesRelayHostService = hermesRelayHost
+                        hermesRelayHost.start()
                         let mirror = ICloudSessionMirrorService(settingsManager: context.settingsManager)
                         context.iCloudSessionMirrorService = mirror
                         let newAggregator = UsageAggregator(

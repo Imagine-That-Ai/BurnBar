@@ -14,12 +14,16 @@
  * Cold-start cost: each `secret.value()` call is a no-op once Firebase
  * has materialized the param into the function instance's environment.
  *
- * Bundle ID and environment come through `getConfig()` (process env →
- * functions:config) because they are not credentials and operators want
- * to flip them per-environment without touching Secret Manager.
+ * Bundle ID, product ID, and environment come through both Firebase
+ * params and `getConfig()` (process env → functions:config). Params
+ * are used by deployed Functions v2; process env/config remain the
+ * local-emulator and backwards-compatible operator path.
  */
 
 import { defineSecret, defineString } from "firebase-functions/params";
+
+import { getConfig } from "../config.js";
+import type { AppStoreConfig } from "../types.js";
 
 type SecretParam = ReturnType<typeof defineSecret>;
 type StringParam = ReturnType<typeof defineString>;
@@ -64,16 +68,22 @@ export const APP_STORE_APPLE_APP_ID: StringParam = defineString(
   { default: "" }
 );
 
-/** Bundle identifier override; defaults to `com.burnbar.app`. */
+/** Bundle identifier override; defaults to the real App Store Connect app. */
 export const APP_STORE_BUNDLE_ID: StringParam = defineString(
   "APP_STORE_BUNDLE_ID",
-  { default: "com.burnbar.app" }
+  { default: "com.openburnbar.app" }
 );
 
 /** Default environment override (`"Production"`, `"Sandbox"`, …). */
 export const APP_STORE_ENV: StringParam = defineString("APP_STORE_ENV", {
   default: "Sandbox",
 });
+
+/** StoreKit product id for hosted quota sync. */
+export const HOSTED_QUOTA_PRODUCT_ID: StringParam = defineString(
+  "HOSTED_QUOTA_PRODUCT_ID",
+  { default: "com.openburnbar.hostedQuotaSync.monthly" }
+);
 
 /**
  * The set of secrets each callable / webhook / scheduled job must declare
@@ -91,6 +101,11 @@ export const APP_STORE_SECRETS: SecretParam[] = [
  * "missing credential" error if any are absent — operators should see
  * this on the first failed call after a misconfigured deploy, not as a
  * silent verification regression.
+ *
+ * MUST be called from inside a handler that declared the secrets via
+ * `secrets: APP_STORE_SECRETS`. Firebase only injects the values when
+ * the handler runs; at module-load time the `.value()` reads return the
+ * empty string and we'd silently cache that forever.
  */
 export function readAscCredentials(): {
   keyId: string;
@@ -108,4 +123,55 @@ export function readAscCredentials(): {
     );
   }
   return { keyId, issuerId, privateKeyP8 };
+}
+
+/**
+ * Build an `AppStoreConfig` with the ASC credentials freshly read from
+ * Secret Manager. This is the canonical accessor for handlers — callable
+ * functions, the S2S webhook, and the daily reconciliation job all use
+ * this so the verifier and ASC client always see a populated `asc` block.
+ *
+ * Cheap: the underlying secret reads are memoized by Firebase's param
+ * runtime; only the spread is per-call. Returning a fresh object each
+ * call is intentional so a future config rotation does not get stuck on
+ * stale singleton state inside the verifier cache.
+ */
+export function loadAppStoreRuntimeConfig(): AppStoreConfig {
+  const base = getConfig().appStore;
+  const asc = readAscCredentials();
+  const appleAppIdRaw = APP_STORE_APPLE_APP_ID.value().trim();
+  const appleAppId = appleAppIdRaw ? Number(appleAppIdRaw) : undefined;
+  return {
+    ...base,
+    bundleId: APP_STORE_BUNDLE_ID.value().trim() || base.bundleId,
+    appAppleId:
+      appleAppId !== undefined && Number.isFinite(appleAppId)
+        ? Math.floor(appleAppId)
+        : base.appAppleId,
+    environment: normalizeEnvironment(APP_STORE_ENV.value(), base.environment),
+    asc,
+  };
+}
+
+export function hostedQuotaProductID(): string {
+  return (
+    HOSTED_QUOTA_PRODUCT_ID.value().trim() ||
+    getConfig().hostedQuotaProductID ||
+    "com.openburnbar.hostedQuotaSync.monthly"
+  );
+}
+
+function normalizeEnvironment(
+  raw: string | undefined,
+  fallback: AppStoreConfig["environment"]
+): AppStoreConfig["environment"] {
+  switch (raw) {
+    case "Production":
+    case "Sandbox":
+    case "Xcode":
+    case "LocalTesting":
+      return raw;
+    default:
+      return fallback;
+  }
 }

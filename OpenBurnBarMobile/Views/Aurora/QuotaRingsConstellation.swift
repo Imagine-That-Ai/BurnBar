@@ -46,14 +46,13 @@ struct QuotaRingsConstellation: View {
                     .position(position)
                 }
             }
+            // Subtle, static perspective only — the previous live tilt
+            // (driven at 30Hz by CoreMotion with a 6× multiplier) caused
+            // the ring cluster to oscillate and reposition wildly with
+            // any hand movement.
             .rotation3DEffect(
-                .degrees(reduceMotion ? 0 : 12 + motion.tilt.height * 6),
+                .degrees(reduceMotion ? 0 : 8),
                 axis: (x: 1, y: 0, z: 0),
-                perspective: 0.5
-            )
-            .rotation3DEffect(
-                .degrees(reduceMotion ? 0 : motion.tilt.width * 6),
-                axis: (x: 0, y: 1, z: 0),
                 perspective: 0.5
             )
         }

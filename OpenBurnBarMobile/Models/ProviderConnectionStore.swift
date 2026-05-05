@@ -25,6 +25,14 @@ final class ProviderConnectionStore {
     }
 
     func load() async {
+        if AppStoreScreenshotMode.isEnabled {
+            isLoading = false
+            error = nil
+            accounts = AppStoreScreenshotData.providerAccounts
+            connections = AppStoreScreenshotData.providerConnections
+            quotaSnapshots = AppStoreScreenshotData.quotaSnapshots
+            return
+        }
         isLoading = true
         error = nil
         defer { isLoading = false }
@@ -95,10 +103,9 @@ final class ProviderConnectionStore {
         defer { connectingProvider = nil }
 
         do {
-            let doc = try await functions.connectProviderAccount(
+            let doc = try await functions.connectHostedQuotaAccount(
                 providerID: providerID,
                 credential: credential,
-                kind: kind,
                 label: label
             )
             await load()
@@ -115,10 +122,8 @@ final class ProviderConnectionStore {
         defer { connectingProvider = nil }
 
         do {
-            let doc = try await functions.connectProviderAccount(
+            let doc = try await functions.connectSelfHostedQuotaAccount(
                 providerID: providerID,
-                credential: "",
-                kind: .token,
                 label: label
             )
             await load()
@@ -166,7 +171,12 @@ final class ProviderConnectionStore {
         defer { refreshingAccountID = nil }
 
         do {
-            _ = try await functions.refreshProviderAccountQuota(accountID: account.id)
+            if account.storageScope == .localOnly,
+               account.providerID == .claudeCode || account.providerID == .codex {
+                _ = try await SelfHostedQuotaRunnerStore.shared.refresh(account: account)
+            } else {
+                _ = try await functions.refreshProviderAccountQuota(accountID: account.id)
+            }
             await load()
         } catch {
             self.error = error.localizedDescription

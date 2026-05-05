@@ -639,7 +639,7 @@ struct HermesSetupWizardView: View {
 
     private var statusText: String {
         if isGatewayRunning { return "Gateway is running" }
-        if isProbingGateway { return "Probing localhost:8642\u{2026}" }
+        if isProbingGateway { return "Probing \(settingsManager.hermesGatewayBaseURL)…" }
         if probeAttempts > 0 { return "Not reachable yet" }
         return "Waiting for gateway"
     }
@@ -1008,7 +1008,9 @@ struct HermesSetupWizardView: View {
         Task {
             let bridge = CLIBridge()
             let token = bearerTokenInput.isEmpty ? settingsManager.hermesBearerToken : bearerTokenInput
-            await bridge.probeHermesAvailability(bearerToken: token.isEmpty ? nil : token)
+            let baseURL = URL(string: settingsManager.hermesGatewayBaseURL)
+                ?? URL(string: "http://127.0.0.1:8642")!
+            await bridge.probeHermesAvailability(baseURL: baseURL, bearerToken: token.isEmpty ? nil : token)
             await MainActor.run {
                 isGatewayRunning = bridge.hermesAvailable
                 gatewayModelName = bridge.hermesModelName
@@ -1029,8 +1031,11 @@ struct HermesSetupWizardView: View {
             let token = bearerTokenInput.isEmpty ? settingsManager.hermesBearerToken : bearerTokenInput
 
             do {
+                let baseURL = URL(string: settingsManager.hermesGatewayBaseURL)
+                    ?? URL(string: "http://127.0.0.1:8642")!
                 var response = ""
                 for try await event in bridge.chatHermes(
+                    baseURL: baseURL,
                     systemPrompt: systemPrompt,
                     history: [ChatMessageRecord(role: .user, content: userMessage)],
                     bearerToken: token.isEmpty ? nil : token

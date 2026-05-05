@@ -10,7 +10,7 @@ Codex remote quota sync. Keep behavior unchanged unless a bug is found.
 - Codex shows `Hosted` and `Self-hosted` modes.
 - Claude Code shows self-hosted runner setup only.
 - Hosted Codex mode requires the StoreKit product
-  `com.burnbar.hostedQuotaSync.monthly` before account connection.
+  `com.openburnbar.hostedQuotaSync.monthly` before account connection.
 - Self-hosted mode stores only runner URL and optional runner secret on-device.
 - Account refresh uses the normal account row refresh action. Local-only
   self-hosted accounts call the runner from device, then upload sanitized

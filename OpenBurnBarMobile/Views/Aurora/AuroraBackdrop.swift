@@ -63,6 +63,7 @@ struct AuroraBackdrop: View {
                 .allowsHitTesting(false)
         }
         .accessibilityHidden(true)
+        .allowsHitTesting(false)
         .onAppear { startAnimating() }
         .onChange(of: reduceMotion) { _, _ in startAnimating() }
     }

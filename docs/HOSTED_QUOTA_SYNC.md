@@ -178,7 +178,7 @@ iOS/iPadOS/macOS listeners update
 Hosted product id:
 
 ```text
-com.burnbar.hostedQuotaSync.monthly
+com.openburnbar.hostedQuotaSync.monthly
 ```
 
 Current intended price:
@@ -281,7 +281,7 @@ Set these before enabling hosted refresh:
 firebase functions:config:set \
   openburnbar.hosted_quota_runner_url="https://YOUR-RUNNER.run.app" \
   openburnbar.hosted_quota_runner_token="A_LONG_RANDOM_SHARED_SECRET" \
-  openburnbar.hosted_quota_product_id="com.burnbar.hostedQuotaSync.monthly"
+  openburnbar.hosted_quota_product_id="com.openburnbar.hostedQuotaSync.monthly"
 ```
 
 Existing Secret Manager encryption config still applies:
@@ -303,10 +303,10 @@ firebase functions:secrets:set APP_STORE_ASC_ISSUER_ID      # UUID
 firebase functions:secrets:set APP_STORE_ASC_KEY_P8         # paste full PEM body
 
 # Non-secret env params:
-export APP_STORE_BUNDLE_ID=com.burnbar.app
-export APP_STORE_APPLE_APP_ID=1234567890                    # numeric appAppleId
+export APP_STORE_BUNDLE_ID=com.openburnbar.app
+export APP_STORE_APPLE_APP_ID=6766366964                    # numeric appAppleId
 export APP_STORE_ENV=Production                             # or Sandbox
-export APP_STORE_AUTO_FALLBACK_ENV=Sandbox                  # optional: auto-retry env
+export APP_STORE_AUTO_FALLBACK_ENV=true                     # auto-retry prod/sandbox env
 export APP_STORE_ENABLE_ONLINE_CHECKS=true                  # OCSP/expiration checks
 ```
 
@@ -556,6 +556,8 @@ warnings are not test failures.
   construction.
 - Hosted runner is deployed with `RUNNER_SHARED_SECRET`.
 - Functions config points at the hosted runner.
+- Hosted runner abuse caps remain enabled (`30/day`, `300/month` per account by default)
+  so the $4.99/month subscription remains profitable under on-demand use.
 - Firebase App Check is enforced for callable access.
 - Secret deletion callable works.
 - Hosted credential values never appear in logs.

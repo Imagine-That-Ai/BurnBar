@@ -1,7 +1,8 @@
 rules_version = '2';
 // OpenBurnBar currently syncs explicit owner-scoped collections:
-// - users/{uid}/usage, conversations, chat_threads, session_logs (+ chunks), devices
+// - users/{uid}/usage, conversations, chat_threads, session_logs (+ chunks), stream_search_chunks, devices
 // - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups
+// - users/{uid}/hermes_connections, hermes_pairings, hermes_relay_requests, hermes_session_cache, hermes_audit_events
 // - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
 // - users/{uid}/escrow_devices, escrow_public_keys, escrow_grants, escrow_envelopes, escrow_audit_events
 // - server-only: provider_account_secret_refs, users/{uid}/_rate_limits, users/{uid}/rollup_jobs
@@ -56,6 +57,91 @@ service cloud.firestore {
       return ownsUserNamespace(userId)
         && requestWithinBasicLimits()
         && hasNoPlaintextSecretFields();
+    }
+
+    function relayConnectionWrite(userId, connectionId) {
+      return ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "displayName",
+          "mode",
+          "status",
+          "profileName",
+          "advertisedModel",
+          "capabilities",
+          "lastSeenAt",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.mode == "relayLink"
+        && request.resource.data.status in ["online", "offline", "degraded", "unauthorized"]
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.id is string
+        && request.resource.data.id == connectionId
+        && request.resource.data.displayName is string
+        && request.resource.data.capabilities is list;
+    }
+
+    function relayRequestWrite(userId, requestId) {
+      return ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "connectionId",
+          "operation",
+          "status",
+          "method",
+          "path",
+          "sessionId",
+          "body",
+          "error",
+          "chunkCount",
+          "createdAt",
+          "updatedAt",
+          "expiresAt",
+          "expireAt",
+          "claimedAt",
+          "claimedBy",
+          "completedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id == requestId
+        && request.resource.data.connectionId is string
+        && request.resource.data.operation in ["chatCompletions", "models", "sessions", "sessionDetail", "profiles", "jobs"]
+        && request.resource.data.status in ["pending", "claimed", "streaming", "completed", "failed", "cancelled", "expired"]
+        && request.resource.data.method in ["GET", "POST"]
+        && request.resource.data.chunkCount is int
+        && request.resource.data.schemaVersion is int
+        && (!("claimedBy" in request.resource.data) || request.resource.data.claimedBy == request.resource.data.connectionId)
+        && (!("body" in request.resource.data) || (request.resource.data.body is string && request.resource.data.body.size() <= 131072))
+        && (!("error" in request.resource.data) || (request.resource.data.error is string && request.resource.data.error.size() <= 2048));
+    }
+
+    function relayChunkWrite(userId, requestId, chunkId) {
+      return ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "requestId",
+          "sequence",
+          "kind",
+          "data",
+          "text",
+          "error",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id == chunkId
+        && request.resource.data.requestId is string
+        && request.resource.data.requestId == requestId
+        && request.resource.data.sequence is int
+        && request.resource.data.kind in ["sse", "data", "error"]
+        && request.resource.data.schemaVersion is int
+        && (!("data" in request.resource.data) || (request.resource.data.data is string && request.resource.data.data.size() <= 131072))
+        && (!("text" in request.resource.data) || (request.resource.data.text is string && request.resource.data.text.size() <= 131072))
+        && (!("error" in request.resource.data) || (request.resource.data.error is string && request.resource.data.error.size() <= 2048));
     }
 
     function sharedArtifactOwnerRead() {
@@ -118,6 +204,12 @@ service cloud.firestore {
       }
     }
 
+    match /users/{userId}/stream_search_chunks/{chunkId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
     match /users/{userId}/devices/{deviceId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId);
@@ -140,6 +232,40 @@ service cloud.firestore {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId);
       allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/hermes_connections/{connectionId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if relayConnectionWrite(userId, connectionId);
+      allow update: if relayConnectionWrite(userId, connectionId) && resource.data.mode == "relayLink";
+      allow delete: if false;
+    }
+
+    match /users/{userId}/hermes_pairings/{pairingId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/hermes_relay_requests/{requestId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if relayRequestWrite(userId, requestId);
+      allow delete: if ownsUserNamespace(userId);
+
+      match /chunks/{chunkId} {
+        allow read: if ownsUserNamespace(userId);
+        allow create, update: if relayChunkWrite(userId, requestId, chunkId);
+        allow delete: if ownsUserNamespace(userId);
+      }
+    }
+
+    match /users/{userId}/hermes_session_cache/{sessionId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/hermes_audit_events/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
     }
 
     match /users/{userId}/usage_rollups/{rollupId} {

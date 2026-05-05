@@ -34,6 +34,12 @@ final class DashboardStore {
     }
 
     func refresh() async {
+        if AppStoreScreenshotMode.isEnabled {
+            applyRollups(AppStoreScreenshotData.usageRollups)
+            error = nil
+            isLoading = false
+            return
+        }
         isLoading = true
         error = nil
         defer { isLoading = false }
@@ -47,6 +53,7 @@ final class DashboardStore {
     }
 
     func startListening() {
+        guard !AppStoreScreenshotMode.isEnabled else { return }
         guard !isListening else { return }
         isListening = true
         listener?.remove()
@@ -122,7 +129,7 @@ final class DashboardStore {
 
         do {
             try BurnBarWidgetShared.writeSnapshot(snapshot)
-            WidgetCenter.shared.reloadTimelines(ofKind: "com.burnbar.app.widget")
+            WidgetCenter.shared.reloadTimelines(ofKind: "com.openburnbar.app.widget")
         } catch {
             // Silently fail — widget will show placeholder until next successful write.
             // Do NOT surface widget I/O errors to the user dashboard.

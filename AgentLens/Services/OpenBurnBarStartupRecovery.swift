@@ -181,6 +181,7 @@ final class OpenBurnBarRuntimeContext {
     let cursorConnectorManager: CursorConnectorManager
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
+    var hermesRelayHostService: HermesRelayHostService?
     let chatController: ChatSessionController
     let operatingLayer: OpenBurnBarOperatingLayer
 

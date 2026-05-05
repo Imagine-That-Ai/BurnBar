@@ -2,6 +2,14 @@ import Foundation
 import FirebaseFunctions
 import OpenBurnBarCore
 
+struct StreamSearchHit: Identifiable, Decodable, Hashable, Sendable {
+    let id: String
+    let title: String
+    let snippet: String
+    let score: Double
+    let usage: TokenUsage
+}
+
 // MARK: - Functions Repository
 
 @MainActor
@@ -39,6 +47,56 @@ final class FunctionsRepository {
             "credential": credential,
             "credentialKind": kind.rawValue
         ]
+        if let label, label.isEmpty == false {
+            payload["label"] = label
+        }
+        if let accountID, accountID.isEmpty == false {
+            payload["accountID"] = accountID
+        }
+        let result = try await callable.call(payload)
+        guard let data = result.data as? [String: Any],
+              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
+              let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
+              let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
+            throw FunctionsError.decodingFailed
+        }
+        return doc
+    }
+
+    func connectHostedQuotaAccount(
+        providerID: ProviderID,
+        credential: String,
+        label: String?,
+        accountID: String? = nil
+    ) async throws -> ProviderAccountDoc {
+        let callable = functions.httpsCallable("connectHostedQuotaAccount")
+        var payload: [String: Any] = [
+            "provider": providerID.rawValue,
+            "credential": credential
+        ]
+        if let label, label.isEmpty == false {
+            payload["label"] = label
+        }
+        if let accountID, accountID.isEmpty == false {
+            payload["accountID"] = accountID
+        }
+        let result = try await callable.call(payload)
+        guard let data = result.data as? [String: Any],
+              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
+              let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
+              let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
+            throw FunctionsError.decodingFailed
+        }
+        return doc
+    }
+
+    func connectSelfHostedQuotaAccount(
+        providerID: ProviderID,
+        label: String?,
+        accountID: String? = nil
+    ) async throws -> ProviderAccountDoc {
+        let callable = functions.httpsCallable("connectSelfHostedQuotaAccount")
+        var payload: [String: Any] = ["provider": providerID.rawValue]
         if let label, label.isEmpty == false {
             payload["label"] = label
         }
@@ -103,6 +161,21 @@ final class FunctionsRepository {
         _ = try await callable.call([:])
     }
 
+    func searchStreams(query: String, limit: Int = 25) async throws -> [StreamSearchHit] {
+        let callable = functions.httpsCallable("searchStreams")
+        let result = try await callable.call([
+            "query": query,
+            "limit": max(1, min(limit, 50))
+        ])
+        guard let dict = result.data as? [String: Any],
+              let rawHits = dict["hits"] else {
+            throw FunctionsError.decodingFailed
+        }
+        let sanitized = FirestoreRepository.shared.sanitizeForJSON(rawHits)
+        let data = try JSONSerialization.data(withJSONObject: sanitized)
+        return try JSONDecoder().decode([StreamSearchHit].self, from: data)
+    }
+
     func uploadProviderQuotaSnapshot(_ snapshot: ProviderQuotaSnapshot) async throws -> ProviderQuotaSnapshot {
         let callable = functions.httpsCallable("uploadProviderQuotaSnapshot")
         let encoder = JSONEncoder()
@@ -119,6 +192,75 @@ final class FunctionsRepository {
             throw FunctionsError.decodingFailed
         }
         return snap
+    }
+
+    // MARK: Hermes host pairing
+
+    func createHermesPairing(
+        deviceId: String? = nil,
+        platform: String? = nil,
+        displayName: String? = nil
+    ) async throws -> HermesPairingSessionRecord {
+        let callable = functions.httpsCallable("createHermesPairing")
+        var payload: [String: Any] = [:]
+        if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
+        if let platform, !platform.isEmpty { payload["platform"] = platform }
+        if let displayName, !displayName.isEmpty { payload["displayName"] = displayName }
+
+        let result = try await callable.call(payload)
+        return try decodeHermesValue(HermesPairingSessionRecord.self, from: result.data)
+    }
+
+    func completeHermesPairing(
+        pairingId: String,
+        code: String,
+        connectionId: String? = nil,
+        displayName: String,
+        endpointURL: String,
+        advertisedModel: String? = nil,
+        capabilities: [String] = ["chat_completions"]
+    ) async throws -> HermesConnectionRecord {
+        let callable = functions.httpsCallable("completeHermesPairing")
+        var payload: [String: Any] = [
+            "pairingId": pairingId,
+            "code": code,
+            "displayName": displayName,
+            "mode": HermesConnectionMode.directURL.rawValue,
+            "endpointURL": endpointURL,
+            "capabilities": capabilities
+        ]
+        if let connectionId, !connectionId.isEmpty {
+            payload["connectionId"] = connectionId
+        }
+        if let advertisedModel, !advertisedModel.isEmpty {
+            payload["advertisedModel"] = advertisedModel
+        }
+
+        let result = try await callable.call(payload)
+        return try decodeHermesValue(HermesConnectionRecord.self, from: result.data)
+    }
+
+    func listHermesConnections() async throws -> [HermesConnectionRecord] {
+        let callable = functions.httpsCallable("listHermesConnections")
+        let result = try await callable.call([:])
+        guard
+            let dict = result.data as? [String: Any],
+            let connections = dict["connections"]
+        else {
+            throw FunctionsError.decodingFailed
+        }
+        return try decodeHermesValue([HermesConnectionRecord].self, from: connections)
+    }
+
+    func revokeHermesConnection(connectionId: String) async throws {
+        let callable = functions.httpsCallable("revokeHermesConnection")
+        _ = try await callable.call(["connectionId": connectionId])
+    }
+
+    private func decodeHermesValue<T: Decodable>(_ type: T.Type, from raw: Any) throws -> T {
+        let sanitized = FirestoreRepository.shared.sanitizeForJSON(raw)
+        let data = try JSONSerialization.data(withJSONObject: sanitized)
+        return try JSONDecoder().decode(type, from: data)
     }
 
     // MARK: Apple-verified hosted quota entitlement
@@ -163,16 +305,30 @@ final class FunctionsRepository {
         return try decodeHostedQuotaEntitlement(result.data)
     }
 
-    /// Re-run live App Store Server reconciliation for the signed-in user's
-    /// known `originalTransactionID`. Used by the "Restore Purchases"
-    /// surface; safe to call without any active StoreKit transaction.
+    /// Re-run live App Store Server reconciliation. Powers the
+    /// "Restore Purchases" affordance.
+    ///
+    /// Two callable contracts:
+    ///   - With `signedTransactionJWS` (preferred): the server verifies
+    ///     it through the same pipeline as `verifyHostedQuotaEntitlement`,
+    ///     so even a brand-new install with no server doc can recover an
+    ///     entitlement after `AppStore.sync()` populates
+    ///     `Transaction.currentEntitlements`.
+    ///   - Without `signedTransactionJWS`: the server reads the existing
+    ///     entitlement doc's `originalTransactionID`, pulls live state
+    ///     from ASC, and reconciles. Returns `failed-precondition` when
+    ///     no doc exists on file.
     @discardableResult
     func restoreHostedQuotaEntitlement(
-        productID: String? = nil
+        productID: String? = nil,
+        signedTransactionJWS: String? = nil
     ) async throws -> HostedQuotaEntitlementResponse {
         let callable = functions.httpsCallable("restoreHostedQuotaEntitlement")
         var payload: [String: Any] = [:]
         if let productID { payload["productID"] = productID }
+        if let signedTransactionJWS, !signedTransactionJWS.isEmpty {
+            payload["signedTransactionJWS"] = signedTransactionJWS
+        }
         let result = try await callable.call(payload)
         return try decodeHostedQuotaEntitlement(result.data)
     }

@@ -213,7 +213,10 @@ final class ChatSessionController {
     }
 
     func probeHermesAvailability() async {
-        await cliBridge.probeHermesAvailability(bearerToken: hermesBearerToken)
+        await cliBridge.probeHermesAvailability(
+            baseURL: hermesGatewayBaseURL,
+            bearerToken: hermesBearerToken
+        )
         hermesAvailable = cliBridge.hermesAvailable
     }
 
@@ -232,6 +235,11 @@ final class ChatSessionController {
     private var hermesBearerToken: String? {
         let t = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         return t.isEmpty ? nil : t
+    }
+
+    private var hermesGatewayBaseURL: URL {
+        URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? URL(string: "http://127.0.0.1:8642")!
     }
 
     private var openClawBearerToken: String? {
@@ -894,6 +902,7 @@ final class ChatSessionController {
                     switch self.chatBackend {
                     case .hermes:
                         return self.cliBridge.chatHermes(
+                            baseURL: self.hermesGatewayBaseURL,
                             systemPrompt: augmentedSystem,
                             history: multiTurnHistory,
                             bearerToken: self.hermesBearerToken,

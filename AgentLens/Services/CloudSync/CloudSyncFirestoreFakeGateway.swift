@@ -178,6 +178,11 @@ private final class CloudSyncDocumentFakeGateway: CloudSyncDocumentGateway {
         CloudSyncCollectionFakeGateway(store: store, path: "\(path)/\(collectionPath)", nextError: nextError)
     }
 
+    func getData() async throws -> [String: Any]? {
+        if let error = nextError() { throw error }
+        return store.documentData(at: path)
+    }
+
     func setData(_ data: [String: Any], merge: Bool) async throws {
         if let error = nextError() { throw error }
         let normalized = normalizeFieldValues(data)

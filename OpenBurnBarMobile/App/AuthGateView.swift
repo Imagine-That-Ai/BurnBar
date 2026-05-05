@@ -15,22 +15,26 @@ struct AuthGateView: View {
 
     var body: some View {
         Group {
-            switch authStore.state {
-            case .firebaseUnavailable:
-                FirebaseUnavailableScene()
-            case .signedOut, .signingIn, .firestoreUnavailable:
-                SignInScene(authStore: authStore)
-            case .signedIn:
+            if AppStoreScreenshotMode.isEnabled {
                 mainSignedInView
-                    .fullScreenCover(isPresented: Binding(
-                        get: { !hasCompletedOnboarding },
-                        set: { hasCompletedOnboarding = !$0 }
-                    )) {
-                        iPadOnboardingWizardView(isPresented: Binding(
+            } else {
+                switch authStore.state {
+                case .firebaseUnavailable:
+                    FirebaseUnavailableScene()
+                case .signedOut, .signingIn, .firestoreUnavailable:
+                    SignInScene(authStore: authStore)
+                case .signedIn:
+                    mainSignedInView
+                        .fullScreenCover(isPresented: Binding(
                             get: { !hasCompletedOnboarding },
                             set: { hasCompletedOnboarding = !$0 }
-                        ))
-                    }
+                        )) {
+                            iPadOnboardingWizardView(isPresented: Binding(
+                                get: { !hasCompletedOnboarding },
+                                set: { hasCompletedOnboarding = !$0 }
+                            ))
+                        }
+                }
             }
         }
         .animation(.snappy(duration: 0.25), value: authStore.state)

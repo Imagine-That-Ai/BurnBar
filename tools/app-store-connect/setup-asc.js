@@ -25,7 +25,7 @@ const APP = {
   },
 
   ios: {
-    bundleId: 'com.burnbar.app',
+    bundleId: 'com.openburnbar.app',
     sku: 'OPENBURNBAR-IOS-001',
     platform: 'iOS',
   },

@@ -50,9 +50,12 @@ import {
   __testing__ as auditTesting,
 } from "../lib/appstore/audit.js";
 
+import { __testing__ as quotaTesting } from "../lib/quota.js";
+
 import {
   beginBinding,
   EntitlementReconcileError,
+  reconcileEntitlement,
   __testing__ as reconcilerTesting,
 } from "../lib/appstore/reconciler.js";
 
@@ -131,12 +134,44 @@ test("AppleJWSVerifier exposes default environment", () => {
   assert.equal(v.defaultEnvironment, "Sandbox");
 });
 
+test("AppleJWSVerifier refuses Production without an appAppleId", () => {
+  // Library v1.1+ requires `appAppleId` for Production. We surface a
+  // human-readable error rather than letting the library throw a vague
+  // one when a callable accidentally hits Production with the field unset.
+  const v = new AppleJWSVerifier({
+    bundleId: "com.test.app",
+    environment: "Production",
+    enableOnlineChecks: false,
+    autoFallbackEnvironment: false,
+    asc: { keyId: "k", issuerId: "i", privateKeyP8: "p" },
+    // appAppleId intentionally absent.
+  });
+  assert.throws(
+    () => v.warmUp(),
+    /appAppleId is required for the Production environment/
+  );
+});
+
+test("AppleJWSVerifier accepts Production when appAppleId is set", () => {
+  const v = new AppleJWSVerifier({
+    bundleId: "com.test.app",
+    environment: "Production",
+    enableOnlineChecks: false,
+    appAppleId: 1234567890,
+    asc: { keyId: "k", issuerId: "i", privateKeyP8: "p" },
+  });
+  // We don't actually verify a JWS here — just prove the lib verifier
+  // can be constructed. `warmUp()` is the entry point that throws on
+  // misconfig.
+  assert.doesNotThrow(() => v.warmUp());
+});
+
 // ---------------------------------------------------------------------------
 // 4. Reconciler pickWinning
 // ---------------------------------------------------------------------------
 
 test("pickWinning ignores transactions with the wrong productId", () => {
-  const productID = "com.burnbar.hostedQuotaSync.monthly";
+  const productID = "com.openburnbar.hostedQuotaSync.monthly";
   const candidates = [
     fakeTx({ productId: "different", signedDate: 100 }),
     fakeTx({ productId: productID, signedDate: 50 }),
@@ -147,7 +182,7 @@ test("pickWinning ignores transactions with the wrong productId", () => {
 });
 
 test("pickWinning selects the most recent signedDate", () => {
-  const productID = "com.burnbar.hostedQuotaSync.monthly";
+  const productID = "com.openburnbar.hostedQuotaSync.monthly";
   const candidates = [
     fakeTx({ productId: productID, signedDate: 100, transactionId: "old" }),
     fakeTx({ productId: productID, signedDate: 200, transactionId: "new" }),
@@ -170,7 +205,7 @@ test("pickWinning returns undefined when no candidate matches productId", () => 
 // ---------------------------------------------------------------------------
 
 test("buildEntitlementDoc surfaces all v2 invariants", () => {
-  const productID = "com.burnbar.hostedQuotaSync.monthly";
+  const productID = "com.openburnbar.hostedQuotaSync.monthly";
   const expires = Date.now() + 30 * 24 * 60 * 60 * 1000;
   const candidate = fakeTx({
     productId: productID,
@@ -198,6 +233,7 @@ test("buildEntitlementDoc surfaces all v2 invariants", () => {
   // appAccountToken must be lowercased before persistence.
   assert.equal(doc.appAccountToken, "abcdef12-3456-7890-abcd-ef1234567890");
   assert.equal(doc.lastNotificationUUID, "n-uuid");
+  assert.equal(doc.signedDateMs, 1700000000_000);
   assert.equal(doc.source, "apple_jws_verified");
   assert.equal(doc.verificationVersion, reconcilerTesting.VERIFICATION_VERSION);
   assert.equal(doc.schemaVersion, reconcilerTesting.ENTITLEMENT_SCHEMA_VERSION);
@@ -251,16 +287,16 @@ test("buildEntitlementDoc strips undefined fields", () => {
 // 6. mergeWithExisting / shouldOverwrite
 // ---------------------------------------------------------------------------
 
-test("shouldOverwrite accepts newer or equal verifiedAt", () => {
-  const a = stubDoc({ lastVerifiedAt: "2026-01-01T00:00:00.000Z" });
-  const b = stubDoc({ lastVerifiedAt: "2026-01-02T00:00:00.000Z" });
+test("shouldOverwrite accepts newer or equal Apple signedDate", () => {
+  const a = stubDoc({ signedDateMs: 1700000000_000 });
+  const b = stubDoc({ signedDateMs: 1800000000_000 });
   assert.equal(reconcilerTesting.shouldOverwrite(a, b), true);
   assert.equal(reconcilerTesting.shouldOverwrite(b, b), true); // idempotent retry
 });
 
-test("shouldOverwrite rejects older verifiedAt (replay protection)", () => {
-  const newer = stubDoc({ lastVerifiedAt: "2026-01-02T00:00:00.000Z" });
-  const older = stubDoc({ lastVerifiedAt: "2026-01-01T00:00:00.000Z" });
+test("shouldOverwrite rejects older Apple signedDate (replay protection)", () => {
+  const newer = stubDoc({ signedDateMs: 1800000000_000 });
+  const older = stubDoc({ signedDateMs: 1700000000_000 });
   assert.equal(reconcilerTesting.shouldOverwrite(newer, older), false);
 });
 
@@ -298,6 +334,52 @@ test("mergeWithExisting prefers next when next has values", () => {
   assert.equal(merged.appAccountToken, "new");
   assert.equal(merged.ownershipType, "FAMILY_SHARED");
   assert.equal(merged.environment, "Production");
+});
+
+// ---------------------------------------------------------------------------
+// 7a. Reconciler: redactPayload (PII filter for the audit `decoded` blob)
+// ---------------------------------------------------------------------------
+
+test("redactPayload drops storefront/currency/price PII fields", () => {
+  const out = reconcilerTesting.redactPayload({
+    transactionId: "t-1",
+    productId: "p",
+    bundleId: "b",
+    storefront: "USA",
+    storefrontId: "143441",
+    currency: "USD",
+    price: 4990,
+    signedDate: 1700000000_000,
+  });
+  assert.equal(out.transactionId, "t-1");
+  assert.equal(out.signedDate, 1700000000_000);
+  assert.ok(!("storefront" in out), "storefront must be redacted");
+  assert.ok(!("storefrontId" in out));
+  assert.ok(!("currency" in out));
+  assert.ok(!("price" in out));
+});
+
+test("redactPayload hashes appAccountToken instead of persisting it", () => {
+  const out = reconcilerTesting.redactPayload({
+    transactionId: "t",
+    productId: "p",
+    bundleId: "b",
+    appAccountToken: "ABCDEF12-3456-7890-ABCD-EF1234567890",
+    signedDate: 1,
+  });
+  assert.ok(!("appAccountToken" in out));
+  assert.match(out.appAccountTokenHash, /^[0-9a-f]{64}$/);
+});
+
+test("redactPayload omits appAccountTokenHash when no token was present", () => {
+  const out = reconcilerTesting.redactPayload({
+    transactionId: "t",
+    productId: "p",
+    bundleId: "b",
+    signedDate: 1,
+  });
+  assert.ok(!("appAccountTokenHash" in out));
+  assert.ok(!("appAccountToken" in out));
 });
 
 // ---------------------------------------------------------------------------
@@ -519,6 +601,331 @@ test("auditEventId falls back to transactionId.signedDate", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 13. End-to-end reconcileEntitlement with fake verifier + fake Firestore
+// ---------------------------------------------------------------------------
+
+test("reconcileEntitlement happy path: writes a v2 doc + audit event", async () => {
+  const productID = "p-monthly";
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const reads = new Map();
+  const token = "11111111-1111-1111-1111-111111111111";
+  // Pre-populate the binding so resolveUid() succeeds.
+  reads.set(`users/uid-7/entitlement_bindings/${token}`, {
+    exists: true,
+    data: () => ({
+      id: token,
+      uid: "uid-7",
+      productID,
+      createdAt: "2026-01-01",
+      schemaVersion: 1,
+    }),
+  });
+  const db = makeReconcilerDb(writes, reads);
+
+  const seed = fakeTx({
+    productId: productID,
+    signedDate: 1700000000_000,
+    transactionId: "tx-A",
+    originalTransactionId: "otx-A",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 30 * 86_400_000,
+    appAccountToken: token,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({
+    status: { data: [] },
+    pairs: [],
+  });
+
+  const result = await reconcileEntitlement(
+    db,
+    cfg,
+    {
+      signedTransactionJWS: seed.raw,
+      claimedUid: "uid-7",
+      source: "client_callable",
+      productID,
+    },
+    { verifier, fetchLive }
+  );
+
+  assert.equal(result.uid, "uid-7");
+  assert.equal(result.changed, true);
+  assert.equal(result.entitlement.active, true);
+  assert.equal(result.entitlement.transactionID, "tx-A");
+  assert.equal(result.entitlement.source, "apple_jws_verified");
+  // We expect at least: txn set + audit create.
+  const entitlementWrite = writes.find((w) =>
+    w.path.endsWith("/entitlements/hosted_quota_sync")
+  );
+  assert.ok(entitlementWrite, "entitlement doc was written");
+  const auditWrite = writes.find((w) => w.path.includes("/entitlement_events/"));
+  assert.ok(auditWrite, "audit event was written");
+});
+
+test("reconcileEntitlement rejects on bundleId mismatch", async () => {
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const db = makeReconcilerDb(writes, new Map());
+
+  const seed = fakeTx({
+    productId: "p",
+    signedDate: 1,
+    transactionId: "tx",
+    originalTransactionId: "otx",
+    bundleId: "com.attacker.app",
+    expiresDate: Date.now() + 86_400_000,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
+
+  await assert.rejects(
+    reconcileEntitlement(
+      db,
+      cfg,
+      {
+        signedTransactionJWS: seed.raw,
+        claimedUid: "uid-8",
+        source: "client_callable",
+        productID: "p",
+      },
+      { verifier, fetchLive }
+    ),
+    /bundle_id_mismatch/
+  );
+  // No entitlement doc should have been written.
+  assert.equal(
+    writes.filter((w) => w.path.endsWith("/entitlements/hosted_quota_sync"))
+      .length,
+    0
+  );
+});
+
+test("reconcileEntitlement rejects when claimedUid disagrees with binding", async () => {
+  const productID = "p";
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const reads = new Map();
+  const token = "22222222-2222-2222-2222-222222222222";
+  // Pre-populate the binding under uid-A …
+  reads.set(`users/uid-A/entitlement_bindings/${token}`, {
+    exists: true,
+    data: () => ({
+      id: token,
+      uid: "uid-A",
+      productID,
+      createdAt: "2026-01-01",
+      schemaVersion: 1,
+    }),
+  });
+  // … but not under uid-B.
+  const db = makeReconcilerDb(writes, reads);
+
+  const seed = fakeTx({
+    productId: productID,
+    signedDate: 1,
+    transactionId: "tx",
+    originalTransactionId: "otx",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+    appAccountToken: token,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
+
+  // Caller claims uid-B, but the binding is for uid-A.
+  await assert.rejects(
+    reconcileEntitlement(
+      db,
+      cfg,
+      {
+        signedTransactionJWS: seed.raw,
+        claimedUid: "uid-B",
+        source: "client_callable",
+        productID,
+      },
+      { verifier, fetchLive }
+    ),
+    /binding_mismatch/
+  );
+});
+
+test("reconcileEntitlement is idempotent on replay (no extra writes)", async () => {
+  const productID = "p";
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const reads = new Map();
+  // Simulate the second call: existing doc with NEWER lastVerifiedAt.
+  reads.set("users/uid-7/entitlements/hosted_quota_sync", {
+    exists: true,
+    data: () => ({
+      id: "hosted_quota_sync",
+      signedDateMs: 1800000000_000,
+      lastVerifiedAt: "2099-01-01T00:00:00.000Z", // local verification wall clock
+      active: true,
+      productID,
+      transactionID: "tx-A",
+      originalTransactionID: "otx-A",
+      environment: "Sandbox",
+      signedTransactionHash: "0".repeat(64),
+      source: "apple_jws_verified",
+      verificationVersion: 2,
+      schemaVersion: 2,
+      updatedAt: "2099-01-01T00:00:00.000Z",
+    }),
+  });
+  const db = makeReconcilerDb(writes, reads);
+
+  const seed = fakeTx({
+    productId: productID,
+    signedDate: 1700000000_000,
+    transactionId: "tx-A",
+    originalTransactionId: "otx-A",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => ({ status: { data: [] }, pairs: [] });
+
+  const result = await reconcileEntitlement(
+    db,
+    cfg,
+    {
+      signedTransactionJWS: seed.raw,
+      claimedUid: "uid-7",
+      source: "client_callable",
+      productID,
+    },
+    { verifier, fetchLive }
+  );
+
+  assert.equal(result.changed, false, "old signedDate must not overwrite new doc");
+  // The audit event still gets appended (we want the forensic record),
+  // but the entitlement itself is untouched.
+  const entitlementWrites = writes.filter((w) =>
+    w.path.endsWith("/entitlements/hosted_quota_sync")
+  );
+  assert.equal(entitlementWrites.length, 0);
+});
+
+test("reconcileEntitlement honours ASC live state over inbound JWS", async () => {
+  const productID = "p";
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const db = makeReconcilerDb(writes, new Map());
+
+  const oldTx = fakeTx({
+    productId: productID,
+    signedDate: 1700000000_000,
+    transactionId: "tx-old",
+    originalTransactionId: "otx-A",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+  });
+  const newerTx = fakeTx({
+    productId: productID,
+    signedDate: 1800000000_000, // newer
+    transactionId: "tx-new",
+    originalTransactionId: "otx-A",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 60 * 86_400_000,
+  });
+  // Seed sees old; ASC returns the newer one. Reconciler must pick newer.
+  const verifier = fakeVerifier({
+    seed: oldTx,
+    extraVerifyTransaction: { [newerTx.raw]: newerTx },
+  });
+  const fetchLive = async () => ({
+    status: { data: [] },
+    pairs: [{ signedTransactionInfo: newerTx.raw }],
+  });
+
+  const result = await reconcileEntitlement(
+    db,
+    cfg,
+    {
+      signedTransactionJWS: oldTx.raw,
+      claimedUid: "uid-7",
+      source: "client_callable",
+      productID,
+    },
+    { verifier, fetchLive }
+  );
+
+  assert.equal(result.entitlement.transactionID, "tx-new");
+});
+
+// ---------------------------------------------------------------------------
+// 12. Hosted quota runner snapshot normalization
+// ---------------------------------------------------------------------------
+
+test("hosted runner snapshots are server-attributed and sanitized", () => {
+  const account = {
+    id: "codex_default",
+    providerID: "codex",
+    label: "Hosted Codex",
+    storageScope: "server_private",
+  };
+  const snapshot = quotaTesting.normalizeRunnerSnapshot(
+    {
+      provider: "openai",
+      providerID: "openai",
+      accountID: "other",
+      sourceId: "../hosted runner",
+      fetchedAt: "not a date",
+      source: "Codex app-server account/rateLimits/read",
+      confidence: "high",
+      managementURL: "http://example.test/not-allowed",
+      buckets: [
+        {
+          name: "Codex weekly",
+          used: 42,
+          limit: 100,
+          remaining: 58,
+          window: "weekly",
+          meta: {
+            unit: "percent",
+            authorization: "nope",
+            nested: { should: "drop" },
+          },
+        },
+      ],
+    },
+    account,
+    "2026-05-05T00:00:00.000Z"
+  );
+
+  assert.equal(snapshot.provider, "codex");
+  assert.equal(snapshot.providerID, "codex");
+  assert.equal(snapshot.accountID, "codex_default");
+  assert.equal(snapshot.accountLabel, "Hosted Codex");
+  assert.equal(snapshot.accountStorageScope, "server_private");
+  assert.equal(snapshot.sourceId, "hosted-runner");
+  assert.equal(snapshot.fetchedAt, "2026-05-05T00:00:00.000Z");
+  assert.equal(snapshot.managementURL, undefined);
+  assert.equal(snapshot.buckets.length, 1);
+  assert.deepEqual(snapshot.buckets[0].meta, { unit: "percent" });
+});
+
+test("hosted runner snapshot normalization rejects empty bucket sets", () => {
+  assert.throws(
+    () =>
+      quotaTesting.normalizeRunnerSnapshot(
+        { buckets: [] },
+        {
+          id: "codex_default",
+          providerID: "codex",
+          label: "Hosted Codex",
+          storageScope: "server_private",
+        },
+        "2026-05-05T00:00:00.000Z"
+      ),
+    /no quota buckets/
+  );
+});
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -563,6 +970,7 @@ function stubDoc(overrides = {}) {
     expiresAt: "2099-01-01T00:00:00.000Z",
     environment: "Sandbox",
     signedTransactionHash: "0".repeat(64),
+    signedDateMs: 1700000000_000,
     lastVerifiedAt: "2026-01-01T00:00:00.000Z",
     source: "apple_jws_verified",
     verificationVersion: 2,
@@ -596,4 +1004,176 @@ function makeFakeFirestore(writes, opts = {}) {
     },
   });
   return { doc: docFn };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers used by the reconciler integration tests
+// ---------------------------------------------------------------------------
+
+function stubCfg(overrides = {}) {
+  return {
+    bundleId: "com.test.app",
+    environment: "Sandbox",
+    enableOnlineChecks: false,
+    autoFallbackEnvironment: false,
+    asc: { keyId: "k", issuerId: "i", privateKeyP8: "p" },
+    ...overrides,
+  };
+}
+
+/**
+ * Lightweight fake of admin firestore — supports `.doc(path).{get,create,set}`,
+ * `.collection(path).{add,where(...)}`, and `.collectionGroup(name).where(...)`.
+ *
+ * `reads` is a Map<path, snapshot>; missing paths return `{exists:false}`.
+ * `writes` collects every mutation for assertion.
+ */
+function makeReconcilerDb(writes, reads) {
+  const collectionGroupSnaps = new Map();
+
+  function doc(path) {
+    return {
+      path,
+      async get() {
+        const snap = reads.get(path);
+        if (snap) return snap;
+        return { exists: false, data: () => undefined };
+      },
+      async create(value) {
+        // The reconciler uses `.create()` for audit events and bindings;
+        // they're new every call, but tolerate repeats for replay tests.
+        const existing = reads.get(path);
+        if (existing && existing.exists) {
+          const err = new Error("ALREADY_EXISTS");
+          err.code = 6;
+          throw err;
+        }
+        writes.push({ kind: "create", path, data: value });
+      },
+      async set(value, options) {
+        writes.push({ kind: "set", path, data: value, options });
+      },
+      collection(name) {
+        return collection(`${path}/${name}`);
+      },
+    };
+  }
+
+  function collection(path) {
+    return {
+      path,
+      doc(id) {
+        return doc(`${path}/${id}`);
+      },
+      async add(value) {
+        const childPath = `${path}/auto-${writes.length}`;
+        writes.push({ kind: "add", path: childPath, data: value });
+        return doc(childPath);
+      },
+      where() {
+        // Fall through to an empty snapshot — the reconciler uses
+        // collection-group queries for cross-user lookups; tests opt
+        // into a populated result via `setCollectionGroupResult()`.
+        return {
+          async get() {
+            return collectionGroupSnaps.get(path) ?? { empty: true, docs: [] };
+          },
+          where() {
+            return this;
+          },
+          limit() {
+            return this;
+          },
+        };
+      },
+    };
+  }
+
+  async function runTransaction(fn) {
+    // Tiny in-memory transaction shim. We don't model isolation —
+    // each `tx.get()` returns the current `reads` snapshot and
+    // `tx.set()` defers into `writes` only on commit. Sufficient for
+    // happy-path / monotonicity / replay tests.
+    const txWrites = [];
+    const tx = {
+      async get(ref) {
+        return ref.get();
+      },
+      set(ref, value, options) {
+        txWrites.push({ kind: "set", path: ref.path, data: value, options });
+      },
+      create(ref, value) {
+        txWrites.push({ kind: "create", path: ref.path, data: value });
+      },
+      update(ref, value) {
+        txWrites.push({ kind: "update", path: ref.path, data: value });
+      },
+    };
+    const result = await fn(tx);
+    for (const w of txWrites) writes.push(w);
+    return result;
+  }
+
+  return {
+    doc,
+    collection,
+    runTransaction,
+    collectionGroup(name) {
+      return {
+        where() {
+          return {
+            async get() {
+              return collectionGroupSnaps.get(`__cg__/${name}`) ?? {
+                empty: true,
+                docs: [],
+              };
+            },
+            where() {
+              return this;
+            },
+            limit() {
+              return this;
+            },
+          };
+        },
+      };
+    },
+    setCollectionGroupResult(name, snap) {
+      collectionGroupSnaps.set(`__cg__/${name}`, snap);
+    },
+  };
+}
+
+/**
+ * Synchronous in-memory verifier matching the live `AppleJWSVerifier`
+ * surface area used by the reconciler. `seed` is the JWS we expect the
+ * caller to forward; `extraVerifyTransaction` is keyed by raw JWS for
+ * the ASC-paired transactions the reconciler re-verifies.
+ */
+function fakeVerifier({ seed, extraVerifyTransaction = {} }) {
+  const byRaw = new Map([[seed.raw, seed]]);
+  for (const [raw, tx] of Object.entries(extraVerifyTransaction)) {
+    byRaw.set(raw, tx);
+  }
+  return {
+    defaultEnvironment: "Sandbox",
+    async verifyTransaction(jws) {
+      const tx = byRaw.get(jws);
+      if (!tx) {
+        const err = new Error(`fakeVerifier: no transaction for ${jws}`);
+        err.code = "jws_invalid";
+        throw err;
+      }
+      return tx;
+    },
+    async verifyRenewalInfo() {
+      return { payload: {}, environment: "Sandbox", raw: "" };
+    },
+    async verifyNotification(jws) {
+      const tx = byRaw.get(jws);
+      if (!tx) throw new Error("not implemented");
+      return { payload: { data: {} }, environment: "Sandbox" };
+    },
+    warmUp() {},
+  };
 }

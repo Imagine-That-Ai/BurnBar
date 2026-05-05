@@ -6,13 +6,17 @@ import FirebaseFirestore
 @MainActor
 final class ActivityStore {
     private let firestore: FirestoreRepository
+    private let functions: FunctionsRepository
 
     private(set) var isLoading = false
+    private(set) var isSearching = false
     private(set) var error: String?
     private(set) var usages: [TokenUsage] = []
+    private(set) var searchHits: [StreamSearchHit] = []
     private(set) var hasMore = true
     private var lastDoc: DocumentSnapshot?
     private let pageSize = 25
+    private var lastSearchQuery = ""
 
     /// Optional provider filter applied to the next fetch. The view binds
     /// directly to this and calls `applyFilters()` to re-query.
@@ -20,8 +24,12 @@ final class ActivityStore {
     var filterStartDate: Date?
     var filterEndDate: Date?
 
-    init(firestore: FirestoreRepository = FirestoreRepository()) {
+    init(
+        firestore: FirestoreRepository = FirestoreRepository(),
+        functions: FunctionsRepository = FunctionsRepository()
+    ) {
         self.firestore = firestore
+        self.functions = functions
     }
 
     /// Convenience alias used by `.task` and pull-to-refresh on first load.
@@ -35,6 +43,14 @@ final class ActivityStore {
     }
 
     func load() async {
+        if AppStoreScreenshotMode.isEnabled {
+            isLoading = false
+            error = nil
+            usages = AppStoreScreenshotData.recentUsage
+            lastDoc = nil
+            hasMore = false
+            return
+        }
         isLoading = true
         error = nil
         defer { isLoading = false }
@@ -58,6 +74,7 @@ final class ActivityStore {
     }
 
     func loadMore() async {
+        guard !AppStoreScreenshotMode.isEnabled else { return }
         guard hasMore, !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
@@ -81,6 +98,10 @@ final class ActivityStore {
     }
 
     func refresh() async {
+        if AppStoreScreenshotMode.isEnabled {
+            await load()
+            return
+        }
         lastDoc = nil
         usages = []
         hasMore = true
@@ -91,5 +112,28 @@ final class ActivityStore {
     /// the FilterSheet's Done button.
     func applyFilters() async {
         await refresh()
+    }
+
+    func updateSearch(query: String) async {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        lastSearchQuery = trimmed
+        guard trimmed.count >= 2 else {
+            searchHits = []
+            isSearching = false
+            return
+        }
+
+        isSearching = true
+        do {
+            try await Task.sleep(for: .milliseconds(250))
+            try Task.checkCancellation()
+            guard lastSearchQuery == trimmed else { return }
+            searchHits = try await functions.searchStreams(query: trimmed)
+        } catch is CancellationError {
+            return
+        } catch {
+            searchHits = []
+        }
+        isSearching = false
     }
 }

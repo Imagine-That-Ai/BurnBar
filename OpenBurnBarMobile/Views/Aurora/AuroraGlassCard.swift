@@ -53,7 +53,7 @@ struct AuroraGlassCard<Content: View>: View {
                 guard interactive else { return }
                 isHovered = hovering
             }
-            .gesture(interactive ? pressGesture : nil)
+            .allowsHitTesting(true)
     }
 
     // MARK: - Specular Highlight
@@ -83,13 +83,6 @@ struct AuroraGlassCard<Content: View>: View {
         }
     }
 
-    // MARK: - Press Gesture
-
-    private var pressGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { _ in isPressed = true }
-            .onEnded { _ in isPressed = false }
-    }
 }
 
 // MARK: - Preview

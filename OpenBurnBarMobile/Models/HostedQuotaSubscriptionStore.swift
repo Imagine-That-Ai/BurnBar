@@ -1,5 +1,8 @@
 import Foundation
 import StoreKit
+#if os(iOS)
+import UIKit
+#endif
 
 /// StoreKit 2 surface for the Apple-verified hosted-quota entitlement.
 ///
@@ -21,7 +24,7 @@ import StoreKit
 @Observable
 @MainActor
 final class HostedQuotaSubscriptionStore {
-    static let productID = "com.burnbar.hostedQuotaSync.monthly"
+    static let productID = "com.openburnbar.hostedQuotaSync.monthly"
 
     private let functions: FunctionsRepository
 
@@ -32,6 +35,12 @@ final class HostedQuotaSubscriptionStore {
     private(set) var error: String?
 
     nonisolated(unsafe) private var transactionUpdatesTask: Task<Void, Never>?
+
+    /// Serializes inbound `verifyOnServer` calls. StoreKit can race a
+    /// `purchase()`-emitted `verifyOnServer` against a near-simultaneous
+    /// `Transaction.updates` event for the same JWS. We coalesce on the
+    /// JWS representation so the second call awaits the first.
+    private var inFlightVerifyByJWS: [String: Task<Void, Error>] = [:]
 
     init(functions: FunctionsRepository = .shared) {
         self.functions = functions
@@ -89,43 +98,63 @@ final class HostedQuotaSubscriptionStore {
         }
     }
 
-    /// Re-run the App Store Server reconciliation for the signed-in
-    /// user's existing `originalTransactionID`. Surfaced as the
-    /// "Restore Purchases" affordance.
+    /// Apple's HIG-mandated "Restore Purchases" affordance. Triggers an
+    /// `AppStore.sync()` (forces StoreKit to revalidate with Apple
+    /// servers, can prompt for App Store password), then walks
+    /// `Transaction.currentEntitlements` for any active subscription
+    /// matching our productID. If found, the JWS is forwarded to the
+    /// server for verification + reconciliation. If not, falls back to
+    /// the server-side reconcile path keyed off any existing entitlement
+    /// doc, so users who paid on a previous install can still recover.
     func restorePurchases() async {
         isLoading = true
         error = nil
         defer { isLoading = false }
         do {
+            // 1) Force StoreKit to refresh from Apple. May prompt the
+            //    user for their Apple ID password — that's the expected
+            //    Apple behaviour and the only way `currentEntitlements`
+            //    reflects fresh server state on a brand-new install.
+            try await AppStore.sync()
+
+            // 2) Walk local entitlements. The first matching active JWS
+            //    wins; we forward only the raw JWS so the server is the
+            //    sole arbiter of activation.
+            let matchedJWS = await findCurrentEntitlementJWS()
+            if let matchedJWS {
+                let response = try await functions.restoreHostedQuotaEntitlement(
+                    productID: Self.productID,
+                    signedTransactionJWS: matchedJWS
+                )
+                apply(response: response)
+                return
+            }
+
+            // 3) No local entitlement — try the server-side fallback
+            //    (works only if a prior entitlement doc exists for the
+            //    signed-in UID).
             let response = try await functions.restoreHostedQuotaEntitlement(
                 productID: Self.productID
             )
             apply(response: response)
         } catch {
+            // We surface the human-readable form. The server's
+            // `failed-precondition` for "no entitlement on file" is
+            // expected when a brand-new user taps Restore without ever
+            // having purchased; the message is clear enough as-is.
             self.error = error.localizedDescription
         }
     }
 
-    /// Sync any active StoreKit entitlement up to the server, or mark
-    /// the user inactive locally if no signed transaction exists.
+    /// Sync any active StoreKit entitlement up to the server, or fall
+    /// back to the server's view when no local transaction exists.
     func refreshEntitlement() async throws {
-        var matchedJWS: String?
-        for await result in Transaction.currentEntitlements {
-            let transaction = try checked(result)
-            guard transaction.productID == Self.productID else { continue }
-            guard transaction.revocationDate == nil else { continue }
-            if let expires = transaction.expirationDate, expires <= Date() { continue }
-            matchedJWS = result.jwsRepresentation
-            break
-        }
-
-        if let matchedJWS {
+        if let matchedJWS = await findCurrentEntitlementJWS() {
             try await verifyOnServer(jws: matchedJWS)
         } else {
-            // No local entitlement to surface — but the server may still
-            // have a record of this user's subscription, so prefer the
-            // server's view over flipping `isActive` to false purely on
-            // the local StoreKit cache.
+            // No local entitlement to surface. Try the server-side
+            // restore path so users who previously paid (and have a
+            // doc on file) still see their entitlement on this device.
             do {
                 let response = try await functions.restoreHostedQuotaEntitlement(
                     productID: Self.productID
@@ -136,6 +165,30 @@ final class HostedQuotaSubscriptionStore {
                 expirationDate = nil
             }
         }
+    }
+
+    /// Walk `Transaction.currentEntitlements` and return the JWS of the
+    /// first verified, non-revoked, non-expired transaction matching
+    /// our productID. Returns `nil` when no qualifying entitlement is
+    /// present locally.
+    private func findCurrentEntitlementJWS() async -> String? {
+        for await result in Transaction.currentEntitlements {
+            do {
+                let transaction = try checked(result)
+                guard transaction.productID == Self.productID else { continue }
+                guard transaction.revocationDate == nil else { continue }
+                if let expires = transaction.expirationDate, expires <= Date() {
+                    continue
+                }
+                return result.jwsRepresentation
+            } catch {
+                // Skip unverified entitlements — the server is the
+                // source of truth, but there's no point sending a
+                // payload StoreKit itself flagged as suspect.
+                continue
+            }
+        }
+        return nil
     }
 
     // MARK: Internals
@@ -172,12 +225,26 @@ final class HostedQuotaSubscriptionStore {
         return uuid
     }
 
+    /// Verify a JWS against the server. Concurrent calls for the same
+    /// JWS share a single in-flight Task, so a `purchase()` outcome
+    /// racing a `Transaction.updates` event won't double-call the
+    /// callable nor cause UI flicker on the entitlement state.
     private func verifyOnServer(jws: String) async throws {
-        let response = try await functions.verifyHostedQuotaEntitlement(
-            signedTransactionJWS: jws,
-            productID: Self.productID
-        )
-        apply(response: response)
+        if let existing = inFlightVerifyByJWS[jws] {
+            try await existing.value
+            return
+        }
+        let task = Task<Void, Error> { [weak self] in
+            guard let self else { return }
+            let response = try await self.functions.verifyHostedQuotaEntitlement(
+                signedTransactionJWS: jws,
+                productID: Self.productID
+            )
+            await MainActor.run { self.apply(response: response) }
+        }
+        inFlightVerifyByJWS[jws] = task
+        defer { inFlightVerifyByJWS.removeValue(forKey: jws) }
+        try await task.value
     }
 
     private func apply(response: HostedQuotaEntitlementResponse) {
@@ -192,6 +259,10 @@ final class HostedQuotaSubscriptionStore {
         }
     }
 
+    /// Platform tag passed to `beginEntitlementBinding` for diagnostics.
+    /// Reading `UIDevice.current` requires a hop to MainActor on iOS;
+    /// the enclosing static var is invoked from `@MainActor`-isolated
+    /// `mintAppAccountToken`, so this is safe.
     private static var platformIdentifier: String {
         #if os(iOS)
         if UIDevice.current.userInterfaceIdiom == .pad {
@@ -205,10 +276,6 @@ final class HostedQuotaSubscriptionStore {
         #endif
     }
 }
-
-#if os(iOS)
-import UIKit
-#endif
 
 enum HostedQuotaSubscriptionError: Error, LocalizedError {
     case productUnavailable

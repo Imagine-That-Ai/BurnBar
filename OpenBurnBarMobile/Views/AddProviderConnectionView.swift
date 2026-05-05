@@ -227,8 +227,22 @@ struct AddProviderConnectionView: View {
                         .font(MobileTheme.Typography.caption)
                         .foregroundStyle(MobileTheme.Colors.error)
                 }
+                // Apple HIG-mandated affordance: every app with auto-renewing
+                // subscriptions MUST expose a Restore Purchases button. Always
+                // visible (even when active) so reviewers and reinstalled
+                // users have an obvious recovery path.
+                Button {
+                    Task { await subscriptionStore.restorePurchases() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Restore Purchases")
+                    }
+                }
+                .disabled(subscriptionStore.isLoading)
+                .accessibilityHint("Re-validates your hosted quota subscription with Apple.")
             } footer: {
-                Text("Hosted sync refreshes quota only when you tap refresh. You can delete hosted credentials at any time.")
+                Text("Hosted sync refreshes quota only when you tap refresh. You can delete hosted credentials at any time. Use Restore Purchases on a new device after a previous purchase.")
                     .font(MobileTheme.Typography.caption)
             }
         }

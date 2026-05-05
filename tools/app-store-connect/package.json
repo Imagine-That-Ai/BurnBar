@@ -4,7 +4,11 @@
   "description": "App Store Connect setup automation for OpenBurnBar",
   "scripts": {
     "setup": "node setup-asc.js",
-    "setup:ios": "node setup-asc.js --platform ios"
+    "setup:ios": "node setup-asc.js --platform ios",
+    "status": "node asc-api.js status",
+    "prepare:ios": "node asc-api.js prepare-ios",
+    "attach-build": "node asc-api.js attach-build",
+    "seed-review-account": "node seed-review-account.js"
   },
   "dependencies": {
     "playwright": "^1.44.0"

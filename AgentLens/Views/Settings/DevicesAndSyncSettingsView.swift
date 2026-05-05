@@ -1,4 +1,6 @@
 import OpenBurnBarCore
+import FirebaseAuth
+import FirebaseFirestore
 import SwiftUI
 
 // MARK: - Mac Copy
@@ -108,6 +110,28 @@ struct DevicesAndSyncSettingsView: View {
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
 
+                if let error = deviceTrust.lastErrorMessage {
+                    GlassCard {
+                        HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(DesignSystem.Colors.error)
+                            Text(error)
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Button { deviceTrust.clearLastError() } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(DesignSystem.Spacing.md)
+                    }
+                }
+
+                deviceListSection
+
                 SettingsSectionHeader(title: MacCopy.activeGrantsSectionTitle)
                 CredentialTransferSheet(
                     provider: .minimax,
@@ -118,6 +142,105 @@ struct DevicesAndSyncSettingsView: View {
             .padding(DesignSystem.Spacing.xl)
             .frame(maxWidth: 720, alignment: .leading)
         }
+        .task {
+            await deviceTrust.load()
+        }
+    }
+
+    @ViewBuilder
+    private var deviceListSection: some View {
+        if deviceTrust.isLoading {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                ProgressView()
+                    .scaleEffect(0.8)
+                Text("Loading devices…")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(.vertical, DesignSystem.Spacing.md)
+        } else if deviceTrust.trustedDevices.isEmpty {
+            GlassCard {
+                HStack(spacing: DesignSystem.Spacing.md) {
+                    Image(systemName: "macbook.and.iphone")
+                        .font(.system(size: 20))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("No devices found")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("Sign in on another device to see it here.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                    Spacer()
+                }
+                .padding(DesignSystem.Spacing.md)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                ForEach(deviceTrust.trustedDevices) { device in
+                    deviceRow(device)
+                }
+            }
+        }
+    }
+
+    private func deviceRow(_ device: MacTrustedDevice) -> some View {
+        GlassCard {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                Image(systemName: device.isCurrentDevice ? "desktopcomputer" : "iphone")
+                    .font(.system(size: 18))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(device.displayName)
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(deviceStatusColor(device))
+                            .frame(width: 6, height: 6)
+                        Text(deviceStatusText(device))
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(deviceStatusColor(device))
+                    }
+                }
+
+                Spacer()
+
+                if !device.isCurrentDevice {
+                    Button(MacCopy.approveDevice) {
+                        Task { await deviceTrust.approve(deviceID: device.id) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+
+                    Button(MacCopy.revokeDevice) {
+                        Task { await deviceTrust.revoke(deviceID: device.id) }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .controlSize(.small)
+                } else {
+                    Text("This Mac")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.success)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(DesignSystem.Colors.success.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+        }
+    }
+
+    private func deviceStatusText(_ device: MacTrustedDevice) -> String {
+        device.isCurrentDevice ? "Current" : device.platform
+    }
+
+    private func deviceStatusColor(_ device: MacTrustedDevice) -> Color {
+        device.isCurrentDevice ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted
     }
 }
 
@@ -308,10 +431,63 @@ protocol MacDeviceTrustGateway: AnyObject {
 }
 
 @MainActor
-final class DefaultMacDeviceTrustGateway: MacDeviceTrustGateway {
-    func trustedDevices() async throws -> [MacTrustedDevice] { [] }
-    func approve(deviceID: String) async throws {}
-    func revoke(deviceID: String) async throws {}
+final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
+    private let db = Firestore.firestore()
+    private var uid: String? { Auth.auth().currentUser?.uid }
+    private var deviceId: String {
+        UserDefaults.standard.string(forKey: OpenBurnBarIdentity.deviceIDKey) ?? UUID().uuidString
+    }
+
+    func trustedDevices() async throws -> [MacTrustedDevice] {
+        guard let uid else { throw MacDeviceTrustError.notAuthenticated }
+        let snap = try await db.collection("users").document(uid).collection("escrow_devices").getDocuments()
+        return snap.documents.compactMap { doc in
+            let d = doc.data()
+            return MacTrustedDevice(
+                id: doc.documentID,
+                displayName: d["deviceName"] as? String ?? "Unknown",
+                platform: d["platform"] as? String ?? "macOS",
+                isCurrentDevice: doc.documentID == self.deviceId
+            )
+        }
+    }
+
+    func approve(deviceID: String) async throws {
+        guard let uid else { throw MacDeviceTrustError.notAuthenticated }
+        try await db.collection("users").document(uid).collection("escrow_devices")
+            .document(deviceID).setData([
+                "trustState": EscrowDeviceTrustState.trusted.rawValue,
+                "approvedAt": FieldValue.serverTimestamp(),
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+    }
+
+    func revoke(deviceID: String) async throws {
+        guard let uid else { throw MacDeviceTrustError.notAuthenticated }
+        try await db.collection("users").document(uid).collection("escrow_devices")
+            .document(deviceID).setData([
+                "trustState": EscrowDeviceTrustState.revoked.rawValue,
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+        let grants = try await db.collection("users").document(uid).collection("escrow_grants")
+            .whereField("targetDeviceId", isEqualTo: deviceID)
+            .whereField("status", isEqualTo: EscrowGrantStatus.granted.rawValue).getDocuments()
+        for doc in grants.documents {
+            try await doc.reference.setData([
+                "status": EscrowGrantStatus.revoked.rawValue,
+                "revokedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+        }
+    }
+}
+
+enum MacDeviceTrustError: LocalizedError {
+    case notAuthenticated
+    var errorDescription: String? {
+        switch self {
+        case .notAuthenticated: return "You must be signed in to manage device trust."
+        }
+    }
 }
 
 @Observable @MainActor
@@ -321,7 +497,7 @@ final class DeviceTrustViewModel {
     private(set) var isLoading = false
     private(set) var lastErrorMessage: String?
 
-    init(gateway: MacDeviceTrustGateway = DefaultMacDeviceTrustGateway()) {
+    init(gateway: MacDeviceTrustGateway = MacLiveDeviceTrustGateway()) {
         self.gateway = gateway
     }
 
@@ -357,6 +533,10 @@ final class DeviceTrustViewModel {
             lastErrorMessage = error.localizedDescription
         }
     }
+
+    func clearLastError() {
+        lastErrorMessage = nil
+    }
 }
 
 struct CredentialTransferSheet: View {
@@ -384,6 +564,8 @@ struct CredentialTransferSheet: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(true)
+                .help("Credential transfer is not yet available on macOS.")
             } else {
                 Text(MacCopy.credentialTransferUnavailable)
                     .font(DesignSystem.Typography.tiny)

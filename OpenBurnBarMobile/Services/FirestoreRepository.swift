@@ -6,6 +6,18 @@ import OSLog
 
 private let logger = Logger(subsystem: "com.openburnbar.mobile", category: "FirestoreRepository")
 
+struct StreamSessionLogManifest: Identifiable, Hashable, Sendable {
+    let id: String
+    let documentID: String
+    let sessionId: String
+    let projectName: String
+    let inferredTaskTitle: String
+    let messageCount: Int
+    let chunkCount: Int
+    let byteCount: Int
+    let bodyHash: String?
+}
+
 // MARK: - Firestore Repository
 
 @MainActor
@@ -13,6 +25,15 @@ final class FirestoreRepository {
     static let shared = FirestoreRepository()
 
     private let db = Firestore.firestore()
+
+    nonisolated func currentUserDisplayID() -> String? {
+        Self.redactedUserID(Auth.auth().currentUser?.uid)
+    }
+
+    nonisolated static func redactedUserID(_ uid: String?) -> String? {
+        guard let uid, uid.isEmpty == false else { return nil }
+        return "…\(uid.suffix(5))"
+    }
 
     private func uid() throws -> String {
         guard let uid = Auth.auth().currentUser?.uid else {
@@ -77,6 +98,13 @@ final class FirestoreRepository {
         if enriched["id"] == nil {
             enriched["id"] = docID
         }
+        if T.self == TokenUsage.self,
+           let rawProvider = enriched["provider"] as? String {
+            let providerID = ProviderID(rawValue: rawProvider)
+            if let provider = AgentProvider.fromProviderID(providerID) ?? AgentProvider.fromPersistedToken(rawProvider) {
+                enriched["provider"] = provider.rawValue
+            }
+        }
         if enriched["deviceId"] != nil && enriched["sourceDeviceId"] == nil {
             enriched["sourceDeviceId"] = enriched["deviceId"]
         }
@@ -91,6 +119,66 @@ final class FirestoreRepository {
             logger.error("Failed to decode \(String(describing: T.self)) for document \(docID): \(error.localizedDescription)")
             return nil
         }
+    }
+
+    nonisolated func decodeQuotaSnapshot(from data: [String: Any], docID: String) -> ProviderQuotaSnapshot? {
+        decodeWithDocID(ProviderQuotaSnapshot.self, from: normalizeQuotaSnapshotData(data, docID: docID), docID: docID)
+    }
+
+    nonisolated func normalizeQuotaSnapshotData(_ data: [String: Any], docID: String) -> [String: Any] {
+        var result = data
+        result["id"] = result["id"] ?? docID
+
+        if let rawProvider = result["provider"] as? String, result["providerID"] == nil {
+            let providerID = AgentProvider.fromPersistedToken(rawProvider)?.providerID
+                ?? AgentProvider(rawValue: rawProvider)?.providerID
+                ?? ProviderID(rawValue: rawProvider)
+            result["providerID"] = providerID.rawValue
+        }
+
+        if let rawSourceKind = result["sourceKind"] as? String {
+            switch rawSourceKind {
+            case "provider", "officialAPI", "localCLI", "localSession", "manualEstimate", "unavailable":
+                break
+            default:
+                result["sourceKind"] = "provider"
+            }
+        } else {
+            result["sourceKind"] = "provider"
+        }
+
+        if let rawConfidence = result["confidence"] as? String {
+            switch rawConfidence {
+            case "exact":
+                result["confidence"] = "high"
+            case "estimated":
+                result["confidence"] = "medium"
+            case "unavailable":
+                result["confidence"] = "stale"
+            case "high", "medium", "low", "stale":
+                break
+            default:
+                result["confidence"] = "stale"
+            }
+        } else {
+            result["confidence"] = "stale"
+        }
+
+        if let buckets = result["buckets"] as? [[String: Any]] {
+            result["buckets"] = buckets.map { bucket in
+                var normalized = bucket
+                if let meta = normalized["meta"] as? [String: Any] {
+                    normalized["meta"] = meta.mapValues { value in
+                        if let string = value as? String { return string }
+                        if value is NSNull { return "" }
+                        return String(describing: value)
+                    }
+                }
+                return normalized
+            }
+        }
+
+        return result
     }
 
     /// Decodes a usage rollup with full field normalization.
@@ -242,10 +330,15 @@ final class FirestoreRepository {
     func fetchQuotaSnapshots() async throws -> [ProviderQuotaSnapshot] {
         let uid = try uid()
         let snapshot = try await db.collection("users/\(uid)/quota_snapshots").getDocuments()
-        let results = snapshot.documents.compactMap { doc -> ProviderQuotaSnapshot? in
-            decodeWithDocID(ProviderQuotaSnapshot.self, from: doc.data(), docID: doc.documentID)
+        let (results, failedIDs) = decodeQuotaDocuments(snapshot.documents.map { ($0.documentID, $0.data()) })
+        let rawCount = results.count + failedIDs.count
+        logger.info("Fetched \(results.count)/\(rawCount) quota snapshots for account \(Self.redactedUserID(uid) ?? "unknown")")
+        if failedIDs.isEmpty == false {
+            logger.warning("Skipped \(failedIDs.count) undecodable quota snapshot docs: \(failedIDs.joined(separator: ","), privacy: .private)")
         }
-        logger.info("Fetched \(results.count) quota snapshots")
+        if rawCount > 0, results.isEmpty {
+            throw FirestoreError.decodingFailed("Could not decode \(rawCount) quota snapshot document\(rawCount == 1 ? "" : "s").")
+        }
         return results
     }
 
@@ -263,12 +356,31 @@ final class FirestoreRepository {
                 onUpdate(.failure(error))
                 return
             }
-            let results = (snapshot?.documents ?? []).compactMap { doc -> ProviderQuotaSnapshot? in
-                self.decodeWithDocID(ProviderQuotaSnapshot.self, from: doc.data(), docID: doc.documentID)
+            let documents = snapshot?.documents ?? []
+            let (results, failedIDs) = self.decodeQuotaDocuments(documents.map { ($0.documentID, $0.data()) })
+            if failedIDs.isEmpty == false {
+                logger.warning("Quota listener skipped \(failedIDs.count) undecodable docs: \(failedIDs.joined(separator: ","), privacy: .private)")
             }
-            logger.debug("Quota listener update: \(results.count) snapshots")
+            if documents.isEmpty == false, results.isEmpty {
+                onUpdate(.failure(FirestoreError.decodingFailed("Could not decode \(documents.count) quota snapshot document\(documents.count == 1 ? "" : "s").")))
+                return
+            }
+            logger.debug("Quota listener update: \(results.count)/\(documents.count) snapshots")
             onUpdate(.success(results))
         }
+    }
+
+    nonisolated private func decodeQuotaDocuments(_ documents: [(id: String, data: [String: Any])]) -> ([ProviderQuotaSnapshot], [String]) {
+        var results: [ProviderQuotaSnapshot] = []
+        var failedIDs: [String] = []
+        for document in documents {
+            if let snapshot = decodeQuotaSnapshot(from: document.data, docID: document.id) {
+                results.append(snapshot)
+            } else {
+                failedIDs.append(document.id)
+            }
+        }
+        return (results, failedIDs)
     }
 
     // MARK: - Usage Events (Activity)
@@ -307,6 +419,85 @@ final class FirestoreRepository {
         }
     }
 
+    // MARK: - Stream Detail
+
+    func fetchSessionLogManifest(for usage: TokenUsage) async throws -> StreamSessionLogManifest? {
+        let uid = try uid()
+        let deviceId = usage.sourceDeviceId
+        let logsRef = db.collection("users/\(uid)/session_logs")
+
+        let candidates: [Query]
+        if let deviceId, !deviceId.isEmpty {
+            candidates = [
+                logsRef
+                    .whereField("deviceId", isEqualTo: deviceId)
+                    .whereField("sessionId", isEqualTo: usage.sessionId)
+                    .limit(to: 1),
+                logsRef
+                    .whereField("deviceId", isEqualTo: deviceId)
+                    .whereField("id", isEqualTo: "\(usage.provider.rawValue):\(usage.sessionId)")
+                    .limit(to: 1),
+                logsRef
+                    .whereField("deviceId", isEqualTo: deviceId)
+                    .whereField("id", isEqualTo: usage.sessionId)
+                    .limit(to: 1)
+            ]
+        } else {
+            candidates = [
+                logsRef
+                    .whereField("sessionId", isEqualTo: usage.sessionId)
+                    .limit(to: 1),
+                logsRef
+                    .whereField("id", isEqualTo: "\(usage.provider.rawValue):\(usage.sessionId)")
+                    .limit(to: 1),
+                logsRef
+                    .whereField("id", isEqualTo: usage.sessionId)
+                    .limit(to: 1)
+            ]
+        }
+
+        for query in candidates {
+            let snapshot = try await query.getDocuments()
+            if let doc = snapshot.documents.first {
+                return streamManifest(from: doc)
+            }
+        }
+        return nil
+    }
+
+    func fetchSessionLogBody(documentID: String, maxCharacters: Int? = nil) async throws -> String {
+        let uid = try uid()
+        let snapshot = try await db
+            .collection("users/\(uid)/session_logs/\(documentID)/chunks")
+            .order(by: "index")
+            .getDocuments()
+
+        var body = ""
+        for doc in snapshot.documents {
+            guard let chunk = doc.data()["body"] as? String else { continue }
+            body += chunk
+            if let maxCharacters, body.count >= maxCharacters {
+                return String(body.prefix(maxCharacters))
+            }
+        }
+        return body
+    }
+
+    private func streamManifest(from doc: QueryDocumentSnapshot) -> StreamSessionLogManifest {
+        let data = doc.data()
+        return StreamSessionLogManifest(
+            id: data["id"] as? String ?? doc.documentID,
+            documentID: doc.documentID,
+            sessionId: data["sessionId"] as? String ?? data["id"] as? String ?? doc.documentID,
+            projectName: data["projectName"] as? String ?? "",
+            inferredTaskTitle: data["inferredTaskTitle"] as? String ?? "",
+            messageCount: data["messageCount"] as? Int ?? 0,
+            chunkCount: data["chunkCount"] as? Int ?? 0,
+            byteCount: data["byteCount"] as? Int ?? 0,
+            bodyHash: data["bodyHash"] as? String
+        )
+    }
+
     // MARK: - Provider Connections
 
     func fetchProviderConnections() async throws -> [ProviderConnectionDoc] {
@@ -321,15 +512,24 @@ final class FirestoreRepository {
 
     func fetchProviderAccounts() async throws -> [ProviderAccountDoc] {
         let uid = try uid()
-        let snapshot = try await db.collection("users/\(uid)/provider_accounts")
-            .order(by: "providerID")
-            .order(by: "sortKey")
-            .getDocuments()
+        let snapshot = try await db.collection("users/\(uid)/provider_accounts").getDocuments()
         let results = snapshot.documents.compactMap { doc -> ProviderAccountDoc? in
             decodeWithDocID(ProviderAccountDoc.self, from: doc.data(), docID: doc.documentID)
         }
         logger.info("Fetched \(results.count) provider accounts")
-        return results
+        return sortProviderAccounts(results)
+    }
+
+    nonisolated func sortProviderAccounts(_ accounts: [ProviderAccountDoc]) -> [ProviderAccountDoc] {
+        accounts.sorted {
+            if $0.providerID.rawValue != $1.providerID.rawValue {
+                return $0.providerID.rawValue < $1.providerID.rawValue
+            }
+            if $0.sortKey != $1.sortKey {
+                return $0.sortKey < $1.sortKey
+            }
+            return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+        }
     }
 }
 
@@ -337,10 +537,12 @@ final class FirestoreRepository {
 
 enum FirestoreError: Error, LocalizedError {
     case notAuthenticated
+    case decodingFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .notAuthenticated: return "Not signed in."
+        case .decodingFailed(let message): return message
         }
     }
 }

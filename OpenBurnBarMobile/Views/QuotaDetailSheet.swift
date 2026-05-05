@@ -18,9 +18,11 @@ struct QuotaDetailSheet: View {
         ScrollView {
             VStack(spacing: MobileTheme.Spacing.xl) {
                 heroSection
-                accountCarousel
+                if snapshots.count > 1 {
+                    accountCarousel
+                }
                 statsRow
-                bucketsSection
+                accountSections
                 if let providerEnum,
                    let routingState,
                    routingState.hasMeaningfulRoutingDetail {
@@ -127,28 +129,83 @@ struct QuotaDetailSheet: View {
         return formatter.localizedString(for: timestamp, relativeTo: Date())
     }
 
-    // MARK: - Buckets
+    // MARK: - Account-grouped buckets
 
-    private var bucketsSection: some View {
-        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-            Text("Quota Breakdown")
-                .font(MobileTheme.Typography.headline)
-                .foregroundStyle(MobileTheme.Colors.textPrimary)
-                .padding(.horizontal, MobileTheme.Spacing.lg)
-
-            LazyVStack(spacing: MobileTheme.Spacing.md) {
-                ForEach(allBuckets, id: \.name) { bucket in
-                    if let providerEnum {
-                        UnifiedQuotaSignalView(bucket: bucket, provider: providerEnum, compact: false)
-                            .padding(.horizontal, MobileTheme.Spacing.lg)
-                    }
-                }
+    /// Each account renders its own grouped section. Every gauge is preceded
+    /// by a small caption explaining what the bucket measures so the user
+    /// never sees a wall of identical-looking battery bars.
+    private var accountSections: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
+            ForEach(snapshots, id: \.id) { snapshot in
+                accountQuotaCard(snapshot)
+                    .padding(.horizontal, MobileTheme.Spacing.lg)
             }
         }
     }
 
-    private var allBuckets: [ProviderQuotaBucket] {
-        snapshots.flatMap(\.buckets)
+    @ViewBuilder
+    private func accountQuotaCard(_ snapshot: ProviderQuotaSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            // Account header
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(snapshot.accountLabel ?? snapshot.accountID ?? "Account")
+                        .font(MobileTheme.Typography.headline)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Text("Quota Breakdown")
+                        .font(MobileTheme.Typography.tiny)
+                        .fontWeight(.semibold)
+                        .tracking(1.2)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+                Spacer()
+                if let scope = snapshot.accountStorageScope {
+                    ProviderAccountStorageChip(scope: scope, compact: true)
+                }
+            }
+
+            // Helper note: explains the gauges
+            if !snapshot.buckets.isEmpty {
+                Text(quotaExplanation(for: snapshot.buckets))
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // Gauges — one per bucket, with name + window labels (now shown
+            // by the updated `UnifiedQuotaSignalView`).
+            VStack(spacing: MobileTheme.Spacing.sm) {
+                ForEach(snapshot.buckets, id: \.name) { bucket in
+                    if let providerEnum {
+                        UnifiedQuotaSignalView(bucket: bucket, provider: providerEnum, compact: false)
+                    }
+                }
+            }
+        }
+        .padding(MobileTheme.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.65))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .stroke(themeColor.opacity(0.18), lineWidth: 0.5)
+        )
+    }
+
+    private func quotaExplanation(for buckets: [ProviderQuotaBucket]) -> String {
+        let windows = buckets.compactMap { $0.window?.lowercased() }
+        let names = buckets.map { $0.name.lowercased() }
+        if windows.contains(where: { $0.contains("hour") }) && windows.contains(where: { $0.contains("week") || $0.contains("day") }) {
+            return "Each gauge tracks usage over a different rolling window. The shorter window paces your near-term burn; the longer window protects against weekly caps."
+        }
+        if names.contains(where: { $0.contains("token") }) && names.contains(where: { $0.contains("request") }) {
+            return "One gauge tracks tokens consumed; the other tracks request count. Hitting either limit pauses the account."
+        }
+        if buckets.count > 1 {
+            return "Each gauge is a separate quota the provider exposes. The smallest reserve is the one that will throttle first."
+        }
+        return "Headroom remaining in this account's active quota window."
     }
 }
 

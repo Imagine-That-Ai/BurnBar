@@ -38,9 +38,9 @@ function writeJSON(res, status, data) {
 }
 
 function requireAuth(req) {
-  const expected = process.env.RUNNER_SHARED_SECRET || "";
+  const expected = (process.env.RUNNER_SHARED_SECRET || "").trim();
   if (!expected) return;
-  const got = req.headers.authorization || "";
+  const got = String(req.headers.authorization || "").trim();
   if (got !== `Bearer ${expected}`) {
     throw Object.assign(new Error("unauthorized"), { status: 401 });
   }

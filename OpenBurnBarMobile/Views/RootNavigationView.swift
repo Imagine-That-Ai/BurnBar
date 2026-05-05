@@ -15,6 +15,7 @@ struct RootNavigationView: View {
     let transferStore: CredentialTransferStore
 
     @State private var selection: SidebarDestination = .pulse
+    @State private var didApplyScreenshotRoute = false
     @State private var router = PulseRouter()
     @State private var hermesService = HermesService()
     @State private var motionStore = MotionStore()
@@ -35,18 +36,6 @@ struct RootNavigationView: View {
             case .providers: return "Providers"
             }
         }
-        var icon: String {
-            switch self {
-            case .pulse:    return "waveform.path.ecg.rectangle.fill"
-            case .burn:     return "flame.fill"
-            case .streams:  return "rectangle.stack.fill"
-            case .hermes:   return "wand.and.stars"
-            case .you:      return "person.crop.circle.fill"
-            case .settings: return "gearshape.fill"
-            case .devices:  return "macbook.and.iphone"
-            case .providers: return "externaldrive.connected.to.line.below"
-            }
-        }
         var accent: Color {
             switch self {
             case .pulse:    return MobileTheme.ember
@@ -59,6 +48,26 @@ struct RootNavigationView: View {
             case .providers: return MobileTheme.ember
             }
         }
+
+        var asAuroraDestination: AuroraNavDestination? {
+            switch self {
+            case .pulse:   return .pulse
+            case .burn:    return .burn
+            case .streams: return .streams
+            case .hermes:  return .hermes
+            case .you:     return .you
+            default:       return nil
+            }
+        }
+
+        var fallbackIcon: String {
+            switch self {
+            case .settings:  return "gearshape.fill"
+            case .devices:   return "macbook.and.iphone"
+            case .providers: return "externaldrive.connected.to.line.below"
+            default:         return "circle.fill"
+            }
+        }
     }
 
     var body: some View {
@@ -69,6 +78,9 @@ struct RootNavigationView: View {
             detail
         }
         .environment(\.motionStore, motionStore)
+        .onAppear {
+            applyScreenshotRouteIfNeeded()
+        }
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
         }
@@ -103,38 +115,71 @@ struct RootNavigationView: View {
 
     private func sidebarItem(_ destination: SidebarDestination) -> some View {
         Button {
-            selection = destination
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                selection = destination
+            }
+            HapticBus.tabChange()
         } label: {
-            HStack {
-                Label {
-                    Text(destination.label)
-                        .font(MobileTheme.Typography.body)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                } icon: {
+            HStack(spacing: 14) {
+                if let auroraDest = destination.asAuroraDestination {
+                    AuroraNavIcon(
+                        destination: auroraDest,
+                        size: 28,
+                        isSelected: selection == destination,
+                        isPressed: false
+                    )
+                    .frame(width: 32, height: 32)
+                } else {
+                    // Fallback SF Symbol for secondary items
                     ZStack {
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .fill(destination.accent)
                             .frame(width: 26, height: 26)
-                        Image(systemName: destination.icon)
+                        Image(systemName: destination.fallbackIcon)
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                     }
                 }
+
+                Text(destination.label)
+                    .font(MobileTheme.Typography.body)
+                    .fontWeight(selection == destination ? .semibold : .regular)
+                    .foregroundStyle(
+                        selection == destination
+                            ? destination.accent
+                            : MobileTheme.Colors.textPrimary
+                    )
+
                 Spacer()
+
                 if selection == destination {
-                    Image(systemName: "circle.fill")
-                        .font(.system(size: 6))
-                        .foregroundStyle(destination.accent)
+                    Circle()
+                        .fill(destination.accent)
+                        .frame(width: 7, height: 7)
+                        .transition(.scale(scale: 0.1).combined(with: .opacity))
                 }
             }
+            .frame(height: 50)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .listRowBackground(
-            selection == destination
-                ? destination.accent.opacity(0.14)
-                : Color.clear
+            Group {
+                if selection == destination {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(destination.accent.opacity(0.10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(destination.accent.opacity(0.18), lineWidth: 0.5)
+                        )
+                } else {
+                    Color.clear
+                }
+            }
         )
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
+        .animation(.spring(response: 0.30, dampingFraction: 0.78), value: selection)
     }
 
     private var sidebarFooter: some View {
@@ -195,15 +240,27 @@ struct RootNavigationView: View {
     @ViewBuilder
     private var detail: some View {
         NavigationStack {
-            switch selection {
-            case .pulse:    PulseView(router: router)
-            case .burn:     BurnView()
-            case .streams:  StreamsView()
-            case .hermes:   HermesTabView(service: hermesService)
-            case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
-            case .settings: SettingsHubView()
-            case .devices:  iPadDevicesSettingsView()
-            case .providers: ProviderConnectionsView(showsDoneButton: false)
+            Group {
+                switch selection {
+                case .pulse:    PulseView(router: router)
+                case .burn:     BurnView()
+                case .streams:  StreamsView()
+                case .hermes:   HermesTabView(service: hermesService)
+                case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
+                case .settings: SettingsHubView()
+                case .devices:  iPadDevicesSettingsView()
+                case .providers: ProviderConnectionsView(showsDoneButton: false)
+                }
+            }
+            .navigationDestination(for: YouRoute.self) { route in
+                switch route {
+                case .sync:     CloudSyncDetailsView(syncStore: syncHealthStore)
+                case .settings: SettingsHubView()
+                case .devices:  iPadDevicesSettingsView()
+                }
+            }
+            .navigationDestination(for: TokenUsage.self) { usage in
+                SessionDetailView(usage: usage)
             }
         }
     }
@@ -221,6 +278,29 @@ struct RootNavigationView: View {
         case .provider: selection = .burn
         }
         router.clear()
+    }
+
+    private func applyScreenshotRouteIfNeeded() {
+        guard AppStoreScreenshotMode.isEnabled, !didApplyScreenshotRoute else { return }
+        didApplyScreenshotRoute = true
+        switch AppStoreScreenshotMode.route {
+        case "burn", "quota":
+            selection = .burn
+        case "streams", "activity":
+            selection = .streams
+        case "hermes", "chat":
+            selection = .hermes
+        case "you", "account":
+            selection = .you
+        case "settings":
+            selection = .settings
+        case "devices":
+            selection = .devices
+        case "providers", "connections":
+            selection = .providers
+        default:
+            selection = .pulse
+        }
     }
 
     // MARK: - Sync Helpers

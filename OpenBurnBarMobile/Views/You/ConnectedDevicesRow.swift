@@ -8,39 +8,36 @@ import OpenBurnBarCore
 
 struct ConnectedDevicesRow: View {
     let devices: [DeviceRecord]
-    let onOpen: () -> Void
 
     var body: some View {
-        Button(action: onOpen) {
-            AuroraGlassCard(variant: .standard, cornerRadius: 16, interactive: true) {
-                HStack(spacing: 12) {
-                    Image(systemName: "rectangle.connected.to.line.below")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(MobileTheme.whimsy)
-                        .frame(width: 44, height: 44)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(MobileTheme.whimsy.opacity(0.16))
-                        )
-                        .symbolEffect(.bounce, value: devices.count)
+        AuroraGlassCard(variant: .standard, cornerRadius: 16) {
+            HStack(spacing: 12) {
+                Image(systemName: "rectangle.connected.to.line.below")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(MobileTheme.whimsy)
+                    .frame(width: 44, height: 44)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(MobileTheme.whimsy.opacity(0.16))
+                    )
+                    .symbolEffect(.bounce, value: devices.count)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Connected devices")
-                            .font(MobileTheme.Typography.headline)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text(devicesSubtitle)
-                            .font(MobileTheme.Typography.tiny)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
-                    }
-                    Spacer()
-                    deviceChips
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Connected devices")
+                        .font(MobileTheme.Typography.headline)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Text(devicesSubtitle)
+                        .font(MobileTheme.Typography.tiny)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
+                Spacer()
+                deviceChips
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
             }
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
     }
 
     private var devicesSubtitle: String {

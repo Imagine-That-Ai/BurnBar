@@ -519,6 +519,27 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(settings.hermesChatModelOverride, "")
     }
 
+    func test_hermesGatewayBaseURL_defaultValue_isLocalhost8642() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(settings.hermesGatewayBaseURL, "http://127.0.0.1:8642")
+    }
+
+    func test_hermesRemoteRelayEnabled_defaultValue_isFalse() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertFalse(settings.hermesRemoteRelayEnabled)
+    }
+
+    func test_hermesGatewayBaseURL_settingPersists() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.hermesGatewayBaseURL = "https://hermes.example.com"
+        XCTAssertEqual(settings.hermesGatewayBaseURL, "https://hermes.example.com")
+        XCTAssertEqual(defaults.string(forKey: "hermesGatewayBaseURL"), "https://hermes.example.com")
+    }
+
     func test_hermesChatModelOverride_settingPersists() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
@@ -526,6 +547,15 @@ final class SettingsManagerTests: XCTestCase {
         settings.hermesChatModelOverride = "gpt-5.4"
         XCTAssertEqual(settings.hermesChatModelOverride, "gpt-5.4")
         XCTAssertEqual(defaults.string(forKey: "hermesChatModelOverride"), "gpt-5.4")
+    }
+
+    func test_hermesRemoteRelayEnabled_settingPersists() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.hermesRemoteRelayEnabled = true
+        XCTAssertTrue(settings.hermesRemoteRelayEnabled)
+        XCTAssertTrue(defaults.bool(forKey: "hermesRemoteRelayEnabled"))
     }
 
     // MARK: - Chat Backend Settings

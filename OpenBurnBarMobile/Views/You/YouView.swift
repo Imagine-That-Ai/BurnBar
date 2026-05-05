@@ -12,7 +12,6 @@ struct YouView: View {
     @Bindable var devicesStore: DevicesStore
     @State private var account = AccountStore()
     @State private var showSignOutConfirm = false
-    @State private var showProviderConnections = false
 
     var body: some View {
         ZStack {
@@ -31,9 +30,12 @@ struct YouView: View {
                     syncDiagnosticsCard
                         .staggeredEntrance(delay: 0.05)
 
-                    ConnectedDevicesRow(devices: devicesStore.devices) {
-                        showProviderConnections = false
+                    NavigationLink {
+                        iPadDevicesSettingsView()
+                    } label: {
+                        ConnectedDevicesRow(devices: devicesStore.devices)
                     }
+                    .buttonStyle(.plain)
                     .staggeredEntrance(delay: 0.10)
 
                     providerConnectionsRow
@@ -56,7 +58,7 @@ struct YouView: View {
                 async let a: Void = account.fetchConnections()
                 async let d: Void = devicesStore.load()
                 _ = await (s, a, d)
-                HapticBus.refreshFinished()
+                playCloudSyncRefreshCompletionHaptic(for: syncStore.health)
             }
         }
         .navigationTitle("You")
@@ -67,14 +69,10 @@ struct YouView: View {
             await account.fetchConnections()
             await devicesStore.load()
         }
-        .sheet(isPresented: $showProviderConnections) {
-            NavigationStack { ProviderConnectionsView() }
-                .presentationDetents([.large])
-        }
         .confirmationDialog("Sign out?", isPresented: $showSignOutConfirm, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) {
                 HapticBus.destructive()
-                Task { await account.signOut() }
+                authStore.signOut()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -85,33 +83,48 @@ struct YouView: View {
     // MARK: - Sync Card
 
     private var syncDiagnosticsCard: some View {
-        AuroraGlassCard(variant: syncStore.health.isHealthy ? .success : (syncStore.health.isDegraded ? .urgent : .standard)) {
+        AuroraGlassCard(variant: syncStore.health.cardVariant) {
             HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(syncColor.opacity(0.18))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: syncIcon)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(syncColor)
-                        .symbolEffect(.variableColor, options: .repeating)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Cloud sync")
-                        .font(MobileTheme.Typography.headline)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    Text(syncStore.health.label)
-                        .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    if let lastSync = syncStore.lastPublishedAt {
-                        Text("Last write \(lastSync, style: .relative) ago")
-                            .font(MobileTheme.Typography.tiny)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                NavigationLink {
+                    CloudSyncDetailsView(syncStore: syncStore)
+                } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(syncStore.health.tint.opacity(0.18))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: syncStore.health.systemImageName)
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(syncStore.health.tint)
+                                .symbolEffect(.variableColor, options: .repeating)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Cloud sync")
+                                .font(MobileTheme.Typography.headline)
+                                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                            Text(syncStore.health.label)
+                                .font(MobileTheme.Typography.tiny)
+                                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            if let lastSync = syncStore.lastPublishedAt {
+                                Text("Last write \(lastSync, style: .relative) ago")
+                                    .font(MobileTheme.Typography.tiny)
+                                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                            }
+                        }
+                        Spacer(minLength: 0)
                     }
+                    .contentShape(Rectangle())
                 }
-                Spacer()
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityHint("Opens cloud sync details")
+
                 Button {
-                    Task { await syncStore.refresh() }
+                    Task {
+                        HapticBus.refreshStarted()
+                        await syncStore.refresh()
+                        playCloudSyncRefreshCompletionHaptic(for: syncStore.health)
+                    }
                 } label: {
                     Image(systemName: "arrow.clockwise.circle.fill")
                         .font(.system(size: 24))
@@ -119,40 +132,19 @@ struct YouView: View {
                         .symbolEffect(.bounce, value: syncStore.lastReadAt ?? Date())
                 }
                 .buttonStyle(.plain)
+                .disabled(syncStore.isLoading)
+                .accessibilityLabel("Refresh cloud sync")
             }
-        }
-    }
-
-    private var syncIcon: String {
-        switch syncStore.health {
-        case .healthy: return "checkmark.icloud.fill"
-        case .syncing: return "arrow.triangle.2.circlepath.icloud.fill"
-        case .offline: return "icloud.slash.fill"
-        case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return "exclamationmark.icloud.fill"
-        case .degraded(_): return "icloud.fill"
-        case .unknown: return "questionmark.circle.fill"
-        }
-    }
-
-    private var syncColor: Color {
-        switch syncStore.health {
-        case .healthy: return MobileTheme.success
-        case .syncing: return MobileTheme.amber
-        case .offline: return MobileTheme.warning
-        case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return MobileTheme.error
-        case .degraded(_): return MobileTheme.warning
-        case .unknown: return MobileTheme.Colors.textMuted
         }
     }
 
     // MARK: - Provider Connections Row
 
     private var providerConnectionsRow: some View {
-        Button {
-            HapticBus.sheetOpen()
-            showProviderConnections = true
+        NavigationLink {
+            ProviderConnectionsView(showsDoneButton: false)
         } label: {
-            AuroraGlassCard(variant: .standard, cornerRadius: 16, interactive: true) {
+            AuroraGlassCard(variant: .standard, cornerRadius: 16) {
                 HStack(spacing: 12) {
                     Image(systemName: "externaldrive.connected.to.line.below")
                         .font(.system(size: 22, weight: .semibold))
@@ -176,6 +168,7 @@ struct YouView: View {
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
+                .contentShape(Rectangle())
             }
         }
         .buttonStyle(.plain)
@@ -198,8 +191,10 @@ struct YouView: View {
     // MARK: - Settings Row
 
     private var settingsRow: some View {
-        NavigationLink(value: YouRoute.settings) {
-            AuroraGlassCard(variant: .standard, cornerRadius: 16, interactive: true) {
+        NavigationLink {
+            SettingsHubView()
+        } label: {
+            AuroraGlassCard(variant: .standard, cornerRadius: 16) {
                 HStack(spacing: 12) {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 22, weight: .semibold))
@@ -222,6 +217,7 @@ struct YouView: View {
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
+                .contentShape(Rectangle())
             }
         }
         .buttonStyle(.plain)
@@ -239,7 +235,202 @@ struct YouView: View {
 
 // MARK: - You Route
 
-enum YouRoute: Hashable {
+enum YouRoute: Hashable, CaseIterable {
+    case sync
     case settings
     case devices
+}
+
+// MARK: - Cloud Sync Details
+
+struct CloudSyncDetailsView: View {
+    @Bindable var syncStore: CloudSyncHealthStore
+
+    var body: some View {
+        ZStack {
+            AuroraBackdrop(density: .subtle)
+            ScrollView {
+                VStack(spacing: MobileTheme.Spacing.lg) {
+                    statusCard
+                    timestampsCard
+                    publisherCard
+                }
+                .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                .padding(.vertical, MobileTheme.Spacing.lg)
+            }
+            .refreshable { await refresh() }
+        }
+        .navigationTitle("Cloud Sync")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await refresh() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .disabled(syncStore.isLoading)
+                .accessibilityLabel("Refresh cloud sync")
+            }
+        }
+        .task {
+            if syncStore.lastReadAt == nil {
+                await refresh()
+            }
+        }
+    }
+
+    private var statusCard: some View {
+        AuroraGlassCard(variant: syncStore.health.cardVariant) {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+                HStack(spacing: 12) {
+                    Image(systemName: syncStore.health.systemImageName)
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(syncStore.health.tint)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(syncStore.health.tint.opacity(0.16)))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(syncStore.health.label)
+                            .font(MobileTheme.Typography.headline)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text(syncStore.health.detailText)
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    }
+                    Spacer()
+                    if syncStore.isLoading {
+                        ProgressView()
+                            .tint(MobileTheme.ember)
+                    }
+                }
+
+                Button {
+                    Task { await refresh() }
+                } label: {
+                    Label("Refresh now", systemImage: "arrow.clockwise")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.aurora(.secondary, fullWidth: true))
+                .disabled(syncStore.isLoading)
+            }
+        }
+    }
+
+    private var timestampsCard: some View {
+        AuroraGlassCard(variant: .standard) {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+                Text("Activity")
+                    .font(MobileTheme.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                detailRow("Last Mac write", value: formatted(syncStore.lastPublishedAt))
+                detailRow("Last mobile read", value: formatted(syncStore.lastReadAt))
+            }
+        }
+    }
+
+    private var publisherCard: some View {
+        AuroraGlassCard(variant: .standard) {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+                Text("Publishing device")
+                    .font(MobileTheme.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                if let publisher = syncStore.publisher {
+                    detailRow("Name", value: publisher.displayName)
+                    detailRow("Platform", value: publisher.platform)
+                    detailRow("Last seen", value: formatted(publisher.lastSeen))
+                } else {
+                    Text("No publishing device has written sync data yet.")
+                        .font(MobileTheme.Typography.body)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+            }
+        }
+    }
+
+    private func detailRow(_ title: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(MobileTheme.Typography.body)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+            Spacer()
+            Text(value)
+                .font(MobileTheme.Typography.monoSmall)
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private func refresh() async {
+        HapticBus.refreshStarted()
+        await syncStore.refresh()
+        playCloudSyncRefreshCompletionHaptic(for: syncStore.health)
+    }
+
+    private func formatted(_ date: Date?) -> String {
+        guard let date else { return "Never" }
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+}
+
+// MARK: - Cloud Sync Presentation
+
+extension CloudSyncHealth {
+    var cardVariant: AuroraGlassVariant {
+        isHealthy ? .success : (isDegraded ? .urgent : .standard)
+    }
+
+    var systemImageName: String {
+        switch self {
+        case .healthy: return "checkmark.icloud.fill"
+        case .syncing: return "arrow.triangle.2.circlepath.icloud.fill"
+        case .offline: return "icloud.slash.fill"
+        case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return "exclamationmark.icloud.fill"
+        case .degraded: return "icloud.fill"
+        case .unknown: return "questionmark.circle.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .healthy: return MobileTheme.success
+        case .syncing: return MobileTheme.amber
+        case .offline: return MobileTheme.warning
+        case .firebaseUnavailable, .appCheckBlocked, .permissionDenied: return MobileTheme.error
+        case .degraded: return MobileTheme.warning
+        case .unknown: return MobileTheme.Colors.textMuted
+        }
+    }
+
+    var detailText: String {
+        switch self {
+        case .unknown:
+            return "Tap refresh to check the latest cloud state."
+        case .healthy:
+            return "Your mobile app can read the latest synced usage data."
+        case .syncing:
+            return "Checking Firestore for the newest sync snapshot."
+        case .offline:
+            return CloudErrorClassification.networkUnavailable.recoveryHint
+        case .permissionDenied:
+            return CloudErrorClassification.permissionDenied.recoveryHint
+        case .appCheckBlocked:
+            return CloudErrorClassification.appCheckBlocked.recoveryHint
+        case .firebaseUnavailable:
+            return CloudErrorClassification.firebaseUnavailable.recoveryHint
+        case .degraded(let reason):
+            return reason.recoveryHint
+        }
+    }
+}
+
+@MainActor
+private func playCloudSyncRefreshCompletionHaptic(for health: CloudSyncHealth) {
+    if health.isHealthy {
+        HapticBus.refreshFinished()
+    } else {
+        HapticBus.threshold()
+    }
 }

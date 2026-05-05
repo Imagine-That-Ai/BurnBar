@@ -22,10 +22,10 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
-			<string>com.burnbar.app.google-sign-in</string>
+			<string>com.openburnbar.app.google-sign-in</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.246956661961-k53p0e4oln229kmmed459fm6i8i5vtoo</string>
+				<string>com.googleusercontent.apps.246956661961-h48alif674cr67ojj4li9og8gbcjinbv</string>
 			</array>
 		</dict>
 	</array>

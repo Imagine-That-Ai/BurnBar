@@ -12,10 +12,13 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getFirestore } from "firebase-admin/firestore";
 
-import { getConfig } from "../config.js";
 import type { HostedQuotaEntitlementDoc } from "../types.js";
 
-import { APP_STORE_SECRETS } from "./config.js";
+import {
+  APP_STORE_SECRETS,
+  hostedQuotaProductID,
+  loadAppStoreRuntimeConfig,
+} from "./config.js";
 import { fetchLiveSubscriptionStatus } from "./client.js";
 import {
   EntitlementReconcileError,
@@ -42,8 +45,8 @@ export const reconcileHostedEntitlementsDaily = onSchedule(
   },
   async () => {
     const db = getFirestore();
-    const cfg = getConfig().appStore;
-    const productID = getConfig().hostedQuotaProductID;
+    const cfg = loadAppStoreRuntimeConfig();
+    const productID = hostedQuotaProductID();
 
     const cg = await db
       .collectionGroup("entitlements")

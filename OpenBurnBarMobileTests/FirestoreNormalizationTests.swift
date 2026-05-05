@@ -9,6 +9,7 @@ import OpenBurnBarCore
 /// These tests use the real `decodeUsageRollup`, `decodeWithDocID`, and `normalizeRollupData`
 /// methods from FirestoreRepository (via @testable import) so there is no duplicated
 /// normalization logic that could drift from production.
+@MainActor
 final class FirestoreNormalizationTests: XCTestCase {
 
     // The repository instance is only used to access the nonisolated decode helpers.
@@ -108,6 +109,34 @@ final class FirestoreNormalizationTests: XCTestCase {
         "updatedAt": "2026-05-02T12:00:00Z"
     ]
 
+    static let desktopSyncedQuotaDoc: [String: Any] = [
+        "provider": "Cursor",
+        "providerID": "cursor",
+        "sourceKind": "officialAPI",
+        "sourceId": "default",
+        "sourceID": "default",
+        "fetchedAt": "2026-05-04T05:59:44Z",
+        "source": "officialAPI",
+        "confidence": "exact",
+        "buckets": [
+            [
+                "name": "cursor-plan",
+                "used": 25,
+                "limit": 100,
+                "remaining": 75,
+                "window": "monthly",
+                "meta": [
+                    "label": "Plan",
+                    "unit": "requests",
+                    "isEstimated": false,
+                    "priority": 1
+                ]
+            ]
+        ],
+        "schemaVersion": 2,
+        "updatedAt": "2026-05-04T06:04:57.701Z"
+    ]
+
     static let cloudFunctionConnectionDoc: [String: Any] = [
         "provider": "minimax",
         "status": "connected",
@@ -134,7 +163,7 @@ final class FirestoreNormalizationTests: XCTestCase {
     }
 
     func test_decodeWithDocID_injectsIDWhenMissing() throws {
-        var data = Self.cloudFunctionQuotaDoc
+        let data = Self.cloudFunctionQuotaDoc
         // Cloud Function does not write an `id` field
         XCTAssertNil(data["id"])
         let snap = repo.decodeWithDocID(
@@ -154,10 +183,12 @@ final class FirestoreNormalizationTests: XCTestCase {
                              "Raw Cloud Function rollup should fail to decode without normalization")
     }
 
-    func testRollupProviderSummaryRequiresID() throws {
+    func testRollupProviderSummaryDecodesLegacyProviderIDFallback() throws {
         let summaryJSON: [String: Any] = ["provider": "minimax", "totalRequests": 20, "totalTokens": 2500]
         let jsonData = try JSONSerialization.data(withJSONObject: summaryJSON)
-        XCTAssertThrowsError(try JSONDecoder().decode(RollupProviderSummary.self, from: jsonData))
+        let summary = try JSONDecoder().decode(RollupProviderSummary.self, from: jsonData)
+        XCTAssertEqual(summary.id, "minimax")
+        XCTAssertEqual(summary.providerID, ProviderID(rawValue: "minimax"))
     }
 
     // MARK: - Normalized decoding using real FirestoreRepository methods
@@ -201,8 +232,7 @@ final class FirestoreNormalizationTests: XCTestCase {
     }
 
     func testNormalizedQuotaSnapshotDecodes() throws {
-        let snap = repo.decodeWithDocID(
-            ProviderQuotaSnapshot.self,
+        let snap = repo.decodeQuotaSnapshot(
             from: Self.cloudFunctionQuotaDoc,
             docID: "minimax_default"
         )
@@ -211,6 +241,28 @@ final class FirestoreNormalizationTests: XCTestCase {
         XCTAssertEqual(snap?.provider, "minimax")
         XCTAssertEqual(snap?.confidence, .high)
         XCTAssertEqual(snap?.buckets.count, 1)
+    }
+
+    func testDesktopSyncedQuotaSnapshotDecodesThroughProductionNormalizer() throws {
+        let snap = repo.decodeQuotaSnapshot(
+            from: Self.desktopSyncedQuotaDoc,
+            docID: "cursor_unattributed_default"
+        )
+
+        XCTAssertNotNil(snap)
+        XCTAssertEqual(snap?.id, "cursor_unattributed_default")
+        XCTAssertEqual(snap?.provider, "Cursor")
+        XCTAssertEqual(snap?.providerID, ProviderID(rawValue: "cursor"))
+        XCTAssertEqual(snap?.sourceKind, .officialAPI)
+        XCTAssertEqual(snap?.confidence, .high)
+        XCTAssertEqual(snap?.buckets.first?.meta?["isEstimated"], "false")
+        XCTAssertEqual(snap?.buckets.first?.meta?["priority"], "1")
+    }
+
+    func testRedactedUserIDOnlyExposesSuffix() {
+        XCTAssertEqual(FirestoreRepository.redactedUserID("6YTomKTKdQdpvIJgmz6VTIrrQ4w1"), "…rQ4w1")
+        XCTAssertNil(FirestoreRepository.redactedUserID(nil))
+        XCTAssertNil(FirestoreRepository.redactedUserID(""))
     }
 
     func testNormalizedProviderConnectionDecodes() throws {
@@ -223,6 +275,17 @@ final class FirestoreNormalizationTests: XCTestCase {
         XCTAssertEqual(conn?.id, "minimax")
         XCTAssertEqual(conn?.status, .connected)
         XCTAssertEqual(conn?.credentialKind, .token)
+    }
+
+    func testProviderAccountsSortClientSideWithoutCompositeIndex() {
+        let now = Date()
+        let accounts = [
+            providerAccount(id: "z", providerID: .openAI, label: "Zeta", sortKey: 2, now: now),
+            providerAccount(id: "a", providerID: .claudeCode, label: "Alpha", sortKey: 2, now: now),
+            providerAccount(id: "b", providerID: .claudeCode, label: "Beta", sortKey: 1, now: now)
+        ]
+
+        XCTAssertEqual(repo.sortProviderAccounts(accounts).map(\.id), ["b", "a", "z"])
     }
 
     // MARK: - All window keys
@@ -360,8 +423,7 @@ final class FirestoreNormalizationTests: XCTestCase {
     }
 
     func test_quotaSnapshotDateFieldsDecodeFromISOStrings() throws {
-        let snap = repo.decodeWithDocID(
-            ProviderQuotaSnapshot.self,
+        let snap = repo.decodeQuotaSnapshot(
             from: Self.cloudFunctionQuotaDoc,
             docID: "minimax_default"
         )
@@ -398,6 +460,21 @@ final class FirestoreNormalizationTests: XCTestCase {
                        expected.timeIntervalSinceReferenceDate,
                        accuracy: 0.001,
                        "lastRefreshAt should decode from ISO 8601 string")
+    }
+
+    private func providerAccount(id: String, providerID: ProviderID, label: String, sortKey: Double, now: Date) -> ProviderAccountDoc {
+        ProviderAccountDoc(
+            id: id,
+            providerID: providerID,
+            label: label,
+            status: .connected,
+            credentialKind: .token,
+            storageScope: .cloudRefreshable,
+            redactedLabel: "redacted",
+            sortKey: sortKey,
+            createdAt: now,
+            updatedAt: now
+        )
     }
 }
 

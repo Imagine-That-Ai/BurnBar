@@ -159,6 +159,120 @@ export interface ProviderConnectionDoc {
 }
 
 // ---------------------------------------------------------------------------
+// Firestore: hermes_connections / hermes_pairings
+// ---------------------------------------------------------------------------
+
+export type HermesConnectionMode = "local" | "directURL" | "relayLink";
+
+export type HermesConnectionStatus =
+  | "pending"
+  | "online"
+  | "offline"
+  | "unauthorized"
+  | "revoked"
+  | "degraded";
+
+export interface HermesConnectionDoc {
+  id: string;
+  displayName: string;
+  mode: HermesConnectionMode;
+  status: HermesConnectionStatus;
+  profileName?: string;
+  endpointURL?: string;
+  advertisedModel?: string;
+  capabilities: string[];
+  lastSeenAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+export interface HermesPairingDoc {
+  id: string;
+  status: "pending" | "completed" | "expired" | "revoked";
+  codeHash: string;
+  failedAttempts?: number;
+  requestedByDeviceId?: string;
+  requestedByPlatform?: "ios" | "ipados" | "macos" | "web";
+  displayName?: string;
+  connectionId?: string;
+  expiresAt: string;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+export interface HermesConnectionAuditEventDoc {
+  id: string;
+  eventType:
+    | "pairing_created"
+    | "pairing_completed"
+    | "pairing_failed"
+    | "connection_created"
+    | "connection_revoked"
+    | "connection_status_updated";
+  connectionId?: string;
+  pairingId?: string;
+  actorDeviceId?: string;
+  observedAt: string;
+  detail?: Record<string, unknown>;
+  schemaVersion: number;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+}
+
+export type HermesRelayOperation =
+  | "chatCompletions"
+  | "models"
+  | "sessions"
+  | "sessionDetail"
+  | "profiles"
+  | "jobs";
+
+export type HermesRelayRequestStatus =
+  | "pending"
+  | "claimed"
+  | "streaming"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "expired";
+
+export interface HermesRelayRequestDoc {
+  id: string;
+  connectionId: string;
+  operation: HermesRelayOperation;
+  status: HermesRelayRequestStatus;
+  method: "GET" | "POST";
+  path?: string;
+  sessionId?: string;
+  body?: string;
+  error?: string;
+  chunkCount: number;
+  claimedAt?: string;
+  claimedBy?: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+  schemaVersion: number;
+}
+
+export interface HermesRelayChunkDoc {
+  id: string;
+  requestId: string;
+  sequence: number;
+  kind: "sse" | "data" | "error";
+  data?: string;
+  text?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt?: string;
+  schemaVersion: number;
+}
+
+// ---------------------------------------------------------------------------
 // Firestore: quota_snapshots/{provider}_{sourceId}
 // ---------------------------------------------------------------------------
 
@@ -478,6 +592,18 @@ export interface EnvConfig {
   /** StoreKit product ID that unlocks hosted quota sync. */
   hostedQuotaProductID: string;
 
+  /** HTTPS endpoint for the paid hosted quota runner. */
+  hostedQuotaRunnerURL: string;
+
+  /** Shared bearer token used between Functions and the hosted quota runner. */
+  hostedQuotaRunnerToken: string;
+
+  /** Daily hosted-runner attempt ceiling per account. */
+  hostedQuotaDailyRefreshLimit: number;
+
+  /** Monthly hosted-runner attempt ceiling per account. */
+  hostedQuotaMonthlyRefreshLimit: number;
+
   /** App Store verification config. */
   appStore: AppStoreConfig;
 }
@@ -497,7 +623,7 @@ export interface AppStoreConfig {
   appAppleId?: number;
   environment: AppStoreEnvironment;
   enableOnlineChecks: boolean;
-  autoFallbackEnvironment?: AppStoreEnvironment;
+  autoFallbackEnvironment: boolean;
   asc: {
     issuerId: string;
     keyId: string;
@@ -525,6 +651,7 @@ export interface HostedQuotaEntitlementDoc {
   ownershipType?: EntitlementOwnershipType;
   appAccountToken?: string;
   signedTransactionHash: string;
+  signedDateMs?: number;
   lastNotificationUUID?: string;
   lastVerifiedAt: string;
   source: HostedQuotaEntitlementSource;
@@ -558,6 +685,12 @@ export interface EntitlementEventDoc {
   revocationReason?: number;
   rawJWSHash: string;
   observedAt: string;
+  /**
+   * Firestore TTL deletion target. Configure the TTL policy on this
+   * field via Console / `firebase firestore:ttls:create` to have stale
+   * audit rows reaped automatically.
+   */
+  expireAt?: import("firebase-admin/firestore").Timestamp;
   decoded: Record<string, unknown>;
   schemaVersion: number;
 }

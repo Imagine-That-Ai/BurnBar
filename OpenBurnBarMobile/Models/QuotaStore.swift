@@ -11,6 +11,7 @@ final class QuotaStore {
     private(set) var error: String?
     private(set) var snapshots: [ProviderQuotaSnapshot] = []
     private(set) var accounts: [ProviderAccountDoc] = []
+    private(set) var currentUserDisplayID: String?
     private var listener: ListenerRegistration?
 
     init(firestore: FirestoreRepository = FirestoreRepository()) {
@@ -24,8 +25,13 @@ final class QuotaStore {
     // forbids reading `@MainActor` state from a nonisolated deinit.
 
     func load() async {
+        if AppStoreScreenshotMode.isEnabled {
+            applyScreenshotData()
+            return
+        }
         isLoading = true
         error = nil
+        captureCurrentUser()
         defer { isLoading = false }
 
         do {
@@ -42,13 +48,19 @@ final class QuotaStore {
 
     /// Re-fetches the latest snapshots; used by pull-to-refresh.
     func refresh() async {
+        if AppStoreScreenshotMode.isEnabled {
+            applyScreenshotData()
+            return
+        }
         await load()
     }
 
     /// Subscribes to live quota updates. Safe to call multiple times — only
     /// one listener stays attached at any moment.
     func startListening() {
+        guard !AppStoreScreenshotMode.isEnabled else { return }
         listener?.remove()
+        captureCurrentUser()
         listener = firestore.listenToQuotaSnapshots { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
@@ -72,6 +84,18 @@ final class QuotaStore {
     func stopListening() {
         listener?.remove()
         listener = nil
+    }
+
+    private func captureCurrentUser() {
+        currentUserDisplayID = firestore.currentUserDisplayID()
+    }
+
+    private func applyScreenshotData() {
+        isLoading = false
+        error = nil
+        snapshots = AppStoreScreenshotData.quotaSnapshots
+        accounts = AppStoreScreenshotData.providerAccounts
+        currentUserDisplayID = "…demo"
     }
 
     func accounts(for providerID: ProviderID) -> [ProviderAccountDoc] {

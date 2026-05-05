@@ -10,6 +10,13 @@ struct iPadDevicesSettingsView: View {
 
     var body: some View {
         Form {
+            if let error = store.lastError {
+                Section {
+                    Label(error.label, systemImage: "exclamationmark.triangle.fill")
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.error)
+                }
+            }
             thisDeviceSection
             otherDevicesSection
         }

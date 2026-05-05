@@ -12,6 +12,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { Timestamp } from "firebase-admin/firestore";
 import type { Firestore } from "firebase-admin/firestore";
 
 import type {
@@ -20,6 +21,15 @@ import type {
 } from "../types.js";
 
 const SCHEMA_VERSION = 1;
+
+/**
+ * Retention horizon for entitlement audit events, in days. Apple's
+ * receipts/notifications themselves are not subject to a hard retention
+ * cap, but PII-adjacent records (decoded payloads with hashed account
+ * tokens) shouldn't accumulate forever. Configure a Firestore TTL
+ * policy on `users/{uid}/entitlement_events.expireAt` to enforce this.
+ */
+const AUDIT_TTL_DAYS = 400;
 
 export interface AuditWriteInput {
   uid: string;
@@ -47,7 +57,9 @@ export async function appendEntitlementEvent(
   input: AuditWriteInput
 ): Promise<EntitlementEventDoc> {
   const docId = sanitizeDocId(input.eventId);
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
+  const expireMs = nowDate.getTime() + AUDIT_TTL_DAYS * 86_400_000;
   const doc: EntitlementEventDoc = {
     id: docId,
     uid: input.uid,
@@ -63,6 +75,11 @@ export async function appendEntitlementEvent(
     revocationReason: input.revocationReason,
     rawJWSHash: createHash("sha256").update(input.rawJWS).digest("hex"),
     observedAt: now,
+    // Firestore TTL policy reads `expireAt` as a Timestamp and deletes
+    // the document when the wall clock crosses it. The 400-day window
+    // matches the longest auto-renew period Apple observes (~yearly +
+    // grace) so we keep at least one full subscription cycle.
+    expireAt: Timestamp.fromMillis(expireMs),
     decoded: redact(input.decoded),
     schemaVersion: SCHEMA_VERSION,
   };
@@ -88,11 +105,13 @@ export async function appendEntitlementEvent(
  * decoded fields for forensics; sensitive blobs are forbidden.
  */
 function redact(input: Record<string, unknown>): Record<string, unknown> {
+  // Nested signed JWS strings must never reach Firestore — they're
+  // hashed for forensic correlation. Numeric `signedDate` etc. are
+  // kept verbatim because the audit log is supposed to surface them.
   const banned = new Set([
     "signedTransactionInfo",
     "signedRenewalInfo",
     "signedPayload",
-    "signedDate", // keep timestamps in numeric form below; redact the raw string if any
   ]);
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(input)) {

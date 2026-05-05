@@ -55,6 +55,15 @@ struct ChatGatewaySettingsView: View {
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
 
+                Text("When you're signed in, this Mac also advertises a Remote Relay connection so your iPhone/iPad can chat with this local Hermes over cell signal. The API_SERVER_KEY stays on this Mac; BurnBar relays only your chat requests and streamed responses through your private Firestore namespace.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Toggle("Allow iPhone/iPad Remote Relay through this Mac", isOn: $settingsManager.hermesRemoteRelayEnabled)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
                 Button("Guided Hermes setup") {
                     WindowManager.shared.openHermesSetupWizard(
                         settingsManager: settingsManager,
@@ -68,6 +77,9 @@ struct ChatGatewaySettingsView: View {
                 Text("Leave the field below empty unless you set API_SERVER_KEY in ~/.hermes/.env — then paste the same value here so OpenBurnBar can connect.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                TextField("Hermes base URL", text: $settingsManager.hermesGatewayBaseURL)
+                    .textFieldStyle(.roundedBorder)
 
                 SecureField("Same token as API_SERVER_KEY (leave empty if you didn't set one)", text: $settingsManager.hermesBearerToken)
                     .textFieldStyle(.roundedBorder)

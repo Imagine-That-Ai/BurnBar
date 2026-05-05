@@ -372,6 +372,16 @@ final class SettingsManager {
         set { chatBackend.hermesChatModelOverride = newValue }
     }
 
+    var hermesGatewayBaseURL: String {
+        get { chatBackend.hermesGatewayBaseURL }
+        set { chatBackend.hermesGatewayBaseURL = newValue }
+    }
+
+    var hermesRemoteRelayEnabled: Bool {
+        get { chatBackend.hermesRemoteRelayEnabled }
+        set { chatBackend.hermesRemoteRelayEnabled = newValue }
+    }
+
     var chatBackendOnboardingCompleted: Bool {
         get { chatBackend.chatBackendOnboardingCompleted }
         set { chatBackend.chatBackendOnboardingCompleted = newValue }

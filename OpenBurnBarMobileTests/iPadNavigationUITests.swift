@@ -73,6 +73,16 @@ final class iPadNavigationUITests: XCTestCase {
         XCTAssertNotNil(view)
     }
 
+    func testYouRouteIncludesEveryAccountCardDestination() {
+        XCTAssertEqual(Set(YouRoute.allCases), [.sync, .devices, .settings])
+    }
+
+    func testCloudSyncHealthPresentationCopyIsActionable() {
+        XCTAssertEqual(CloudSyncHealth.healthy.systemImageName, "checkmark.icloud.fill")
+        XCTAssertEqual(CloudSyncHealth.offline.detailText, CloudErrorClassification.networkUnavailable.recoveryHint)
+        XCTAssertEqual(CloudSyncHealth.permissionDenied.detailText, CloudErrorClassification.permissionDenied.recoveryHint)
+    }
+
     // MARK: - Provider Dashboard Store
 
     func testProviderDashboardStore_aggregatesWithRealisticData() {
@@ -117,9 +127,10 @@ final class iPadNavigationUITests: XCTestCase {
 
     func testHermesService_streamingState() {
         let service = HermesService()
-        // isStreaming may already be false from async error handler
         service.sendMessage("Hello")
         XCTAssertTrue(service.isStreaming)
+        service.sendMessage("Second")
+        XCTAssertEqual(service.messages.filter { $0.role == .user }.map(\.text), ["Hello"])
     }
 
     func testHermesService_clearChatResetsState() {
@@ -130,8 +141,60 @@ final class iPadNavigationUITests: XCTestCase {
         service.lastError = "Some error"
         service.clearChat()
         XCTAssertTrue(service.messages.isEmpty)
-        // isStreaming may already be false from async error handler
+        XCTAssertFalse(service.isStreaming)
         XCTAssertNil(service.lastError)
+    }
+
+    func testHermesService_selectConnectionRejectsInvalidURLWithoutChangingSelection() {
+        let service = HermesService()
+        let invalid = HermesConnectionRecord(
+            id: "bad",
+            displayName: "Bad Host",
+            mode: .directURL,
+            status: .online,
+            endpointURL: "https://token@example.com?secret=value"
+        )
+
+        XCTAssertFalse(service.selectConnection(invalid))
+        XCTAssertEqual(service.selectedConnection.id, HermesConnectionRecord.localDefault.id)
+        XCTAssertNotNil(service.lastError)
+    }
+
+    func testHermesService_selectConnectionResetsRuntimeStateOnHostChange() {
+        let service = HermesService()
+        service.selectedModelID = "old-model"
+        service.selectedSessionID = "old-session"
+        service.sessions = [HermesSessionSummary(id: "old-session")]
+        service.modelOptions = [HermesRuntimeModelOption(providerID: "old", providerName: "Old", modelID: "old-model")]
+        let connection = HermesConnectionRecord(
+            id: "lan",
+            displayName: "LAN Hermes",
+            mode: .directURL,
+            status: .online,
+            endpointURL: "http://192.168.1.42:8642"
+        )
+
+        XCTAssertTrue(service.selectConnection(connection, refresh: false))
+        XCTAssertEqual(service.selectedConnection.id, "lan")
+        XCTAssertNil(service.selectedModelID)
+        XCTAssertNil(service.selectedSessionID)
+        XCTAssertTrue(service.sessions.isEmpty)
+        XCTAssertTrue(service.modelOptions.isEmpty)
+    }
+
+    func testHermesService_validatedEndpointURLAcceptsHTTPSAndPrivateLANHTTP() {
+        XCTAssertNotNil(HermesService.validatedEndpointURL("https://hermes.example.com"))
+        XCTAssertNotNil(HermesService.validatedEndpointURL("http://127.0.0.1:8642"))
+        XCTAssertNotNil(HermesService.validatedEndpointURL("http://192.168.1.42:8642"))
+        XCTAssertNotNil(HermesService.validatedEndpointURL("http://10.0.0.5:8642"))
+        XCTAssertNotNil(HermesService.validatedEndpointURL("http://172.16.0.5:8642"))
+    }
+
+    func testHermesService_validatedEndpointURLRejectsUnsafeURLs() {
+        XCTAssertNil(HermesService.validatedEndpointURL("ftp://hermes.example.com"))
+        XCTAssertNil(HermesService.validatedEndpointURL("http://8.8.8.8:8642"))
+        XCTAssertNil(HermesService.validatedEndpointURL("https://token@example.com"))
+        XCTAssertNil(HermesService.validatedEndpointURL("https://hermes.example.com?token=secret"))
     }
 
     // MARK: - Session Logs Search

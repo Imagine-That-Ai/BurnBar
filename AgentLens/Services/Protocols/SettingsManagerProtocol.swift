@@ -145,6 +145,12 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Optional Hermes gateway chat `model` override (see `resolvedHermesChatModel(gatewayAdvertisedModel:)`).
     var hermesChatModelOverride: String { get set }
 
+    /// Hermes gateway base URL. Defaults to the official local web API port.
+    var hermesGatewayBaseURL: String { get set }
+
+    /// Whether this Mac may relay local Hermes traffic for signed-in mobile devices.
+    var hermesRemoteRelayEnabled: Bool { get set }
+
     /// Resolves the `model` field for Hermes `POST /v1/chat/completions`.
     func resolvedHermesChatModel(gatewayAdvertisedModel: String?) -> String
 

@@ -28,9 +28,11 @@ struct BurnView: View {
                     if quotaStore.snapshots.isEmpty && quotaStore.isLoading {
                         skeleton
                     } else {
-                        constellationCard
-                        urgentBanner
-                        windowSelector
+                        fleetHeroCard
+                        if !quotaStore.urgentProviders.isEmpty {
+                            urgentBanner
+                        }
+                        periodSelector
                         providerStack
                         if !dashboard.dailyPoints.isEmpty {
                             chartCard
@@ -38,7 +40,7 @@ struct BurnView: View {
                     }
                 }
                 .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                .padding(.bottom, MobileTheme.Spacing.xxl)
+                .padding(.bottom, 100) // clear the tab tray
                 .padding(.top, MobileTheme.Spacing.sm)
             }
             .refreshable {
@@ -90,109 +92,176 @@ struct BurnView: View {
         }
     }
 
-    // MARK: - Sections
+    // MARK: - Hero
 
-    private var constellationCard: some View {
-        AuroraGlassCard(variant: .hero, cornerRadius: AuroraDesign.Shape.heroCorner) {
-            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-                AuroraSection(
-                    "Fleet quota",
-                    subtitle: quotaStore.snapshots.isEmpty
-                        ? "Connect a provider on your Mac to see quota"
-                        : "Tap a ring for per-account detail",
-                    accent: MobileTheme.amber
+    /// New Burn hero: a single readable card with the fleet score on the
+    /// left, top-3 provider rings on the right, and a clear "tap a chip
+    /// to drill in" affordance. Replaces the old overlapping constellation.
+    @ViewBuilder
+    private var fleetHeroCard: some View {
+        AuroraGlassCard(variant: heroVariant, cornerRadius: AuroraDesign.Shape.heroCorner, padding: AuroraDesign.Layout.heroPadding) {
+            if quotaItems.isEmpty {
+                AuroraStatePane(
+                    kind: quotaStore.error == nil ? .empty : .error,
+                    icon: quotaStore.error == nil ? "gauge.with.dots.needle.bottom.50percent" : "exclamationmark.icloud.fill",
+                    title: quotaStore.error == nil ? "No quota signal yet" : "Quota sync error",
+                    message: quotaEmptyMessage
                 )
-                if !quotaItems.isEmpty {
-                    QuotaRingsConstellation(items: quotaItems) { item in
-                        sheetProvider = item.providerKey
-                    }
-                    .frame(height: 240)
-                } else {
-                    AuroraStatePane(
-                        kind: .empty,
-                        icon: "gauge.with.dots.needle.bottom.50percent",
-                        title: "No quota signal yet",
-                        message: "Connect a provider on your Mac to start tracking quota in real time."
-                    )
-                    .frame(height: 240)
+                .frame(height: 220)
+            } else {
+                VStack(spacing: MobileTheme.Spacing.lg) {
+                    fleetHeroTopRow
+                    Divider()
+                        .background(MobileTheme.Colors.borderSubtle.opacity(0.5))
+                    providerRingStrip
                 }
+            }
+        }
+    }
+
+    private var fleetHeroTopRow: some View {
+        let avg = fleetHealthRatio
+        let pct = Int((avg * 100).rounded())
+        let pressureCount = quotaStore.urgentProviders.count
+        let healthLabel: String = {
+            if avg >= 0.6 { return "Healthy" }
+            if avg >= 0.3 { return "Pressured" }
+            return "Critical"
+        }()
+        return HStack(alignment: .center, spacing: MobileTheme.Spacing.lg) {
+            // Left: large readable fleet ring
+            FleetHealthRing(progress: avg, accent: fleetAccent)
+                .frame(width: 96, height: 96)
+
+            // Right: title block
+            VStack(alignment: .leading, spacing: 6) {
+                Text("FLEET QUOTA")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .tracking(1.6)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(pct)%")
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundStyle(MobileTheme.primaryGradient)
+                        .contentTransition(.numericText())
+                    Text(healthLabel)
+                        .font(MobileTheme.Typography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(fleetAccent)
+                }
+                Text(pressureCount == 0
+                     ? "All providers in the green"
+                     : "\(pressureCount) under pressure")
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var providerRingStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("PER-PROVIDER")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .tracking(1.6)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                Spacer()
+                Text("Tap a ring")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(quotaItems.prefix(8)) { item in
+                        Button {
+                            sheetProvider = item.providerKey
+                            HapticBus.sheetOpen()
+                        } label: {
+                            ProviderQuotaChip(item: item)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(item.label), \(Int(item.pressureRemaining * 100)) percent remaining")
+                    }
+                }
+                .padding(.vertical, 4)
             }
         }
     }
 
     @ViewBuilder
     private var urgentBanner: some View {
-        if !quotaStore.urgentProviders.isEmpty {
-            AuroraGlassCard(variant: .urgent, cornerRadius: 14) {
-                HStack(alignment: .top, spacing: 12) {
+        let providers = quotaStore.urgentProviders
+        AuroraGlassCard(variant: .urgent, cornerRadius: 14, padding: MobileTheme.Spacing.md) {
+            HStack(alignment: .center, spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(MobileTheme.warning.opacity(0.18))
+                        .frame(width: 36, height: 36)
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(MobileTheme.warning)
                         .symbolEffect(.pulse, options: .repeating)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("\(quotaStore.urgentProviders.count) provider\(quotaStore.urgentProviders.count == 1 ? "" : "s") under pressure")
-                            .font(MobileTheme.Typography.headline)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text(quotaStore.urgentProviders.prefix(3).joined(separator: " · "))
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(providers.count) provider\(providers.count == 1 ? "" : "s") under pressure")
+                        .font(MobileTheme.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Text(providers.prefix(3).joined(separator: " · "))
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if let firstUrgent = providers.first {
+                    Button {
+                        sheetProvider = firstUrgent
+                        HapticBus.sheetOpen()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Review")
+                                .font(MobileTheme.Typography.caption)
+                                .fontWeight(.semibold)
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .foregroundStyle(MobileTheme.warning)
+                        .background(Capsule().fill(MobileTheme.warning.opacity(0.16)))
+                        .overlay(Capsule().stroke(MobileTheme.warning.opacity(0.4), lineWidth: 0.5))
                     }
-                    Spacer()
+                    .buttonStyle(.plain)
                 }
             }
         }
     }
 
-    private var windowSelector: some View {
-        HStack {
+    private var periodSelector: some View {
+        HStack(spacing: MobileTheme.Spacing.sm) {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     ForEach(RollupWindowKey.allCases, id: \.self) { key in
-                        windowChip(key)
+                        PeriodCard(
+                            window: key,
+                            total: dashboard.windowTotals[key],
+                            displayMode: displayMode,
+                            isSelected: selectedWindow == key,
+                            onTap: {
+                                withAnimation(AuroraDesign.Motion.auroraSnap) {
+                                    selectedWindow = key
+                                }
+                            }
+                        )
                     }
                 }
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 2)
             }
             modeToggle
         }
-    }
-
-    private func windowChip(_ key: RollupWindowKey) -> some View {
-        let isSelected = selectedWindow == key
-        let totals = dashboard.windowTotals[key]
-        return Button {
-            withAnimation(AuroraDesign.Motion.auroraSnap) { selectedWindow = key }
-        } label: {
-            HStack(spacing: 6) {
-                Text(key.displayLabel)
-                    .font(MobileTheme.Typography.caption)
-                    .fontWeight(.semibold)
-                if let totals {
-                    Text(displayMode == .currency
-                         ? totals.costUsd.formatAsCost()
-                         : totals.tokens.formatAsTokenVolume())
-                        .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .foregroundStyle(isSelected ? .white : MobileTheme.Colors.textSecondary)
-            .background(
-                Capsule().fill(
-                    isSelected
-                        ? AnyShapeStyle(MobileTheme.primaryGradient)
-                        : AnyShapeStyle(MobileTheme.Colors.surface.opacity(0.8))
-                )
-            )
-            .overlay(
-                Capsule().stroke(
-                    isSelected ? MobileTheme.amber.opacity(0.5) : MobileTheme.Colors.border.opacity(0.4),
-                    lineWidth: isSelected ? 1 : 0.5
-                )
-            )
-        }
-        .buttonStyle(.plain)
     }
 
     private var modeToggle: some View {
@@ -202,12 +271,41 @@ struct BurnView: View {
             }
             HapticBus.toggle()
         } label: {
-            Image(systemName: displayMode == .currency ? "dollarsign.circle.fill" : "number.circle.fill")
-                .font(.system(size: 22))
-                .foregroundStyle(MobileTheme.ember)
-                .symbolEffect(.bounce, value: displayMode)
+            ZStack {
+                Circle()
+                    .fill(MobileTheme.ember.opacity(0.18))
+                Circle()
+                    .stroke(MobileTheme.ember.opacity(0.45), lineWidth: 0.5)
+                Image(systemName: displayMode == .currency ? "dollarsign" : "number")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(MobileTheme.ember)
+                    .symbolEffect(.bounce, value: displayMode)
+            }
+            .frame(width: 36, height: 36)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Toggle currency or tokens")
+    }
+
+    // MARK: - Hero derivations
+
+    private var fleetHealthRatio: Double {
+        guard !quotaItems.isEmpty else { return 1.0 }
+        return quotaItems.map(\.pressureRemaining).reduce(0, +) / Double(quotaItems.count)
+    }
+
+    private var fleetAccent: Color {
+        let avg = fleetHealthRatio
+        if avg >= 0.6 { return MobileTheme.success }
+        if avg >= 0.3 { return MobileTheme.warning }
+        return MobileTheme.error
+    }
+
+    private var heroVariant: AuroraGlassVariant {
+        let avg = fleetHealthRatio
+        if avg >= 0.6 { return .success }
+        if avg >= 0.3 { return .standard }
+        return .urgent
     }
 
     private var providerStack: some View {
@@ -235,10 +333,10 @@ struct BurnView: View {
             }
             if allProviderKeys.isEmpty {
                 AuroraStatePane(
-                    kind: .empty,
-                    icon: "externaldrive.connected.to.line.below",
-                    title: "No connected providers",
-                    message: "Open the Mac app and link a provider to start tracking burn here."
+                    kind: quotaStore.error == nil ? .empty : .error,
+                    icon: quotaStore.error == nil ? "externaldrive.connected.to.line.below" : "exclamationmark.icloud.fill",
+                    title: quotaStore.error == nil ? "No connected providers" : "Quota sync error",
+                    message: quotaEmptyMessage
                 )
                 .frame(minHeight: 180)
             }
@@ -338,7 +436,12 @@ struct BurnView: View {
                 label: provider.displayName
             )
         }
-        .sorted { $0.pressureRemaining < $1.pressureRemaining }
+        .sorted {
+            if $0.pressureRemaining != $1.pressureRemaining {
+                return $0.pressureRemaining < $1.pressureRemaining
+            }
+            return $0.providerKey < $1.providerKey
+        }
     }
 
     private var allProviderKeys: [String] {
@@ -351,6 +454,127 @@ struct BurnView: View {
             if seen.insert(k).inserted { keys.append(k) }
         }
         return keys
+    }
+
+    private var quotaEmptyMessage: String {
+        let accountHint: String
+        if let account = quotaStore.currentUserDisplayID, account.isEmpty == false {
+            accountHint = "Signed into account \(account)."
+        } else {
+            accountHint = "Not signed in."
+        }
+        if let error = quotaStore.error {
+            return "\(error)\n\(accountHint)"
+        }
+        return "Open the Mac app and link a provider to start tracking burn here. Make sure this iPhone is signed into the same OpenBurnBar account as your Mac.\n\(accountHint)"
+    }
+}
+
+// MARK: - Fleet Health Ring
+
+/// A single readable progress ring used in the new Burn hero. Replaces the
+/// stacked constellation rings that visually collided with provider logos.
+private struct FleetHealthRing: View {
+    let progress: Double
+    let accent: Color
+
+    var body: some View {
+        ZStack {
+            // Track
+            Circle()
+                .stroke(MobileTheme.Colors.border.opacity(0.4), lineWidth: 9)
+
+            // Progress arc — angular gradient from accent through warm fade
+            Circle()
+                .trim(from: 0, to: CGFloat(max(0, min(1, progress))))
+                .stroke(
+                    AngularGradient(
+                        colors: [
+                            accent,
+                            accent.opacity(0.85),
+                            MobileTheme.amber,
+                            accent
+                        ],
+                        center: .center
+                    ),
+                    style: StrokeStyle(lineWidth: 10, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .shadow(color: accent.opacity(0.45), radius: 10)
+
+            // Center glyph
+            Image(systemName: "flame.fill")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [accent, accent.opacity(0.7)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        }
+    }
+}
+
+// MARK: - Provider Quota Chip
+
+/// A clean, readable provider tile used in the horizontal strip on the
+/// Burn hero. Logo above, percent below, tinted ring around the logo.
+private struct ProviderQuotaChip: View {
+    let item: QuotaRingsConstellation.Item
+
+    private var primary: Color {
+        MobileTheme.Colors.primary(for: item.provider)
+    }
+
+    private var statusColor: Color {
+        let p = item.pressureRemaining
+        if p < 0.25 { return MobileTheme.error }
+        if p < 0.5 { return MobileTheme.warning }
+        return MobileTheme.success
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ZStack {
+                // Soft halo tinted by provider color
+                Circle()
+                    .fill(primary.opacity(0.16))
+                    .frame(width: 56, height: 56)
+                    .blur(radius: 4)
+
+                // Track ring
+                Circle()
+                    .stroke(primary.opacity(0.18), lineWidth: 3)
+                    .frame(width: 52, height: 52)
+
+                // Progress
+                Circle()
+                    .trim(from: 0, to: CGFloat(max(0, min(1, item.pressureRemaining))))
+                    .stroke(primary, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 52, height: 52)
+                    .shadow(color: primary.opacity(0.5), radius: 6)
+
+                // Logo glass disc
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: 36, height: 36)
+                    .overlay(
+                        Circle().stroke(primary.opacity(0.35), lineWidth: 0.5)
+                    )
+
+                UnifiedProviderLogoView(provider: item.provider, size: 22, useFallbackColor: false)
+            }
+
+            Text("\(Int((item.pressureRemaining * 100).rounded()))%")
+                .font(MobileTheme.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(statusColor)
+                .monospacedDigit()
+                .contentTransition(.numericText())
+        }
+        .frame(width: 64)
     }
 }
 

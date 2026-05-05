@@ -77,6 +77,14 @@ struct QuotaPulseCard: View {
                 label: provider.displayName
             )
         }
-        .sorted { $0.pressureRemaining < $1.pressureRemaining }
+        // Stable order: sort by pressure first, then by providerKey as a
+        // tiebreaker so ring positions don't shuffle on every Firestore
+        // update when multiple providers share the same pressure value.
+        .sorted {
+            if $0.pressureRemaining != $1.pressureRemaining {
+                return $0.pressureRemaining < $1.pressureRemaining
+            }
+            return $0.providerKey < $1.providerKey
+        }
     }
 }

@@ -24,6 +24,7 @@ protocol CloudSyncCollectionGateway: AnyObject {
 @MainActor
 protocol CloudSyncDocumentGateway: AnyObject {
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway
+    func getData() async throws -> [String: Any]?
     func setData(_ data: [String: Any], merge: Bool) async throws
 }
 
@@ -117,6 +118,10 @@ final class CloudSyncDocumentLiveGateway: CloudSyncDocumentGateway {
 
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway {
         CloudSyncCollectionLiveGateway(reference: reference.collection(collectionPath))
+    }
+
+    func getData() async throws -> [String: Any]? {
+        try await reference.getDocument().data()
     }
 
     func setData(_ data: [String: Any], merge: Bool) async throws {

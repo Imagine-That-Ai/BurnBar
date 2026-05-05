@@ -2,8 +2,65 @@ import SwiftUI
 import Charts
 import OpenBurnBarCore
 
+@Observable
+@MainActor
+final class StreamDetailStore {
+    private let firestore: FirestoreRepository
+
+    private(set) var manifest: StreamSessionLogManifest?
+    private(set) var transcriptPreview: String?
+    private(set) var isLoading = false
+    private(set) var isLoadingTranscript = false
+    private(set) var isTranscriptExpanded = false
+    private(set) var errorMessage: String?
+
+    init(firestore: FirestoreRepository = FirestoreRepository.shared) {
+        self.firestore = firestore
+    }
+
+    func load(for usage: TokenUsage) async {
+        isLoading = true
+        errorMessage = nil
+        isTranscriptExpanded = false
+        transcriptPreview = nil
+        defer { isLoading = false }
+
+        do {
+            guard let manifest = try await firestore.fetchSessionLogManifest(for: usage) else {
+                self.manifest = nil
+                return
+            }
+            self.manifest = manifest
+            transcriptPreview = try await firestore.fetchSessionLogBody(documentID: manifest.documentID, maxCharacters: 4_000)
+        } catch {
+            self.manifest = nil
+            errorMessage = "Stream transcript is not available from Firebase yet."
+        }
+    }
+
+    func toggleFullTranscript() async {
+        guard let manifest else { return }
+        if isTranscriptExpanded {
+            isTranscriptExpanded = false
+            if let transcriptPreview {
+                self.transcriptPreview = String(transcriptPreview.prefix(4_000))
+            }
+            return
+        }
+        isLoadingTranscript = true
+        defer { isLoadingTranscript = false }
+        do {
+            transcriptPreview = try await firestore.fetchSessionLogBody(documentID: manifest.documentID)
+            isTranscriptExpanded = true
+        } catch {
+            errorMessage = "Unable to load the full stream body."
+        }
+    }
+}
+
 struct SessionDetailView: View {
     let usage: TokenUsage
+    @State private var detailStore = StreamDetailStore()
 
     var providerEnum: AgentProvider? {
         AgentProvider.fromPersistedToken(usage.provider.rawValue)
@@ -22,6 +79,7 @@ struct SessionDetailView: View {
             VStack(spacing: MobileTheme.Spacing.xl) {
                 heroHeader
                 tokenBreakdown
+                streamCloudDetailSection
                 provenanceSection
                 if usage.sourceDeviceName != nil || usage.sourceDeviceId != nil {
                     deviceSection
@@ -32,6 +90,9 @@ struct SessionDetailView: View {
         .background(emberBackground.ignoresSafeArea())
         .navigationTitle("Session")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: usage.id) {
+            await detailStore.load(for: usage)
+        }
     }
 
     private var emberBackground: some View {
@@ -80,6 +141,68 @@ struct SessionDetailView: View {
         let total = Double(usage.totalTokens)
         guard total > 0 else { return 0 }
         return min(1, cacheTotal / total)
+    }
+
+    // MARK: - Cloud Detail
+
+    private var streamCloudDetailSection: some View {
+        UnifiedGlassCard {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+                HStack {
+                    Text("Stream Detail")
+                        .font(MobileTheme.Typography.headline)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Spacer()
+                    if detailStore.isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else if detailStore.manifest != nil {
+                        Image(systemName: "checkmark.icloud.fill")
+                            .foregroundStyle(MobileTheme.success)
+                    }
+                }
+
+                if let manifest = detailStore.manifest {
+                    if !manifest.inferredTaskTitle.isEmpty {
+                        Text(manifest.inferredTaskTitle)
+                            .font(MobileTheme.Typography.body)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    }
+                    HStack(spacing: 8) {
+                        MetricPill(title: "Messages", value: "\(manifest.messageCount)")
+                        MetricPill(title: "Chunks", value: "\(manifest.chunkCount)")
+                        MetricPill(title: "Size", value: ByteCountFormatter.string(fromByteCount: Int64(manifest.byteCount), countStyle: .file))
+                    }
+                    if let preview = detailStore.transcriptPreview, !preview.isEmpty {
+                        Text(preview)
+                            .font(MobileTheme.Typography.monoTiny)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .lineLimit(detailStore.isTranscriptExpanded ? nil : 8)
+                            .textSelection(.enabled)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(MobileTheme.Colors.surfaceElevated.opacity(0.55))
+                            )
+                    }
+                    Button(detailStore.isTranscriptExpanded ? "Collapse stream" : "Load full stream") {
+                        Task { await detailStore.toggleFullTranscript() }
+                    }
+                    .buttonStyle(.aurora(.secondary, fullWidth: true))
+                    .disabled(detailStore.isLoadingTranscript)
+                } else if let error = detailStore.errorMessage {
+                    Text(error)
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                } else {
+                    Text("Full stream details appear here when transcript backup is enabled on your Mac.")
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                }
+            }
+        }
+        .padding(.horizontal, MobileTheme.Spacing.lg)
     }
 
     // MARK: - Token Breakdown

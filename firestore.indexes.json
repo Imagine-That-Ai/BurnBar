@@ -32,6 +32,22 @@
         {"fieldPath": "model", "order": "ASCENDING"},
         {"fieldPath": "startTime", "order": "DESCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "entitlements",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "id", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "entitlements",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "id", "order": "ASCENDING"},
+        {"fieldPath": "originalTransactionID", "order": "ASCENDING"}
+      ]
     }
   ]
 }

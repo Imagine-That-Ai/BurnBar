@@ -257,14 +257,22 @@ export class AppleJWSVerifier {
     const cached = this.verifiers.get(env);
     if (cached) return cached;
     const roots = loadAppleRootCertificates();
-    // `appAppleId` is required for Production-environment notification
-    // verification but harmless / ignored for sandbox-only flows.
+    // `appAppleId` is **required** for the Production environment per
+    // `@apple/app-store-server-library` v1.1+; passing 0/undefined would
+    // throw inside `verifyNotification`. For Sandbox/Xcode/LocalTesting
+    // it MUST be omitted (the library treats any value there as suspect).
+    if (env === "Production" && !this.cfg.appAppleId) {
+      throw new Error(
+        "AppleJWSVerifier: appAppleId is required for the Production environment. " +
+          "Set APP_STORE_APPLE_APP_ID before deploying production verification."
+      );
+    }
     const verifier = new SignedDataVerifier(
       roots,
       this.cfg.enableOnlineChecks,
       toLibEnvironment(env),
       this.cfg.bundleId,
-      env === "Production" ? this.cfg.appAppleId : this.cfg.appAppleId
+      env === "Production" ? this.cfg.appAppleId : undefined
     );
     this.verifiers.set(env, verifier);
     return verifier;

@@ -28,7 +28,7 @@
  * times Apple retries the webhook.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Firestore } from "firebase-admin/firestore";
 
 import type { JWSTransactionDecodedPayload } from "@apple/app-store-server-library";
@@ -82,6 +82,16 @@ export interface ReconcileResult {
   changed: boolean;
 }
 
+/**
+ * Test-only override hooks. Production callers leave both undefined and
+ * the reconciler resolves the real `AppleJWSVerifier` + ASC client via
+ * `getAppleJWSVerifier(cfg)` / `fetchLiveSubscriptionStatus(cfg, …)`.
+ */
+export interface ReconcileOverrides {
+  verifier?: AppleJWSVerifier;
+  fetchLive?: typeof fetchLiveSubscriptionStatus;
+}
+
 export class EntitlementReconcileError extends Error {
   readonly code: string;
   constructor(code: string, message: string) {
@@ -98,9 +108,11 @@ export class EntitlementReconcileError extends Error {
 export async function reconcileEntitlement(
   db: Firestore,
   cfg: AppStoreConfig,
-  input: ReconcileInput
+  input: ReconcileInput,
+  overrides: ReconcileOverrides = {}
 ): Promise<ReconcileResult> {
-  const verifier = getAppleJWSVerifier(cfg);
+  const verifier = overrides.verifier ?? getAppleJWSVerifier(cfg);
+  const fetchLive = overrides.fetchLive ?? fetchLiveSubscriptionStatus;
 
   // 1) Verify the supplied JWS.
   const seedTx = await verifier.verifyTransaction(input.signedTransactionJWS);
@@ -118,7 +130,7 @@ export async function reconcileEntitlement(
   const uid = await resolveUid(db, input, seedTx);
 
   // 3+4) Live truth: re-verify every JWS Apple returns.
-  const live = await fetchLiveStatusVerified(verifier, cfg, seedTx);
+  const live = await fetchLiveStatusVerified(verifier, cfg, seedTx, fetchLive);
 
   // 5) Best-of all transactions for the productId.
   const candidate = pickWinning([seedTx, ...live], input.productID);
@@ -344,7 +356,8 @@ async function findUidByOriginalTransaction(
 async function fetchLiveStatusVerified(
   verifier: AppleJWSVerifier,
   cfg: AppStoreConfig,
-  seed: DecodedTransaction
+  seed: DecodedTransaction,
+  fetchLive: typeof fetchLiveSubscriptionStatus
 ): Promise<DecodedTransaction[]> {
   const original = seed.payload.originalTransactionId;
   if (!original) return [];
@@ -352,7 +365,7 @@ async function fetchLiveStatusVerified(
   // The seed environment drives which ASC base URL we hit.
   let live;
   try {
-    live = await fetchLiveSubscriptionStatus(cfg, seed.environment, original);
+    live = await fetchLive(cfg, seed.environment, original);
   } catch (err) {
     // If ASC is unreachable, we fall back to seed-only — the entitlement
     // is still chain-verified, just not live-reconciled. Logged, not
@@ -457,6 +470,8 @@ function buildEntitlementDoc(args: BuildArgs): HostedQuotaEntitlementDoc {
     signedTransactionHash: createHash("sha256")
       .update(candidate.raw)
       .digest("hex"),
+    signedDateMs:
+      typeof p.signedDate === "number" ? Math.floor(p.signedDate) : undefined,
     lastNotificationUUID: notificationUUID,
     lastVerifiedAt: now.toISOString(),
     source,
@@ -472,8 +487,16 @@ function shouldOverwrite(
   existing: HostedQuotaEntitlementDoc,
   next: HostedQuotaEntitlementDoc
 ): boolean {
-  // Prefer the newest verified state. We compare on `lastVerifiedAt`
-  // because it always reflects the most recent signedDate-derived check.
+  // Prefer Apple's transaction watermark over local wall-clock time.
+  // `lastVerifiedAt` is still useful for operator observability, but
+  // replay protection must key off the signed payload date so a stale
+  // event processed later cannot revive an expired or revoked state.
+  if (
+    typeof existing.signedDateMs === "number" &&
+    typeof next.signedDateMs === "number"
+  ) {
+    return next.signedDateMs >= existing.signedDateMs;
+  }
   if (!existing.lastVerifiedAt) return true;
   return next.lastVerifiedAt >= existing.lastVerifiedAt;
 }
@@ -525,33 +548,38 @@ function auditEventId(
   return `t_${payload.transactionId}_${payload.signedDate ?? 0}`;
 }
 
+/**
+ * Trim PII / locale fields from the decoded payload before persisting it
+ * to the audit log. Storefront, currency, and price are dropped because
+ * they leak the buyer's region and price tier; `appAccountToken` is
+ * replaced with its SHA-256 because raw UUIDs are sensitive PII.
+ */
+const REDACTED_PAYLOAD_FIELDS = new Set([
+  "storefront",
+  "storefrontId",
+  "currency",
+  "price",
+]);
+
 function redactPayload(
   payload: JWSTransactionDecodedPayload
 ): Record<string, unknown> {
-  const {
-    storefront,
-    storefrontId,
-    currency,
-    price,
-    appAccountToken,
-    ...rest
-  } = payload as JWSTransactionDecodedPayload & {
-    storefront?: string;
-    storefrontId?: string;
-    currency?: string;
-    price?: number;
-  };
-  void storefront;
-  void storefrontId;
-  void currency;
-  void price;
-  return {
-    ...rest,
-    appAccountTokenHash:
-      typeof appAccountToken === "string"
-        ? createHash("sha256").update(appAccountToken).digest("hex")
-        : undefined,
-  };
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(
+    payload as unknown as Record<string, unknown>
+  )) {
+    if (REDACTED_PAYLOAD_FIELDS.has(k)) continue;
+    if (k === "appAccountToken") continue;
+    out[k] = v;
+  }
+  const appAccountToken = (payload as { appAccountToken?: unknown })
+    .appAccountToken;
+  if (typeof appAccountToken === "string" && appAccountToken) {
+    out.appAccountTokenHash = createHash("sha256")
+      .update(appAccountToken)
+      .digest("hex");
+  }
+  return out;
 }
 
 function redactToken(token: string): string {
@@ -560,11 +588,6 @@ function redactToken(token: string): string {
 }
 
 function uuid(): string {
-  // crypto.randomUUID() is available in Node 22 (and 20). We fall back
-  // to a simple format manually only for the test runner's earlier
-  // versions, but prod Cloud Functions are pinned to node 22.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { randomUUID } = require("node:crypto") as typeof import("node:crypto");
   return randomUUID();
 }
 

@@ -25,9 +25,11 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 
-import { getConfig } from "../config.js";
-
-import { APP_STORE_SECRETS } from "./config.js";
+import {
+  APP_STORE_SECRETS,
+  hostedQuotaProductID,
+  loadAppStoreRuntimeConfig,
+} from "./config.js";
 import {
   EntitlementReconcileError,
   reconcileEntitlement,
@@ -38,6 +40,19 @@ import {
 } from "./verifier.js";
 
 const REGION = "us-central1";
+
+/**
+ * Apple's `signedPayload` notification bodies are well under 32 KB in
+ * practice. We reject anything wildly out-of-range as a cheap pre-JWS
+ * filter so a bad actor can't waste verifier CPU with multi-megabyte
+ * blobs that would never have been signed by Apple anyway.
+ */
+const MAX_NOTIFICATION_BODY_BYTES = 64 * 1024; // 64 KB
+/**
+ * Outer JWS strings from Apple are roughly 5–8 KB; we cap at 32 KB to
+ * leave ample headroom while still rejecting unbounded inputs.
+ */
+const MAX_SIGNED_PAYLOAD_CHARS = 32 * 1024;
 
 export const appStoreServerNotificationsV2 = onRequest(
   {
@@ -53,6 +68,17 @@ export const appStoreServerNotificationsV2 = onRequest(
       res.status(405).send("method not allowed");
       return;
     }
+    // Apple does not send a Content-Length the spec mandates, but most
+    // reverse proxies (incl. Firebase's frontend) set it. If it's
+    // present and obviously oversized, drop it before we even parse.
+    const declaredLength = Number(req.headers["content-length"] ?? 0);
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > MAX_NOTIFICATION_BODY_BYTES
+    ) {
+      res.status(413).json({ error: "payload_too_large" });
+      return;
+    }
     const rawSignedPayload =
       req.body && typeof req.body === "object" && "signedPayload" in req.body
         ? (req.body as { signedPayload?: unknown }).signedPayload
@@ -61,8 +87,15 @@ export const appStoreServerNotificationsV2 = onRequest(
       res.status(400).json({ error: "missing signedPayload" });
       return;
     }
-    const cfg = getConfig().appStore;
-    const productID = getConfig().hostedQuotaProductID;
+    if (rawSignedPayload.length > MAX_SIGNED_PAYLOAD_CHARS) {
+      // Could be an attacker probing JWS endpoints with large garbage.
+      // 4xx so Apple wouldn't keep retrying if (somehow) the payload
+      // ever did genuinely come from them.
+      res.status(413).json({ error: "signed_payload_too_large" });
+      return;
+    }
+    const cfg = loadAppStoreRuntimeConfig();
+    const productID = hostedQuotaProductID();
     const verifier = getAppleJWSVerifier(cfg);
 
     let notification;

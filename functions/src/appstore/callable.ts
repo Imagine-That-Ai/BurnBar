@@ -22,7 +22,11 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import type { HostedQuotaEntitlementDoc } from "../types.js";
 
-import { APP_STORE_SECRETS } from "./config.js";
+import {
+  APP_STORE_SECRETS,
+  hostedQuotaProductID,
+  loadAppStoreRuntimeConfig,
+} from "./config.js";
 import {
   beginBinding,
   EntitlementReconcileError,
@@ -30,7 +34,6 @@ import {
 } from "./reconciler.js";
 import { JWSVerificationFailure } from "./verifier.js";
 import { fetchLiveSubscriptionStatus } from "./client.js";
-import { getAppleJWSVerifier } from "./verifier.js";
 
 const REGION = "us-central1";
 
@@ -54,8 +57,7 @@ export const beginEntitlementBinding = onCall(
     const uid = request.auth?.uid;
     if (!uid) throw httpsError("unauthenticated", "auth required");
     enforceAuthAndAppCheck(request, uid);
-    const productID =
-      request.data.productID ?? getConfig().hostedQuotaProductID;
+    const productID = request.data.productID ?? hostedQuotaProductID();
     const db = getFirestore();
     return beginBinding(db, uid, productID, request.data.clientPlatform);
   }
@@ -97,9 +99,8 @@ export const verifyHostedQuotaEntitlement = onCall(
         "signedTransactionJWS must be a JWS"
       );
     }
-    const cfg = getConfig().appStore;
-    const productID =
-      request.data.productID ?? getConfig().hostedQuotaProductID;
+    const cfg = loadAppStoreRuntimeConfig();
+    const productID = request.data.productID ?? hostedQuotaProductID();
     const db = getFirestore();
     try {
       const result = await reconcileEntitlement(db, cfg, {
@@ -120,6 +121,19 @@ export const verifyHostedQuotaEntitlement = onCall(
 // restoreHostedQuotaEntitlement
 // ---------------------------------------------------------------------------
 
+/**
+ * Three legitimate restore scenarios this callable handles:
+ *
+ *   1. Reinstall on a new device (no server entitlement, but `Transaction.currentEntitlements`
+ *      surfaces a JWS): client supplies the JWS, server verifies it and writes a fresh
+ *      entitlement doc for the signed-in UID.
+ *   2. Same device, server doc already exists: client supplies no JWS; server pulls
+ *      `originalTransactionID` from the existing doc and reconciles via ASC.
+ *   3. Sandbox tester replaying state: same as (1) or (2).
+ *
+ * Apple's HIG REQUIRES a "Restore Purchases" affordance on every app with auto-renewing
+ * subscriptions. This callable is the server side of that contract.
+ */
 export const restoreHostedQuotaEntitlement = onCall(
   {
     region: REGION,
@@ -128,21 +142,56 @@ export const restoreHostedQuotaEntitlement = onCall(
     secrets: APP_STORE_SECRETS,
   },
   async (
-    request: CallableRequest<{ productID?: string }>
+    request: CallableRequest<{
+      productID?: string;
+      /**
+       * Optional JWS the iOS client harvested from `Transaction.currentEntitlements`
+       * after calling `AppStore.sync()`. Preferred over the server-side fallback
+       * because it works even on a fresh install where no entitlement doc exists yet.
+       */
+      signedTransactionJWS?: string;
+    }>
   ): Promise<HostedQuotaEntitlementDoc> => {
     const uid = request.auth?.uid;
     if (!uid) throw httpsError("unauthenticated", "auth required");
     enforceAuthAndAppCheck(request, uid);
-    const cfg = getConfig().appStore;
-    const productID =
-      request.data.productID ?? getConfig().hostedQuotaProductID;
+    const cfg = loadAppStoreRuntimeConfig();
+    const productID = request.data.productID ?? hostedQuotaProductID();
     const db = getFirestore();
+
+    // Scenario (1): client harvested a JWS. Forward it through the same
+    // reconciliation pipeline as `verifyHostedQuotaEntitlement`.
+    const clientJWS = String(request.data.signedTransactionJWS ?? "").trim();
+    if (clientJWS) {
+      if (clientJWS.split(".").length !== 3) {
+        throw httpsError(
+          "invalid-argument",
+          "signedTransactionJWS must be a JWS"
+        );
+      }
+      try {
+        const result = await reconcileEntitlement(db, cfg, {
+          signedTransactionJWS: clientJWS,
+          claimedUid: uid,
+          source: "client_callable",
+          productID,
+        });
+        return result.entitlement;
+      } catch (err) {
+        throw mapReconcileError(err);
+      }
+    }
+
+    // Scenario (2): server-side fallback. Read existing entitlement doc;
+    // if `originalTransactionID` is on file, pull live state from ASC.
     const docRef = db.doc(`users/${uid}/entitlements/hosted_quota_sync`);
     const snap = await docRef.get();
     if (!snap.exists) {
       throw httpsError(
         "failed-precondition",
-        "no entitlement on file to restore"
+        "no entitlement on file. Call from the iOS client with " +
+          "signedTransactionJWS after running AppStore.sync() and " +
+          "iterating Transaction.currentEntitlements."
       );
     }
     const existing = snap.data() as HostedQuotaEntitlementDoc;
@@ -153,7 +202,6 @@ export const restoreHostedQuotaEntitlement = onCall(
         "entitlement has no originalTransactionID"
       );
     }
-    const verifier = getAppleJWSVerifier(cfg);
     const live = await fetchLiveSubscriptionStatus(
       cfg,
       existing.environment ?? cfg.environment,
@@ -166,8 +214,6 @@ export const restoreHostedQuotaEntitlement = onCall(
         "ASC returned no signed transactions for this subscription"
       );
     }
-    // Verify and reconcile through the central pipeline.
-    void verifier; // verifier is used inside reconcileEntitlement
     try {
       const result = await reconcileEntitlement(db, cfg, {
         signedTransactionJWS: seedJWS,

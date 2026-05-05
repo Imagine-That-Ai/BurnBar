@@ -13,8 +13,6 @@ struct StreamsView: View {
     @State private var segment: Segment = .sessions
     @State private var searchText = ""
     @State private var showFilters = false
-    @State private var selectedSession: TokenUsage?
-    @State private var selectedProject: ProjectSummary?
 
     enum Segment: String, CaseIterable, Identifiable, Hashable {
         case sessions, projects, activity
@@ -65,6 +63,9 @@ struct StreamsView: View {
             }
         }
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search sessions, models, projects")
+        .task(id: searchText) {
+            await activity.updateSearch(query: searchText)
+        }
         .task {
             await activity.loadInitial()
             await projects.load()
@@ -80,12 +81,6 @@ struct StreamsView: View {
         .sheet(isPresented: $showFilters) {
             StreamsFilterSheet(store: activity)
                 .presentationDetents([.medium])
-        }
-        .navigationDestination(item: $selectedSession) { session in
-            SessionDetailView(usage: session)
-        }
-        .navigationDestination(item: $selectedProject) { project in
-            ProjectDetailView(project: project, store: projects)
         }
     }
 
@@ -129,15 +124,19 @@ struct StreamsView: View {
                             : "Try a different model, provider, or project name."
                     )
                     .frame(minHeight: 320)
+                } else if shouldShowCloudSearchResults {
+                    ForEach(activity.searchHits) { hit in
+                        NavigationLink(value: hit.usage) {
+                            StreamSearchResultRow(hit: hit)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 } else {
                     ForEach(groupedByDay, id: \.day) { group in
                         Section {
                             VStack(spacing: 8) {
                                 ForEach(group.usages) { usage in
-                                    Button {
-                                        HapticBus.sheetOpen()
-                                        selectedSession = usage
-                                    } label: {
+                                    NavigationLink(value: usage) {
                                         AuroraSessionRow(usage: usage)
                                     }
                                     .buttonStyle(.plain)
@@ -170,6 +169,10 @@ struct StreamsView: View {
         return grouped.sorted { $0.key > $1.key }.map { (day: $0.key, usages: $0.value) }
     }
 
+    private var shouldShowCloudSearchResults: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !activity.searchHits.isEmpty
+    }
+
     private var sessionSkeleton: some View {
         VStack(spacing: 10) {
             ForEach(0..<6, id: \.self) { _ in
@@ -195,9 +198,8 @@ struct StreamsView: View {
                     .frame(minHeight: 320)
                 } else {
                     ForEach(filteredProjects) { project in
-                        Button {
-                            HapticBus.sheetOpen()
-                            selectedProject = project
+                        NavigationLink {
+                            ProjectDetailView(project: project, store: projects)
                         } label: {
                             ProjectCard(project: project)
                         }
@@ -227,10 +229,7 @@ struct StreamsView: View {
                     .frame(minHeight: 280)
                 } else {
                     ForEach(filteredUsages) { usage in
-                        Button {
-                            HapticBus.sheetOpen()
-                            selectedSession = usage
-                        } label: {
+                        NavigationLink(value: usage) {
                             ActivityCompactRow(usage: usage)
                         }
                         .buttonStyle(.plain)
@@ -330,6 +329,25 @@ private struct AuroraSessionRow: View {
             .fill(providerColor)
             .frame(width: 3, height: 36)
             .shadow(color: providerColor.opacity(0.5), radius: 4)
+    }
+}
+
+private struct StreamSearchResultRow: View {
+    let hit: StreamSearchHit
+
+    var body: some View {
+        AuroraGlassCard(variant: .standard, cornerRadius: 14, interactive: true, padding: 12) {
+            VStack(alignment: .leading, spacing: 10) {
+                AuroraSessionRow(usage: hit.usage)
+                Text(hit.snippet)
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                    .padding(.leading, 15)
+                    .accessibilityLabel("Search match")
+            }
+        }
     }
 }
 

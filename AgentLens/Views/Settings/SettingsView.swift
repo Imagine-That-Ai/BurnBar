@@ -103,7 +103,11 @@ struct SettingsView: View {
                     }
                     try await accountManager.signInWithApple(presentingWindow: window)
                 },
-                onUpgradeToPremium: {},
+                onUpgradeToPremium: {
+                    if let url = URL(string: "macappstore://apps.apple.com/app/idYOUR_APP_ID") {
+                        NSWorkspace.shared.open(url)
+                    }
+                },
                 onDeleteAccount: {
                     Task { @MainActor in
                         try? await accountManager.deleteCurrentUser()
