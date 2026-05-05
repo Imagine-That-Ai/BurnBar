@@ -29,7 +29,10 @@ struct AuthGateView: View {
                             get: { !hasCompletedOnboarding },
                             set: { hasCompletedOnboarding = !$0 }
                         )) {
-                            iPadOnboardingWizardView(isPresented: Binding(
+                            // Both iPhone and iPad use the same provider-connection
+                            // wizard — `OnboardingWizardView` adapts its gutter
+                            // padding via `horizontalSizeClass`.
+                            OnboardingWizardView(isPresented: Binding(
                                 get: { !hasCompletedOnboarding },
                                 set: { hasCompletedOnboarding = !$0 }
                             ))

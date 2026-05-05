@@ -228,6 +228,10 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
                 }
 
             if planLimit > 0 || planUsed > 0 {
+                // The plan bucket reports dollars (Cursor's API returns cents,
+                // converted above). The fill fraction is driven by `usedPercent`
+                // so the gauge looks identical; only the side labels change to
+                // currency once `unit: .currency` flows through to the views.
                 buckets.append(ProviderQuotaBucket(
                     key: "cursor-plan",
                     label: "Included usage",
@@ -237,7 +241,7 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
                     remainingValue: max(planLimit - planUsed, 0),
                     usedPercent: totalPercent,
                     resetsAt: resetsAt,
-                    unit: .percent,
+                    unit: .currency,
                     isEstimated: false
                 ))
             }
@@ -281,6 +285,8 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
             let odLimit = Double(onDemand.limit ?? 0) / 100.0
             if odUsed > 0 || odLimit > 0 {
                 let odPct = odLimit > 0 ? (odUsed / odLimit) * 100 : 0.0
+                // On-demand spend is always in dollars — flipping unit so the
+                // gauge displays "$X.XX / $Y.YY" instead of a raw decimal.
                 buckets.append(ProviderQuotaBucket(
                     key: "cursor-ondemand",
                     label: "On-demand",
@@ -290,7 +296,7 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
                     remainingValue: odLimit > 0 ? max(odLimit - odUsed, 0) : nil,
                     usedPercent: odPct,
                     resetsAt: resetsAt,
-                    unit: .count,
+                    unit: .currency,
                     isEstimated: false
                 ))
             }

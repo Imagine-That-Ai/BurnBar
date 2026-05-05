@@ -8,6 +8,10 @@
     "status": "node asc-api.js status",
     "prepare:ios": "node asc-api.js prepare-ios",
     "attach-build": "node asc-api.js attach-build",
+    "set-build-compliance": "node asc-api.js set-build-compliance",
+    "set-manual-release": "node asc-api.js set-manual-release",
+    "review-details": "node asc-api.js review-details",
+    "prepare-review-metadata": "node asc-api.js prepare-review-metadata",
     "seed-review-account": "node seed-review-account.js"
   },
   "dependencies": {

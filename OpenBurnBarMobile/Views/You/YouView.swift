@@ -180,7 +180,7 @@ struct YouView: View {
         }
         return ZStack {
             ForEach(Array(providers.enumerated()), id: \.offset) { index, provider in
-                ProviderAvatar(provider: provider, mode: .tile, size: 26)
+                ProviderAvatar(provider: provider, mode: .tile, size: 34)
                     .offset(x: CGFloat(index) * -16)
                     .zIndex(Double(providers.count - index))
             }

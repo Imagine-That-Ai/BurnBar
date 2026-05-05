@@ -180,6 +180,9 @@ export interface HermesConnectionDoc {
   profileName?: string;
   endpointURL?: string;
   advertisedModel?: string;
+  relayPublicKey?: string;
+  relayKeyVersion?: number;
+  relayEncryption?: string;
   capabilities: string[];
   lastSeenAt?: string;
   createdAt: string;
@@ -247,6 +250,10 @@ export interface HermesRelayRequestDoc {
   path?: string;
   sessionId?: string;
   body?: string;
+  payloadCiphertext?: string;
+  wrappedKey?: string;
+  relayEncryption?: string;
+  relayKeyVersion?: number;
   error?: string;
   chunkCount: number;
   claimedAt?: string;
@@ -267,6 +274,7 @@ export interface HermesRelayChunkDoc {
   data?: string;
   text?: string;
   error?: string;
+  ciphertext?: string;
   createdAt: string;
   updatedAt?: string;
   schemaVersion: number;

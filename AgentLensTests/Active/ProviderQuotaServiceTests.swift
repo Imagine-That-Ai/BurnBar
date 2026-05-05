@@ -1627,12 +1627,15 @@ extension ProviderQuotaServiceTests {
         XCTAssertTrue(snapshot.statusMessage.contains("Ultra"), "Expected Ultra tier, got: \(snapshot.statusMessage)")
         XCTAssertTrue(snapshot.statusMessage.contains("Capped"), "Expected Capped plan")
 
-        // No on-demand bucket (used=0)
+        // Plan bucket carries dollars; the unit must be `.currency` so the
+        // gauge labels render as "$X.XX / $Y.YY" instead of decimals.
+        XCTAssertEqual(planBucket.unit, .currency)
+
         // On-demand bucket exists when limit > 0, even if used=0 — this is correct.
         if let odBucket = snapshot.buckets.first(where: { $0.key == "cursor-ondemand" }) {
             XCTAssertEqual(odBucket.usedValue, 0.0)
             XCTAssertEqual(odBucket.limitValue, 1.0)  // 100 cents = $1.00
-            XCTAssertEqual(odBucket.unit, .count)
+            XCTAssertEqual(odBucket.unit, .currency)
         }
     }
 

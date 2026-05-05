@@ -34,6 +34,22 @@
       ]
     },
     {
+      "collectionGroup": "usage",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "deviceId", "order": "ASCENDING"},
+        {"fieldPath": "sessionId", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "chunks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "uid", "order": "ASCENDING"},
+        {"fieldPath": "terms", "arrayConfig": "CONTAINS"}
+      ]
+    },
+    {
       "collectionGroup": "entitlements",
       "queryScope": "COLLECTION_GROUP",
       "fields": [

@@ -18,6 +18,10 @@ final class OpenBurnBarAppCheckProviderFactory: NSObject, AppCheckProviderFactor
             _ = debugSecret
             return AppCheckDebugProvider(app: app)
         }
+        if ProcessInfo.processInfo.environment["FIRAAppCheckDebugToken"]?.isEmpty == false
+            || ProcessInfo.processInfo.environment["FirebaseAppCheckDebugToken"]?.isEmpty == false {
+            return AppCheckDebugProvider(app: app)
+        }
         // Debug without token: fall through to DeviceCheck as best-effort
         return DeviceCheckProvider(app: app)
         #else

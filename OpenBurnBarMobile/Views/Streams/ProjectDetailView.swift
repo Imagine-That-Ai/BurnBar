@@ -202,7 +202,7 @@ struct ProjectDetailView: View {
     private func sessionRow(_ session: TokenUsage) -> some View {
         HStack(spacing: 10) {
             if let provider = AgentProvider.fromPersistedToken(session.provider.rawValue) {
-                ProviderAvatar(provider: provider, mode: .tile, size: 28)
+                ProviderAvatar(provider: provider, mode: .tile, size: 36)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.model)

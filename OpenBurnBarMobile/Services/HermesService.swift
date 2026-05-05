@@ -47,6 +47,9 @@ enum HermesChatRole: String, Equatable, Sendable {
 
 struct HermesRelayPayload: Sendable {
     var connectionID: String
+    var relayPublicKey: String?
+    var relayKeyVersion: Int?
+    var relayEncryption: String?
     var operation: HermesRelayOperation
     var method: String
     var path: String?
@@ -154,10 +157,14 @@ final class HermesService {
             if let targetID,
                let current = connections.first(where: { $0.id == targetID }),
                current.mode == .relayLink {
-                if current.id == selectedConnection.id {
+                if Self.hasUsableRelayEncryption(current), current.id == selectedConnection.id {
                     selectedConnection = current
-                } else {
+                } else if Self.hasUsableRelayEncryption(current) {
                     _ = selectConnection(current)
+                } else {
+                    selectedConnection = .localDefault
+                    defaults.removeObject(forKey: selectedConnectionDefaultsKey)
+                    runtimeErrorText = "Update OpenBurnBar on your Mac and re-enable Remote Relay so this iPhone/iPad can use encrypted relay traffic."
                 }
             } else if let targetID,
                       let current = connections.first(where: { $0.id == targetID }),
@@ -184,6 +191,11 @@ final class HermesService {
     func selectConnection(_ connection: HermesConnectionRecord, refresh: Bool = true) -> Bool {
         let endpoint: URL?
         if connection.mode == .relayLink {
+            guard Self.hasUsableRelayEncryption(connection) else {
+                lastError = "Update OpenBurnBar on your Mac and re-enable Remote Relay so this iPhone/iPad can use encrypted relay traffic."
+                runtimeErrorText = lastError
+                return false
+            }
             endpoint = nil
         } else if let validated = Self.validatedEndpointURL(connection.endpointURL ?? "") {
             endpoint = validated
@@ -571,6 +583,8 @@ final class HermesService {
                 if let firestoreError = error as? FirestoreError,
                    case .notAuthenticated = firestoreError {
                     runtimeErrorText = "Sign in with the same OpenBurnBar account on this iPhone/iPad to use Remote Relay."
+                } else if let hermesError = error as? HermesServiceError {
+                    runtimeErrorText = hermesError.localizedDescription
                 } else {
                     runtimeErrorText = "Remote Hermes relay is offline. Keep OpenBurnBar running on your Mac, signed in to this account, with Hermes reachable there."
                 }
@@ -696,6 +710,9 @@ final class HermesService {
     ) -> HermesRelayPayload {
         HermesRelayPayload(
             connectionID: selectedConnection.id,
+            relayPublicKey: selectedConnection.relayPublicKey,
+            relayKeyVersion: selectedConnection.relayKeyVersion,
+            relayEncryption: selectedConnection.relayEncryption,
             operation: operation,
             method: method,
             path: path,
@@ -910,6 +927,11 @@ final class HermesService {
         }
         return parts[0] == 10 || (parts[0] == 172 && (16...31).contains(parts[1])) || (parts[0] == 192 && parts[1] == 168)
     }
+
+    private static func hasUsableRelayEncryption(_ connection: HermesConnectionRecord) -> Bool {
+        connection.relayEncryption == HermesRelayCrypto.algorithm
+            && (connection.relayPublicKey?.isEmpty == false)
+    }
 }
 
 @MainActor
@@ -919,17 +941,23 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
     private let db: Firestore
     private let pollIntervalNanoseconds: UInt64
 
+    private struct RelayRequestHandle {
+        let requestID: String
+        let connectionID: String
+        let keyData: Data
+    }
+
     init(db: Firestore = Firestore.firestore(), pollIntervalNanoseconds: UInt64 = 250_000_000) {
         self.db = db
         self.pollIntervalNanoseconds = pollIntervalNanoseconds
     }
 
     func sendUnary(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> Data {
-        let requestID = try await createRelayRequest(payload, timeout: timeout)
+        let handle = try await createRelayRequest(payload, timeout: timeout)
         var fragments: [Int: String] = [:]
         do {
             try await pollRelay(
-                requestID: requestID,
+                handle: handle,
                 timeout: timeout,
                 onChunk: { chunk in
                     switch chunk.kind {
@@ -943,7 +971,7 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
                 }
             )
         } catch {
-            try? await cancelRelayRequest(requestID)
+            try? await cancelRelayRequest(handle.requestID)
             throw error
         }
         let body = fragments
@@ -958,10 +986,10 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
         timeout: TimeInterval,
         onSSEEvent: @escaping @MainActor (String) -> Void
     ) async throws {
-        let requestID = try await createRelayRequest(payload, timeout: timeout)
+        let handle = try await createRelayRequest(payload, timeout: timeout)
         do {
             try await pollRelay(
-                requestID: requestID,
+                handle: handle,
                 timeout: timeout,
                 onChunk: { chunk in
                     switch chunk.kind {
@@ -977,55 +1005,90 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
                 }
             )
         } catch {
-            try? await cancelRelayRequest(requestID)
+            try? await cancelRelayRequest(handle.requestID)
             throw error
         }
     }
 
-    private func createRelayRequest(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> String {
+    private func createRelayRequest(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> RelayRequestHandle {
         guard let uid = Auth.auth().currentUser?.uid else {
             throw FirestoreError.notAuthenticated
         }
         guard payload.connectionID != HermesConnectionRecord.localDefault.id else {
             throw HermesServiceError.relayUnavailable("Select a Remote Relay Hermes connection first.")
         }
+        guard payload.relayEncryption == HermesRelayCrypto.algorithm,
+              let relayPublicKey = payload.relayPublicKey,
+              !relayPublicKey.isEmpty else {
+            throw HermesServiceError.relayUnavailable("Update OpenBurnBar on your Mac and re-enable Remote Relay so this iPhone/iPad can use encrypted relay traffic.")
+        }
         let requestID = "relay_\(UUID().uuidString.lowercased())"
         let now = Date()
         let expiresAt = now.addingTimeInterval(max(timeout, 30))
-        var data: [String: Any] = [
+        let keyData = try HermesRelayCrypto.generateSymmetricKeyData()
+        let bodyString: String?
+        if let body = payload.body {
+            guard let value = String(data: body, encoding: .utf8) else {
+                throw HermesServiceError.decodingFailed
+            }
+            bodyString = value
+        } else {
+            bodyString = nil
+        }
+        let encryptedPayload = HermesRelayEncryptedRequestPayload(
+            path: payload.path,
+            sessionId: payload.sessionID,
+            body: bodyString
+        )
+        let plaintext = try JSONEncoder().encode(encryptedPayload)
+        let requestAAD = HermesRelayCrypto.requestAAD(
+            uid: uid,
+            connectionID: payload.connectionID,
+            requestID: requestID
+        )
+        let keyAAD = HermesRelayCrypto.keyAAD(
+            uid: uid,
+            connectionID: payload.connectionID,
+            requestID: requestID
+        )
+        let data: [String: Any] = [
             "id": requestID,
             "connectionId": payload.connectionID,
             "operation": payload.operation.rawValue,
             "status": HermesRelayRequestStatus.pending.rawValue,
             "method": payload.method.uppercased(),
+            "payloadCiphertext": try HermesRelayCrypto.sealToBase64(
+                plaintext: plaintext,
+                keyData: keyData,
+                aad: requestAAD
+            ),
+            "wrappedKey": try HermesRelayCrypto.wrapSymmetricKey(
+                keyData,
+                recipientPublicKeyBase64: relayPublicKey,
+                aad: keyAAD
+            ),
+            "relayEncryption": HermesRelayCrypto.algorithm,
+            "relayKeyVersion": payload.relayKeyVersion ?? HermesRelayCrypto.keyVersion,
             "chunkCount": 0,
             "createdAt": Self.iso8601.string(from: now),
             "updatedAt": Self.iso8601.string(from: now),
             "expiresAt": Self.iso8601.string(from: expiresAt),
             "expireAt": Timestamp(date: expiresAt),
-            "schemaVersion": 1
+            "schemaVersion": 2
         ]
-        if let path = payload.path { data["path"] = path }
-        if let sessionID = payload.sessionID { data["sessionId"] = sessionID }
-        if let body = payload.body {
-            guard let bodyString = String(data: body, encoding: .utf8) else {
-                throw HermesServiceError.decodingFailed
-            }
-            data["body"] = bodyString
-        }
         try await requestRef(uid: uid, requestID: requestID).setData(data, merge: false)
-        return requestID
+        return RelayRequestHandle(requestID: requestID, connectionID: payload.connectionID, keyData: keyData)
     }
 
     private func pollRelay(
-        requestID: String,
+        handle: RelayRequestHandle,
         timeout: TimeInterval,
         onChunk: (HermesRelayChunkRecord) throws -> Void
     ) async throws {
         guard let uid = Auth.auth().currentUser?.uid else {
             throw FirestoreError.notAuthenticated
         }
-        let request = requestRef(uid: uid, requestID: requestID)
+        let request = requestRef(uid: uid, requestID: handle.requestID)
         let deadline = Date().addingTimeInterval(timeout)
         var lastSequence = -1
         while Date() < deadline {
@@ -1038,7 +1101,7 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
                 .getDocuments()
             for document in chunkSnapshot.documents {
                 if let chunk = decodeChunk(document.data(), docID: document.documentID) {
-                    try onChunk(chunk)
+                    try onChunk(decryptChunkIfNeeded(chunk, uid: uid, handle: handle))
                     lastSequence = max(lastSequence, chunk.sequence)
                 }
             }
@@ -1065,8 +1128,53 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
                 try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
             }
         }
-        try? await cancelRelayRequest(requestID)
+        try? await cancelRelayRequest(handle.requestID)
         throw HermesServiceError.relayTimeout
+    }
+
+    private func decryptChunkIfNeeded(
+        _ chunk: HermesRelayChunkRecord,
+        uid: String,
+        handle: RelayRequestHandle
+    ) throws -> HermesRelayChunkRecord {
+        guard chunk.schemaVersion >= 2 || chunk.ciphertext != nil else {
+            return chunk
+        }
+        guard let ciphertext = chunk.ciphertext else {
+            throw HermesServiceError.relayUnavailable("Remote Hermes relay returned an encrypted chunk without ciphertext.")
+        }
+        let plaintext = try HermesRelayCrypto.openBase64(
+            ciphertext: ciphertext,
+            keyData: handle.keyData,
+            aad: HermesRelayCrypto.chunkAAD(
+                uid: uid,
+                connectionID: handle.connectionID,
+                requestID: handle.requestID,
+                sequence: chunk.sequence,
+                kind: chunk.kind.rawValue
+            )
+        )
+        let text = String(data: plaintext, encoding: .utf8) ?? ""
+        switch chunk.kind {
+        case .error:
+            return HermesRelayChunkRecord(
+                id: chunk.id,
+                requestId: chunk.requestId,
+                sequence: chunk.sequence,
+                kind: chunk.kind,
+                error: text,
+                schemaVersion: chunk.schemaVersion
+            )
+        case .data, .sse:
+            return HermesRelayChunkRecord(
+                id: chunk.id,
+                requestId: chunk.requestId,
+                sequence: chunk.sequence,
+                kind: chunk.kind,
+                data: text,
+                schemaVersion: chunk.schemaVersion
+            )
+        }
     }
 
     private func cancelRelayRequest(_ requestID: String) async throws {
@@ -1095,7 +1203,9 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
             kind: kind,
             data: data["data"] as? String,
             text: data["text"] as? String,
-            error: data["error"] as? String
+            error: data["error"] as? String,
+            ciphertext: data["ciphertext"] as? String,
+            schemaVersion: data["schemaVersion"] as? Int ?? 1
         )
     }
 

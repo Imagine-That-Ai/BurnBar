@@ -821,6 +821,7 @@ final class HermesRelayHostService {
     private let accountManager: AccountManager
     private let settingsManager: SettingsManager
     private let urlSession: URLSession
+    private let relayKeyStore: HermesRelayKeyStore
     private var heartbeatTask: Task<Void, Never>?
     private var listener: ListenerRegistration?
     private var listenerUID: String?
@@ -831,12 +832,14 @@ final class HermesRelayHostService {
         db: Firestore = Firestore.firestore(),
         accountManager: AccountManager = .shared,
         settingsManager: SettingsManager = .shared,
-        urlSession: URLSession = .shared
+        urlSession: URLSession = .shared,
+        relayKeyStore: HermesRelayKeyStore = HermesRelayKeyStore()
     ) {
         self.db = db
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.urlSession = urlSession
+        self.relayKeyStore = relayKeyStore
     }
 
     var connectionID: String {
@@ -910,8 +913,13 @@ final class HermesRelayHostService {
                 "capabilities": ["chat_completions", "remote_relay"],
                 "advertisedModel": FieldValue.delete(),
                 "updatedAt": now,
-                "schemaVersion": 1
+                "schemaVersion": 2
             ]
+            if let key = try? relayKeyStore.privateKey() {
+                data["relayPublicKey"] = key.publicKeyBase64
+                data["relayKeyVersion"] = HermesRelayCrypto.keyVersion
+                data["relayEncryption"] = HermesRelayCrypto.algorithm
+            }
             if !snap.exists {
                 data["createdAt"] = now
             }
@@ -922,6 +930,17 @@ final class HermesRelayHostService {
     }
 
     private func publishRelayConnection(uid: String) async {
+        let relayPrivateKey: HermesRelayPrivateKey
+        do {
+            relayPrivateKey = try relayKeyStore.privateKey()
+        } catch {
+            AppLogger.network.error(
+                "hermes_relay_key_unavailable",
+                metadata: ["error": error.localizedDescription]
+            )
+            await publishRelayOffline(uid: uid)
+            return
+        }
         let probe = await OpenAICompatibleModelProbe.probeWithModel(
             baseURL: hermesBaseURL(),
             bearerToken: settingsManager.hermesBearerToken
@@ -933,8 +952,11 @@ final class HermesRelayHostService {
             "mode": HermesConnectionMode.relayLink.rawValue,
             "status": probe.available ? HermesConnectionStatus.online.rawValue : HermesConnectionStatus.offline.rawValue,
             "capabilities": ["chat_completions", "remote_relay"],
+            "relayPublicKey": relayPrivateKey.publicKeyBase64,
+            "relayKeyVersion": HermesRelayCrypto.keyVersion,
+            "relayEncryption": HermesRelayCrypto.algorithm,
             "updatedAt": now,
-            "schemaVersion": 1
+            "schemaVersion": 2
         ]
         if probe.available, let modelName = probe.modelName {
             data["advertisedModel"] = modelName
@@ -980,12 +1002,12 @@ final class HermesRelayHostService {
                 }
                 guard let documents = snapshot?.documents, !documents.isEmpty else { return }
                 Task { @MainActor [weak self] in
-                    self?.handlePendingRelayDocuments(documents)
+                    self?.handlePendingRelayDocuments(documents, uid: uid)
                 }
             }
     }
 
-    private func handlePendingRelayDocuments(_ documents: [QueryDocumentSnapshot]) {
+    private func handlePendingRelayDocuments(_ documents: [QueryDocumentSnapshot], uid: String) {
         for document in documents
         where !processingRequestIDs.contains(document.documentID) && requestTasks[document.documentID] == nil {
             let requestID = document.documentID
@@ -995,13 +1017,14 @@ final class HermesRelayHostService {
                     processingRequestIDs.remove(requestID)
                     requestTasks.removeValue(forKey: requestID)
                 }
-                await processRelayRequest(reference: document.reference)
+                await processRelayRequest(reference: document.reference, uid: uid)
             }
             requestTasks[requestID] = task
         }
     }
 
-    private func processRelayRequest(reference: DocumentReference) async {
+    private func processRelayRequest(reference: DocumentReference, uid: String) async {
+        var context: HermesRelayRequestContext?
         do {
             guard let data = try await claimRelayRequest(reference: reference) else { return }
             guard let operationText = data["operation"] as? String,
@@ -1017,15 +1040,70 @@ final class HermesRelayHostService {
                 ], merge: true)
                 return
             }
+            let prepared = try decryptRelayRequest(data, uid: uid, requestID: requestID)
+            context = prepared.context
             switch operation {
             case .chatCompletions:
-                try await forwardStreamingRequest(reference: reference, requestID: requestID, data: data)
+                try await forwardStreamingRequest(
+                    reference: reference,
+                    context: prepared.context,
+                    data: prepared.data
+                )
             case .models, .sessions, .sessionDetail, .profiles, .jobs:
-                try await forwardUnaryRequest(reference: reference, requestID: requestID, operation: operation, data: data)
+                try await forwardUnaryRequest(
+                    reference: reference,
+                    context: prepared.context,
+                    operation: operation,
+                    data: prepared.data
+                )
             }
         } catch {
-            try? await failRelayRequest(reference: reference, requestID: reference.documentID, message: error.localizedDescription)
+            try? await failRelayRequest(
+                reference: reference,
+                requestID: reference.documentID,
+                message: error.localizedDescription,
+                context: context
+            )
         }
+    }
+
+    private func decryptRelayRequest(
+        _ data: [String: Any],
+        uid: String,
+        requestID: String
+    ) throws -> (data: [String: Any], context: HermesRelayRequestContext) {
+        guard uid.isEmpty == false,
+              data["relayEncryption"] as? String == HermesRelayCrypto.algorithm,
+              let wrappedKey = data["wrappedKey"] as? String,
+              let payloadCiphertext = data["payloadCiphertext"] as? String else {
+            throw HermesRelayHostError.encryptionRequired
+        }
+        let connectionID = (data["connectionId"] as? String) ?? self.connectionID
+        let privateKey = try relayKeyStore.privateKey()
+        let keyData = try HermesRelayCrypto.unwrapSymmetricKey(
+            wrappedKey,
+            privateKey: privateKey,
+            aad: HermesRelayCrypto.keyAAD(uid: uid, connectionID: connectionID, requestID: requestID)
+        )
+        let plaintext = try HermesRelayCrypto.openBase64(
+            ciphertext: payloadCiphertext,
+            keyData: keyData,
+            aad: HermesRelayCrypto.requestAAD(uid: uid, connectionID: connectionID, requestID: requestID)
+        )
+        let payload = try JSONDecoder().decode(HermesRelayEncryptedRequestPayload.self, from: plaintext)
+        var decrypted = data
+        decrypted["path"] = payload.path
+        decrypted["sessionId"] = payload.sessionId
+        decrypted["body"] = payload.body
+        return (
+            decrypted,
+            HermesRelayRequestContext(
+                uid: uid,
+                requestID: requestID,
+                connectionID: connectionID,
+                keyData: keyData
+            )
+        )
     }
 
     private func claimRelayRequest(reference: DocumentReference) async throws -> [String: Any]? {
@@ -1068,7 +1146,7 @@ final class HermesRelayHostService {
 
     private func forwardUnaryRequest(
         reference: DocumentReference,
-        requestID: String,
+        context: HermesRelayRequestContext,
         operation: HermesRelayOperation,
         data: [String: Any]
     ) async throws {
@@ -1083,7 +1161,7 @@ final class HermesRelayHostService {
         let bodyText = String(data: body, encoding: .utf8) ?? ""
         let chunkCount = try await writeRelayChunk(
             reference: reference,
-            requestID: requestID,
+            context: context,
             sequence: 0,
             kind: .data,
             data: bodyText
@@ -1093,7 +1171,7 @@ final class HermesRelayHostService {
 
     private func forwardStreamingRequest(
         reference: DocumentReference,
-        requestID: String,
+        context: HermesRelayRequestContext,
         data: [String: Any]
     ) async throws {
         var request = try makeForwardRequest(operation: .chatCompletions, data: data)
@@ -1123,7 +1201,7 @@ final class HermesRelayHostService {
                 if !eventLines.isEmpty {
                     let writtenChunks = try await writeRelayChunk(
                         reference: reference,
-                        requestID: requestID,
+                        context: context,
                         sequence: sequence,
                         kind: .sse,
                         data: eventLines.joined(separator: "\n")
@@ -1138,7 +1216,7 @@ final class HermesRelayHostService {
         if !eventLines.isEmpty {
             let writtenChunks = try await writeRelayChunk(
                 reference: reference,
-                requestID: requestID,
+                context: context,
                 sequence: sequence,
                 kind: .sse,
                 data: eventLines.joined(separator: "\n")
@@ -1195,7 +1273,7 @@ final class HermesRelayHostService {
     @discardableResult
     private func writeRelayChunk(
         reference: DocumentReference,
-        requestID: String,
+        context: HermesRelayRequestContext,
         sequence: Int,
         kind: HermesRelayChunkKind,
         data: String? = nil,
@@ -1210,7 +1288,7 @@ final class HermesRelayHostService {
             for (offset, fragment) in fragments.enumerated() {
                 try await writeRelayChunkDocument(
                     reference: reference,
-                    requestID: requestID,
+                    context: context,
                     sequence: sequence + offset,
                     kind: kind,
                     data: fragment,
@@ -1225,7 +1303,7 @@ final class HermesRelayHostService {
         }
         try await writeRelayChunkDocument(
             reference: reference,
-            requestID: requestID,
+            context: context,
             sequence: sequence,
             kind: kind,
             data: data,
@@ -1236,7 +1314,7 @@ final class HermesRelayHostService {
 
     private func writeRelayChunkDocument(
         reference: DocumentReference,
-        requestID: String,
+        context: HermesRelayRequestContext,
         sequence: Int,
         kind: HermesRelayChunkKind,
         data: String? = nil,
@@ -1246,19 +1324,25 @@ final class HermesRelayHostService {
         let chunkID = String(format: "%08d", sequence)
         var payload: [String: Any] = [
             "id": chunkID,
-            "requestId": requestID,
+            "requestId": context.requestID,
             "sequence": sequence,
             "kind": kind.rawValue,
             "createdAt": now,
             "updatedAt": now,
-            "schemaVersion": 1
+            "schemaVersion": 2
         ]
-        if let data {
-            payload["data"] = data
-        }
-        if let error {
-            payload["error"] = error
-        }
+        let plaintext = error ?? data ?? ""
+        payload["ciphertext"] = try HermesRelayCrypto.sealToBase64(
+            plaintext: Data(plaintext.utf8),
+            keyData: context.keyData,
+            aad: HermesRelayCrypto.chunkAAD(
+                uid: context.uid,
+                connectionID: context.connectionID,
+                requestID: context.requestID,
+                sequence: sequence,
+                kind: kind.rawValue
+            )
+        )
         try await reference.collection("chunks").document(chunkID).setData(payload, merge: false)
     }
 
@@ -1275,23 +1359,37 @@ final class HermesRelayHostService {
         ], merge: true)
     }
 
-    private func failRelayRequest(reference: DocumentReference, requestID: String, message: String) async throws {
+    private func failRelayRequest(
+        reference: DocumentReference,
+        requestID: String,
+        message: String,
+        context: HermesRelayRequestContext? = nil
+    ) async throws {
         guard try await relayRequestCanReceiveOutput(reference: reference) else {
             return
         }
         let now = Self.iso8601.string(from: Date())
-        try? await writeRelayChunk(
-            reference: reference,
-            requestID: requestID,
-            sequence: 0,
-            kind: .error,
-            error: message
-        )
-        try await reference.setData([
+        var statusUpdate: [String: Any] = [
             "status": HermesRelayRequestStatus.failed.rawValue,
-            "error": String(message.prefix(2_000)),
             "updatedAt": now
-        ], merge: true)
+        ]
+        if let context {
+            try? await writeRelayChunk(
+                reference: reference,
+                context: context,
+                sequence: 0,
+                kind: .error,
+                error: String(message.prefix(2_000))
+            )
+            statusUpdate["chunkCount"] = 1
+        } else {
+            let snapshot = try? await reference.getDocument()
+            let isEncrypted = (snapshot?.data()?["schemaVersion"] as? Int ?? 1) >= 2
+            if !isEncrypted {
+                statusUpdate["error"] = String(message.prefix(2_000))
+            }
+        }
+        try await reference.setData(statusUpdate, merge: true)
     }
 
     private func relayRequestCanReceiveOutput(reference: DocumentReference) async throws -> Bool {
@@ -1338,7 +1436,7 @@ final class HermesRelayHostService {
 
     private static let iso8601NoFraction = ISO8601DateFormatter()
 
-    nonisolated static let maxRelayChunkDataBytes = 100_000
+    nonisolated static let maxRelayChunkDataBytes = 72_000
 
     nonisolated static func relayDataFragments(_ text: String) -> [String] {
         guard text.utf8.count > maxRelayChunkDataBytes else {
@@ -1371,6 +1469,7 @@ private enum HermesRelayHostError: LocalizedError {
     case httpStatus(Int)
     case requestNoLongerActive
     case payloadTooLarge
+    case encryptionRequired
 
     var errorDescription: String? {
         switch self {
@@ -1386,6 +1485,39 @@ private enum HermesRelayHostError: LocalizedError {
             return "Hermes relay request is no longer active."
         case .payloadTooLarge:
             return "Hermes relay response chunk is too large to relay safely."
+        case .encryptionRequired:
+            return "Hermes relay requests must be encrypted."
         }
+    }
+}
+
+private struct HermesRelayRequestContext {
+    let uid: String
+    let requestID: String
+    let connectionID: String
+    let keyData: Data
+}
+
+struct HermesRelayKeyStore {
+    private let keychain: KeychainStore
+    private let account = "settings.chat.hermes.relay.p256.v1"
+
+    init(
+        keychain: KeychainStore = KeychainStore(
+            service: "com.openburnbar.hermes-relay",
+            legacyServices: []
+        )
+    ) {
+        self.keychain = keychain
+    }
+
+    func privateKey() throws -> HermesRelayPrivateKey {
+        if let stored = try keychain.string(for: account),
+           let data = Data(base64Encoded: stored) {
+            return try HermesRelayPrivateKey(rawRepresentation: data)
+        }
+        let key = HermesRelayCrypto.generatePrivateKey()
+        try keychain.set(key.rawRepresentation.base64EncodedString(), for: account)
+        return key
     }
 }

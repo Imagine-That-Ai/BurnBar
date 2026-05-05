@@ -245,7 +245,7 @@ struct AccountView: View {
         }
         return ZStack {
             ForEach(Array(providers.enumerated()), id: \.offset) { index, provider in
-                ProviderAvatar(provider: provider, mode: .aurora, size: 28)
+                ProviderAvatar(provider: provider, mode: .aurora, size: 36)
                     .offset(x: CGFloat(index) * -20)
                     .zIndex(Double(providers.count - index))
             }

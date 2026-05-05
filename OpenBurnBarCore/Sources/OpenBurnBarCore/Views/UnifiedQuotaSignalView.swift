@@ -170,20 +170,62 @@ public struct UnifiedQuotaSignalView: View {
         .accessibilityLabel("\(provider.displayName) quota: \(remainingText) remaining")
     }
 
+    /// What kind of value this bucket carries — drives label formatting.
+    /// Falls back to `.count` so existing buckets without a `meta["unit"]`
+    /// keep their previous decimal rendering.
+    private enum BucketUnitKind {
+        case currency
+        case percent
+        case tokens
+        case count
+
+        init(metaValue: String?) {
+            switch (metaValue ?? "").lowercased() {
+            case "currency", "usd", "dollars", "$": self = .currency
+            case "percent", "%": self = .percent
+            case "tokens", "tok": self = .tokens
+            default: self = .count
+            }
+        }
+    }
+
+    private var bucketUnit: BucketUnitKind {
+        BucketUnitKind(metaValue: bucket.meta?["unit"])
+    }
+
     private var remainingText: String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: bucket.remaining)) ?? "\(Int(bucket.remaining))"
+        formatValue(bucket.remaining)
     }
 
     private var usageText: String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 0
-        let used = formatter.string(from: NSNumber(value: bucket.used)) ?? "\(Int(bucket.used))"
-        let limit = formatter.string(from: NSNumber(value: bucket.limit)) ?? "\(Int(bucket.limit))"
+        let used = formatValue(bucket.used)
+        let limit = formatValue(bucket.limit)
         return "\(used) / \(limit)"
+    }
+
+    private func formatValue(_ value: Double) -> String {
+        switch bucketUnit {
+        case .currency:
+            // USD with two decimals — handles "$0.39", "$3.61", "$1,250.00".
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            formatter.currencySymbol = "$"
+            formatter.minimumFractionDigits = 2
+            formatter.maximumFractionDigits = 2
+            return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
+        case .percent:
+            let clamped = min(max(value, 0), 100)
+            return "\(Int(clamped.rounded()))%"
+        case .tokens:
+            if value >= 1_000_000 { return String(format: "%.1fM", value / 1_000_000) }
+            if value >= 1_000 { return String(format: "%.1fK", value / 1_000) }
+            return "\(Int(value.rounded()))"
+        case .count:
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.maximumFractionDigits = 0
+            return formatter.string(from: NSNumber(value: value)) ?? "\(Int(value))"
+        }
     }
 
     private var remainingPercentText: String {

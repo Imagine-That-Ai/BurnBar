@@ -1,6 +1,6 @@
 rules_version = '2';
 // OpenBurnBar currently syncs explicit owner-scoped collections:
-// - users/{uid}/usage, conversations, chat_threads, session_logs (+ chunks), stream_search_chunks, devices
+// - users/{uid}/usage, conversations, chat_threads, session_logs (+ chunks), devices
 // - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups
 // - users/{uid}/hermes_connections, hermes_pairings, hermes_relay_requests, hermes_session_cache, hermes_audit_events
 // - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
@@ -68,6 +68,9 @@ service cloud.firestore {
           "status",
           "profileName",
           "advertisedModel",
+          "relayPublicKey",
+          "relayKeyVersion",
+          "relayEncryption",
           "capabilities",
           "lastSeenAt",
           "createdAt",
@@ -77,6 +80,9 @@ service cloud.firestore {
         && request.resource.data.mode == "relayLink"
         && request.resource.data.status in ["online", "offline", "degraded", "unauthorized"]
         && request.resource.data.schemaVersion is int
+        && (!("relayPublicKey" in request.resource.data) || (request.resource.data.relayPublicKey is string && request.resource.data.relayPublicKey.size() <= 256))
+        && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion is int)
+        && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm")
         && request.resource.data.id is string
         && request.resource.data.id == connectionId
         && request.resource.data.displayName is string
@@ -94,6 +100,10 @@ service cloud.firestore {
           "path",
           "sessionId",
           "body",
+          "payloadCiphertext",
+          "wrappedKey",
+          "relayEncryption",
+          "relayKeyVersion",
           "error",
           "chunkCount",
           "createdAt",
@@ -115,7 +125,23 @@ service cloud.firestore {
         && request.resource.data.schemaVersion is int
         && (!("claimedBy" in request.resource.data) || request.resource.data.claimedBy == request.resource.data.connectionId)
         && (!("body" in request.resource.data) || (request.resource.data.body is string && request.resource.data.body.size() <= 131072))
-        && (!("error" in request.resource.data) || (request.resource.data.error is string && request.resource.data.error.size() <= 2048));
+        && (!("error" in request.resource.data) || (request.resource.data.error is string && request.resource.data.error.size() <= 2048))
+        && (!("payloadCiphertext" in request.resource.data) || (request.resource.data.payloadCiphertext is string && request.resource.data.payloadCiphertext.size() <= 900000))
+        && (!("wrappedKey" in request.resource.data) || (request.resource.data.wrappedKey is string && request.resource.data.wrappedKey.size() <= 4096))
+        && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion is int)
+        && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm")
+        && (
+          request.resource.data.schemaVersion < 2
+          || (
+            !("path" in request.resource.data)
+            && !("sessionId" in request.resource.data)
+            && !("body" in request.resource.data)
+            && !("error" in request.resource.data)
+            && request.resource.data.payloadCiphertext is string
+            && request.resource.data.wrappedKey is string
+            && request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm"
+          )
+        );
     }
 
     function relayChunkWrite(userId, requestId, chunkId) {
@@ -128,6 +154,7 @@ service cloud.firestore {
           "data",
           "text",
           "error",
+          "ciphertext",
           "createdAt",
           "updatedAt",
           "schemaVersion"
@@ -141,7 +168,17 @@ service cloud.firestore {
         && request.resource.data.schemaVersion is int
         && (!("data" in request.resource.data) || (request.resource.data.data is string && request.resource.data.data.size() <= 131072))
         && (!("text" in request.resource.data) || (request.resource.data.text is string && request.resource.data.text.size() <= 131072))
-        && (!("error" in request.resource.data) || (request.resource.data.error is string && request.resource.data.error.size() <= 2048));
+        && (!("error" in request.resource.data) || (request.resource.data.error is string && request.resource.data.error.size() <= 2048))
+        && (!("ciphertext" in request.resource.data) || (request.resource.data.ciphertext is string && request.resource.data.ciphertext.size() <= 131072))
+        && (
+          request.resource.data.schemaVersion < 2
+          || (
+            !("data" in request.resource.data)
+            && !("text" in request.resource.data)
+            && !("error" in request.resource.data)
+            && request.resource.data.ciphertext is string
+          )
+        );
     }
 
     function sharedArtifactOwnerRead() {
@@ -202,12 +239,6 @@ service cloud.firestore {
         allow create, update: if ownerWritableNonSecret(userId);
         allow delete: if ownsUserNamespace(userId);
       }
-    }
-
-    match /users/{userId}/stream_search_chunks/{chunkId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
-      allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/devices/{deviceId} {

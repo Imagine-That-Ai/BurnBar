@@ -1,5 +1,7 @@
 import XCTest
 import Foundation
+import FirebaseAuth
+import FirebaseCore
 import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
@@ -64,12 +66,30 @@ final class HermesServiceTests: XCTestCase {
             displayName: "Mac Hermes Relay",
             mode: .relayLink,
             status: .online,
+            relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm,
             capabilities: ["chat_completions", "remote_relay"]
         )
 
         XCTAssertTrue(service.selectConnection(relay, refresh: false))
         XCTAssertEqual(service.selectedConnection.id, "relay-mac")
         XCTAssertNil(service.lastError)
+    }
+
+    func testRelayConnectionWithoutEncryptionMetadataIsRejected() {
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        let relay = HermesConnectionRecord(
+            id: "legacy-relay-mac",
+            displayName: "Legacy Mac Hermes Relay",
+            mode: .relayLink,
+            status: .online,
+            capabilities: ["chat_completions", "remote_relay"]
+        )
+
+        XCTAssertFalse(service.selectConnection(relay, refresh: false))
+        XCTAssertEqual(service.selectedConnection.id, HermesConnectionRecord.localDefault.id)
+        XCTAssertTrue(service.lastError?.contains("Update OpenBurnBar on your Mac") ?? false)
     }
 
     func testRelayStreamingParsesTextAndToolCalls() async {
@@ -152,6 +172,8 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertTrue(service.isReachable)
         XCTAssertEqual(relay.unaryPayloads.first?.operation, .models)
         XCTAssertEqual(relay.unaryPayloads.first?.connectionID, "relay-mac")
+        XCTAssertEqual(relay.unaryPayloads.first?.relayEncryption, HermesRelayCrypto.algorithm)
+        XCTAssertNotNil(relay.unaryPayloads.first?.relayPublicKey)
     }
 
     func testRelayResumeSessionLoadsTranscript() async {
@@ -167,6 +189,44 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(relay.unaryPayloads.first?.operation, .sessionDetail)
         XCTAssertEqual(relay.unaryPayloads.first?.sessionID, "session-1")
         XCTAssertEqual(service.messages.map(\.text), ["Remote question", "Remote answer"])
+    }
+
+    func testLivePhysicalDeviceRemoteRelayE2E() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["OPENBURNBAR_LIVE_HERMES_RELAY_E2E"] == "1" else {
+            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_RELAY_E2E=1 with a live relay host to run this physical-device test.")
+        }
+        let connectionID = try XCTUnwrap(environment["OPENBURNBAR_LIVE_RELAY_CONNECTION_ID"])
+        let relayPublicKey = try XCTUnwrap(environment["OPENBURNBAR_LIVE_RELAY_PUBLIC_KEY"])
+
+        try configureFirebaseForLiveE2EIfNeeded()
+        let user = try await ensureLiveE2EUser()
+        print("OPENBURNBAR_LIVE_E2E_UID=\(user.uid)")
+
+        let relay = HermesConnectionRecord(
+            id: connectionID,
+            displayName: "Live Mac Hermes Relay",
+            mode: .relayLink,
+            status: .online,
+            advertisedModel: "hermes",
+            relayPublicKey: relayPublicKey,
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            capabilities: ["chat_completions", "remote_relay"]
+        )
+        let service = HermesService()
+        XCTAssertTrue(service.selectConnection(relay, refresh: false))
+
+        await service.checkReachability()
+        XCTAssertTrue(service.isReachable, service.runtimeErrorText ?? service.lastError ?? "Relay models check failed.")
+
+        service.sendMessage("Reply with exactly this phrase and no punctuation: burnbar relay ok")
+        await waitForStreamToFinish(service, timeout: 180)
+
+        let assistant = try XCTUnwrap(service.messages.last(where: { $0.role == .assistant }))
+        XCTAssertFalse(assistant.isError, assistant.text)
+        XCTAssertFalse(assistant.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        print("OPENBURNBAR_LIVE_E2E_ASSISTANT_PREFIX=\(assistant.text.prefix(120))")
     }
 
     func testDirectHTTP401ShowsAPIKeyErrorAndSendsAuthorizationHeader() async {
@@ -212,6 +272,9 @@ final class HermesServiceTests: XCTestCase {
             displayName: "Mac Hermes Relay",
             mode: .relayLink,
             status: .online,
+            relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm,
             capabilities: ["chat_completions", "remote_relay"]
         )
     }
@@ -231,6 +294,23 @@ final class HermesServiceTests: XCTestCase {
         while service.isStreaming && Date() < deadline {
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
+    }
+
+    private func configureFirebaseForLiveE2EIfNeeded() throws {
+        guard FirebaseApp.app() == nil else { return }
+        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+              let options = FirebaseOptions(contentsOfFile: path) else {
+            XCTFail("GoogleService-Info.plist is missing from the live test host.")
+            return
+        }
+        FirebaseApp.configure(options: options)
+    }
+
+    private func ensureLiveE2EUser() async throws -> User {
+        if let current = Auth.auth().currentUser {
+            return current
+        }
+        return try await Auth.auth().signInAnonymously().user
     }
 
     nonisolated private static func mockSession(

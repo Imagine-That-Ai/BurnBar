@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] — iPadOS Port Phase 2 Hardening (2026-05-02)
 
 ### Added
+- **iOS App Store release runbook and ASC review tooling:** documented the
+  iOS submission path in `docs/IOS_APP_STORE_RELEASE_RUNBOOK.md`, including
+  reviewer account seeding, subscription selection, build compliance,
+  manual-release mode, and final-submit confirmation gates. The App Store
+  Connect helper can now patch build encryption compliance, set manual release,
+  and upsert App Review credentials/notes with redacted local credential input.
 - **Routing-aware provider account cockpit (Mac + Mobile):** every quota- and
   account-bearing surface now shows which provider account is *currently* serving
   traffic, the next fallback, and any blocked/cooling-down accounts with

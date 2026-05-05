@@ -23,6 +23,9 @@ public struct HermesConnectionRecord: Codable, Identifiable, Sendable, Equatable
     public var profileName: String?
     public var endpointURL: String?
     public var advertisedModel: String?
+    public var relayPublicKey: String?
+    public var relayKeyVersion: Int?
+    public var relayEncryption: String?
     public var capabilities: [String]
     public var lastSeenAt: Date?
     public var createdAt: Date
@@ -37,6 +40,9 @@ public struct HermesConnectionRecord: Codable, Identifiable, Sendable, Equatable
         profileName: String? = nil,
         endpointURL: String? = nil,
         advertisedModel: String? = nil,
+        relayPublicKey: String? = nil,
+        relayKeyVersion: Int? = nil,
+        relayEncryption: String? = nil,
         capabilities: [String] = [],
         lastSeenAt: Date? = nil,
         createdAt: Date = Date(),
@@ -50,6 +56,9 @@ public struct HermesConnectionRecord: Codable, Identifiable, Sendable, Equatable
         self.profileName = profileName
         self.endpointURL = endpointURL
         self.advertisedModel = advertisedModel
+        self.relayPublicKey = relayPublicKey
+        self.relayKeyVersion = relayKeyVersion
+        self.relayEncryption = relayEncryption
         self.capabilities = capabilities
         self.lastSeenAt = lastSeenAt
         self.createdAt = createdAt
@@ -223,6 +232,10 @@ public struct HermesRelayRequestRecord: Codable, Identifiable, Sendable, Equatab
     public var path: String?
     public var sessionId: String?
     public var body: String?
+    public var payloadCiphertext: String?
+    public var wrappedKey: String?
+    public var relayEncryption: String?
+    public var relayKeyVersion: Int?
     public var error: String?
     public var chunkCount: Int
     public var claimedAt: Date?
@@ -242,6 +255,10 @@ public struct HermesRelayRequestRecord: Codable, Identifiable, Sendable, Equatab
         path: String? = nil,
         sessionId: String? = nil,
         body: String? = nil,
+        payloadCiphertext: String? = nil,
+        wrappedKey: String? = nil,
+        relayEncryption: String? = nil,
+        relayKeyVersion: Int? = nil,
         error: String? = nil,
         chunkCount: Int = 0,
         claimedAt: Date? = nil,
@@ -260,6 +277,10 @@ public struct HermesRelayRequestRecord: Codable, Identifiable, Sendable, Equatab
         self.path = path
         self.sessionId = sessionId
         self.body = body
+        self.payloadCiphertext = payloadCiphertext
+        self.wrappedKey = wrappedKey
+        self.relayEncryption = relayEncryption
+        self.relayKeyVersion = relayKeyVersion
         self.error = error
         self.chunkCount = chunkCount
         self.claimedAt = claimedAt
@@ -280,6 +301,7 @@ public struct HermesRelayChunkRecord: Codable, Identifiable, Sendable, Equatable
     public var data: String?
     public var text: String?
     public var error: String?
+    public var ciphertext: String?
     public var createdAt: Date
     public var updatedAt: Date?
     public var schemaVersion: Int
@@ -292,6 +314,7 @@ public struct HermesRelayChunkRecord: Codable, Identifiable, Sendable, Equatable
         data: String? = nil,
         text: String? = nil,
         error: String? = nil,
+        ciphertext: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date? = nil,
         schemaVersion: Int = 1
@@ -303,6 +326,7 @@ public struct HermesRelayChunkRecord: Codable, Identifiable, Sendable, Equatable
         self.data = data
         self.text = text
         self.error = error
+        self.ciphertext = ciphertext
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.schemaVersion = schemaVersion

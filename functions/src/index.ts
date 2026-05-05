@@ -182,13 +182,14 @@ function stripUndefined<T extends object>(value: T): T {
 }
 
 function normalizedSearchTerms(raw: string): string[] {
+  const stopwords = new Set(["the", "and", "for", "with", "that", "this", "from", "how", "what", "where", "when", "why", "are", "was"]);
   return Array.from(
     new Set(
       raw
         .toLowerCase()
         .split(/[^a-z0-9]+/u)
         .map((part) => part.trim())
-        .filter((part) => part.length >= 2)
+        .filter((part) => part.length >= 2 && !stopwords.has(part))
     )
   ).slice(0, 8);
 }
@@ -1618,15 +1619,20 @@ export const searchStreams = onCall(
     }
 
     const chunkSnap = await db
-      .collection(`users/${uid}/stream_search_chunks`)
+      .collectionGroup("chunks")
+      .where("uid", "==", uid)
       .where("terms", "array-contains", terms[0])
+      .select("docId", "sessionId", "deviceId", "bodyHash", "title", "snippet", "projectName", "model", "terms")
       .limit(200)
       .get();
 
     const scored = chunkSnap.docs
       .map((doc) => {
         const data = doc.data();
-        const haystack = `${data.title ?? ""} ${data.snippet ?? ""} ${data.text ?? ""} ${data.projectName ?? ""} ${data.model ?? ""}`;
+        const indexedTerms = Array.isArray(data.terms)
+          ? data.terms.filter((term): term is string => typeof term === "string")
+          : [];
+        const haystack = `${data.title ?? ""} ${data.snippet ?? ""} ${data.projectName ?? ""} ${data.model ?? ""} ${indexedTerms.join(" ")}`;
         return { doc, data, score: searchScore(haystack, terms) };
       })
       .filter((item) => item.score > 0)

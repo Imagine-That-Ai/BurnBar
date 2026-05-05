@@ -297,7 +297,7 @@ private struct ProviderAccountGroupSection: View {
     private var providerHeaderRow: some View {
         HStack(spacing: MobileTheme.Spacing.md) {
             if let providerEnum {
-                ProviderAvatar(provider: providerEnum, mode: .aurora, size: 36)
+                ProviderAvatar(provider: providerEnum, mode: .aurora, size: 48)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(providerEnum?.displayName ?? providerID.rawValue)
@@ -561,7 +561,7 @@ private struct LegacyConnectionRow: View {
     var body: some View {
         HStack(spacing: MobileTheme.Spacing.md) {
             if let providerEnum {
-                ProviderAvatar(provider: providerEnum, mode: .aurora, size: 36)
+                ProviderAvatar(provider: providerEnum, mode: .aurora, size: 48)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(providerEnum?.displayName ?? connection.provider)
@@ -632,16 +632,36 @@ private struct AvailableProviderRow: View {
     let accountCount: Int
     let onTap: () -> Void
 
+    /// One-line setup hint pulled from the shared `ProviderSetupGuide` so the
+    /// list reads like a menu instead of a wall of avatars. Falls through to
+    /// the generic "Add another / Connect for the first time" line below it.
+    private var setupHint: String {
+        ProviderSetupGuide.guide(for: provider).oneLineHint
+    }
+
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: MobileTheme.Spacing.md) {
-                ProviderAvatar(provider: provider, mode: .aurora, size: 36)
+                ProviderAvatar(provider: provider, mode: .aurora, size: 48)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(provider.displayName)
-                        .font(MobileTheme.Typography.body)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    Text(accountCount > 0 ? "Add another account" : "Connect for the first time")
+                    HStack(spacing: 6) {
+                        Text(provider.displayName)
+                            .font(MobileTheme.Typography.body)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        if accountCount > 0 {
+                            Text("· \(accountCount)")
+                                .font(MobileTheme.Typography.tiny)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(MobileTheme.Colors.success)
+                        }
+                    }
+                    Text(setupHint)
                         .font(MobileTheme.Typography.footnote)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(accountCount > 0 ? "Tap to add another account" : "Tap to connect")
+                        .font(MobileTheme.Typography.tiny)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
                 Spacer()
@@ -650,10 +670,11 @@ private struct AvailableProviderRow: View {
                     .foregroundStyle(MobileTheme.Colors.accent)
                     .accessibilityHidden(true)
             }
+            .padding(.vertical, 4)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(provider.displayName), \(accountCount > 0 ? "add another account" : "connect for the first time")")
+        .accessibilityLabel("\(provider.displayName), \(accountCount > 0 ? "add another account" : "connect for the first time"). \(setupHint)")
     }
 }
 

@@ -70,7 +70,8 @@ for (const collection of ["hermes_pairings", "hermes_session_cache", "hermes_aud
   assert.match(block, /allow update: if relayConnectionWrite\(userId, connectionId\) && resource\.data\.mode == "relayLink";/);
   assert.match(rules, /request\.resource\.data\.mode == "relayLink"/);
   assert.match(rules, /request\.resource\.data\.id == connectionId/);
-  assert.match(rules, /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"advertisedModel"[\s\S]*\]\)/);
+  assert.match(rules, /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"advertisedModel"[\s\S]*"relayPublicKey"[\s\S]*"relayEncryption"[\s\S]*\]\)/);
+  assert.match(rules, /request\.resource\.data\.relayEncryption == "p256-hkdf-sha256-aesgcm"/);
   assert.doesNotMatch(block, /ownerWritableNonSecret\(userId\);/, "direct Hermes URLs must not become broadly client-writable");
 }
 for (const collection of ["hermes_relay_requests"]) {
@@ -84,6 +85,8 @@ for (const collection of ["hermes_relay_requests"]) {
   assert.match(rules, /request\.resource\.data\.id == chunkId/);
   assert.match(rules, /request\.resource\.data\.requestId == requestId/);
 }
+assert.match(rules, /request\.resource\.data\.schemaVersion < 2[\s\S]*!\("body" in request\.resource\.data\)[\s\S]*request\.resource\.data\.payloadCiphertext is string/);
+assert.match(rules, /request\.resource\.data\.schemaVersion < 2[\s\S]*!\("data" in request\.resource\.data\)[\s\S]*request\.resource\.data\.ciphertext is string/);
 assert.match(readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"), /current\.status === "revoked"/);
 assert.match(rules, /!\("secretVersionName" in request\.resource\.data\)/);
 

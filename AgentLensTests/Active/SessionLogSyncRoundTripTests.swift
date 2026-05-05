@@ -32,6 +32,83 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
 
     // MARK: - Upload
 
+    func test_sessionLogUpload_writesCheapSearchMetadataOnExistingChunks() async throws {
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .kimi, sessionId: "session-kimi-1"),
+            provider: .kimi,
+            sessionId: "session-kimi-1",
+            projectName: "MobileSearch",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_120),
+            messageCount: 2,
+            userWordCount: 5,
+            assistantWordCount: 8,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Find firebase search path",
+            lastAssistantMessage: "Use existing chunks.",
+            fullText: "How do we search previous streams cheaply?\nReuse the opt-in Firebase session log chunk path.",
+            fileModifiedAt: nil,
+            summaryTitle: "Cheap Firebase Search"
+        )
+        try dataStore.upsertConversation(record)
+
+        await sessionLogSync.sync()
+
+        let safeId = record.id.replacingOccurrences(of: ":", with: "_")
+        let docId = "test-device-1_\(safeId)"
+        let manifest = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/session_logs/\(docId)"))
+        XCTAssertEqual(manifest["sessionId"] as? String, "session-kimi-1")
+        XCTAssertEqual(manifest["model"] as? String, "unknown")
+        XCTAssertNotNil(manifest["bodyHash"] as? String)
+        XCTAssertEqual(manifest["chunkMetadataVersion"] as? Int, 1)
+
+        let chunk = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/session_logs/\(docId)/chunks/0"))
+        XCTAssertEqual(chunk["uid"] as? String, "test-uid-1")
+        XCTAssertEqual(chunk["sessionId"] as? String, "session-kimi-1")
+        XCTAssertEqual(chunk["deviceId"] as? String, "test-device-1")
+        XCTAssertEqual(chunk["docId"] as? String, docId)
+        XCTAssertEqual(chunk["schemaVersion"] as? Int, 1)
+        let terms = try XCTUnwrap(chunk["terms"] as? [String])
+        XCTAssertTrue(terms.contains("firebase"))
+        XCTAssertTrue(terms.contains("search"))
+    }
+
+    func test_sessionLogUpload_skipsUnchangedBodyToAvoidExtraWrites() async throws {
+        let record = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .factory, sessionId: "unchanged-session"),
+            provider: .factory,
+            sessionId: "unchanged-session",
+            projectName: "CheapSync",
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_120),
+            messageCount: 1,
+            userWordCount: 4,
+            assistantWordCount: 4,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Avoid duplicate chunk writes",
+            lastAssistantMessage: "Done.",
+            fullText: "Stable transcript body.",
+            fileModifiedAt: nil
+        )
+        try dataStore.upsertConversation(record)
+
+        await sessionLogSync.sync()
+        let commitsAfterFirstSync = fakeGateway.batchCommitCount
+        XCTAssertGreaterThan(commitsAfterFirstSync, 0)
+
+        try await dataStore.dbQueue.write { db in
+            try db.execute(sql: "UPDATE conversations SET logSyncedAt = NULL WHERE id = ?", arguments: [record.id])
+        }
+
+        await sessionLogSync.sync()
+        XCTAssertEqual(fakeGateway.batchCommitCount, commitsAfterFirstSync)
+        XCTAssertTrue(try dataStore.fetchUnsyncedSessionLogs().isEmpty)
+    }
+
     // MARK: - Download
 
     func test_sessionLogDownload_reassemblesBody() async throws {

@@ -121,7 +121,7 @@ struct StreamsView: View {
                         title: searchText.isEmpty ? "No sessions yet" : "No matches",
                         message: searchText.isEmpty
                             ? "Sessions will appear here as soon as your Mac syncs."
-                            : "Try a different model, provider, or project name."
+                            : "Try a different model, provider, project, or enable searchable stream backup on your Mac for full transcript search."
                     )
                     .frame(minHeight: 320)
                 } else if shouldShowCloudSearchResults {

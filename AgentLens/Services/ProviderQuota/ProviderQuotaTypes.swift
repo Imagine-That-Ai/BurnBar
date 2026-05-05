@@ -43,6 +43,8 @@ enum ProviderQuotaUnit: String, Codable {
     case lines
     case files
     case count
+    /// Value is USD dollars (e.g. Cursor "Included usage" returns cents which we convert to dollars).
+    case currency
 
     var shortLabel: String {
         switch self {
@@ -53,6 +55,7 @@ enum ProviderQuotaUnit: String, Codable {
         case .lines: return "lines"
         case .files: return "files"
         case .count: return ""
+        case .currency: return "$"
         }
     }
 }
@@ -150,6 +153,15 @@ struct ProviderQuotaBucket: Codable, Hashable, Identifiable {
                 return "\(Int(value))"
             }
             return String(format: "%.1f", value)
+        case .currency:
+            // Two-decimal USD; small values keep the cents (e.g. "$0.39"),
+            // larger values stay readable (e.g. "$3.61", "$1,250.00").
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            formatter.currencySymbol = "$"
+            formatter.minimumFractionDigits = 2
+            formatter.maximumFractionDigits = 2
+            return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
         }
     }
 }

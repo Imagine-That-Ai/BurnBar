@@ -29,6 +29,32 @@ const APP = {
     "/tmp/openburnbar-appstore-screenshots",
 };
 
+const APP_REVIEW = {
+  email:
+    process.env.OPENBURNBAR_REVIEW_EMAIL ||
+    process.env.APP_STORE_REVIEW_USERNAME ||
+    "app-review@openburnbar.app",
+  password:
+    process.env.OPENBURNBAR_REVIEW_PASSWORD ||
+    process.env.APP_STORE_REVIEW_PASSWORD ||
+    "",
+  contactFirstName: process.env.APP_STORE_REVIEW_CONTACT_FIRST_NAME || "Alberto",
+  contactLastName: process.env.APP_STORE_REVIEW_CONTACT_LAST_NAME || "Nunez",
+  contactEmail:
+    process.env.APP_STORE_REVIEW_CONTACT_EMAIL || "support@openburnbar.app",
+  contactPhone: process.env.APP_STORE_REVIEW_CONTACT_PHONE || "+13125550100",
+  notes:
+    process.env.APP_STORE_REVIEW_NOTES ||
+    `OpenBurnBar is a companion app for the macOS app. The mobile app displays cloud-synced AI usage and quota data produced by the Mac app, and it can also configure supported quota providers directly on iPhone and iPad for on-demand quota refresh.
+
+Use the supplied review account to see seeded companion-app data:
+1. Open OpenBurnBar on iPhone or iPad.
+2. Choose "Sign in with email".
+3. Sign in with the supplied App Review username and password.
+4. The Pulse, Burn, Quota, and You views show synced Mac usage, provider quota snapshots, connected devices, and provider accounts.
+5. In quota/provider setup, Codex supports Hosted Quota Sync after subscription. Claude Code uses a self-hosted runner; OpenBurnBar does not collect hosted Claude Code OAuth/session tokens.`,
+};
+
 const IOS_METADATA = {
   description: `OpenBurnBar keeps your AI agent burn rate and quota pressure visible across Mac, iPhone, and iPad.
 
@@ -205,6 +231,11 @@ async function getAppStoreVersionWithBuild(versionId) {
   );
 }
 
+async function getBuild(buildId) {
+  const response = await api("GET", `/builds/${buildId}`);
+  return response.data;
+}
+
 async function getLinkedBuild(versionId) {
   const response = await getAppStoreVersionWithBuild(versionId);
   const buildRelationship = response.data?.relationships?.build?.data;
@@ -253,6 +284,29 @@ async function getLatestValidBuild(versionString) {
   return build;
 }
 
+async function setLinkedBuildCompliance() {
+  const version = await getLatestIosVersion();
+  const linkedBuild = await getLinkedBuild(version.id);
+  if (!linkedBuild?.id) {
+    throw new Error(`No build is linked to iOS version ${version.id}`);
+  }
+
+  await api(
+    "PATCH",
+    `/builds/${linkedBuild.id}`,
+    data(
+      "builds",
+      { usesNonExemptEncryption: false },
+      undefined,
+      linkedBuild.id
+    )
+  );
+  const build = await getBuild(linkedBuild.id);
+  console.log(
+    `Set build ${linkedBuild.id} usesNonExemptEncryption=${build.attributes?.usesNonExemptEncryption}`
+  );
+}
+
 async function attachBuildToVersion() {
   const version = await getLatestIosVersion();
   const build = await getLatestValidBuild(version.attributes?.versionString);
@@ -272,6 +326,16 @@ async function attachBuildToVersion() {
   await printStatus();
 }
 
+async function setManualRelease() {
+  const version = await getLatestIosVersion();
+  await api(
+    "PATCH",
+    `/appStoreVersions/${version.id}`,
+    data("appStoreVersions", { releaseType: "MANUAL" }, undefined, version.id)
+  );
+  console.log(`Set iOS version ${version.id} releaseType=MANUAL`);
+}
+
 async function getVersionLocalization(versionId) {
   const response = await api(
     "GET",
@@ -287,6 +351,58 @@ async function getVersionLocalization(versionId) {
     throw new Error(`No localization found for appStoreVersion ${versionId}`);
   }
   return localization;
+}
+
+async function getReviewDetail(versionId) {
+  try {
+    const response = await api("GET", `/appStoreVersions/${versionId}/appStoreReviewDetail`);
+    return response.data || null;
+  } catch (error) {
+    if (!String(error.message).includes("(404)")) throw error;
+    return null;
+  }
+}
+
+async function upsertReviewDetail() {
+  const version = await getLatestIosVersion();
+  const reviewDetail = await getReviewDetail(version.id);
+  if (!APP_REVIEW.password.trim()) {
+    throw new Error(
+      "OPENBURNBAR_REVIEW_PASSWORD or APP_STORE_REVIEW_PASSWORD is required to update App Review login details"
+    );
+  }
+
+  const attributes = {
+    contactFirstName: APP_REVIEW.contactFirstName,
+    contactLastName: APP_REVIEW.contactLastName,
+    contactEmail: APP_REVIEW.contactEmail,
+    contactPhone: APP_REVIEW.contactPhone,
+    demoAccountRequired: true,
+    demoAccountName: APP_REVIEW.email,
+    demoAccountPassword: APP_REVIEW.password,
+    notes: APP_REVIEW.notes,
+  };
+
+  if (reviewDetail?.id) {
+    await api(
+      "PATCH",
+      `/appStoreReviewDetails/${reviewDetail.id}`,
+      data("appStoreReviewDetails", attributes, undefined, reviewDetail.id)
+    );
+    console.log(`Updated App Review details ${reviewDetail.id}`);
+    return;
+  }
+
+  const response = await api(
+    "POST",
+    "/appStoreReviewDetails",
+    data(
+      "appStoreReviewDetails",
+      attributes,
+      { appStoreVersion: rel("appStoreVersions", version.id) }
+    )
+  );
+  console.log(`Created App Review details ${response.data?.id}`);
 }
 
 async function updateIosMetadata(localizationId) {
@@ -504,6 +620,8 @@ async function printStatus() {
   const screenshots = await getScreenshotSets(localization.id);
   const subscription = await getSubscription();
   const linkedBuild = await getLinkedBuild(version.id);
+  const linkedBuildReadback = linkedBuild?.id ? await getBuild(linkedBuild.id) : null;
+  const reviewDetail = await getReviewDetail(version.id);
 
   console.log(
     JSON.stringify(
@@ -515,6 +633,7 @@ async function printStatus() {
           versionString: version.attributes?.versionString,
           state: version.attributes?.appStoreState,
           platform: version.attributes?.platform,
+          releaseType: version.attributes?.releaseType,
         },
         localization: {
           id: localization.id,
@@ -527,10 +646,23 @@ async function printStatus() {
         linkedBuild: linkedBuild
           ? {
               id: linkedBuild.id,
-              version: linkedBuild.attributes?.version,
-              processingState: linkedBuild.attributes?.processingState,
-              buildAudienceType: linkedBuild.attributes?.buildAudienceType,
-              uploadedDate: linkedBuild.attributes?.uploadedDate,
+              version: linkedBuildReadback?.attributes?.version,
+              processingState: linkedBuildReadback?.attributes?.processingState,
+              buildAudienceType: linkedBuildReadback?.attributes?.buildAudienceType,
+              uploadedDate: linkedBuildReadback?.attributes?.uploadedDate,
+              usesNonExemptEncryption:
+                linkedBuildReadback?.attributes?.usesNonExemptEncryption,
+            }
+          : null,
+        appReviewDetail: reviewDetail
+          ? {
+              id: reviewDetail.id,
+              demoAccountRequired: reviewDetail.attributes?.demoAccountRequired,
+              demoAccountName: reviewDetail.attributes?.demoAccountName,
+              hasDemoAccountPassword: Boolean(
+                reviewDetail.attributes?.demoAccountPassword
+              ),
+              hasNotes: Boolean(reviewDetail.attributes?.notes),
             }
           : null,
         subscription: {
@@ -561,11 +693,22 @@ async function prepareIos() {
   await printStatus();
 }
 
+async function prepareReviewMetadata() {
+  await setLinkedBuildCompliance();
+  await setManualRelease();
+  await upsertReviewDetail();
+  await printStatus();
+}
+
 async function main() {
   const command = process.argv[2] || "status";
   if (command === "status") return printStatus();
   if (command === "prepare-ios") return prepareIos();
   if (command === "attach-build") return attachBuildToVersion();
+  if (command === "set-build-compliance") return setLinkedBuildCompliance();
+  if (command === "set-manual-release") return setManualRelease();
+  if (command === "review-details") return upsertReviewDetail();
+  if (command === "prepare-review-metadata") return prepareReviewMetadata();
   throw new Error(`Unknown command: ${command}`);
 }
 
