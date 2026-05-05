@@ -181,6 +181,24 @@ final class ProviderQuotaService {
         )
     }
 
+    func visiblePopoverProviders(dataStore: DataStore) -> [AgentProvider] {
+        let connectedProviderIDs = connectedQuotaProviderIDs(dataStore: dataStore)
+        let providersWithAccountSnapshots = Set(snapshotsByAccountID.values.compactMap { snapshot -> AgentProvider? in
+            guard snapshot.hasDisplayableQuotaSignal else { return nil }
+            return AgentProvider.fromProviderID(snapshot.providerID)
+        })
+
+        return refreshProviders.filter { provider in
+            if connectedProviderIDs.contains(provider.providerID) { return true }
+            if snapshotsByProvider[provider]?.hasDisplayableQuotaSignal == true { return true }
+            return providersWithAccountSnapshots.contains(provider)
+        }
+    }
+
+    func hasConnectedQuotaAccount(for provider: AgentProvider, dataStore: DataStore) -> Bool {
+        connectedQuotaProviderIDs(dataStore: dataStore).contains(provider.providerID)
+    }
+
     func routingState(for providerID: ProviderID) -> ProviderRoutingStateSnapshot? {
         routingStatesByProviderID[providerID]
     }
@@ -361,6 +379,26 @@ final class ProviderQuotaService {
             routingEvents.removeFirst(routingEvents.count - 100)
         }
         persistRoutingEvents()
+    }
+
+    private func connectedQuotaProviderIDs(dataStore: DataStore) -> Set<ProviderID> {
+        let accounts = (try? dataStore.providerAccountStore.fetchAll()) ?? []
+        return Set(accounts.compactMap { account in
+            guard Self.isConnectedQuotaAccount(account) else { return nil }
+            guard AgentProvider.fromProviderID(account.providerID).map(Self.supportedProviders.contains) == true else {
+                return nil
+            }
+            return account.providerID
+        })
+    }
+
+    private static func isConnectedQuotaAccount(_ account: ProviderAccountDoc) -> Bool {
+        switch account.status {
+        case .connected, .stale, .error:
+            return true
+        case .disconnected, .disabled, .deleted:
+            return false
+        }
     }
 
     private func routingCandidates(
@@ -833,5 +871,11 @@ private struct ProviderQuotaPersistenceLoadError: LocalizedError {
 
     var errorDescription: String? {
         message
+    }
+}
+
+private extension ProviderQuotaSnapshot {
+    var hasDisplayableQuotaSignal: Bool {
+        !buckets.isEmpty
     }
 }

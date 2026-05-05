@@ -8,8 +8,8 @@ import AppKit
 // MARK: - Popover Quota Bar
 
 /// Always-visible compact quota summary for the popover.
-/// Shows every supported provider's 5h + weekly bars inline — no horizontal scroll.
-/// Clicking an unavailable/unconfigured row expands an inline setup panel.
+/// Shows connected providers' 5h + weekly bars inline — no horizontal scroll.
+/// Clicking a row with routing detail expands the inline cockpit.
 struct QuotaPopoverBar: View {
     @Bindable var quotaService: ProviderQuotaService
     @Bindable var settingsManager: SettingsManager
@@ -24,6 +24,9 @@ struct QuotaPopoverBar: View {
     @State private var localCursorCookie = ""
 
     var body: some View {
+        let connectedProviderIDs = connectedQuotaProviderIDs
+        let providers = quotaService.visiblePopoverProviders(dataStore: dataStore)
+
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             // Header
             HStack(spacing: DesignSystem.Spacing.sm) {
@@ -53,8 +56,20 @@ struct QuotaPopoverBar: View {
 
             // Provider rows — each shows logo + dual-window bars + expandable setup
             VStack(spacing: DesignSystem.Spacing.xs) {
-                ForEach(ProviderQuotaService.supportedProviders, id: \.self) { provider in
-                    quotaProviderRow(provider: provider)
+                if providers.isEmpty {
+                    Text("No connected quota providers")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, DesignSystem.Spacing.md)
+                        .padding(.vertical, DesignSystem.Spacing.xs)
+                } else {
+                    ForEach(providers, id: \.self) { provider in
+                        quotaProviderRow(
+                            provider: provider,
+                            isConnected: connectedProviderIDs.contains(provider.providerID)
+                        )
+                    }
                 }
             }
             .padding(.horizontal, DesignSystem.Spacing.sm)
@@ -80,12 +95,12 @@ struct QuotaPopoverBar: View {
     }
 
     @ViewBuilder
-    private func quotaProviderRow(provider: AgentProvider) -> some View {
+    private func quotaProviderRow(provider: AgentProvider, isConnected: Bool) -> some View {
         let snapshot = quotaService.snapshot(for: provider)
         let theme = ProviderTheme.theme(for: provider)
         let isActive = quotaService.isRefreshing(provider)
         let isExpanded = expandedProvider == provider
-        let needsSetup = snapshot?.buckets.isEmpty == true && !isActive
+        let needsSetup = !isConnected && snapshot?.buckets.isEmpty == true && !isActive
         let routingState = quotaService.routingStatesByProviderID[provider.providerID]
         let hasRoutingDetail = routingState?.hasMeaningfulRoutingDetail ?? false
 
@@ -169,13 +184,28 @@ struct QuotaPopoverBar: View {
                             .padding(.trailing, DesignSystem.Spacing.sm)
                     }
 
-                    providerSetupPanel(provider: provider)
+                    if needsSetup {
+                        providerSetupPanel(provider: provider)
+                    }
                 }
                 .padding(.top, DesignSystem.Spacing.xs)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .animation(DesignSystem.Animation.gentle, value: expandedProvider)
+    }
+
+    private var connectedQuotaProviderIDs: Set<ProviderID> {
+        Set(
+            ((try? dataStore.providerAccountStore.fetchAll()) ?? []).compactMap { account in
+                switch account.status {
+                case .connected, .stale, .error:
+                    return account.providerID
+                case .disconnected, .disabled, .deleted:
+                    return nil
+                }
+            }
+        )
     }
 
 

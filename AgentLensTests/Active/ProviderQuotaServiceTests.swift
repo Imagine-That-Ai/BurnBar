@@ -21,6 +21,51 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.warp))
     }
 
+    func test_visiblePopoverProviders_onlyIncludesConnectedProviders() throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let dataStore = try makeDataStore()
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            refreshProviders: [.minimax, .cursor, .warp]
+        )
+
+        try dataStore.providerAccountStore.upsert(providerAccount(provider: .cursor, status: .connected))
+        try dataStore.providerAccountStore.upsert(providerAccount(provider: .minimax, status: .disabled))
+        try dataStore.providerAccountStore.upsert(providerAccount(provider: .warp, status: .disconnected))
+
+        XCTAssertEqual(service.visiblePopoverProviders(dataStore: dataStore), [.cursor])
+        XCTAssertTrue(service.hasConnectedQuotaAccount(for: .cursor, dataStore: dataStore))
+        XCTAssertFalse(service.hasConnectedQuotaAccount(for: .minimax, dataStore: dataStore))
+        XCTAssertFalse(service.hasConnectedQuotaAccount(for: .warp, dataStore: dataStore))
+    }
+
+    func test_visiblePopoverProviders_includesLocalQuotaSignalsWithoutAccount() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let dataStore = try makeDataStore()
+        let eventDate = recentUTCDate(daysAgo: 1, hour: 10)
+        let rolloutDirectory = codexRolloutDirectory(home: home, date: eventDate)
+        try FileManager.default.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+
+        let rolloutURL = codexRolloutFileURL(directory: rolloutDirectory, date: eventDate)
+        let payload = """
+        {"timestamp":"\(iso8601String(eventDate))","type":"event_msg","payload":{"type":"token_count","rate_limits":{"plan_type":"pro","primary":{"used_percent":22.0,"window_minutes":300,"resets_at":1774359600},"secondary":{"used_percent":20.0,"window_minutes":10080,"resets_at":1774801258}}}}
+        """
+        try Data(payload.utf8).write(to: rolloutURL)
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            refreshProviders: [.codex, .warp]
+        )
+
+        await service.refresh(provider: .codex, dataStore: dataStore)
+
+        XCTAssertEqual(service.visiblePopoverProviders(dataStore: dataStore), [.codex])
+    }
+
     func test_warpRefresh_readsLocalCreditTelemetry() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
@@ -1415,6 +1460,30 @@ final class ProviderQuotaServiceTests: XCTestCase {
             lastValidatedAt: now,
             lastRefreshAt: now,
             lastErrorCode: lastErrorCode,
+            schemaVersion: 1,
+            createdAt: now,
+            updatedAt: now
+        )
+    }
+
+    private func providerAccount(
+        provider: AgentProvider,
+        status: ProviderAccountStatus,
+        label: String? = nil
+    ) -> ProviderAccountDoc {
+        let now = Date(timeIntervalSinceReferenceDate: 800_300_000 + Double(provider.rawValue.count))
+        return ProviderAccountDoc(
+            id: "\(provider.providerID.rawValue)-test",
+            providerID: provider.providerID,
+            label: label ?? provider.displayName,
+            status: status,
+            credentialKind: .bearer,
+            storageScope: .deviceKeychain,
+            redactedLabel: "Stored in test keychain",
+            isDefault: true,
+            sortKey: 0,
+            lastValidatedAt: status == .connected ? now : nil,
+            lastRefreshAt: status == .connected ? now : nil,
             schemaVersion: 1,
             createdAt: now,
             updatedAt: now
