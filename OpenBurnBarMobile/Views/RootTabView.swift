@@ -104,7 +104,7 @@ struct RootTabView: View {
             .navigationDestination(for: YouRoute.self) { route in
                 switch route {
                 case .sync: CloudSyncDetailsView(syncStore: syncHealthStore)
-                case .settings: SettingsHubView()
+                case .settings: SettingsHubView(authStore: authStore)
                 case .devices:  iPadDevicesSettingsView()
                 }
             }

@@ -254,7 +254,7 @@ struct RootNavigationView: View {
                 case .streams:  StreamsView()
                 case .hermes:   HermesConversationListView(service: hermesService)
                 case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
-                case .settings: SettingsHubView()
+                case .settings: SettingsHubView(authStore: authStore)
                 case .devices:  iPadDevicesSettingsView()
                 case .providers: ProviderConnectionsView(showsDoneButton: false)
                 }
@@ -262,7 +262,7 @@ struct RootNavigationView: View {
             .navigationDestination(for: YouRoute.self) { route in
                 switch route {
                 case .sync:     CloudSyncDetailsView(syncStore: syncHealthStore)
-                case .settings: SettingsHubView()
+                case .settings: SettingsHubView(authStore: authStore)
                 case .devices:  iPadDevicesSettingsView()
                 }
             }

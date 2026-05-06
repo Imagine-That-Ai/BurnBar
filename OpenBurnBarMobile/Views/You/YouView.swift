@@ -219,7 +219,7 @@ struct YouView: View {
 
     private var settingsRow: some View {
         NavigationLink {
-            SettingsHubView()
+            SettingsHubView(authStore: authStore)
         } label: {
             AuroraGlassCard(variant: .standard, cornerRadius: 16) {
                 HStack(spacing: 12) {

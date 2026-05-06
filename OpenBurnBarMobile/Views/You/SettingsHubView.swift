@@ -8,6 +8,8 @@ import OpenBurnBarCore
 // the chrome.
 
 struct SettingsHubView: View {
+    let authStore: AuthStore
+
     @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
     @AppStorage("usageDisplayMode") private var usageDisplayMode: String = "currency"
     @AppStorage("dailyBudget") private var dailyBudget: Double = 50.0
@@ -102,6 +104,17 @@ struct SettingsHubView: View {
                         SettingsLabel(icon: "externaldrive.connected.to.line.below", color: MobileTheme.ember, title: "Provider connections")
                     }
                 } header: { groupHeader("Providers") }
+
+                Section {
+                    NavigationLink {
+                        HermesSettingsView(
+                            service: HermesService(),
+                            authStore: authStore
+                        )
+                    } label: {
+                        SettingsLabel(icon: "antenna.radiowaves.left.and.right", color: MobileTheme.hermesAureate, title: "Hermes")
+                    }
+                } header: { groupHeader("Hermes") }
 
                 Section {
                     LabeledContent("Version", value: marketingVersion)

@@ -625,6 +625,7 @@
 		C82D9CAB8C37524336215C0F /* CursorQuotaAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7EBC599E8011C2D19D44A3F /* CursorQuotaAdapter.swift */; };
 		C85DD4EFB4229EC9CFCAD0DC /* DashboardActionGlyphTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6827B3436362DF2DCBABEF2A /* DashboardActionGlyphTests.swift */; };
 		C91F4907FAE95C0D0388AC17 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7189A4E85F6C9CF3F2772267 /* DesignSystem.swift */; };
+		C9411089ABC2CE8730D72EC3 /* HermesSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7133EC3372960DFC76839F /* HermesSettingsView.swift */; };
 		C95C116EA1342A7C6A751FB4 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = E239813A07DE9AF832F4EF34 /* GoogleSignIn */; };
 		CA278FE37EE9D7E0793381AF /* OpenBurnBarCore in Frameworks */ = {isa = PBXBuildFile; productRef = DAB0CEB2329470D35FDBD4DB /* OpenBurnBarCore */; };
 		CA42B607C50575C094A54C90 /* DashboardQuickSwitchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC21D0FB2A8E8A6888FF3F8 /* DashboardQuickSwitchView.swift */; };
@@ -1243,6 +1244,7 @@
 		885AF7F67F13E2BDE878804F /* test_onboardingCompleteView.onboardingComplete-dark.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "test_onboardingCompleteView.onboardingComplete-dark.png"; sourceTree = "<group>"; };
 		88F58C33AAA25B82EF7D2239 /* VectorSemanticProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorSemanticProvider.swift; sourceTree = "<group>"; };
 		8A2CCEFC387EC3B234CC7954 /* SearchTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchTypes.swift; sourceTree = "<group>"; };
+		8A7133EC3372960DFC76839F /* HermesSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesSettingsView.swift; sourceTree = "<group>"; };
 		8AE98DAFF74A4693BA3AAC65 /* ProviderRoutingCockpit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderRoutingCockpit.swift; sourceTree = "<group>"; };
 		8AFC9491EE9CFF2EC91734EE /* ProviderSetupGuideRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSetupGuideRegistryTests.swift; sourceTree = "<group>"; };
 		8B255ADC71F557658B86C727 /* ProviderLogoViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderLogoViewTests.swift; sourceTree = "<group>"; };
@@ -2275,6 +2277,7 @@
 		532B5564D31380BFAA128CF3 /* Hermes */ = {
 			isa = PBXGroup;
 			children = (
+				8A7133EC3372960DFC76839F /* HermesSettingsView.swift */,
 				3054097A9E023D08D0A1FCDB /* HermesTabView.swift */,
 			);
 			path = Hermes;
@@ -3699,6 +3702,7 @@
 				990575E1F1F6A4D0014A37B5 /* Haptics.swift in Sources */,
 				0FEEB595CBB32A2B01AD5C10 /* HermesQuickAskCard.swift in Sources */,
 				669DCDBB48859FA5421DF1DE /* HermesService.swift in Sources */,
+				C9411089ABC2CE8730D72EC3 /* HermesSettingsView.swift in Sources */,
 				F40051E3138132DC877C594B /* HermesTabView.swift in Sources */,
 				DF2C05B26770F910A1D15729 /* HeroCard.swift in Sources */,
 				10C1D5FA04B381FF6E73D4A7 /* HostedQuotaSubscriptionStore.swift in Sources */,
@@ -4314,7 +4318,7 @@
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_9E27506A-9316-4A37-878D-B7F014D76DE4" /* OpenBurnBarCore */;
+			productRef = "TEMP_AC924F51-7FB6-483B-9E2E-2CA68D37A26C" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -5058,7 +5062,7 @@
 			package = F7ED8DA2789DCAFECCAE84D3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAppCheck;
 		};
-		"TEMP_9E27506A-9316-4A37-878D-B7F014D76DE4" /* OpenBurnBarCore */ = {
+		"TEMP_AC924F51-7FB6-483B-9E2E-2CA68D37A26C" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};
