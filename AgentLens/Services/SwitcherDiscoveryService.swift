@@ -733,7 +733,7 @@ final class SwitcherDiscoveryService: ObservableObject {
 
     private func shouldRefreshQuotaSnapshot(_ snapshot: ProviderQuotaSnapshot?) -> Bool {
         guard let snapshot else { return true }
-        if snapshot.buckets.isEmpty { return true }
+        if !snapshot.hasDisplayableQuotaSignal { return true }
         return snapshot.isStale()
     }
 

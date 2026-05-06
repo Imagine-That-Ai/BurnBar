@@ -187,6 +187,72 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertTrue(refreshed)
     }
 
+    func test_usageSync_importsHermesLedgerRowsAsHermesProvider() throws {
+        let harness = try makeRuntimePathsHarness(name: "hermes-import")
+        defer { harness.cleanup() }
+
+        let encoder = JSONEncoder()
+        let event = BurnBarUsageEvent(
+            providerID: "hermes",
+            modelID: "minimax-m2.7-highspeed",
+            inputTokens: 320,
+            outputTokens: 110,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            reasoningTokens: 24,
+            cost: 0.0145,
+            recordedAt: Date(timeIntervalSince1970: 1_773_700_000),
+            sessionID: "hermes-mobile-session",
+            projectName: "Hermes (proxy)",
+            confidence: .exact
+        )
+        let estimate = BurnBarUsageEvent(
+            providerID: "hermes",
+            modelID: "minimax-m2.7-highspeed",
+            inputTokens: 60,
+            outputTokens: 24,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            reasoningTokens: 0,
+            cost: 0,
+            recordedAt: Date(timeIntervalSince1970: 1_773_700_500),
+            sessionID: "hermes-mobile-session",
+            projectName: "Hermes (proxy)",
+            confidence: .lowConfidenceEstimate
+        )
+
+        let exactLine = try encodedUsageRecordLine(
+            idempotencyKey: "hermes-exact",
+            event: event,
+            encoder: encoder
+        )
+        let estimateLine = try encodedUsageRecordLine(
+            idempotencyKey: "hermes-estimate",
+            event: estimate,
+            encoder: encoder
+        )
+        try [exactLine, estimateLine]
+            .joined(separator: "\n")
+            .appending("\n")
+            .write(to: harness.paths.usageLedgerURL, atomically: true, encoding: .utf8)
+
+        var inserted: [TokenUsage] = []
+        let service = OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        _ = service.refreshState(insertUsages: { inserted.append(contentsOf: $0) })
+
+        XCTAssertEqual(inserted.count, 2)
+        let exact = try XCTUnwrap(inserted.first { $0.sessionId == "hermes-mobile-session" && $0.provenanceConfidence == .exact })
+        XCTAssertEqual(exact.provider, .hermes)
+        XCTAssertEqual(exact.projectName, "Hermes (proxy)")
+        XCTAssertEqual(exact.reasoningTokens, 24)
+        XCTAssertEqual(exact.provenanceMethod, .providerLog)
+
+        let estimateRow = try XCTUnwrap(inserted.first { $0.provenanceConfidence == .lowConfidenceEstimate })
+        XCTAssertEqual(estimateRow.provider, .hermes)
+        XCTAssertEqual(estimateRow.projectName, "Hermes (proxy)")
+        XCTAssertEqual(estimateRow.provenanceMethod, .heuristicEstimate)
+    }
+
     @MainActor
     func test_managerExportsControllerActivitySnapshotFromLocalData() async throws {
         let harness = try makeRuntimePathsHarness(name: "activity-export")

@@ -39,7 +39,7 @@ final class KimiParserStandaloneTests: XCTestCase {
         )
 
         let wire = """
-        {"message":{"type":"StatusUpdate","payload":{"message_id":"chatcmpl-should-not-be-model","token_usage":{"input_other":1000,"output":500,"input_cache_read":200,"input_cache_creation":50}}}}
+        {"message":{"type":"StatusUpdate","payload":{"message_id":"chatcmpl-should-not-be-model","token_usage":{"model":"chatcmpl-token-usage-should-not-be-model","input_other":1000,"output":500,"input_cache_read":200,"input_cache_creation":50}}}}
         """
         try wire.write(
             to: sessionDir.appendingPathComponent("wire.jsonl"),

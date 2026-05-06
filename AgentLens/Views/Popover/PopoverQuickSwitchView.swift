@@ -893,7 +893,7 @@ struct PopoverQuickSwitchView: View {
             }
 
             Task { @MainActor in
-                await quotaService.refreshIfNeeded(dataStore: dataStore)
+                await quotaService.refreshIfNeeded(dataStore: dataStore, maxAge: 15 * 60)
             }
         } catch {
             self.error = "Failed to load profiles: \(error.localizedDescription)"

@@ -240,13 +240,47 @@ final class KimiParser: LogParser, Sendable {
             result.inputCacheCreation += tokenUsage["input_cache_creation"] as? Int ?? 0
 
             if result.model == nil,
-               let model = tokenUsage["model"] as? String ?? payload["model"] as? String,
-               !model.isEmpty {
+               let model = Self.validWireModel(from: tokenUsage, payload: payload) {
                 result.model = model
             }
         }
 
         return (result.inputOther > 0 || result.output > 0) ? result : nil
+    }
+
+    private static func validWireModel(
+        from tokenUsage: [String: Any],
+        payload: [String: Any]
+    ) -> String? {
+        let candidates = [
+            tokenUsage["model"],
+            tokenUsage["model_id"],
+            tokenUsage["modelId"],
+            tokenUsage["model_name"],
+            tokenUsage["modelName"],
+            payload["model"],
+            payload["model_id"],
+            payload["modelId"],
+            payload["model_name"],
+            payload["modelName"],
+        ]
+
+        for candidate in candidates {
+            guard let raw = candidate as? String else { continue }
+            let model = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !model.isEmpty, !isRequestIDLikeModel(model) else { continue }
+            return model
+        }
+        return nil
+    }
+
+    private static func isRequestIDLikeModel(_ value: String) -> Bool {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.hasPrefix("chatcmpl-")
+            || normalized.hasPrefix("cmpl-")
+            || normalized.hasPrefix("resp_")
+            || normalized.hasPrefix("response-")
+            || normalized.hasPrefix("msg_")
     }
 
     private func appendText(_ full: inout String, _ chunk: String) {

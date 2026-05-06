@@ -883,6 +883,79 @@ final class BurnBarDaemonServerTests: XCTestCase {
         await server.stop()
     }
 
+    func testUsageRecordRPCAppendsAndRespectsIdempotency() async throws {
+        let socketPath = makeSocketPath(name: "usage-record")
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-usage-record-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        let usageRecorder = BurnBarUsageRecorder(
+            fileURL: rootURL.appendingPathComponent("usage-events.jsonl"),
+            logger: BurnBarDaemonLogger(category: "usage-record-tests")
+        )
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, socketAuthToken: "test-token"),
+            logger: BurnBarDaemonLogger(category: "usage-record-tests"),
+            usageRecorder: usageRecorder
+        )
+
+        try await server.start()
+
+        let event = BurnBarUsageEvent(
+            providerID: "hermes",
+            modelID: "minimax-m2.7-highspeed",
+            inputTokens: 250,
+            outputTokens: 80,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            reasoningTokens: 12,
+            cost: 0.013,
+            recordedAt: Date(timeIntervalSince1970: 1_773_600_000),
+            sessionID: "hermes-mobile-session",
+            projectName: "Hermes (proxy)",
+            confidence: .exact
+        )
+        let recordRequest = BurnBarRPCRequestEnvelopeWithParams(
+            id: "usage-record-1",
+            method: .usageRecord,
+            authToken: "test-token",
+            params: BurnBarRecordUsageRequest(idempotencyKey: "hermes-001", event: event)
+        )
+
+        let firstInsert: BurnBarRPCResponseEnvelope<BurnBarRecordUsageResponse> = try sendEnvelope(
+            recordRequest,
+            socketPath: socketPath
+        )
+        XCTAssertEqual(firstInsert.result?.idempotencyKey, "hermes-001")
+        XCTAssertEqual(firstInsert.result?.inserted, true)
+        XCTAssertEqual(firstInsert.result?.event.providerID, "hermes")
+        XCTAssertEqual(firstInsert.result?.event.confidence, .exact)
+        XCTAssertEqual(firstInsert.result?.event.reasoningTokens, 12)
+
+        let duplicateInsert: BurnBarRPCResponseEnvelope<BurnBarRecordUsageResponse> = try sendEnvelope(
+            recordRequest,
+            socketPath: socketPath
+        )
+        XCTAssertEqual(duplicateInsert.result?.inserted, false)
+
+        let recentResponse: BurnBarRPCResponseEnvelope<BurnBarRecentUsageResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "usage-recent-after-record",
+                method: .usageRecent,
+                authToken: "test-token",
+                params: BurnBarRecentUsageRequest(limit: 5)
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(recentResponse.result?.usage.count, 1)
+        XCTAssertEqual(recentResponse.result?.usage.first?.providerID, "hermes")
+        XCTAssertEqual(recentResponse.result?.usage.first?.sessionID, "hermes-mobile-session")
+        XCTAssertEqual(recentResponse.result?.usage.first?.projectName, "Hermes (proxy)")
+        XCTAssertEqual(recentResponse.result?.usage.first?.confidence, .exact)
+
+        await server.stop()
+    }
+
     private func makeSocketPath(name: String) -> String {
         "/tmp/openburnbar-daemon-tests-\(name)-\(UUID().uuidString).sock"
     }

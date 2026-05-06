@@ -74,7 +74,9 @@ struct SettingsView: View {
             GeneralSettingsView(
                 settingsManager: settingsManager,
                 dataStore: dataStore,
-                sharedFeaturesAvailable: accountManager.isSignedIn
+                sharedFeaturesAvailable: accountManager.isSignedIn,
+                cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService
             )
                 .navigationTitle("General")
         case .daemon:

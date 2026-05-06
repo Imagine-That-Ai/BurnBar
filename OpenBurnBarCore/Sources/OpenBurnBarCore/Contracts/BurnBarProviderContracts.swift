@@ -141,6 +141,17 @@ public struct BurnBarRecentUsageResponse: Codable, Hashable, Sendable {
     }
 }
 
+/// Confidence level for a recorded `BurnBarUsageEvent`. Mirrors `UsageProvenanceConfidence`
+/// at the contract layer so the daemon ledger can be written by Hermes/MCP/CLI clients
+/// without depending on the app's `OpenBurnBarCore` runtime types.
+public enum BurnBarUsageConfidence: String, Codable, Hashable, CaseIterable, Sendable {
+    case exact
+    case derivedExact = "derived_exact"
+    case highConfidenceEstimate = "high_confidence_estimate"
+    case lowConfidenceEstimate = "low_confidence_estimate"
+    case unknown
+}
+
 public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
     public let runID: BurnBarRunID?
     public let providerID: String
@@ -149,8 +160,16 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
     public let outputTokens: Int
     public let cacheCreationTokens: Int
     public let cacheReadTokens: Int
+    public let reasoningTokens: Int
     public let cost: Double
     public let recordedAt: Date
+    /// Optional client-supplied session id for app/Hermes session attribution.
+    public let sessionID: String?
+    /// Optional client-supplied project name. Defaults to "OpenBurnBar Daemon" on import when nil.
+    public let projectName: String?
+    /// Confidence level for the recorded counts. Defaults to `.exact` for backwards compat
+    /// (existing daemon-recorded rows are exact provider responses).
+    public let confidence: BurnBarUsageConfidence
 
     private enum CodingKeys: String, CodingKey {
         case runID
@@ -160,8 +179,12 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         case outputTokens
         case cacheCreationTokens
         case cacheReadTokens
+        case reasoningTokens
         case cost
         case recordedAt
+        case sessionID
+        case projectName
+        case confidence
     }
 
     public init(
@@ -172,8 +195,12 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         outputTokens: Int,
         cacheCreationTokens: Int = 0,
         cacheReadTokens: Int,
+        reasoningTokens: Int = 0,
         cost: Double,
-        recordedAt: Date
+        recordedAt: Date,
+        sessionID: String? = nil,
+        projectName: String? = nil,
+        confidence: BurnBarUsageConfidence = .exact
     ) {
         self.runID = runID
         self.providerID = providerID
@@ -182,8 +209,12 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         self.outputTokens = outputTokens
         self.cacheCreationTokens = cacheCreationTokens
         self.cacheReadTokens = cacheReadTokens
+        self.reasoningTokens = reasoningTokens
         self.cost = cost
         self.recordedAt = recordedAt
+        self.sessionID = sessionID
+        self.projectName = projectName
+        self.confidence = confidence
     }
 
     public init(from decoder: Decoder) throws {
@@ -195,8 +226,12 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         outputTokens = try container.decode(Int.self, forKey: .outputTokens)
         cacheCreationTokens = try container.decodeIfPresent(Int.self, forKey: .cacheCreationTokens) ?? 0
         cacheReadTokens = try container.decode(Int.self, forKey: .cacheReadTokens)
+        reasoningTokens = try container.decodeIfPresent(Int.self, forKey: .reasoningTokens) ?? 0
         cost = try container.decode(Double.self, forKey: .cost)
         recordedAt = try container.decode(Date.self, forKey: .recordedAt)
+        sessionID = try container.decodeIfPresent(String.self, forKey: .sessionID)
+        projectName = try container.decodeIfPresent(String.self, forKey: .projectName)
+        confidence = try container.decodeIfPresent(BurnBarUsageConfidence.self, forKey: .confidence) ?? .exact
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -208,8 +243,34 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         try container.encode(outputTokens, forKey: .outputTokens)
         try container.encode(cacheCreationTokens, forKey: .cacheCreationTokens)
         try container.encode(cacheReadTokens, forKey: .cacheReadTokens)
+        try container.encode(reasoningTokens, forKey: .reasoningTokens)
         try container.encode(cost, forKey: .cost)
         try container.encode(recordedAt, forKey: .recordedAt)
+        try container.encodeIfPresent(sessionID, forKey: .sessionID)
+        try container.encodeIfPresent(projectName, forKey: .projectName)
+        try container.encode(confidence, forKey: .confidence)
+    }
+}
+
+public struct BurnBarRecordUsageRequest: Codable, Hashable, Sendable {
+    public let idempotencyKey: String
+    public let event: BurnBarUsageEvent
+
+    public init(idempotencyKey: String, event: BurnBarUsageEvent) {
+        self.idempotencyKey = idempotencyKey
+        self.event = event
+    }
+}
+
+public struct BurnBarRecordUsageResponse: Codable, Hashable, Sendable {
+    public let idempotencyKey: String
+    public let inserted: Bool
+    public let event: BurnBarUsageEvent
+
+    public init(idempotencyKey: String, inserted: Bool, event: BurnBarUsageEvent) {
+        self.idempotencyKey = idempotencyKey
+        self.inserted = inserted
+        self.event = event
     }
 }
 

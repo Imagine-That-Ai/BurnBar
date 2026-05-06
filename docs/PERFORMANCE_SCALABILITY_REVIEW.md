@@ -6,6 +6,42 @@
 
 ---
 
+## 2026-05-06 Implementation Note
+
+This review's view-model caching concern has been addressed for the active
+dashboard usage path. `DashboardUsageViewModel` now caches daily rollups and
+date-window summaries, and dashboard computed properties reuse the cached
+window summary instead of recomputing filtered usage, totals, provider
+summaries, model summaries, and cache efficiency on every SwiftUI body pass.
+
+The responsiveness pass also removed several repeated refresh costs: usage
+refresh no longer reloads all usage twice after persistence, quota refresh
+fan-out is capped at four concurrent provider/account fetches, quota surfaces
+use `refreshIfNeeded` on appearance, routing event persistence is batched once
+per routing refresh, and `DatabaseWorkspaceView` rebuilds snapshots on a
+debounced change task instead of polling every eight seconds. Startup now
+defers the initial full refresh briefly and uses a longer periodic minimum
+interval so first paint has less competition from background parsing.
+
+Mobile received matching low-risk wins: quota and provider stores maintain
+cached derived collections, Hermes runtime refreshes coalesce behind a single
+in-flight task, pull-to-refresh awaits its real work directly, and idle
+navigation/sign-in animations run at lower frame cadences while still honoring
+Reduce Motion.
+
+Database migration `v37_token_usage_performance_indexes` adds composite indexes
+for sync backlog scans and provider/model/provider-id time-window queries. The
+safe migration path now skips file backups when a file database is already at
+the latest migration, while still backing up older file databases before
+pending migrations.
+
+Verification run on 2026-05-06:
+- `xcodebuild build -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO`
+- `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO -skip-testing:OpenBurnBarDaemonTests -only-testing:OpenBurnBarTests/DashboardUsageViewModelTests -only-testing:OpenBurnBarTests/OpenBurnBarDatabaseMigrationTests`
+- `xcodebuild build -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO`
+
+---
+
 ## 1. Performance Profile Overview
 
 OpenBurnBar is a native macOS menu-bar app that parses token-usage logs from 12+ AI agents, indexes conversations into an embedded GRDB/SQLite database, runs an HNSW vector index for semantic search, and coordinates with a local Unix-domain-socket daemon. The heavy workloads (parsing, DB persistence, projection, embedding) are intentionally pushed off `@MainActor`, which is good. However, the system exhibits **significant serialization bottlenecks**, **unbounded memory pressure during vector indexing**, **N+1 query patterns in several hot paths**, and **lack of query-result or view-model caching** that will degrade as conversation volume grows beyond a few thousand sessions.

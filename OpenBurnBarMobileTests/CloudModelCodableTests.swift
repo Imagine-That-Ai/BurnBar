@@ -114,6 +114,43 @@ final class CloudModelCodableTests: XCTestCase {
         XCTAssertEqual(decoded.accountStorageScope, .cloudRefreshable)
     }
 
+    func testQuotaSnapshotDisplayFilteringExcludesUsageOnlyProvidersAndBuckets() throws {
+        let usageOnly = ProviderQuotaSnapshot(
+            id: "hermes_local",
+            provider: AgentProvider.hermes.rawValue,
+            providerID: AgentProvider.hermes.providerID,
+            sourceKind: .localSession,
+            sourceId: "mac",
+            fetchedAt: Date(),
+            source: "Hermes",
+            confidence: .high,
+            buckets: [
+                ProviderQuotaBucket(name: "Total tokens", used: 1_000, limit: 10_000, remaining: 9_000, window: "lifetime", meta: ["unit": "tokens"])
+            ],
+            updatedAt: Date()
+        )
+
+        let mixed = ProviderQuotaSnapshot(
+            id: "ollama_cloud",
+            provider: AgentProvider.ollama.rawValue,
+            providerID: AgentProvider.ollama.providerID,
+            sourceKind: .officialAPI,
+            sourceId: "mac",
+            fetchedAt: Date(),
+            source: "Ollama Cloud",
+            confidence: .high,
+            buckets: [
+                ProviderQuotaBucket(name: "Local models", used: 0, limit: 3, remaining: 3, window: "custom", meta: ["unit": "count"]),
+                ProviderQuotaBucket(name: "Cloud 5h", used: 25, limit: 100, remaining: 75, window: "rollingHours", meta: ["unit": "percent"])
+            ],
+            updatedAt: Date()
+        )
+
+        XCTAssertFalse(usageOnly.hasDisplayableQuotaSignal)
+        XCTAssertNil(usageOnly.filteringToDisplayableQuotaSignal())
+        XCTAssertEqual(mixed.filteringToDisplayableQuotaSignal()?.buckets.map(\.name), ["Cloud 5h"])
+    }
+
     func testEscrowEnvelopeCodable() throws {
         let envelope = EscrowSecretEnvelope(
             grantId: "grant-1",

@@ -101,7 +101,24 @@ final class HermesService {
     private let relayTransport: HermesRelayTransporting
     private let defaults: UserDefaults
     private var runtimeGeneration = 0
+    private var runtimeRefreshTask: Task<Void, Never>?
     private let selectedConnectionDefaultsKey = "hermes.selectedConnectionID"
+
+    var relayConnections: [HermesConnectionRecord] {
+        connections.filter { connection in
+            connection.mode == .relayLink
+                && connection.status == .online
+                && Self.hasUsableRelayEncryption(connection)
+        }
+    }
+
+    var suggestedRelayConnection: HermesConnectionRecord? {
+        relayConnections.sorted { lhs, rhs in
+            let lhsLastSeen = lhs.lastSeenAt ?? lhs.updatedAt
+            let rhsLastSeen = rhs.lastSeenAt ?? rhs.updatedAt
+            return lhsLastSeen > rhsLastSeen
+        }.first
+    }
 
     init(
         baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
@@ -126,6 +143,21 @@ final class HermesService {
     }
 
     func refreshRuntime() async {
+        if let runtimeRefreshTask {
+            await runtimeRefreshTask.value
+            return
+        }
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performRuntimeRefresh()
+        }
+        runtimeRefreshTask = task
+        await task.value
+        runtimeRefreshTask = nil
+    }
+
+    private func performRuntimeRefresh() async {
         let generation = runtimeGeneration
         isLoadingRuntime = true
         runtimeErrorText = nil
@@ -223,6 +255,16 @@ final class HermesService {
             }
         }
         return true
+    }
+
+    @discardableResult
+    func connectToSuggestedRelay(refresh: Bool = true) -> Bool {
+        guard let relay = suggestedRelayConnection else {
+            lastError = "No signed-in Mac Hermes relay is available yet. On your Mac, keep OpenBurnBar open, sign in, and enable Hermes Remote Relay."
+            runtimeErrorText = lastError
+            return false
+        }
+        return selectConnection(relay, refresh: refresh)
     }
 
     func createPairingCode(displayName: String? = nil) async throws -> HermesPairingSessionRecord {

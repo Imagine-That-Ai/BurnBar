@@ -25,7 +25,7 @@ struct ProviderConnectionsView: View {
     }
 
     private var availableProviders: [AgentProvider] {
-        AgentProvider.allCases.sorted { $0.displayName < $1.displayName }
+        AgentProvider.mobileAccountConnectableProviders
     }
 
     var body: some View {
@@ -144,7 +144,7 @@ struct ProviderConnectionsView: View {
             } header: {
                 Text("Add Account")
             } footer: {
-                Text("Accounts added here appear on signed-in Macs. Providers with backend refresh update from cloud; local-session providers refresh from the Mac once usable there.")
+                Text("Accounts added here appear on signed-in Macs. Backend-refreshable providers update from cloud; local quota bridges refresh from the Mac.")
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
             }
@@ -188,7 +188,7 @@ private struct ConnectionsEmptyState: View {
                 .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
 
-            Text("Connect a provider to track quota and usage. You can add multiple accounts per provider — for example, one personal and one work OpenAI account.")
+            Text("Connect a provider with real quota or routing credentials. You can add multiple accounts per provider — for example, one personal and one work Cursor account.")
                 .font(MobileTheme.Typography.footnote)
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)

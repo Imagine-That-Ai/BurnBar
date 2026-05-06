@@ -16,6 +16,7 @@ final class UsageStore: Sendable {
 
     func insert(_ usage: TokenUsage) throws {
         try dbQueue.write { db in
+            try deleteKimiRequestIDModelRows(replacedBy: usage, in: db)
             try upsertUsage(usage, in: db)
         }
     }
@@ -24,9 +25,38 @@ final class UsageStore: Sendable {
         guard !newUsages.isEmpty else { return }
         try dbQueue.write { db in
             for usage in newUsages {
+                try deleteKimiRequestIDModelRows(replacedBy: usage, in: db)
                 try upsertUsage(usage, in: db)
             }
         }
+    }
+
+    private func deleteKimiRequestIDModelRows(replacedBy usage: TokenUsage, in db: Database) throws {
+        guard usage.provider == .kimi,
+              !Self.isKimiRequestIDModel(usage.model) else { return }
+
+        try db.execute(
+            sql: """
+                DELETE FROM token_usage
+                WHERE provider = ?
+                  AND sessionId = ?
+                  AND model LIKE 'chatcmpl-%'
+                  AND COALESCE(sourceDeviceId, '') = COALESCE(?, '')
+                  AND COALESCE(providerAccountID, '') = COALESCE(?, '')
+                """,
+            arguments: [
+                usage.provider.rawValue,
+                usage.sessionId,
+                usage.sourceDeviceId,
+                usage.providerAccountID,
+            ]
+        )
+    }
+
+    private static func isKimiRequestIDModel(_ model: String) -> Bool {
+        model.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .hasPrefix("chatcmpl-")
     }
 
     /// Inserts remote usage with update-to-correction semantics.

@@ -197,6 +197,8 @@ struct HermesConversationListView: View {
     @State private var showRuntimeSheet = false
     @State private var showSetupWizard = false
     @State private var didAutoPresentSetupWizard = false
+    @State private var libraryStore = HermesCloudLibraryStore()
+    @State private var selectedLibrarySession: HermesLibrarySession?
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
 
     init(service: HermesService, dashboardSnapshot: DashboardStore? = nil) {
@@ -209,7 +211,7 @@ struct HermesConversationListView: View {
             AuroraBackdrop()
 
             Group {
-                if service.sessions.isEmpty {
+                if service.sessions.isEmpty && libraryStore.sessions.isEmpty {
                     emptyState
                 } else {
                     conversationList
@@ -253,6 +255,11 @@ struct HermesConversationListView: View {
                     } label: {
                         Label("Re-check connection", systemImage: "arrow.clockwise")
                     }
+                    Button {
+                        Task { await libraryStore.refresh() }
+                    } label: {
+                        Label("Refresh Library", systemImage: "icloud.and.arrow.down")
+                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .foregroundStyle(MobileTheme.hermesAureate)
@@ -264,6 +271,9 @@ struct HermesConversationListView: View {
         }
         .sheet(isPresented: $showRuntimeSheet) {
             HermesRuntimeSheet(service: service)
+        }
+        .sheet(item: $selectedLibrarySession) { session in
+            HermesLibraryTranscriptSheet(store: libraryStore, session: session)
         }
         .sheet(isPresented: $showSetupWizard) {
             HermesMobileSetupWizardView(
@@ -284,7 +294,9 @@ struct HermesConversationListView: View {
         }
         .task {
             service.loadHistory()
-            await service.checkReachability()
+            async let reachability: Void = service.checkReachability()
+            async let library: Void = libraryStore.refresh()
+            _ = await (reachability, library)
         }
         .onAppear {
             presentSetupWizardIfNeeded()
@@ -303,18 +315,42 @@ struct HermesConversationListView: View {
 
     private var conversationList: some View {
         ScrollView {
-            LazyVStack(spacing: 10) {
-                ForEach(sortedSessions) { session in
-                    NavigationLink(value: HermesChatRoute.existing(sessionID: session.id)) {
-                        ConversationRow(
-                            session: session,
-                            isActive: service.selectedSessionID == session.id
+            LazyVStack(alignment: .leading, spacing: 10) {
+                if !sortedSessions.isEmpty {
+                    librarySectionHeader("Live Hermes Host", systemImage: "antenna.radiowaves.left.and.right")
+                    ForEach(sortedSessions) { session in
+                        NavigationLink(value: HermesChatRoute.existing(sessionID: session.id)) {
+                            ConversationRow(
+                                session: session,
+                                isActive: service.selectedSessionID == session.id
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .simultaneousGesture(
+                            TapGesture().onEnded { HapticBus.sheetOpen() }
                         )
                     }
-                    .buttonStyle(.plain)
-                    .simultaneousGesture(
-                        TapGesture().onEnded { HapticBus.sheetOpen() }
-                    )
+                }
+
+                if !sortedLibrarySessions.isEmpty {
+                    librarySectionHeader("Imported Library", systemImage: "books.vertical.fill")
+                        .padding(.top, sortedSessions.isEmpty ? 0 : 10)
+                    ForEach(sortedLibrarySessions) { session in
+                        Button {
+                            HapticBus.sheetOpen()
+                            selectedLibrarySession = session
+                        } label: {
+                            HermesLibraryRow(session: session)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                if let error = libraryStore.lastError, !error.isEmpty {
+                    Text("Cloud library unavailable: \(error)")
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.warning)
+                        .padding(.top, 4)
                 }
             }
             .padding(.horizontal, AuroraDesign.Layout.cardInset)
@@ -324,7 +360,9 @@ struct HermesConversationListView: View {
         .scrollDismissesKeyboard(.interactively)
         .refreshable {
             HapticBus.refreshStarted()
-            await service.refreshRuntime()
+            async let runtime: Void = service.refreshRuntime()
+            async let library: Void = libraryStore.refresh()
+            _ = await (runtime, library)
             HapticBus.refreshFinished()
         }
         .animation(AuroraDesign.Motion.auroraSpring, value: service.sessions.map(\.id))
@@ -334,6 +372,21 @@ struct HermesConversationListView: View {
         service.sessions.sorted {
             ($0.lastActiveAt ?? .distantPast) > ($1.lastActiveAt ?? .distantPast)
         }
+    }
+
+    private var sortedLibrarySessions: [HermesLibrarySession] {
+        libraryStore.sessions.sorted {
+            ($0.lastActiveAt ?? .distantPast) > ($1.lastActiveAt ?? .distantPast)
+        }
+    }
+
+    private func librarySectionHeader(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(MobileTheme.Typography.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(MobileTheme.Colors.textSecondary)
+            .padding(.top, 2)
+            .accessibilityAddTraits(.isHeader)
     }
 
     // MARK: - Empty State
@@ -386,6 +439,12 @@ struct HermesConversationListView: View {
                 .padding(.horizontal, AuroraDesign.Layout.cardInset)
                 .padding(.top, MobileTheme.Spacing.xl)
 
+                if let relay = service.suggestedRelayConnection,
+                   service.selectedConnection.id != relay.id {
+                    connectRelayCard(relay)
+                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                }
+
                 if let runtimeErrorText = service.runtimeErrorText {
                     AuroraGlassCard(variant: .urgent) {
                         VStack(alignment: .leading, spacing: 8) {
@@ -417,6 +476,35 @@ struct HermesConversationListView: View {
             HapticBus.refreshStarted()
             await service.refreshRuntime()
             HapticBus.refreshFinished()
+        }
+    }
+
+    private func connectRelayCard(_ relay: HermesConnectionRecord) -> some View {
+        AuroraGlassCard(variant: .hermes, cornerRadius: AuroraDesign.Shape.standardCorner) {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+                Label("Use \(relay.displayName)", systemImage: "macbook.and.iphone")
+                    .font(MobileTheme.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+
+                Text("You're signed in to the same OpenBurnBar account on this iPhone/iPad and your Mac. Grant permission here to route Hermes chats through your Mac over private Remote Relay.")
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    HapticBus.primaryAction()
+                    if !service.connectToSuggestedRelay() {
+                        showConnectionSheet = true
+                    }
+                } label: {
+                    Label("Connect to my Mac", systemImage: "checkmark.shield.fill")
+                        .font(MobileTheme.Typography.body)
+                        .fontWeight(.semibold)
+                }
+                .buttonStyle(.aurora(.hermes, fullWidth: true))
+                .accessibilityHint("Selects the available Mac Hermes Remote Relay for this device.")
+            }
         }
     }
 
@@ -595,6 +683,134 @@ private struct ConversationRow: View {
         isActive
             ? .white.opacity(0.32)
             : MobileTheme.hermesAureate.opacity(0.3)
+    }
+}
+
+private struct HermesLibraryRow: View {
+    let session: HermesLibrarySession
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(session.title.nilIfBlank ?? "Hermes conversation")
+                    .font(MobileTheme.Typography.headline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if let lastActiveAt = session.lastActiveAt {
+                    Text(lastActiveAt, style: .relative)
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+            }
+
+            Text(session.preview)
+                .font(MobileTheme.Typography.body)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+
+            HStack(spacing: 8) {
+                Label(session.sourceLabel, systemImage: session.source == .firebase ? "cloud.fill" : "icloud.fill")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.hermesAureate)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(MobileTheme.hermesAureate.opacity(0.12)))
+
+                Label("\(session.messageCount)", systemImage: "bubble.left.and.bubble.right")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+
+                Spacer()
+
+                Text("Read-only")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.82))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(MobileTheme.Colors.border.opacity(0.7), lineWidth: 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private struct HermesLibraryTranscriptSheet: View {
+    let store: HermesCloudLibraryStore
+    let session: HermesLibrarySession
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var transcript = ""
+    @State private var errorText: String?
+    @State private var isLoading = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+                    AuroraGlassCard(variant: .hermes, cornerRadius: AuroraDesign.Shape.standardCorner) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label(session.sourceLabel, systemImage: session.source == .firebase ? "cloud.fill" : "icloud.fill")
+                                .font(MobileTheme.Typography.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(MobileTheme.hermesAureate)
+                            Text(session.title)
+                                .font(MobileTheme.Typography.title)
+                                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                            Text("Imported transcript. Connect to your Mac relay to continue live in Hermes.")
+                                .font(MobileTheme.Typography.caption)
+                                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        }
+                    }
+
+                    if isLoading {
+                        ProgressView("Loading transcript…")
+                            .frame(maxWidth: .infinity)
+                    } else if let errorText {
+                        Text(errorText)
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.error)
+                    } else {
+                        Text(transcript.isEmpty ? "No transcript body was found for this imported session." : transcript)
+                            .font(MobileTheme.Typography.body)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(AuroraDesign.Layout.cardInset)
+            }
+            .background(AuroraBackdrop())
+            .navigationTitle("Hermes Library")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .task { await loadTranscript() }
+    }
+
+    private func loadTranscript() async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            transcript = try await store.transcript(for: session)
+            errorText = nil
+        } catch {
+            errorText = error.localizedDescription
+        }
     }
 }
 
@@ -1150,10 +1366,32 @@ private struct HermesConnectionSheet: View {
                             .font(MobileTheme.Typography.body)
                             .fontWeight(.semibold)
                             .foregroundStyle(MobileTheme.hermesAureate)
-                        Text("For cell signal, keep OpenBurnBar running on your Mac, sign in with this account, and enable Hermes Remote Relay in Mac Settings. Then select the Remote Relay host below.")
+                        Text("Same account is not enough by itself: your iPhone/iPad must choose the Mac relay host, and your Mac must be online with Remote Relay enabled.")
                             .font(MobileTheme.Typography.caption)
                             .foregroundStyle(MobileTheme.Colors.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
+
+                        if let relay = service.suggestedRelayConnection,
+                           service.selectedConnection.id != relay.id {
+                            Button {
+                                if service.connectToSuggestedRelay() {
+                                    dismiss()
+                                } else {
+                                    errorText = service.lastError
+                                }
+                            } label: {
+                                Label("Connect to my Mac", systemImage: "checkmark.shield.fill")
+                                    .font(MobileTheme.Typography.body)
+                                    .fontWeight(.semibold)
+                            }
+                            .buttonStyle(.aurora(.hermes, fullWidth: true))
+                            .padding(.top, 4)
+                        } else if service.suggestedRelayConnection == nil {
+                            Label("No Mac relay found yet", systemImage: "moon.zzz")
+                                .font(MobileTheme.Typography.caption)
+                                .foregroundStyle(MobileTheme.Colors.textMuted)
+                                .padding(.top, 2)
+                        }
                     }
                     .padding(.vertical, 4)
                 }

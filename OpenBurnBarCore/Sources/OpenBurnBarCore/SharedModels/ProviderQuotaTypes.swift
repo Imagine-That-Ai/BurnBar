@@ -87,6 +87,30 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable {
     }
 }
 
+public extension ProviderQuotaBucket {
+    var isDisplayableQuotaSignal: Bool {
+        guard limit.isFinite, limit > 0, used.isFinite, remaining.isFinite else {
+            return false
+        }
+
+        let marker = "\(name) \(meta?["label"] ?? "")".lowercased()
+        if ["cache", "hit rate", "local model", "cloud model", "installed", "task", "conversation", "line", "file"].contains(where: marker.contains) {
+            return false
+        }
+
+        if let unit = meta?["unit"]?.lowercased() {
+            if ["sessions", "session", "lines", "files"].contains(unit) {
+                return false
+            }
+            if unit == "count" && !(marker.contains("credit") || marker.contains("budget")) {
+                return false
+            }
+        }
+
+        return used >= 0 || remaining >= 0 || meta?["usedPercent"] != nil
+    }
+}
+
 // MARK: - Provider Quota Snapshot
 
 public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
@@ -192,5 +216,51 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
         try c.encode(buckets, forKey: .buckets)
         try c.encode(schemaVersion, forKey: .schemaVersion)
         try c.encode(updatedAt, forKey: .updatedAt)
+    }
+}
+
+public extension ProviderQuotaSnapshot {
+    private var quotaProvider: AgentProvider? {
+        AgentProvider.fromProviderID(providerID)
+            ?? AgentProvider.fromPersistedToken(provider)
+            ?? AgentProvider(rawValue: provider)
+    }
+
+    var displayableQuotaBuckets: [ProviderQuotaBucket] {
+        buckets.filter(\.isDisplayableQuotaSignal)
+    }
+
+    var hasDisplayableQuotaSignal: Bool {
+        guard quotaProvider?.isQuotaSignalProvider == true else {
+            return false
+        }
+        return !displayableQuotaBuckets.isEmpty
+    }
+
+    func filteringToDisplayableQuotaSignal() -> ProviderQuotaSnapshot? {
+        let filteredBuckets = displayableQuotaBuckets
+        guard quotaProvider?.isQuotaSignalProvider == true,
+              !filteredBuckets.isEmpty else {
+            return nil
+        }
+
+        return ProviderQuotaSnapshot(
+            id: id,
+            provider: provider,
+            providerID: providerID,
+            accountID: accountID,
+            accountLabel: accountLabel,
+            accountStorageScope: accountStorageScope,
+            sourceKind: sourceKind,
+            sourceId: sourceId,
+            fetchedAt: fetchedAt,
+            source: source,
+            confidence: confidence,
+            managementURL: managementURL,
+            statusMessage: statusMessage,
+            buckets: filteredBuckets,
+            schemaVersion: schemaVersion,
+            updatedAt: updatedAt
+        )
     }
 }

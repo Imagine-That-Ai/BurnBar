@@ -203,17 +203,22 @@ struct OnboardingWizardView: View {
         VStack(spacing: MobileTheme.Spacing.xl) {
             Spacer()
             ZStack {
+                // Soft warm halo behind the brand mark.
                 Circle()
                     .fill(MobileTheme.primaryGradient)
-                    .frame(width: 120, height: 120)
-                    .blur(radius: 30)
-                    .opacity(0.55)
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 56, weight: .bold))
-                    .foregroundStyle(MobileTheme.primaryGradient)
-                    .symbolEffect(.bounce, options: .repeating)
+                    .frame(width: 160, height: 160)
+                    .blur(radius: 36)
+                    .opacity(0.45)
+                // Real OpenBurnBar logo (vector, original rendering).
+                Image("AppLogo")
+                    .resizable()
+                    .renderingMode(.original)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 124, height: 124)
+                    .shadow(color: MobileTheme.ember.opacity(0.35), radius: 22, y: 6)
+                    .accessibilityLabel("OpenBurnBar")
             }
-            .frame(height: 140)
+            .frame(height: 160)
 
             VStack(spacing: MobileTheme.Spacing.md) {
                 Text("Welcome to OpenBurnBar")

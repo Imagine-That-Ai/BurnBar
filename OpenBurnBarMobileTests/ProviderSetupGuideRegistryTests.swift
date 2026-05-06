@@ -54,7 +54,7 @@ final class ProviderSetupGuideRegistryTests: XCTestCase {
     }
 
     func testRecommendedAreAllValidProviders() {
-        let cases = Set(AgentProvider.allCases)
+        let cases = Set(AgentProvider.mobileAccountConnectableProviders)
         for recommended in ProviderSetupGuide.recommended {
             XCTAssertTrue(cases.contains(recommended), "Recommended provider \(recommended) must be a valid AgentProvider case")
         }
@@ -62,7 +62,11 @@ final class ProviderSetupGuideRegistryTests: XCTestCase {
 
     func testSortedProvidersForOnboardingPlacesRecommendedFirst() {
         let sorted = ProviderSetupGuide.sortedProvidersForOnboarding()
-        XCTAssertEqual(sorted.count, AgentProvider.allCases.count, "Sorted list must contain every provider")
+        XCTAssertEqual(Set(sorted).count, sorted.count, "Sorted list must not contain duplicate providers")
+        XCTAssertEqual(sorted.count, AgentProvider.mobileAccountConnectableProviders.count, "Sorted list must contain every mobile-connectable provider")
+        XCTAssertFalse(sorted.contains(.hermes), "Hermes has no provider quota account to add from onboarding")
+        XCTAssertFalse(sorted.contains(.ollama), "Local Ollama model counts are not quota accounts")
+        XCTAssertFalse(sorted.contains(.geminiCLI), "Gemini CLI has no quota credential for mobile onboarding")
 
         let recommendedSet = Set(ProviderSetupGuide.recommended)
         let firstChunk = Array(sorted.prefix(ProviderSetupGuide.recommended.count))

@@ -566,6 +566,31 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertFalse(settings.chatBackendOnboardingCompleted)
     }
 
+    func test_hermesSetupWizardCompleted_defaultValue_isFalse() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertFalse(settings.hermesSetupWizardCompleted)
+    }
+
+    func test_hermesSetupWizardCompleted_settingPersists() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.hermesSetupWizardCompleted = true
+
+        XCTAssertTrue(settings.hermesSetupWizardCompleted)
+        XCTAssertTrue(defaults.bool(forKey: "hermesSetupWizardCompleted"))
+    }
+
+    func test_hermesSetupWizard_isThreeStepFlow() {
+        XCTAssertEqual(HermesSetupStep.allCases.count, 3)
+        XCTAssertEqual(
+            HermesSetupStep.allCases.map(\.stepLabel),
+            ["1 · Prepare", "2 · Connect", "3 · Chat"]
+        )
+        XCTAssertEqual(HermesSetupStep.allCases.map(\.progressFraction), [0.0, 0.5, 1.0])
+    }
+
     func test_switcherOnboardingCompleted_defaultValue_isFalse() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)

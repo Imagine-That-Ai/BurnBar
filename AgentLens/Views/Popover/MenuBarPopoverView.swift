@@ -28,10 +28,16 @@ struct MenuBarPopoverView: View {
         insightSnapshot.insights
     }
 
-    /// Cap the scrollable body at ~90% of screen height minus header/action bar.
-    private var popoverScrollMaxHeight: CGFloat {
+    /// Keep the menu-bar tray compact. The quota rail has its own internal
+    /// scroller, so the rest of the popover should never force the NSPopover
+    /// to consume most of the display.
+    private var popoverViewportHeight: CGFloat {
         let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
-        return max(screenHeight * 0.90 - 80, 400)
+        return min(max(screenHeight * 0.58, 500), 560)
+    }
+
+    private var popoverScrollMaxHeight: CGFloat {
+        max(popoverViewportHeight - 285, 210)
     }
 
     private var menuBarSparklineSeries: [Double] {
@@ -135,6 +141,15 @@ struct MenuBarPopoverView: View {
                                         withAnimation(DesignSystem.Animation.gentle) {
                                             hermesChatActive = true
                                         }
+                                    },
+                                    hermesSetupCompleted: settingsManager.hermesSetupWizardCompleted,
+                                    onRequireHermesSetup: {
+                                        dismiss()
+                                        WindowManager.shared.openHermesSetupWizard(
+                                            settingsManager: settingsManager,
+                                            chatController: chatController,
+                                            dataStore: dataStore
+                                        )
                                     }
                                 )
                                 .padding(.horizontal, DesignSystem.Spacing.sm)
@@ -161,6 +176,7 @@ struct MenuBarPopoverView: View {
             }
         }
         .frame(width: 340)
+        .frame(height: popoverViewportHeight)
         .background(DesignSystem.Colors.background)
         .onChange(of: isScanning) { oldValue, newValue in
             guard oldValue, !newValue else { return }

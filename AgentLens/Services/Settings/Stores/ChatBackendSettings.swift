@@ -48,6 +48,10 @@ final class ChatBackendSettings {
         didSet { persistence.set(chatBackendOnboardingCompleted, forKey: "chatBackendOnboardingCompleted") }
     }
 
+    var hermesSetupWizardCompleted: Bool = false {
+        didSet { persistence.set(hermesSetupWizardCompleted, forKey: "hermesSetupWizardCompleted") }
+    }
+
     var switcherOnboardingCompleted: Bool = false {
         didSet { persistence.set(switcherOnboardingCompleted, forKey: "switcherOnboardingCompleted") }
     }
@@ -100,6 +104,7 @@ final class ChatBackendSettings {
         self.hermesGatewayBaseURL = persistence.string(forKey: "hermesGatewayBaseURL", defaultValue: "http://127.0.0.1:8642")
         self.hermesRemoteRelayEnabled = persistence.bool(forKey: "hermesRemoteRelayEnabled")
         self.chatBackendOnboardingCompleted = persistence.bool(forKey: "chatBackendOnboardingCompleted")
+        self.hermesSetupWizardCompleted = persistence.bool(forKey: "hermesSetupWizardCompleted")
         self.switcherOnboardingCompleted = persistence.bool(forKey: "switcherOnboardingCompleted")
         self.selectedOnboardingProvidersCSV = persistence.string(forKey: "selectedOnboardingProvidersCSV")
         if persistence.objectExists(forKey: "enabledChatBackendIDsCSV") {

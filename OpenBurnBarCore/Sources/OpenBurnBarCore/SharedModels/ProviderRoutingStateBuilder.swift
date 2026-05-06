@@ -127,11 +127,11 @@ public enum ProviderRoutingStateBuilder {
         // Pick the bucket with the smallest remaining fraction so a single
         // exhausted axis (e.g. requests-per-day) still trips the lane even
         // when total tokens look fine.
-        let bucketsWithLimit = snapshot.buckets.filter { $0.limit > 0 }
+        let bucketsWithLimit = snapshot.displayableQuotaBuckets
         guard let pressuredBucket = bucketsWithLimit.min(by: {
             (max(0, $0.remaining) / $0.limit) < (max(0, $1.remaining) / $1.limit)
         }) else {
-            return snapshot.confidence == .stale ? .pressure : .healthy
+            return snapshot.confidence == .stale ? .pressure : .unknown
         }
 
         let remaining = max(0, pressuredBucket.remaining) / pressuredBucket.limit

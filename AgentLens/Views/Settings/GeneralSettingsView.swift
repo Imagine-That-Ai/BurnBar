@@ -8,6 +8,8 @@ struct GeneralSettingsView: View {
     @Bindable var settingsManager: SettingsManager
     var dataStore: DataStore
     var sharedFeaturesAvailable: Bool
+    var cloudSyncService: CloudSyncService?
+    var iCloudSessionMirrorService: ICloudSessionMirrorService?
     @Environment(\.colorScheme) private var colorScheme
 
     private var setupGuide: OpenBurnBarSetupGuideSnapshot {
@@ -87,7 +89,12 @@ struct GeneralSettingsView: View {
 
                 sectionHeader("Chat Backends")
 
-                ChatGatewaySettingsView(settingsManager: settingsManager)
+                ChatGatewaySettingsView(
+                    settingsManager: settingsManager,
+                    dataStore: dataStore,
+                    cloudSyncService: cloudSyncService,
+                    iCloudSessionMirrorService: iCloudSessionMirrorService
+                )
 
                 sectionHeader("Session Summaries")
 

@@ -12,7 +12,13 @@ final class QuotaStore {
     private(set) var snapshots: [ProviderQuotaSnapshot] = []
     private(set) var accounts: [ProviderAccountDoc] = []
     private(set) var currentUserDisplayID: String?
+    private(set) var urgencySorted: [ProviderQuotaSnapshot] = []
+    private(set) var visibleProviders: [String] = []
+    private(set) var snapshotsByProvider: [String: [ProviderQuotaSnapshot]] = [:]
+    private(set) var urgentProviders: [String] = []
+    private(set) var healthyProviders: [String] = []
     private var listener: ListenerRegistration?
+    private var lastAccountRefreshAt: Date?
 
     init(firestore: FirestoreRepository = FirestoreRepository()) {
         self.firestore = firestore
@@ -37,10 +43,12 @@ final class QuotaStore {
         do {
             async let snapshotsTask = firestore.fetchQuotaSnapshots()
             async let accountsTask = firestore.fetchProviderAccounts()
-            snapshots = try await snapshotsTask
+            applySnapshots(try await snapshotsTask)
             // Account fetch is best-effort — routing visualization is
             // additive, never required.
-            accounts = (try? await accountsTask) ?? accounts
+            if let docs = try? await accountsTask {
+                applyAccounts(docs)
+            }
         } catch {
             self.error = error.localizedDescription
         }
@@ -66,13 +74,9 @@ final class QuotaStore {
                 guard let self else { return }
                 switch result {
                 case .success(let snaps):
-                    self.snapshots = snaps
+                    self.applySnapshots(snaps)
                     self.error = nil
-                    // Refresh accounts opportunistically so the routing
-                    // cockpit reflects new accounts without an extra fetch.
-                    if let docs = try? await self.firestore.fetchProviderAccounts() {
-                        self.accounts = docs
-                    }
+                    await self.refreshAccountsIfStale()
                 case .failure(let err):
                     self.error = err.localizedDescription
                 }
@@ -93,13 +97,17 @@ final class QuotaStore {
     private func applyScreenshotData() {
         isLoading = false
         error = nil
-        snapshots = AppStoreScreenshotData.quotaSnapshots
-        accounts = AppStoreScreenshotData.providerAccounts
+        applySnapshots(AppStoreScreenshotData.quotaSnapshots)
+        applyAccounts(AppStoreScreenshotData.providerAccounts)
         currentUserDisplayID = "…demo"
     }
 
     func accounts(for providerID: ProviderID) -> [ProviderAccountDoc] {
         accounts.filter { $0.providerID == providerID && $0.status != .deleted }
+    }
+
+    private func normalizeQuotaSnapshots(_ snapshots: [ProviderQuotaSnapshot]) -> [ProviderQuotaSnapshot] {
+        snapshots.compactMap { $0.filteringToDisplayableQuotaSignal() }
     }
 
     func routingState(for providerID: ProviderID) -> ProviderRoutingStateSnapshot? {
@@ -110,20 +118,44 @@ final class QuotaStore {
         )
     }
 
-    var urgencySorted: [ProviderQuotaSnapshot] {
-        snapshots.sorted {
-            remainingFraction(for: $0) < remainingFraction(for: $1)
+    private func applySnapshots(_ newSnapshots: [ProviderQuotaSnapshot]) {
+        snapshots = normalizeQuotaSnapshots(newSnapshots)
+        rebuildDerivedSnapshotState()
+    }
+
+    private func applyAccounts(_ newAccounts: [ProviderAccountDoc]) {
+        accounts = newAccounts
+        lastAccountRefreshAt = Date()
+    }
+
+    private func refreshAccountsIfStale(maxAge: TimeInterval = 60) async {
+        if let lastAccountRefreshAt,
+           Date().timeIntervalSince(lastAccountRefreshAt) < maxAge,
+           !accounts.isEmpty {
+            return
+        }
+        if let docs = try? await firestore.fetchProviderAccounts() {
+            applyAccounts(docs)
         }
     }
 
-    /// Provider keys that currently have any quota snapshots.
-    var visibleProviders: [String] {
-        Array(snapshotsByProvider.keys).sorted()
-    }
+    private func rebuildDerivedSnapshotState() {
+        urgencySorted = snapshots.sorted {
+            remainingFraction(for: $0) < remainingFraction(for: $1)
+        }
 
-    /// Snapshots grouped by canonical provider key.
-    var snapshotsByProvider: [String: [ProviderQuotaSnapshot]] {
-        Dictionary(grouping: snapshots, by: { $0.providerID.rawValue })
+        snapshotsByProvider = Dictionary(grouping: snapshots, by: { $0.providerID.rawValue })
+        visibleProviders = Array(snapshotsByProvider.keys).sorted()
+        urgentProviders = snapshotsByProvider
+            .filter { _, snaps in snaps.contains(where: { isUrgent($0) }) }
+            .keys
+            .sorted { lhs, rhs in
+                pressureScore(for: lhs) < pressureScore(for: rhs)
+            }
+        let urgent = Set(urgentProviders)
+        healthyProviders = snapshotsByProvider.keys
+            .filter { !urgent.contains($0) }
+            .sorted()
     }
 
     func sortedSnapshots(for provider: String) -> [ProviderQuotaSnapshot] {
@@ -137,24 +169,6 @@ final class QuotaStore {
     func accountCount(for provider: String) -> Int {
         let ids = Set((snapshotsByProvider[provider] ?? []).compactMap(\.accountID))
         return max(ids.count, snapshotsByProvider[provider]?.isEmpty == false ? 1 : 0)
-    }
-
-    /// Provider keys sorted by urgency where any bucket has < 25% remaining.
-    var urgentProviders: [String] {
-        snapshotsByProvider
-            .filter { _, snaps in snaps.contains(where: { isUrgent($0) }) }
-            .keys
-            .sorted { lhs, rhs in
-                pressureScore(for: lhs) < pressureScore(for: rhs)
-            }
-    }
-
-    /// Provider keys whose worst bucket has at least 25% headroom.
-    var healthyProviders: [String] {
-        let urgent = Set(urgentProviders)
-        return snapshotsByProvider.keys
-            .filter { !urgent.contains($0) }
-            .sorted()
     }
 
     func snapshots(for provider: AgentProvider) -> [ProviderQuotaSnapshot] {

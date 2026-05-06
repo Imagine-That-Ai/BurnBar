@@ -3,12 +3,9 @@ import SwiftUI
 // MARK: - Wizard Steps
 
 enum HermesSetupStep: Int, CaseIterable {
-    case welcome
-    case install
-    case configure
-    case start
-    case verify
-    case done
+    case prepare
+    case connect
+    case chat
 
     var progressFraction: Double {
         Double(rawValue) / Double(Self.allCases.count - 1)
@@ -16,12 +13,128 @@ enum HermesSetupStep: Int, CaseIterable {
 
     var stepLabel: String {
         switch self {
-        case .welcome: return "Welcome"
-        case .install: return "Install"
-        case .configure: return "Configure"
-        case .start: return "Start"
-        case .verify: return "Verify"
-        case .done: return "Done"
+        case .prepare: return "1 · Prepare"
+        case .connect: return "2 · Connect"
+        case .chat: return "3 · Chat"
+        }
+    }
+
+    var headline: String {
+        switch self {
+        case .prepare: return "Prepare Hermes"
+        case .connect: return "Connect the gateway"
+        case .chat: return "Start chatting"
+        }
+    }
+}
+
+private struct HermesInventoryImportSetupCard: View {
+    @Bindable var service: HermesInventoryImportService
+
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                    Image(systemName: "books.vertical.fill")
+                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Bring your Hermes history")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("Import existing conversations now, then choose whether iPhone/iPad can read them through OpenBurnBar Cloud or your iCloud Drive archive.")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Text(service.primaryStatusText)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(statusColor)
+
+                if service.hasImportableInventory {
+                    HStack(spacing: DesignSystem.Spacing.lg) {
+                        metric("Chats", "\(service.summary.conversationCount)")
+                        metric("Usage", "\(service.summary.usageEventCount)")
+                        if let latest = service.summary.lastActivityAt {
+                            metric("Latest", latest.formatted(date: .abbreviated, time: .omitted))
+                        }
+                    }
+
+                    Toggle("OpenBurnBar Cloud for iPhone/iPad", isOn: Binding(
+                        get: { service.decision.backupToOpenBurnBarCloud },
+                        set: { service.decision.backupToOpenBurnBarCloud = $0 }
+                    ))
+                    .font(DesignSystem.Typography.caption)
+
+                    Toggle("iCloud Drive archive", isOn: Binding(
+                        get: { service.decision.mirrorToICloud },
+                        set: { service.decision.mirrorToICloud = $0 }
+                    ))
+                    .font(DesignSystem.Typography.caption)
+                }
+
+                HStack {
+                    Button {
+                        Task { await service.scan() }
+                    } label: {
+                        Label("Scan History", systemImage: "magnifyingglass")
+                    }
+                    .disabled(isBusy)
+
+                    Spacer()
+
+                    Button {
+                        Task { await service.importInventory() }
+                    } label: {
+                        Label("Import", systemImage: "square.and.arrow.down")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignSystem.Colors.hermesAureate)
+                    .disabled(isBusy || !service.hasImportableInventory)
+                }
+                .controlSize(.small)
+                .font(DesignSystem.Typography.caption)
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+        .task {
+            if service.phase == .idle {
+                await service.scan()
+            }
+        }
+    }
+
+    private var isBusy: Bool {
+        switch service.phase {
+        case .scanning, .importing:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private var statusColor: Color {
+        switch service.phase {
+        case .failed:
+            return DesignSystem.Colors.error
+        case .complete:
+            return DesignSystem.Colors.success
+        default:
+            return DesignSystem.Colors.textSecondary
+        }
+    }
+
+    private func metric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            Text(label)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
         }
     }
 }
@@ -31,11 +144,12 @@ enum HermesSetupStep: Int, CaseIterable {
 struct HermesSetupWizardView: View {
     let settingsManager: SettingsManager
     let chatController: ChatSessionController?
+    let inventoryImportService: HermesInventoryImportService?
     let onDismiss: () -> Void
 
     @Environment(\.openURL) private var openURL
 
-    @State private var currentStep: HermesSetupStep = .welcome
+    @State private var currentStep: HermesSetupStep = .prepare
     @State private var navigationDirection: Edge = .trailing
 
     // Install step state
@@ -68,13 +182,13 @@ struct HermesSetupWizardView: View {
             // Header
             HStack(spacing: DesignSystem.Spacing.sm) {
                 Button {
-                    if currentStep != .welcome {
+                    if currentStep != .prepare {
                         navigateBack()
                     } else {
                         onDismiss()
                     }
                 } label: {
-                    Image(systemName: currentStep == .welcome ? "xmark" : "chevron.left")
+                    Image(systemName: currentStep == .prepare ? "xmark" : "chevron.left")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                         .frame(width: 24, height: 24)
@@ -120,18 +234,12 @@ struct HermesSetupWizardView: View {
             // Step content
             Group {
                 switch currentStep {
-                case .welcome:
-                    hermesWelcomeStep
-                case .install:
-                    hermesInstallStep
-                case .configure:
-                    hermesConfigureStep
-                case .start:
-                    hermesStartStep
-                case .verify:
-                    hermesVerifyStep
-                case .done:
-                    hermesDoneStep
+                case .prepare:
+                    hermesPrepareStep
+                case .connect:
+                    hermesConnectStep
+                case .chat:
+                    hermesChatStep
                 }
             }
             .padding(DesignSystem.Spacing.xl)
@@ -141,7 +249,7 @@ struct HermesSetupWizardView: View {
                 removal: .move(edge: navigationDirection == .trailing ? .leading : .trailing).combined(with: .opacity)
             ))
         }
-        .frame(width: 520, height: 580)
+        .frame(width: 520, height: 540)
         .background(DesignSystem.Colors.background)
         .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
     }
@@ -176,177 +284,31 @@ struct HermesSetupWizardView: View {
         }
     }
 
-    // MARK: - Step 1: Welcome
+    // MARK: - 1-2-3 Wizard
 
-    private var hermesWelcomeStep: some View {
-        VStack(spacing: DesignSystem.Spacing.xl) {
-            Spacer()
-
-            // Hermes logo
-            Image("HermesLogo")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 88, height: 88)
-                .clipShape(RoundedRectangle(cornerRadius: 88 * 0.2237, style: .continuous))
-
-            VStack(spacing: DesignSystem.Spacing.sm) {
-                Text("Meet Hermes")
-                    .font(DesignSystem.Typography.display)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                Text("Your local AI companion with full context on your coding sessions, token usage, and workflow patterns.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 380)
-            }
-
-            // Feature highlights
-            VStack(spacing: DesignSystem.Spacing.sm) {
-                featureRow(icon: "bubble.left.and.text.bubble.right", text: "Multi-turn conversation with memory")
-                featureRow(icon: "magnifyingglass", text: "Searches your indexed session logs")
-                featureRow(icon: "chart.line.uptrend.xyaxis", text: "Analyzes spend patterns and burn rate")
-                featureRow(icon: "lock.shield", text: "Runs entirely on your Mac \u{2014} nothing leaves")
-            }
-            .padding(.vertical, DesignSystem.Spacing.md)
-
-            Spacer()
-
-            Button {
-                navigateForward()
-            } label: {
-                Text("Get Started")
-                    .font(DesignSystem.Typography.body)
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, DesignSystem.Spacing.sm)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(DesignSystem.Colors.hermesAureate)
-        }
-    }
-
-    private func featureRow(icon: String, text: String) -> some View {
-        HStack(spacing: DesignSystem.Spacing.md) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(DesignSystem.Colors.hermesMercury)
-                .frame(width: 20)
-
-            Text(text)
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, DesignSystem.Spacing.md)
-    }
-
-    // MARK: - Step 2: Install
-
-    private var hermesInstallStep: some View {
+    private var hermesPrepareStep: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                Text("Install Hermes CLI")
-                    .font(DesignSystem.Typography.title)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            simpleStepHeader(
+                number: "1",
+                title: "Prepare Hermes",
+                subtitle: "Install the CLI once and let OpenBurnBar turn on the local API server."
+            )
 
-                Text("Hermes runs as a local gateway. First, let's make sure the CLI is installed.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                    setupStatusRow(
+                        icon: "terminal",
+                        title: "Hermes CLI",
+                        detail: hermesCLIPath ?? "Needed to run the gateway on this Mac.",
+                        isReady: hermesCLIInstalled == true,
+                        isChecking: isCheckingCLI
+                    )
 
-            Spacer()
-
-            if isCheckingCLI {
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Checking for hermes CLI...")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
-            } else if let installed = hermesCLIInstalled, installed {
-                // Already installed
-                GlassCard {
-                    VStack(spacing: DesignSystem.Spacing.md) {
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(DesignSystem.Colors.success)
-                            Text("Hermes CLI found")
-                                .font(DesignSystem.Typography.body)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        }
-
-                        if let path = hermesCLIPath {
-                            HStack(spacing: DesignSystem.Spacing.sm) {
-                                Text(path)
-                                    .font(DesignSystem.Typography.monoSmall)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                                    .textSelection(.enabled)
-                            }
-                            .padding(DesignSystem.Spacing.sm)
-                            .background(
-                                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                                    .fill(DesignSystem.Colors.surface)
-                            )
-                        }
-
-                        Button("Continue to Configuration") {
-                            navigateForward()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(DesignSystem.Colors.hermesAureate)
-                    }
-                    .padding(DesignSystem.Spacing.lg)
-                }
-            } else {
-                // Not installed
-                GlassCard {
-                    VStack(spacing: DesignSystem.Spacing.lg) {
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(DesignSystem.Colors.warning)
-                            Text("Hermes CLI not found")
-                                .font(DesignSystem.Typography.body)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        }
-
-                        Text("Install Hermes, then come back to this wizard.")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-
-                        // Install command
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                            Text("Install command")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
-
-                            HStack {
-                                Text("npm install -g @hermesai/cli")
-                                    .font(DesignSystem.Typography.monoSmall)
-                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                Spacer()
-                                Button {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString("npm install -g @hermesai/cli", forType: .string)
-                                } label: {
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .padding(DesignSystem.Spacing.sm)
-                            .background(
-                                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                                    .fill(DesignSystem.Colors.surface)
-                            )
-                        }
-
+                    if hermesCLIInstalled == false {
+                        commandCopyRow(
+                            label: "Install command",
+                            command: "npm install -g @hermesai/cli"
+                        )
                         HStack(spacing: DesignSystem.Spacing.sm) {
                             Button("Open Terminal") {
                                 if let url = URL(string: "terminal://") {
@@ -358,203 +320,84 @@ struct HermesSetupWizardView: View {
                                 }
                             }
                             .buttonStyle(.bordered)
-                            .font(DesignSystem.Typography.caption)
 
                             Button("Re-check") {
                                 checkCLI()
                             }
                             .buttonStyle(.bordered)
-                            .font(DesignSystem.Typography.caption)
                         }
+                        .font(DesignSystem.Typography.caption)
                     }
-                    .padding(DesignSystem.Spacing.lg)
+
+                    Divider().background(DesignSystem.Colors.border)
+
+                    setupStatusRow(
+                        icon: "switch.2",
+                        title: "API server",
+                        detail: apiServerEnabled == true
+                            ? "~/.hermes/.env includes API_SERVER_ENABLED=true"
+                            : "OpenBurnBar can add API_SERVER_ENABLED=true for you.",
+                        isReady: apiServerEnabled == true,
+                        isChecking: isCheckingConfig
+                    )
+
+                    if apiServerEnabled != true {
+                        Button {
+                            writeEnvFile()
+                        } label: {
+                            Label("Enable API Server", systemImage: "wrench.and.screwdriver")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DesignSystem.Colors.hermesAureate)
+                        .font(DesignSystem.Typography.caption)
+                    }
+
+                    HStack {
+                        Button("Re-check") {
+                            checkCLI()
+                            checkConfig()
+                        }
+                        .buttonStyle(.plain)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                        Spacer()
+
+                        Button("Continue") {
+                            navigateForward()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DesignSystem.Colors.hermesAureate)
+                        .disabled(hermesCLIInstalled != true || apiServerEnabled != true)
+                    }
                 }
+                .padding(DesignSystem.Spacing.lg)
             }
 
             Spacer()
         }
         .onAppear {
             checkCLI()
-        }
-    }
-
-    // MARK: - Step 3: Configure
-
-    private var hermesConfigureStep: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                Text("Configure the gateway")
-                    .font(DesignSystem.Typography.title)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                Text("Hermes needs an env file to enable the API server. Let's set that up.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-
-            if isCheckingConfig {
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Checking configuration...")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
-            } else {
-                GlassCard {
-                    VStack(spacing: DesignSystem.Spacing.lg) {
-                        // Config file path
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                            Text("Configuration file")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
-
-                            HStack {
-                                Text("~/.hermes/.env")
-                                    .font(DesignSystem.Typography.monoSmall)
-                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                Spacer()
-                                Button {
-                                    HermesDataFolder.revealInFinder()
-                                } label: {
-                                    Image(systemName: "folder")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                                }
-                                .buttonStyle(.plain)
-                                .help("Reveal in Finder")
-                            }
-                            .padding(DesignSystem.Spacing.sm)
-                            .background(
-                                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                                    .fill(DesignSystem.Colors.surface)
-                            )
-                        }
-
-                        // API_SERVER_ENABLED status
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            if let enabled = apiServerEnabled {
-                                Image(systemName: enabled ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                    .foregroundStyle(enabled ? DesignSystem.Colors.success : DesignSystem.Colors.error)
-                                Text(enabled ? "API_SERVER_ENABLED is set" : "API_SERVER_ENABLED is not set")
-                                    .font(DesignSystem.Typography.caption)
-                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            } else {
-                                Image(systemName: "dash.circle")
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                                Text("Could not read .env file")
-                                    .font(DesignSystem.Typography.caption)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                            }
-                        }
-
-                        // One-click fix
-                        if apiServerEnabled == false || envFileExists == false {
-                            Button {
-                                writeEnvFile()
-                            } label: {
-                                Label("Enable API Server", systemImage: "wrench.and.screwdriver")
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(DesignSystem.Colors.hermesAureate)
-                            .font(DesignSystem.Typography.caption)
-                        }
-
-                        // Optional API key
-                        if let hasKey = hasAPIServerKey, hasKey {
-                            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                                Text("API key detected")
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-
-                                Text("You have API_SERVER_KEY set. Paste the same value below so OpenBurnBar can connect.")
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                                    .fixedSize(horizontal: false, vertical: true)
-
-                                SecureField("API_SERVER_KEY value", text: $bearerTokenInput)
-                                    .textFieldStyle(.roundedBorder)
-                                    .font(DesignSystem.Typography.monoSmall)
-                            }
-                        }
-
-                        // Continue
-                        if apiServerEnabled == true {
-                            Button("Start the Gateway") {
-                                // Save bearer token if entered
-                                if !bearerTokenInput.isEmpty {
-                                    settingsManager.hermesBearerToken = bearerTokenInput
-                                }
-                                navigateForward()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(DesignSystem.Colors.hermesAureate)
-                        }
-                    }
-                    .padding(DesignSystem.Spacing.lg)
-                }
-            }
-
-            Spacer()
-        }
-        .onAppear {
             checkConfig()
         }
     }
 
-    // MARK: - Step 4: Start Gateway
-
-    private var hermesStartStep: some View {
+    private var hermesConnectStep: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                Text("Start the Hermes gateway")
-                    .font(DesignSystem.Typography.title)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                Text("The gateway serves Hermes as an API on port 8642. Open a Terminal and run the command below, then wait for the status to turn green.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
+            simpleStepHeader(
+                number: "2",
+                title: "Connect the gateway",
+                subtitle: "Run Hermes locally, then optionally make this Mac the relay host for iPhone and iPad."
+            )
 
             GlassCard {
-                VStack(spacing: DesignSystem.Spacing.lg) {
-                    // Command
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                        Text("Run in Terminal")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                    commandCopyRow(
+                        label: "Run in Terminal",
+                        command: "hermes gateway run"
+                    )
 
-                        HStack {
-                            Text("hermes gateway run")
-                                .font(DesignSystem.Typography.monoSmall)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            Spacer()
-                            Button {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString("hermes gateway run", forType: .string)
-                            } label: {
-                                Image(systemName: "doc.on.doc")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(DesignSystem.Spacing.sm)
-                        .background(
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                                .fill(DesignSystem.Colors.surface)
-                        )
-                    }
-
-                    // Live status
                     HStack(spacing: DesignSystem.Spacing.md) {
-                        // Animated status dot
                         ZStack {
                             Circle()
                                 .fill(statusDotColor)
@@ -564,10 +407,8 @@ struct HermesSetupWizardView: View {
                                 Circle()
                                     .stroke(statusDotColor.opacity(0.4), lineWidth: 2)
                                     .frame(width: 20, height: 20)
-                                    .scaleEffect(probePulseScale)
                             }
                         }
-                        .animation(DesignSystem.Animation.standard, value: isGatewayRunning)
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(statusText)
@@ -592,33 +433,41 @@ struct HermesSetupWizardView: View {
                         .foregroundStyle(DesignSystem.Colors.hermesAureate)
                     }
 
-                    if !isGatewayRunning && probeAttempts > 2 {
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Image(systemName: "lightbulb.max")
-                                .font(.system(size: 11))
-                                .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                            Text("Make sure you ran the command and the gateway says it's listening on port 8642. This check retries automatically.")
+                    Toggle(isOn: Binding(
+                        get: { settingsManager.hermesRemoteRelayEnabled },
+                        set: { settingsManager.hermesRemoteRelayEnabled = $0 }
+                    )) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Relay to iPhone and iPad")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            Text("When signed in, this Mac advertises a private Remote Relay host for your mobile devices.")
                                 .font(DesignSystem.Typography.tiny)
                                 .foregroundStyle(DesignSystem.Colors.textMuted)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(DesignSystem.Spacing.sm)
-                        .background(
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                                .fill(DesignSystem.Colors.hermesAureate.opacity(0.08))
-                        )
+                    }
+                    .toggleStyle(.switch)
+
+                    HStack {
+                        Button("Back") {
+                            navigateBack()
+                        }
+                        .buttonStyle(.plain)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                        Spacer()
+
+                        Button("Continue") {
+                            navigateForward()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DesignSystem.Colors.hermesAureate)
+                        .disabled(!isGatewayRunning)
                     }
                 }
                 .padding(DesignSystem.Spacing.lg)
-            }
-
-            if isGatewayRunning {
-                Button("Verify Connection") {
-                    navigateForward()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(DesignSystem.Colors.hermesAureate)
-                .frame(maxWidth: .infinity)
             }
 
             Spacer()
@@ -631,140 +480,41 @@ struct HermesSetupWizardView: View {
         }
     }
 
-    private var statusDotColor: Color {
-        if isGatewayRunning { return DesignSystem.Colors.success }
-        if isProbingGateway { return DesignSystem.Colors.hermesAureate }
-        return DesignSystem.Colors.textMuted
-    }
-
-    private var statusText: String {
-        if isGatewayRunning { return "Gateway is running" }
-        if isProbingGateway { return "Probing \(settingsManager.hermesGatewayBaseURL)…" }
-        if probeAttempts > 0 { return "Not reachable yet" }
-        return "Waiting for gateway"
-    }
-
-    // MARK: - Step 5: Verify
-
-    private var hermesVerifyStep: some View {
+    private var hermesChatStep: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                Text("Verify Hermes works")
-                    .font(DesignSystem.Typography.title)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            simpleStepHeader(
+                number: "3",
+                title: "Start chatting",
+                subtitle: "Send one tiny test prompt. If Hermes answers, OpenBurnBar will enable it as a chat engine."
+            )
 
-                Text("Let's send a test message to confirm everything is wired up.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-
-            if isVerifying {
-                GlassCard {
-                    VStack(spacing: DesignSystem.Spacing.lg) {
-                        HermesThinkingView()
-                            .frame(height: 32)
-
-                        Text("Sending test message to Hermes...")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    }
-                    .padding(DesignSystem.Spacing.lg)
-                    .frame(maxWidth: .infinity)
-                }
-            } else if let response = verificationResponse {
-                GlassCard {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(DesignSystem.Colors.success)
-                            Text("Hermes responded")
-                                .font(DesignSystem.Typography.body)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        }
-
-                        // Response bubble
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Text("\u{263F}")
-                                .font(.system(size: 14))
-                                .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                            Text(response)
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                    if isVerifying {
+                        HStack(spacing: DesignSystem.Spacing.md) {
+                            HermesThinkingView()
+                                .frame(width: 48, height: 28)
+                            Text("Asking Hermes to confirm it is ready…")
                                 .font(DesignSystem.Typography.caption)
                                 .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(DesignSystem.Spacing.sm)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                                .strokeBorder(DesignSystem.Colors.mercuryGradient, lineWidth: 1)
+                    } else if let response = verificationResponse {
+                        setupStatusRow(
+                            icon: "checkmark.seal.fill",
+                            title: "Hermes answered",
+                            detail: response,
+                            isReady: true,
+                            isChecking: false
                         )
-                        .background(
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                                .fill(DesignSystem.Colors.surfaceElevated)
+                    } else if let error = verificationError {
+                        setupStatusRow(
+                            icon: "exclamationmark.triangle.fill",
+                            title: "Test failed",
+                            detail: error,
+                            isReady: false,
+                            isChecking: false
                         )
-
-                        Button("Continue") {
-                            navigateForward()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(DesignSystem.Colors.hermesAureate)
-                        .frame(maxWidth: .infinity)
-                    }
-                    .padding(DesignSystem.Spacing.lg)
-                }
-            } else if let error = verificationError {
-                GlassCard {
-                    VStack(spacing: DesignSystem.Spacing.md) {
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(DesignSystem.Colors.error)
-                            Text("Verification failed")
-                                .font(DesignSystem.Typography.body)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        }
-
-                        Text(error)
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Button("Go back and re-check gateway") {
-                                verificationError = nil
-                                navigateBack()
-                            }
-                            .buttonStyle(.bordered)
-                            .font(DesignSystem.Typography.caption)
-
-                            Button("Try again") {
-                                verificationError = nil
-                                runVerification()
-                            }
-                            .buttonStyle(.bordered)
-                            .font(DesignSystem.Typography.caption)
-                        }
-                    }
-                    .padding(DesignSystem.Spacing.lg)
-                }
-            } else {
-                // Not yet verified - show the test prompt
-                GlassCard {
-                    VStack(spacing: DesignSystem.Spacing.lg) {
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Text("\u{263F}")
-                                .font(.system(size: 14))
-                                .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                            Text("Say hello to Hermes")
-                                .font(DesignSystem.Typography.body)
-                                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        }
-
-                        // Preview of the test message
+                    } else {
                         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                             Text("Test prompt")
                                 .font(DesignSystem.Typography.tiny)
@@ -780,109 +530,166 @@ struct HermesSetupWizardView: View {
                                         .fill(DesignSystem.Colors.surface)
                                 )
                         }
-
-                        Button("Send Test Message") {
-                            runVerification()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(DesignSystem.Colors.hermesAureate)
-                        .frame(maxWidth: .infinity)
                     }
-                    .padding(DesignSystem.Spacing.lg)
+
+                    HStack {
+                        Button("Back") {
+                            navigateBack()
+                        }
+                        .buttonStyle(.plain)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                        Spacer()
+
+                        if verificationResponse == nil {
+                            Button(verificationError == nil ? "Send Test Message" : "Try Again") {
+                                runVerification()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(DesignSystem.Colors.hermesAureate)
+                            .disabled(isVerifying || !isGatewayRunning)
+                        } else {
+                            Button("Start Using Hermes") {
+                                completeHermesSetup()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(DesignSystem.Colors.hermesAureate)
+                        }
+                    }
+                }
+                .padding(DesignSystem.Spacing.lg)
+            }
+
+            if let inventoryImportService {
+                HermesInventoryImportSetupCard(service: inventoryImportService)
+            }
+
+            Spacer()
+        }
+    }
+
+    private func simpleStepHeader(number: String, title: String, subtitle: String) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+            ZStack {
+                Circle()
+                    .fill(DesignSystem.Colors.mercuryGradient)
+                    .frame(width: 44, height: 44)
+                Text(number)
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(hex: "151210"))
+            }
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text(title)
+                    .font(DesignSystem.Typography.title)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(subtitle)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func setupStatusRow(
+        icon: String,
+        title: String,
+        detail: String,
+        isReady: Bool,
+        isChecking: Bool
+    ) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+            ZStack {
+                Circle()
+                    .fill(statusBackgroundColor(isReady: isReady, isChecking: isChecking))
+                    .frame(width: 34, height: 34)
+                if isChecking {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: isReady ? "checkmark" : icon)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(isReady ? DesignSystem.Colors.success : DesignSystem.Colors.hermesAureate)
                 }
             }
 
-            Spacer()
-        }
-    }
-
-    // MARK: - Step 6: Done
-
-    private var hermesDoneStep: some View {
-        VStack(spacing: DesignSystem.Spacing.xl) {
-            Spacer()
-
-            // Animated success
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                DesignSystem.Colors.success.opacity(0.15),
-                                DesignSystem.Colors.success.opacity(0.05)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 100, height: 100)
-
-                Text("\u{263F}")
-                    .font(.system(size: 44, weight: .light, design: .rounded))
-                    .foregroundStyle(DesignSystem.Colors.mercuryGradient)
-            }
-
-            VStack(spacing: DesignSystem.Spacing.sm) {
-                Text("Hermes is ready")
-                    .font(DesignSystem.Typography.display)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                Text("Your local AI companion is running and connected. Start chatting from the dashboard or menu bar.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 380)
-            }
-
-            // Quick tips
-            VStack(spacing: DesignSystem.Spacing.sm) {
-                tipRow(text: "Open the dashboard and click the chat panel to start a conversation")
-                tipRow(text: "Hermes has full context on your sessions and usage data")
-                tipRow(text: "You can always reconfigure in Settings \u{2192} Chat engines")
-            }
-            .padding(.vertical, DesignSystem.Spacing.md)
-
-            Spacer()
-
-            Button {
-                // Enable Hermes backend
-                var backends = Set(settingsManager.enabledChatBackends)
-                backends.insert(.hermes)
-                settingsManager.setEnabledChatBackends(ChatBackendID.allCases.filter { backends.contains($0) })
-                chatController?.setChatBackend(.hermes)
-                settingsManager.chatBackendOnboardingCompleted = true
-
-                // Install burnbar-operator Hermes skill (symlink from repo)
-                installHermesSkillIfNeeded()
-
-                onDismiss()
-            } label: {
-                Text("Start Using Hermes")
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
                     .font(DesignSystem.Typography.body)
                     .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, DesignSystem.Spacing.sm)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(detail)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(DesignSystem.Colors.hermesAureate)
         }
     }
 
-    private func tipRow(text: String) -> some View {
-        HStack(spacing: DesignSystem.Spacing.md) {
-            Image(systemName: "checkmark.circle")
-                .font(.system(size: 10))
-                .foregroundStyle(DesignSystem.Colors.success)
-            Text(text)
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
+    private func commandCopyRow(label: String, command: String) -> some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text(label)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            HStack {
+                Text(command)
+                    .font(DesignSystem.Typography.monoSmall)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .textSelection(.enabled)
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(command, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                .buttonStyle(.plain)
+                .help("Copy command")
+            }
+            .padding(DesignSystem.Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(DesignSystem.Colors.surface)
+            )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, DesignSystem.Spacing.md)
+    }
+
+    private func statusBackgroundColor(isReady: Bool, isChecking: Bool) -> Color {
+        if isReady { return DesignSystem.Colors.success.opacity(0.12) }
+        if isChecking { return DesignSystem.Colors.hermesAureate.opacity(0.10) }
+        return DesignSystem.Colors.surface
+    }
+
+    private var statusDotColor: Color {
+        if isGatewayRunning { return DesignSystem.Colors.success }
+        if isProbingGateway { return DesignSystem.Colors.hermesAureate }
+        return DesignSystem.Colors.textMuted
+    }
+
+    private var statusText: String {
+        if isGatewayRunning { return "Gateway is running" }
+        if isProbingGateway { return "Probing \(settingsManager.hermesGatewayBaseURL)…" }
+        if probeAttempts > 0 { return "Not reachable yet" }
+        return "Waiting for gateway"
     }
 
     // MARK: - Actions
+
+    private func completeHermesSetup() {
+        var backends = Set(settingsManager.enabledChatBackends)
+        backends.insert(.hermes)
+        settingsManager.setEnabledChatBackends(ChatBackendID.allCases.filter { backends.contains($0) })
+        chatController?.setChatBackend(.hermes)
+        settingsManager.chatBackendOnboardingCompleted = true
+        settingsManager.hermesSetupWizardCompleted = true
+        installHermesSkillIfNeeded()
+        onDismiss()
+    }
 
     private func checkCLI() {
         isCheckingCLI = true

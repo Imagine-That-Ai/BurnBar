@@ -24,7 +24,7 @@ enum OllamaCloudScraper {
 
     struct CloudUsage: Sendable {
         let planName: String?
-        let sessionUsedPercent: Double
+        let sessionUsedPercent: Double?
         let weeklyUsedPercent: Double?
         let sessionResetsAt: Date?
         let weeklyResetsAt: Date?
@@ -104,7 +104,7 @@ enum OllamaCloudScraper {
         let resetsAt: Date?
     }
 
-    private static func parseCloudUsage(html: String) -> CloudUsage {
+    static func parseCloudUsage(html: String) -> CloudUsage {
         let planName = parsePlanName(html)
         let email = parseAccountEmail(html)
         let session = parseSessionUsage(html)
@@ -112,7 +112,7 @@ enum OllamaCloudScraper {
 
         return CloudUsage(
             planName: planName,
-            sessionUsedPercent: session?.usedPercent ?? 0,
+            sessionUsedPercent: session?.usedPercent,
             weeklyUsedPercent: weekly?.usedPercent,
             sessionResetsAt: session?.resetsAt,
             weeklyResetsAt: weekly?.resetsAt,
@@ -134,7 +134,7 @@ enum OllamaCloudScraper {
     }
 
     private static func parseSessionUsage(_ html: String) -> UsageBlock? {
-        for label in ["Session usage", "Hourly usage"] {
+        for label in ["5-hour usage", "5h usage", "Session usage", "Hourly usage"] {
             if let block = parseUsageBlock(label: label, html: html) { return block }
         }
         return nil
@@ -147,7 +147,11 @@ enum OllamaCloudScraper {
     private static func parseUsageBlock(label: String, html: String) -> UsageBlock? {
         guard let labelRange = html.range(of: label) else { return nil }
         let tail = String(html[labelRange.upperBound...])
-        let window = String(tail.prefix(800))
+        let nextLabels = ["5-hour usage", "5h usage", "Session usage", "Hourly usage", "Weekly usage"]
+            .filter { $0 != label }
+        let nextLabelStart = nextLabels.compactMap { tail.range(of: $0)?.lowerBound }.min()
+        let scopedTail = nextLabelStart.map { String(tail[..<$0]) } ?? tail
+        let window = String(scopedTail.prefix(800))
         guard let usedPercent = parsePercent(in: window) else { return nil }
         return UsageBlock(usedPercent: usedPercent, resetsAt: parseISODate(in: window))
     }

@@ -15,6 +15,7 @@ final class ProviderConnectionStore {
     private(set) var connections: [ProviderConnectionDoc] = []
     private(set) var quotaSnapshots: [ProviderQuotaSnapshot] = []
     private(set) var isLoading = false
+    private(set) var accountsByProvider: [(providerID: ProviderID, accounts: [ProviderAccountDoc])] = []
 
     init(
         functions: FunctionsRepository = FunctionsRepository(),
@@ -28,9 +29,9 @@ final class ProviderConnectionStore {
         if AppStoreScreenshotMode.isEnabled {
             isLoading = false
             error = nil
-            accounts = AppStoreScreenshotData.providerAccounts
+            applyAccounts(AppStoreScreenshotData.providerAccounts)
             connections = AppStoreScreenshotData.providerConnections
-            quotaSnapshots = AppStoreScreenshotData.quotaSnapshots
+            quotaSnapshots = normalizeQuotaSnapshots(AppStoreScreenshotData.quotaSnapshots)
             return
         }
         isLoading = true
@@ -41,12 +42,12 @@ final class ProviderConnectionStore {
             async let accountsTask = firestore.fetchProviderAccounts()
             async let connectionsTask = firestore.fetchProviderConnections()
             async let snapshotsTask = firestore.fetchQuotaSnapshots()
-            accounts = try await accountsTask
+            applyAccounts(try await accountsTask)
             connections = try await connectionsTask
             // Quota snapshots are best-effort — they only enrich the routing
             // cockpit and account row hints. Failing here must not break the
             // connections list.
-            quotaSnapshots = (try? await snapshotsTask) ?? quotaSnapshots
+            quotaSnapshots = (try? await snapshotsTask).map(normalizeQuotaSnapshots) ?? quotaSnapshots
         } catch {
             self.error = error.localizedDescription
         }
@@ -58,6 +59,10 @@ final class ProviderConnectionStore {
             accounts: accounts,
             snapshots: quotaSnapshots
         )
+    }
+
+    private func normalizeQuotaSnapshots(_ snapshots: [ProviderQuotaSnapshot]) -> [ProviderQuotaSnapshot] {
+        snapshots.compactMap { $0.filteringToDisplayableQuotaSignal() }
     }
 
     func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc? {
@@ -205,8 +210,9 @@ final class ProviderConnectionStore {
         }
     }
 
-    var accountsByProvider: [(providerID: ProviderID, accounts: [ProviderAccountDoc])] {
-        Dictionary(grouping: accounts, by: \.providerID)
+    private func applyAccounts(_ newAccounts: [ProviderAccountDoc]) {
+        accounts = newAccounts
+        accountsByProvider = Dictionary(grouping: newAccounts, by: \.providerID)
             .map { providerID, accounts in
                 (
                     providerID,

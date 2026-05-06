@@ -5,6 +5,28 @@ import SwiftUI
 /// Settings view for configuring chat backends and HTTP gateways
 struct ChatGatewaySettingsView: View {
     @Bindable var settingsManager: SettingsManager
+    private let dataStore: DataStore
+    private let cloudSyncService: CloudSyncService?
+    private let iCloudSessionMirrorService: ICloudSessionMirrorService?
+    @State private var inventoryImportService: HermesInventoryImportService
+
+    init(
+        settingsManager: SettingsManager,
+        dataStore: DataStore,
+        cloudSyncService: CloudSyncService? = nil,
+        iCloudSessionMirrorService: ICloudSessionMirrorService? = nil
+    ) {
+        self._settingsManager = Bindable(settingsManager)
+        self.dataStore = dataStore
+        self.cloudSyncService = cloudSyncService
+        self.iCloudSessionMirrorService = iCloudSessionMirrorService
+        self._inventoryImportService = State(initialValue: HermesInventoryImportService(
+            dataStore: dataStore,
+            settingsManager: settingsManager,
+            cloudSyncService: cloudSyncService,
+            iCloudMirrorService: iCloudSessionMirrorService
+        ))
+    }
 
     var body: some View {
         GlassCard {
@@ -67,12 +89,21 @@ struct ChatGatewaySettingsView: View {
                 Button("Guided Hermes setup") {
                     WindowManager.shared.openHermesSetupWizard(
                         settingsManager: settingsManager,
-                        chatController: nil
+                        chatController: nil,
+                        dataStore: dataStore,
+                        cloudSyncService: cloudSyncService,
+                        iCloudSessionMirrorService: iCloudSessionMirrorService
                     )
                 }
                 .buttonStyle(.bordered)
                 .tint(DesignSystem.Colors.hermesAureate)
                 .font(DesignSystem.Typography.caption)
+
+                hermesInventoryImportCard
+
+                Toggle("Hermes setup completed", isOn: $settingsManager.hermesSetupWizardCompleted)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
 
                 Text("Leave the field below empty unless you set API_SERVER_KEY in ~/.hermes/.env — then paste the same value here so OpenBurnBar can connect.")
                     .font(DesignSystem.Typography.caption)
@@ -101,6 +132,111 @@ struct ChatGatewaySettingsView: View {
                 Toggle("Chat setup completed", isOn: $settingsManager.chatBackendOnboardingCompleted)
             }
             .padding(DesignSystem.Spacing.lg)
+        }
+    }
+
+    private var hermesInventoryImportCard: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "tray.and.arrow.down.fill")
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Import existing Hermes chats")
+                        .font(DesignSystem.Typography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("Bring your pre-OpenBurnBar Hermes conversations into the local index, then optionally back them up so iPhone and iPad can read them.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Text(inventoryImportService.primaryStatusText)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(statusColor)
+
+            if inventoryImportService.hasImportableInventory {
+                HStack(spacing: DesignSystem.Spacing.md) {
+                    metric("Chats", "\(inventoryImportService.summary.conversationCount)")
+                    metric("Usage rows", "\(inventoryImportService.summary.usageEventCount)")
+                    if let last = inventoryImportService.summary.lastActivityAt {
+                        metric("Latest", last.formatted(date: .abbreviated, time: .omitted))
+                    }
+                }
+
+                Toggle("Back up to OpenBurnBar Cloud for iPhone/iPad", isOn: Binding(
+                    get: { inventoryImportService.decision.backupToOpenBurnBarCloud },
+                    set: { inventoryImportService.decision.backupToOpenBurnBarCloud = $0 }
+                ))
+                .font(DesignSystem.Typography.caption)
+
+                Toggle("Mirror raw Hermes files to iCloud Drive", isOn: Binding(
+                    get: { inventoryImportService.decision.mirrorToICloud },
+                    set: { inventoryImportService.decision.mirrorToICloud = $0 }
+                ))
+                .font(DesignSystem.Typography.caption)
+            }
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Button {
+                    Task { await inventoryImportService.scan() }
+                } label: {
+                    Label("Scan", systemImage: "magnifyingglass")
+                }
+                .disabled(inventoryImportServiceIsBusy)
+
+                Button {
+                    Task { await inventoryImportService.importInventory() }
+                } label: {
+                    Label("Import", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(inventoryImportServiceIsBusy || !inventoryImportService.hasImportableInventory)
+            }
+            .controlSize(.small)
+            .font(DesignSystem.Typography.caption)
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.7))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.8), lineWidth: 1)
+        )
+    }
+
+    private var inventoryImportServiceIsBusy: Bool {
+        switch inventoryImportService.phase {
+        case .scanning, .importing:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private var statusColor: Color {
+        switch inventoryImportService.phase {
+        case .failed:
+            return DesignSystem.Colors.error
+        case .complete:
+            return DesignSystem.Colors.success
+        default:
+            return DesignSystem.Colors.textSecondary
+        }
+    }
+
+    private func metric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            Text(label)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
         }
     }
 }

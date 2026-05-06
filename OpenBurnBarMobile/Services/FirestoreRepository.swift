@@ -421,6 +421,35 @@ final class FirestoreRepository {
 
     // MARK: - Stream Detail
 
+    func fetchHermesCloudLibrarySessions(limit: Int = 120) async throws -> [HermesCloudLibraryManifest] {
+        let uid = try uid()
+        let snapshot = try await db
+            .collection("users/\(uid)/session_logs")
+            .whereField("provider", isEqualTo: AgentProvider.hermes.rawValue)
+            .order(by: "updatedAt", descending: true)
+            .limit(to: limit)
+            .getDocuments()
+
+        return snapshot.documents.compactMap { doc -> HermesCloudLibraryManifest? in
+            let data = doc.data()
+            let title = data["inferredTaskTitle"] as? String
+                ?? data["title"] as? String
+                ?? data["sessionId"] as? String
+                ?? "Hermes conversation"
+            return HermesCloudLibraryManifest(
+                id: data["id"] as? String ?? doc.documentID,
+                documentID: doc.documentID,
+                sessionId: data["sessionId"] as? String ?? doc.documentID,
+                title: title,
+                projectName: data["projectName"] as? String ?? "",
+                messageCount: data["messageCount"] as? Int ?? 0,
+                updatedAt: (data["updatedAt"] as? Timestamp)?.dateValue(),
+                startTime: (data["startTime"] as? Timestamp)?.dateValue(),
+                endTime: (data["endTime"] as? Timestamp)?.dateValue()
+            )
+        }
+    }
+
     func fetchSessionLogManifest(for usage: TokenUsage) async throws -> StreamSessionLogManifest? {
         let uid = try uid()
         let deviceId = usage.sourceDeviceId

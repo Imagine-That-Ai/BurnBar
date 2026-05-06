@@ -1,0 +1,1003 @@
+[debug] [2026-05-06T06:23:18.124Z] ----------------------------------------------------------------------
+[debug] [2026-05-06T06:23:18.131Z] Command:       /Users/albertonunez/.nvm/versions/node/v20.20.2/bin/node /Users/albertonunez/.nvm/versions/node/v20.20.2/bin/firebase emulators:start --only functions --project demo-openburnbar --config firebase.json --import /Users/albertonunez/Documents/Windsurf/BurnBar/qa-results/qa-20260506-005629/nonexistent-import --export-on-exit /Users/albertonunez/Documents/Windsurf/BurnBar/qa-results/qa-20260506-005629/emulator-export --inspect-functions=false --debug
+[debug] [2026-05-06T06:23:18.131Z] CLI Version:   15.16.0
+[debug] [2026-05-06T06:23:18.131Z] Platform:      darwin
+[debug] [2026-05-06T06:23:18.131Z] Node Version:  v20.20.2
+[debug] [2026-05-06T06:23:18.131Z] Time:          Wed May 06 2026 01:23:18 GMT-0500 (Central Daylight Time)
+[debug] [2026-05-06T06:23:18.131Z] ----------------------------------------------------------------------
+[debug]
+[info] i  emulators: Starting emulators: functions {"metadata":{"emulator":{"name":"hub"},"message":"Starting emulators: functions"}}
+[info] i  emulators: Detected demo project ID "demo-openburnbar", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail. {"metadata":{"emulator":{"name":"hub"},"message":"Detected demo project ID \"demo-openburnbar\", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail."}}
+[debug] [2026-05-06T06:23:21.360Z] [logging] Logging Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-05-06T06:23:21.365Z] assigned listening specs for emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}]},"metadata":{"message":"assigned listening specs for emulators"}}
+[debug] [2026-05-06T06:23:21.372Z] Write emulator hub locator at /var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/hub-demo-openburnbar.json
+[debug] [2026-05-06T06:23:21.402Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: . If you are not running the Firebase SQL Connect VSCode extension, this is expected and not an issue.
+[info] i  emulators: Shutting down emulators. {"metadata":{"emulator":{"name":"hub"},"message":"Shutting down emulators."}}
+[info] i  hub: Stopping emulator hub {"metadata":{"emulator":{"name":"hub"},"message":"Stopping emulator hub"}}
+[debug] [2026-05-06T06:23:21.420Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: . If you are not running the Firebase SQL Connect VSCode extension, this is expected and not an issue.
+[error]
+[error] Error: Directory "/Users/albertonunez/Documents/Windsurf/BurnBar/qa-results/qa-20260506-005629/nonexistent-import" does not exist.
+[debug] [2026-05-06T06:23:21.703Z] Found emulator hub locator: {"version":"15.16.0","origins":["http://127.0.0.1:4400","http://[::1]:4400"],"pid":91309}
+[debug] [2026-05-06T06:23:55.613Z] ----------------------------------------------------------------------
+[debug] [2026-05-06T06:23:55.615Z] Command:       /Users/albertonunez/.nvm/versions/node/v20.20.2/bin/node /Users/albertonunez/.nvm/versions/node/v20.20.2/bin/firebase emulators:start --only functions --project demo-openburnbar --config firebase.json --inspect-functions=false --debug
+[debug] [2026-05-06T06:23:55.615Z] CLI Version:   15.16.0
+[debug] [2026-05-06T06:23:55.615Z] Platform:      darwin
+[debug] [2026-05-06T06:23:55.616Z] Node Version:  v20.20.2
+[debug] [2026-05-06T06:23:55.616Z] Time:          Wed May 06 2026 01:23:55 GMT-0500 (Central Daylight Time)
+[debug] [2026-05-06T06:23:55.616Z] ----------------------------------------------------------------------
+[debug]
+[info] i  emulators: Starting emulators: functions {"metadata":{"emulator":{"name":"hub"},"message":"Starting emulators: functions"}}
+[info] i  emulators: Detected demo project ID "demo-openburnbar", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail. {"metadata":{"emulator":{"name":"hub"},"message":"Detected demo project ID \"demo-openburnbar\", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail."}}
+[debug] [2026-05-06T06:23:56.979Z] [logging] Logging Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-05-06T06:23:56.979Z] assigned listening specs for emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}]},"metadata":{"message":"assigned listening specs for emulators"}}
+[debug] [2026-05-06T06:23:56.981Z] Write emulator hub locator at /var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/hub-demo-openburnbar.json
+[debug] [2026-05-06T06:23:57.334Z] [functions] Functions Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-05-06T06:23:57.334Z] [eventarc] Eventarc Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-05-06T06:23:57.334Z] [tasks] Cloud Tasks Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-05-06T06:23:57.334Z] late-assigned ports for functions and eventarc emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"functions":[{"address":"127.0.0.1","family":"IPv4","port":5001}],"eventarc":[{"address":"127.0.0.1","family":"IPv4","port":9299}],"tasks":[{"address":"127.0.0.1","family":"IPv4","port":9499}]},"metadata":{"message":"late-assigned ports for functions and eventarc emulators"}}
+[debug] [2026-05-06T06:23:57.339Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: . If you are not running the Firebase SQL Connect VSCode extension, this is expected and not an issue.
+[info] i  emulators: Shutting down emulators. {"metadata":{"emulator":{"name":"hub"},"message":"Shutting down emulators."}}
+[info] i  hub: Stopping emulator hub {"metadata":{"emulator":{"name":"hub"},"message":"Stopping emulator hub"}}
+[debug] [2026-05-06T06:23:57.341Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: . If you are not running the Firebase SQL Connect VSCode extension, this is expected and not an issue.
+[error]
+[error] Error: "false" is not a valid port for debugging, please pass an integer between 1024 and 65535 or true for a dynamic port.
+[debug] [2026-05-06T06:23:57.602Z] Found emulator hub locator: {"version":"15.16.0","origins":["http://127.0.0.1:4400","http://[::1]:4400"],"pid":97649}
+[debug] [2026-05-06T06:24:38.704Z] ----------------------------------------------------------------------
+[debug] [2026-05-06T06:24:38.705Z] Command:       /Users/albertonunez/.nvm/versions/node/v20.20.2/bin/node /Users/albertonunez/.nvm/versions/node/v20.20.2/bin/firebase emulators:start --only functions --project demo-openburnbar --config firebase.json --debug
+[debug] [2026-05-06T06:24:38.705Z] CLI Version:   15.16.0
+[debug] [2026-05-06T06:24:38.706Z] Platform:      darwin
+[debug] [2026-05-06T06:24:38.706Z] Node Version:  v20.20.2
+[debug] [2026-05-06T06:24:38.706Z] Time:          Wed May 06 2026 01:24:38 GMT-0500 (Central Daylight Time)
+[debug] [2026-05-06T06:24:38.706Z] ----------------------------------------------------------------------
+[debug]
+[info] i  emulators: Starting emulators: functions {"metadata":{"emulator":{"name":"hub"},"message":"Starting emulators: functions"}}
+[info] i  emulators: Detected demo project ID "demo-openburnbar", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail. {"metadata":{"emulator":{"name":"hub"},"message":"Detected demo project ID \"demo-openburnbar\", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail."}}
+[debug] [2026-05-06T06:24:39.613Z] [logging] Logging Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-05-06T06:24:39.613Z] assigned listening specs for emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}]},"metadata":{"message":"assigned listening specs for emulators"}}
+[debug] [2026-05-06T06:24:39.615Z] Write emulator hub locator at /var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/hub-demo-openburnbar.json
+[debug] [2026-05-06T06:24:39.961Z] [functions] Functions Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-05-06T06:24:39.962Z] [eventarc] Eventarc Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-05-06T06:24:39.962Z] [tasks] Cloud Tasks Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-05-06T06:24:39.962Z] late-assigned ports for functions and eventarc emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"functions":[{"address":"127.0.0.1","family":"IPv4","port":5001}],"eventarc":[{"address":"127.0.0.1","family":"IPv4","port":9299}],"tasks":[{"address":"127.0.0.1","family":"IPv4","port":9499}]},"metadata":{"message":"late-assigned ports for functions and eventarc emulators"}}
+[warn] ⚠  functions: Application Default Credentials detected. Non-emulated services will access production using these credentials. Be careful! {"metadata":{"emulator":{"name":"functions"},"message":"Application Default Credentials detected. Non-emulated services will access production using these credentials. Be careful!"}}
+[info] i  functions: Watching "/Users/albertonunez/Documents/Windsurf/BurnBar/functions" for Cloud Functions... {"metadata":{"emulator":{"name":"functions"},"message":"Watching \"/Users/albertonunez/Documents/Windsurf/BurnBar/functions\" for Cloud Functions..."}}
+[debug] [2026-05-06T06:24:40.637Z] Validating nodejs source
+[warn] ⚠  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory.
+[warn] ⚠  functions: Please note that there will be breaking changes when you upgrade.
+[debug] [2026-05-06T06:24:41.412Z] > [functions] package.json contents: {
+  "name": "openburnbar-functions",
+  "version": "1.0.0",
+  "description": "OpenBurnBar Cloud Functions v2 backend — provider credential vault, quota refresh, and usage rollups.",
+  "engines": {
+    "node": "22"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc && node scripts/copy-certs.mjs",
+    "build:watch": "tsc --watch",
+    "test:rollups": "npm run build && node scripts/test-rollups.mjs",
+    "test:appstore": "npm run build && node scripts/test-appstore.mjs",
+    "test:hermes": "npm run build && node scripts/test-hermes.mjs",
+    "test": "npm run test:rollups && npm run test:appstore && npm run test:hermes",
+    "lint": "eslint src/**/*.ts",
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "@apple/app-store-server-library": "^3.0.0",
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^6.0.0",
+    "googleapis": "^148.0.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0"
+  },
+  "private": true
+}
+[debug] [2026-05-06T06:24:41.412Z] Building nodejs source
+[debug] [2026-05-06T06:24:41.413Z] Failed to find version of module node: reached end of search path /Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules
+[warn] ⚠  functions: Your requested "node" version "22" doesn't match your global version "20". Using node@20 from host.
+[info] i  functions: Loaded environment variables from .env.
+[debug] [2026-05-06T06:24:41.414Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-05-06T06:24:41.417Z] Found firebase-functions binary at '/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/.bin/firebase-functions'
+[info] Serving at port 8804
+
+[debug] [2026-05-06T06:24:42.444Z] Got response from /__/functions.yaml {"endpoints":{"connectProviderAccount":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"connectProviderAccount"},"connectProviderCredential":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"connectProviderCredential"},"connectHostedQuotaAccount":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"connectHostedQuotaAccount"},"connectSelfHostedQuotaAccount":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"connectSelfHostedQuotaAccount"},"uploadProviderQuotaSnapshot":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"uploadProviderQuotaSnapshot"},"deleteHostedQuotaCredentials":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"deleteHostedQuotaCredentials"},"updateProviderAccount":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"updateProviderAccount"},"deleteProviderAccount":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"deleteProviderAccount"},"deleteProviderCredential":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"deleteProviderCredential"},"refreshProviderAccountQuota":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"HOSTED_QUOTA_RUNNER_TOKEN"}],"labels":{},"callableTrigger":{},"entryPoint":"refreshProviderAccountQuota"},"refreshProviderQuota":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"HOSTED_QUOTA_RUNNER_TOKEN"}],"labels":{},"callableTrigger":{},"entryPoint":"refreshProviderQuota"},"createHermesPairing":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"createHermesPairing"},"completeHermesPairing":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"completeHermesPairing"},"listHermesConnections":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"listHermesConnections"},"revokeHermesConnection":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"revokeHermesConnection"},"updateHermesConnectionStatus":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"updateHermesConnectionStatus"},"searchStreams":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"searchStreams"},"rebuildUsageRollups":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":10,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"rebuildUsageRollups"},"onUsageWritten":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"eventTrigger":{"eventType":"google.cloud.firestore.document.v1.written","eventFilters":{"database":"(default)","namespace":"(default)"},"eventFilterPathPatterns":{"document":"users/{uid}/usage/{usageDoc}"},"retry":false},"entryPoint":"onUsageWritten"},"rebuildRollups":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"scheduleTrigger":{"schedule":"every 5 minutes","retryConfig":{}},"entryPoint":"rebuildRollups"},"refreshAllProviderQuotas":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"scheduleTrigger":{"schedule":"every 15 minutes","retryConfig":{}},"entryPoint":"refreshAllProviderQuotas"},"beginEntitlementBinding":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":50,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"APP_STORE_ASC_KEY_ID"},{"key":"APP_STORE_ASC_ISSUER_ID"},{"key":"APP_STORE_ASC_KEY_P8"}],"labels":{},"callableTrigger":{},"entryPoint":"beginEntitlementBinding"},"verifyHostedQuotaEntitlement":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"APP_STORE_ASC_KEY_ID"},{"key":"APP_STORE_ASC_ISSUER_ID"},{"key":"APP_STORE_ASC_KEY_P8"}],"labels":{},"callableTrigger":{},"entryPoint":"verifyHostedQuotaEntitlement"},"restoreHostedQuotaEntitlement":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":50,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"APP_STORE_ASC_KEY_ID"},{"key":"APP_STORE_ASC_ISSUER_ID"},{"key":"APP_STORE_ASC_KEY_P8"}],"labels":{},"callableTrigger":{},"entryPoint":"restoreHostedQuotaEntitlement"},"appStoreServerNotificationsV2":{"availableMemoryMb":null,"timeoutSeconds":30,"minInstances":null,"maxInstances":50,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"APP_STORE_ASC_KEY_ID"},{"key":"APP_STORE_ASC_ISSUER_ID"},{"key":"APP_STORE_ASC_KEY_P8"}],"labels":{},"httpsTrigger":{"invoker":["public"]},"entryPoint":"appStoreServerNotificationsV2"},"reconcileHostedEntitlementsDaily":{"availableMemoryMb":512,"timeoutSeconds":540,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"APP_STORE_ASC_KEY_ID"},{"key":"APP_STORE_ASC_ISSUER_ID"},{"key":"APP_STORE_ASC_KEY_P8"}],"labels":{},"scheduleTrigger":{"schedule":"every 24 hours","retryConfig":{}},"entryPoint":"reconcileHostedEntitlementsDaily"}},"specVersion":"v1alpha1","requiredAPIs":[{"api":"cloudscheduler.googleapis.com","reason":"Needed for scheduled functions."}],"extensions":{},"params":[{"type":"secret","name":"HOSTED_QUOTA_RUNNER_TOKEN"},{"type":"secret","name":"APP_STORE_ASC_KEY_ID"},{"type":"secret","name":"APP_STORE_ASC_ISSUER_ID"},{"type":"secret","name":"APP_STORE_ASC_KEY_P8"},{"name":"APP_STORE_APPLE_APP_ID","type":"string","default":""},{"name":"APP_STORE_BUNDLE_ID","type":"string","default":"com.openburnbar.app"},{"name":"APP_STORE_ENV","type":"string","default":"Sandbox"},{"name":"HOSTED_QUOTA_PRODUCT_ID","type":"string","default":"com.openburnbar.hostedQuotaSync.monthly"}]}
+[info] ✔  functions: Loaded functions definitions from source: connectProviderAccount, connectProviderCredential, connectHostedQuotaAccount, connectSelfHostedQuotaAccount, uploadProviderQuotaSnapshot, deleteHostedQuotaCredentials, updateProviderAccount, deleteProviderAccount, deleteProviderCredential, refreshProviderAccountQuota, refreshProviderQuota, createHermesPairing, completeHermesPairing, listHermesConnections, revokeHermesConnection, updateHermesConnectionStatus, searchStreams, rebuildUsageRollups, onUsageWritten, rebuildRollups, refreshAllProviderQuotas, beginEntitlementBinding, verifyHostedQuotaEntitlement, restoreHostedQuotaEntitlement, appStoreServerNotificationsV2, reconcileHostedEntitlementsDaily. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: connectProviderAccount, connectProviderCredential, connectHostedQuotaAccount, connectSelfHostedQuotaAccount, uploadProviderQuotaSnapshot, deleteHostedQuotaCredentials, updateProviderAccount, deleteProviderAccount, deleteProviderCredential, refreshProviderAccountQuota, refreshProviderQuota, createHermesPairing, completeHermesPairing, listHermesConnections, revokeHermesConnection, updateHermesConnectionStatus, searchStreams, rebuildUsageRollups, onUsageWritten, rebuildRollups, refreshAllProviderQuotas, beginEntitlementBinding, verifyHostedQuotaEntitlement, restoreHostedQuotaEntitlement, appStoreServerNotificationsV2, reconcileHostedEntitlementsDaily."}}
+[info] ✔  functions[us-central1-connectProviderAccount]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectProviderAccount). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectProviderAccount)."}}
+[info] ✔  functions[us-central1-connectProviderCredential]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectProviderCredential). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectProviderCredential)."}}
+[info] ✔  functions[us-central1-connectHostedQuotaAccount]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectHostedQuotaAccount). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectHostedQuotaAccount)."}}
+[info] ✔  functions[us-central1-connectSelfHostedQuotaAccount]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectSelfHostedQuotaAccount). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectSelfHostedQuotaAccount)."}}
+[info] ✔  functions[us-central1-uploadProviderQuotaSnapshot]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/uploadProviderQuotaSnapshot). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/uploadProviderQuotaSnapshot)."}}
+[info] ✔  functions[us-central1-deleteHostedQuotaCredentials]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/deleteHostedQuotaCredentials). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/deleteHostedQuotaCredentials)."}}
+[info] ✔  functions[us-central1-updateProviderAccount]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/updateProviderAccount). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/updateProviderAccount)."}}
+[info] ✔  functions[us-central1-deleteProviderAccount]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/deleteProviderAccount). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/deleteProviderAccount)."}}
+[info] ✔  functions[us-central1-deleteProviderCredential]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/deleteProviderCredential). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/deleteProviderCredential)."}}
+[info] ✔  functions[us-central1-refreshProviderAccountQuota]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/refreshProviderAccountQuota). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/refreshProviderAccountQuota)."}}
+[info] ✔  functions[us-central1-refreshProviderQuota]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/refreshProviderQuota). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/refreshProviderQuota)."}}
+[info] ✔  functions[us-central1-createHermesPairing]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/createHermesPairing). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/createHermesPairing)."}}
+[info] ✔  functions[us-central1-completeHermesPairing]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/completeHermesPairing). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/completeHermesPairing)."}}
+[info] ✔  functions[us-central1-listHermesConnections]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/listHermesConnections). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/listHermesConnections)."}}
+[info] ✔  functions[us-central1-revokeHermesConnection]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/revokeHermesConnection). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/revokeHermesConnection)."}}
+[info] ✔  functions[us-central1-updateHermesConnectionStatus]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/updateHermesConnectionStatus). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/updateHermesConnectionStatus)."}}
+[info] ✔  functions[us-central1-searchStreams]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/searchStreams). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/searchStreams)."}}
+[info] ✔  functions[us-central1-rebuildUsageRollups]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/rebuildUsageRollups). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/rebuildUsageRollups)."}}
+[info] i  functions[us-central1-onUsageWritten]: function ignored because the firestore emulator does not exist or is not running. {"metadata":{"emulator":{"name":"functions"},"message":"function ignored because the firestore emulator does not exist or is not running."}}
+[info] i  functions[us-central1-rebuildRollups]: function ignored because the pubsub emulator does not exist or is not running. {"metadata":{"emulator":{"name":"functions"},"message":"function ignored because the pubsub emulator does not exist or is not running."}}
+[info] i  functions[us-central1-refreshAllProviderQuotas]: function ignored because the pubsub emulator does not exist or is not running. {"metadata":{"emulator":{"name":"functions"},"message":"function ignored because the pubsub emulator does not exist or is not running."}}
+[info] ✔  functions[us-central1-beginEntitlementBinding]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/beginEntitlementBinding). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/beginEntitlementBinding)."}}
+[info] ✔  functions[us-central1-verifyHostedQuotaEntitlement]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/verifyHostedQuotaEntitlement). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/verifyHostedQuotaEntitlement)."}}
+[info] ✔  functions[us-central1-restoreHostedQuotaEntitlement]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/restoreHostedQuotaEntitlement). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/restoreHostedQuotaEntitlement)."}}
+[info] ✔  functions[us-central1-appStoreServerNotificationsV2]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/appStoreServerNotificationsV2). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/appStoreServerNotificationsV2)."}}
+[info] i  functions[us-central1-reconcileHostedEntitlementsDaily]: function ignored because the pubsub emulator does not exist or is not running. {"metadata":{"emulator":{"name":"functions"},"message":"function ignored because the pubsub emulator does not exist or is not running."}}
+[debug] [2026-05-06T06:24:46.471Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: . If you are not running the Firebase SQL Connect VSCode extension, this is expected and not an issue.
+[info]
+┌─────────────────────────────────────────────────────────────┐
+│ ✔  All emulators ready! It is now safe to connect your app. │
+│ i  View Emulator UI at http://127.0.0.1:4000/               │
+└─────────────────────────────────────────────────────────────┘
+
+┌───────────┬────────────────┬─────────────────────────────────┐
+│ Emulator  │ Host:Port      │ View in Emulator UI             │
+├───────────┼────────────────┼─────────────────────────────────┤
+│ Functions │ 127.0.0.1:5001 │ http://127.0.0.1:4000/functions │
+└───────────┴────────────────┴─────────────────────────────────┘
+  Emulator Hub host: 127.0.0.1 port: 4400
+  Other reserved ports: 4500
+
+Issues? Report them at https://github.com/firebase/firebase-tools/issues and attach the *-debug.log files.
+
+[debug] [2026-05-06T06:24:47.312Z] [work-queue] {"queuedWork":["/demo-openburnbar/us-central1/connectProviderCredential-2026-05-06T06:24:47.312Z"],"queueLength":1,"runningWork":[],"workRunningCount":0}
+[debug] [2026-05-06T06:24:47.312Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":["/demo-openburnbar/us-central1/connectProviderCredential-2026-05-06T06:24:47.312Z"],"workRunningCount":1}
+[debug] [2026-05-06T06:24:47.312Z] Accepted request POST /demo-openburnbar/us-central1/connectProviderCredential --> us-central1-connectProviderCredential
+[debug] [2026-05-06T06:24:47.312Z] [functions] Runtime ready! Sending request! {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Runtime ready! Sending request!"}}
+[debug] [2026-05-06T06:24:47.312Z] [functions] Got req.url=/demo-openburnbar/us-central1/connectProviderCredential, mapping to path=/ {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Got req.url=/demo-openburnbar/us-central1/connectProviderCredential, mapping to path=/"}}
+[info] i  functions: Loaded environment variables from .env.
+[debug] [2026-05-06T06:24:47.314Z] [worker-pool] addWorker(us-central1-connectProviderCredential) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] addWorker(us-central1-connectProviderCredential)"}}
+[debug] [2026-05-06T06:24:47.314Z] [worker-pool] Adding worker with key us-central1-connectProviderCredential, total=1 {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] Adding worker with key us-central1-connectProviderCredential, total=1"}}
+[debug] [2026-05-06T06:24:47.802Z] [runtime-status] [6621] Resolved module firebase-admin {"declared":true,"installed":true,"version":"13.8.0","resolution":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-admin/lib/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"[runtime-status] [6621] Resolved module firebase-admin {\"declared\":true,\"installed\":true,\"version\":\"13.8.0\",\"resolution\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-admin/lib/index.js\"}"}}
+[debug] [2026-05-06T06:24:47.802Z] [runtime-status] [6621] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.6.0","resolution":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-functions/lib/v2/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"[runtime-status] [6621] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.6.0\",\"resolution\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-functions/lib/v2/index.js\"}"}}
+[debug] [2026-05-06T06:24:47.802Z] [runtime-status] [6621] Outgoing network have been stubbed. [{"name":"http","status":"mocked"},{"name":"http","status":"mocked"},{"name":"https","status":"mocked"},{"name":"https","status":"mocked"},{"name":"net","status":"mocked"}] {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"[runtime-status] [6621] Outgoing network have been stubbed. [{\"name\":\"http\",\"status\":\"mocked\"},{\"name\":\"http\",\"status\":\"mocked\"},{\"name\":\"https\",\"status\":\"mocked\"},{\"name\":\"https\",\"status\":\"mocked\"},{\"name\":\"net\",\"status\":\"mocked\"}]"}}
+[debug] [2026-05-06T06:24:47.802Z] [runtime-status] [6621] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.6.0","resolution":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-functions/lib/v2/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"[runtime-status] [6621] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.6.0\",\"resolution\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-functions/lib/v2/index.js\"}"}}
+[debug] [2026-05-06T06:24:47.840Z] [runtime-status] [6621] Resolved module firebase-admin {"declared":true,"installed":true,"version":"13.8.0","resolution":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-admin/lib/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"[runtime-status] [6621] Resolved module firebase-admin {\"declared\":true,\"installed\":true,\"version\":\"13.8.0\",\"resolution\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-admin/lib/index.js\"}"}}
+[debug] [2026-05-06T06:24:47.841Z] [runtime-status] [6621] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.6.0","resolution":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-functions/lib/v2/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"[runtime-status] [6621] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.6.0\",\"resolution\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-functions/lib/v2/index.js\"}"}}
+[debug] [2026-05-06T06:24:47.872Z] [runtime-status] [6621] firebase-admin has been stubbed. {"adminResolution":{"declared":true,"installed":true,"version":"13.8.0","resolution":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-admin/lib/index.js"}} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"[runtime-status] [6621] firebase-admin has been stubbed. {\"adminResolution\":{\"declared\":true,\"installed\":true,\"version\":\"13.8.0\",\"resolution\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-admin/lib/index.js\"}}"}}
+[debug] [2026-05-06T06:24:48.103Z] [runtime-status] [6621] Functions runtime initialized. {"cwd":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions","node_version":"20.20.2"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"[runtime-status] [6621] Functions runtime initialized. {\"cwd\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions\",\"node_version\":\"20.20.2\"}"}}
+[debug] [2026-05-06T06:24:48.104Z] [runtime-status] [6621] Listening to port: /var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/fire_emu_ef25f29810bf677a.sock {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"[runtime-status] [6621] Listening to port: /var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/fire_emu_ef25f29810bf677a.sock"}}
+[debug] [2026-05-06T06:24:48.126Z] [worker-us-central1-connectProviderCredential-34dcf7ee-92e5-442c-a91d-d4788b05170d]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"[worker-us-central1-connectProviderCredential-34dcf7ee-92e5-442c-a91d-d4788b05170d]: IDLE"}}
+[debug] [2026-05-06T06:24:48.126Z] [worker-pool] submitRequest(triggerId=us-central1-connectProviderCredential) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] submitRequest(triggerId=us-central1-connectProviderCredential)"}}
+[info] i  functions: Beginning execution of "us-central1-connectProviderCredential" {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"Beginning execution of \"us-central1-connectProviderCredential\""}}
+[debug] [2026-05-06T06:24:48.127Z] [worker-us-central1-connectProviderCredential-34dcf7ee-92e5-442c-a91d-d4788b05170d]: BUSY {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"[worker-us-central1-connectProviderCredential-34dcf7ee-92e5-442c-a91d-d4788b05170d]: BUSY"}}
+[info] >  {"verifications":{"app":"MISSING","auth":"MISSING"},"logging.googleapis.com/labels":{"firebase-log-type":"callable-request-verification"},"severity":"DEBUG","message":"Callable request verification passed"} {"user":{"verifications":{"app":"MISSING","auth":"MISSING"},"logging.googleapis.com/labels":{"firebase-log-type":"callable-request-verification"},"severity":"DEBUG","message":"Callable request verification passed"},"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"\u001b[90m> \u001b[39m {\"verifications\":{\"app\":\"MISSING\",\"auth\":\"MISSING\"},\"logging.googleapis.com/labels\":{\"firebase-log-type\":\"callable-request-verification\"},\"severity\":\"DEBUG\",\"message\":\"Callable request verification passed\"}"}}
+[debug] [2026-05-06T06:24:48.133Z] Finishing up request with event=pause {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"Finishing up request with event=pause"}}
+[info] i  functions: Finished "us-central1-connectProviderCredential" in 6.891041ms {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"Finished \"us-central1-connectProviderCredential\" in 6.891041ms"}}
+[debug] [2026-05-06T06:24:48.134Z] [worker-us-central1-connectProviderCredential-34dcf7ee-92e5-442c-a91d-d4788b05170d]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"[worker-us-central1-connectProviderCredential-34dcf7ee-92e5-442c-a91d-d4788b05170d]: IDLE"}}
+[debug] [2026-05-06T06:24:48.134Z] Finishing up request with event=finish {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"Finishing up request with event=finish"}}
+[debug] [2026-05-06T06:24:48.134Z] Finishing up request with event=close {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-connectProviderCredential"},"extension":{},"message":"Finishing up request with event=close"}}
+[debug] [2026-05-06T06:24:48.134Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":[],"workRunningCount":0}
+[debug] [2026-05-06T06:24:48.142Z] [work-queue] {"queuedWork":["/demo-openburnbar/us-central1/refreshProviderQuota-2026-05-06T06:24:48.142Z"],"queueLength":1,"runningWork":[],"workRunningCount":0}
+[debug] [2026-05-06T06:24:48.142Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":["/demo-openburnbar/us-central1/refreshProviderQuota-2026-05-06T06:24:48.142Z"],"workRunningCount":1}
+[debug] [2026-05-06T06:24:48.142Z] Accepted request POST /demo-openburnbar/us-central1/refreshProviderQuota --> us-central1-refreshProviderQuota
+[debug] [2026-05-06T06:24:48.142Z] [functions] Runtime ready! Sending request! {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Runtime ready! Sending request!"}}
+[debug] [2026-05-06T06:24:48.142Z] [functions] Got req.url=/demo-openburnbar/us-central1/refreshProviderQuota, mapping to path=/ {"metadata":{"emulator":{"name":"functions"},"message":"[functions] Got req.url=/demo-openburnbar/us-central1/refreshProviderQuota, mapping to path=/"}}
+[info] i  functions: Loaded environment variables from .env.
+[info] i  functions: Trying to access secret HOSTED_QUOTA_RUNNER_TOKEN@latest {"metadata":{"emulator":{"name":"functions"},"message":"Trying to access secret HOSTED_QUOTA_RUNNER_TOKEN@latest"}}
+[debug] [2026-05-06T06:24:48.143Z] Checked if tokens are valid: false, expires at: 1778045543276
+[debug] [2026-05-06T06:24:48.143Z] Checked if tokens are valid: false, expires at: 1778045543276
+[debug] [2026-05-06T06:24:48.144Z] > refreshing access token with scopes: []
+[debug] [2026-05-06T06:24:48.144Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-05-06T06:24:48.144Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-05-06T06:24:48.312Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-05-06T06:24:48.312Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-05-06T06:24:48.322Z] >>> [apiv2][query] GET https://secretmanager.googleapis.com/v1/projects/demo-openburnbar/secrets/HOSTED_QUOTA_RUNNER_TOKEN/versions/latest:access [none]
+[debug] [2026-05-06T06:24:48.659Z] <<< [apiv2][status] GET https://secretmanager.googleapis.com/v1/projects/demo-openburnbar/secrets/HOSTED_QUOTA_RUNNER_TOKEN/versions/latest:access 403
+[debug] [2026-05-06T06:24:48.659Z] <<< [apiv2][body] GET https://secretmanager.googleapis.com/v1/projects/demo-openburnbar/secrets/HOSTED_QUOTA_RUNNER_TOKEN/versions/latest:access {"error":{"code":403,"message":"Permission denied on resource project demo-openburnbar.","status":"PERMISSION_DENIED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"CONSUMER_INVALID","domain":"googleapis.com","metadata":{"service":"secretmanager.googleapis.com","containerInfo":"demo-openburnbar","consumer":"projects/demo-openburnbar"}},{"@type":"type.googleapis.com/google.rpc.LocalizedMessage","locale":"en-US","message":"Permission denied on resource project demo-openburnbar."},{"@type":"type.googleapis.com/google.rpc.Help","links":[{"description":"Google developers console","url":"https://console.developers.google.com"}]}]}}
+[error] ⬢  functions: Unable to access secret environment variables from Google Cloud Secret Manager. Make sure the credential used for the Functions Emulator have access or provide override values in /Users/albertonunez/Documents/Windsurf/BurnBar/functions/.secret.local:
+	FirebaseError: Request to https://secretmanager.googleapis.com/v1/projects/demo-openburnbar/secrets/HOSTED_QUOTA_RUNNER_TOKEN/versions/latest:access had HTTP Error: 403, Permission denied on resource project demo-openburnbar. {"metadata":{"emulator":{"name":"functions"},"message":"Unable to access secret environment variables from Google Cloud Secret Manager. Make sure the credential used for the Functions Emulator have access or provide override values in /Users/albertonunez/Documents/Windsurf/BurnBar/functions/.secret.local:\n\tFirebaseError: Request to https://secretmanager.googleapis.com/v1/projects/demo-openburnbar/secrets/HOSTED_QUOTA_RUNNER_TOKEN/versions/latest:access had HTTP Error: 403, Permission denied on resource project demo-openburnbar."}}
+[debug] [2026-05-06T06:24:48.660Z] [worker-pool] addWorker(us-central1-refreshProviderQuota) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] addWorker(us-central1-refreshProviderQuota)"}}
+[debug] [2026-05-06T06:24:48.660Z] [worker-pool] Adding worker with key us-central1-refreshProviderQuota, total=1 {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] Adding worker with key us-central1-refreshProviderQuota, total=1"}}
+[debug] [2026-05-06T06:24:49.116Z] [runtime-status] [6635] Resolved module firebase-admin {"declared":true,"installed":true,"version":"13.8.0","resolution":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-admin/lib/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"[runtime-status] [6635] Resolved module firebase-admin {\"declared\":true,\"installed\":true,\"version\":\"13.8.0\",\"resolution\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-admin/lib/index.js\"}"}}
+[debug] [2026-05-06T06:24:49.116Z] [runtime-status] [6635] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.6.0","resolution":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-functions/lib/v2/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"[runtime-status] [6635] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.6.0\",\"resolution\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-functions/lib/v2/index.js\"}"}}
+[debug] [2026-05-06T06:24:49.116Z] [runtime-status] [6635] Outgoing network have been stubbed. [{"name":"http","status":"mocked"},{"name":"http","status":"mocked"},{"name":"https","status":"mocked"},{"name":"https","status":"mocked"},{"name":"net","status":"mocked"}] {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"[runtime-status] [6635] Outgoing network have been stubbed. [{\"name\":\"http\",\"status\":\"mocked\"},{\"name\":\"http\",\"status\":\"mocked\"},{\"name\":\"https\",\"status\":\"mocked\"},{\"name\":\"https\",\"status\":\"mocked\"},{\"name\":\"net\",\"status\":\"mocked\"}]"}}
+[debug] [2026-05-06T06:24:49.116Z] [runtime-status] [6635] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.6.0","resolution":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-functions/lib/v2/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"[runtime-status] [6635] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.6.0\",\"resolution\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-functions/lib/v2/index.js\"}"}}
+[debug] [2026-05-06T06:24:49.158Z] [runtime-status] [6635] Resolved module firebase-admin {"declared":true,"installed":true,"version":"13.8.0","resolution":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-admin/lib/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"[runtime-status] [6635] Resolved module firebase-admin {\"declared\":true,\"installed\":true,\"version\":\"13.8.0\",\"resolution\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-admin/lib/index.js\"}"}}
+[debug] [2026-05-06T06:24:49.158Z] [runtime-status] [6635] Resolved module firebase-functions {"declared":true,"installed":true,"version":"6.6.0","resolution":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-functions/lib/v2/index.js"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"[runtime-status] [6635] Resolved module firebase-functions {\"declared\":true,\"installed\":true,\"version\":\"6.6.0\",\"resolution\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-functions/lib/v2/index.js\"}"}}
+[debug] [2026-05-06T06:24:49.187Z] [runtime-status] [6635] firebase-admin has been stubbed. {"adminResolution":{"declared":true,"installed":true,"version":"13.8.0","resolution":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-admin/lib/index.js"}} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"[runtime-status] [6635] firebase-admin has been stubbed. {\"adminResolution\":{\"declared\":true,\"installed\":true,\"version\":\"13.8.0\",\"resolution\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/firebase-admin/lib/index.js\"}}"}}
+[debug] [2026-05-06T06:24:49.471Z] [runtime-status] [6635] Functions runtime initialized. {"cwd":"/Users/albertonunez/Documents/Windsurf/BurnBar/functions","node_version":"20.20.2"} {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"[runtime-status] [6635] Functions runtime initialized. {\"cwd\":\"/Users/albertonunez/Documents/Windsurf/BurnBar/functions\",\"node_version\":\"20.20.2\"}"}}
+[debug] [2026-05-06T06:24:49.471Z] [runtime-status] [6635] Listening to port: /var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/fire_emu_6bc5adb2bfe5b8a6.sock {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"[runtime-status] [6635] Listening to port: /var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/fire_emu_6bc5adb2bfe5b8a6.sock"}}
+[debug] [2026-05-06T06:24:49.575Z] [worker-us-central1-refreshProviderQuota-c07a49b3-c6b9-4d54-979f-deb14d051916]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"[worker-us-central1-refreshProviderQuota-c07a49b3-c6b9-4d54-979f-deb14d051916]: IDLE"}}
+[debug] [2026-05-06T06:24:49.575Z] [worker-pool] submitRequest(triggerId=us-central1-refreshProviderQuota) {"metadata":{"emulator":{"name":"functions"},"message":"[worker-pool] submitRequest(triggerId=us-central1-refreshProviderQuota)"}}
+[info] i  functions: Beginning execution of "us-central1-refreshProviderQuota" {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"Beginning execution of \"us-central1-refreshProviderQuota\""}}
+[debug] [2026-05-06T06:24:49.575Z] [worker-us-central1-refreshProviderQuota-c07a49b3-c6b9-4d54-979f-deb14d051916]: BUSY {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"[worker-us-central1-refreshProviderQuota-c07a49b3-c6b9-4d54-979f-deb14d051916]: BUSY"}}
+[info] >  {"verifications":{"app":"MISSING","auth":"MISSING"},"logging.googleapis.com/labels":{"firebase-log-type":"callable-request-verification"},"severity":"DEBUG","message":"Callable request verification passed"} {"user":{"verifications":{"app":"MISSING","auth":"MISSING"},"logging.googleapis.com/labels":{"firebase-log-type":"callable-request-verification"},"severity":"DEBUG","message":"Callable request verification passed"},"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"\u001b[90m> \u001b[39m {\"verifications\":{\"app\":\"MISSING\",\"auth\":\"MISSING\"},\"logging.googleapis.com/labels\":{\"firebase-log-type\":\"callable-request-verification\"},\"severity\":\"DEBUG\",\"message\":\"Callable request verification passed\"}"}}
+[debug] [2026-05-06T06:24:49.583Z] Finishing up request with event=pause {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"Finishing up request with event=pause"}}
+[info] i  functions: Finished "us-central1-refreshProviderQuota" in 7.53975ms {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"Finished \"us-central1-refreshProviderQuota\" in 7.53975ms"}}
+[debug] [2026-05-06T06:24:49.583Z] [worker-us-central1-refreshProviderQuota-c07a49b3-c6b9-4d54-979f-deb14d051916]: IDLE {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"[worker-us-central1-refreshProviderQuota-c07a49b3-c6b9-4d54-979f-deb14d051916]: IDLE"}}
+[debug] [2026-05-06T06:24:49.583Z] Finishing up request with event=finish {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"Finishing up request with event=finish"}}
+[debug] [2026-05-06T06:24:49.583Z] Finishing up request with event=close {"metadata":{"emulator":{"name":"functions"},"function":{"name":"us-central1-refreshProviderQuota"},"extension":{},"message":"Finishing up request with event=close"}}
+[debug] [2026-05-06T06:24:49.583Z] [work-queue] {"queuedWork":[],"queueLength":0,"runningWork":[],"workRunningCount":0}
+[debug] [2026-05-06T06:24:49.587Z] Received signal SIGTERM 1
+[info]
+[info] i  emulators: Received SIGTERM for the first time. Starting a clean shutdown.
+[info] i  emulators: Please wait for a clean shutdown or send the SIGTERM signal again to stop right now.
+[debug] [2026-05-06T06:24:49.587Z] Found emulator hub locator: {"version":"15.16.0","origins":["http://127.0.0.1:4400","http://[::1]:4400"],"pid":5538}
+[debug] [2026-05-06T06:24:49.588Z] Delete emulator hub locator file: /var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/hub-demo-openburnbar.json
+[info] i  emulators: Shutting down emulators. {"metadata":{"emulator":{"name":"hub"},"message":"Shutting down emulators."}}
+[info] i  ui: Stopping Emulator UI {"metadata":{"emulator":{"name":"ui"},"message":"Stopping Emulator UI"}}
+[info] i  functions: Stopping Functions Emulator {"metadata":{"emulator":{"name":"functions"},"message":"Stopping Functions Emulator"}}
+[info] i  eventarc: Stopping Eventarc Emulator {"metadata":{"emulator":{"name":"eventarc"},"message":"Stopping Eventarc Emulator"}}
+[info] i  tasks: Stopping Cloud Tasks Emulator {"metadata":{"emulator":{"name":"tasks"},"message":"Stopping Cloud Tasks Emulator"}}
+[info] i  hub: Stopping emulator hub {"metadata":{"emulator":{"name":"hub"},"message":"Stopping emulator hub"}}
+[info] i  logging: Stopping Logging Emulator {"metadata":{"emulator":{"name":"logging"},"message":"Stopping Logging Emulator"}}
+[debug] [2026-05-06T06:24:49.593Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: . If you are not running the Firebase SQL Connect VSCode extension, this is expected and not an issue.
+[debug] [2026-05-06T06:27:49.798Z] ----------------------------------------------------------------------
+[debug] [2026-05-06T06:27:49.801Z] Command:       /Users/albertonunez/.nvm/versions/node/v20.20.2/bin/node /Users/albertonunez/.nvm/versions/node/v20.20.2/bin/firebase emulators:start --only functions --project demo-openburnbar --config firebase.json
+[debug] [2026-05-06T06:27:49.802Z] CLI Version:   15.16.0
+[debug] [2026-05-06T06:27:49.802Z] Platform:      darwin
+[debug] [2026-05-06T06:27:49.802Z] Node Version:  v20.20.2
+[debug] [2026-05-06T06:27:49.802Z] Time:          Wed May 06 2026 01:27:49 GMT-0500 (Central Daylight Time)
+[debug] [2026-05-06T06:27:49.802Z] ----------------------------------------------------------------------
+[debug]
+[info] i  emulators: Starting emulators: functions {"metadata":{"emulator":{"name":"hub"},"message":"Starting emulators: functions"}}
+[info] i  emulators: Detected demo project ID "demo-openburnbar", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail. {"metadata":{"emulator":{"name":"hub"},"message":"Detected demo project ID \"demo-openburnbar\", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail."}}
+[debug] [2026-05-06T06:27:53.851Z] [logging] Logging Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-05-06T06:27:53.856Z] assigned listening specs for emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}]},"metadata":{"message":"assigned listening specs for emulators"}}
+[debug] [2026-05-06T06:27:53.861Z] Write emulator hub locator at /var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/hub-demo-openburnbar.json
+[debug] [2026-05-06T06:27:54.937Z] [functions] Functions Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-05-06T06:27:54.937Z] [eventarc] Eventarc Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-05-06T06:27:54.937Z] [tasks] Cloud Tasks Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2026-05-06T06:27:54.937Z] late-assigned ports for functions and eventarc emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"functions":[{"address":"127.0.0.1","family":"IPv4","port":5001}],"eventarc":[{"address":"127.0.0.1","family":"IPv4","port":9299}],"tasks":[{"address":"127.0.0.1","family":"IPv4","port":9499}]},"metadata":{"message":"late-assigned ports for functions and eventarc emulators"}}
+[warn] ⚠  functions: Application Default Credentials detected. Non-emulated services will access production using these credentials. Be careful! {"metadata":{"emulator":{"name":"functions"},"message":"Application Default Credentials detected. Non-emulated services will access production using these credentials. Be careful!"}}
+[info] i  functions: Watching "/Users/albertonunez/Documents/Windsurf/BurnBar/functions" for Cloud Functions... {"metadata":{"emulator":{"name":"functions"},"message":"Watching \"/Users/albertonunez/Documents/Windsurf/BurnBar/functions\" for Cloud Functions..."}}
+[debug] [2026-05-06T06:27:59.005Z] Validating nodejs source
+[warn] ⚠  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory.
+[warn] ⚠  functions: Please note that there will be breaking changes when you upgrade.
+[debug] [2026-05-06T06:28:01.344Z] > [functions] package.json contents: {
+  "name": "openburnbar-functions",
+  "version": "1.0.0",
+  "description": "OpenBurnBar Cloud Functions v2 backend — provider credential vault, quota refresh, and usage rollups.",
+  "engines": {
+    "node": "22"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc && node scripts/copy-certs.mjs",
+    "build:watch": "tsc --watch",
+    "test:rollups": "npm run build && node scripts/test-rollups.mjs",
+    "test:appstore": "npm run build && node scripts/test-appstore.mjs",
+    "test:hermes": "npm run build && node scripts/test-hermes.mjs",
+    "test": "npm run test:rollups && npm run test:appstore && npm run test:hermes",
+    "lint": "eslint src/**/*.ts",
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "@apple/app-store-server-library": "^3.0.0",
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^6.0.0",
+    "googleapis": "^148.0.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0"
+  },
+  "private": true
+}
+[debug] [2026-05-06T06:28:01.345Z] Building nodejs source
+[debug] [2026-05-06T06:28:01.345Z] Failed to find version of module node: reached end of search path /Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules
+[warn] ⚠  functions: Your requested "node" version "22" doesn't match your global version "20". Using node@20 from host.
+[info] i  functions: Loaded environment variables from .env.
+[debug] [2026-05-06T06:28:01.348Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-05-06T06:28:01.355Z] Found firebase-functions binary at '/Users/albertonunez/Documents/Windsurf/BurnBar/functions/node_modules/.bin/firebase-functions'
+[info] Serving at port 8816
+
+[debug] [2026-05-06T06:28:02.282Z] Got response from /__/functions.yaml {"endpoints":{"connectProviderAccount":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"connectProviderAccount"},"connectProviderCredential":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"connectProviderCredential"},"connectHostedQuotaAccount":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"connectHostedQuotaAccount"},"connectSelfHostedQuotaAccount":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"connectSelfHostedQuotaAccount"},"uploadProviderQuotaSnapshot":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"uploadProviderQuotaSnapshot"},"deleteHostedQuotaCredentials":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"deleteHostedQuotaCredentials"},"updateProviderAccount":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"updateProviderAccount"},"deleteProviderAccount":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"deleteProviderAccount"},"deleteProviderCredential":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"deleteProviderCredential"},"refreshProviderAccountQuota":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"HOSTED_QUOTA_RUNNER_TOKEN"}],"labels":{},"callableTrigger":{},"entryPoint":"refreshProviderAccountQuota"},"refreshProviderQuota":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"HOSTED_QUOTA_RUNNER_TOKEN"}],"labels":{},"callableTrigger":{},"entryPoint":"refreshProviderQuota"},"createHermesPairing":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"createHermesPairing"},"completeHermesPairing":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"completeHermesPairing"},"listHermesConnections":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"listHermesConnections"},"revokeHermesConnection":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"revokeHermesConnection"},"updateHermesConnectionStatus":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"updateHermesConnectionStatus"},"searchStreams":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"searchStreams"},"rebuildUsageRollups":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":10,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"callableTrigger":{},"entryPoint":"rebuildUsageRollups"},"onUsageWritten":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"eventTrigger":{"eventType":"google.cloud.firestore.document.v1.written","eventFilters":{"database":"(default)","namespace":"(default)"},"eventFilterPathPatterns":{"document":"users/{uid}/usage/{usageDoc}"},"retry":false},"entryPoint":"onUsageWritten"},"rebuildRollups":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"scheduleTrigger":{"schedule":"every 5 minutes","retryConfig":{}},"entryPoint":"rebuildRollups"},"refreshAllProviderQuotas":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"labels":{},"scheduleTrigger":{"schedule":"every 15 minutes","retryConfig":{}},"entryPoint":"refreshAllProviderQuotas"},"beginEntitlementBinding":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":50,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"APP_STORE_ASC_KEY_ID"},{"key":"APP_STORE_ASC_ISSUER_ID"},{"key":"APP_STORE_ASC_KEY_P8"}],"labels":{},"callableTrigger":{},"entryPoint":"beginEntitlementBinding"},"verifyHostedQuotaEntitlement":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":100,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"APP_STORE_ASC_KEY_ID"},{"key":"APP_STORE_ASC_ISSUER_ID"},{"key":"APP_STORE_ASC_KEY_P8"}],"labels":{},"callableTrigger":{},"entryPoint":"verifyHostedQuotaEntitlement"},"restoreHostedQuotaEntitlement":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":50,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"APP_STORE_ASC_KEY_ID"},{"key":"APP_STORE_ASC_ISSUER_ID"},{"key":"APP_STORE_ASC_KEY_P8"}],"labels":{},"callableTrigger":{},"entryPoint":"restoreHostedQuotaEntitlement"},"appStoreServerNotificationsV2":{"availableMemoryMb":null,"timeoutSeconds":30,"minInstances":null,"maxInstances":50,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"APP_STORE_ASC_KEY_ID"},{"key":"APP_STORE_ASC_ISSUER_ID"},{"key":"APP_STORE_ASC_KEY_P8"}],"labels":{},"httpsTrigger":{"invoker":["public"]},"entryPoint":"appStoreServerNotificationsV2"},"reconcileHostedEntitlementsDaily":{"availableMemoryMb":512,"timeoutSeconds":540,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["us-central1"],"secretEnvironmentVariables":[{"key":"APP_STORE_ASC_KEY_ID"},{"key":"APP_STORE_ASC_ISSUER_ID"},{"key":"APP_STORE_ASC_KEY_P8"}],"labels":{},"scheduleTrigger":{"schedule":"every 24 hours","retryConfig":{}},"entryPoint":"reconcileHostedEntitlementsDaily"}},"specVersion":"v1alpha1","requiredAPIs":[{"api":"cloudscheduler.googleapis.com","reason":"Needed for scheduled functions."}],"extensions":{},"params":[{"type":"secret","name":"HOSTED_QUOTA_RUNNER_TOKEN"},{"type":"secret","name":"APP_STORE_ASC_KEY_ID"},{"type":"secret","name":"APP_STORE_ASC_ISSUER_ID"},{"type":"secret","name":"APP_STORE_ASC_KEY_P8"},{"name":"APP_STORE_APPLE_APP_ID","type":"string","default":""},{"name":"APP_STORE_BUNDLE_ID","type":"string","default":"com.openburnbar.app"},{"name":"APP_STORE_ENV","type":"string","default":"Sandbox"},{"name":"HOSTED_QUOTA_PRODUCT_ID","type":"string","default":"com.openburnbar.hostedQuotaSync.monthly"}]}
+[info] ✔  functions: Loaded functions definitions from source: connectProviderAccount, connectProviderCredential, connectHostedQuotaAccount, connectSelfHostedQuotaAccount, uploadProviderQuotaSnapshot, deleteHostedQuotaCredentials, updateProviderAccount, deleteProviderAccount, deleteProviderCredential, refreshProviderAccountQuota, refreshProviderQuota, createHermesPairing, completeHermesPairing, listHermesConnections, revokeHermesConnection, updateHermesConnectionStatus, searchStreams, rebuildUsageRollups, onUsageWritten, rebuildRollups, refreshAllProviderQuotas, beginEntitlementBinding, verifyHostedQuotaEntitlement, restoreHostedQuotaEntitlement, appStoreServerNotificationsV2, reconcileHostedEntitlementsDaily. {"metadata":{"emulator":{"name":"functions"},"message":"Loaded functions definitions from source: connectProviderAccount, connectProviderCredential, connectHostedQuotaAccount, connectSelfHostedQuotaAccount, uploadProviderQuotaSnapshot, deleteHostedQuotaCredentials, updateProviderAccount, deleteProviderAccount, deleteProviderCredential, refreshProviderAccountQuota, refreshProviderQuota, createHermesPairing, completeHermesPairing, listHermesConnections, revokeHermesConnection, updateHermesConnectionStatus, searchStreams, rebuildUsageRollups, onUsageWritten, rebuildRollups, refreshAllProviderQuotas, beginEntitlementBinding, verifyHostedQuotaEntitlement, restoreHostedQuotaEntitlement, appStoreServerNotificationsV2, reconcileHostedEntitlementsDaily."}}
+[info] ✔  functions[us-central1-connectProviderAccount]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectProviderAccount). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectProviderAccount)."}}
+[info] ✔  functions[us-central1-connectProviderCredential]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectProviderCredential). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectProviderCredential)."}}
+[info] ✔  functions[us-central1-connectHostedQuotaAccount]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectHostedQuotaAccount). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectHostedQuotaAccount)."}}
+[info] ✔  functions[us-central1-connectSelfHostedQuotaAccount]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectSelfHostedQuotaAccount). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/connectSelfHostedQuotaAccount)."}}
+[info] ✔  functions[us-central1-uploadProviderQuotaSnapshot]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/uploadProviderQuotaSnapshot). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/uploadProviderQuotaSnapshot)."}}
+[info] ✔  functions[us-central1-deleteHostedQuotaCredentials]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/deleteHostedQuotaCredentials). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/deleteHostedQuotaCredentials)."}}
+[info] ✔  functions[us-central1-updateProviderAccount]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/updateProviderAccount). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/updateProviderAccount)."}}
+[info] ✔  functions[us-central1-deleteProviderAccount]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/deleteProviderAccount). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/deleteProviderAccount)."}}
+[info] ✔  functions[us-central1-deleteProviderCredential]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/deleteProviderCredential). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/deleteProviderCredential)."}}
+[info] ✔  functions[us-central1-refreshProviderAccountQuota]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/refreshProviderAccountQuota). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/refreshProviderAccountQuota)."}}
+[info] ✔  functions[us-central1-refreshProviderQuota]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/refreshProviderQuota). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/refreshProviderQuota)."}}
+[info] ✔  functions[us-central1-createHermesPairing]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/createHermesPairing). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/createHermesPairing)."}}
+[info] ✔  functions[us-central1-completeHermesPairing]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/completeHermesPairing). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/completeHermesPairing)."}}
+[info] ✔  functions[us-central1-listHermesConnections]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/listHermesConnections). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/listHermesConnections)."}}
+[info] ✔  functions[us-central1-revokeHermesConnection]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/revokeHermesConnection). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/revokeHermesConnection)."}}
+[info] ✔  functions[us-central1-updateHermesConnectionStatus]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/updateHermesConnectionStatus). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/updateHermesConnectionStatus)."}}
+[info] ✔  functions[us-central1-searchStreams]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/searchStreams). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/searchStreams)."}}
+[info] ✔  functions[us-central1-rebuildUsageRollups]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/rebuildUsageRollups). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/rebuildUsageRollups)."}}
+[info] i  functions[us-central1-onUsageWritten]: function ignored because the firestore emulator does not exist or is not running. {"metadata":{"emulator":{"name":"functions"},"message":"function ignored because the firestore emulator does not exist or is not running."}}
+[info] i  functions[us-central1-rebuildRollups]: function ignored because the pubsub emulator does not exist or is not running. {"metadata":{"emulator":{"name":"functions"},"message":"function ignored because the pubsub emulator does not exist or is not running."}}
+[info] i  functions[us-central1-refreshAllProviderQuotas]: function ignored because the pubsub emulator does not exist or is not running. {"metadata":{"emulator":{"name":"functions"},"message":"function ignored because the pubsub emulator does not exist or is not running."}}
+[info] ✔  functions[us-central1-beginEntitlementBinding]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/beginEntitlementBinding). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/beginEntitlementBinding)."}}
+[info] ✔  functions[us-central1-verifyHostedQuotaEntitlement]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/verifyHostedQuotaEntitlement). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/verifyHostedQuotaEntitlement)."}}
+[info] ✔  functions[us-central1-restoreHostedQuotaEntitlement]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/restoreHostedQuotaEntitlement). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/restoreHostedQuotaEntitlement)."}}
+[info] ✔  functions[us-central1-appStoreServerNotificationsV2]: http function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/appStoreServerNotificationsV2). {"metadata":{"emulator":{"name":"functions"},"message":"\u001b[1mhttp\u001b[22m function initialized (http://127.0.0.1:5001/demo-openburnbar/us-central1/appStoreServerNotificationsV2)."}}
+[info] i  functions[us-central1-reconcileHostedEntitlementsDaily]: function ignored because the pubsub emulator does not exist or is not running. {"metadata":{"emulator":{"name":"functions"},"message":"function ignored because the pubsub emulator does not exist or is not running."}}
+[debug] [2026-05-06T06:28:06.320Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: . If you are not running the Firebase SQL Connect VSCode extension, this is expected and not an issue.
+[info]
+┌─────────────────────────────────────────────────────────────┐
+│ ✔  All emulators ready! It is now safe to connect your app. │
+│ i  View Emulator UI at http://127.0.0.1:4000/               │
+└─────────────────────────────────────────────────────────────┘
+
+┌───────────┬────────────────┬─────────────────────────────────┐
+│ Emulator  │ Host:Port      │ View in Emulator UI             │
+├───────────┼────────────────┼─────────────────────────────────┤
+│ Functions │ 127.0.0.1:5001 │ http://127.0.0.1:4000/functions │
+└───────────┴────────────────┴─────────────────────────────────┘
+  Emulator Hub host: 127.0.0.1 port: 4400
+  Other reserved ports: 4500
+
+Issues? Report them at https://github.com/firebase/firebase-tools/issues and attach the *-debug.log files.
+
+[debug] [2026-05-06T06:29:17.124Z] Received signal SIGTERM 1
+[info]
+[info] i  emulators: Received SIGTERM for the first time. Starting a clean shutdown.
+[info] i  emulators: Please wait for a clean shutdown or send the SIGTERM signal again to stop right now.
+[debug] [2026-05-06T06:29:17.127Z] Found emulator hub locator: {"version":"15.16.0","origins":["http://127.0.0.1:4400","http://[::1]:4400"],"pid":47614}
+[debug] [2026-05-06T06:29:17.127Z] Delete emulator hub locator file: /var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/hub-demo-openburnbar.json
+[debug] [2026-05-06T06:29:17.127Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.128Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.128Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.128Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.128Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.129Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.129Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.129Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.129Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.129Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.129Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.130Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.130Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.130Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.130Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.130Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.130Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.130Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.131Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.131Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.131Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.131Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.132Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.132Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.132Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.133Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.133Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.133Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.133Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.133Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.133Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.133Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.134Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.134Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.134Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.134Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.134Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.134Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.134Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.134Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.134Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.135Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.135Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.135Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.135Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.135Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.135Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.135Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.135Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)
+[error]
+[error] Error: An unexpected error has occurred.
+[debug] [2026-05-06T06:29:17.136Z] Error: write EPIPE
+    at afterWriteDispatched (node:internal/stream_base_commons:161:15)
+    at writeGeneric (node:internal/stream_base_commons:152:3)
+    at Socket._writeGeneric (node:net:958:11)
+    at Socket._write (node:net:970:8)
+    at writeOrBuffer (node:internal/streams/writable:572:12)
+    at _write (node:internal/streams/writable:501:10)
+    at Writable.write (node:internal/streams/writable:510:10)
+    at Console.log (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston/lib/winston/transports/console.js:87:23)
+    at Console._write (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/modern.js:103:17)
+    at doWrite (/Users/albertonunez/.nvm/versions/node/v20.20.2/lib/node_modules/firebase-tools/node_modules/winston-transport/node_modules/readable-stream/lib/_stream_writable.js:390:139)

@@ -18,10 +18,27 @@ import json
 import os
 import re
 import sqlite3
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+
+# Make the sibling hermes_proxy module importable so the MCP server can share
+# its idempotent ledger writer with the standalone proxy.
+_THIS_DIR = Path(__file__).resolve().parent
+if str(_THIS_DIR) not in sys.path:
+    sys.path.insert(0, str(_THIS_DIR))
+
+from burnbar_usage_ledger import (  # noqa: E402  — module import after sys.path tweak
+    KNOWN_CONFIDENCE,
+    KNOWN_PROVIDER_IDS,
+    UsageEvent,
+    append_usage_record,
+    default_ledger_path,
+    derive_idempotency_key,
+)
 
 mcp = FastMCP("openburnbar-local")
 
@@ -285,6 +302,105 @@ def burnbar_chat_messages(limit: int = 80) -> str:
         )
         rows = [_row_to_dict(r) for r in cur.fetchall()]
     return json.dumps({"messages": list(reversed(rows))}, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_record_hermes_usage(
+    provider_id: str,
+    model_id: str,
+    input_tokens: int,
+    output_tokens: int,
+    cost: float = 0.0,
+    cache_creation_tokens: int = 0,
+    cache_read_tokens: int = 0,
+    reasoning_tokens: int = 0,
+    session_id: str | None = None,
+    project_name: str | None = None,
+    confidence: str = "exact",
+    idempotency_key: str | None = None,
+    recorded_at_iso: str | None = None,
+) -> str:
+    """
+    Append an exact (or estimate) token-usage row to the OpenBurnBar usage
+    ledger so the macOS app picks it up the next time it imports the daemon
+    runtime snapshot. Idempotent: re-sending the same `idempotency_key` will
+    not double-count the spend.
+
+    `provider_id` must be one of the daemon-known IDs:
+        zai, minimax, ollama, openai, anthropic, google, deepseek, mistral,
+        meta, cohere, xai, amazon, alibaba, moonshot, hermes.
+
+    `confidence` must be one of: exact (default for exact provider responses),
+    derived_exact, high_confidence_estimate, low_confidence_estimate, unknown.
+
+    Use this from Hermes whenever a model call returns provider usage and you
+    want OpenBurnBar to know about it without going through the macOS app.
+    """
+    if recorded_at_iso:
+        try:
+            recorded_at = datetime.fromisoformat(recorded_at_iso.replace("Z", "+00:00"))
+        except ValueError as exc:
+            return json.dumps(
+                {"error": f"recorded_at_iso must be ISO8601: {exc}"},
+                indent=2,
+            )
+    else:
+        recorded_at = datetime.now(timezone.utc)
+
+    try:
+        event = UsageEvent(
+            provider_id=provider_id,
+            model_id=model_id,
+            input_tokens=int(input_tokens),
+            output_tokens=int(output_tokens),
+            cache_creation_tokens=int(cache_creation_tokens),
+            cache_read_tokens=int(cache_read_tokens),
+            reasoning_tokens=int(reasoning_tokens),
+            cost=float(cost),
+            recorded_at=recorded_at,
+            run_id=None,
+            session_id=session_id,
+            project_name=project_name,
+            confidence=confidence,
+        )
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)}, indent=2)
+
+    key = idempotency_key or derive_idempotency_key(
+        provider_id=provider_id,
+        model_id=model_id,
+        session_id=session_id,
+        recorded_at=recorded_at,
+    )
+    try:
+        result = append_usage_record(event=event, idempotency_key=key)
+    except (OSError, ValueError) as exc:
+        return json.dumps(
+            {
+                "error": str(exc),
+                "hint": (
+                    "Ensure ~/Library/Application Support/OpenBurnBar exists or set "
+                    "OPENBURNBAR_USAGE_LEDGER_PATH to a writable absolute path."
+                ),
+            },
+            indent=2,
+        )
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def burnbar_resolve_usage_ledger_path() -> str:
+    """Return the usage-events.jsonl path the writer will use, for debugging."""
+    path = default_ledger_path()
+    return json.dumps(
+        {
+            "path": str(path),
+            "exists": path.is_file(),
+            "knownProviderIDs": sorted(KNOWN_PROVIDER_IDS),
+            "knownConfidenceValues": sorted(KNOWN_CONFIDENCE),
+        },
+        indent=2,
+    )
 
 
 def main() -> None:

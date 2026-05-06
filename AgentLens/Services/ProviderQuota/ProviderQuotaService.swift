@@ -10,35 +10,7 @@ final class ProviderQuotaService {
     static let shared = ProviderQuotaService()
 
     static var supportedProviders: [AgentProvider] {
-        makeSupportedProviders()
-    }
-
-    private static func makeSupportedProviders() -> [AgentProvider] {
-        var providers: [AgentProvider] = []
-        providers.reserveCapacity(22)
-        providers.append(.aider)
-        providers.append(.codex)
-        providers.append(.openAI)
-        providers.append(.claudeCode)
-        providers.append(.copilot)
-        providers.append(.minimax)
-        providers.append(.zai)
-        providers.append(.factory)
-        providers.append(.cursor)
-        providers.append(.warp)
-        providers.append(.ollama)
-        providers.append(.kimi)
-        providers.append(.forgeDev)
-        providers.append(.hermes)
-        providers.append(.cline)
-        providers.append(.kiloCode)
-        providers.append(.rooCode)
-        providers.append(.augment)
-        providers.append(.geminiCLI)
-        providers.append(.goose)
-        providers.append(.openClaw)
-        providers.append(.windsurf)
-        return providers
+        AgentProvider.quotaSignalProviders
     }
 
     private let keyStore: ProviderAPIKeyStore
@@ -67,6 +39,9 @@ final class ProviderQuotaService {
     private(set) var routingStatesByProviderID: [ProviderID: ProviderRoutingStateSnapshot] = [:]
     private(set) var routingEvents: [ProviderRoutingDecisionEvent] = []
     private var codexRolloutScanCache: CodexRolloutScanCache = .empty
+    private var connectedQuotaProviderIDsCache: (fetchedAt: Date, ids: Set<ProviderID>)?
+    private var suppressRoutingEventPersistence = false
+    private var routingEventsDirty = false
 
     init(
         settingsManager: SettingsManager = .shared,
@@ -93,7 +68,7 @@ final class ProviderQuotaService {
         self.homeDirectoryURL = homeDirectoryURL
         self.miniMaxModeProvider = miniMaxModeProvider ?? { settingsManager.miniMaxQuotaMode }
         self.factoryPlanProvider = factoryPlanProvider ?? { settingsManager.factoryQuotaPlanTier }
-        self.refreshProviders = refreshProviders
+        self.refreshProviders = refreshProviders.filter(\.isQuotaSignalProvider)
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
         self.snapshotStore = store
@@ -115,7 +90,7 @@ final class ProviderQuotaService {
             homeDirectoryURL: homeDirectoryURL,
             miniMaxModeProvider: self.miniMaxModeProvider,
             factoryPlanProvider: self.factoryPlanProvider,
-            refreshProviders: refreshProviders
+            refreshProviders: self.refreshProviders
         )
 
         self.claudeBridgeStatus = bridgeManager.refreshClaudeBridgeStatus()
@@ -167,6 +142,7 @@ final class ProviderQuotaService {
     var snapshotsForCloudSync: [ProviderQuotaSnapshot] {
         Array(
             (Array(snapshotsByProvider.values) + Array(snapshotsByAccountID.values))
+                .compactMap { $0.filteringToDisplayableQuotaSignal() }
                 .reduce(into: [String: ProviderQuotaSnapshot]()) { result, snapshot in
                     let key = ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)
                     guard let existing = result[key] else {
@@ -211,12 +187,22 @@ final class ProviderQuotaService {
         let accounts = (try? dataStore.providerAccountStore.fetchAll()) ?? []
         let providerIDs = Set(
             accounts.map(\.providerID)
-                + snapshotsByProvider.keys.map(\.providerID)
+                + snapshotsByProvider.values.filter(\.hasDisplayableQuotaSignal).map(\.providerID)
                 + OpenBurnBarDaemonManager.shared.providerConfigurations.map { ProviderID(rawValue: $0.providerID) }
                 + request.preferredProviderIDs
         )
 
         var updatedStates: [ProviderID: ProviderRoutingStateSnapshot] = [:]
+        let wasSuppressingPersistence = suppressRoutingEventPersistence
+        suppressRoutingEventPersistence = true
+        defer {
+            suppressRoutingEventPersistence = wasSuppressingPersistence
+            if !wasSuppressingPersistence, routingEventsDirty {
+                routingEventsDirty = false
+                persistRoutingEvents()
+            }
+        }
+
         for providerID in providerIDs {
             let scopedRequest = ProviderRoutingRequest(
                 modelID: request.modelID,
@@ -252,16 +238,8 @@ final class ProviderQuotaService {
     }
 
     func refreshIfNeeded(dataStore: DataStore, maxAge: TimeInterval = 5 * 60) async {
-        let hasUsefulSnapshot = refreshProviders.contains { provider in
-            let snap = snapshotsByProvider[provider]
-            return snap != nil && !(snap?.buckets.isEmpty ?? true)
-        }
-        if !hasUsefulSnapshot {
-            await refreshAll(dataStore: dataStore)
-            return
-        }
-        refreshRoutingState(dataStore: dataStore)
         if let lastFetch, Date().timeIntervalSince(lastFetch) < maxAge {
+            refreshRoutingState(dataStore: dataStore)
             return
         }
         await refreshAll(dataStore: dataStore)
@@ -335,7 +313,7 @@ final class ProviderQuotaService {
         apiKeyOverride: String
     ) async throws -> ProviderQuotaSnapshot {
         switch provider {
-        case .minimax, .zai, .copilot:
+        case .minimax, .zai, .copilot, .ollama:
             let scratchDataStore = try makeScratchDataStore()
             let context = makeContext(dataStore: scratchDataStore, apiKeyOverrides: [provider: apiKeyOverride])
             return try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
@@ -346,7 +324,7 @@ final class ProviderQuotaService {
                 source: .unavailable,
                 confidence: .unavailable,
                 managementURL: nil,
-                statusMessage: "Per-plan quota refresh is currently available for MiniMax and Z.ai.",
+                statusMessage: "Per-plan quota refresh is available for MiniMax, Z.ai, Copilot, and Ollama Cloud.",
                 buckets: []
             )
         }
@@ -375,21 +353,32 @@ final class ProviderQuotaService {
             return
         }
         routingEvents.append(event)
+        routingEventsDirty = true
         if routingEvents.count > 100 {
             routingEvents.removeFirst(routingEvents.count - 100)
         }
-        persistRoutingEvents()
+        if !suppressRoutingEventPersistence {
+            routingEventsDirty = false
+            persistRoutingEvents()
+        }
     }
 
     private func connectedQuotaProviderIDs(dataStore: DataStore) -> Set<ProviderID> {
+        if let cache = connectedQuotaProviderIDsCache,
+           Date().timeIntervalSince(cache.fetchedAt) < 15 {
+            return cache.ids
+        }
         let accounts = (try? dataStore.providerAccountStore.fetchAll()) ?? []
-        return Set(accounts.compactMap { account in
+        let ids: Set<ProviderID> = Set(accounts.compactMap { account in
             guard Self.isConnectedQuotaAccount(account) else { return nil }
-            guard AgentProvider.fromProviderID(account.providerID).map(Self.supportedProviders.contains) == true else {
+            guard let provider = AgentProvider.fromProviderID(account.providerID),
+                  Self.supportedProviders.contains(provider) else {
                 return nil
             }
             return account.providerID
         })
+        connectedQuotaProviderIDsCache = (Date(), ids)
+        return ids
     }
 
     private static func isConnectedQuotaAccount(_ account: ProviderAccountDoc) -> Bool {
@@ -416,7 +405,7 @@ final class ProviderQuotaService {
         }
 
         if let agentProvider = AgentProvider.fromProviderID(providerID),
-           snapshotsByProvider[agentProvider] != nil || ProviderQuotaService.supportedProviders.contains(agentProvider) {
+           snapshotsByProvider[agentProvider]?.hasDisplayableQuotaSignal == true || ProviderQuotaService.supportedProviders.contains(agentProvider) {
             return [
                 .defaultLegacyAccount(
                     providerID: providerID,
@@ -497,7 +486,7 @@ final class ProviderQuotaService {
             }
         }
 
-        guard let bucket = snapshot?.primaryBucket ?? snapshot?.buckets.first else {
+        guard let bucket = snapshot?.primaryDisplayableBucket else {
             return account.status == .error ? .authFailed : .unknown
         }
 
@@ -681,6 +670,7 @@ final class ProviderQuotaService {
                 scopedProviderIDs: scopedProviderIDs,
                 activeAccountIDs: Set(accounts.map(\.id))
             )
+            connectedQuotaProviderIDsCache = nil
         } catch {
             AppLogger.dataStore.silentFailure("ProviderQuotaService: Failed to persist daemon provider accounts", error: error)
         }
@@ -871,11 +861,5 @@ private struct ProviderQuotaPersistenceLoadError: LocalizedError {
 
     var errorDescription: String? {
         message
-    }
-}
-
-private extension ProviderQuotaSnapshot {
-    var hasDisplayableQuotaSignal: Bool {
-        !buckets.isEmpty
     }
 }

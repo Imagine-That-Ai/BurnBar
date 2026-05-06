@@ -33,7 +33,7 @@ struct ProviderQuotaPopoverStrip: View {
         .padding(.bottom, DesignSystem.Spacing.xs)
         .background(DesignSystem.Colors.surface.opacity(0.45))
         .task {
-            await quotaService.refreshAll(dataStore: dataStore)
+            await quotaService.refreshIfNeeded(dataStore: dataStore)
         }
     }
 
@@ -178,7 +178,7 @@ struct QuotaCommandCenter: View {
             .background(DesignSystem.Colors.surface.opacity(0.45))
         )
         .task {
-            await quotaService.refreshAll(dataStore: dataStore)
+            await quotaService.refreshIfNeeded(dataStore: dataStore)
         }
     }
 
@@ -299,7 +299,7 @@ struct QuotaCommandRow: View {
     private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
     private var snapshot: ProviderQuotaSnapshot? { quotaService.snapshot(for: provider) }
     private var isRefreshing: Bool { quotaService.isRefreshing(provider) }
-    private var isUnconfigured: Bool { snapshot?.buckets.isEmpty == true }
+    private var isUnconfigured: Bool { snapshot?.hasDisplayableQuotaSignal != true }
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
@@ -357,7 +357,7 @@ struct QuotaCommandRow: View {
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
                         .lineLimit(1)
 
-                    if let primaryBucket = snapshot?.primaryBucket {
+                    if let primaryBucket = snapshot?.primaryDisplayableBucket {
                         Text(primaryBucket.remainingText + " left")
                             .font(DesignSystem.Typography.tiny)
                             .foregroundStyle(theme.primaryColor)
@@ -380,7 +380,7 @@ struct QuotaCommandRow: View {
             QuotaDualWindowStrip(
                 hourlyBucket: snapshot?.hourlyBucket,
                 weeklyBucket: snapshot?.weeklyBucket,
-                fallbackBucket: snapshot?.primaryBucket,
+                fallbackBucket: snapshot?.primaryDisplayableBucket,
                 provider: provider,
                 isActive: isRefreshing
             )

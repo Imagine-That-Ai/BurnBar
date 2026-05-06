@@ -262,6 +262,26 @@ private enum ICloudSessionMirrorEngine {
         let standardized = URL(fileURLWithPath: spec.rootPath, isDirectory: true).standardizedFileURL
         guard fm.fileExists(atPath: standardized.path) else { return [] }
 
+        if spec.slug == "Hermes" {
+            let hermesHome = standardized.lastPathComponent == "sessions"
+                ? standardized.deletingLastPathComponent()
+                : standardized
+            var files: [URL] = []
+            let stateDB = hermesHome.appendingPathComponent("state.db")
+            if fm.fileExists(atPath: stateDB.path) {
+                files.append(stateDB)
+                for suffix in ["-wal", "-shm"] {
+                    let sidecar = URL(fileURLWithPath: stateDB.path + suffix)
+                    if fm.fileExists(atPath: sidecar.path) {
+                        files.append(sidecar)
+                    }
+                }
+            }
+            let sessionsDir = hermesHome.appendingPathComponent("sessions", isDirectory: true)
+            files.append(contentsOf: try enumerateFiles(in: sessionsDir, matchingExtensions: ["json", "jsonl"], fm: fm))
+            return files
+        }
+
         switch spec.filePattern {
         case "state_5.sqlite":
             let f = standardized.appendingPathComponent("state_5.sqlite")
@@ -421,6 +441,39 @@ final class ICloudSessionMirrorService {
         return await Task.detached(priority: .utility) {
             Self.extractConversations(from: mirrorRoot)
         }.value
+    }
+
+    func exportHermesConversationsForMobile(_ conversations: [ConversationRecord]) async throws -> Int {
+        guard !conversations.isEmpty, let mirrorRoot = mirrorRootDirectoryURL() else { return 0 }
+        let exportRoot = mirrorRoot
+            .appendingPathComponent("Hermes", isDirectory: true)
+            .appendingPathComponent("OpenBurnBarImports", isDirectory: true)
+        try fileManager.createDirectory(at: exportRoot, withIntermediateDirectories: true)
+
+        var exported = 0
+        for conversation in conversations where conversation.provider == .hermes {
+            let safeName = conversation.sessionId
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: ":", with: "_")
+            let url = exportRoot.appendingPathComponent("\(safeName).json")
+            let payload: [String: Any] = [
+                "id": conversation.id,
+                "session_id": conversation.sessionId,
+                "title": conversation.summaryTitle ?? conversation.inferredTaskTitle,
+                "project_name": conversation.projectName,
+                "updated_at": ISO8601DateFormatter().string(from: conversation.endTime ?? conversation.startTime ?? Date()),
+                "messages": [
+                    [
+                        "role": "transcript",
+                        "content": conversation.fullText
+                    ]
+                ]
+            ]
+            let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: url, options: [.atomic])
+            exported += 1
+        }
+        return exported
     }
 
     // MARK: - iCloud lightweight extractor

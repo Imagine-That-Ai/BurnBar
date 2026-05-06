@@ -30,6 +30,42 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
 
     public var id: String { rawValue }
 
+    /// Providers that expose a real quota/rate-limit signal either through an
+    /// official API, a provider dashboard scrape, or a first-party local quota
+    /// bridge. Usage-only tools stay out of quota surfaces.
+    public static let quotaSignalProviders: [AgentProvider] = [
+        .codex,
+        .claudeCode,
+        .copilot,
+        .minimax,
+        .zai,
+        .factory,
+        .cursor,
+        .warp,
+        .ollama,
+        .kimi,
+    ]
+
+    public var isQuotaSignalProvider: Bool {
+        Self.quotaSignalProviders.contains(self)
+    }
+
+    /// Mobile account-connection providers. This is narrower than
+    /// `allCases`: local usage/activity tools do not have quota credentials to
+    /// add from iOS.
+    public static let mobileAccountConnectableProviders: [AgentProvider] = [
+        .claudeCode,
+        .codex,
+        .factory,
+        .cursor,
+        .copilot,
+        .minimax,
+        .zai,
+        .kimi,
+        .warp,
+        .openAI,
+    ]
+
     /// A stable, lowercased, space-stripped token for persisting provider identifiers.
     public var persistedToken: String {
         rawValue.lowercased().replacingOccurrences(of: " ", with: "")

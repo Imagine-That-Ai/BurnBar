@@ -16,6 +16,7 @@ struct DatabaseWorkspaceView: View {
     @State private var atlasRows: [AtlasCorpusRow] = []
     @State private var atlasLoading = false
     @State private var atlasError: String?
+    @State private var snapshotRebuildTask: Task<Void, Never>?
     /// When the query planner detects aggregate intent, show full substring counts over stored transcripts (not top‑K retrieval).
     @State private var atlasAggregateSummary: String?
 
@@ -37,16 +38,20 @@ struct DatabaseWorkspaceView: View {
         }
         .animation(DesignSystem.Animation.standard, value: showInspector)
         .background(Color.clear)
-        .task { await runRefreshLoop() }
+        .task { await rebuildSnapshot() }
         .task(id: atlasRefreshKey) { await refreshAtlasRowsIfNeeded() }
-        .onChange(of: dataStore.usages.count) { _, _ in Task { @MainActor in await rebuildSnapshot() } }
-        .onChange(of: dataStore.lastRefresh) { _, _ in Task { @MainActor in await rebuildSnapshot() } }
-        .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in Task { @MainActor in await rebuildSnapshot() } }
+        .onChange(of: dataStore.usages.count) { _, _ in scheduleSnapshotRebuild() }
+        .onChange(of: dataStore.lastRefresh) { _, _ in scheduleSnapshotRebuild() }
+        .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in scheduleSnapshotRebuild() }
         .onChange(of: settingsManager.preferredIndexEmbeddingVersionID) { _, _ in
-            Task { @MainActor in await rebuildSnapshot() }
+            scheduleSnapshotRebuild()
             Task { await refreshAtlasRowsIfNeeded() }
         }
-        .onChange(of: accountManager.isSignedIn) { _, _ in Task { @MainActor in await rebuildSnapshot() } }
+        .onChange(of: accountManager.isSignedIn) { _, _ in scheduleSnapshotRebuild() }
+        .onDisappear {
+            snapshotRebuildTask?.cancel()
+            snapshotRebuildTask = nil
+        }
     }
 
     @MainActor
@@ -60,11 +65,11 @@ struct DatabaseWorkspaceView: View {
     }
 
     @MainActor
-    private func runRefreshLoop() async {
-        await rebuildSnapshot()
-        while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(8))
-            guard Task.isCancelled == false else { break }
+    private func scheduleSnapshotRebuild(delay: Duration = .milliseconds(350)) {
+        snapshotRebuildTask?.cancel()
+        snapshotRebuildTask = Task { @MainActor in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
             await rebuildSnapshot()
         }
     }

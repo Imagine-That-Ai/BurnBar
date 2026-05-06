@@ -92,6 +92,49 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertTrue(service.lastError?.contains("Update OpenBurnBar on your Mac") ?? false)
     }
 
+    func testSuggestedRelayConnectionPicksNewestOnlineEncryptedRelay() {
+        let older = HermesConnectionRecord(
+            id: "relay-old",
+            displayName: "Old Mac Relay",
+            mode: .relayLink,
+            status: .online,
+            relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            capabilities: ["chat_completions", "remote_relay"],
+            lastSeenAt: Date(timeIntervalSince1970: 100)
+        )
+        let newer = HermesConnectionRecord(
+            id: "relay-new",
+            displayName: "Current Mac Relay",
+            mode: .relayLink,
+            status: .online,
+            relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            capabilities: ["chat_completions", "remote_relay"],
+            lastSeenAt: Date(timeIntervalSince1970: 200)
+        )
+        let legacy = HermesConnectionRecord(
+            id: "relay-legacy",
+            displayName: "Legacy Relay",
+            mode: .relayLink,
+            status: .online
+        )
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.connections = [.localDefault, legacy, older, newer]
+
+        XCTAssertEqual(service.suggestedRelayConnection?.id, "relay-new")
+    }
+
+    func testConnectToSuggestedRelayIsExplicitUserGrant() {
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.connections = [.localDefault, relayConnection()]
+
+        XCTAssertTrue(service.connectToSuggestedRelay(refresh: false))
+        XCTAssertEqual(service.selectedConnection.id, "relay-mac")
+    }
+
     func testRelayStreamingParsesTextAndToolCalls() async {
         let relay = FakeHermesRelayTransport()
         relay.streamingEvents = [

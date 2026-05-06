@@ -109,6 +109,10 @@ final class DataStoreCoordinator {
         usageViewModel.cacheEfficiency(in: dateRange)
     }
 
+    func usageWindowSummary(in dateRange: ClosedRange<Date>?) -> DashboardUsageWindowSummary {
+        usageViewModel.windowSummary(in: dateRange)
+    }
+
     func usages(in dateRange: ClosedRange<Date>?) -> [TokenUsage] {
         usageViewModel.usages(in: dateRange)
     }

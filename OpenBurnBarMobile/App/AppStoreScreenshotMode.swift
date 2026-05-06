@@ -119,17 +119,17 @@ enum AppStoreScreenshotData {
                 statusMessage: "Uploaded by the Mac runner after a manual refresh."
             ),
             quotaSnapshot(
-                provider: .openAI,
-                accountID: "openai-team",
-                accountLabel: "OpenAI Team",
+                provider: .cursor,
+                accountID: "cursor-team",
+                accountLabel: "Cursor Team",
                 storageScope: .cloudRefreshable,
                 sourceKind: .officialAPI,
-                source: "OpenAI billing API",
+                source: "Cursor usage API",
                 confidence: .high,
                 buckets: [
-                    ProviderQuotaBucket(name: "Monthly budget", used: 218, limit: 500, remaining: 282, window: "monthly")
+                    ProviderQuotaBucket(name: "Included usage", used: 218, limit: 500, remaining: 282, window: "monthly", meta: ["unit": "currency"])
                 ],
-                statusMessage: "Healthy monthly budget headroom."
+                statusMessage: "Healthy included-usage headroom."
             )
         ]
     }

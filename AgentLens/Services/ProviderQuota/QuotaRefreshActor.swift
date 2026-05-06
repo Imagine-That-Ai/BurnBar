@@ -22,6 +22,8 @@ private struct ProviderQuotaAccountCredential: Sendable {
 /// Actor that owns all HTTP fetching for provider quota adapters.
 /// Heavy I/O runs here, off the main thread.
 actor QuotaRefreshActor {
+    private static let maxConcurrentQuotaFetches = 4
+
     let keyStore: ProviderAPIKeyStore
     let providerRuntimeKeyStore: KeychainStore
     let appPaths: OpenBurnBarAppPaths
@@ -61,9 +63,7 @@ actor QuotaRefreshActor {
         self.refreshProviders = refreshProviders
 
         self.adapters = [
-            .aider: AiderQuotaAdapter(),
             .codex: CodexQuotaAdapter(),
-            .openAI: OpenAIQuotaAdapter(),
             .claudeCode: ClaudeQuotaAdapter(),
             .copilot: CopilotQuotaAdapter(),
             .minimax: MiniMaxQuotaAdapter(),
@@ -73,16 +73,6 @@ actor QuotaRefreshActor {
             .warp: WarpQuotaAdapter(),
             .ollama: OllamaQuotaAdapter(),
             .kimi: KimiQuotaAdapter(),
-            .forgeDev: ForgeQuotaAdapter(),
-            .hermes: HermesQuotaAdapter(),
-            .cline: ClineQuotaAdapter(),
-            .kiloCode: KiloCodeQuotaAdapter(),
-            .rooCode: RooCodeQuotaAdapter(),
-            .augment: AugmentQuotaAdapter(),
-            .geminiCLI: GeminiCLIQuotaAdapter(),
-            .goose: GooseQuotaAdapter(),
-            .openClaw: OpenClawQuotaAdapter(),
-            .windsurf: WindsurfQuotaAdapter(),
         ]
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
@@ -185,8 +175,10 @@ actor QuotaRefreshActor {
         context: ProviderQuotaAdapterContext
     ) async -> [AgentProvider: ProviderQuotaSnapshot] {
         var snapshots: [AgentProvider: ProviderQuotaSnapshot] = [:]
+        var iterator = providers.makeIterator()
         await withTaskGroup(of: (AgentProvider, ProviderQuotaSnapshot).self) { group in
-            for provider in providers {
+            for _ in 0..<min(Self.maxConcurrentQuotaFetches, providers.count) {
+                guard let provider = iterator.next() else { break }
                 group.addTask {
                     do {
                         let snapshot = try await self.fetchSnapshot(for: provider, context: context)
@@ -208,6 +200,25 @@ actor QuotaRefreshActor {
 
             for await (provider, snapshot) in group {
                 snapshots[provider] = snapshot
+                if let nextProvider = iterator.next() {
+                    group.addTask {
+                        do {
+                            let snapshot = try await self.fetchSnapshot(for: nextProvider, context: context)
+                            return (nextProvider, snapshot)
+                        } catch {
+                            let snapshot = ProviderQuotaSnapshot(
+                                provider: nextProvider,
+                                fetchedAt: Date(),
+                                source: .unavailable,
+                                confidence: .unavailable,
+                                managementURL: nil,
+                                statusMessage: error.localizedDescription,
+                                buckets: []
+                            )
+                            return (nextProvider, snapshot)
+                        }
+                    }
+                }
             }
         }
 
@@ -226,8 +237,10 @@ actor QuotaRefreshActor {
         guard !credentials.isEmpty else { return [:] }
 
         var snapshots: [String: ProviderQuotaSnapshot] = [:]
+        var iterator = credentials.makeIterator()
         await withTaskGroup(of: (String, ProviderQuotaSnapshot).self) { group in
-            for credential in credentials {
+            for _ in 0..<min(Self.maxConcurrentQuotaFetches, credentials.count) {
+                guard let credential = iterator.next() else { break }
                 group.addTask {
                     var resolvedKeys = context.resolvedAPIKeys
                     for identifier in quotaKeyIdentifiers(for: credential.provider) {
@@ -267,6 +280,43 @@ actor QuotaRefreshActor {
 
             for await (key, snapshot) in group {
                 snapshots[key] = snapshot
+                if let credential = iterator.next() {
+                    group.addTask {
+                        var resolvedKeys = context.resolvedAPIKeys
+                        for identifier in quotaKeyIdentifiers(for: credential.provider) {
+                            resolvedKeys[identifier] = credential.apiKey
+                        }
+
+                        let accountContext = context.withResolvedAPIKeys(resolvedKeys)
+                        let snapshot: ProviderQuotaSnapshot
+                        do {
+                            snapshot = try await self.fetchSnapshot(for: credential.provider, context: accountContext)
+                                .withAccountMetadata(
+                                    providerID: credential.providerID,
+                                    accountID: credential.accountID,
+                                    accountLabel: credential.label,
+                                    accountStorageScope: credential.storageScope,
+                                    sourceId: credential.sourceID
+                                )
+                        } catch {
+                            snapshot = ProviderQuotaSnapshot(
+                                provider: credential.provider,
+                                providerID: credential.providerID,
+                                accountID: credential.accountID,
+                                accountLabel: credential.label,
+                                accountStorageScope: credential.storageScope,
+                                fetchedAt: Date(),
+                                source: .unavailable,
+                                sourceId: credential.sourceID,
+                                confidence: .unavailable,
+                                managementURL: nil,
+                                statusMessage: error.localizedDescription,
+                                buckets: []
+                            )
+                        }
+                        return (ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot), snapshot)
+                    }
+                }
             }
         }
 

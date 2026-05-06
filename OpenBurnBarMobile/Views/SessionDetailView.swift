@@ -74,6 +74,23 @@ struct SessionDetailView: View {
         providerEnum.map { MobileTheme.Colors.chartPalette(for: $0) } ?? [MobileTheme.Colors.textSecondary]
     }
 
+    /// Distinct, semantic colors for each token kind so the breakdown reads
+    /// at a glance. The previous `chartPalette` returned shades of one
+    /// provider color, which made input/output/cache visually identical.
+    private enum TokenKind {
+        case input, output, cacheCreation, cacheRead, reasoning
+
+        var tint: Color {
+            switch self {
+            case .input:         return MobileTheme.whimsy            // cool blue
+            case .output:        return MobileTheme.ember             // warm coral
+            case .cacheCreation: return MobileTheme.amber             // gold
+            case .cacheRead:     return MobileTheme.Colors.success    // green (efficiency)
+            case .reasoning:     return Color(hex: "B580E8")          // violet
+            }
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: MobileTheme.Spacing.xl) {
@@ -85,8 +102,14 @@ struct SessionDetailView: View {
                     deviceSection
                 }
             }
-            .padding(.vertical, MobileTheme.Spacing.lg)
+            .padding(.top, MobileTheme.Spacing.lg)
+            // Reserve room for the floating Aurora tab tray + home indicator
+            // so the last card doesn't slide underneath it (and so the user
+            // can still scroll past the end without bumping into the pill).
+            .padding(.bottom, 120)
         }
+        .scrollIndicators(.visible)
+        .scrollDismissesKeyboard(.interactively)
         .background(emberBackground.ignoresSafeArea())
         .navigationTitle("Session")
         .navigationBarTitleDisplayMode(.inline)
@@ -214,36 +237,42 @@ struct SessionDetailView: View {
                     .font(MobileTheme.Typography.headline)
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
 
-                // Animated horizontal token-mix bar
+                // Animated horizontal token-mix bar — each segment uses
+                // the same semantic tint as its row below so the visual
+                // mapping is unmistakable.
                 GeometryReader { geo in
                     HStack(spacing: 0) {
-                        tokenMixSegment(value: usage.inputTokens, total: usage.totalTokens, color: chartPalette[0], width: geo.size.width)
-                        tokenMixSegment(value: usage.outputTokens, total: usage.totalTokens, color: chartPalette[1], width: geo.size.width)
+                        tokenMixSegment(value: usage.inputTokens, total: usage.totalTokens, color: TokenKind.input.tint, width: geo.size.width)
+                        tokenMixSegment(value: usage.outputTokens, total: usage.totalTokens, color: TokenKind.output.tint, width: geo.size.width)
                         if usage.cacheReadTokens > 0 {
-                            tokenMixSegment(value: usage.cacheReadTokens, total: usage.totalTokens, color: chartPalette[2], width: geo.size.width)
+                            tokenMixSegment(value: usage.cacheReadTokens, total: usage.totalTokens, color: TokenKind.cacheRead.tint, width: geo.size.width)
+                        }
+                        if usage.cacheCreationTokens > 0 {
+                            tokenMixSegment(value: usage.cacheCreationTokens, total: usage.totalTokens, color: TokenKind.cacheCreation.tint, width: geo.size.width)
                         }
                         if usage.reasoningTokens > 0 {
-                            tokenMixSegment(value: usage.reasoningTokens, total: usage.totalTokens, color: chartPalette[3], width: geo.size.width)
+                            tokenMixSegment(value: usage.reasoningTokens, total: usage.totalTokens, color: TokenKind.reasoning.tint, width: geo.size.width)
                         }
                     }
-                    .frame(height: 8)
+                    .frame(height: 10)
                     .clipShape(Capsule())
                 }
-                .frame(height: 8)
+                .frame(height: 10)
 
-                LazyVStack(spacing: MobileTheme.Spacing.sm) {
-                    TokenPill(label: "Input", value: usage.inputTokens, color: chartPalette[0])
-                    TokenPill(label: "Output", value: usage.outputTokens, color: chartPalette[1])
+                VStack(spacing: MobileTheme.Spacing.sm) {
+                    TokenPill(label: "Input", value: usage.inputTokens, color: TokenKind.input.tint)
+                    TokenPill(label: "Output", value: usage.outputTokens, color: TokenKind.output.tint)
                     if usage.cacheCreationTokens > 0 {
-                        TokenPill(label: "Cache Creation", value: usage.cacheCreationTokens, color: chartPalette[2])
+                        TokenPill(label: "Cache Creation", value: usage.cacheCreationTokens, color: TokenKind.cacheCreation.tint)
                     }
                     if usage.cacheReadTokens > 0 {
-                        TokenPill(label: "Cache Read", value: usage.cacheReadTokens, color: chartPalette[2])
+                        TokenPill(label: "Cache Read", value: usage.cacheReadTokens, color: TokenKind.cacheRead.tint)
                     }
                     if usage.reasoningTokens > 0 {
-                        TokenPill(label: "Reasoning", value: usage.reasoningTokens, color: chartPalette[3])
+                        TokenPill(label: "Reasoning", value: usage.reasoningTokens, color: TokenKind.reasoning.tint)
                     }
                     Divider()
+                        .padding(.vertical, 2)
                     TokenPill(label: "Total", value: usage.totalTokens, isTotal: true)
                 }
             }
@@ -309,22 +338,34 @@ private struct TokenPill: View {
     var color: Color? = nil
 
     var body: some View {
-        HStack {
-            HStack(spacing: 6) {
-                if let color {
+        HStack(spacing: MobileTheme.Spacing.sm) {
+            if let color {
+                // Saturated swatch + faint halo gives each kind a clear,
+                // distinct identity even when the provider's palette is
+                // mostly one hue.
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.22))
+                        .frame(width: 14, height: 14)
                     Circle()
                         .fill(color)
-                        .frame(width: 8, height: 8)
+                        .frame(width: 9, height: 9)
                 }
-                Text(label)
-                    .font(MobileTheme.Typography.body)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                .accessibilityHidden(true)
             }
-            Spacer()
+            Text(label)
+                .font(MobileTheme.Typography.body)
+                .foregroundStyle(isTotal ? MobileTheme.Colors.textPrimary : MobileTheme.Colors.textSecondary)
+                .fontWeight(isTotal ? .semibold : .regular)
+            Spacer(minLength: 8)
             Text(value.formatAsTokens())
                 .font(isTotal ? MobileTheme.Typography.headline : MobileTheme.Typography.body)
-                .foregroundStyle(isTotal ? MobileTheme.Colors.textPrimary : MobileTheme.Colors.textSecondary)
+                .fontWeight(isTotal ? .bold : .medium)
+                .foregroundStyle(isTotal ? MobileTheme.Colors.textPrimary : MobileTheme.Colors.textPrimary.opacity(0.85))
+                .monospacedDigit()
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value.formatAsTokens())")
     }
 }
 

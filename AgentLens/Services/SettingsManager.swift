@@ -387,6 +387,11 @@ final class SettingsManager {
         set { chatBackend.chatBackendOnboardingCompleted = newValue }
     }
 
+    var hermesSetupWizardCompleted: Bool {
+        get { chatBackend.hermesSetupWizardCompleted }
+        set { chatBackend.hermesSetupWizardCompleted = newValue }
+    }
+
     var switcherOnboardingCompleted: Bool {
         get { chatBackend.switcherOnboardingCompleted }
         set { chatBackend.switcherOnboardingCompleted = newValue }

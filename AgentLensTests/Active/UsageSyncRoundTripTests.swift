@@ -14,6 +14,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
     private var usageSync: UsageSyncService!
     private var downloadSync: DownloadSyncService!
     private var providerAccountSync: ProviderAccountSyncService!
+    private var quotaSnapshotSync: QuotaSnapshotSyncService!
 
     override func setUp() async throws {
         dataStore = try makeDiscoveryInMemoryStore()
@@ -29,6 +30,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         usageSync = UsageSyncService(context: context)
         downloadSync = DownloadSyncService(context: context)
         providerAccountSync = ProviderAccountSyncService(context: context)
+        quotaSnapshotSync = QuotaSnapshotSyncService(context: context)
     }
 
     // MARK: - Write → Read Round Trip
@@ -160,6 +162,45 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(account.sourceDeviceID, "iphone-1")
         XCTAssertTrue(account.isDefault)
         XCTAssertEqual(account.redactedLabel, "sk-...abcd")
+    }
+
+    func test_quotaSnapshotUpload_writesDisplayableMacQuotaForMobile() async throws {
+        let snapshot = ProviderQuotaSnapshot(
+            provider: .codex,
+            fetchedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            source: .localSession,
+            sourceId: "codex-local",
+            confidence: .exact,
+            managementURL: "https://chatgpt.com/codex",
+            statusMessage: "Codex quota from local session.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "codex-5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: 25,
+                    limitValue: 100,
+                    remainingValue: 75,
+                    usedPercent: 25,
+                    resetsAt: Date(timeIntervalSince1970: 1_700_001_000),
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+
+        await quotaSnapshotSync.uploadSnapshots([snapshot])
+
+        let path = "users/test-uid-1/quota_snapshots/codex_unattributed_codex-local"
+        let doc = try XCTUnwrap(fakeGateway.documentData(at: path))
+        XCTAssertEqual(doc["providerID"] as? String, ProviderID.codex.rawValue)
+        XCTAssertEqual(doc["provider"] as? String, AgentProvider.codex.persistedToken)
+        XCTAssertEqual(doc["sourceKind"] as? String, "localSession")
+        XCTAssertEqual(doc["sourceId"] as? String, "codex-local")
+        let buckets = try XCTUnwrap(doc["buckets"] as? [[String: Any]])
+        XCTAssertEqual(buckets.first?["name"] as? String, "codex-5h")
+        XCTAssertEqual(buckets.first?["limit"] as? Double, 100)
+        XCTAssertEqual((buckets.first?["meta"] as? [String: String])?["label"], "5-hour window")
     }
 
     func test_usageDownload_readsRemoteUsageIntoLocalStore() async throws {

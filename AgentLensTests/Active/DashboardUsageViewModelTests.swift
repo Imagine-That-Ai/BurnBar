@@ -48,4 +48,172 @@ final class DashboardUsageViewModelTests: XCTestCase {
         let vm = DashboardUsageViewModel()
         XCTAssertNil(vm.topProviderToday())
     }
+
+    func test_dashboardUsageRanking_tokensModeRanksProvidersByTokens() {
+        let expensiveLowVolume = makeProviderSummary(provider: .kimi, cost: 100, tokens: 100)
+        let cheapHighVolume = makeProviderSummary(provider: .codex, cost: 1, tokens: 1_000)
+
+        let tokenRanked = DashboardUsageRanking.sortedProviders(
+            [expensiveLowVolume, cheapHighVolume],
+            displayMode: .tokens
+        )
+        let currencyRanked = DashboardUsageRanking.sortedProviders(
+            [expensiveLowVolume, cheapHighVolume],
+            displayMode: .currency
+        )
+
+        XCTAssertEqual(tokenRanked.map(\.provider), [.codex, .kimi])
+        XCTAssertEqual(currencyRanked.map(\.provider), [.kimi, .codex])
+    }
+
+    func test_dashboardUsageRanking_tokensModeRanksModelsAndPercentagesByTokens() {
+        let highCostLowVolume = makeModelUsage(modelName: "premium-model", cost: 90, tokens: 100)
+        let lowCostHighVolume = makeModelUsage(modelName: "bulk-model", cost: 10, tokens: 900)
+        let summary = makeProviderSummary(
+            provider: .factory,
+            cost: 100,
+            tokens: 1_000,
+            modelBreakdown: [highCostLowVolume, lowCostHighVolume]
+        )
+
+        let tokenRanked = DashboardUsageRanking.sortedModelUsages(
+            summary.modelBreakdown,
+            displayMode: .tokens
+        )
+        let tokenShare = DashboardUsageRanking.modelUsagePercentage(
+            lowCostHighVolume,
+            in: summary,
+            displayMode: .tokens
+        )
+        let currencyShare = DashboardUsageRanking.modelUsagePercentage(
+            lowCostHighVolume,
+            in: summary,
+            displayMode: .currency
+        )
+
+        XCTAssertEqual(tokenRanked.map(\.modelName), ["bulk-model", "premium-model"])
+        XCTAssertEqual(tokenShare, 90, accuracy: 0.001)
+        XCTAssertEqual(currencyShare, 10, accuracy: 0.001)
+    }
+
+    func test_windowSummary_reusesFilteredTotalsAndSummaries() {
+        let vm = DashboardUsageViewModel()
+        let now = Date()
+        let inWindow = ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "codex-window",
+            model: "gpt-5",
+            inputTokens: 100,
+            outputTokens: 50,
+            costUSD: 2,
+            startTime: now,
+            endTime: now.addingTimeInterval(60)
+        )
+        let secondInWindow = ViewTestFixtures.makeUsage(
+            provider: .kimi,
+            sessionId: "kimi-window",
+            model: "kimi-for-coding",
+            inputTokens: 20,
+            outputTokens: 10,
+            costUSD: 1,
+            startTime: now.addingTimeInterval(-60),
+            endTime: now
+        )
+        let outOfWindow = ViewTestFixtures.makeUsage(
+            provider: .factory,
+            sessionId: "factory-old",
+            model: "droid",
+            inputTokens: 500,
+            outputTokens: 500,
+            costUSD: 10,
+            startTime: now.addingTimeInterval(-86_400),
+            endTime: now.addingTimeInterval(-86_300)
+        )
+
+        vm.replaceUsages([outOfWindow, inWindow, secondInWindow])
+
+        let summary = vm.windowSummary(in: now.addingTimeInterval(-120)...now.addingTimeInterval(120))
+        XCTAssertEqual(summary.usages.map(\.sessionId), ["codex-window", "kimi-window"])
+        XCTAssertEqual(summary.totalCost, 3, accuracy: 0.001)
+        XCTAssertEqual(summary.totalTokens, 180)
+        XCTAssertEqual(summary.activeProviderCount, 2)
+        XCTAssertEqual(Set(summary.providerSummaries.map(\.provider)), [.codex, .kimi])
+        XCTAssertEqual(Set(summary.modelSummaries.map(\.modelName)), ["gpt-5", "kimi-for-coding"])
+    }
+
+    func test_makeProviderSummaries_groupsProvidersAndModelsInOneDerivedSnapshot() throws {
+        let usages = [
+            ViewTestFixtures.makeUsage(
+                provider: .codex,
+                sessionId: "codex-a",
+                model: "gpt-5",
+                inputTokens: 100,
+                outputTokens: 50,
+                costUSD: 2
+            ),
+            ViewTestFixtures.makeUsage(
+                provider: .codex,
+                sessionId: "codex-b",
+                model: "gpt-5-mini",
+                inputTokens: 75,
+                outputTokens: 25,
+                costUSD: 1
+            ),
+            ViewTestFixtures.makeUsage(
+                provider: .kimi,
+                sessionId: "kimi-a",
+                model: "kimi-for-coding",
+                inputTokens: 10,
+                outputTokens: 10,
+                costUSD: 0.25
+            )
+        ]
+
+        let summaries = DashboardUsageViewModel.makeProviderSummaries(from: usages)
+        let codex = try XCTUnwrap(summaries.first { $0.provider == .codex })
+
+        XCTAssertEqual(summaries.map(\.provider).first, .codex)
+        XCTAssertEqual(codex.totalCost, 3, accuracy: 0.001)
+        XCTAssertEqual(codex.totalTokens, 250)
+        XCTAssertEqual(codex.sessionCount, 2)
+        XCTAssertEqual(codex.modelBreakdown.map(\.modelName), ["gpt-5", "gpt-5-mini"])
+    }
+
+    private func makeProviderSummary(
+        provider: AgentProvider,
+        cost: Double,
+        tokens: Int,
+        modelBreakdown: [ModelUsage] = []
+    ) -> ProviderSummary {
+        ProviderSummary(
+            provider: provider,
+            totalCost: cost,
+            totalTokens: tokens,
+            totalInputTokens: tokens,
+            totalOutputTokens: 0,
+            sessionCount: 1,
+            modelBreakdown: modelBreakdown,
+            provenanceConfidence: .exact,
+            provenanceMethod: .providerLog,
+            hasEstimatedContributions: false,
+            cacheEfficiency: .zero
+        )
+    }
+
+    private func makeModelUsage(modelName: String, cost: Double, tokens: Int) -> ModelUsage {
+        ModelUsage(
+            modelName: modelName,
+            inputTokens: tokens,
+            outputTokens: 0,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            reasoningTokens: 0,
+            totalTokens: tokens,
+            cost: cost,
+            percentage: cost,
+            provenanceConfidence: .exact,
+            provenanceMethod: .providerLog,
+            hasEstimatedContributions: false
+        )
+    }
 }

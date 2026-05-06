@@ -218,24 +218,30 @@ final class OpenBurnBarDaemonUsageSyncService {
             return nil
         }
 
-        let sessionID = event.runID?.rawValue ?? "\(provider.rawValue.lowercased())-\(event.recordedAt.timeIntervalSince1970)"
-        let identityValue = event.runID?.rawValue ?? "\(event.providerID)|\(event.modelID)|\(event.recordedAt.timeIntervalSince1970)"
+        let sessionID = event.sessionID
+            ?? event.runID?.rawValue
+            ?? "\(provider.rawValue.lowercased())-\(event.recordedAt.timeIntervalSince1970)"
+        let identityValue = event.sessionID
+            ?? event.runID?.rawValue
+            ?? "\(event.providerID)|\(event.modelID)|\(event.recordedAt.timeIntervalSince1970)"
+        let projectName = event.projectName ?? defaultProjectName(for: provider)
         return TokenUsage(
             id: deterministicUUID(for: identityValue),
             provider: provider,
             sessionId: sessionID,
-            projectName: "OpenBurnBar Daemon",
+            projectName: projectName,
             model: event.modelID,
             inputTokens: event.inputTokens,
             outputTokens: event.outputTokens,
             cacheCreationTokens: event.cacheCreationTokens,
             cacheReadTokens: event.cacheReadTokens,
+            reasoningTokens: event.reasoningTokens,
             costUSD: event.cost,
             startTime: event.recordedAt,
             endTime: event.recordedAt,
             usageSource: .daemon,
-            provenanceMethod: .daemonBridge,
-            provenanceConfidence: .exact
+            provenanceMethod: provenanceMethod(for: provider, confidence: event.confidence),
+            provenanceConfidence: provenanceConfidence(from: event.confidence)
         )
     }
 
@@ -244,24 +250,63 @@ final class OpenBurnBarDaemonUsageSyncService {
             return nil
         }
 
-        let sessionID = record.event.runID?.rawValue ?? record.idempotencyKey
+        let sessionID = record.event.sessionID
+            ?? record.event.runID?.rawValue
+            ?? record.idempotencyKey
+        let projectName = record.event.projectName ?? defaultProjectName(for: provider)
         return TokenUsage(
             id: deterministicUUID(for: record.idempotencyKey),
             provider: provider,
             sessionId: sessionID,
-            projectName: "OpenBurnBar Daemon",
+            projectName: projectName,
             model: record.event.modelID,
             inputTokens: record.event.inputTokens,
             outputTokens: record.event.outputTokens,
             cacheCreationTokens: record.event.cacheCreationTokens,
             cacheReadTokens: record.event.cacheReadTokens,
+            reasoningTokens: record.event.reasoningTokens,
             costUSD: record.event.cost,
             startTime: record.event.recordedAt,
             endTime: record.event.recordedAt,
             usageSource: .daemon,
-            provenanceMethod: .daemonBridge,
-            provenanceConfidence: .exact
+            provenanceMethod: provenanceMethod(for: provider, confidence: record.event.confidence),
+            provenanceConfidence: provenanceConfidence(from: record.event.confidence)
         )
+    }
+
+    private func defaultProjectName(for provider: AgentProvider) -> String {
+        switch provider {
+        case .hermes: return "Hermes"
+        default: return "OpenBurnBar Daemon"
+        }
+    }
+
+    private func provenanceMethod(
+        for provider: AgentProvider,
+        confidence: BurnBarUsageConfidence
+    ) -> UsageProvenanceMethod {
+        switch provider {
+        case .hermes:
+            switch confidence {
+            case .exact, .derivedExact: return .providerLog
+            case .highConfidenceEstimate, .lowConfidenceEstimate: return .heuristicEstimate
+            case .unknown: return .daemonBridge
+            }
+        default:
+            return .daemonBridge
+        }
+    }
+
+    private func provenanceConfidence(
+        from confidence: BurnBarUsageConfidence
+    ) -> UsageProvenanceConfidence {
+        switch confidence {
+        case .exact: return .exact
+        case .derivedExact: return .derivedExact
+        case .highConfidenceEstimate: return .highConfidenceEstimate
+        case .lowConfidenceEstimate: return .lowConfidenceEstimate
+        case .unknown: return .unknown
+        }
     }
 
     private func recentUsage(from event: BurnBarUsageEvent) -> OpenBurnBarDaemonRecentUsage? {
@@ -322,6 +367,7 @@ final class OpenBurnBarDaemonUsageSyncService {
         case "amazon":    return .rooCode
         case "alibaba":   return .rooCode
         case "moonshot":  return .kimi
+        case "hermes":    return .hermes
         case "misc":      return nil
         default:          return nil
         }

@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] — iPadOS Port Phase 2 Hardening (2026-05-02)
 
 ### Changed
+- **Responsiveness/performance pass:** dashboard usage now caches date-window
+  aggregates and builds provider/model summaries in one pass; quota refreshes
+  are bounded and coalesced across popover/dashboard entry points; the database
+  workspace rebuilds snapshots on debounced input changes instead of polling;
+  startup defers the first heavy refresh; mobile quota/provider stores keep
+  derived state cached and lower idle animation cadences. SQLite now carries
+  token-usage indexes for sync, provider, model, and provider-id time-window
+  queries.
 - **Hermes accent: gold → dark platinum.** `hermesAureate` is no longer a divine
   gold (`#B8942E` / `#D4AA3C`) — it is now a sophisticated dark platinum
   (`#3F4651` light, `#A2ACBA` dark). The mercury gradient (silver → platinum) now
@@ -34,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the cookie"*) so the list reads as a menu, not a wall of avatars.
 
 ### Fixed
+- **Dashboard agent/model ranking correctness:** token mode now ranks providers,
+  models, and model/provider drill-down stacks by token volume instead of
+  spend; currency mode still ranks by spend. Kimi imports now reject
+  `chatcmpl-*` request ids as model names, and the database repair drops or
+  normalizes existing Kimi request-id rows so the Kimi agent bucket is not
+  inflated by stale model identity pollution.
 - **Cursor "Included usage" gauge renders as currency on iOS / iPadOS:**
   `ProviderQuotaUnit` gains a `.currency` case; `CursorQuotaAdapter` flips the
   `cursor-plan` and `cursor-ondemand` buckets to `.currency` (they already store

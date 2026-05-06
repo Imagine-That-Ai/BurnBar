@@ -17,8 +17,14 @@ final class ProviderQuotaServiceTests: XCTestCase {
         OpenBurnBarDaemonManager.shared.providerConfigurations = []
     }
 
-    func test_supportedProviders_includesWarp() {
+    func test_supportedProviders_onlyIncludesRealQuotaSignalProviders() {
         XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.warp))
+        XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.ollama))
+        XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.hermes))
+        XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.aider))
+        XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.openAI))
+        XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.forgeDev))
+        XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.kiloCode))
     }
 
     func test_visiblePopoverProviders_onlyIncludesConnectedProviders() throws {
@@ -64,6 +70,88 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .codex, dataStore: dataStore)
 
         XCTAssertEqual(service.visiblePopoverProviders(dataStore: dataStore), [.codex])
+    }
+
+    func test_snapshotsForCloudSync_excludesUsageOnlyAndActivitySnapshots() throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+
+        ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default).persistSnapshots([
+            .codex: ProviderQuotaSnapshot(
+                provider: .codex,
+                fetchedAt: Date(),
+                source: .localSession,
+                confidence: .exact,
+                managementURL: nil,
+                statusMessage: "Codex quota.",
+                buckets: [
+                    ProviderQuotaBucket(
+                        key: "codex-5h",
+                        label: "5-hour window",
+                        windowKind: .rollingHours,
+                        usedValue: 40,
+                        limitValue: 100,
+                        remainingValue: 60,
+                        usedPercent: 40,
+                        resetsAt: nil,
+                        unit: .percent,
+                        isEstimated: false
+                    )
+                ]
+            ),
+            .hermes: ProviderQuotaSnapshot(
+                provider: .hermes,
+                fetchedAt: Date(),
+                source: .localSession,
+                confidence: .exact,
+                managementURL: nil,
+                statusMessage: "Hermes usage.",
+                buckets: [
+                    ProviderQuotaBucket(
+                        key: "hermes-total",
+                        label: "Total tokens",
+                        windowKind: .lifetime,
+                        usedValue: 1_000,
+                        limitValue: nil,
+                        remainingValue: nil,
+                        usedPercent: nil,
+                        resetsAt: nil,
+                        unit: .tokens,
+                        isEstimated: false
+                    )
+                ]
+            ),
+            .factory: ProviderQuotaSnapshot(
+                provider: .factory,
+                fetchedAt: Date(),
+                source: .localSession,
+                confidence: .exact,
+                managementURL: nil,
+                statusMessage: "Factory session usage.",
+                buckets: [
+                    ProviderQuotaBucket(
+                        key: "factory-cache",
+                        label: "Cache hit rate (30d)",
+                        windowKind: .monthly,
+                        usedValue: 90,
+                        limitValue: 100,
+                        remainingValue: nil,
+                        usedPercent: 90,
+                        resetsAt: nil,
+                        unit: .percent,
+                        isEstimated: false
+                    )
+                ]
+            )
+        ])
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            refreshProviders: [.codex, .hermes, .factory]
+        )
+
+        XCTAssertEqual(service.snapshotsForCloudSync.map(\.provider), [.codex])
     }
 
     func test_warpRefresh_readsLocalCreditTelemetry() async throws {
@@ -118,6 +206,29 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
         XCTAssertTrue(snapshot.statusMessage.contains("Warp credit quota was not found"))
+    }
+
+    func test_refreshIfNeeded_respectsMaxAgeAfterUnavailableSnapshot() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let dataStore = try makeDataStore()
+        let warpDirectory = home
+            .appendingPathComponent("Library/Application Support/dev.warp.Warp-Stable", isDirectory: true)
+        try FileManager.default.createDirectory(at: warpDirectory, withIntermediateDirectories: true)
+        try Data("Body {\"batch\":[]}".utf8).write(to: warpDirectory.appendingPathComponent("warp_network.log"))
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            refreshProviders: [.warp]
+        )
+
+        await service.refreshIfNeeded(dataStore: dataStore, maxAge: 300)
+        let firstFetchedAt = try XCTUnwrap(service.snapshot(for: .warp)?.fetchedAt)
+        try await Task.sleep(nanoseconds: 25_000_000)
+        await service.refreshIfNeeded(dataStore: dataStore, maxAge: 300)
+        let secondFetchedAt = try XCTUnwrap(service.snapshot(for: .warp)?.fetchedAt)
+
+        XCTAssertEqual(firstFetchedAt, secondFetchedAt)
     }
 
     func test_codexRefresh_readsLatestLocalQuotaSnapshot() async throws {
@@ -668,7 +779,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(persistedAccounts.first?.isDefault, true)
     }
 
-    func test_refreshAll_fetchesOpenAIDaemonCredentialSlotsAsAccountSnapshots() async throws {
+    func test_refreshAll_persistsOpenAIDaemonCredentialSlotsWithoutQuotaSnapshots() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
         let runtimeSecrets = KeychainStore(
@@ -704,29 +815,8 @@ final class ProviderQuotaServiceTests: XCTestCase {
         ]
 
         let session = makeStubSession { request in
-            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-openai-work")
-            XCTAssertEqual(request.url?.host, "api.openai.com")
-            let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
-            let queryItems = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
-            XCTAssertEqual(queryItems["bucket_width"], "1d")
-            XCTAssertNil(queryItems["granularity"])
-            let body = """
-            {
-              "data": [
-                {
-                  "results": [
-                    {
-                      "input_tokens": 1000,
-                      "output_tokens": 250,
-                      "input_cached_tokens": 100,
-                      "num_model_requests": 7
-                    }
-                  ]
-                }
-              ]
-            }
-            """
-            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            XCTFail("OpenAI is usage-only and should not be refreshed as quota: \(request)")
+            return try self.httpResponse(url: request.url!, statusCode: 500, body: "{}")
         }
 
         let service = makeService(
@@ -740,15 +830,9 @@ final class ProviderQuotaServiceTests: XCTestCase {
         let dataStore = try makeDataStore()
         await service.refreshAll(dataStore: dataStore)
 
-        let snapshot = try XCTUnwrap(service.snapshots(for: AgentProvider.openAI).first { $0.accountLabel == "Work" })
         let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: .openAI)
 
-        XCTAssertEqual(snapshot.accountID, "openai-work")
-        XCTAssertEqual(snapshot.providerID, ProviderID.openAI)
-        XCTAssertEqual(snapshot.accountStorageScope, ProviderAccountStorageScope.deviceKeychain)
-        XCTAssertEqual(snapshot.sourceId, "daemon-slot:openai:work")
-        XCTAssertEqual(snapshot.buckets.first { $0.key == "tokens-24h" }?.usedValue, 1250)
-        XCTAssertEqual(snapshot.buckets.first { $0.key == "requests-24h" }?.usedValue, 7)
+        XCTAssertTrue(service.snapshots(for: AgentProvider.openAI).isEmpty)
         XCTAssertEqual(persistedAccounts.map(\.id), ["openai-work"])
         XCTAssertEqual(persistedAccounts.first?.label, "Work")
         XCTAssertEqual(persistedAccounts.first?.storageScope, .deviceKeychain)
@@ -1729,81 +1813,109 @@ extension ProviderQuotaServiceTests {
 
     // MARK: - Ollama Cloud
 
-    func test_ollamaCloud_parsesSettingsHTML() async throws {
-        // NOTE: OllamaCloudScraper requires real Chrome cookies.
-        // This test verifies that when cloud models exist but scraping
-        // is unavailable (no cookies), the adapter still reports .exact
-        // with model counts — never .estimated.
-        let home = try makeTemporaryDirectory()
-        let appSupport = try makeTemporaryDirectory()
+    func test_ollamaCloud_parsesFiveHourAndWeeklySettingsHTML() {
+        let html = """
+        <span>Cloud Usage</span><span>Pro</span>
+        <div id="header-email">alberto@example.com</div>
+        <section>
+          <h3>5-hour usage</h3>
+          <div style="width: 37.5%"></div>
+          <time data-time="2026-05-05T20:00:00Z"></time>
+        </section>
+        <section>
+          <h3>Weekly usage</h3>
+          <div>62% used</div>
+          <time data-time="2026-05-10T20:00:00Z"></time>
+        </section>
+        """
 
-        let session = makeStubSession { request in
-            guard let urlString = request.url?.absoluteString else {
-                throw URLError(.badURL)
-            }
-            if urlString.contains("ollama.com/settings") {
-                return try self.httpResponse(url: request.url!, statusCode: 302, body: "")
-            }
-            if urlString.contains("api/tags") {
-                let body = """
-                {"models": [{"name": "llama3:cloud", "modified_at": "2026-01-01T00:00:00Z"}, {"name": "codellama", "modified_at": "2026-01-01T00:00:00Z"}]}
-                """
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
-            }
-            if urlString.contains("api/ps") {
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
-            }
-            throw URLError(.badURL)
-        }
+        let usage = OllamaCloudScraper.parseCloudUsage(html: html)
 
-        let env = ["OLLAMA_HOST": "http://localhost:11434"]
-        let service = makeService(home: home, appSupportRoot: appSupport, session: session, environment: env)
-
-        await service.refresh(provider: .ollama, dataStore: try makeDataStore())
-        let snapshot = try XCTUnwrap(service.snapshot(for: .ollama))
-
-        XCTAssertEqual(snapshot.confidence, .exact)
-        XCTAssertFalse(snapshot.buckets.isEmpty)
-
-        let cloudBucket = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "ollama-cloud" }))
-        XCTAssertEqual(cloudBucket.isEstimated, false)
-        XCTAssertEqual(cloudBucket.label, "Cloud models")
-
-    func test_ollamaCloud_noCookies_fallsBackToModelCounting() async throws {
-        let home = try makeTemporaryDirectory()
-        let appSupport = try makeTemporaryDirectory()
-
-        let session = makeStubSession { request in
-            guard let urlString = request.url?.absoluteString else {
-                throw URLError(.badURL)
-            }
-            if urlString.contains("ollama.com/settings") {
-                // Simulate no valid cookies — redirect to login
-                return try self.httpResponse(url: request.url!, statusCode: 302, body: "")
-            }
-            if urlString.contains("api/tags") {
-                let body = """
-                {"models": [{"name": "llama3", "modified_at": "2026-01-01T00:00:00Z"}, {"name": "mistral:cloud", "modified_at": "2026-01-01T00:00:00Z"}]}
-                """
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
-            }
-            if urlString.contains("api/ps") {
-                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
-            }
-            throw URLError(.badURL)
-        }
-
-        let env = ["OLLAMA_HOST": "http://localhost:11434"]
-        let service = makeService(home: home, appSupportRoot: appSupport, session: session, environment: env)
-
-        await service.refresh(provider: .ollama, dataStore: try makeDataStore())
-        let snapshot = try XCTUnwrap(service.snapshot(for: .ollama))
-
-        // Should still be .exact because local models + cloud models are counted
-        XCTAssertEqual(snapshot.confidence, .exact)
-        // Should have local model bucket
-        XCTAssertTrue(snapshot.buckets.contains(where: { $0.key.contains("local") }), "Expected local model bucket")
+        XCTAssertEqual(usage.planName, "Pro")
+        XCTAssertEqual(usage.accountEmail, "alberto@example.com")
+        XCTAssertEqual(usage.sessionUsedPercent, 37.5)
+        XCTAssertEqual(usage.weeklyUsedPercent, 62)
+        XCTAssertNotNil(usage.sessionResetsAt)
+        XCTAssertNotNil(usage.weeklyResetsAt)
     }
-}
 
+    func test_ollamaCloud_envHTMLProducesOnlyRealQuotaBuckets() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let html = """
+        <span>Cloud Usage</span><span>Pro</span>
+        <h3>Session usage</h3><div>12% used</div>
+        <h3>Weekly usage</h3><div style="width: 34%"></div>
+        """
+
+        let session = makeStubSession { request in
+            guard let urlString = request.url?.absoluteString else {
+                throw URLError(.badURL)
+            }
+            if urlString.contains("api/tags") {
+                let body = """
+                {"models": [{"name": "llama3:cloud"}, {"name": "codellama"}]}
+                """
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            }
+            if urlString.contains("api/ps") {
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
+            }
+            throw URLError(.badURL)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            environment: [
+                "OLLAMA_HOST": "http://localhost:11434",
+                "OPENBURNBAR_OLLAMA_CLOUD_HTML": html
+            ]
+        )
+
+        await service.refresh(provider: .ollama, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .ollama))
+
+        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertEqual(snapshot.buckets.map(\.key), ["ollama-cloud-session", "ollama-cloud-weekly"])
+        XCTAssertEqual(snapshot.hourlyBucket?.windowKind, .rollingHours)
+        XCTAssertEqual(snapshot.weeklyBucket?.windowKind, .weekly)
+        XCTAssertFalse(snapshot.buckets.contains { $0.key.contains("local") || $0.key == "ollama-cloud" })
+    }
+
+    func test_ollamaLocalAndCloudModelsWithoutScrapedQuotaDoNotCreateBuckets() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let session = makeStubSession { request in
+            guard let urlString = request.url?.absoluteString else {
+                throw URLError(.badURL)
+            }
+            if urlString.contains("api/tags") {
+                let body = """
+                {"models": [{"name": "llama3"}, {"name": "mistral:cloud"}]}
+                """
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            }
+            if urlString.contains("api/ps") {
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
+            }
+            throw URLError(.badURL)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            environment: ["OLLAMA_HOST": "http://localhost:11434"]
+        )
+
+        await service.refresh(provider: .ollama, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .ollama))
+
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.buckets.isEmpty)
+        XCTAssertFalse(snapshot.hasDisplayableQuotaSignal)
+    }
 }

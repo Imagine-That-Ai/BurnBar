@@ -359,14 +359,14 @@ extension ProviderSetupGuide {
                 labelSuggestion: "Hermes",
                 dashboardURL: URL(string: "https://hermes.ai"),
                 dashboardCTA: "Open Hermes",
-                oneLineHint: "API token from your Hermes workspace.",
+                oneLineHint: "Runtime token for Hermes chat and agent activity.",
                 instructions: [
                     GuideStep(1, "Open your Hermes workspace", detail: "Sign in with your account."),
                     GuideStep(2, "Create an API token", detail: "Settings → Tokens → New."),
-                    GuideStep(3, "Paste it below", detail: "OpenBurnBar reads usage and quota.")
+                    GuideStep(3, "Paste it below", detail: "OpenBurnBar uses Hermes for chat/runtime activity, not provider quota.")
                 ],
                 credentialPlaceholder: "hermes_...",
-                credentialFooterMarkdown: "Hermes tokens are encrypted at rest.",
+                credentialFooterMarkdown: "Hermes has no quota endpoint. Tokens are encrypted at rest.",
                 supportsHosted: false,
                 supportsSelfHosted: false
             )
@@ -439,14 +439,14 @@ extension ProviderSetupGuide {
                 labelSuggestion: "Ollama",
                 dashboardURL: URL(string: "https://ollama.com"),
                 dashboardCTA: "Open Ollama",
-                oneLineHint: "Local-first — point us at your Ollama host.",
+                oneLineHint: "Ollama Cloud quota is read from signed-in Mac browser sessions.",
                 instructions: [
-                    GuideStep(1, "Run Ollama locally or on a server", detail: "Default port is 11434."),
-                    GuideStep(2, "Note your host URL", detail: "e.g. http://localhost:11434", codeSnippet: "http://localhost:11434"),
-                    GuideStep(3, "Paste it below", detail: "OpenBurnBar tracks model usage and request counts.")
+                    GuideStep(1, "Sign in to Ollama Cloud on your Mac", detail: "Open ollama.com in Chrome with the account that owns your cloud plan."),
+                    GuideStep(2, "Open the Mac app", detail: "OpenBurnBar reads Ollama Cloud's 5-hour and weekly quota windows when the dashboard exposes them."),
+                    GuideStep(3, "Keep local Ollama optional", detail: "Local models have no quota and are not shown under Quota.")
                 ],
-                credentialPlaceholder: "http://localhost:11434",
-                credentialFooterMarkdown: "Ollama runs locally — we only read usage stats from its API.",
+                credentialPlaceholder: "Optional Ollama Cloud API key",
+                credentialFooterMarkdown: "Local model counts are not quota. Only Ollama Cloud quota windows appear in Quota.",
                 supportsHosted: false,
                 supportsSelfHosted: false
             )
@@ -511,18 +511,19 @@ extension ProviderSetupGuide {
     /// "Top picks" the wizard surfaces first — the providers most users connect.
     static let recommended: [AgentProvider] = [
         .claudeCode,
-        .factory,
         .codex,
-        .openAI,
+        .factory,
         .cursor,
         .copilot,
-        .geminiCLI
+        .minimax,
+        .zai
     ]
 
     static func sortedProvidersForOnboarding() -> [AgentProvider] {
         let recommendedSet = Set(recommended)
-        let recommendedOrdered = recommended.filter { AgentProvider.allCases.contains($0) }
-        let rest = AgentProvider.allCases
+        let catalog = AgentProvider.mobileAccountConnectableProviders
+        let recommendedOrdered = recommended.filter { catalog.contains($0) }
+        let rest = catalog
             .filter { !recommendedSet.contains($0) }
             .sorted { $0.displayName < $1.displayName }
         return recommendedOrdered + rest

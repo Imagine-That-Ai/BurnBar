@@ -395,7 +395,7 @@ struct LivingFireCanvas: View {
         if reduceMotion {
             staticFire
         } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+            TimelineView(.animation(minimumInterval: 1.0 / 24, paused: false)) { context in
                 let t = context.date.timeIntervalSinceReferenceDate
                 renderFire(time: t)
             }
@@ -531,7 +531,7 @@ struct DormantEmberFlame: View {
                 IgnisFlameShape(tier: 1, flicker: 0)
                     .fill(MobileTheme.ember.opacity(0.16))
             } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+                TimelineView(.animation(minimumInterval: 1.0 / 12, paused: false)) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     let pulse = 0.10 + 0.10 * (0.5 + 0.5 * sin(t * 1.3))
                     IgnisFlameShape(tier: 1, flicker: 0)
@@ -547,7 +547,7 @@ struct DormantEmberFlame: View {
                     .position(x: size / 2, y: size * 0.84)
                     .blur(radius: size * 0.04)
             } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+                TimelineView(.animation(minimumInterval: 1.0 / 12, paused: false)) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     let pulse = 0.45 + 0.30 * (0.5 + 0.5 * sin(t * 1.6))
                     let scale = 0.85 + 0.20 * (0.5 + 0.5 * sin(t * 1.2 + 0.6))
@@ -563,7 +563,7 @@ struct DormantEmberFlame: View {
 
             // Single drifting ember every ~2.4s — the icon never feels dead
             if !reduceMotion {
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+                TimelineView(.animation(minimumInterval: 1.0 / 12, paused: false)) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     let life: TimeInterval = 2.4
                     let local = (t.truncatingRemainder(dividingBy: life)) / life
@@ -1451,10 +1451,10 @@ struct AuroraNavIcon: View {
     /// surrounding layout.
     @ViewBuilder
     private var streamsContent: some View {
-        if reduceMotion {
+        if reduceMotion || !isSelected {
             colorBars(phase: 0.5)
         } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+            TimelineView(.animation(minimumInterval: 1.0 / 20, paused: false)) { context in
                 let t = context.date.timeIntervalSinceReferenceDate
                 let phase = CGFloat((t.truncatingRemainder(dividingBy: 2.4)) / 2.4)
                 ZStack {

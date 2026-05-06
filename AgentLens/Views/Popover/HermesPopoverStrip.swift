@@ -10,6 +10,8 @@ struct HermesPopoverStrip: View {
     @Bindable var controller: ChatSessionController
     var onOpenDashboardWithChat: () -> Void
     var onActivateChat: (() -> Void)?
+    var hermesSetupCompleted: Bool = true
+    var onRequireHermesSetup: (() -> Void)?
 
     @State private var isHovered = false
 
@@ -158,6 +160,10 @@ struct HermesPopoverStrip: View {
     // MARK: - Actions
 
     private func sendAndExpand() {
+        if controller.chatBackend == .hermes && !hermesSetupCompleted {
+            onRequireHermesSetup?()
+            return
+        }
         // Transition immediately so the user sees the full chat view.
         onActivateChat?()
         // Fire send on the controller — NOT tied to this view's task lifecycle.

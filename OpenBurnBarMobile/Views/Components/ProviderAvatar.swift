@@ -65,25 +65,27 @@ struct ProviderAvatar: View {
     @ViewBuilder
     private var auroraBackground: some View {
         ZStack {
-            // Soft radial glow
+            // Soft radial glow — tightened so the halo hugs the logo
+            // instead of bleeding far past the ring.
             RadialGradient(
                 colors: [
-                    themeColor.opacity(colorScheme == .dark ? 0.35 : 0.22),
+                    themeColor.opacity(colorScheme == .dark ? 0.32 : 0.20),
                     themeColor.opacity(0.0)
                 ],
                 center: .center,
                 startRadius: 0,
-                endRadius: containerSize * 0.6
+                endRadius: containerSize * 0.52
             )
-            .frame(width: containerSize * 1.4, height: containerSize * 1.4)
+            .frame(width: containerSize * 1.12, height: containerSize * 1.12)
+            .blendMode(.plusLighter)
 
-            // Glass container
+            // Glass container — ring sits right at the avatar edge.
             if #available(iOS 26.0, *) {
                 Circle()
                     .fill(.ultraThinMaterial)
                     .overlay(
                         Circle()
-                            .stroke(auroraStrokeGradient, lineWidth: 1.5)
+                            .stroke(auroraStrokeGradient, lineWidth: 1)
                     )
                     .glassEffect(.regular)
             } else {
@@ -91,7 +93,7 @@ struct ProviderAvatar: View {
                     .fill(.ultraThinMaterial)
                     .overlay(
                         Circle()
-                            .stroke(auroraStrokeGradient, lineWidth: 1.5)
+                            .stroke(auroraStrokeGradient, lineWidth: 1)
                     )
             }
         }
@@ -126,7 +128,9 @@ struct ProviderAvatar: View {
         switch mode {
         case .plain:  return size
         case .tile:   return size
-        case .aurora: return size * 1.2
+        // Aurora ring now sits closer to the logo. Was 1.2 — felt
+        // like the badge swallowed the brand mark.
+        case .aurora: return size * 1.08
         }
     }
 
@@ -134,7 +138,8 @@ struct ProviderAvatar: View {
         switch mode {
         case .plain:  return size
         case .tile:   return size * 0.86
-        case .aurora: return size * 0.9
+        // Logo fills the tighter aurora ring more decisively.
+        case .aurora: return size * 0.92
         }
     }
 }

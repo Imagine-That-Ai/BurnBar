@@ -91,11 +91,8 @@ enum RefreshBackgroundWork {
         // ── Persistence Phase ────────────────────────────────────────
         let persistencePhaseStartedAt = Date()
         do {
-            if allUsages.isEmpty {
-                _ = try dataStore.usageStore.fetchAllUsage()
-            } else {
+            if !allUsages.isEmpty {
                 try dataStore.usageStore.insert(allUsages)
-                _ = try dataStore.usageStore.fetchAllUsage()
             }
         } catch {
             let message = "Failed to store imported usage rows: \(error.localizedDescription)"

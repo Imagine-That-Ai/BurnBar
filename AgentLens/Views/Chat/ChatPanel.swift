@@ -20,6 +20,7 @@ struct ChatPanel: View {
     @State private var headerDragStart: CGSize?
     @State private var showHistoryPopover = false
     @State private var showClearChatPrompt = false
+    @State private var didRequestHermesFirstRunSetup = false
 
     private let cornerResizeHandle: CGFloat = 18
 
@@ -33,8 +34,10 @@ struct ChatPanel: View {
         }
         .onAppear {
             brief = controller.buildInsightBriefSnapshot(refreshRollups: false)
+            controller.syncChatBackendWithEnabledBackends()
             controller.loadPersistedMessages()
             controller.reclampPanelOffset(container: containerSize, padding: edgePadding)
+            presentHermesSetupIfNeeded()
             Task {
                 let enabled = settingsManager.enabledChatBackends
                 if enabled.contains(.hermes) {
@@ -44,6 +47,9 @@ struct ChatPanel: View {
                     await controller.probeOpenClawAvailability()
                 }
             }
+        }
+        .onChange(of: controller.chatBackend) { _, _ in
+            presentHermesSetupIfNeeded()
         }
         .onChange(of: dataStore.lastRefresh) { _, _ in
             Task { @MainActor in
@@ -87,6 +93,18 @@ struct ChatPanel: View {
         } message: {
             Text("This starts a new chat. Previous Burn Bar chats stay in History.")
         }
+    }
+
+    private func presentHermesSetupIfNeeded() {
+        guard controller.chatBackend == .hermes else { return }
+        guard !settingsManager.hermesSetupWizardCompleted else { return }
+        guard !didRequestHermesFirstRunSetup else { return }
+        didRequestHermesFirstRunSetup = true
+        WindowManager.shared.openHermesSetupWizard(
+            settingsManager: settingsManager,
+            chatController: controller,
+            dataStore: dataStore
+        )
     }
 
     // MARK: - Minimized Pill

@@ -23,9 +23,29 @@ struct QuotaPopoverBar: View {
     @State private var localZaiKey = ""
     @State private var localCursorCookie = ""
 
+    private let maximumCollapsedProviderRows = 4
+
+    private func visibleRows(from providers: [AgentProvider]) -> [AgentProvider] {
+        if let expandedProvider {
+            return providers.contains(expandedProvider)
+                ? [expandedProvider]
+                : Array(providers.prefix(maximumCollapsedProviderRows))
+        }
+        return Array(providers.prefix(maximumCollapsedProviderRows))
+    }
+
+    private var quotaRowsMaxHeight: CGFloat {
+        // A tray should feel like a glanceable control, not a dashboard.
+        // Keep quota detail scrollable inside the quota rail so connected
+        // accounts cannot stretch the whole MenuBarExtra down the screen.
+        expandedProvider == nil ? 146 : 220
+    }
+
     var body: some View {
         let connectedProviderIDs = connectedQuotaProviderIDs
         let providers = quotaService.visiblePopoverProviders(dataStore: dataStore)
+        let displayedProviders = visibleRows(from: providers)
+        let hiddenProviderCount = max(0, providers.count - displayedProviders.count)
 
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             // Header
@@ -55,24 +75,41 @@ struct QuotaPopoverBar: View {
             .padding(.horizontal, DesignSystem.Spacing.lg)
 
             // Provider rows — each shows logo + dual-window bars + expandable setup
-            VStack(spacing: DesignSystem.Spacing.xs) {
-                if providers.isEmpty {
-                    Text("No connected quota providers")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, DesignSystem.Spacing.md)
-                        .padding(.vertical, DesignSystem.Spacing.xs)
-                } else {
-                    ForEach(providers, id: \.self) { provider in
-                        quotaProviderRow(
-                            provider: provider,
-                            isConnected: connectedProviderIDs.contains(provider.providerID)
-                        )
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: DesignSystem.Spacing.xs) {
+                    if providers.isEmpty {
+                        Text("No connected quota providers")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, DesignSystem.Spacing.md)
+                            .padding(.vertical, DesignSystem.Spacing.xs)
+                    } else {
+                        ForEach(displayedProviders, id: \.self) { provider in
+                            quotaProviderRow(
+                                provider: provider,
+                                isConnected: connectedProviderIDs.contains(provider.providerID)
+                            )
+                        }
                     }
                 }
+                .padding(.horizontal, DesignSystem.Spacing.sm)
             }
-            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .frame(maxHeight: quotaRowsMaxHeight)
+
+            if hiddenProviderCount > 0, expandedProvider == nil {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("+\(hiddenProviderCount) more in Settings")
+                        .font(DesignSystem.Typography.tiny)
+                        .fontWeight(.medium)
+                }
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, DesignSystem.Spacing.lg)
+                .padding(.top, 2)
+            }
         }
         .padding(.top, DesignSystem.Spacing.sm)
         .padding(.bottom, DesignSystem.Spacing.xs)
@@ -91,7 +128,7 @@ struct QuotaPopoverBar: View {
             }
             .background(DesignSystem.Colors.surface.opacity(0.45))
         )
-        .task { await quotaService.refreshAll(dataStore: dataStore) }
+        .task { await quotaService.refreshIfNeeded(dataStore: dataStore) }
     }
 
     @ViewBuilder
@@ -100,7 +137,7 @@ struct QuotaPopoverBar: View {
         let theme = ProviderTheme.theme(for: provider)
         let isActive = quotaService.isRefreshing(provider)
         let isExpanded = expandedProvider == provider
-        let needsSetup = !isConnected && snapshot?.buckets.isEmpty == true && !isActive
+        let needsSetup = !isConnected && snapshot?.hasDisplayableQuotaSignal != true && !isActive
         let routingState = quotaService.routingStatesByProviderID[provider.providerID]
         let hasRoutingDetail = routingState?.hasMeaningfulRoutingDetail ?? false
 
@@ -128,7 +165,7 @@ struct QuotaPopoverBar: View {
                         QuotaDualWindowStrip(
                             hourlyBucket: snapshot?.hourlyBucket,
                             weeklyBucket: snapshot?.weeklyBucket,
-                            fallbackBucket: snapshot?.primaryBucket,
+                            fallbackBucket: snapshot?.primaryDisplayableBucket,
                             provider: provider,
                             isActive: isActive
                         )
@@ -547,7 +584,7 @@ struct QuotaPopoverBar: View {
         }
 
         // Collapse if quota is now working
-        if quotaService.snapshot(for: .claudeCode)?.buckets.isEmpty == false {
+        if quotaService.snapshot(for: .claudeCode)?.hasDisplayableQuotaSignal == true {
             expandedProvider = nil
         }
     }

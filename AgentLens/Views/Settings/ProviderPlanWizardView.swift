@@ -830,7 +830,7 @@ struct ProviderPlanWizardView: View {
 
                 await MainActor.run {
                     isProbingQuota = false
-                    if let bucket = snapshot.primaryBucket {
+                    if let bucket = snapshot.primaryDisplayableBucket {
                         let pct = bucket.remainingPercent
                         quotaProbePercent = pct
                         if let pct {
@@ -856,7 +856,6 @@ struct ProviderPlanWizardView: View {
         switch providerID.lowercased() {
         case "minimax": return .minimax
         case "zai": return .zai
-        case "openai": return .openAI
         default: return nil
         }
     }

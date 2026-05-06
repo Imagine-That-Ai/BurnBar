@@ -130,6 +130,9 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Whether chat backend onboarding is completed.
     var chatBackendOnboardingCompleted: Bool { get set }
 
+    /// Whether the Hermes-specific 1-2-3 setup wizard is completed.
+    var hermesSetupWizardCompleted: Bool { get set }
+
     /// Comma-separated enabled chat backend IDs.
     var enabledChatBackendIDsCSV: String { get set }
 

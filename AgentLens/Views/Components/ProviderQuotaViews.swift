@@ -58,7 +58,7 @@ struct ProviderQuotaSettingsSection: View {
             }
         }
         .task {
-            await quotaService.refreshAll(dataStore: dataStore)
+            await quotaService.refreshIfNeeded(dataStore: dataStore)
         }
     }
 }
@@ -94,7 +94,7 @@ struct ProviderQuotaOverviewPanel: View {
             .padding(DesignSystem.Spacing.lg)
         }
         .task {
-            await quotaService.refreshAll(dataStore: dataStore)
+            await quotaService.refreshIfNeeded(dataStore: dataStore)
         }
     }
 
@@ -129,7 +129,7 @@ struct ProviderQuotaOverviewPanel: View {
                 QuotaDualWindowStrip(
                     hourlyBucket: snapshot?.hourlyBucket,
                     weeklyBucket: snapshot?.weeklyBucket,
-                    fallbackBucket: snapshot?.primaryBucket,
+                    fallbackBucket: snapshot?.primaryDisplayableBucket,
                     provider: provider,
                     isActive: isActive
                 )
@@ -245,9 +245,9 @@ private struct ProviderQuotaSettingsCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if let snapshot, !snapshot.buckets.isEmpty {
+                if let snapshot, snapshot.hasDisplayableQuotaSignal {
                     VStack(spacing: DesignSystem.Spacing.md) {
-                        ForEach(snapshot.buckets) { bucket in
+                        ForEach(snapshot.displayableQuotaBuckets) { bucket in
                             ProviderQuotaBucketRow(bucket: bucket, provider: provider)
                         }
                     }
