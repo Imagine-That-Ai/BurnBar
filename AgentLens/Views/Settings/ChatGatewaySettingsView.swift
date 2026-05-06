@@ -29,14 +29,70 @@ struct ChatGatewaySettingsView: View {
     }
 
     var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                headerSection
+                chatEnginesSection
+                hermesGatewaySection
+                openclawSection
+                importSection
+                onboardingSection
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerSection: some View {
+        GlassCard {
+            HStack(spacing: DesignSystem.Spacing.lg) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [DesignSystem.Colors.hermesMercury.opacity(0.3),
+                                         DesignSystem.Colors.hermesAureate.opacity(0.2)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 56, height: 56)
+                    Text("☿")
+                        .font(.system(size: 30, weight: .bold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [DesignSystem.Colors.hermesMercury,
+                                         DesignSystem.Colors.hermesAureate],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Hermes")
+                        .font(DesignSystem.Typography.title)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("Messenger AI configuration")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer()
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+    }
+
+    // MARK: - Chat Engines
+
+    private var chatEnginesSection: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                Text("Chat engines")
-                    .font(DesignSystem.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                sectionTitle("Chat Engines", icon: "cpu", color: DesignSystem.Colors.whimsy)
 
-                Text("Only the engines you enable here appear in the dashboard and menu bar chat header. Turn on each one you actually use so OpenBurnBar does not list every provider.")
+                Text("Only the engines you enable here appear in the dashboard and menu bar chat header.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -48,91 +104,162 @@ struct ChatGatewaySettingsView: View {
                             set: { settingsManager.setChatBackendEnabled(backend, enabled: $0) }
                         )) {
                             Text(backend.displayName)
-                                .font(DesignSystem.Typography.caption)
+                                .font(DesignSystem.Typography.body)
                                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                         }
                     }
                 }
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+    }
 
-                Divider().background(DesignSystem.Colors.border)
+    // MARK: - Hermes Gateway
 
-                Text("HTTP gateways")
-                    .font(DesignSystem.Typography.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+    private var hermesGatewaySection: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                sectionTitle("Hermes Gateway", icon: "network", color: DesignSystem.Colors.hermesAureate)
 
-                Text("OpenClaw (OpenAI-compatible gateway, default 127.0.0.1:18789).")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-
-                TextField("OpenClaw base URL", text: $settingsManager.openClawGatewayBaseURL)
-                    .textFieldStyle(.roundedBorder)
-
-                SecureField("OpenClaw bearer token (optional)", text: $settingsManager.openClawBearerToken)
-                    .textFieldStyle(.roundedBorder)
-
-                Divider().background(DesignSystem.Colors.border)
-
-                Text("Hermes (local gateway on port 8642). In ~/.hermes/.env set API_SERVER_ENABLED=true, then run hermes gateway run in Terminal.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-
-                Text("When you're signed in, this Mac also advertises a Remote Relay connection so your iPhone/iPad can chat with this local Hermes over cell signal. The API_SERVER_KEY stays on this Mac; BurnBar relays only your chat requests and streamed responses through your private Firestore namespace.")
+                Text("Local gateway on port 8642. In ~/.hermes/.env set API_SERVER_ENABLED=true, then run hermes gateway run in Terminal.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    fieldLabel("Base URL")
+                    TextField("http://localhost:8642", text: $settingsManager.hermesGatewayBaseURL)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    fieldLabel("Bearer Token")
+                    SecureField("Same as API_SERVER_KEY (leave empty if unset)", text: $settingsManager.hermesBearerToken)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    fieldLabel("Model Override")
+                    TextField("Leave empty for auto (e.g. gpt-5.5)", text: $settingsManager.hermesChatModelOverride)
+                        .textFieldStyle(.roundedBorder)
+                }
 
                 Toggle("Allow iPhone/iPad Remote Relay through this Mac", isOn: $settingsManager.hermesRemoteRelayEnabled)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                Button("Guided Hermes setup") {
-                    WindowManager.shared.openHermesSetupWizard(
-                        settingsManager: settingsManager,
-                        chatController: nil,
-                        dataStore: dataStore,
-                        cloudSyncService: cloudSyncService,
-                        iCloudSessionMirrorService: iCloudSessionMirrorService
-                    )
+                Text("When signed in, this Mac advertises a Remote Relay connection so your iPhone/iPad can chat with this local Hermes over cell signal. The API_SERVER_KEY stays on this Mac; BurnBar relays only your chat requests through your private Firestore namespace.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+    }
+
+    // MARK: - OpenClaw Gateway
+
+    private var openclawSection: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                sectionTitle("OpenClaw Gateway", icon: "network.badge.shield.half.filled", color: DesignSystem.Colors.teal)
+
+                Text("OpenAI-compatible gateway, default 127.0.0.1:18789.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    fieldLabel("Base URL")
+                    TextField("http://127.0.0.1:18789", text: $settingsManager.openClawGatewayBaseURL)
+                        .textFieldStyle(.roundedBorder)
                 }
-                .buttonStyle(.bordered)
-                .tint(DesignSystem.Colors.hermesAureate)
-                .font(DesignSystem.Typography.caption)
+
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    fieldLabel("Bearer Token")
+                    SecureField("Optional bearer token", text: $settingsManager.openClawBearerToken)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+    }
+
+    // MARK: - Import
+
+    private var importSection: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                sectionTitle("Import", icon: "tray.and.arrow.down.fill", color: DesignSystem.Colors.hermesAureate)
 
                 hermesInventoryImportCard
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+    }
+
+    // MARK: - Onboarding
+
+    private var onboardingSection: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                sectionTitle("Setup", icon: "wand.and.stars", color: DesignSystem.Colors.amber)
+
+                HStack(spacing: DesignSystem.Spacing.md) {
+                    Button("Guided Hermes setup") {
+                        WindowManager.shared.openHermesSetupWizard(
+                            settingsManager: settingsManager,
+                            chatController: nil,
+                            dataStore: dataStore,
+                            cloudSyncService: cloudSyncService,
+                            iCloudSessionMirrorService: iCloudSessionMirrorService
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(DesignSystem.Colors.hermesAureate)
+                    .font(DesignSystem.Typography.caption)
+
+                    Spacer()
+                }
 
                 Toggle("Hermes setup completed", isOn: $settingsManager.hermesSetupWizardCompleted)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                Text("Leave the field below empty unless you set API_SERVER_KEY in ~/.hermes/.env — then paste the same value here so OpenBurnBar can connect.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-
-                TextField("Hermes base URL", text: $settingsManager.hermesGatewayBaseURL)
-                    .textFieldStyle(.roundedBorder)
-
-                SecureField("Same token as API_SERVER_KEY (leave empty if you didn't set one)", text: $settingsManager.hermesBearerToken)
-                    .textFieldStyle(.roundedBorder)
-
-                Text("Optional chat model id for the gateway (same as the JSON `model` field). Leave empty to let OpenBurnBar choose: if the gateway lists MiniMax but you use Codex with a ChatGPT account, OpenBurnBar sends a Codex-supported model instead (e.g. gpt-5.5). Set only if you need a specific id.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                TextField("Hermes chat model (optional)", text: $settingsManager.hermesChatModelOverride)
-                    .textFieldStyle(.roundedBorder)
-
-                Divider().background(DesignSystem.Colors.border)
-
-                Text("After you finish the in-app chat backend setup, you can hide the first-run prompt.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-
                 Toggle("Chat setup completed", isOn: $settingsManager.chatBackendOnboardingCompleted)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
             }
             .padding(DesignSystem.Spacing.lg)
         }
+    }
+
+    // MARK: - Helpers
+
+    private func sectionTitle(_ title: String, icon: String, color: Color) -> some View {
+        Label {
+            Text(title)
+                .font(DesignSystem.Typography.headline)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+        } icon: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(color.opacity(0.18))
+                    .frame(width: 28, height: 28)
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(color)
+            }
+        }
+    }
+
+    private func fieldLabel(_ text: String) -> some View {
+        Text(text)
+            .font(DesignSystem.Typography.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .textCase(.uppercase)
+            .tracking(0.8)
     }
 
     private var hermesInventoryImportCard: some View {
