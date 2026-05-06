@@ -137,85 +137,202 @@ struct VitalisAreaShape: Shape {
     }
 }
 
-// MARK: - 2. Ignis (Burn)
-// A confident teardrop flame silhouette with a soft inner core that lights
-// up and grows on selection. Two layers — outline and core — animated via
-// the `progress` driver so the spring transition reads as a flame leap.
+// MARK: - 2. Ignis (Multi-Layer Living Flame)
+//
+// A premium torch-flame composition built from three nested teardrop
+// silhouettes (outer / mid / core) plus a bright white-hot pilot, a thin
+// wick stripe, and rising ember particles. Every layer's silhouette
+// wobbles independently driven by a `flicker` parameter so the flame
+// reads as living fire instead of a static gradient. When the tab isn't
+// selected the flame collapses to a calm muted outline; selecting it
+// "lights" the torch and starts a continuous TimelineView flicker.
+//
+// Geometry conventions:
+//   • baseY:      tapered base of the flame
+//   • waistY:     widest belly
+//   • neckY:      narrow neck above the belly
+//   • tipY:       sharp upper tip
+// Each layer scales the silhouette inward + animates wobble independently.
 
-/// Outer flame silhouette — base, waist, neck, soft tip.
-struct IgnisOutlineShape: Shape {
+/// One teardrop flame layer. `tier` (0 outer / 1 mid / 2 core) selects how
+/// deeply to inset the geometry. `flicker` 0…1 phase-shifts the waist and
+/// neck so the silhouette wobbles like fire.
+struct IgnisFlameShape: Shape {
+    var tier: Int
+    var flicker: CGFloat
+
+    var animatableData: CGFloat {
+        get { flicker }
+        set { flicker = newValue }
+    }
+
     func path(in rect: CGRect) -> Path {
         let w = rect.width
         let h = rect.height
         let cx = w / 2
 
-        var path = Path()
-        let baseY = h * 0.86
-        let baseL = CGPoint(x: cx - w * 0.16, y: baseY)
-        let baseR = CGPoint(x: cx + w * 0.16, y: baseY)
-        let waistL = CGPoint(x: cx - w * 0.30, y: h * 0.56)
-        let waistR = CGPoint(x: cx + w * 0.30, y: h * 0.56)
-        let neckL = CGPoint(x: cx - w * 0.14, y: h * 0.30)
-        let neckR = CGPoint(x: cx + w * 0.14, y: h * 0.30)
-        let tip = CGPoint(x: cx + w * 0.02, y: h * 0.08)
+        // Per-tier scaling — each inner layer is tighter and shorter.
+        let scale: CGFloat
+        let topYOffset: CGFloat
+        switch tier {
+        case 0:  scale = 1.00; topYOffset = 0.00
+        case 1:  scale = 0.78; topYOffset = 0.06
+        default: scale = 0.50; topYOffset = 0.14
+        }
 
+        // Wobble: waist shifts left/right + tip leans, slightly off-phase
+        // per tier so the layers aren't synchronized.
+        let waistShift = sin(flicker * .pi * 2 + CGFloat(tier) * 0.7) * (0.025 * scale)
+        let tipShift   = sin(flicker * .pi * 2 + CGFloat(tier) * 1.3 + 0.4) * (0.04 * scale)
+        let breathe    = 0.95 + 0.05 * sin(flicker * .pi * 2 + CGFloat(tier) * 0.9)
+
+        let baseY = h * 0.86
+        let waistY = h * (0.56 + topYOffset * 0.5)
+        let neckY = h * (0.30 + topYOffset)
+        let tipY  = h * (0.08 + topYOffset)
+
+        let baseHalfW = w * 0.16 * scale
+        let waistHalfW = w * 0.30 * scale * breathe
+        let neckHalfW  = w * 0.14 * scale
+
+        let baseL = CGPoint(x: cx - baseHalfW, y: baseY)
+        let baseR = CGPoint(x: cx + baseHalfW, y: baseY)
+        let waistL = CGPoint(x: cx - waistHalfW + w * waistShift, y: waistY)
+        let waistR = CGPoint(x: cx + waistHalfW + w * waistShift, y: waistY)
+        let neckL = CGPoint(x: cx - neckHalfW + w * waistShift * 0.6, y: neckY)
+        let neckR = CGPoint(x: cx + neckHalfW + w * waistShift * 0.6, y: neckY)
+        let tip = CGPoint(x: cx + w * tipShift, y: tipY)
+
+        var path = Path()
         path.move(to: baseL)
         path.addCurve(to: waistL,
-                      control1: CGPoint(x: cx - w * 0.10, y: baseY - h * 0.04),
-                      control2: CGPoint(x: cx - w * 0.36, y: h * 0.68))
+                      control1: CGPoint(x: cx - w * 0.10 * scale, y: baseY - h * 0.04),
+                      control2: CGPoint(x: cx - w * 0.36 * scale + w * waistShift, y: h * 0.68))
         path.addCurve(to: neckL,
-                      control1: CGPoint(x: cx - w * 0.30, y: h * 0.44),
-                      control2: CGPoint(x: cx - w * 0.22, y: h * 0.34))
+                      control1: CGPoint(x: cx - w * 0.30 * scale + w * waistShift, y: h * 0.44),
+                      control2: CGPoint(x: cx - w * 0.22 * scale + w * waistShift * 0.6, y: h * (0.34 + topYOffset)))
         path.addQuadCurve(to: tip,
-                          control: CGPoint(x: cx - w * 0.14, y: h * 0.14))
+                          control: CGPoint(x: cx - w * 0.14 * scale + w * tipShift * 0.3,
+                                           y: h * (0.14 + topYOffset)))
         path.addQuadCurve(to: neckR,
-                          control: CGPoint(x: cx + w * 0.20, y: h * 0.16))
+                          control: CGPoint(x: cx + w * 0.20 * scale + w * tipShift * 0.3,
+                                           y: h * (0.16 + topYOffset)))
         path.addCurve(to: waistR,
-                      control1: CGPoint(x: cx + w * 0.24, y: h * 0.34),
-                      control2: CGPoint(x: cx + w * 0.32, y: h * 0.44))
+                      control1: CGPoint(x: cx + w * 0.24 * scale + w * waistShift * 0.6, y: h * (0.34 + topYOffset)),
+                      control2: CGPoint(x: cx + w * 0.32 * scale + w * waistShift, y: h * 0.44))
         path.addCurve(to: baseR,
-                      control1: CGPoint(x: cx + w * 0.36, y: h * 0.68),
-                      control2: CGPoint(x: cx + w * 0.10, y: baseY - h * 0.04))
+                      control1: CGPoint(x: cx + w * 0.36 * scale + w * waistShift, y: h * 0.68),
+                      control2: CGPoint(x: cx + w * 0.10 * scale, y: baseY - h * 0.04))
         path.closeSubpath()
         return path
     }
 }
 
-/// Inner hot core — grows from a tiny ember to a full teardrop with progress.
-struct IgnisCoreShape: Shape {
-    var progress: CGFloat
+/// Compatibility shim — the icon glow halo continues to reference the
+/// outermost flame silhouette by this name.
+struct IgnisOutlineShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        IgnisFlameShape(tier: 0, flicker: 0).path(in: rect)
+    }
+}
+
+/// White-hot pilot — a tiny bright bead inside the core that wobbles
+/// independently and gives the flame a sun-like center.
+struct IgnisPilotShape: Shape {
+    var flicker: CGFloat
+
     var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
+        get { flicker }
+        set { flicker = newValue }
     }
 
     func path(in rect: CGRect) -> Path {
         let w = rect.width
         let h = rect.height
         let cx = w / 2
-        let scale: CGFloat = 0.72 + progress * 0.32 // 0.72 → 1.04 of nominal core
-
-        let baseY = h * 0.74
-        let baseL = CGPoint(x: cx - w * 0.07 * scale, y: baseY)
-        let baseR = CGPoint(x: cx + w * 0.07 * scale, y: baseY)
-        let waistL = CGPoint(x: cx - w * 0.13 * scale, y: h * 0.55)
-        let waistR = CGPoint(x: cx + w * 0.13 * scale, y: h * 0.55)
-        let tip = CGPoint(x: cx + w * 0.01, y: h * 0.34)
-
+        let cy = h * 0.62 + h * 0.02 * sin(flicker * .pi * 2)
+        let r = w * 0.06 * (1.0 + 0.12 * sin(flicker * .pi * 2 + 0.6))
         var path = Path()
-        path.move(to: baseL)
-        path.addCurve(to: waistL,
-                      control1: CGPoint(x: cx - w * 0.04 * scale, y: baseY - h * 0.04),
-                      control2: CGPoint(x: cx - w * 0.16 * scale, y: h * 0.64))
-        path.addQuadCurve(to: tip,
-                          control: CGPoint(x: cx - w * 0.10 * scale, y: h * 0.42))
-        path.addQuadCurve(to: waistR,
-                          control: CGPoint(x: cx + w * 0.10 * scale, y: h * 0.42))
-        path.addCurve(to: baseR,
-                      control1: CGPoint(x: cx + w * 0.16 * scale, y: h * 0.64),
-                      control2: CGPoint(x: cx + w * 0.04 * scale, y: baseY - h * 0.04))
-        path.closeSubpath()
+        path.addEllipse(in: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2))
         return path
+    }
+}
+
+/// Wick stripe — a thin charcoal log at the very bottom of the flame.
+struct IgnisWickShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let h = rect.height
+        let cx = w / 2
+        let wickW = w * 0.30
+        let wickH = h * 0.04
+        let wickY = h * 0.86 + h * 0.02
+        return Path(roundedRect: CGRect(
+            x: cx - wickW / 2,
+            y: wickY,
+            width: wickW,
+            height: wickH
+        ), cornerRadius: wickH / 2)
+    }
+}
+
+/// Six rising ember particles. Each one's position is computed from the
+/// `phase` parameter (0…1, looping). Embers drift up + sideways and fade
+/// out as they rise.
+struct IgnisEmbersView: View {
+    var phase: CGFloat
+    let size: CGFloat
+
+    private struct Ember: Identifiable {
+        let id: Int
+        let xJitter: CGFloat   // -1 … 1
+        let drift: CGFloat     // sideways drift
+        let scale: CGFloat
+        let phaseOffset: CGFloat
+    }
+
+    private static let embers: [Ember] = [
+        Ember(id: 0, xJitter: -0.45, drift:  0.10, scale: 0.7, phaseOffset: 0.00),
+        Ember(id: 1, xJitter:  0.30, drift: -0.08, scale: 1.0, phaseOffset: 0.18),
+        Ember(id: 2, xJitter: -0.10, drift:  0.04, scale: 0.85, phaseOffset: 0.36),
+        Ember(id: 3, xJitter:  0.55, drift:  0.12, scale: 0.7, phaseOffset: 0.54),
+        Ember(id: 4, xJitter: -0.25, drift: -0.06, scale: 1.05, phaseOffset: 0.72),
+        Ember(id: 5, xJitter:  0.18, drift:  0.16, scale: 0.8, phaseOffset: 0.90)
+    ]
+
+    var body: some View {
+        Canvas { context, canvasSize in
+            let w = canvasSize.width
+            let h = canvasSize.height
+            let cx = w / 2
+
+            for ember in Self.embers {
+                let local = (phase + ember.phaseOffset).truncatingRemainder(dividingBy: 1)
+                let normalized = local < 0 ? local + 1 : local
+                // Vertical travel: starts near the flame's neck and rises
+                // toward the top of the canvas.
+                let y = h * (0.30 - normalized * 0.28)
+                let x = cx + w * (ember.xJitter * 0.18 + ember.drift * normalized)
+                let baseR = w * 0.022 * ember.scale
+                let opacity = max(0, 1 - normalized * 1.15)
+                let rect = CGRect(
+                    x: x - baseR, y: y - baseR,
+                    width: baseR * 2, height: baseR * 2
+                )
+                context.opacity = Double(opacity)
+                context.fill(
+                    Path(ellipseIn: rect),
+                    with: .linearGradient(
+                        Gradient(colors: [Color.white, MobileTheme.amber, MobileTheme.ember.opacity(0.0)]),
+                        startPoint: CGPoint(x: rect.midX, y: rect.minY),
+                        endPoint: CGPoint(x: rect.midX, y: rect.maxY)
+                    )
+                )
+            }
+        }
+        .frame(width: size, height: size)
+        .allowsHitTesting(false)
+        .blendMode(.plusLighter)
     }
 }
 
@@ -973,32 +1090,149 @@ struct AuroraNavIcon: View {
         }
     }
 
-    // MARK: 2. Burn — outline flame with a glowing inner core
+    // MARK: 2. Burn — multi-layer living flame with flicker + embers
 
+    @ViewBuilder
     private var burnIcon: some View {
+        // Off-state: a calm muted outline flame with a faint smolder core.
+        // On-state: a fully-lit three-layer torch flame, white-hot pilot,
+        // wick stripe, rising embers, and a TimelineView-driven flicker
+        // that breathes life into every layer.
+        if isSelected {
+            litFlame
+        } else {
+            unlitFlame
+        }
+    }
+
+    private var unlitFlame: some View {
         ZStack {
-            IgnisOutlineShape()
+            IgnisFlameShape(tier: 0, flicker: 0)
                 .stroke(
-                    isSelected
-                        ? AnyShapeStyle(destination.gradient)
-                        : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.78)),
+                    MobileTheme.Colors.textMuted.opacity(0.82),
                     style: StrokeStyle(lineWidth: size * 0.085, lineCap: .round, lineJoin: .round)
                 )
 
-            // Inner hot core scales in with progress and lights up.
-            IgnisCoreShape(progress: progress)
+            IgnisFlameShape(tier: 1, flicker: 0)
+                .fill(MobileTheme.Colors.textMuted.opacity(0.18))
+
+            IgnisWickShape()
+                .fill(MobileTheme.Colors.textMuted.opacity(0.55))
+        }
+    }
+
+    @ViewBuilder
+    private var litFlame: some View {
+        // The flame is built bottom-up so layers compose like real fire:
+        //   • Outer halo bloom (selection emphasis)
+        //   • Outer flame layer (rich amber/blaze gradient)
+        //   • Mid flame (deeper amber → ember)
+        //   • White-hot core (peak light)
+        //   • Pilot bead (sun-like center)
+        //   • Wick stripe + embers
+        if reduceMotion {
+            flameLayers(flicker: 0)
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                // 0.7Hz primary flicker — fast enough to feel alive, slow
+                // enough to avoid epileptic strobing.
+                let flicker = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
+                flameLayers(flicker: flicker)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func flameLayers(flicker: CGFloat) -> some View {
+        ZStack {
+            // Outer halo bloom — sells the heat radiating off the flame.
+            IgnisFlameShape(tier: 0, flicker: flicker)
+                .fill(MobileTheme.ember.opacity(0.42))
+                .blur(radius: size * 0.20)
+                .scaleEffect(1.18)
+
+            // Outer flame layer — amber → blaze
+            IgnisFlameShape(tier: 0, flicker: flicker)
                 .fill(
                     LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.95),
-                            MobileTheme.amber,
-                            MobileTheme.ember
+                        stops: [
+                            .init(color: MobileTheme.blaze.opacity(0.95), location: 0.0),
+                            .init(color: MobileTheme.amber.opacity(0.95), location: 0.55),
+                            .init(color: MobileTheme.ember.opacity(0.85), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
-                .opacity(progress)
+
+            // Outer flame stroke — adds a crisp luminous rim so the
+            // silhouette reads cleanly against any backdrop.
+            IgnisFlameShape(tier: 0, flicker: flicker)
+                .stroke(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.85), MobileTheme.amber.opacity(0.6)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    style: StrokeStyle(lineWidth: size * 0.04, lineCap: .round, lineJoin: .round)
+                )
+                .blendMode(.plusLighter)
+
+            // Mid flame layer — yellow → ember (slightly off-phase)
+            IgnisFlameShape(tier: 1, flicker: flicker + 0.18)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(hex: "FFE08C"),
+                            MobileTheme.amber,
+                            MobileTheme.ember.opacity(0.85)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .blendMode(.plusLighter)
+
+            // Inner core — white-yellow hot center
+            IgnisFlameShape(tier: 2, flicker: flicker + 0.36)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white,
+                            Color(hex: "FFF6C8"),
+                            MobileTheme.amber.opacity(0.55)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .blendMode(.plusLighter)
+
+            // Pilot bead — sun-like center
+            IgnisPilotShape(flicker: flicker)
+                .fill(
+                    RadialGradient(
+                        colors: [Color.white, Color(hex: "FFE9A0").opacity(0.0)],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: size * 0.10
+                    )
+                )
+                .blendMode(.plusLighter)
+
+            // Wick stripe — anchors the flame visually
+            IgnisWickShape()
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: "3A2A1E"), Color(hex: "1A1410")],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+            // Rising embers — Canvas-drawn for cheap particles
+            IgnisEmbersView(phase: flicker, size: size)
         }
     }
 
