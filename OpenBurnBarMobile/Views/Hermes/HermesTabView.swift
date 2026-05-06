@@ -1,27 +1,430 @@
 import SwiftUI
 import OpenBurnBarCore
 
-// MARK: - Hermes Tab View
+// MARK: - Hermes Navigation
 //
-// Hermes promoted to a first-class tab. Welcome thread, quick-prompt rail,
-// streaming chat with rich tool cards, and the always-visible connection
-// pill.
+// Hermes is now a two-level flow:
+//   1. `HermesConversationListView` — the tab landing. Lists every Hermes
+//      session exposed by the connected host and provides a mercury FAB for
+//      starting a new chat.
+//   2. `HermesChatView` — the thread UI (welcome block, runtime rail, prompt
+//      carousel, streaming bubbles, input bar). Pushed from the list via the
+//      enclosing `NavigationStack`.
+//
+// `HermesChatRoute` is the value-typed destination both surfaces use, so push
+// works on iPhone and iPad with system navigation chrome.
 
-struct HermesTabView: View {
+enum HermesChatRoute: Hashable {
+    /// Resume a previously persisted Hermes session.
+    case existing(sessionID: String)
+    /// Start a fresh chat (clears `service.messages` and `selectedSessionID`).
+    case new
+}
+
+// MARK: - Hermes Conversation List View
+
+struct HermesConversationListView: View {
     @Bindable var service: HermesService
     let dashboardSnapshot: DashboardStore?
 
-    @State private var input: String = ""
-    @State private var showClearConfirm = false
     @State private var showConnectionSheet = false
-    @State private var showHistorySheet = false
     @State private var showRuntimeSheet = false
-    @FocusState private var inputFocused: Bool
-    @Namespace private var bubbleNamespace
 
     init(service: HermesService, dashboardSnapshot: DashboardStore? = nil) {
         self.service = service
         self.dashboardSnapshot = dashboardSnapshot
+    }
+
+    var body: some View {
+        ZStack {
+            AuroraBackdrop()
+
+            Group {
+                if service.sessions.isEmpty {
+                    emptyState
+                } else {
+                    conversationList
+                }
+            }
+
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    newChatFAB
+                        .padding(.trailing, AuroraDesign.Layout.cardInset)
+                        .padding(.bottom, AuroraDesign.Layout.cardInset)
+                }
+            }
+        }
+        .navigationTitle("Hermes")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        showConnectionSheet = true
+                    } label: {
+                        Label("Connections", systemImage: "network")
+                    }
+                    Button {
+                        showRuntimeSheet = true
+                    } label: {
+                        Label("Runtime", systemImage: "slider.horizontal.3")
+                    }
+                    Divider()
+                    Button {
+                        Task { await service.refreshRuntime() }
+                    } label: {
+                        Label("Re-check connection", systemImage: "arrow.clockwise")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(MobileTheme.hermesAureate)
+                }
+            }
+        }
+        .sheet(isPresented: $showConnectionSheet) {
+            HermesConnectionSheet(service: service)
+        }
+        .sheet(isPresented: $showRuntimeSheet) {
+            HermesRuntimeSheet(service: service)
+        }
+        .navigationDestination(for: HermesChatRoute.self) { route in
+            HermesChatView(
+                service: service,
+                dashboardSnapshot: dashboardSnapshot,
+                route: route
+            )
+        }
+        .task {
+            service.loadHistory()
+            await service.checkReachability()
+        }
+    }
+
+    // MARK: - Conversation List
+
+    private var conversationList: some View {
+        ScrollView {
+            LazyVStack(spacing: 10) {
+                ForEach(sortedSessions) { session in
+                    NavigationLink(value: HermesChatRoute.existing(sessionID: session.id)) {
+                        ConversationRow(
+                            session: session,
+                            isActive: service.selectedSessionID == session.id
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .simultaneousGesture(
+                        TapGesture().onEnded { HapticBus.sheetOpen() }
+                    )
+                }
+            }
+            .padding(.horizontal, AuroraDesign.Layout.cardInset)
+            .padding(.bottom, 96) // FAB clearance
+            .padding(.top, 4)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .refreshable {
+            HapticBus.refreshStarted()
+            await service.refreshRuntime()
+            HapticBus.refreshFinished()
+        }
+        .animation(AuroraDesign.Motion.auroraSpring, value: service.sessions.map(\.id))
+    }
+
+    private var sortedSessions: [HermesSessionSummary] {
+        service.sessions.sorted {
+            ($0.lastActiveAt ?? .distantPast) > ($1.lastActiveAt ?? .distantPast)
+        }
+    }
+
+    // MARK: - Empty State
+
+    private var emptyState: some View {
+        ScrollView {
+            VStack(spacing: MobileTheme.Spacing.lg) {
+                AuroraGlassCard(variant: .hermes, cornerRadius: AuroraDesign.Shape.heroCorner) {
+                    VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+                        HStack(spacing: 12) {
+                            Text("☿")
+                                .font(.system(size: 38, weight: .bold))
+                                .foregroundStyle(AuroraDesign.Gradients.mercuryFoil)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("No conversations yet")
+                                    .font(MobileTheme.Typography.title)
+                                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                                Text("Hermes is your AI fleet's runtime co-pilot.")
+                                    .font(MobileTheme.Typography.caption)
+                                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            }
+                            Spacer()
+                        }
+                        Text("Start a new chat to ask about today's burn, project breakdowns, quota pressure, or session details. Sessions persist on the connected Hermes host.")
+                            .font(MobileTheme.Typography.body)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        NavigationLink(value: HermesChatRoute.new) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "plus.bubble.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                Text("Start your first conversation")
+                                    .font(MobileTheme.Typography.body)
+                                    .fontWeight(.semibold)
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 12)
+                            .background(
+                                Capsule().fill(AuroraDesign.Gradients.mercuryFoil)
+                            )
+                            .shadow(color: MobileTheme.hermesAureate.opacity(0.4), radius: 12, y: 4)
+                        }
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 4)
+                    }
+                }
+                .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                .padding(.top, MobileTheme.Spacing.xl)
+
+                if let runtimeErrorText = service.runtimeErrorText {
+                    AuroraGlassCard(variant: .urgent) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("Hermes is offline", systemImage: "exclamationmark.triangle.fill")
+                                .font(MobileTheme.Typography.body)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(MobileTheme.warning)
+                            Text(runtimeErrorText)
+                                .font(MobileTheme.Typography.caption)
+                                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button {
+                                Task { await service.refreshRuntime() }
+                            } label: {
+                                Label("Re-check connection", systemImage: "arrow.clockwise")
+                                    .font(MobileTheme.Typography.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(MobileTheme.hermesAureate)
+                        }
+                    }
+                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                }
+
+                Spacer(minLength: 96) // FAB clearance
+            }
+        }
+        .refreshable {
+            HapticBus.refreshStarted()
+            await service.refreshRuntime()
+            HapticBus.refreshFinished()
+        }
+    }
+
+    // MARK: - FAB
+
+    private var newChatFAB: some View {
+        NavigationLink(value: HermesChatRoute.new) {
+            ZStack {
+                Circle()
+                    .fill(AuroraDesign.Gradients.mercuryFoil)
+                    .frame(width: 56, height: 56)
+                    .shadow(color: MobileTheme.hermesAureate.opacity(0.45), radius: 14, y: 6)
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .overlay(
+                Circle().stroke(.white.opacity(0.18), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Start new Hermes conversation")
+        .simultaneousGesture(
+            TapGesture().onEnded { HapticBus.primaryAction() }
+        )
+    }
+}
+
+// MARK: - Conversation Row
+
+private struct ConversationRow: View {
+    let session: HermesSessionSummary
+    let isActive: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(session.title?.nilIfBlank ?? "New Conversation")
+                    .font(MobileTheme.Typography.headline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(titleColor)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if let lastActiveAt = session.lastActiveAt {
+                    Text(lastActiveAt, style: .relative)
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(secondaryColor.opacity(0.85))
+                        .lineLimit(1)
+                }
+            }
+
+            if let preview = session.preview?.nilIfBlank {
+                Text(preview)
+                    .font(MobileTheme.Typography.body)
+                    .foregroundStyle(secondaryColor)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+
+            HStack(spacing: 8) {
+                modelChip
+                messageChip
+                if session.isActive {
+                    activeChip
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(rowBackground)
+        .overlay(rowBorder)
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    // MARK: - Chips
+
+    private var modelChip: some View {
+        HStack(spacing: 6) {
+            Text("☿")
+                .font(.system(size: 10, weight: .bold))
+            Text(session.model?.nilIfBlank ?? "hermes")
+                .font(MobileTheme.Typography.tiny)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+        }
+        .foregroundStyle(chipForeground)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(chipFill))
+        .overlay(Capsule().stroke(chipStroke, lineWidth: 0.5))
+    }
+
+    private var messageChip: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "text.bubble.fill")
+                .font(.system(size: 10, weight: .bold))
+            Text("\(session.messageCount)")
+                .font(MobileTheme.Typography.tiny)
+                .fontWeight(.semibold)
+        }
+        .foregroundStyle(secondaryColor)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(MobileTheme.Colors.surface.opacity(isActive ? 0.18 : 0.5)))
+        .overlay(Capsule().stroke(MobileTheme.Colors.border.opacity(isActive ? 0.0 : 0.4), lineWidth: 0.5))
+    }
+
+    private var activeChip: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(isActive ? .white : MobileTheme.success)
+                .frame(width: 7, height: 7)
+            Text("Active")
+                .font(MobileTheme.Typography.tiny)
+                .fontWeight(.semibold)
+        }
+        .foregroundStyle(isActive ? .white : MobileTheme.success)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            Capsule().fill(
+                isActive
+                    ? AnyShapeStyle(.white.opacity(0.18))
+                    : AnyShapeStyle(MobileTheme.success.opacity(0.12))
+            )
+        )
+    }
+
+    // MARK: - Row Chrome
+
+    @ViewBuilder
+    private var rowBackground: some View {
+        if isActive {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AuroraDesign.Gradients.mercuryFoil)
+                .shadow(color: MobileTheme.hermesAureate.opacity(0.35), radius: 12, y: 6)
+        } else {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.85))
+        }
+    }
+
+    @ViewBuilder
+    private var rowBorder: some View {
+        if isActive {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(.white.opacity(0.22), lineWidth: 1)
+        } else {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(MobileTheme.Colors.border.opacity(0.45), lineWidth: 0.5)
+        }
+    }
+
+    // MARK: - Color Tokens
+
+    private var titleColor: Color {
+        isActive ? .white : MobileTheme.Colors.textPrimary
+    }
+
+    private var secondaryColor: Color {
+        isActive ? .white.opacity(0.82) : MobileTheme.Colors.textSecondary
+    }
+
+    private var chipForeground: Color {
+        isActive ? .white : MobileTheme.hermesAureate
+    }
+
+    private var chipFill: AnyShapeStyle {
+        isActive
+            ? AnyShapeStyle(.white.opacity(0.18))
+            : AnyShapeStyle(MobileTheme.hermesAureate.opacity(0.12))
+    }
+
+    private var chipStroke: Color {
+        isActive
+            ? .white.opacity(0.32)
+            : MobileTheme.hermesAureate.opacity(0.3)
+    }
+}
+
+// MARK: - Hermes Chat View
+
+struct HermesChatView: View {
+    @Bindable var service: HermesService
+    let dashboardSnapshot: DashboardStore?
+    let route: HermesChatRoute
+
+    @State private var input: String = ""
+    @State private var showClearConfirm = false
+    @State private var showConnectionSheet = false
+    @State private var showRuntimeSheet = false
+    @FocusState private var inputFocused: Bool
+    @Namespace private var bubbleNamespace
+
+    init(
+        service: HermesService,
+        dashboardSnapshot: DashboardStore? = nil,
+        route: HermesChatRoute = .new
+    ) {
+        self.service = service
+        self.dashboardSnapshot = dashboardSnapshot
+        self.route = route
     }
 
     var body: some View {
@@ -85,8 +488,8 @@ struct HermesTabView: View {
                     .padding(.bottom, 8)
             }
         }
-        .navigationTitle("Hermes")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationTitle(navigationTitleText)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -95,11 +498,6 @@ struct HermesTabView: View {
                         showConnectionSheet = true
                     } label: {
                         Label("Connections", systemImage: "network")
-                    }
-                    Button {
-                        showHistorySheet = true
-                    } label: {
-                        Label("History", systemImage: "clock.arrow.circlepath")
                     }
                     Button {
                         showRuntimeSheet = true
@@ -135,15 +533,46 @@ struct HermesTabView: View {
         .sheet(isPresented: $showConnectionSheet) {
             HermesConnectionSheet(service: service)
         }
-        .sheet(isPresented: $showHistorySheet) {
-            HermesHistorySheet(service: service)
-        }
         .sheet(isPresented: $showRuntimeSheet) {
             HermesRuntimeSheet(service: service)
         }
+        .task(id: route) { await applyRoute() }
         .task {
+            // Idempotent — refreshRuntime/checkReachability use a generation
+            // counter so back-to-back calls collapse to a single in-flight set.
             service.loadHistory()
             await service.checkReachability()
+        }
+    }
+
+    // MARK: - Route Binding
+
+    private func applyRoute() async {
+        switch route {
+        case .new:
+            if !service.messages.isEmpty || service.selectedSessionID != nil {
+                service.startNewSession()
+            }
+        case .existing(let sessionID):
+            guard service.selectedSessionID != sessionID else { return }
+            if let summary = service.sessions.first(where: { $0.id == sessionID }) {
+                await service.resumeSession(summary)
+            } else {
+                // Sessions list may not be loaded yet; refresh and try again once.
+                await service.refreshRuntime()
+                if let summary = service.sessions.first(where: { $0.id == sessionID }) {
+                    await service.resumeSession(summary)
+                }
+            }
+        }
+    }
+
+    private var navigationTitleText: String {
+        switch route {
+        case .new:
+            return service.selectedSessionID.map(service.sessionTitle(for:)) ?? "New Conversation"
+        case .existing(let id):
+            return service.sessionTitle(for: id)
         }
     }
 
@@ -197,11 +626,6 @@ struct HermesTabView: View {
                         icon: "cpu",
                         label: service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "Model"
                     )
-                }
-                Button {
-                    showHistorySheet = true
-                } label: {
-                    runtimeChip(icon: "clock.arrow.circlepath", label: "\(service.sessions.count) sessions")
                 }
                 Button {
                     showRuntimeSheet = true
@@ -562,94 +986,6 @@ private struct HermesConnectionSheet: View {
     }
 }
 
-// MARK: - Hermes History Sheet
-
-private struct HermesHistorySheet: View {
-    @Bindable var service: HermesService
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if let selectedSessionID = service.selectedSessionID {
-                    Section {
-                        Button {
-                            service.startNewSession()
-                            dismiss()
-                        } label: {
-                            Label("Start New Hermes Session", systemImage: "plus.bubble")
-                        }
-                        Text("Currently resuming \(service.sessionTitle(for: selectedSessionID)).")
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    }
-                }
-
-                if service.sessions.isEmpty {
-                    ContentUnavailableView(
-                        "No Hermes History",
-                        systemImage: "clock",
-                        description: Text("History appears here when the connected Hermes host exposes session metadata.")
-                    )
-                } else {
-                    ForEach(service.sessions) { session in
-                        Button {
-                            Task {
-                                await service.resumeSession(session)
-                                dismiss()
-                            }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text(session.title ?? "Hermes Session")
-                                        .font(MobileTheme.Typography.body)
-                                        .fontWeight(.semibold)
-                                    Spacer()
-                                    if service.selectedSessionID == session.id {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(MobileTheme.hermesAureate)
-                                    }
-                                }
-                                if let preview = session.preview {
-                                    Text(preview)
-                                        .font(MobileTheme.Typography.caption)
-                                        .foregroundStyle(MobileTheme.Colors.textSecondary)
-                                        .lineLimit(2)
-                                }
-                                HStack(spacing: 10) {
-                                    if let model = session.model {
-                                        Label(model, systemImage: "cpu")
-                                    }
-                                    Label("\(session.messageCount) messages", systemImage: "text.bubble")
-                                    if let lastActiveAt = session.lastActiveAt {
-                                        Text(lastActiveAt, style: .relative)
-                                    }
-                                }
-                                .font(MobileTheme.Typography.tiny)
-                                .foregroundStyle(MobileTheme.Colors.textMuted)
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Hermes History")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        Task { await service.refreshRuntime() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                }
-            }
-            .task { await service.refreshRuntime() }
-        }
-    }
-}
-
 // MARK: - Hermes Runtime Sheet
 
 private struct HermesRuntimeSheet: View {
@@ -873,5 +1209,14 @@ private struct BreathingDot: ViewModifier {
             .opacity(active && phase ? 0.55 : 1.0)
             .animation(active ? .easeInOut(duration: 1.4).repeatForever(autoreverses: true) : .default, value: phase)
             .onAppear { phase = true }
+    }
+}
+
+// MARK: - String helpers
+
+private extension String {
+    var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

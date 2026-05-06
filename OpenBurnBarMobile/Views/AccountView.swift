@@ -221,7 +221,7 @@ struct AccountView: View {
                         Text("Provider Connections")
                             .font(MobileTheme.Typography.headline)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text("\(store.connections.count) connected")
+                        Text("\(connectedProviders.count) connected")
                             .font(MobileTheme.Typography.footnote)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                     }
@@ -239,10 +239,32 @@ struct AccountView: View {
         .padding(.horizontal, MobileTheme.Spacing.lg)
     }
 
-    private var overlappingAvatars: some View {
-        let providers = store.connections.prefix(5).compactMap {
-            AgentProvider.fromProviderID(ProviderID(rawValue: $0.provider))
+    /// Distinct providers from both the multi-account collection
+    /// (`provider_accounts`) and the legacy single-account collection
+    /// (`provider_connections`). Mirrors `YouView.connectedProviders`.
+    private var connectedProviders: [AgentProvider] {
+        var seen = Set<String>()
+        var ordered: [AgentProvider] = []
+
+        for doc in store.providerAccounts where doc.status != .deleted {
+            let key = doc.providerID.rawValue
+            guard seen.insert(key).inserted else { continue }
+            if let provider = AgentProvider.fromProviderID(doc.providerID) {
+                ordered.append(provider)
+            }
         }
+        for legacy in store.connections {
+            guard seen.insert(legacy.provider).inserted else { continue }
+            if let provider = AgentProvider.fromPersistedToken(legacy.provider)
+                ?? AgentProvider.fromProviderID(ProviderID(rawValue: legacy.provider)) {
+                ordered.append(provider)
+            }
+        }
+        return ordered
+    }
+
+    private var overlappingAvatars: some View {
+        let providers = Array(connectedProviders.prefix(5))
         return ZStack {
             ForEach(Array(providers.enumerated()), id: \.offset) { index, provider in
                 ProviderAvatar(provider: provider, mode: .aurora, size: 36)

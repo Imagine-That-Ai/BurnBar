@@ -72,6 +72,7 @@ struct OnboardingWizardView: View {
     private var topBar: some View {
         VStack(spacing: MobileTheme.Spacing.sm) {
             HStack {
+                topBarBackButton
                 Spacer()
                 if stage != .done && stage != .welcome {
                     Button("Skip") { complete() }
@@ -85,6 +86,54 @@ struct OnboardingWizardView: View {
             progressCapsule
                 .padding(.horizontal, MobileTheme.Spacing.lg)
         }
+    }
+
+    /// Back chevron in the top bar. Visible on every stage except `welcome`
+    /// (the wizard's starting point) and `done` (terminal celebration).
+    /// `connect` goes one provider back if possible, otherwise to `pick`.
+    @ViewBuilder
+    private var topBarBackButton: some View {
+        switch stage {
+        case .pick:
+            backChevron(label: "Back to welcome") { advance(to: .welcome) }
+        case .connect:
+            backChevron(label: "Back") {
+                if queueIndex > 0 {
+                    withAnimation(MobileTheme.Animation.gentle) { queueIndex -= 1 }
+                    Haptics.selection()
+                } else {
+                    advance(to: .pick)
+                }
+            }
+        case .review:
+            backChevron(label: "Back to providers") {
+                if !selectedProviders.isEmpty {
+                    queueIndex = max(0, selectedProviders.count - 1)
+                    advance(to: .connect)
+                } else {
+                    advance(to: .pick)
+                }
+            }
+        case .welcome, .done:
+            EmptyView()
+        }
+    }
+
+    private func backChevron(label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                .frame(width: 36, height: 36)
+                .background(
+                    Circle().fill(MobileTheme.Colors.surface.opacity(0.55))
+                )
+                .overlay(
+                    Circle().stroke(MobileTheme.Colors.border.opacity(0.5), lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     private var progressCapsule: some View {

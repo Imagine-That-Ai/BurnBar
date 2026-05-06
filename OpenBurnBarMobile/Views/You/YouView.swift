@@ -23,7 +23,7 @@ struct YouView: View {
                         email: account.user?.email,
                         photoURL: account.user?.photoURL,
                         syncHealth: syncStore.health,
-                        connectionsCount: account.connections.count
+                        connectionsCount: connectedProviderCount
                     )
                     .staggeredEntrance(delay: 0.0)
 
@@ -158,7 +158,7 @@ struct YouView: View {
                         Text("Provider connections")
                             .font(MobileTheme.Typography.headline)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text("\(account.connections.count) connected")
+                        Text("\(connectedProviderCount) connected")
                             .font(MobileTheme.Typography.tiny)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                     }
@@ -174,10 +174,37 @@ struct YouView: View {
         .buttonStyle(.plain)
     }
 
-    private var overlappingProviders: some View {
-        let providers = account.connections.prefix(4).compactMap {
-            AgentProvider.fromProviderID(ProviderID(rawValue: $0.provider))
+    /// Distinct providers that have at least one active account or legacy
+    /// connection. Earlier code only counted the legacy
+    /// `provider_connections` collection, which left this number stuck at 0
+    /// even when `provider_accounts` had several rows feeding the drill-in.
+    private var connectedProviders: [AgentProvider] {
+        var seen = Set<String>()
+        var ordered: [AgentProvider] = []
+
+        // Prefer first-class accounts (multi-account model).
+        for doc in account.providerAccounts where doc.status != .deleted {
+            let key = doc.providerID.rawValue
+            guard seen.insert(key).inserted else { continue }
+            if let provider = AgentProvider.fromProviderID(doc.providerID) {
+                ordered.append(provider)
+            }
         }
+        // Then fold in any legacy single-account connections.
+        for legacy in account.connections {
+            guard seen.insert(legacy.provider).inserted else { continue }
+            if let provider = AgentProvider.fromPersistedToken(legacy.provider)
+                ?? AgentProvider.fromProviderID(ProviderID(rawValue: legacy.provider)) {
+                ordered.append(provider)
+            }
+        }
+        return ordered
+    }
+
+    private var connectedProviderCount: Int { connectedProviders.count }
+
+    private var overlappingProviders: some View {
+        let providers = Array(connectedProviders.prefix(4))
         return ZStack {
             ForEach(Array(providers.enumerated()), id: \.offset) { index, provider in
                 ProviderAvatar(provider: provider, mode: .tile, size: 34)

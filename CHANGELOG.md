@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] — iPadOS Port Phase 2 Hardening (2026-05-02)
 
 ### Added
+- **Provider-connection onboarding wizard (iOS / iPadOS):** replaced the placeholder
+  welcome/cloud/Hermes screens with a five-stage wizard that walks new users from
+  sign-in to a connected first account — `welcome → pick → connect → review → done`.
+  Picker tile grid surfaces recommended providers first; the connect step uses a
+  shared `ProviderSetupGuide` registry (per-provider instructions, dashboard URL,
+  supported credential kinds, paste hints, hosted/self-hosted gating) and ships
+  the same component (`OnboardingProviderConnectStep`) the renovated manual sheet
+  embeds, so muscle memory transfers between first-run and post-onboarding adds.
+- **Renovated manual "Add Account" sheet (iOS / iPadOS):** `AddProviderConnectionView`
+  is now a 3-sub-step guided flow (`guide → paste → connecting/result`) backed by
+  `OnboardingProviderConnectStep`. Provider hints, dashboard links, and credential
+  kind options are pulled from the same `ProviderSetupGuide`, ending duplicate copy
+  between the wizard and manual surfaces. The "Available providers" list now shows
+  a one-line setup hint per provider (e.g. *Cursor — "Sign in once, then we capture
+  the cookie"*) so the list reads as a menu, not a wall of avatars.
+
+### Fixed
+- **Cursor "Included usage" gauge renders as currency on iOS / iPadOS:**
+  `ProviderQuotaUnit` gains a `.currency` case; `CursorQuotaAdapter` flips the
+  `cursor-plan` and `cursor-ondemand` buckets to `.currency` (they already store
+  dollars, not percentages). `UnifiedQuotaSignalView` reads `meta["unit"]` and
+  formats `$0.39 / $3.61 / $4.00` instead of `39 / 361 / 400`. Mobile receives
+  the corrected unit automatically via the existing `QuotaSnapshotSyncService`
+  schema — no Firestore migration needed.
+
+### Added
 - **iOS App Store release runbook and ASC review tooling:** documented the
   iOS submission path in `docs/IOS_APP_STORE_RELEASE_RUNBOOK.md`, including
   reviewer account seeding, subscription selection, build compliance,

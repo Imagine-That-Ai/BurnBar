@@ -224,7 +224,7 @@ struct RootNavigationView: View {
         .background(.ultraThinMaterial)
         .sheet(isPresented: $showHermesSheet) {
             NavigationStack {
-                HermesTabView(service: hermesService)
+                HermesChatView(service: hermesService, route: .new)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Done") { showHermesSheet = false }
@@ -245,7 +245,7 @@ struct RootNavigationView: View {
                 case .pulse:    PulseView(router: router)
                 case .burn:     BurnView()
                 case .streams:  StreamsView()
-                case .hermes:   HermesTabView(service: hermesService)
+                case .hermes:   HermesConversationListView(service: hermesService)
                 case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
                 case .settings: SettingsHubView()
                 case .devices:  iPadDevicesSettingsView()

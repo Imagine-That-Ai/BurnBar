@@ -87,7 +87,7 @@ struct RootTabView: View {
 
     private var hermesStack: some View {
         NavigationStack {
-            HermesTabView(service: hermesService)
+            HermesConversationListView(service: hermesService)
         }
     }
 

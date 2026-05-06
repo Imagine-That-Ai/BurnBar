@@ -30,7 +30,7 @@ public struct UnifiedProviderLogoView: View {
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .padding(needsBackdropTreatment ? size * 0.14 : 0)
+                        .padding(needsBackdropTreatment ? size * 0.08 : 0)
                 } else {
                     fallbackView
                 }

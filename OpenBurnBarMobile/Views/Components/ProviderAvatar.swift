@@ -133,11 +133,8 @@ struct ProviderAvatar: View {
     private var logoSize: CGFloat {
         switch mode {
         case .plain:  return size
-        // The previous tile/aurora ratios (0.65 / 0.55) left logos
-        // looking like tiny dots inside large halos in list rows.
-        // Scaled up so the brand glyph reads at a glance.
-        case .tile:   return size * 0.78
-        case .aurora: return size * 0.72
+        case .tile:   return size * 0.86
+        case .aurora: return size * 0.9
         }
     }
 }

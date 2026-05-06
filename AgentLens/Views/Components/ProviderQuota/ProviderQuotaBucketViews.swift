@@ -113,6 +113,8 @@ struct QuotaFigureTile: View {
             return "files left"
         case .count:
             return "remaining"
+        case .currency:
+            return "remaining"
         }
     }
 
