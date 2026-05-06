@@ -19,6 +19,7 @@ struct HermesSettingsView: View {
     @State private var newDirectURL = ""
     @State private var newDirectName = ""
     @State private var showDeleteConfirm: HermesConnectionRecord? = nil
+    @State private var showModelDetail: HermesRuntimeModelOption? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
@@ -32,6 +33,7 @@ struct HermesSettingsView: View {
                     headerCard
 
                     connectionsSection
+                    modelsSection
                     gatewaySection
                     securitySection
                     statusSection
@@ -193,7 +195,128 @@ struct HermesSettingsView: View {
         }
     }
 
-    // MARK: - 2. Gateway
+    // MARK: - 2. Models
+
+    private var modelsSection: some View {
+        AuroraGlassCard(variant: .standard, cornerRadius: MobileTheme.Radius.lg) {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
+                HStack {
+                    sectionTitle("Models", icon: "cpu", color: MobileTheme.whimsy)
+                    Spacer()
+                    Button {
+                        Task { await service.refreshRuntime() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(MobileTheme.whimsy)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if service.modelOptions.isEmpty {
+                    HStack(spacing: MobileTheme.Spacing.sm) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 14))
+                            .foregroundStyle(MobileTheme.amber)
+                        Text("No models discovered yet.")
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                    }
+                    .padding(.vertical, 4)
+                } else {
+                    // Group by provider
+                    let grouped = Dictionary(grouping: service.modelOptions, by: { $0.providerName })
+                    let sortedProviders = grouped.keys.sorted()
+
+                    ForEach(sortedProviders, id: \.self) { provider in
+                        if let options = grouped[provider] {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(provider)
+                                    .font(MobileTheme.Typography.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                                    .tracking(0.8)
+                                    .textCase(.uppercase)
+
+                                ForEach(options) { option in
+                                    modelRow(option)
+                                }
+                            }
+                        }
+                    }
+
+                    // Default model picker
+                    HStack(spacing: MobileTheme.Spacing.sm) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(MobileTheme.amber)
+                        Text("Default:")
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        Text(service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "hermes")
+                            .font(MobileTheme.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(MobileTheme.whimsy)
+                        Spacer()
+                    }
+                    .padding(.top, 4)
+                }
+            }
+        }
+    }
+
+    private func modelRow(_ option: HermesRuntimeModelOption) -> some View {
+        let isDefault = service.selectedModelID == option.modelID
+        let providerColor = DesignSystemColors.accent(for: providerFromID(option.providerID))
+
+        return Button {
+            service.selectedModelID = option.modelID
+        } label: {
+            HStack(spacing: MobileTheme.Spacing.md) {
+                // Provider dot
+                Circle()
+                    .fill(providerColor.opacity(0.85))
+                    .frame(width: 8, height: 8)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(option.displayName)
+                        .font(MobileTheme.Typography.body)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Text(option.modelID)
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                if isDefault {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(MobileTheme.whimsy)
+                }
+            }
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func providerFromID(_ id: String) -> AgentProvider {
+        let lower = id.lowercased()
+        if lower.contains("openai")  { return .openAI }
+        if lower.contains("anthropic") || lower.contains("claude") { return .claudeCode }
+        if lower.contains("minimax") || lower.contains("abab") { return .minimax }
+        if lower.contains("kimi") || lower.contains("moonshot") { return .kimi }
+        if lower.contains("deepseek") { return .openClaw }
+        if lower.contains("google") || lower.contains("gemini") { return .geminiCLI }
+        if lower.contains("meta") || lower.contains("llama") { return .ollama }
+        if lower.contains("qwen") { return .ollama }
+        if lower.contains("hermes") { return .hermes }
+        return .openClaw
+    }
+
+    // MARK: - 3. Gateway
 
     private var gatewaySection: some View {
         AuroraGlassCard(variant: .standard, cornerRadius: MobileTheme.Radius.lg) {

@@ -21,6 +21,172 @@ enum HermesChatRoute: Hashable {
     case new
 }
 
+// MARK: - Hermes Mobile Setup
+
+enum HermesMobileSetupStep: Int, CaseIterable, Identifiable {
+    case keepMacReady
+    case chooseHost
+    case startChat
+
+    var id: Int { rawValue }
+    var number: Int { rawValue + 1 }
+
+    var title: String {
+        switch self {
+        case .keepMacReady: return "Keep your Mac ready"
+        case .chooseHost: return "Pick a Hermes host"
+        case .startChat: return "Start chatting"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .keepMacReady:
+            return "OpenBurnBar on macOS should be signed in, running, and set to allow Hermes Remote Relay."
+        case .chooseHost:
+            return "Use Remote Relay away from home; use a direct LAN/VPN URL only when your device can reach the Mac."
+        case .startChat:
+            return "Ask about spend, sessions, quota pressure, or anything your connected Hermes runtime can answer."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .keepMacReady: return "macbook.and.iphone"
+        case .chooseHost: return "antenna.radiowaves.left.and.right"
+        case .startChat: return "bubble.left.and.bubble.right.fill"
+        }
+    }
+}
+
+enum HermesMobileSetupWizardState {
+    static let completionKey = "com.openburnbar.mobile.hermesSetupWizardCompleted"
+}
+
+private struct HermesMobileSetupWizardView: View {
+    @Binding var isPresented: Bool
+    @Binding var hasCompletedSetup: Bool
+    let onOpenConnections: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
+                    header
+
+                    VStack(spacing: 10) {
+                        ForEach(HermesMobileSetupStep.allCases) { step in
+                            setupStepRow(step)
+                        }
+                    }
+
+                    Button {
+                        complete()
+                    } label: {
+                        Text("Start Chatting")
+                            .font(MobileTheme.Typography.body)
+                            .fontWeight(.semibold)
+                    }
+                    .buttonStyle(.aurora(.hermes, fullWidth: true))
+
+                    Button {
+                        onOpenConnections()
+                    } label: {
+                        Label("Open Connections", systemImage: "network")
+                            .font(MobileTheme.Typography.caption)
+                            .fontWeight(.semibold)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(MobileTheme.hermesAureate)
+                    .frame(maxWidth: .infinity)
+                }
+                .padding(AuroraDesign.Layout.cardInset)
+            }
+            .background(AuroraBackdrop())
+            .navigationTitle("Hermes Setup")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Not now") { isPresented = false }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var header: some View {
+        AuroraGlassCard(variant: .hermes, cornerRadius: AuroraDesign.Shape.heroCorner) {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+                HStack(spacing: 12) {
+                    Text("☿")
+                        .font(.system(size: 44, weight: .bold))
+                        .foregroundStyle(AuroraDesign.Gradients.mercuryFoil)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Hermes in 1-2-3")
+                            .font(MobileTheme.Typography.title)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text("One Mac host. One connection. One chat.")
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    }
+                    Spacer()
+                }
+                Text("For iPhone and iPad, Hermes works by talking to your Mac's local runtime directly on LAN/VPN or through your private Remote Relay.")
+                    .font(MobileTheme.Typography.body)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func setupStepRow(_ step: HermesMobileSetupStep) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(AuroraDesign.Gradients.mercuryFoil)
+                    .frame(width: 34, height: 34)
+                Text("\(step.number)")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: step.systemImage)
+                        .font(.system(size: 12, weight: .bold))
+                    Text(step.title)
+                        .font(MobileTheme.Typography.body)
+                        .fontWeight(.semibold)
+                }
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+
+                Text(step.detail)
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(MobileTheme.Colors.surfaceElevated.opacity(0.78))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(MobileTheme.hermesAureate.opacity(0.22), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Step \(step.number): \(step.title). \(step.detail)")
+    }
+
+    private func complete() {
+        hasCompletedSetup = true
+        isPresented = false
+    }
+}
+
 // MARK: - Hermes Conversation List View
 
 struct HermesConversationListView: View {
@@ -29,6 +195,9 @@ struct HermesConversationListView: View {
 
     @State private var showConnectionSheet = false
     @State private var showRuntimeSheet = false
+    @State private var showSetupWizard = false
+    @State private var didAutoPresentSetupWizard = false
+    @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
 
     init(service: HermesService, dashboardSnapshot: DashboardStore? = nil) {
         self.service = service
@@ -73,6 +242,11 @@ struct HermesConversationListView: View {
                     } label: {
                         Label("Runtime", systemImage: "slider.horizontal.3")
                     }
+                    Button {
+                        showSetupWizard = true
+                    } label: {
+                        Label("Setup Guide", systemImage: "list.number")
+                    }
                     Divider()
                     Button {
                         Task { await service.refreshRuntime() }
@@ -91,6 +265,16 @@ struct HermesConversationListView: View {
         .sheet(isPresented: $showRuntimeSheet) {
             HermesRuntimeSheet(service: service)
         }
+        .sheet(isPresented: $showSetupWizard) {
+            HermesMobileSetupWizardView(
+                isPresented: $showSetupWizard,
+                hasCompletedSetup: $hasCompletedHermesSetupWizard,
+                onOpenConnections: {
+                    showSetupWizard = false
+                    showConnectionSheet = true
+                }
+            )
+        }
         .navigationDestination(for: HermesChatRoute.self) { route in
             HermesChatView(
                 service: service,
@@ -102,6 +286,17 @@ struct HermesConversationListView: View {
             service.loadHistory()
             await service.checkReachability()
         }
+        .onAppear {
+            presentSetupWizardIfNeeded()
+        }
+    }
+
+    private func presentSetupWizardIfNeeded() {
+        guard !AppStoreScreenshotMode.isEnabled else { return }
+        guard !hasCompletedHermesSetupWizard else { return }
+        guard !didAutoPresentSetupWizard else { return }
+        didAutoPresentSetupWizard = true
+        showSetupWizard = true
     }
 
     // MARK: - Conversation List
@@ -414,6 +609,9 @@ struct HermesChatView: View {
     @State private var showClearConfirm = false
     @State private var showConnectionSheet = false
     @State private var showRuntimeSheet = false
+    @State private var showSetupWizard = false
+    @State private var didAutoPresentSetupWizard = false
+    @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
     @FocusState private var inputFocused: Bool
     @Namespace private var bubbleNamespace
 
@@ -504,6 +702,11 @@ struct HermesChatView: View {
                     } label: {
                         Label("Runtime", systemImage: "slider.horizontal.3")
                     }
+                    Button {
+                        showSetupWizard = true
+                    } label: {
+                        Label("Setup Guide", systemImage: "list.number")
+                    }
                     Divider()
                     Button(role: .destructive) {
                         showClearConfirm = true
@@ -536,6 +739,16 @@ struct HermesChatView: View {
         .sheet(isPresented: $showRuntimeSheet) {
             HermesRuntimeSheet(service: service)
         }
+        .sheet(isPresented: $showSetupWizard) {
+            HermesMobileSetupWizardView(
+                isPresented: $showSetupWizard,
+                hasCompletedSetup: $hasCompletedHermesSetupWizard,
+                onOpenConnections: {
+                    showSetupWizard = false
+                    showConnectionSheet = true
+                }
+            )
+        }
         .task(id: route) { await applyRoute() }
         .task {
             // Idempotent — refreshRuntime/checkReachability use a generation
@@ -543,6 +756,17 @@ struct HermesChatView: View {
             service.loadHistory()
             await service.checkReachability()
         }
+        .onAppear {
+            presentSetupWizardIfNeeded()
+        }
+    }
+
+    private func presentSetupWizardIfNeeded() {
+        guard !AppStoreScreenshotMode.isEnabled else { return }
+        guard !hasCompletedHermesSetupWizard else { return }
+        guard !didAutoPresentSetupWizard else { return }
+        didAutoPresentSetupWizard = true
+        showSetupWizard = true
     }
 
     // MARK: - Route Binding
@@ -615,17 +839,35 @@ struct HermesChatView: View {
                     if service.modelOptions.isEmpty {
                         Text("No models discovered")
                     } else {
-                        ForEach(service.modelOptions) { option in
-                            Button(option.displayName) {
-                                service.selectedModelID = option.modelID
+                        let grouped = Dictionary(grouping: service.modelOptions, by: { $0.providerName })
+                        let sortedProviders = grouped.keys.sorted()
+                        ForEach(sortedProviders, id: \.self) { provider in
+                            if let options = grouped[provider] {
+                                Section(provider) {
+                                    ForEach(options) { option in
+                                        Button {
+                                            service.selectedModelID = option.modelID
+                                        } label: {
+                                            HStack {
+                                                Circle()
+                                                    .fill(chipColor(for: option.providerID).opacity(0.85))
+                                                    .frame(width: 6, height: 6)
+                                                Text(option.displayName)
+                                                Spacer()
+                                                if service.selectedModelID == option.modelID {
+                                                    Image(systemName: "checkmark")
+                                                        .font(.system(size: 10, weight: .bold))
+                                                        .foregroundStyle(MobileTheme.hermesAureate)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 } label: {
-                    runtimeChip(
-                        icon: "cpu",
-                        label: service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "Model"
-                    )
+                    modelSelectorChip
                 }
                 Button {
                     showRuntimeSheet = true
@@ -654,6 +896,54 @@ struct HermesChatView: View {
         .padding(.vertical, 6)
         .background(Capsule().fill(MobileTheme.hermesAureate.opacity(0.1)))
         .overlay(Capsule().stroke(MobileTheme.hermesAureate.opacity(0.24), lineWidth: 0.5))
+    }
+
+    private var modelSelectorChip: some View {
+        let label = service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "Model"
+        let provider = modelProviderColor
+        return HStack(spacing: 6) {
+            Circle()
+                .fill(provider.opacity(0.85))
+                .frame(width: 6, height: 6)
+            Text(label)
+                .lineLimit(1)
+                .font(MobileTheme.Typography.tiny)
+                .fontWeight(.semibold)
+        }
+        .foregroundStyle(MobileTheme.Colors.textPrimary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(provider.opacity(0.10)))
+        .overlay(Capsule().stroke(provider.opacity(0.30), lineWidth: 0.5))
+    }
+
+    private var modelProviderColor: Color {
+        guard let selected = service.selectedModelID else { return MobileTheme.hermesAureate }
+        if let option = service.modelOptions.first(where: { $0.modelID == selected }) {
+            return chipColor(for: option.providerID)
+        }
+        return MobileTheme.hermesAureate
+    }
+
+    private func chipColor(for providerID: String) -> Color {
+        switch providerID.lowercased() {
+        case _ where providerID.contains("openai"):    return Color(hex: "00A67E")
+        case _ where providerID.contains("anthropic"), _ where providerID.contains("claude"):
+            return Color(hex: "CC785C")
+        case _ where providerID.contains("minimax"), _ where providerID.contains("abab"):
+            return Color(hex: "F59E0B")
+        case _ where providerID.contains("kimi"), _ where providerID.contains("moonshot"):
+            return Color(hex: "6366F1")
+        case _ where providerID.contains("deepseek"):   return Color(hex: "6366F1")
+        case _ where providerID.contains("google"), _ where providerID.contains("gemini"):
+            return Color(hex: "4285F4")
+        case _ where providerID.contains("meta"), _ where providerID.contains("llama"):
+            return Color(hex: "0668E1")
+        case _ where providerID.contains("qwen"):       return Color(hex: "615EFF")
+        case _ where providerID.contains("openclaw"):   return Color(hex: "FF6B6B")
+        case _ where providerID.contains("hermes"):     return MobileTheme.whimsy
+        default:                                        return MobileTheme.hermesAureate
+        }
     }
 
     // MARK: - Welcome
