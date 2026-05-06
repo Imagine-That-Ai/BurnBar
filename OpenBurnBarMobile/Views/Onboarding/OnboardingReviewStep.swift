@@ -49,8 +49,7 @@ struct OnboardingReviewStep: View {
                 } label: {
                     HStack(spacing: MobileTheme.Spacing.sm) {
                         if isRefreshing {
-                            ProgressView()
-                                .controlSize(.small)
+                            MiningPickLoader(.inline)
                         } else {
                             Image(systemName: "arrow.clockwise")
                         }

@@ -71,7 +71,7 @@ struct SessionLogsView: View {
                         }
                     }
                     if store.isLoading {
-                        ProgressView()
+                        MiningPickLoader(.inline)
                             .frame(maxWidth: .infinity)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)

@@ -241,7 +241,7 @@ struct OnboardingProviderConnectStep: View {
                     .foregroundStyle(subscriptionStore.isActive ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
                     Spacer()
                     if subscriptionStore.isLoading {
-                        ProgressView()
+                        MiningPickLoader(.inline)
                     } else if !subscriptionStore.isActive {
                         Button("Subscribe") {
                             Task { await subscriptionStore.purchase() }
@@ -418,8 +418,7 @@ struct OnboardingProviderConnectStep: View {
 
     private var connectingStep: some View {
         VStack(spacing: MobileTheme.Spacing.lg) {
-            ProgressView()
-                .controlSize(.large)
+            MiningPickLoader(.panel)
                 .padding(.top, MobileTheme.Spacing.xxl)
             Text("Connecting to \(provider.displayName)…")
                 .font(MobileTheme.Typography.headline)
@@ -567,7 +566,7 @@ struct OnboardingProviderConnectStep: View {
         Button(action: action) {
             HStack(spacing: MobileTheme.Spacing.sm) {
                 if isConnecting && subStep != .connected {
-                    ProgressView().tint(.white)
+                    MiningPickLoader(.inline)
                 } else {
                     Image(systemName: systemImage)
                 }

@@ -326,8 +326,7 @@ struct CloudSyncDetailsView: View {
                     }
                     Spacer()
                     if syncStore.isLoading {
-                        ProgressView()
-                            .tint(MobileTheme.ember)
+                        MiningPickLoader(.inline)
                     }
                 }
 

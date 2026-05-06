@@ -137,15 +137,18 @@ struct VitalisAreaShape: Shape {
     }
 }
 
-// MARK: - 2. Ignis (Multi-Layer Living Flame)
+// MARK: - 2. Ignis (Real-Fire Canvas Flame)
 //
-// A premium torch-flame composition built from three nested teardrop
-// silhouettes (outer / mid / core) plus a bright white-hot pilot, a thin
-// wick stripe, and rising ember particles. Every layer's silhouette
-// wobbles independently driven by a `flicker` parameter so the flame
-// reads as living fire instead of a static gradient. When the tab isn't
-// selected the flame collapses to a calm muted outline; selecting it
-// "lights" the torch and starts a continuous TimelineView flicker.
+// A real fire — not a stack of gradient teardrops. We simulate ~28
+// luminance particles that spawn at the wick, drift up + inward in a
+// cone, expand and cool over their lifetime, and expire near the tip.
+// Every particle is stamped twice (a large blurred halo + a sharp inner
+// core), all blended `.plusLighter` so overlapping density brightens
+// the silhouette into a continuous flame body. Sharper coral sparks
+// shoot above the cone and fade.
+//
+// Off-state: the flame is never dead. A static outlined ember silhouette
+// holds a slow coal pulse at the base + occasional drifting embers.
 //
 // Geometry conventions:
 //   • baseY:      tapered base of the flame
@@ -155,8 +158,9 @@ struct VitalisAreaShape: Shape {
 // Each layer scales the silhouette inward + animates wobble independently.
 
 /// One teardrop flame layer. `tier` (0 outer / 1 mid / 2 core) selects how
-/// deeply to inset the geometry. `flicker` 0…1 phase-shifts the waist and
-/// neck so the silhouette wobbles like fire.
+/// Legacy teardrop silhouette — kept ONLY because the icon glow halo and
+/// off-state outline reference it. The real fire is rendered by
+/// `LivingFireCanvas` below.
 struct IgnisFlameShape: Shape {
     var tier: Int
     var flicker: CGFloat
@@ -333,6 +337,258 @@ struct IgnisEmbersView: View {
         .frame(width: size, height: size)
         .allowsHitTesting(false)
         .blendMode(.plusLighter)
+    }
+}
+
+// MARK: - LivingFireCanvas
+//
+// Real fire: 28 deterministic luminance particles spawned at the wick,
+// drifting upward in a cone, expanding and cooling over their lifetime.
+// Drawn in a Canvas with `.plusLighter` so overlapping density brightens
+// into a continuous flame body.
+
+struct LivingFireCanvas: View {
+    let size: CGFloat
+    let reduceMotion: Bool
+
+    private struct ParticleSeed {
+        let baseSpawn: CGFloat   // 0..1 horizontal jitter at the wick
+        let lifeMul: CGFloat     // particle lifetime multiplier
+        let phaseOffset: CGFloat // staggers the spawn cycle
+        let swayFreq: CGFloat    // horizontal sway frequency
+        let swayAmp: CGFloat     // horizontal sway amplitude (relative to width)
+        let radiusMul: CGFloat   // base size multiplier
+    }
+
+    private static let particles: [ParticleSeed] = (0..<28).map { i in
+        // Deterministic pseudo-random — keep the seed stable across
+        // re-renders so the flame doesn't flash on layout changes.
+        let h = (i &* 2654435761) & 0xFFFF
+        let r1 = CGFloat((h >> 1) % 1000) / 1000
+        let r2 = CGFloat((h >> 3) % 1000) / 1000
+        let r3 = CGFloat((h >> 5) % 1000) / 1000
+        let r4 = CGFloat((h >> 7) % 1000) / 1000
+        return ParticleSeed(
+            baseSpawn: r1 * 2 - 1,                 // -1…1
+            lifeMul: 0.85 + r2 * 0.30,             // 0.85…1.15
+            phaseOffset: CGFloat(i) / 28.0,
+            swayFreq: 1.0 + r3 * 1.2,
+            swayAmp: 0.04 + r4 * 0.06,
+            radiusMul: 0.8 + r3 * 0.5
+        )
+    }
+
+    private struct SparkSeed {
+        let xJitter: CGFloat
+        let phaseOffset: CGFloat
+        let color: Color
+    }
+
+    private static let sparks: [SparkSeed] = [
+        SparkSeed(xJitter: -0.10, phaseOffset: 0.00, color: Color(hex: "FA5053")),
+        SparkSeed(xJitter:  0.18, phaseOffset: 0.27, color: Color(hex: "FFA800")),
+        SparkSeed(xJitter: -0.20, phaseOffset: 0.55, color: Color(hex: "E86100")),
+        SparkSeed(xJitter:  0.06, phaseOffset: 0.78, color: Color(hex: "FA5053"))
+    ]
+
+    var body: some View {
+        if reduceMotion {
+            staticFire
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                renderFire(time: t)
+            }
+        }
+    }
+
+    private var staticFire: some View {
+        renderFire(time: 0.4)
+    }
+
+    private func renderFire(time: TimeInterval) -> some View {
+        let s = size
+        return Canvas { context, canvasSize in
+            let w = canvasSize.width
+            let h = canvasSize.height
+            let cx = w / 2
+            let baseY = h * 0.86
+
+            // Particles
+            for seed in Self.particles {
+                // Phase: each particle has a 1.6s life, staggered.
+                let life: TimeInterval = 1.6 * Double(seed.lifeMul)
+                let local = ((time + Double(seed.phaseOffset) * life)
+                    .truncatingRemainder(dividingBy: life)) / life
+                let p = CGFloat(local) // 0..1 over the particle's life
+
+                // Vertical: starts at the wick, rises to ~tip
+                let y = baseY - h * 0.78 * p
+                // Horizontal: spawn jitter + sine sway, narrowed at top (cone)
+                let cone = 1.0 - p * 0.55
+                let sway = sin((p + seed.phaseOffset) * .pi * 2 * seed.swayFreq) * seed.swayAmp
+                let x = cx + (seed.baseSpawn * w * 0.10 + sway * w) * cone
+
+                // Radius: small at base, expand mid-life, fade at top
+                let bell = sin(p * .pi)               // 0…1…0
+                let r = w * 0.18 * seed.radiusMul * (0.35 + bell * 0.65)
+
+                // Color over life: white-yellow → amber → ember → blaze fade
+                let color = colorForFireLife(p)
+                let opacity = max(0, (1 - p)) * 0.75
+
+                // Stamp: large blurred halo + sharper inner core
+                stamp(context: context,
+                      x: x, y: y, radius: r * 1.6,
+                      color: color.opacity(opacity * 0.45))
+                stamp(context: context,
+                      x: x, y: y, radius: r,
+                      color: color.opacity(opacity))
+            }
+
+            // Sparks
+            for seed in Self.sparks {
+                let life: TimeInterval = 1.2
+                let local = ((time + Double(seed.phaseOffset) * life)
+                    .truncatingRemainder(dividingBy: life)) / life
+                let p = CGFloat(local)
+                let y = h * 0.34 - h * 0.28 * p
+                let x = cx + seed.xJitter * w * (1 - p * 0.2)
+                let r = w * 0.022 * (1.0 - p * 0.6)
+                let opacity = max(0, 1 - p)
+                let rect = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
+                context.opacity = Double(opacity)
+                context.fill(
+                    Path(ellipseIn: rect),
+                    with: .radialGradient(
+                        Gradient(colors: [Color.white, seed.color, seed.color.opacity(0.0)]),
+                        center: CGPoint(x: rect.midX, y: rect.midY),
+                        startRadius: 0,
+                        endRadius: r
+                    )
+                )
+            }
+        }
+        .frame(width: s, height: s)
+        .blendMode(.plusLighter)
+    }
+
+    private func stamp(
+        context: GraphicsContext,
+        x: CGFloat,
+        y: CGFloat,
+        radius: CGFloat,
+        color: Color
+    ) {
+        let rect = CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2)
+        var ctx = context
+        ctx.opacity = 1.0
+        ctx.fill(
+            Path(ellipseIn: rect),
+            with: .radialGradient(
+                Gradient(colors: [color, color.opacity(0.0)]),
+                center: CGPoint(x: rect.midX, y: rect.midY),
+                startRadius: 0,
+                endRadius: radius
+            )
+        )
+    }
+
+    /// Particle color mapped to lifetime: brand white-yellow → amber →
+    /// ember → blaze. Designed to match the rest of the design system.
+    private func colorForFireLife(_ p: CGFloat) -> Color {
+        switch p {
+        case ..<0.18: return Color.white
+        case ..<0.42: return Color(hex: "FFE08C")
+        case ..<0.65: return Color(hex: "FFA800")     // amber
+        case ..<0.85: return Color(hex: "E86100")     // blaze
+        default:      return Color(hex: "FA5053")     // ember
+        }
+    }
+}
+
+// MARK: - DormantEmberFlame
+//
+// Off-state for the Burn icon. Never feels dead: a calm muted teardrop
+// outline + a soft coal pulse at the wick + a single ember that drifts
+// up every couple of seconds and fades.
+
+struct DormantEmberFlame: View {
+    let size: CGFloat
+    let reduceMotion: Bool
+
+    var body: some View {
+        ZStack {
+            // Outline silhouette
+            IgnisFlameShape(tier: 0, flicker: 0)
+                .stroke(
+                    MobileTheme.Colors.textMuted.opacity(0.85),
+                    style: StrokeStyle(lineWidth: size * 0.085, lineCap: .round, lineJoin: .round)
+                )
+
+            // Soft inner smolder (warm tint that pulses)
+            if reduceMotion {
+                IgnisFlameShape(tier: 1, flicker: 0)
+                    .fill(MobileTheme.ember.opacity(0.16))
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+                    let t = context.date.timeIntervalSinceReferenceDate
+                    let pulse = 0.10 + 0.10 * (0.5 + 0.5 * sin(t * 1.3))
+                    IgnisFlameShape(tier: 1, flicker: 0)
+                        .fill(MobileTheme.ember.opacity(pulse))
+                }
+            }
+
+            // Coal glow at the wick — small bright dot that pulses
+            if reduceMotion {
+                Circle()
+                    .fill(MobileTheme.ember.opacity(0.55))
+                    .frame(width: size * 0.10, height: size * 0.10)
+                    .position(x: size / 2, y: size * 0.84)
+                    .blur(radius: size * 0.04)
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+                    let t = context.date.timeIntervalSinceReferenceDate
+                    let pulse = 0.45 + 0.30 * (0.5 + 0.5 * sin(t * 1.6))
+                    let scale = 0.85 + 0.20 * (0.5 + 0.5 * sin(t * 1.2 + 0.6))
+                    Circle()
+                        .fill(MobileTheme.ember.opacity(pulse))
+                        .frame(width: size * 0.10, height: size * 0.10)
+                        .scaleEffect(scale)
+                        .position(x: size / 2, y: size * 0.84)
+                        .blur(radius: size * 0.04)
+                        .blendMode(.plusLighter)
+                }
+            }
+
+            // Single drifting ember every ~2.4s — the icon never feels dead
+            if !reduceMotion {
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+                    let t = context.date.timeIntervalSinceReferenceDate
+                    let life: TimeInterval = 2.4
+                    let local = (t.truncatingRemainder(dividingBy: life)) / life
+                    let p = CGFloat(local)
+                    let y = size * (0.84 - 0.50 * p)
+                    let x = size / 2 + sin(p * .pi * 1.5) * size * 0.06
+                    let r = size * 0.018 * (1.0 - p * 0.4)
+                    let opacity = max(0, 1 - p) * 0.85
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [Color.white, MobileTheme.amber, MobileTheme.ember.opacity(0)],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: r
+                            )
+                        )
+                        .frame(width: r * 2, height: r * 2)
+                        .opacity(opacity)
+                        .position(x: x, y: y)
+                        .blendMode(.plusLighter)
+                }
+            }
+        }
+        .frame(width: size, height: size)
     }
 }
 
@@ -1090,149 +1346,27 @@ struct AuroraNavIcon: View {
         }
     }
 
-    // MARK: 2. Burn — multi-layer living flame with flicker + embers
+    // MARK: 2. Burn — Canvas-driven real fire (lit) + warm dormant ember
 
     @ViewBuilder
     private var burnIcon: some View {
-        // Off-state: a calm muted outline flame with a faint smolder core.
-        // On-state: a fully-lit three-layer torch flame, white-hot pilot,
-        // wick stripe, rising embers, and a TimelineView-driven flicker
-        // that breathes life into every layer.
         if isSelected {
-            litFlame
-        } else {
-            unlitFlame
-        }
-    }
+            ZStack {
+                // Wick anchors the flame at the base.
+                IgnisWickShape()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: "3A2A1E"), Color(hex: "1A1410")],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
 
-    private var unlitFlame: some View {
-        ZStack {
-            IgnisFlameShape(tier: 0, flicker: 0)
-                .stroke(
-                    MobileTheme.Colors.textMuted.opacity(0.82),
-                    style: StrokeStyle(lineWidth: size * 0.085, lineCap: .round, lineJoin: .round)
-                )
-
-            IgnisFlameShape(tier: 1, flicker: 0)
-                .fill(MobileTheme.Colors.textMuted.opacity(0.18))
-
-            IgnisWickShape()
-                .fill(MobileTheme.Colors.textMuted.opacity(0.55))
-        }
-    }
-
-    @ViewBuilder
-    private var litFlame: some View {
-        // The flame is built bottom-up so layers compose like real fire:
-        //   • Outer halo bloom (selection emphasis)
-        //   • Outer flame layer (rich amber/blaze gradient)
-        //   • Mid flame (deeper amber → ember)
-        //   • White-hot core (peak light)
-        //   • Pilot bead (sun-like center)
-        //   • Wick stripe + embers
-        if reduceMotion {
-            flameLayers(flicker: 0)
-        } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
-                let t = context.date.timeIntervalSinceReferenceDate
-                // 0.7Hz primary flicker — fast enough to feel alive, slow
-                // enough to avoid epileptic strobing.
-                let flicker = CGFloat((t.truncatingRemainder(dividingBy: 1.4)) / 1.4)
-                flameLayers(flicker: flicker)
+                // Real fire — Canvas particle simulation.
+                LivingFireCanvas(size: size, reduceMotion: reduceMotion)
             }
-        }
-    }
-
-    @ViewBuilder
-    private func flameLayers(flicker: CGFloat) -> some View {
-        ZStack {
-            // Outer halo bloom — sells the heat radiating off the flame.
-            IgnisFlameShape(tier: 0, flicker: flicker)
-                .fill(MobileTheme.ember.opacity(0.42))
-                .blur(radius: size * 0.20)
-                .scaleEffect(1.18)
-
-            // Outer flame layer — amber → blaze
-            IgnisFlameShape(tier: 0, flicker: flicker)
-                .fill(
-                    LinearGradient(
-                        stops: [
-                            .init(color: MobileTheme.blaze.opacity(0.95), location: 0.0),
-                            .init(color: MobileTheme.amber.opacity(0.95), location: 0.55),
-                            .init(color: MobileTheme.ember.opacity(0.85), location: 1.0)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-
-            // Outer flame stroke — adds a crisp luminous rim so the
-            // silhouette reads cleanly against any backdrop.
-            IgnisFlameShape(tier: 0, flicker: flicker)
-                .stroke(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.85), MobileTheme.amber.opacity(0.6)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    style: StrokeStyle(lineWidth: size * 0.04, lineCap: .round, lineJoin: .round)
-                )
-                .blendMode(.plusLighter)
-
-            // Mid flame layer — yellow → ember (slightly off-phase)
-            IgnisFlameShape(tier: 1, flicker: flicker + 0.18)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(hex: "FFE08C"),
-                            MobileTheme.amber,
-                            MobileTheme.ember.opacity(0.85)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .blendMode(.plusLighter)
-
-            // Inner core — white-yellow hot center
-            IgnisFlameShape(tier: 2, flicker: flicker + 0.36)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white,
-                            Color(hex: "FFF6C8"),
-                            MobileTheme.amber.opacity(0.55)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .blendMode(.plusLighter)
-
-            // Pilot bead — sun-like center
-            IgnisPilotShape(flicker: flicker)
-                .fill(
-                    RadialGradient(
-                        colors: [Color.white, Color(hex: "FFE9A0").opacity(0.0)],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: size * 0.10
-                    )
-                )
-                .blendMode(.plusLighter)
-
-            // Wick stripe — anchors the flame visually
-            IgnisWickShape()
-                .fill(
-                    LinearGradient(
-                        colors: [Color(hex: "3A2A1E"), Color(hex: "1A1410")],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-
-            // Rising embers — Canvas-drawn for cheap particles
-            IgnisEmbersView(phase: flicker, size: size)
+        } else {
+            DormantEmberFlame(size: size, reduceMotion: reduceMotion)
         }
     }
 
