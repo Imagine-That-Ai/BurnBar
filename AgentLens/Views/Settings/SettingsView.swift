@@ -138,6 +138,14 @@ struct SettingsView: View {
                 settingsManager: settingsManager
             )
                 .navigationTitle("Account Switcher")
+        case .hermes:
+            ChatGatewaySettingsView(
+                settingsManager: settingsManager,
+                dataStore: dataStore,
+                cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService
+            )
+                .navigationTitle("Hermes")
         }
     }
 }
