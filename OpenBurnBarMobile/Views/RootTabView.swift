@@ -37,7 +37,10 @@ struct RootTabView: View {
                 Spacer()
                 AuroraNavigationTray(
                     selection: $selection,
-                    destinations: destinations
+                    destinations: destinations,
+                    userPhotoURL: authStore.currentIdentity?.photoURL,
+                    userDisplayName: authStore.currentIdentity?.displayName
+                                  ?? authStore.currentIdentity?.email
                 )
             }
         }

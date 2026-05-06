@@ -126,7 +126,14 @@ struct RootNavigationView: View {
                         destination: auroraDest,
                         size: 28,
                         isSelected: selection == destination,
-                        isPressed: false
+                        isPressed: false,
+                        userPhotoURL: auroraDest == .you
+                            ? authStore.currentIdentity?.photoURL
+                            : nil,
+                        userDisplayName: auroraDest == .you
+                            ? (authStore.currentIdentity?.displayName
+                               ?? authStore.currentIdentity?.email)
+                            : nil
                     )
                     .frame(width: 32, height: 32)
                 } else {

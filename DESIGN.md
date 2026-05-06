@@ -76,7 +76,7 @@ Hermes has two color identities: **provider purple** (`#A855F7`/`#C084FC`) for t
 | Token | Dark | Light | Usage |
 |-------|------|-------|-------|
 | `hermesMercury` | `#C8BFB5` | `#AEA69C` | Warm silver — response bubble strokes, status text, thinking state |
-| `hermesAureate` | `#D4AA3C` | `#B8942E` | Divine gold — Hermes badges, links, send button accent |
+| `hermesAureate` | `#A2ACBA` | `#3F4651` | Dark platinum — Hermes badges, links, send button accent (replaced former gold for a colder, more premium gunmetal pairing with mercury) |
 
 **Mercury gradient:**
 ```swift

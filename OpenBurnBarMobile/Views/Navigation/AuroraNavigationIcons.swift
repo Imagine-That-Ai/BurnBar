@@ -219,136 +219,517 @@ struct IgnisCoreShape: Shape {
     }
 }
 
-// MARK: - 3. Streams (Aurora Ribbons)
-// Three stacked sine-wave ribbons — like aurora bands of streaming data.
-// Phase shifts when selected, so the ribbons appear to flow.
+// MARK: - 3. Streams (Vintage Antenna TV)
+//
+// A boxy retro TV cabinet with two rabbit-ear antennae at the top. When
+// selected the screen "powers on": a CRT scanline expands from the center
+// outward (vertical → horizontal sweep), and three signal bars resolve
+// inside the screen. Tapping an unselected tab plays the power-on; leaving
+// the tab fades the screen back to standby.
+//
+// Geometry frame of reference:
+//   • Cabinet:  rounded rect, occupies the lower 64% of the canvas
+//   • Screen:   inner rounded rect, ~76% of the cabinet
+//   • Antennae: two short diagonal lines + tiny knobs at the top
+//   • Foot:     two stubby legs hanging below the cabinet
 
-/// One ribbon at row 0 (top), 1 (middle), or 2 (bottom).
-/// `phase` is the animation driver: 0 at rest, 1 when selected.
-struct StreamsRibbonShape: Shape {
-    var rowIndex: Int
+/// Outer cabinet body of the TV (rounded rectangle).
+struct StreamsTVCabinetShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let cabinetRect = StreamsTVMetrics.cabinet(in: rect)
+        return Path(roundedRect: cabinetRect, cornerRadius: rect.width * 0.10)
+    }
+}
+
+/// Inner screen region — a slightly inset rounded rectangle that takes the
+/// brand gradient when powered on.
+struct StreamsTVScreenShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let screenRect = StreamsTVMetrics.screen(in: rect)
+        return Path(roundedRect: screenRect, cornerRadius: rect.width * 0.06)
+    }
+}
+
+/// Two diagonal rabbit-ear antennae rising from the top of the cabinet.
+/// `lift` 0…1 nudges the tips slightly outward and upward when on.
+struct StreamsTVAntennaShape: Shape {
+    var lift: CGFloat
+
+    var animatableData: CGFloat {
+        get { lift }
+        set { lift = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let cabinetTop = StreamsTVMetrics.cabinet(in: rect).minY
+        let cx = w / 2
+        let baseSpread = w * 0.08
+        let baseY = cabinetTop + 1
+        // Antenna lengths
+        let tipDX = w * (0.30 + lift * 0.04)
+        let tipDY = w * (0.32 + lift * 0.05)
+
+        var path = Path()
+        // Left antenna
+        path.move(to: CGPoint(x: cx - baseSpread, y: baseY))
+        path.addLine(to: CGPoint(x: cx - baseSpread - tipDX, y: baseY - tipDY))
+        // Right antenna
+        path.move(to: CGPoint(x: cx + baseSpread, y: baseY))
+        path.addLine(to: CGPoint(x: cx + baseSpread + tipDX, y: baseY - tipDY))
+        return path
+    }
+}
+
+/// Two tiny tip-knobs that cap the antennae. Drawn separately because we
+/// fill them, not stroke them.
+struct StreamsTVAntennaTipsShape: Shape {
+    var lift: CGFloat
+
+    var animatableData: CGFloat {
+        get { lift }
+        set { lift = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let cabinetTop = StreamsTVMetrics.cabinet(in: rect).minY
+        let cx = w / 2
+        let baseSpread = w * 0.08
+        let baseY = cabinetTop + 1
+        let tipDX = w * (0.30 + lift * 0.04)
+        let tipDY = w * (0.32 + lift * 0.05)
+        let r = w * 0.035
+
+        var path = Path()
+        path.addEllipse(in: CGRect(
+            x: cx - baseSpread - tipDX - r,
+            y: baseY - tipDY - r,
+            width: r * 2, height: r * 2
+        ))
+        path.addEllipse(in: CGRect(
+            x: cx + baseSpread + tipDX - r,
+            y: baseY - tipDY - r,
+            width: r * 2, height: r * 2
+        ))
+        return path
+    }
+}
+
+/// Two stubby legs that hang below the cabinet — completes the silhouette.
+struct StreamsTVFeetShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let cabinet = StreamsTVMetrics.cabinet(in: rect)
+        let footY = cabinet.maxY
+        let footH = w * 0.06
+        let footW = w * 0.08
+        var path = Path()
+        path.addRoundedRect(
+            in: CGRect(
+                x: cabinet.midX - cabinet.width * 0.30 - footW / 2,
+                y: footY,
+                width: footW, height: footH
+            ),
+            cornerSize: CGSize(width: w * 0.018, height: w * 0.018)
+        )
+        path.addRoundedRect(
+            in: CGRect(
+                x: cabinet.midX + cabinet.width * 0.30 - footW / 2,
+                y: footY,
+                width: footW, height: footH
+            ),
+            cornerSize: CGSize(width: w * 0.018, height: w * 0.018)
+        )
+        return path
+    }
+}
+
+/// CRT power-on sweep — a thin bright bar that expands from the screen's
+/// center, first as a vertical hairline, then sweeping out horizontally.
+/// `progress` 0…1: 0 = invisible, 0.4 = vertical line, 1 = fully open.
+struct StreamsTVScanlineShape: Shape {
+    var progress: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let screen = StreamsTVMetrics.screen(in: rect)
+        // First half: vertical hairline grows in height. Second half: hairline
+        // becomes a horizontal sweep that opens to fill the screen.
+        let p = max(0, min(1, progress))
+        let firstHalf = min(1, p / 0.45)            // 0…1 over progress 0…0.45
+        let secondHalf = max(0, (p - 0.45) / 0.55)  // 0…1 over progress 0.45…1
+
+        // The sweep's height grows from 0 → screen.height during firstHalf
+        let openH = screen.height * firstHalf
+        // The sweep's width grows from a hairline → screen.width during secondHalf
+        let minSweepW = screen.height * 0.06
+        let openW = minSweepW + (screen.width - minSweepW) * secondHalf
+
+        let sweepRect = CGRect(
+            x: screen.midX - openW / 2,
+            y: screen.midY - openH / 2,
+            width: openW, height: openH
+        )
+        return Path(roundedRect: sweepRect, cornerRadius: rect.width * 0.018)
+    }
+}
+
+/// Reserved for future bar-based screen content. The active TV uses
+/// `StreamsTVColorBarsShape` instead, but we keep this entry here in case
+/// future product flows want a vertical bar-graph-style fallback.
+struct StreamsTVSignalBarsShape: Shape {
     var phase: CGFloat
-
     var animatableData: CGFloat {
         get { phase }
         set { phase = newValue }
     }
 
     func path(in rect: CGRect) -> Path {
-        let w = rect.width
-        let h = rect.height
-        // Vertical band centers — top brightest, bottom faintest
-        let yCenter = h * (0.32 + CGFloat(rowIndex) * 0.20)
-        let amplitude = h * 0.085
-        // Phase shift: each row staggered so motion reads as flow, not sync
-        let phaseShift = phase * .pi * 0.85 + CGFloat(rowIndex) * .pi * 0.45
-
-        let xStart = w * 0.08
-        let xEnd = w * 0.92
+        let screen = StreamsTVMetrics.screen(in: rect)
+        let count: CGFloat = 4
+        let inset = screen.width * 0.16
+        let usable = screen.width - inset * 2
+        let gap = usable * 0.08
+        let barWidth = (usable - gap * (count - 1)) / count
+        let baseY = screen.maxY - screen.height * 0.18
+        let maxBarH = screen.height * 0.62
+        let baseRatios: [CGFloat] = [0.42, 0.78, 0.55, 0.92]
 
         var path = Path()
-        let steps = 28
-        for i in 0...steps {
-            let t = CGFloat(i) / CGFloat(steps)
-            let x = xStart + (xEnd - xStart) * t
-            let y = yCenter + sin(t * .pi * 2 + phaseShift) * amplitude
-            if i == 0 {
-                path.move(to: CGPoint(x: x, y: y))
-            } else {
-                path.addLine(to: CGPoint(x: x, y: y))
-            }
+        for i in 0..<Int(count) {
+            let cosOffset = cos(phase * .pi * 2 + CGFloat(i) * .pi * 0.55)
+            let ratio = max(0.30, min(1.0, baseRatios[i] + cosOffset * 0.10))
+            let h = maxBarH * ratio
+            let x = screen.minX + inset + (barWidth + gap) * CGFloat(i)
+            let r = CGRect(x: x, y: baseY - h, width: barWidth, height: h)
+            path.addRoundedRect(
+                in: r,
+                cornerSize: CGSize(width: rect.width * 0.014, height: rect.width * 0.014)
+            )
         }
         return path
     }
 }
 
-/// Combined silhouette of all three ribbons — used for the halo glow only.
+/// Combined silhouette of TV (cabinet + antennae + feet) — used for halo glow.
 struct StreamsGlyphShape: Shape {
     func path(in rect: CGRect) -> Path {
-        var path = Path()
-        for i in 0..<3 {
-            path.addPath(StreamsRibbonShape(rowIndex: i, phase: 0).path(in: rect))
-        }
+        var path = StreamsTVCabinetShape().path(in: rect)
+        path.addPath(StreamsTVAntennaTipsShape(lift: 0).path(in: rect))
+        path.addPath(StreamsTVFeetShape().path(in: rect))
         return path
     }
 }
 
-// MARK: - 4. Hermes (Winged Orb)
-// A central messenger orb flanked by twin wings. The wings extend outward
-// and lift their tips as `spread` animates from 0 → 1, evoking flight.
-
-/// Central filled circle.
-struct HermesOrbShape: Shape {
-    func path(in rect: CGRect) -> Path {
+/// Shared cabinet/screen metrics — defined once so all sub-shapes line up
+/// pixel-perfectly even when the size changes (28pt sidebar vs 22pt tray).
+enum StreamsTVMetrics {
+    static func cabinet(in rect: CGRect) -> CGRect {
         let w = rect.width
         let h = rect.height
-        let cx = w / 2
-        let cy = h * 0.50
-        let r = w * 0.17
+        let cabinetW = w * 0.84
+        let cabinetH = h * 0.56
+        let cabinetX = (w - cabinetW) / 2
+        let cabinetY = h * 0.30
+        return CGRect(x: cabinetX, y: cabinetY, width: cabinetW, height: cabinetH)
+    }
+
+    static func screen(in rect: CGRect) -> CGRect {
+        let cab = cabinet(in: rect)
+        return cab.insetBy(dx: cab.width * 0.10, dy: cab.height * 0.16)
+    }
+}
+
+/// Color test pattern — a single rectangle the size of the inner screen.
+/// We fill it with a multi-stop linear gradient that visually reads as
+/// 7 vertical color bars (SMPTE-style).
+struct StreamsTVColorBarsShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let screen = StreamsTVMetrics.screen(in: rect)
+        return Path(screen)
+    }
+}
+
+/// Glossy specular curve over the screen — sells the convex CRT glass.
+struct StreamsTVScreenGlossShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let screen = StreamsTVMetrics.screen(in: rect)
         var path = Path()
-        path.addEllipse(in: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2))
+        // Curved highlight covering the upper-left quadrant of the screen.
+        let topLeft = CGPoint(x: screen.minX + screen.width * 0.06, y: screen.minY + screen.height * 0.10)
+        let topRight = CGPoint(x: screen.minX + screen.width * 0.92, y: screen.minY + screen.height * 0.16)
+        let dipMid = CGPoint(x: screen.midX, y: screen.minY + screen.height * 0.42)
+        path.move(to: topLeft)
+        path.addQuadCurve(to: topRight,
+                          control: CGPoint(x: screen.midX, y: screen.minY + screen.height * 0.02))
+        path.addQuadCurve(to: topLeft,
+                          control: dipMid)
+        path.closeSubpath()
         return path
     }
 }
 
-/// Two symmetric wing leaves flanking the orb.
-/// `spread`: 0 = wings tucked in close to the orb, 1 = wings extended.
-struct HermesWingsShape: Shape {
-    var spread: CGFloat
-
+/// The leading edge of the CRT power-on sweep — a thin horizontal line that
+/// sits at the top + bottom of the opening rectangle while it expands. We
+/// only animate it during the second-half horizontal phase (when the open
+/// rect actually has a meaningful width); the vertical hairline phase is
+/// covered by the bar growth itself.
+struct StreamsTVScanlineEdgeShape: Shape {
+    var progress: CGFloat
     var animatableData: CGFloat {
-        get { spread }
-        set { spread = newValue }
+        get { progress }
+        set { progress = newValue }
     }
 
     func path(in rect: CGRect) -> Path {
-        let w = rect.width
-        let h = rect.height
-        let cx = w / 2
-        let cy = h * 0.50
+        let screen = StreamsTVMetrics.screen(in: rect)
+        let p = max(0, min(1, progress))
+        let secondHalf = max(0, (p - 0.45) / 0.55)
+        let openH = screen.height * min(1, p / 0.45)
+        let minSweepW = screen.height * 0.06
+        let openW = minSweepW + (screen.width - minSweepW) * secondHalf
 
-        // Wing geometry breathes with spread
-        let extend: CGFloat = 0.30 + spread * 0.12   // x of wing tip
-        let lift: CGFloat   = 0.16 + spread * 0.08   // y rise of wing tip
-        let droop: CGFloat  = 0.10                   // y of wing's lower edge
+        let topY = screen.midY - openH / 2
+        let bottomY = screen.midY + openH / 2
+        let leftX = screen.midX - openW / 2
+        let rightX = screen.midX + openW / 2
 
         var path = Path()
-
-        // Left wing — closed leaf
-        let leftInner = CGPoint(x: cx - w * 0.12, y: cy - h * 0.02)
-        let leftTip   = CGPoint(x: cx - w * extend, y: cy - h * lift)
-        let leftOuter = CGPoint(x: cx - w * 0.14, y: cy + h * droop)
-        path.move(to: leftInner)
-        path.addQuadCurve(to: leftTip,
-                          control: CGPoint(x: cx - w * (extend - 0.06), y: cy - h * (lift + 0.06)))
-        path.addQuadCurve(to: leftOuter,
-                          control: CGPoint(x: cx - w * (extend - 0.04), y: cy + h * 0.02))
-        path.addQuadCurve(to: leftInner,
-                          control: CGPoint(x: cx - w * 0.10, y: cy + h * 0.02))
-        path.closeSubpath()
-
-        // Right wing — mirrored
-        let rightInner = CGPoint(x: cx + w * 0.12, y: cy - h * 0.02)
-        let rightTip   = CGPoint(x: cx + w * extend, y: cy - h * lift)
-        let rightOuter = CGPoint(x: cx + w * 0.14, y: cy + h * droop)
-        path.move(to: rightInner)
-        path.addQuadCurve(to: rightTip,
-                          control: CGPoint(x: cx + w * (extend - 0.06), y: cy - h * (lift + 0.06)))
-        path.addQuadCurve(to: rightOuter,
-                          control: CGPoint(x: cx + w * (extend - 0.04), y: cy + h * 0.02))
-        path.addQuadCurve(to: rightInner,
-                          control: CGPoint(x: cx + w * 0.10, y: cy + h * 0.02))
-        path.closeSubpath()
-
+        path.move(to: CGPoint(x: leftX, y: topY))
+        path.addLine(to: CGPoint(x: rightX, y: topY))
+        path.move(to: CGPoint(x: leftX, y: bottomY))
+        path.addLine(to: CGPoint(x: rightX, y: bottomY))
         return path
     }
 }
 
-/// Combined silhouette (orb + spread wings) for halo glow.
+// MARK: - 4. Hermes (Friendly Robot Head)
+//
+// A characterful little robot: rounded helmet head, padded headphones with
+// circular earcups, a heart-tipped antenna, two big expressive pupils, a
+// gentle smile arc, and rosy cheek dots that brighten when selected. When
+// the tab activates, the eyes wake up coral, the cheeks blush, the antenna
+// heart pulses, and a tiny "happy curve" appears under each pupil so the
+// robot reads as smiling-with-its-eyes.
+//
+// Geometry frame of reference:
+//   • Head:        rounded squircle, slightly squat
+//   • Headphones:  band over the top + earcups on each side
+//   • Eyes:        two large rounded-rect pupils centered horizontally
+//   • Smile arc:   curved arc that widens when selected
+//   • Cheeks:      two faint circles flanking the smile
+//   • Antenna:     stalk + heart tip rising from the helmet's crown
+
+enum HermesRobotMetrics {
+    static func head(in rect: CGRect) -> CGRect {
+        let w = rect.width
+        let h = rect.height
+        let headW = w * 0.66
+        let headH = h * 0.56
+        let headX = (w - headW) / 2
+        let headY = h * 0.30
+        return CGRect(x: headX, y: headY, width: headW, height: headH)
+    }
+}
+
+/// Helmet body — soft rounded squircle.
+struct HermesHeadShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let head = HermesRobotMetrics.head(in: rect)
+        return Path(roundedRect: head, cornerRadius: head.width * 0.36)
+    }
+}
+
+/// Two earcup circles flanking the helmet (the headphones' speakers).
+struct HermesEarcupsShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let head = HermesRobotMetrics.head(in: rect)
+        let cy = head.midY
+        let r = head.width * 0.13
+        var path = Path()
+        path.addEllipse(in: CGRect(
+            x: head.minX - r * 0.6, y: cy - r,
+            width: r * 2, height: r * 2
+        ))
+        path.addEllipse(in: CGRect(
+            x: head.maxX - r * 1.4, y: cy - r,
+            width: r * 2, height: r * 2
+        ))
+        return path
+    }
+}
+
+/// Antenna stalk that rises from the crown of the helmet.
+struct HermesAntennaShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let head = HermesRobotMetrics.head(in: rect)
+        let cx = head.midX
+        let baseY = head.minY + 1
+        let tipY = max(rect.minY + rect.height * 0.05, baseY - rect.height * 0.20)
+        var path = Path()
+        path.move(to: CGPoint(x: cx, y: baseY))
+        path.addLine(to: CGPoint(x: cx, y: tipY))
+        return path
+    }
+}
+
+/// Heart-shaped tip on the antenna (replaces a plain knob — friendlier).
+struct HermesAntennaHeartShape: Shape {
+    var pulse: CGFloat
+    var animatableData: CGFloat {
+        get { pulse }
+        set { pulse = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let head = HermesRobotMetrics.head(in: rect)
+        let cx = head.midX
+        let tipY = max(rect.minY + rect.height * 0.05, head.minY - rect.height * 0.20)
+        let scale = 1.0 + pulse * 0.18
+        let w = rect.width * 0.13 * scale
+        let h = w * 0.92
+        let centerY = tipY - h * 0.45
+
+        // Classic heart constructed from two arcs + a bottom V.
+        var path = Path()
+        let leftCenter = CGPoint(x: cx - w * 0.25, y: centerY - h * 0.05)
+        let rightCenter = CGPoint(x: cx + w * 0.25, y: centerY - h * 0.05)
+        let lobeR = w * 0.30
+
+        path.move(to: CGPoint(x: cx, y: centerY))
+        path.addArc(
+            center: leftCenter, radius: lobeR,
+            startAngle: .degrees(0), endAngle: .degrees(180),
+            clockwise: true
+        )
+        path.addLine(to: CGPoint(x: cx, y: centerY + h * 0.55))
+        path.addLine(to: CGPoint(x: cx + lobeR * 2, y: centerY))
+        path.addArc(
+            center: rightCenter, radius: lobeR,
+            startAngle: .degrees(0), endAngle: .degrees(180),
+            clockwise: true
+        )
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// Two large pupils (rounded rects, not dots) so the robot reads as having
+/// eyes, not just LEDs. `glow` grows them slightly on activation.
+struct HermesEyesShape: Shape {
+    var glow: CGFloat
+    var animatableData: CGFloat {
+        get { glow }
+        set { glow = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let head = HermesRobotMetrics.head(in: rect)
+        let cy = head.minY + head.height * 0.40
+        let xOffset = head.width * 0.20
+        let baseW = head.width * 0.18
+        let baseH = head.height * 0.20
+        let scale = 1.0 + glow * 0.10
+        let w = baseW * scale
+        let h = baseH * scale
+        let r = w * 0.40
+
+        var path = Path()
+        path.addRoundedRect(
+            in: CGRect(x: head.midX - xOffset - w / 2, y: cy - h / 2, width: w, height: h),
+            cornerSize: CGSize(width: r, height: r)
+        )
+        path.addRoundedRect(
+            in: CGRect(x: head.midX + xOffset - w / 2, y: cy - h / 2, width: w, height: h),
+            cornerSize: CGSize(width: r, height: r)
+        )
+        return path
+    }
+}
+
+/// "Smile lines" — small upturned arcs under each pupil that appear when
+/// the eyes wake up so the robot reads as smiling with its eyes.
+struct HermesEyeSmileShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let head = HermesRobotMetrics.head(in: rect)
+        let baseY = head.minY + head.height * 0.52
+        let xOffset = head.width * 0.20
+        let arcW = head.width * 0.18
+        let dip = head.height * 0.04
+
+        var path = Path()
+        // Left
+        path.move(to: CGPoint(x: head.midX - xOffset - arcW / 2, y: baseY))
+        path.addQuadCurve(
+            to: CGPoint(x: head.midX - xOffset + arcW / 2, y: baseY),
+            control: CGPoint(x: head.midX - xOffset, y: baseY + dip)
+        )
+        // Right
+        path.move(to: CGPoint(x: head.midX + xOffset - arcW / 2, y: baseY))
+        path.addQuadCurve(
+            to: CGPoint(x: head.midX + xOffset + arcW / 2, y: baseY),
+            control: CGPoint(x: head.midX + xOffset, y: baseY + dip)
+        )
+        return path
+    }
+}
+
+/// Gentle smile arc — wider when selected (`open` = 1) so the robot grins.
+struct HermesSmileShape: Shape {
+    var open: CGFloat
+    var animatableData: CGFloat {
+        get { open }
+        set { open = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let head = HermesRobotMetrics.head(in: rect)
+        let cy = head.minY + head.height * 0.74
+        let baseW = head.width * 0.34
+        let w = baseW * (0.85 + open * 0.30)
+        let dip = head.height * (0.06 + open * 0.05)
+
+        var path = Path()
+        path.move(to: CGPoint(x: head.midX - w / 2, y: cy))
+        path.addQuadCurve(
+            to: CGPoint(x: head.midX + w / 2, y: cy),
+            control: CGPoint(x: head.midX, y: cy + dip)
+        )
+        return path
+    }
+}
+
+/// Two small cheek circles flanking the smile — blush dots.
+struct HermesCheeksShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let head = HermesRobotMetrics.head(in: rect)
+        let cy = head.minY + head.height * 0.74
+        let xOffset = head.width * 0.30
+        let r = head.width * 0.05
+        var path = Path()
+        path.addEllipse(in: CGRect(
+            x: head.midX - xOffset - r, y: cy - r,
+            width: r * 2, height: r * 2
+        ))
+        path.addEllipse(in: CGRect(
+            x: head.midX + xOffset - r, y: cy - r,
+            width: r * 2, height: r * 2
+        ))
+        return path
+    }
+}
+
+/// Combined silhouette (head + earcups + heart) for halo glow when on.
 struct HermesGlyphShape: Shape {
     func path(in rect: CGRect) -> Path {
-        var path = HermesOrbShape().path(in: rect)
-        path.addPath(HermesWingsShape(spread: 1.0).path(in: rect))
+        var path = HermesHeadShape().path(in: rect)
+        path.addPath(HermesEarcupsShape().path(in: rect))
+        path.addPath(HermesAntennaHeartShape(pulse: 0).path(in: rect))
         return path
     }
 }
@@ -456,14 +837,25 @@ struct AuroraNavIcon: View {
     let size: CGFloat
     let isSelected: Bool
     let isPressed: Bool
+    /// Optional photo URL for the `.you` tab. When provided, renders the
+    /// signed-in user's avatar instead of the generic glyph.
+    var userPhotoURL: URL? = nil
+    /// Display name used to derive initials when no photo is available.
+    var userDisplayName: String? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var youHaloRotation: Double = 0
 
     /// Animation driver — 0 at rest, 1 when selected. Drives the
     /// `animatableData` of every shape so the spring on isSelected
     /// becomes the click animation for free.
     private var progress: CGFloat { isSelected ? 1.0 : 0.0 }
+
+    /// Per-icon idle drivers for icons that benefit from a tiny ambient
+    /// motion when selected (TV signal bars, robot eye blink). These are
+    /// gated on `isSelected` and `reduceMotion` and use TimelineView so they
+    /// don't drive view re-renders elsewhere.
 
     var body: some View {
         ZStack {
@@ -505,10 +897,7 @@ struct AuroraNavIcon: View {
                 .fill(destination.accent.opacity(0.45))
         case .streams:
             StreamsGlyphShape()
-                .stroke(
-                    destination.accent.opacity(0.45),
-                    style: StrokeStyle(lineWidth: size * 0.14, lineCap: .round, lineJoin: .round)
-                )
+                .fill(destination.accent.opacity(0.45))
         case .hermes:
             HermesGlyphShape()
                 .fill(destination.accent.opacity(0.45))
@@ -531,29 +920,48 @@ struct AuroraNavIcon: View {
         }
     }
 
-    // MARK: 1. Pulse — heartbeat curve with a rich gradient area
+    // MARK: 1. Pulse — heartbeat curve with a premium brand-gradient fill
 
     private var pulseIcon: some View {
         ZStack {
-            // Area-under-curve fades in with a 3-stop ember→amber→clear
-            // gradient. The transition combines opacity + a slight bottom-
-            // anchored scale so it appears to "fill in" upward.
+            // Area-under-curve fades in with a rich 4-stop ember→amber gradient
+            // and a soft peak highlight. The transition combines opacity, a
+            // slight upward scale (anchor: .bottom) so it appears to "fill in"
+            // from the baseline, and a clipping mask handled implicitly by
+            // the shape itself. A subtle white rim at the very top sells the
+            // glassy specular finish.
             if isSelected {
-                VitalisAreaShape()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                MobileTheme.ember.opacity(0.70),
-                                MobileTheme.amber.opacity(0.38),
-                                Color.clear
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
+                ZStack {
+                    VitalisAreaShape()
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: MobileTheme.ember.opacity(0.85), location: 0.00),
+                                    .init(color: MobileTheme.ember.opacity(0.55), location: 0.35),
+                                    .init(color: MobileTheme.amber.opacity(0.32), location: 0.70),
+                                    .init(color: Color.clear,                      location: 1.00)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
                         )
-                    )
-                    .transition(
-                        .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom))
-                    )
+
+                    // Specular highlight that hugs the upper rim of the curve
+                    // so the area reads as a translucent ribbon, not a wash.
+                    VitalisAreaShape()
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color.white.opacity(0.42), location: 0.00),
+                                    .init(color: Color.white.opacity(0.00), location: 0.18)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .blendMode(.plusLighter)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
             }
             VitalisLineShape()
                 .stroke(
@@ -594,86 +1002,410 @@ struct AuroraNavIcon: View {
         }
     }
 
-    // MARK: 3. Streams — three aurora ribbons that phase-shift on select
+    // MARK: 3. Streams — vintage antenna TV with vibrant RGB color bars
 
     private var streamsIcon: some View {
-        ZStack {
-            ForEach(0..<3, id: \.self) { row in
-                StreamsRibbonShape(rowIndex: row, phase: progress)
-                    .stroke(
-                        isSelected
-                            ? AnyShapeStyle(destination.gradient)
-                            : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.85)),
-                        style: StrokeStyle(
-                            lineWidth: size * (row == 0 ? 0.085 : 0.075),
-                            lineCap: .round,
-                            lineJoin: .round
-                        )
+        let strokeStyle: AnyShapeStyle = isSelected
+            ? AnyShapeStyle(destination.gradient)
+            : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.85))
+        let bodyStroke = size * 0.075
+        let detailStroke = size * 0.06
+
+        return ZStack {
+            // Antennae + tip knobs. When selected, antennae wiggle subtly.
+            antennaeLayer(strokeStyle: strokeStyle, detailStroke: detailStroke)
+
+            // Cabinet outline
+            StreamsTVCabinetShape()
+                .stroke(strokeStyle,
+                        style: StrokeStyle(lineWidth: bodyStroke, lineCap: .round, lineJoin: .round))
+
+            // Screen background. Off: dim slate. On: navy CRT base for the
+            // color bars to layer on top of.
+            StreamsTVScreenShape()
+                .fill(
+                    isSelected
+                        ? AnyShapeStyle(
+                            LinearGradient(
+                                colors: [Color(hex: "0B0B1A"), Color(hex: "1A1430")],
+                                startPoint: .top, endPoint: .bottom))
+                        : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.18))
+                )
+
+            // Color test pattern — only on when selected. Reveal-mask is a
+            // CRT power-on sweep clipped against the screen.
+            if isSelected {
+                streamsContent
+                    .mask(
+                        StreamsTVScanlineShape(progress: progress)
+                            .fill(Color.white)
                     )
-                    .opacity(rowOpacity(row, selected: isSelected))
+                    .mask(StreamsTVScreenShape())
+            }
+
+            // Bright scanline edge that hugs the sweep while it animates —
+            // sells the CRT power-on flash. Fades after the sweep completes.
+            StreamsTVScanlineEdgeShape(progress: progress)
+                .stroke(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.0), Color.white.opacity(0.95), Color.white.opacity(0.0)],
+                        startPoint: .top, endPoint: .bottom
+                    ),
+                    style: StrokeStyle(lineWidth: detailStroke * 0.7)
+                )
+                .opacity(isSelected ? max(0, 1 - progress) : 0)
+                .blendMode(.plusLighter)
+                .mask(StreamsTVScreenShape())
+
+            // Specular curve on the screen glass — sells the CRT bulge.
+            StreamsTVScreenGlossShape()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(isSelected ? 0.30 : 0.15),
+                            Color.white.opacity(0.0)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .blendMode(.plusLighter)
+
+            // Feet — same stroke color as cabinet, filled.
+            StreamsTVFeetShape()
+                .fill(strokeStyle)
+        }
+    }
+
+    /// Animated screen content while selected — full SMPTE-style color
+    /// bars + a scrolling channel-flip flicker. Wrapped in a TimelineView so
+    /// the bars dance and the flicker scrolls without re-rendering the
+    /// surrounding layout.
+    @ViewBuilder
+    private var streamsContent: some View {
+        if reduceMotion {
+            colorBars(phase: 0.5)
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                let phase = CGFloat((t.truncatingRemainder(dividingBy: 2.4)) / 2.4)
+                ZStack {
+                    colorBars(phase: phase)
+                    // Channel-flip flicker: a thin horizontal band that
+                    // slides downward across the screen every cycle.
+                    channelFlicker(phase: phase)
+                }
             }
         }
     }
 
-    private func rowOpacity(_ row: Int, selected: Bool) -> Double {
-        // Top ribbon brightest; subsequent rows ease off so the stack reads
-        // as one object with depth instead of three equal lines.
-        switch row {
-        case 0: return 1.0
-        case 1: return selected ? 0.82 : 0.72
-        default: return selected ? 0.62 : 0.48
+    private func colorBars(phase: CGFloat) -> some View {
+        // SMPTE-inspired vertical bars in vivid CRT primaries. Each bar
+        // breathes a tiny saturation modulation off-phase so the test
+        // pattern feels alive instead of static.
+        StreamsTVColorBarsShape()
+            .fill(
+                LinearGradient(
+                    stops: [
+                        .init(color: streamsColor("E8C46A", phase: phase, offset: 0.00), location: 0.00),
+                        .init(color: streamsColor("E8C46A", phase: phase, offset: 0.00), location: 1.0 / 7),
+                        .init(color: streamsColor("60D0D0", phase: phase, offset: 0.18), location: 1.0 / 7),
+                        .init(color: streamsColor("60D0D0", phase: phase, offset: 0.18), location: 2.0 / 7),
+                        .init(color: streamsColor("60D060", phase: phase, offset: 0.32), location: 2.0 / 7),
+                        .init(color: streamsColor("60D060", phase: phase, offset: 0.32), location: 3.0 / 7),
+                        .init(color: streamsColor("D060C8", phase: phase, offset: 0.46), location: 3.0 / 7),
+                        .init(color: streamsColor("D060C8", phase: phase, offset: 0.46), location: 4.0 / 7),
+                        .init(color: streamsColor("D85050", phase: phase, offset: 0.60), location: 4.0 / 7),
+                        .init(color: streamsColor("D85050", phase: phase, offset: 0.60), location: 5.0 / 7),
+                        .init(color: streamsColor("5070D0", phase: phase, offset: 0.74), location: 5.0 / 7),
+                        .init(color: streamsColor("5070D0", phase: phase, offset: 0.74), location: 6.0 / 7),
+                        .init(color: streamsColor("E0E0E0", phase: phase, offset: 0.88), location: 6.0 / 7),
+                        .init(color: streamsColor("E0E0E0", phase: phase, offset: 0.88), location: 1.00)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+    }
+
+    private func streamsColor(_ hex: String, phase: CGFloat, offset: CGFloat) -> Color {
+        // Subtle ±10% lightness modulation per bar, off-phase per offset, so
+        // the pattern shimmers without feeling glitchy.
+        let pulse = 0.92 + 0.08 * sin((phase + offset) * .pi * 2)
+        return Color(hex: hex).opacity(Double(pulse))
+    }
+
+    @ViewBuilder
+    private func channelFlicker(phase: CGFloat) -> some View {
+        GeometryReader { geo in
+            let screen = StreamsTVMetrics.screen(in: geo.frame(in: .local))
+            let bandH = screen.height * 0.16
+            let travel = screen.height + bandH
+            let y = screen.minY + (phase * travel) - bandH
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.0),
+                            Color.white.opacity(0.55),
+                            Color.white.opacity(0.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: screen.width, height: bandH)
+                .position(x: screen.midX, y: y + bandH / 2)
+                .blendMode(.plusLighter)
+        }
+        .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func antennaeLayer(strokeStyle: AnyShapeStyle, detailStroke: CGFloat) -> some View {
+        if isSelected, !reduceMotion {
+            TimelineView(.animation(minimumInterval: 1.0 / 24, paused: false)) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                let wiggle = CGFloat(sin(t * 1.6)) * 0.5 + 0.5
+                StreamsTVAntennaShape(lift: wiggle)
+                    .stroke(strokeStyle,
+                            style: StrokeStyle(lineWidth: detailStroke, lineCap: .round))
+                StreamsTVAntennaTipsShape(lift: wiggle)
+                    .fill(strokeStyle)
+            }
+        } else {
+            StreamsTVAntennaShape(lift: progress)
+                .stroke(strokeStyle,
+                        style: StrokeStyle(lineWidth: detailStroke, lineCap: .round))
+            StreamsTVAntennaTipsShape(lift: progress)
+                .fill(isSelected
+                      ? AnyShapeStyle(destination.gradient)
+                      : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.85)))
         }
     }
 
-    // MARK: 4. Hermes — orb + wings spreading outward
+    // MARK: 4. Hermes — friendly detailed robot with headphones + smile
 
     private var hermesIcon: some View {
-        ZStack {
-            // Wings sit behind the orb so the orb visually punches forward.
-            HermesWingsShape(spread: progress)
-                .fill(
-                    isSelected
-                        ? AnyShapeStyle(destination.gradient)
-                        : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.78))
+        // Outline color tracks selection. Mercury gradient when on, calm
+        // muted gray when off. Stroke width is tuned so the icon reads
+        // crisp at 22pt (tray) and 28pt (sidebar).
+        let outlineStyle: AnyShapeStyle = isSelected
+            ? AnyShapeStyle(MobileTheme.mercuryGradient)
+            : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.88))
+        let bodyStroke = size * 0.07
+        let detailStroke = size * 0.05
+
+        return ZStack {
+            // Antenna stalk
+            HermesAntennaShape()
+                .stroke(outlineStyle,
+                        style: StrokeStyle(lineWidth: detailStroke, lineCap: .round))
+
+            // Heart antenna tip — pulses when active. Halo behind it so it
+            // reads as glowing light when on.
+            ZStack {
+                if isSelected {
+                    HermesAntennaHeartShape(pulse: progress)
+                        .fill(MobileTheme.ember.opacity(0.55))
+                        .blur(radius: size * 0.06)
+                        .scaleEffect(1.5 + progress * 0.3)
+                }
+                HermesAntennaHeartShape(pulse: progress)
+                    .fill(isSelected
+                          ? AnyShapeStyle(
+                                LinearGradient(
+                                    colors: [MobileTheme.ember, MobileTheme.amber],
+                                    startPoint: .top,
+                                    endPoint: .bottom))
+                          : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.78)))
+            }
+
+            // Earcups (drawn before head so the head's outline rims them)
+            HermesEarcupsShape()
+                .fill(isSelected
+                      ? AnyShapeStyle(
+                          LinearGradient(
+                              colors: [
+                                  MobileTheme.Colors.surfaceElevated,
+                                  MobileTheme.Colors.surface
+                              ],
+                              startPoint: .top, endPoint: .bottom))
+                      : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.16)))
+                .overlay(
+                    HermesEarcupsShape()
+                        .stroke(outlineStyle,
+                                style: StrokeStyle(lineWidth: detailStroke, lineCap: .round))
                 )
 
-            HermesOrbShape()
+            // Helmet body — sheen fill + outline
+            HermesHeadShape()
+                .fill(
+                    isSelected
+                        ? AnyShapeStyle(
+                            LinearGradient(
+                                colors: [
+                                    MobileTheme.Colors.surfaceElevated.opacity(0.95),
+                                    MobileTheme.Colors.surface.opacity(0.70)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom))
+                        : AnyShapeStyle(MobileTheme.Colors.surfaceElevated.opacity(0.18))
+                )
+                .overlay(
+                    HermesHeadShape()
+                        .stroke(outlineStyle,
+                                style: StrokeStyle(lineWidth: bodyStroke, lineCap: .round, lineJoin: .round))
+                )
+
+            // Cheek blush — visible all the time but brighter when selected.
+            HermesCheeksShape()
+                .fill(
+                    isSelected
+                        ? AnyShapeStyle(MobileTheme.ember.opacity(0.55))
+                        : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.28))
+                )
+                .blur(radius: isSelected ? size * 0.018 : 0)
+
+            // Eye halo bloom — only when selected
+            if isSelected {
+                HermesEyesShape(glow: progress)
+                    .fill(MobileTheme.ember.opacity(0.50))
+                    .blur(radius: size * 0.08)
+                    .scaleEffect(1.5)
+            }
+
+            // Eye pupils — coral radial gradient when on, muted when off.
+            HermesEyesShape(glow: progress)
                 .fill(
                     isSelected
                         ? AnyShapeStyle(
                             RadialGradient(
                                 colors: [
-                                    Color.white.opacity(0.92),
-                                    MobileTheme.hermesAureate
+                                    Color.white.opacity(0.95),
+                                    MobileTheme.ember,
+                                    MobileTheme.ember.opacity(0.85)
                                 ],
-                                center: .center,
+                                center: .topLeading,
                                 startRadius: 0,
-                                endRadius: size * 0.20
-                            )
-                        )
-                        : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.92))
+                                endRadius: size * 0.13))
+                        : AnyShapeStyle(MobileTheme.Colors.textPrimary.opacity(0.78))
                 )
+
+            // Eye smile arcs (under the pupils) — appear when active so the
+            // robot reads as smiling with its eyes too.
+            if isSelected {
+                HermesEyeSmileShape()
+                    .stroke(MobileTheme.ember.opacity(0.85),
+                            style: StrokeStyle(lineWidth: detailStroke * 0.65, lineCap: .round))
+                    .transition(.opacity.combined(with: .scale(scale: 0.7, anchor: .center)))
+            }
+
+            // Smile arc — wider when selected
+            HermesSmileShape(open: progress)
+                .stroke(outlineStyle,
+                        style: StrokeStyle(lineWidth: detailStroke * 0.85, lineCap: .round))
         }
     }
 
-    // MARK: 5. You — bust silhouette with a halo arc that crowns it
+    // MARK: 5. You — actual user avatar with a rotating brand halo
 
     private var youIcon: some View {
-        ZStack {
-            // Halo behind the bust. Stroke-only, expands with progress.
-            YouHaloShape(spread: progress)
-                .stroke(
-                    destination.gradient,
-                    style: StrokeStyle(lineWidth: size * 0.07, lineCap: .round)
-                )
-                .opacity(progress)
+        let avatarDiameter = size * 0.84
+        let ringInset: CGFloat = size * 0.06
+        let ringDiameter = avatarDiameter + ringInset * 2
 
-            YouBustShape()
-                .fill(
-                    isSelected
-                        ? AnyShapeStyle(destination.gradient)
-                        : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.78))
+        return ZStack {
+            // Outer rotating brand halo — rendered only when selected. Uses
+            // an angular ember→amber→blaze gradient that spins gently. We
+            // animate `youHaloRotation` with a `repeatForever` linear spin
+            // started in `.onAppear`, gated by reduceMotion.
+            if isSelected {
+                Circle()
+                    .stroke(
+                        AngularGradient(
+                            colors: [
+                                MobileTheme.ember,
+                                MobileTheme.amber,
+                                MobileTheme.blaze,
+                                MobileTheme.ember.opacity(0.0),
+                                MobileTheme.ember
+                            ],
+                            center: .center
+                        ),
+                        lineWidth: max(1.4, size * 0.06)
+                    )
+                    .frame(width: ringDiameter, height: ringDiameter)
+                    .rotationEffect(.degrees(youHaloRotation))
+                    .shadow(color: MobileTheme.ember.opacity(0.5), radius: size * 0.18)
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                    .onAppear { startYouHalo() }
+                    .onDisappear { youHaloRotation = 0 }
+            } else {
+                // Idle: a simple muted ring so the avatar still reads as
+                // "you" without competing visual noise.
+                Circle()
+                    .stroke(
+                        MobileTheme.Colors.border.opacity(0.45),
+                        lineWidth: max(0.8, size * 0.04)
+                    )
+                    .frame(width: ringDiameter, height: ringDiameter)
+            }
+
+            // Avatar core. Photo if available, gradient + initials otherwise.
+            Group {
+                if let url = userPhotoURL {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFill()
+                        default:
+                            initialsAvatar
+                        }
+                    }
+                } else {
+                    initialsAvatar
+                }
+            }
+            .frame(width: avatarDiameter, height: avatarDiameter)
+            .clipShape(Circle())
+            .overlay(
+                Circle().stroke(
+                    Color.white.opacity(colorScheme == .dark ? 0.22 : 0.55),
+                    lineWidth: 0.5
                 )
+            )
+        }
+    }
+
+    private var initialsAvatar: some View {
+        ZStack {
+            Circle().fill(MobileTheme.primaryGradient)
+            Text(userInitials)
+                .font(.system(size: size * 0.40, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .minimumScaleFactor(0.5)
+        }
+    }
+
+    private var userInitials: String {
+        // Build up to two-letter initials from `userDisplayName` (split on
+        // whitespace, take first char of first two tokens). Fall back to a
+        // single dot when the name is empty so the avatar still reads.
+        let trimmed = (userDisplayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "•" }
+        let parts = trimmed
+            .split(whereSeparator: { $0.isWhitespace })
+            .prefix(2)
+        let chars = parts.compactMap { $0.first }.map { String($0).uppercased() }
+        return chars.isEmpty ? String(trimmed.prefix(1)).uppercased() : chars.joined()
+    }
+
+    private func startYouHalo() {
+        guard !reduceMotion else { return }
+        // Continuous slow spin — implicit, no value-driven animation needed.
+        withAnimation(.linear(duration: 16).repeatForever(autoreverses: false)) {
+            youHaloRotation = 360
         }
     }
 }

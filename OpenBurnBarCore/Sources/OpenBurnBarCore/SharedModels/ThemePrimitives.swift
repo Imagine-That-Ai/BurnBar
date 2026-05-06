@@ -94,8 +94,11 @@ public enum DesignSystemTokens {
     // Hermes
     public static let hermesMercuryLight = "AEA69C"
     public static let hermesMercuryDark  = "C8BFB5"
-    public static let hermesAureateLight = "B8942E"
-    public static let hermesAureateDark  = "D4AA3C"
+    // Dark platinum — replaces former divine gold. Deep slate platinum on
+    // light surfaces, polished platinum on dark surfaces. Reads as a
+    // premium gunmetal that pairs with the warm mercury silver.
+    public static let hermesAureateLight = "3F4651"
+    public static let hermesAureateDark  = "A2ACBA"
 
     // Chat
     public static let chatUserStrokeLight      = "6A5ACD"

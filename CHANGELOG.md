@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — iPadOS Port Phase 2 Hardening (2026-05-02)
 
+### Changed
+- **Hermes accent: gold → dark platinum.** `hermesAureate` is no longer a divine
+  gold (`#B8942E` / `#D4AA3C`) — it is now a sophisticated dark platinum
+  (`#3F4651` light, `#A2ACBA` dark). The mercury gradient (silver → platinum) now
+  reads as polished gunmetal instead of mercury → gold, giving the Hermes
+  surfaces a colder, more premium feel that better matches the app's industrial
+  / utilitarian aesthetic. Cascades through the entire app (nav tab accent,
+  badges, send buttons, message strokes, sidebar marker, popover strip border).
+
 ### Added
 - **Provider-connection onboarding wizard (iOS / iPadOS):** replaced the placeholder
   welcome/cloud/Hermes screens with a five-stage wizard that walks new users from

@@ -13,6 +13,9 @@ import SwiftUI
 struct AuroraNavigationTray: View {
     @Binding var selection: AuroraNavDestination
     let destinations: [AuroraNavDestination]
+    /// Optional user identity that the `.you` tab renders as the avatar.
+    var userPhotoURL: URL? = nil
+    var userDisplayName: String? = nil
 
     @State private var dragOffset: CGFloat = 0
     @State private var pressedDestination: AuroraNavDestination?
@@ -21,15 +24,15 @@ struct AuroraNavigationTray: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    // Floating-pill geometry. The tray is a single capsule that hovers
-    // above the bottom safe area — like Apple Music / Linear. Tabs are
-    // measured to a uniform width and an animated highlight slides
-    // beneath the active tab.
-    private let pillHeight: CGFloat = 64
-    private let iconSize: CGFloat = 22
-    private let tabWidth: CGFloat = 56
-    private let pillSidePadding: CGFloat = 8
-    private let pillBottomInset: CGFloat = 16
+    // Floating-pill geometry. Compact pill — emphasis is on the icon
+    // animation, not the chrome around it. Selection is signaled by an
+    // accent dot under the icon plus the icon's own animated wake-up,
+    // not a heavy capsule highlight.
+    private let pillHeight: CGFloat = 50
+    private let iconSize: CGFloat = 26
+    private let tabWidth: CGFloat = 52
+    private let pillSidePadding: CGFloat = 6
+    private let pillBottomInset: CGFloat = 14
 
     var body: some View {
         // Pill-only body. The tray is sized to its intrinsic height
@@ -42,9 +45,11 @@ struct AuroraNavigationTray: View {
                     destination: dest,
                     iconSize: iconSize,
                     isSelected: selection == dest,
-                    isPressed: pressedDestination == dest
+                    isPressed: pressedDestination == dest,
+                    userPhotoURL: dest == .you ? userPhotoURL : nil,
+                    userDisplayName: dest == .you ? userDisplayName : nil
                 )
-                .frame(width: tabWidth, height: pillHeight - 8)
+                .frame(width: tabWidth, height: pillHeight - 6)
                 .contentShape(Capsule())
                 .gesture(
                     DragGesture(minimumDistance: 0)
@@ -74,16 +79,15 @@ struct AuroraNavigationTray: View {
         .padding(.horizontal, pillSidePadding)
         .frame(height: pillHeight)
         .background(pillBackground)
-        .overlay(activeHighlight)
         .clipShape(Capsule(style: .continuous))
         .overlay(
             Capsule(style: .continuous)
                 .stroke(strokeGradient, lineWidth: 0.6)
         )
         .compositingGroup()
-        .shadow(color: Color.black.opacity(0.22), radius: 14, y: 6)
+        .shadow(color: Color.black.opacity(0.18), radius: 10, y: 4)
         .padding(.bottom, pillBottomInset)
-        .padding(.horizontal, 28)
+        .padding(.horizontal, 32)
         .gesture(swipeGesture)
         .accessibilityElement(children: .contain)
     }
@@ -123,38 +127,6 @@ struct AuroraNavigationTray: View {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
-    }
-
-    /// The animated capsule that sits behind the active tab.
-    @ViewBuilder
-    private var activeHighlight: some View {
-        GeometryReader { geo in
-            let usableWidth = geo.size.width - pillSidePadding * 2
-            let perTab = usableWidth / CGFloat(destinations.count)
-            let index = CGFloat(destinations.firstIndex(of: selection) ?? 0)
-            let centerX = pillSidePadding + perTab * (index + 0.5) + dragOffset
-
-            Capsule(style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            selection.accent.opacity(0.30),
-                            selection.accent.opacity(0.16)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(selection.accent.opacity(0.55), lineWidth: 0.6)
-                )
-                .frame(width: perTab - 6, height: pillHeight - 14)
-                .position(x: centerX, y: geo.size.height / 2)
-                .animation(.spring(response: 0.36, dampingFraction: 0.78), value: selection)
-                .animation(.spring(response: 0.42, dampingFraction: 0.82), value: dragOffset)
-        }
-        .allowsHitTesting(false)
     }
 
     // MARK: - Swipe gesture (works across the whole pill)
@@ -205,27 +177,30 @@ struct AuroraTabItem: View {
     let iconSize: CGFloat
     let isSelected: Bool
     let isPressed: Bool
+    var userPhotoURL: URL? = nil
+    var userDisplayName: String? = nil
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 4) {
             AuroraNavIcon(
                 destination: destination,
                 size: iconSize,
                 isSelected: isSelected,
-                isPressed: isPressed
+                isPressed: isPressed,
+                userPhotoURL: userPhotoURL,
+                userDisplayName: userDisplayName
             )
-            // Only show the label for the active tab — keeps the floating
-            // pill compact, lets the icon breathe, and matches the modern
-            // floating-pill pattern on iOS.
-            if isSelected {
-                Text(destination.label)
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(destination.accent)
-                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
-                    .lineLimit(1)
-            }
+            // Tiny accent dot under the active icon — replaces the heavy
+            // capsule highlight so the icon, not the chrome, is the
+            // emphasis when a tab is active.
+            Circle()
+                .fill(destination.accent)
+                .frame(width: 4, height: 4)
+                .opacity(isSelected ? 1 : 0)
+                .scaleEffect(isSelected ? 1 : 0.4)
+                .animation(.spring(response: 0.28, dampingFraction: 0.72), value: isSelected)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
@@ -247,7 +222,9 @@ struct AuroraTabItem: View {
                     Spacer()
                     AuroraNavigationTray(
                         selection: $selection,
-                        destinations: AuroraNavDestination.allCases
+                        destinations: AuroraNavDestination.allCases,
+                        userPhotoURL: nil,
+                        userDisplayName: "Alberto Nunez"
                     )
                 }
             }
