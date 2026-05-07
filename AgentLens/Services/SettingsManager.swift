@@ -590,6 +590,26 @@ final class SettingsManager {
         set { quotas.tokenizerAssistedFallbackEnabled = newValue }
     }
 
+    var smartHubQuotaDisplayEnabled: Bool {
+        get { quotas.smartHubQuotaDisplayEnabled }
+        set { quotas.smartHubQuotaDisplayEnabled = newValue }
+    }
+
+    var smartHubQuotaDashboardURL: String {
+        get { quotas.smartHubQuotaDashboardURL }
+        set { quotas.smartHubQuotaDashboardURL = newValue }
+    }
+
+    var smartHubQuotaRefreshURL: String {
+        get { quotas.smartHubQuotaRefreshURL }
+        set { quotas.smartHubQuotaRefreshURL = newValue }
+    }
+
+    var smartHubQuotaVoiceRefreshURL: String {
+        get { quotas.smartHubQuotaVoiceRefreshURL }
+        set { quotas.smartHubQuotaVoiceRefreshURL = newValue }
+    }
+
     // MARK: Provider Paths
     var logPaths: [AgentProvider: String] {
         get { providerPath.logPaths }

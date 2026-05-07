@@ -861,4 +861,42 @@ final class HermesRelayHostServiceTests: XCTestCase {
         XCTAssertEqual(fragments.joined(), payload)
         XCTAssertTrue(fragments.allSatisfy { $0.utf8.count <= HermesRelayHostService.maxRelayChunkDataBytes })
     }
+
+    func test_consumeSSELine_treatsCRLFBlankLineAsEventBoundary() {
+        var eventLines: [String] = []
+
+        XCTAssertEqual(
+            HermesRelayHostService.consumeSSELine("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\r", eventLines: &eventLines),
+            []
+        )
+        let events = HermesRelayHostService.consumeSSELine("\r", eventLines: &eventLines)
+
+        XCTAssertEqual(events, ["data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}"])
+        XCTAssertTrue(eventLines.isEmpty)
+    }
+
+    func test_consumeSSELine_splitsAdjacentDataFramesWhenBlankLinesAreNotYielded() {
+        var eventLines: [String] = []
+
+        XCTAssertEqual(
+            HermesRelayHostService.consumeSSELine("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}", eventLines: &eventLines),
+            []
+        )
+        let events = HermesRelayHostService.consumeSSELine("data: {\"choices\":[{\"delta\":{\"content\":\" there\"}}]}", eventLines: &eventLines)
+
+        XCTAssertEqual(events, ["data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}"])
+        XCTAssertEqual(eventLines, ["data: {\"choices\":[{\"delta\":{\"content\":\" there\"}}]}"])
+    }
+
+    func test_mergedModelsResponseBodies_addsDaemonGatewayModelsWithoutDuplicates() throws {
+        let primary = Data(#"{"object":"list","data":[{"id":"hermes-agent","owned_by":"hermes"}]}"#.utf8)
+        let secondary = Data(#"{"object":"list","data":[{"id":"hermes-agent","owned_by":"hermes"},{"id":"glm-5","owned_by":"zai","display_name":"GLM-5"},{"id":"minimax-m2.7","owned_by":"minimax"}]}"#.utf8)
+
+        let merged = try XCTUnwrap(HermesRelayHostService.mergedModelsResponseBodies(primary, secondary))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: merged) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+
+        XCTAssertEqual(data.compactMap { $0["id"] as? String }, ["hermes-agent", "glm-5", "minimax-m2.7"])
+        XCTAssertEqual(data[1]["display_name"] as? String, "GLM-5")
+    }
 }

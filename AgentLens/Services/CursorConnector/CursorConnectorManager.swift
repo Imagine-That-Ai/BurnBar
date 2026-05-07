@@ -24,6 +24,7 @@ final class CursorConnectorManager {
     var lastError: String?
     var recentRouteLog: [String] = []
     var recentUsageEvents: [RoutedUsageEvent] = []
+    var routedClientSyncStatuses: [RoutedClientTarget: RoutedClientSyncStatus] = [:]
 
     private let supportDirectory: URL
     private let proxyScriptURL: URL
@@ -49,7 +50,7 @@ final class CursorConnectorManager {
 
         if let data = UserDefaults.standard.data(forKey: CursorConnectorConfig.defaultsKey),
            let loaded = try? JSONDecoder().decode(CursorConnectorConfig.self, from: data) {
-            self.config = loaded
+            self.config = Self.normalizedConfig(loaded)
         } else {
             self.config = CursorConnectorConfig()
         }
@@ -67,6 +68,9 @@ final class CursorConnectorManager {
     }
 
     func updateProviderConfig(_ provider: ConnectorProvider, mutate: (inout ConnectorProviderConfig) -> Void) {
+        if !config.providerConfigs.contains(where: { $0.id == provider }) {
+            config.providerConfigs.append(ConnectorProviderConfig(id: provider))
+        }
         guard let idx = config.providerConfigs.firstIndex(where: { $0.id == provider }) else { return }
         var copy = config.providerConfigs[idx]
         mutate(&copy)
@@ -127,7 +131,7 @@ final class CursorConnectorManager {
             }
         }
         if !foundAny {
-            lastError = "Factory settings were found, but no supported Z.ai or MiniMax models were available."
+            lastError = "Factory settings were found, but no supported Z.ai, MiniMax, or Ollama Cloud models were available."
         } else {
             lastError = nil
             config.statusMessage = "Imported supported models from Factory"
@@ -219,6 +223,32 @@ final class CursorConnectorManager {
         NSWorkspace.shared.open(URL(string: "https://cursor.com/help/models-and-usage/api-keys")!)
     }
 
+    func syncRoutedClient(_ target: RoutedClientTarget) {
+        do {
+            let syncConfig = try routedClientGatewayConfig()
+            let syncService = RoutedClientConfigSyncService()
+            switch target {
+            case .factory:
+                let urls = try syncService.applyFactoryGatewayConfig(syncConfig)
+                routedClientSyncStatuses[target] = RoutedClientSyncStatus(
+                    target: target,
+                    appliedAt: Date(),
+                    summary: "Synced \(syncConfig.models.count) models to \(urls.map(\.lastPathComponent).joined(separator: " and "))."
+                )
+            case .opencode:
+                let url = try syncService.applyOpenCodeGatewayConfig(syncConfig)
+                routedClientSyncStatuses[target] = RoutedClientSyncStatus(
+                    target: target,
+                    appliedAt: Date(),
+                    summary: "Synced \(syncConfig.models.count) models to \(url.path)."
+                )
+            }
+            lastError = nil
+        } catch {
+            lastError = "\(target.displayName) sync failed: \(error.localizedDescription)"
+        }
+    }
+
     func resetUnsupportedModels() {
         for provider in ConnectorProvider.allCases {
             updateProviderConfig(provider) { config in
@@ -237,6 +267,41 @@ final class CursorConnectorManager {
 
     private func keychainAccount(for provider: ConnectorProvider) -> String {
         "provider.\(provider.rawValue).apiKey"
+    }
+
+    private static func normalizedConfig(_ loaded: CursorConnectorConfig) -> CursorConnectorConfig {
+        var providerConfigs = loaded.providerConfigs
+        for provider in ConnectorProvider.allCases where !providerConfigs.contains(where: { $0.id == provider }) {
+            providerConfigs.append(ConnectorProviderConfig(id: provider))
+        }
+        providerConfigs.sort { lhs, rhs in
+            let lhsIndex = ConnectorProvider.allCases.firstIndex(of: lhs.id) ?? .max
+            let rhsIndex = ConnectorProvider.allCases.firstIndex(of: rhs.id) ?? .max
+            return lhsIndex < rhsIndex
+        }
+        return CursorConnectorConfig(
+            isEnabled: loaded.isEnabled,
+            providerConfigs: providerConfigs,
+            tunnel: loaded.tunnel
+        )
+    }
+
+    private func routedClientGatewayConfig() throws -> RoutedClientGatewayConfig {
+        let models = config.exposedModels
+        guard !models.isEmpty else {
+            throw NSError(domain: "CursorConnector", code: 17, userInfo: [
+                NSLocalizedDescriptionKey: "Choose at least one routed model before syncing external clients."
+            ])
+        }
+        let host = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "127.0.0.1"
+            : settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
+        return RoutedClientGatewayConfig(
+            baseURL: "http://\(host):\(port)/v1",
+            bearerToken: settingsManager.gatewayAuthToken,
+            models: models
+        )
     }
 
     private func validateConfiguration() throws {
@@ -901,6 +966,13 @@ final class CursorConnectorManager {
                 return lowercased.contains("glm") || lowercased.contains("z.ai")
             case .minimax:
                 return lowercased.contains("minimax")
+            case .ollama:
+                return lowercased.contains("ollama")
+                    || lowercased.contains(":cloud")
+                    || lowercased.contains("-cloud")
+                    || lowercased.contains("gpt-oss")
+                    || lowercased.contains("deepseek")
+                    || lowercased.contains("qwen")
             }
         }
 
@@ -917,6 +989,9 @@ final class CursorConnectorManager {
         }
         if normalized.contains("minimax") {
             return .minimax
+        }
+        if normalized.contains("ollama") || normalized.contains("localhost:11434") || normalized.contains("127.0.0.1:11434") {
+            return .ollama
         }
         return nil
     }

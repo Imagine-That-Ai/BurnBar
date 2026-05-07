@@ -650,6 +650,8 @@ struct ProviderPlanWizardView: View {
             return "GLM coding plan via Z.ai API"
         case .minimax:
             return "Token Plan or OpenAPI key via MiniMax"
+        case .ollama:
+            return "Ollama Cloud API key for routed gateway traffic"
         case .codex:
             return "OpenAI API key for Codex models"
         case .openAI:
@@ -856,6 +858,7 @@ struct ProviderPlanWizardView: View {
         switch providerID.lowercased() {
         case "minimax": return .minimax
         case "zai": return .zai
+        case "ollama": return .ollama
         default: return nil
         }
     }

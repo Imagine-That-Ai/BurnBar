@@ -73,6 +73,75 @@ protocol HermesConnectionSecretStoring: AnyObject {
     func delete(connectionID: String) throws
 }
 
+@MainActor
+protocol HermesConnectionListing: AnyObject {
+    func listHermesConnections() async throws -> [HermesConnectionRecord]
+}
+
+@MainActor
+final class FirestoreHermesConnectionRepository: HermesConnectionListing {
+    static let shared = FirestoreHermesConnectionRepository()
+
+    private let firestoreProvider: () -> Firestore
+
+    init(firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() }) {
+        self.firestoreProvider = firestoreProvider
+    }
+
+    func listHermesConnections() async throws -> [HermesConnectionRecord] {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            throw FirestoreError.notAuthenticated
+        }
+
+        let db = firestoreProvider()
+        let snapshot = try await db.collection("users")
+            .document(uid)
+            .collection("hermes_connections")
+            .getDocuments()
+
+        var records: [HermesConnectionRecord] = []
+        records.reserveCapacity(snapshot.documents.count)
+        var decodeFailures: [String] = []
+
+        for document in snapshot.documents {
+            do {
+                if let record = try Self.decodeConnectionDocument(
+                    document.data(),
+                    documentID: document.documentID
+                ) {
+                    records.append(record)
+                }
+            } catch {
+                decodeFailures.append("\(document.documentID): \(error.localizedDescription)")
+            }
+        }
+
+        if records.isEmpty, !snapshot.documents.isEmpty {
+            let message = decodeFailures.first ?? "Firestore returned Hermes connection documents in an unsupported shape."
+            throw FirestoreError.decodingFailed("Could not read Hermes connection document \(message)")
+        }
+
+        return records.sorted { lhs, rhs in
+            lhs.updatedAt > rhs.updatedAt
+        }
+    }
+
+    static func decodeConnectionDocument(
+        _ rawData: [String: Any],
+        documentID: String
+    ) throws -> HermesConnectionRecord? {
+        var data = rawData
+        if data["id"] == nil {
+            data["id"] = documentID
+        }
+
+        let sanitized = FirestoreRepository.shared.sanitizeForJSON(data)
+        let jsonData = try JSONSerialization.data(withJSONObject: sanitized)
+        let record = try JSONDecoder().decode(HermesConnectionRecord.self, from: jsonData)
+        return record.status == .revoked ? nil : record
+    }
+}
+
 // MARK: - Hermes Service
 
 @Observable
@@ -87,6 +156,8 @@ final class HermesService {
     var jobs: [HermesRuntimeJob] = []
     var selectedSessionID: String?
     var selectedModelID: String?
+    var favoriteModelIDs: [String] = []
+    var currentConversationTokenBurn = 0
     var isStreaming = false
     var lastError: String?
     var isReachable = false
@@ -97,12 +168,15 @@ final class HermesService {
     private var baseURL: URL
     private let urlSession: URLSession
     private let functionsRepository: FunctionsRepository
+    private let connectionRepository: HermesConnectionListing
     private let secretStore: HermesConnectionSecretStoring
     private let relayTransport: HermesRelayTransporting
     private let defaults: UserDefaults
     private var runtimeGeneration = 0
     private var runtimeRefreshTask: Task<Void, Never>?
     private let selectedConnectionDefaultsKey = "hermes.selectedConnectionID"
+    private let selectedModelDefaultsKey = "hermes.selectedModelID"
+    private let favoriteModelsDefaultsKey = "hermes.favoriteModelIDs"
 
     var relayConnections: [HermesConnectionRecord] {
         connections.filter { connection in
@@ -120,10 +194,16 @@ final class HermesService {
         }.first
     }
 
+    var hasPendingRelaySuggestion: Bool {
+        guard let relay = suggestedRelayConnection else { return false }
+        return selectedConnection.id != relay.id
+    }
+
     init(
         baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
         urlSession: URLSession = .shared,
         functionsRepository: FunctionsRepository = .shared,
+        connectionRepository: HermesConnectionListing = FirestoreHermesConnectionRepository.shared,
         secretStore: HermesConnectionSecretStoring = HermesConnectionSecretStore.shared,
         relayTransport: HermesRelayTransporting = FirestoreHermesRelayTransport.shared,
         defaults: UserDefaults = .standard
@@ -131,9 +211,12 @@ final class HermesService {
         self.baseURL = baseURL
         self.urlSession = urlSession
         self.functionsRepository = functionsRepository
+        self.connectionRepository = connectionRepository
         self.secretStore = secretStore
         self.relayTransport = relayTransport
         self.defaults = defaults
+        self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
     }
 
     func loadHistory() {
@@ -178,7 +261,7 @@ final class HermesService {
 
     func refreshConnections(generation: Int? = nil) async {
         do {
-            var remoteConnections = try await functionsRepository.listHermesConnections()
+            var remoteConnections = try await connectionRepository.listHermesConnections()
             if remoteConnections.isEmpty {
                 remoteConnections = []
             }
@@ -239,7 +322,7 @@ final class HermesService {
         runtimeGeneration += 1
         selectedConnection = connection
         selectedSessionID = nil
-        selectedModelID = nil
+        selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
         sessions = []
         profiles = []
         modelOptions = []
@@ -343,6 +426,7 @@ final class HermesService {
         currentTask?.cancel()
         isStreaming = false
         lastError = nil
+        currentConversationTokenBurn = 0
         do {
             let pathID = session.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session.id
             let data: Data
@@ -384,11 +468,39 @@ final class HermesService {
         messages.removeAll()
         lastError = nil
         isStreaming = false
+        currentConversationTokenBurn = 0
+    }
+
+    func selectModel(_ option: HermesRuntimeModelOption) {
+        selectedModelID = option.modelID
+        defaults.set(option.modelID, forKey: selectedModelDefaultsKey)
+    }
+
+    func isFavoriteModel(_ option: HermesRuntimeModelOption) -> Bool {
+        favoriteModelIDs.contains(option.modelID)
+    }
+
+    func toggleFavoriteModel(_ option: HermesRuntimeModelOption) {
+        if let index = favoriteModelIDs.firstIndex(of: option.modelID) {
+            favoriteModelIDs.remove(at: index)
+        } else {
+            favoriteModelIDs.append(option.modelID)
+        }
+        defaults.set(Self.encodeStringArray(favoriteModelIDs), forKey: favoriteModelsDefaultsKey)
+    }
+
+    var favoriteModelOptions: [HermesRuntimeModelOption] {
+        let optionsByID = modelOptions.reduce(into: [String: HermesRuntimeModelOption]()) { partialResult, option in
+            partialResult[option.modelID] = option
+        }
+        return favoriteModelIDs.compactMap { optionsByID[$0] }
     }
 
     func sendMessage(_ text: String, context: String? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isStreaming else { return }
+
+        preferSuggestedRelayWhenLocalHostIsOffline()
 
         let userMessage = HermesChatMessage(role: .user, text: trimmed)
         messages.append(userMessage)
@@ -407,6 +519,15 @@ final class HermesService {
                 }
             }
         }
+    }
+
+    private func preferSuggestedRelayWhenLocalHostIsOffline() {
+        guard selectedConnection.id == HermesConnectionRecord.localDefault.id,
+              !isReachable,
+              let relay = suggestedRelayConnection else {
+            return
+        }
+        _ = selectConnection(relay, refresh: false)
     }
 
     private func streamCompletion(context: String?) async throws {
@@ -436,15 +557,12 @@ final class HermesService {
         var eventLines: [String] = []
         for try await line in stream.lines {
             guard !Task.isCancelled else { break }
-            if line.isEmpty {
-                processSSEEvent(eventLines.joined(separator: "\n"), into: &assistantMessage)
-                eventLines.removeAll(keepingCapacity: true)
-            } else {
-                eventLines.append(line)
+            for event in Self.consumeSSELine(line, eventLines: &eventLines) {
+                processSSEPayload(event, into: &assistantMessage)
             }
         }
         if !eventLines.isEmpty {
-            processSSEEvent(eventLines.joined(separator: "\n"), into: &assistantMessage)
+            processSSEPayload(eventLines.joined(separator: "\n"), into: &assistantMessage)
         }
 
         assistantMessage.isStreaming = false
@@ -493,7 +611,7 @@ final class HermesService {
             relayPayload(operation: .chatCompletions, method: "POST", path: "/v1/chat/completions", body: body),
             timeout: 120
         ) { event in
-            self.processSSEEvent(event, into: &assistantMessage)
+            self.processSSEPayload(event, into: &assistantMessage)
         }
 
         assistantMessage.isStreaming = false
@@ -510,12 +628,63 @@ final class HermesService {
         isStreaming = false
     }
 
+    private func processSSEPayload(_ payload: String, into message: inout HermesChatMessage) {
+        for event in Self.sseEvents(from: payload) {
+            processSSEEvent(event, into: &message)
+        }
+    }
+
+    nonisolated static func sseEvents(from payload: String) -> [String] {
+        let normalized = payload
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        return normalized
+            .components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .flatMap { block -> [String] in
+                let lines = block
+                    .split(separator: "\n", omittingEmptySubsequences: false)
+                    .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                let hasOnlyDataOrComments = lines.allSatisfy { line in
+                    line.hasPrefix("data:") || line.hasPrefix(":")
+                }
+                let dataLines = lines.filter { $0.hasPrefix("data:") }
+                if hasOnlyDataOrComments, dataLines.count > 1 {
+                    return dataLines
+                }
+                return [block]
+            }
+    }
+
+    nonisolated static func consumeSSELine(_ rawLine: String, eventLines: inout [String]) -> [String] {
+        let line = rawLine.trimmingCharacters(in: .newlines)
+        guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            guard !eventLines.isEmpty else { return [] }
+            let event = eventLines.joined(separator: "\n")
+            eventLines.removeAll(keepingCapacity: true)
+            return [event]
+        }
+        if line.hasPrefix("data:"),
+           eventLines.contains(where: { $0.hasPrefix("data:") }) {
+            let event = eventLines.joined(separator: "\n")
+            eventLines.removeAll(keepingCapacity: true)
+            eventLines.append(line)
+            return [event]
+        }
+        eventLines.append(line)
+        return []
+    }
+
     private func processSSEEvent(_ event: String, into message: inout HermesChatMessage) {
         var dataLines: [String] = []
         for line in event.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = String(line)
             if line.hasPrefix("data: ") {
                 dataLines.append(String(line.dropFirst(6)))
+            } else if line.hasPrefix("data:") {
+                dataLines.append(String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces))
             } else if line.hasPrefix(":") || line.isEmpty {
                 continue
             }
@@ -527,6 +696,10 @@ final class HermesService {
 
         guard let jsonData = data.data(using: .utf8) else { return }
         guard let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { return }
+
+        if let usage = json["usage"] as? [String: Any] {
+            recordUsage(usage)
+        }
 
         if let error = json["error"] as? [String: Any],
            let messageText = error["message"] as? String {
@@ -552,6 +725,15 @@ final class HermesService {
         if let toolCalls = delta["tool_calls"] as? [[String: Any]] {
             mergeToolCalls(toolCalls, into: &message)
         }
+    }
+
+    private func recordUsage(_ usage: [String: Any]) {
+        let total = intValue(usage["total_tokens"])
+            ?? intValue(usage["totalTokens"])
+            ?? ((intValue(usage["prompt_tokens"]) ?? intValue(usage["input_tokens"]) ?? 0)
+                + (intValue(usage["completion_tokens"]) ?? intValue(usage["output_tokens"]) ?? 0))
+        guard total > 0 else { return }
+        currentConversationTokenBurn += total
     }
 
     private func handleStreamError(_ error: Error) {
@@ -653,14 +835,21 @@ final class HermesService {
             guard generation == runtimeGeneration else { return }
             let decoded = try JSONDecoder().decode(OpenAIModelsResponse.self, from: data)
             modelOptions = decoded.data.map {
-                HermesRuntimeModelOption(
-                    providerID: $0.ownedBy ?? "hermes",
-                    providerName: $0.ownedBy ?? "Hermes",
-                    modelID: $0.id
+                let providerID = $0.ownedBy ?? $0.providerID ?? "hermes"
+                let providerName = $0.providerName
+                    ?? AgentProvider.fromProviderID(ProviderID(rawValue: providerID))?.displayName
+                    ?? providerID
+                return HermesRuntimeModelOption(
+                    providerID: providerID,
+                    providerName: providerName,
+                    modelID: $0.id,
+                    displayName: $0.displayName ?? $0.name
                 )
             }
-            if selectedModelID == nil {
-                selectedModelID = modelOptions.first?.modelID
+            if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID }) {
+                self.selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
+            } else if selectedModelID == nil {
+                selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
             }
         } catch {
             guard generation == runtimeGeneration else { return }
@@ -973,6 +1162,23 @@ final class HermesService {
     private static func hasUsableRelayEncryption(_ connection: HermesConnectionRecord) -> Bool {
         connection.relayEncryption == HermesRelayCrypto.algorithm
             && (connection.relayPublicKey?.isEmpty == false)
+    }
+
+    private static func encodeStringArray(_ values: [String]) -> String {
+        guard let data = try? JSONEncoder().encode(values),
+              let text = String(data: data, encoding: .utf8) else {
+            return "[]"
+        }
+        return text
+    }
+
+    private static func decodeStringArray(_ text: String?) -> [String] {
+        guard let text,
+              let data = text.data(using: .utf8),
+              let values = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return values
     }
 }
 
@@ -1352,9 +1558,17 @@ private struct OpenAIModelsResponse: Decodable {
 private struct OpenAIModel: Decodable {
     var id: String
     var ownedBy: String?
+    var providerID: String?
+    var providerName: String?
+    var displayName: String?
+    var name: String?
 
     enum CodingKeys: String, CodingKey {
         case id
         case ownedBy = "owned_by"
+        case providerID = "provider_id"
+        case providerName = "provider_name"
+        case displayName = "display_name"
+        case name
     }
 }

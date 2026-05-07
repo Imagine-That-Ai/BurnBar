@@ -25,6 +25,50 @@ public struct BurnBarProviderExecutionResult: Sendable {
     }
 }
 
+public struct BurnBarProviderProxyUsage: Sendable {
+    public let inputTokens: Int
+    public let outputTokens: Int
+    public let cacheCreationTokens: Int
+    public let cacheReadTokens: Int
+    public let reasoningTokens: Int
+    public let confidence: BurnBarUsageConfidence
+
+    public init(
+        inputTokens: Int,
+        outputTokens: Int,
+        cacheCreationTokens: Int,
+        cacheReadTokens: Int,
+        reasoningTokens: Int,
+        confidence: BurnBarUsageConfidence
+    ) {
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cacheCreationTokens = cacheCreationTokens
+        self.cacheReadTokens = cacheReadTokens
+        self.reasoningTokens = reasoningTokens
+        self.confidence = confidence
+    }
+}
+
+public struct BurnBarProviderProxyResponse: Sendable {
+    public let statusCode: Int
+    public let contentType: String
+    public let body: Data
+    public let usage: BurnBarProviderProxyUsage?
+
+    public init(
+        statusCode: Int,
+        contentType: String,
+        body: Data,
+        usage: BurnBarProviderProxyUsage?
+    ) {
+        self.statusCode = statusCode
+        self.contentType = contentType
+        self.body = body
+        self.usage = usage
+    }
+}
+
 public struct BurnBarStructuredPromptRequest: Sendable {
     public let systemPrompt: String?
     public let userPrompt: String
@@ -99,11 +143,6 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             throw BurnBarProviderExecutorError.invalidBaseURL(route.baseURL)
         }
 
-        let endpoint = baseURL.appending(path: "chat/completions")
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(route.apiKey)", forHTTPHeaderField: "Authorization")
         var messages: [ProviderCompletionRequest.Message] = []
         if let systemPrompt = promptRequest.systemPrompt, !systemPrompt.isEmpty {
             messages.append(.init(role: "system", content: systemPrompt))
@@ -112,13 +151,28 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             messages.append(.init(role: "assistant", content: assistantBlock))
         }
         messages.append(.init(role: "user", content: promptRequest.userPrompt))
-        request.httpBody = try JSONEncoder().encode(
+        let requestBody = try JSONEncoder().encode(
             ProviderCompletionRequest(
                 model: route.resolvedModelID,
                 messages: messages,
                 responseFormat: promptRequest.jsonOnly ? .init(type: "json_object") : nil
             )
         )
+
+        if Self.shouldUseOllamaNativeAPI(route: route, baseURL: baseURL) {
+            let proxyResponse = try await proxyChatCompletions(body: requestBody, route: route)
+            return try Self.executionResult(
+                fromOpenAICompletionBody: proxyResponse.body,
+                promptRequest: promptRequest
+            )
+        }
+
+        let endpoint = baseURL.appending(path: "chat/completions")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(route.apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = requestBody
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -131,14 +185,30 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             )
         }
 
+        return try Self.executionResult(
+            fromOpenAICompletionBody: data,
+            promptRequest: promptRequest
+        )
+    }
+
+    private static func executionResult(
+        fromOpenAICompletionBody data: Data,
+        promptRequest: BurnBarStructuredPromptRequest
+    ) throws -> BurnBarProviderExecutionResult {
         let decoded = try JSONDecoder().decode(ProviderCompletionResponse.self, from: data)
         guard let choice = decoded.choices.first else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
 
-        let usage = decoded.usage.normalized(
+        let usage = decoded.usage?.normalized(
             inputHint: max(1, promptRequest.userPrompt.count / 4),
             outputHint: max(1, choice.message.content.count / 4)
+        ) ?? .init(
+            promptTokens: max(1, promptRequest.userPrompt.count / 4),
+            completionTokens: max(1, choice.message.content.count / 4),
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            reasoningTokens: 0
         )
 
         return BurnBarProviderExecutionResult(
@@ -147,6 +217,389 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             outputTokens: usage.completionTokens,
             cacheCreationTokens: usage.cacheCreationTokens,
             cacheReadTokens: usage.cacheReadTokens
+        )
+    }
+
+    public func proxyChatCompletions(
+        body: Data,
+        route: BurnBarProviderRoute
+    ) async throws -> BurnBarProviderProxyResponse {
+        guard let baseURL = URL(string: route.baseURL) else {
+            throw BurnBarProviderExecutorError.invalidBaseURL(route.baseURL)
+        }
+
+        if Self.shouldUseOllamaNativeAPI(route: route, baseURL: baseURL) {
+            return try await proxyOllamaNativeChatCompletions(
+                body: body,
+                route: route,
+                baseURL: baseURL
+            )
+        }
+
+        let outboundBody = try Self.rewritingModel(in: body, to: route.resolvedModelID)
+        let endpoint = baseURL.appending(path: "chat/completions")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(route.apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = outboundBody
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BurnBarProviderExecutorError.invalidResponse
+        }
+
+        let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "application/json"
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw BurnBarProviderExecutorError.upstreamError(
+                httpResponse.statusCode,
+                String(data: data, encoding: .utf8) ?? ""
+            )
+        }
+
+        return BurnBarProviderProxyResponse(
+            statusCode: httpResponse.statusCode,
+            contentType: contentType,
+            body: data,
+            usage: Self.extractProxyUsage(requestBody: outboundBody, responseBody: data)
+        )
+    }
+
+    private func proxyOllamaNativeChatCompletions(
+        body: Data,
+        route: BurnBarProviderRoute,
+        baseURL: URL
+    ) async throws -> BurnBarProviderProxyResponse {
+        let (outboundBody, streamRequested) = try Self.ollamaNativeRequestBody(
+            from: body,
+            modelID: route.resolvedModelID
+        )
+        let endpoint = Self.ollamaNativeChatEndpoint(baseURL: baseURL)
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(route.apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = outboundBody
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BurnBarProviderExecutorError.invalidResponse
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw BurnBarProviderExecutorError.upstreamError(
+                httpResponse.statusCode,
+                String(data: data, encoding: .utf8) ?? ""
+            )
+        }
+
+        return try Self.openAIProxyResponseFromOllama(
+            requestBody: outboundBody,
+            responseBody: data,
+            modelID: route.resolvedModelID,
+            streamRequested: streamRequested
+        )
+    }
+
+    private static func rewritingModel(in body: Data, to modelID: String) throws -> Data {
+        let json = try JSONSerialization.jsonObject(with: body)
+        guard var object = json as? [String: Any] else {
+            throw BurnBarProviderExecutorError.invalidResponse
+        }
+        object["model"] = modelID
+        return try JSONSerialization.data(withJSONObject: object, options: [])
+    }
+
+    private static func shouldUseOllamaNativeAPI(route: BurnBarProviderRoute, baseURL: URL) -> Bool {
+        guard route.providerID.lowercased() == "ollama" else { return false }
+        return !baseURL.path.lowercased().hasSuffix("/v1")
+    }
+
+    private static func ollamaNativeChatEndpoint(baseURL: URL) -> URL {
+        let normalizedPath = baseURL.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
+        if normalizedPath == "api" || normalizedPath.hasSuffix("/api") {
+            return baseURL.appending(path: "chat")
+        }
+        return baseURL.appending(path: "api").appending(path: "chat")
+    }
+
+    private static func ollamaNativeRequestBody(
+        from body: Data,
+        modelID: String
+    ) throws -> (Data, Bool) {
+        let json = try JSONSerialization.jsonObject(with: body)
+        guard var object = json as? [String: Any] else {
+            throw BurnBarProviderExecutorError.invalidResponse
+        }
+
+        let streamRequested = object["stream"] as? Bool ?? false
+        object["model"] = modelID
+        object["stream"] = streamRequested
+
+        if let responseFormat = object.removeValue(forKey: "response_format") as? [String: Any] {
+            if (responseFormat["type"] as? String) == "json_object" {
+                object["format"] = "json"
+            } else if let jsonSchema = responseFormat["json_schema"] as? [String: Any],
+                      let schema = jsonSchema["schema"] {
+                object["format"] = schema
+            }
+        }
+
+        var options = object["options"] as? [String: Any] ?? [:]
+        moveOpenAIOption("max_completion_tokens", to: "num_predict", from: &object, options: &options)
+        moveOpenAIOption("max_tokens", to: "num_predict", from: &object, options: &options)
+        moveOpenAIOption("temperature", to: "temperature", from: &object, options: &options)
+        moveOpenAIOption("top_p", to: "top_p", from: &object, options: &options)
+        if !options.isEmpty {
+            object["options"] = options
+        }
+
+        if let reasoning = object.removeValue(forKey: "reasoning") as? [String: Any],
+           let effort = reasoning["effort"] as? String {
+            applyOllamaThinkValue(effort, to: &object)
+        }
+        if let effort = object.removeValue(forKey: "reasoning_effort") as? String {
+            applyOllamaThinkValue(effort, to: &object)
+        }
+
+        for unsupportedKey in ["n", "user", "logit_bias", "presence_penalty", "frequency_penalty", "stream_options", "tool_choice"] {
+            object.removeValue(forKey: unsupportedKey)
+        }
+
+        return (try JSONSerialization.data(withJSONObject: object, options: []), streamRequested)
+    }
+
+    private static func moveOpenAIOption(
+        _ sourceKey: String,
+        to targetKey: String,
+        from object: inout [String: Any],
+        options: inout [String: Any]
+    ) {
+        guard let value = object.removeValue(forKey: sourceKey) else { return }
+        options[targetKey] = value
+    }
+
+    private static func applyOllamaThinkValue(_ rawEffort: String, to object: inout [String: Any]) {
+        switch rawEffort.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "high", "medium", "low":
+            object["think"] = rawEffort.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        case "none", "off", "false":
+            object["think"] = false
+        default:
+            break
+        }
+    }
+
+    private static func openAIProxyResponseFromOllama(
+        requestBody: Data,
+        responseBody: Data,
+        modelID: String,
+        streamRequested: Bool
+    ) throws -> BurnBarProviderProxyResponse {
+        if streamRequested {
+            return try openAIStreamResponseFromOllama(
+                requestBody: requestBody,
+                responseBody: responseBody,
+                modelID: modelID
+            )
+        }
+
+        let decoded = try JSONDecoder().decode(OllamaNativeChatResponse.self, from: responseBody)
+        let body = try openAICompletionBodyFromOllama(decoded, modelID: modelID)
+        return BurnBarProviderProxyResponse(
+            statusCode: 200,
+            contentType: "application/json",
+            body: body,
+            usage: ollamaProxyUsage(requestBody: requestBody, response: decoded)
+        )
+    }
+
+    private static func openAIStreamResponseFromOllama(
+        requestBody: Data,
+        responseBody: Data,
+        modelID: String
+    ) throws -> BurnBarProviderProxyResponse {
+        let responseID = "chatcmpl-\(UUID().uuidString)"
+        let created = Int(Date().timeIntervalSince1970)
+        var sse = Data()
+        var finalResponse: OllamaNativeChatResponse?
+
+        let lines = String(decoding: responseBody, as: UTF8.self)
+            .split(whereSeparator: \.isNewline)
+        for line in lines {
+            guard let data = line.data(using: .utf8), !data.isEmpty else { continue }
+            let decoded = try JSONDecoder().decode(OllamaNativeChatResponse.self, from: data)
+            finalResponse = decoded
+
+            let content = decoded.message?.content ?? ""
+            if !content.isEmpty {
+                try appendServerSentEvent(
+                    chunk: openAIStreamChunk(
+                        id: responseID,
+                        created: created,
+                        modelID: modelID,
+                        content: content,
+                        finishReason: nil
+                    ),
+                    to: &sse
+                )
+            }
+
+            if decoded.done == true {
+                try appendServerSentEvent(
+                    chunk: openAIStreamChunk(
+                        id: responseID,
+                        created: created,
+                        modelID: modelID,
+                        content: nil,
+                        finishReason: finishReason(from: decoded.doneReason)
+                    ),
+                    to: &sse
+                )
+            }
+        }
+
+        sse.append(Data("data: [DONE]\n\n".utf8))
+
+        return BurnBarProviderProxyResponse(
+            statusCode: 200,
+            contentType: "text/event-stream",
+            body: sse,
+            usage: finalResponse.map { ollamaProxyUsage(requestBody: requestBody, response: $0) }
+        )
+    }
+
+    private static func openAICompletionBodyFromOllama(
+        _ response: OllamaNativeChatResponse,
+        modelID: String
+    ) throws -> Data {
+        let content = response.message?.content ?? ""
+        let body: [String: Any] = [
+            "id": "chatcmpl-\(UUID().uuidString)",
+            "object": "chat.completion",
+            "created": Int(Date().timeIntervalSince1970),
+            "model": response.model ?? modelID,
+            "choices": [
+                [
+                    "index": 0,
+                    "message": [
+                        "role": response.message?.role ?? "assistant",
+                        "content": content
+                    ],
+                    "finish_reason": finishReason(from: response.doneReason)
+                ]
+            ],
+            "usage": openAIUsageFromOllama(response)
+        ]
+        return try JSONSerialization.data(withJSONObject: body, options: [])
+    }
+
+    private static func openAIUsageFromOllama(_ response: OllamaNativeChatResponse) -> [String: Any] {
+        let promptTokens = max(response.promptEvalCount ?? 0, 0)
+        let completionTokens = max(response.evalCount ?? 0, 0)
+        return [
+            "prompt_tokens": promptTokens,
+            "completion_tokens": completionTokens,
+            "total_tokens": promptTokens + completionTokens
+        ]
+    }
+
+    private static func openAIStreamChunk(
+        id: String,
+        created: Int,
+        modelID: String,
+        content: String?,
+        finishReason: String?
+    ) -> [String: Any] {
+        var delta: [String: Any] = [:]
+        if let content {
+            delta["content"] = content
+        }
+        if finishReason == nil {
+            delta["role"] = "assistant"
+        }
+        return [
+            "id": id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": modelID,
+            "choices": [
+                [
+                    "index": 0,
+                    "delta": delta,
+                    "finish_reason": finishReason.map { $0 as Any } ?? NSNull()
+                ]
+            ]
+        ]
+    }
+
+    private static func appendServerSentEvent(chunk: [String: Any], to data: inout Data) throws {
+        let payload = try JSONSerialization.data(withJSONObject: chunk, options: [])
+        data.append(Data("data: ".utf8))
+        data.append(payload)
+        data.append(Data("\n\n".utf8))
+    }
+
+    private static func finishReason(from doneReason: String?) -> String {
+        switch doneReason?.lowercased() {
+        case "length":
+            return "length"
+        case "tool_calls":
+            return "tool_calls"
+        default:
+            return "stop"
+        }
+    }
+
+    private static func ollamaProxyUsage(
+        requestBody: Data,
+        response: OllamaNativeChatResponse
+    ) -> BurnBarProviderProxyUsage {
+        let outputText = response.message?.content ?? ""
+        let inputHint = max(1, requestBody.count / 4)
+        let outputHint = max(1, outputText.count / 4)
+        let hasExplicitUsage = response.promptEvalCount != nil || response.evalCount != nil
+        return BurnBarProviderProxyUsage(
+            inputTokens: max(response.promptEvalCount ?? inputHint, 0),
+            outputTokens: max(response.evalCount ?? outputHint, 0),
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            reasoningTokens: 0,
+            confidence: hasExplicitUsage ? .exact : .lowConfidenceEstimate
+        )
+    }
+
+    private static func extractProxyUsage(
+        requestBody: Data,
+        responseBody: Data
+    ) -> BurnBarProviderProxyUsage? {
+        let inputHint = max(1, requestBody.count / 4)
+        let decoded = try? JSONDecoder().decode(ProviderCompletionResponse.self, from: responseBody)
+        let outputText = decoded?.choices.first?.message.content ?? ""
+        let outputHint = max(1, outputText.count / 4)
+
+        if let normalized = decoded?.usage?.normalized(inputHint: inputHint, outputHint: outputHint) {
+            return BurnBarProviderProxyUsage(
+                inputTokens: normalized.promptTokens,
+                outputTokens: normalized.completionTokens,
+                cacheCreationTokens: normalized.cacheCreationTokens,
+                cacheReadTokens: normalized.cacheReadTokens,
+                reasoningTokens: normalized.reasoningTokens,
+                confidence: .exact
+            )
+        }
+
+        guard decoded != nil else {
+            return nil
+        }
+
+        return BurnBarProviderProxyUsage(
+            inputTokens: inputHint,
+            outputTokens: outputHint,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            reasoningTokens: 0,
+            confidence: .lowConfidenceEstimate
         )
     }
 }
@@ -415,6 +868,7 @@ private struct ProviderCompletionResponse: Decodable {
             let completionTokens: Int
             let cacheCreationTokens: Int
             let cacheReadTokens: Int
+            let reasoningTokens: Int
         }
 
         private func firstValue(_ values: Int?...) -> Int {
@@ -495,11 +949,38 @@ private struct ProviderCompletionResponse: Decodable {
                 promptTokens: max(prompt, 0),
                 completionTokens: max(completion, 0),
                 cacheCreationTokens: max(cacheCreation, 0),
-                cacheReadTokens: max(cacheRead, 0)
+                cacheReadTokens: max(cacheRead, 0),
+                reasoningTokens: max(thinking, 0)
             )
         }
     }
 
     let choices: [Choice]
-    let usage: Usage
+    let usage: Usage?
+}
+
+private struct OllamaNativeChatResponse: Decodable {
+    struct Message: Decodable {
+        let role: String?
+        let content: String?
+        let thinking: String?
+    }
+
+    let model: String?
+    let createdAt: String?
+    let message: Message?
+    let done: Bool?
+    let doneReason: String?
+    let promptEvalCount: Int?
+    let evalCount: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case model
+        case createdAt = "created_at"
+        case message
+        case done
+        case doneReason = "done_reason"
+        case promptEvalCount = "prompt_eval_count"
+        case evalCount = "eval_count"
+    }
 }

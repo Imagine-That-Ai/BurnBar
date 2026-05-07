@@ -50,6 +50,14 @@
       ]
     },
     {
+      "collectionGroup": "session_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "provider", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "entitlements",
       "queryScope": "COLLECTION_GROUP",
       "fields": [

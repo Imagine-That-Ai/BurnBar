@@ -340,6 +340,13 @@ final class FirestoreNormalizationTests: XCTestCase {
         XCTAssertEqual(doubleVal, now.timeIntervalSinceReferenceDate, accuracy: 0.001)
     }
 
+    func test_sanitizeForJSON_convertsDateToDouble() {
+        let now = Date()
+        let result = repo.sanitizeForJSON(now)
+        XCTAssertTrue(result is Double)
+        XCTAssertEqual(result as! Double, now.timeIntervalSinceReferenceDate, accuracy: 0.001)
+    }
+
     func test_sanitizeForJSON_convertsISO8601StringToDouble() {
         let isoStr = "2026-05-02T12:00:00Z"
         let result = repo.sanitizeForJSON(isoStr)
@@ -477,4 +484,3 @@ final class FirestoreNormalizationTests: XCTestCase {
         )
     }
 }
-

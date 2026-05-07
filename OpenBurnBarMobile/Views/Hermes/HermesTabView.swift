@@ -195,6 +195,7 @@ struct HermesConversationListView: View {
 
     @State private var showConnectionSheet = false
     @State private var showRuntimeSheet = false
+    @State private var showModelPicker = false
     @State private var showSetupWizard = false
     @State private var didAutoPresentSetupWizard = false
     @State private var libraryStore = HermesCloudLibraryStore()
@@ -240,6 +241,11 @@ struct HermesConversationListView: View {
                         Label("Connections", systemImage: "network")
                     }
                     Button {
+                        showModelPicker = true
+                    } label: {
+                        Label("Switch model", systemImage: "cpu")
+                    }
+                    Button {
                         showRuntimeSheet = true
                     } label: {
                         Label("Runtime", systemImage: "slider.horizontal.3")
@@ -271,6 +277,9 @@ struct HermesConversationListView: View {
         }
         .sheet(isPresented: $showRuntimeSheet) {
             HermesRuntimeSheet(service: service)
+        }
+        .sheet(isPresented: $showModelPicker) {
+            HermesModelPickerSheet(service: service)
         }
         .sheet(item: $selectedLibrarySession) { session in
             HermesLibraryTranscriptSheet(store: libraryStore, session: session)
@@ -825,6 +834,7 @@ struct HermesChatView: View {
     @State private var showClearConfirm = false
     @State private var showConnectionSheet = false
     @State private var showRuntimeSheet = false
+    @State private var showModelPicker = false
     @State private var showSetupWizard = false
     @State private var didAutoPresentSetupWizard = false
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
@@ -848,6 +858,10 @@ struct HermesChatView: View {
                 connectionPill
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .padding(.bottom, 6)
+
+                relaySuggestionBanner
+                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                    .padding(.bottom, service.hasPendingRelaySuggestion ? 8 : 0)
 
                 runtimeRail
                     .padding(.bottom, 8)
@@ -901,6 +915,10 @@ struct HermesChatView: View {
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .padding(.bottom, 8)
             }
+            // Reserve bottom space so the floating AuroraNavigationTray
+            // never overlaps content. The tray is pillHeight(50) + bottomInset(14)
+            // = 64pt; we add a comfortable 70pt so content lands above it.
+            .padding(.bottom, 70)
         }
         .navigationTitle(navigationTitleText)
         .navigationBarTitleDisplayMode(.inline)
@@ -940,6 +958,12 @@ struct HermesChatView: View {
                         .foregroundStyle(MobileTheme.hermesAureate)
                 }
             }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    inputFocused = false
+                }
+            }
         }
         .alert("Clear chat?", isPresented: $showClearConfirm) {
             Button("Cancel", role: .cancel) {}
@@ -955,6 +979,9 @@ struct HermesChatView: View {
         .sheet(isPresented: $showRuntimeSheet) {
             HermesRuntimeSheet(service: service)
         }
+        .sheet(isPresented: $showModelPicker) {
+            HermesModelPickerSheet(service: service)
+        }
         .sheet(isPresented: $showSetupWizard) {
             HermesMobileSetupWizardView(
                 isPresented: $showSetupWizard,
@@ -967,10 +994,9 @@ struct HermesChatView: View {
         }
         .task(id: route) { await applyRoute() }
         .task {
-            // Idempotent — refreshRuntime/checkReachability use a generation
-            // counter so back-to-back calls collapse to a single in-flight set.
-            service.loadHistory()
-            await service.checkReachability()
+            // Idempotent: refreshRuntime coalesces concurrent callers and loads
+            // both remote relay discovery and selected-host reachability.
+            await service.refreshRuntime()
         }
         .onAppear {
             presentSetupWizardIfNeeded()
@@ -1044,52 +1070,67 @@ struct HermesChatView: View {
     }
 
     private var connectionStatusText: String {
+        if !service.isReachable,
+           service.selectedConnection.id == HermesConnectionRecord.localDefault.id,
+           let relay = service.suggestedRelayConnection {
+            return "Local offline · relay available · \(relay.displayName)"
+        }
         let name = service.selectedConnection.displayName
         return service.isReachable ? "Hermes online · \(name)" : "Hermes offline · \(name)"
+    }
+
+    @ViewBuilder
+    private var relaySuggestionBanner: some View {
+        if let relay = service.suggestedRelayConnection,
+           service.hasPendingRelaySuggestion {
+            Button {
+                HapticBus.primaryAction()
+                if !service.connectToSuggestedRelay() {
+                    showConnectionSheet = true
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "macbook.and.iphone")
+                        .font(.system(size: 14, weight: .bold))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Use \(relay.displayName)")
+                            .font(MobileTheme.Typography.caption)
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+                        Text("Route this chat through your signed-in Mac")
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 14, weight: .bold))
+                }
+                .foregroundStyle(MobileTheme.hermesAureate)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .auroraGlass(.compact, cornerRadius: 14)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Selects the available Mac Hermes Remote Relay for this chat.")
+        }
     }
 
     private var runtimeRail: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                Menu {
-                    if service.modelOptions.isEmpty {
-                        Text("No models discovered")
-                    } else {
-                        let grouped = Dictionary(grouping: service.modelOptions, by: { $0.providerName })
-                        let sortedProviders = grouped.keys.sorted()
-                        ForEach(sortedProviders, id: \.self) { provider in
-                            if let options = grouped[provider] {
-                                Section(provider) {
-                                    ForEach(options) { option in
-                                        Button {
-                                            service.selectedModelID = option.modelID
-                                        } label: {
-                                            HStack {
-                                                Circle()
-                                                    .fill(chipColor(for: option.providerID).opacity(0.85))
-                                                    .frame(width: 6, height: 6)
-                                                Text(option.displayName)
-                                                Spacer()
-                                                if service.selectedModelID == option.modelID {
-                                                    Image(systemName: "checkmark")
-                                                        .font(.system(size: 10, weight: .bold))
-                                                        .foregroundStyle(MobileTheme.hermesAureate)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                Button {
+                    showModelPicker = true
                 } label: {
                     modelSelectorChip
                 }
+                .buttonStyle(.plain)
                 Button {
                     showRuntimeSheet = true
                 } label: {
                     runtimeChip(icon: "wrench.and.screwdriver", label: "\(service.profiles.count) profiles · \(service.jobs.count) jobs")
                 }
+                runtimeChip(icon: "flame.fill", label: "\(service.currentConversationTokenBurn.formatted()) tokens")
                 if let selectedSessionID = service.selectedSessionID {
                     runtimeChip(icon: "bubble.left.and.bubble.right", label: "Resuming \(service.sessionTitle(for: selectedSessionID))")
                 }
@@ -1115,51 +1156,30 @@ struct HermesChatView: View {
     }
 
     private var modelSelectorChip: some View {
-        let label = service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "Model"
-        let provider = modelProviderColor
+        let option = service.selectedModelOption
+        let label = option?.displayName ?? service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "Choose model"
+        let provider = option?.agentProvider ?? hermesAgentProvider(for: service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "hermes")
         return HStack(spacing: 6) {
-            Circle()
-                .fill(provider.opacity(0.85))
-                .frame(width: 6, height: 6)
-            Text(label)
-                .lineLimit(1)
-                .font(MobileTheme.Typography.tiny)
-                .fontWeight(.semibold)
+            UnifiedProviderLogoView(provider: provider, size: 18, useFallbackColor: true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .lineLimit(1)
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                Text("Switch model")
+                    .lineLimit(1)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+            }
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
         }
         .foregroundStyle(MobileTheme.Colors.textPrimary)
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Capsule().fill(provider.opacity(0.10)))
-        .overlay(Capsule().stroke(provider.opacity(0.30), lineWidth: 0.5))
-    }
-
-    private var modelProviderColor: Color {
-        guard let selected = service.selectedModelID else { return MobileTheme.hermesAureate }
-        if let option = service.modelOptions.first(where: { $0.modelID == selected }) {
-            return chipColor(for: option.providerID)
-        }
-        return MobileTheme.hermesAureate
-    }
-
-    private func chipColor(for providerID: String) -> Color {
-        switch providerID.lowercased() {
-        case _ where providerID.contains("openai"):    return Color(hex: "00A67E")
-        case _ where providerID.contains("anthropic"), _ where providerID.contains("claude"):
-            return Color(hex: "CC785C")
-        case _ where providerID.contains("minimax"), _ where providerID.contains("abab"):
-            return Color(hex: "F59E0B")
-        case _ where providerID.contains("kimi"), _ where providerID.contains("moonshot"):
-            return Color(hex: "6366F1")
-        case _ where providerID.contains("deepseek"):   return Color(hex: "6366F1")
-        case _ where providerID.contains("google"), _ where providerID.contains("gemini"):
-            return Color(hex: "4285F4")
-        case _ where providerID.contains("meta"), _ where providerID.contains("llama"):
-            return Color(hex: "0668E1")
-        case _ where providerID.contains("qwen"):       return Color(hex: "615EFF")
-        case _ where providerID.contains("openclaw"):   return Color(hex: "FF6B6B")
-        case _ where providerID.contains("hermes"):     return MobileTheme.whimsy
-        default:                                        return MobileTheme.hermesAureate
-        }
+        .padding(.vertical, 7)
+        .background(Capsule().fill(MobileTheme.Colors.surfaceElevated.opacity(0.72)))
+        .overlay(Capsule().stroke(MobileTheme.hermesAureate.opacity(0.35), lineWidth: 0.7))
     }
 
     // MARK: - Welcome
@@ -1281,6 +1301,8 @@ struct HermesChatView: View {
         TextField("Ask Hermes…", text: $input, axis: .vertical)
             .font(MobileTheme.Typography.body)
             .focused($inputFocused)
+            .submitLabel(.send)
+            .onSubmit(send)
             .lineLimit(1...5)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
@@ -1323,6 +1345,7 @@ struct HermesChatView: View {
         guard !trimmed.isEmpty, !service.isStreaming else { return }
         HapticBus.send()
         input = ""
+        inputFocused = false
         service.sendMessage(trimmed, context: dashboardContextPrompt)
     }
 
@@ -1436,6 +1459,19 @@ private struct HermesConnectionSheet: View {
                     }
                 }
 
+                if let runtimeErrorText = service.runtimeErrorText {
+                    Section {
+                        Text(runtimeErrorText)
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.error)
+                        Button {
+                            Task { await service.refreshConnections() }
+                        } label: {
+                            Label("Retry Connection Discovery", systemImage: "arrow.clockwise")
+                        }
+                    }
+                }
+
                 Section {
                     TextField("Display name", text: $displayName)
                     TextField("Hermes URL", text: $endpointURL)
@@ -1541,23 +1577,17 @@ private struct HermesRuntimeSheet: View {
                         Text("No models discovered")
                     } else {
                         ForEach(service.modelOptions) { option in
-                            Button {
-                                service.selectedModelID = option.modelID
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(option.displayName)
-                                            .font(MobileTheme.Typography.body)
-                                        Text(option.providerName)
-                                            .font(MobileTheme.Typography.tiny)
-                                            .foregroundStyle(MobileTheme.Colors.textSecondary)
-                                    }
-                                    Spacer()
-                                    if service.selectedModelID == option.modelID {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(MobileTheme.hermesAureate)
-                                    }
-                                }
+                            HermesModelPickerRow(
+                                option: option,
+                                isSelected: service.selectedModelID == option.modelID,
+                                isFavorite: service.isFavoriteModel(option)
+                            ) {
+                                service.selectModel(option)
+                                HapticBus.primaryAction()
+                                dismiss()
+                            } onToggleFavorite: {
+                                service.toggleFavoriteModel(option)
+                                HapticBus.toggle()
                             }
                         }
                     }
@@ -1620,6 +1650,259 @@ private struct HermesRuntimeSheet: View {
             .task { await service.refreshRuntime() }
         }
     }
+}
+
+// MARK: - Hermes Model Picker
+
+struct HermesModelPickerSheet: View {
+    @Bindable var service: HermesService
+    @Environment(\.dismiss) private var dismiss
+
+    private var groupedModels: [(provider: String, options: [HermesRuntimeModelOption])] {
+        Dictionary(grouping: service.modelOptions, by: \.providerName)
+            .map { (provider: $0.key, options: $0.value.sorted { $0.displayName < $1.displayName }) }
+            .sorted { $0.provider < $1.provider }
+    }
+
+    private var favoriteModels: [HermesRuntimeModelOption] {
+        service.favoriteModelOptions
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AuroraBackdrop(density: .subtle)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        currentModelCard
+                        if service.modelOptions.isEmpty {
+                            emptyModelsCard
+                        } else {
+                            if !favoriteModels.isEmpty {
+                                favoriteGroup
+                            }
+                            ForEach(groupedModels, id: \.provider) { group in
+                                providerGroup(group)
+                            }
+                        }
+                    }
+                    .padding(AuroraDesign.Layout.cardInset)
+                    .padding(.bottom, 24)
+                }
+            }
+            .navigationTitle("Switch Model")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        Task { await service.refreshRuntime() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Refresh Hermes models")
+                }
+            }
+            .task { await service.refreshRuntime() }
+        }
+    }
+
+    private var currentModelCard: some View {
+        let option = service.selectedModelOption
+        let provider = option?.agentProvider ?? hermesAgentProvider(for: service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "hermes")
+        let title = option?.displayName ?? service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "Automatic"
+        let subtitle = option?.providerName ?? provider.displayName
+        return AuroraGlassCard(variant: .hermes, cornerRadius: 18) {
+            HStack(spacing: 12) {
+                UnifiedProviderLogoView(provider: provider, size: 42, useFallbackColor: true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(MobileTheme.Typography.headline)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(MobileTheme.success)
+            }
+        }
+    }
+
+    private var emptyModelsCard: some View {
+        AuroraGlassCard(variant: .standard, cornerRadius: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(MobileTheme.warning)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("No models discovered")
+                        .font(MobileTheme.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Text("Refresh after Hermes is online. The selected relay can still use its advertised default model.")
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func providerGroup(_ group: (provider: String, options: [HermesRuntimeModelOption])) -> some View {
+        let provider = hermesAgentProvider(for: group.options.first?.providerID ?? group.provider)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                UnifiedProviderLogoView(provider: provider, size: 24, useFallbackColor: true)
+                Text(group.provider)
+                    .font(MobileTheme.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                Spacer()
+                Text("\(group.options.count)")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+            ForEach(group.options) { option in
+                HermesModelPickerRow(
+                    option: option,
+                    isSelected: service.selectedModelID == option.modelID,
+                    isFavorite: service.isFavoriteModel(option)
+                ) {
+                    service.selectModel(option)
+                    HapticBus.primaryAction()
+                    dismiss()
+                } onToggleFavorite: {
+                    service.toggleFavoriteModel(option)
+                    HapticBus.toggle()
+                }
+            }
+        }
+    }
+
+    private var favoriteGroup: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(MobileTheme.amber)
+                Text("Favorites")
+                    .font(MobileTheme.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                Spacer()
+                Text("\(favoriteModels.count)")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+            ForEach(favoriteModels) { option in
+                HermesModelPickerRow(
+                    option: option,
+                    isSelected: service.selectedModelID == option.modelID,
+                    isFavorite: true
+                ) {
+                    service.selectModel(option)
+                    HapticBus.primaryAction()
+                    dismiss()
+                } onToggleFavorite: {
+                    service.toggleFavoriteModel(option)
+                    HapticBus.toggle()
+                }
+            }
+        }
+    }
+}
+
+struct HermesModelPickerRow: View {
+    let option: HermesRuntimeModelOption
+    let isSelected: Bool
+    let isFavorite: Bool
+    let onSelect: () -> Void
+    let onToggleFavorite: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: onSelect) {
+                HStack(spacing: 12) {
+                    UnifiedProviderLogoView(provider: option.agentProvider, size: 30, useFallbackColor: true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(option.displayName)
+                            .font(MobileTheme.Typography.body)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                            .lineLimit(1)
+                        Text(option.modelID)
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(MobileTheme.success)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Use \(option.displayName)")
+            .accessibilityValue(isSelected ? "Selected" : option.providerName)
+
+            Button(action: onToggleFavorite) {
+                Image(systemName: isFavorite ? "star.fill" : "star")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(isFavorite ? MobileTheme.amber : MobileTheme.Colors.textMuted)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(MobileTheme.Colors.surfaceElevated.opacity(0.75)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isFavorite ? "Remove \(option.displayName) from favorites" : "Add \(option.displayName) to favorites")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(isSelected ? MobileTheme.hermesAureate.opacity(0.16) : MobileTheme.Colors.surfaceElevated.opacity(0.62))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(isSelected ? MobileTheme.hermesAureate.opacity(0.6) : MobileTheme.Colors.border.opacity(0.45), lineWidth: isSelected ? 1 : 0.5)
+        )
+    }
+}
+
+extension HermesService {
+    var selectedModelOption: HermesRuntimeModelOption? {
+        guard let selectedModelID else { return nil }
+        return modelOptions.first { $0.modelID == selectedModelID }
+    }
+}
+
+extension HermesRuntimeModelOption {
+    var agentProvider: AgentProvider {
+        hermesAgentProvider(for: [providerID, providerName, modelID].joined(separator: " "))
+    }
+}
+
+func hermesAgentProvider(for raw: String) -> AgentProvider {
+    let lower = raw.lowercased()
+    if lower.contains("openai") || lower.contains("gpt") { return .openAI }
+    if lower.contains("anthropic") || lower.contains("claude") { return .claudeCode }
+    if lower.contains("minimax") || lower.contains("abab") { return .minimax }
+    if lower.contains("zai") || lower.contains("z.ai") || lower.contains("glm") { return .zai }
+    if lower.contains("kimi") || lower.contains("moonshot") { return .kimi }
+    if lower.contains("deepseek") { return .openClaw }
+    if lower.contains("google") || lower.contains("gemini") { return .geminiCLI }
+    if lower.contains("meta") || lower.contains("llama") || lower.contains("qwen") { return .ollama }
+    if lower.contains("codex") { return .codex }
+    if lower.contains("hermes") { return .hermes }
+    return .openClaw
 }
 
 // MARK: - Hermes Message Bubble

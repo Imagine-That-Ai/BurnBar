@@ -1848,19 +1848,75 @@
     },
     {
       "id": "ollama",
-      "displayName": "Ollama",
-      "baseURL": "http://localhost:11434",
+      "displayName": "Ollama Cloud",
+      "baseURL": "https://ollama.com/api",
       "visibility": "public",
       "logoKey": "OllamaLogo",
-      "capabilities": ["routing"],
+      "capabilities": ["routing", "accounting", "cursor_connector"],
       "models": [
         {
-          "id": "ollama-family",
-          "displayName": "Ollama (local models)",
+          "id": "deepseek-v4-flash",
+          "displayName": "DeepSeek V4 Flash",
           "visibility": "public",
+          "aliases": ["deepseek-v4-flash:cloud", "deepseek-v4-flash-cloud"],
+          "matchers": [
+            { "all": ["deepseek", "v4", "flash"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          }
+        },
+        {
+          "id": "gpt-oss:120b",
+          "displayName": "GPT-OSS 120B",
+          "visibility": "public",
+          "aliases": ["gpt-oss:120b-cloud", "gpt-oss:120b:cloud"],
+          "matchers": [
+            { "all": ["gpt-oss", "120b"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          }
+        },
+        {
+          "id": "gpt-oss:20b",
+          "displayName": "GPT-OSS 20B",
+          "visibility": "public",
+          "aliases": ["gpt-oss:20b-cloud", "gpt-oss:20b:cloud"],
+          "matchers": [
+            { "all": ["gpt-oss", "20b"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          }
+        },
+        {
+          "id": "qwen3-coder:480b",
+          "displayName": "Qwen3 Coder 480B",
+          "visibility": "public",
+          "aliases": ["qwen3-coder:480b-cloud", "qwen3-coder:480b:cloud"],
+          "matchers": [
+            { "all": ["qwen3", "coder", "480b"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          }
+        },
+        {
+          "id": "ollama-cloud-family",
+          "displayName": "Ollama Cloud Models",
+          "visibility": "hidden",
           "aliases": [],
           "matchers": [
-            { "all": ["ollama"], "any": [], "none": [] }
+            { "all": [], "any": [":cloud", "-cloud"], "none": [] }
           ],
           "pricing": {
             "inputPerMToken": 0,

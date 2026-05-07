@@ -126,21 +126,38 @@ struct AccountDestinationPickerSheet: View {
         case .claude:
             ProviderLogoView(provider: .claudeCode, size: 32, useFallbackColor: true)
         case .googleAccount:
-            ZStack {
-                Circle()
-                    .fill(Color.white)
-                Image("GeminiCLILogo")
+            if NSImage(named: "GoogleLogo") != nil {
+                Image("GoogleLogo")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 20, height: 20)
+                    .frame(width: 32, height: 32)
+                    .clipShape(Circle())
+            } else {
+                Circle()
+                    .fill(Color(hex: "4285F4").opacity(0.12))
+                    .overlay(
+                        Text("G")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color(hex: "4285F4"))
+                    )
+                    .frame(width: 32, height: 32)
             }
         case .appleID:
-            ZStack {
-                Circle()
-                    .fill(Color(hex: "0071E3").opacity(0.12))
-                Image(systemName: "apple.logo")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(Color(hex: "0071E3"))
+            if NSImage(named: "AppleLogo") != nil {
+                Image("AppleLogo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 32, height: 32)
+                    .clipShape(Circle())
+            } else {
+                ZStack {
+                    Circle()
+                        .fill(Color(hex: "0071E3").opacity(0.12))
+                    Image(systemName: "apple.logo")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Color(hex: "0071E3"))
+                }
+                .frame(width: 32, height: 32)
             }
         }
     }

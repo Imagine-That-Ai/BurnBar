@@ -8,7 +8,7 @@ struct DashboardDetailView: View {
     let providerSummaries: [ProviderSummary]
     let modelSummaries: [ModelSummary]
     let topModels: [(model: String, provider: AgentProvider, cost: Double, tokens: Int)]
-    let filteredUsages: [TokenUsage]
+    let usageWindow: DashboardUsageWindowSummary
     let overviewAppeared: Bool
     @Binding var showProgressPanel: Bool
     @Binding var showContextPackSheet: Bool
@@ -36,7 +36,7 @@ struct DashboardDetailView: View {
                         providerSummaries: providerSummaries,
                         modelSummaries: modelSummaries,
                         topModels: topModels,
-                        filteredUsages: filteredUsages,
+                        usageWindow: usageWindow,
                         context: context,
                         overviewAppeared: overviewAppeared,
                         onNavigate: onNavigate,

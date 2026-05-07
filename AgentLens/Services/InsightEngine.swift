@@ -190,7 +190,7 @@ final class WorkflowInsightRollupService {
         )
         let latestIndexedAt = try dataStore.fetchSearchDocuments(limit: 1).first?.indexedAt
         let latestUsageAt = dataStore.usages.map(\.endTime).max()
-        let hasInputs = !dataStore.usages.isEmpty || latestIndexedAt != nil
+        let hasInputs = dataStore.totalUsageSessionCount > 0 || latestIndexedAt != nil
         return RollupContext(
             latestUsageAt: latestUsageAt,
             latestIndexedAt: latestIndexedAt,

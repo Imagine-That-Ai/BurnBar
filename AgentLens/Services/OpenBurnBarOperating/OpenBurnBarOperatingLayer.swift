@@ -59,7 +59,7 @@ final class OpenBurnBarOperatingLayer {
         let cacheKey = SnapshotCacheKey(
             stateRevision: stateRevision,
             lastRefresh: dataStore.lastRefresh,
-            usageCount: dataStore.usages.count,
+            usageCount: dataStore.totalUsageSessionCount,
             daemonStatus: daemonManager.status,
             conversationIndexingEnabled: settingsManager.conversationIndexingEnabled,
             controllerRuntimeEnabled: settingsManager.controllerRuntimeEnabled,

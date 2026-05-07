@@ -423,24 +423,25 @@ struct ProviderDashboardView: View {
     }
 
     private var totalTokens: String {
-        formatTokens(usages.reduce(0) { $0 + $1.totalTokens })
+        formatTokens(providerSummary?.totalTokens ?? usages.reduce(0) { $0 + $1.totalTokens })
     }
 
     private var primaryProviderMetric: String {
-        let cost = usages.reduce(0) { $0 + $1.cost }
-        let tokens = usages.reduce(0) { $0 + $1.totalTokens }
+        let cost = providerSummary?.totalCost ?? usages.reduce(0) { $0 + $1.cost }
+        let tokens = providerSummary?.totalTokens ?? usages.reduce(0) { $0 + $1.totalTokens }
         return settingsManager.formatUsageMetric(cost: cost, tokens: tokens)
     }
 
     private var averageSessionMetric: String {
-        guard !usages.isEmpty else {
+        let count = providerSummary?.sessionCount ?? usages.count
+        guard count > 0 else {
             return settingsManager.usageDisplayMode == .currency ? "$0.00" : "0"
         }
         if settingsManager.usageDisplayMode == .currency {
-            let value = usages.reduce(0) { $0 + $1.cost } / Double(usages.count)
+            let value = (providerSummary?.totalCost ?? usages.reduce(0) { $0 + $1.cost }) / Double(count)
             return value.formatAsCost()
         }
-        let t = usages.reduce(0) { $0 + $1.totalTokens } / usages.count
+        let t = (providerSummary?.totalTokens ?? usages.reduce(0) { $0 + $1.totalTokens }) / count
         return t.formatAsTokenVolume()
     }
 
@@ -460,7 +461,7 @@ struct ProviderDashboardView: View {
 
     private var providerSummary: ProviderSummary? {
         dataStore
-            .providerSummaries(in: timeRange.dateRange())
+            .providerSummaries(for: timeRange)
             .first(where: { $0.provider == provider })
     }
 

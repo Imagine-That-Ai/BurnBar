@@ -24,7 +24,7 @@ extension DashboardView {
                     isOpen: $chatPanelOpen,
                     hasNewInsights: {
                         let n = UserDefaults.standard.integer(forKey: "lastSeenSessionCountForChatBadge")
-                        return dataStore.usages.count > n && !dataStore.usages.isEmpty
+                        return dataStore.totalUsageSessionCount > n && dataStore.totalUsageSessionCount > 0
                     }(),
                     onRequestOpen: {
                         consentCoordinator?.openChatPanelIfConsented(chatController: chatController) {
@@ -42,7 +42,7 @@ extension DashboardView {
                     onClose: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                             chatPanelOpen = false
-                            UserDefaults.standard.set(dataStore.usages.count, forKey: "lastSeenSessionCountForChatBadge")
+                            UserDefaults.standard.set(dataStore.totalUsageSessionCount, forKey: "lastSeenSessionCountForChatBadge")
                         }
                     }
                 )
@@ -51,8 +51,8 @@ extension DashboardView {
                 DashboardToolbar(
                     navigationModel: navigationModel,
                     settingsManager: settingsManager,
-                    totalCost: dataStore.usages(in: navigationModel.selectedTimeRange.dateRange()).reduce(0) { $0 + $1.cost },
-                    totalTokens: dataStore.usages(in: navigationModel.selectedTimeRange.dateRange()).reduce(0) { $0 + $1.totalTokens },
+                    totalCost: dataStore.usageWindowSummary(for: navigationModel.selectedTimeRange).totalCost,
+                    totalTokens: dataStore.usageWindowSummary(for: navigationModel.selectedTimeRange).totalTokens,
                     isScanning: isScanning,
                     canRunRecount: canRunRecount,
                     backButtonHelpText: navigationModel.backButtonHelpText,

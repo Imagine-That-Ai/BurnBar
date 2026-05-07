@@ -4,7 +4,7 @@ import CryptoKit
 @preconcurrency import FirebaseAuth
 import FirebaseCore
 import Foundation
-import GoogleSignIn
+@preconcurrency import GoogleSignIn
 import OSLog
 import Security
 
@@ -25,6 +25,8 @@ final class AccountManager {
     private(set) var userID: String?
     private(set) var userEmail: String?
     private(set) var userDisplayName: String?
+    private(set) var currentUser: User?
+    private(set) var isAnonymousUser = true
     private(set) var lastOAuthProviderID: String?
     private(set) var lastOAuthToken: String?
     private(set) var lastOAuthEmail: String?
@@ -34,20 +36,18 @@ final class AccountManager {
 
     /// Stable device identifier stored in Keychain.
     let deviceId: String
-    var currentUser: User? {
-        guard isFirebaseAvailable, Self.hasConfiguredFirebaseApp else { return nil }
-        return Auth.auth().currentUser
-    }
-    var isAnonymousUser: Bool {
-        currentUser?.isAnonymous ?? true
-    }
 
     // MARK: - Private
 
     private var authStateListenerHandle: AuthStateDidChangeListenerHandle?
     private var currentNonce: String?
+    private var firebaseAuthAccessGroup: String?
     /// Retains `AppleSignInPresentationCoordinator` until Sign in with Apple completes.
     private var appleSignInPresentation: AppleSignInPresentationCoordinator?
+    private static let authLogger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "com.openburnbar.app",
+        category: "AccountManager"
+    )
 
     /// Avoids calling `FirebaseApp.app()` when no default app exists, which can emit noisy logs.
     private static var hasConfiguredFirebaseApp: Bool {
@@ -71,6 +71,7 @@ final class AccountManager {
         isFirebaseAvailable = true
         configureFirebaseAuthAccessGroup()
         configureGoogleSignInIfPossible()
+        refreshAuthStateSnapshot()
         observeAuthState()
     }
 
@@ -78,6 +79,7 @@ final class AccountManager {
         isFirebaseAvailable = true
         configureFirebaseAuthAccessGroup()
         configureGoogleSignInIfPossible()
+        refreshAuthStateSnapshot()
         observeAuthState()
     }
 
@@ -103,6 +105,7 @@ final class AccountManager {
         guard let group = Self.discoverKeychainAccessGroup() else { return }
         do {
             try Auth.auth().useUserAccessGroup(group)
+            firebaseAuthAccessGroup = group
         } catch {
             // Non-fatal: Firebase Auth falls back to its default keychain path.
             // Log so we can spot misconfigured signing without crashing the app.
@@ -150,17 +153,27 @@ final class AccountManager {
     private func observeAuthState() {
         guard authStateListenerHandle == nil else { return }
         authStateListenerHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
-            let isSignedIn = user != nil
-            let userID = user?.uid
-            let userEmail = user?.email
-            let userDisplayName = user?.displayName ?? user?.email
             Task { @MainActor [weak self] in
-                self?.isSignedIn = isSignedIn
-                self?.userID = userID
-                self?.userEmail = userEmail
-                self?.userDisplayName = userDisplayName
+                self?.applyAuthStateSnapshot(user)
             }
         }
+    }
+
+    private func refreshAuthStateSnapshot() {
+        guard isFirebaseAvailable, Self.hasConfiguredFirebaseApp else {
+            applyAuthStateSnapshot(nil)
+            return
+        }
+        applyAuthStateSnapshot(Auth.auth().currentUser)
+    }
+
+    private func applyAuthStateSnapshot(_ user: User?) {
+        currentUser = user
+        isSignedIn = user != nil
+        isAnonymousUser = user?.isAnonymous ?? true
+        userID = user?.uid
+        userEmail = user?.email
+        userDisplayName = user?.displayName ?? user?.email
     }
 
     // MARK: - Sign In with Apple
@@ -247,43 +260,44 @@ final class AccountManager {
         }
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            GIDSignIn.sharedInstance.signIn(withPresenting: window) { signInResult, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                guard let signInResult,
-                      let idToken = signInResult.user.idToken?.tokenString else {
-                    continuation.resume(throwing: AccountError.invalidCredential)
-                    return
-                }
-                let accessToken = signInResult.user.accessToken.tokenString
-                let profileEmail = signInResult.user.profile?.email
-                let profileName = signInResult.user.profile?.name
-                Task { @MainActor in
-                    do {
-                        self.lastOAuthProviderID = "google"
-                        self.lastOAuthToken = accessToken
-                        self.lastOAuthEmail = profileEmail
-                        self.lastOAuthDisplayName = profileName
-                        let credential = GoogleAuthProvider.credential(
-                            withIDToken: idToken,
-                            accessToken: accessToken
-                        )
-                        try await self.authenticate(with: credential)
-                        if self.lastOAuthEmail == nil {
-                            self.lastOAuthEmail = self.currentUser?.email ?? self.userEmail
-                        }
-                        if self.lastOAuthDisplayName == nil {
-                            self.lastOAuthDisplayName = self.currentUser?.displayName ?? self.userDisplayName ?? self.lastOAuthEmail
-                        }
-                        continuation.resume()
-                    } catch {
-                        continuation.resume(throwing: error)
-                    }
-                }
+        let googleUser: GIDGoogleUser
+        do {
+            googleUser = try await restoredOrInteractiveGoogleUser(presentingWindow: window)
+        } catch {
+            Self.logAuthFailure("Google Sign-In", error)
+            guard Self.isGoogleSignInKeychainError(error),
+                  Self.clearGoogleSignInKeychainState(accessGroup: firebaseAuthAccessGroup) else {
+                throw error
             }
+            GIDSignIn.sharedInstance.signOut()
+            do {
+                googleUser = try await googleSignInResult(presentingWindow: window).user
+            } catch {
+                Self.logAuthFailure("Google Sign-In retry", error)
+                throw error
+            }
+        }
+
+        guard let idToken = googleUser.idToken?.tokenString else {
+            throw AccountError.invalidCredential
+        }
+        let accessToken = googleUser.accessToken.tokenString
+        lastOAuthProviderID = "google"
+        lastOAuthToken = accessToken
+        lastOAuthEmail = googleUser.profile?.email
+        lastOAuthDisplayName = googleUser.profile?.name
+
+        let credential = GoogleAuthProvider.credential(
+            withIDToken: idToken,
+            accessToken: accessToken
+        )
+        try await authenticate(with: credential)
+        refreshAuthStateSnapshot()
+        if lastOAuthEmail == nil {
+            lastOAuthEmail = currentUser?.email ?? userEmail
+        }
+        if lastOAuthDisplayName == nil {
+            lastOAuthDisplayName = currentUser?.displayName ?? userDisplayName ?? lastOAuthEmail
         }
     }
 
@@ -294,9 +308,11 @@ final class AccountManager {
         let credential = EmailAuthProvider.credential(withEmail: email, password: password)
         if let user = currentUser, user.isAnonymous {
             try await user.link(with: credential)
+            refreshAuthStateSnapshot()
             return
         }
         try await Auth.auth().signIn(withEmail: email, password: password)
+        refreshAuthStateSnapshot()
     }
 
     func signUpWithEmail(email: String, password: String) async throws {
@@ -306,9 +322,11 @@ final class AccountManager {
         if let user = currentUser, user.isAnonymous {
             let credential = EmailAuthProvider.credential(withEmail: email, password: password)
             try await user.link(with: credential)
+            refreshAuthStateSnapshot()
             return
         }
         try await Auth.auth().createUser(withEmail: email, password: password)
+        refreshAuthStateSnapshot()
     }
 
     func deleteCurrentUser() async throws {
@@ -326,6 +344,7 @@ final class AccountManager {
             try Auth.auth().signOut()
         }
         GIDSignIn.sharedInstance.signOut()
+        refreshAuthStateSnapshot()
         lastOAuthProviderID = nil
         lastOAuthToken = nil
         lastOAuthEmail = nil
@@ -375,12 +394,334 @@ final class AccountManager {
     }
 
     private func authenticate(with credential: AuthCredential) async throws {
+        do {
+            try await authenticateWithoutKeychainRecovery(with: credential)
+        } catch {
+            Self.logAuthFailure("Firebase Auth", error)
+            guard Self.isFirebaseAuthKeychainError(error),
+                  let group = firebaseAuthAccessGroup,
+                  Self.clearFirebaseAuthKeychainState(accessGroup: group) else {
+                throw error
+            }
+            do {
+                try Auth.auth().useUserAccessGroup(group)
+                try await authenticateWithoutKeychainRecovery(with: credential)
+            } catch {
+                Self.logAuthKeychainFailure(error)
+                throw error
+            }
+        }
+    }
+
+    private func authenticateWithoutKeychainRecovery(with credential: AuthCredential) async throws {
         if let user = currentUser, user.isAnonymous {
             try await user.link(with: credential)
+        } else {
+            try await Auth.auth().signIn(with: credential)
+        }
+        refreshAuthStateSnapshot()
+    }
+
+    private func restoredOrInteractiveGoogleUser(presentingWindow window: NSWindow) async throws -> GIDGoogleUser {
+        do {
+            return try await restorePreviousGoogleUser()
+        } catch {
+            let nsError = error as NSError
+            if nsError.domain != "com.google.GIDSignIn" || nsError.code != -4 {
+                Self.logAuthFailure("Google Sign-In restore", error)
+            }
+            return try await googleSignInResult(presentingWindow: window).user
+        }
+    }
+
+    private func restorePreviousGoogleUser() async throws -> GIDGoogleUser {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GIDGoogleUser, Error>) in
+            GIDSignIn.sharedInstance.restorePreviousSignIn { user, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let user else {
+                    continuation.resume(throwing: AccountError.invalidCredential)
+                    return
+                }
+                continuation.resume(returning: user)
+            }
+        }
+    }
+
+    private func googleSignInResult(presentingWindow window: NSWindow) async throws -> GIDSignInResult {
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GIDSignInResult, Error>) in
+            Self.startGoogleSignIn(window: window) { signInResult, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let signInResult else {
+                    continuation.resume(throwing: AccountError.invalidCredential)
+                    return
+                }
+                continuation.resume(returning: signInResult)
+            }
+        }
+    }
+
+    private static func startGoogleSignIn(
+        window: NSWindow,
+        completion: @escaping @Sendable (GIDSignInResult?, Error?) -> Void
+    ) {
+        if shouldUseExternalBrowserForGoogleAuth {
+            authLogger.info("Starting Google Sign-In with the external browser user agent")
+            GIDSignIn.sharedInstance.signIn(withPresenting: nilGooglePresentationWindow()) { result, error in
+                completion(result, error)
+            }
             return
         }
-        try await Auth.auth().signIn(with: credential)
+
+        let presentationWindow = googleAuthPresentationWindow(from: window)
+        authLogger.info("Starting Google Sign-In with ASWebAuthenticationSession")
+        GIDSignIn.sharedInstance.signIn(withPresenting: presentationWindow) { result, error in
+            completion(result, error)
+        }
     }
+
+    /// GoogleSignIn's ObjC macOS implementation falls back to AppAuth's
+    /// `NSWorkspace.openURL` browser flow when its presenting window is nil.
+    /// The Swift import exposes the ObjC parameter as non-optional, so use a
+    /// contained nil bridge here instead of forking the OAuth flow ourselves.
+    private static func nilGooglePresentationWindow() -> NSWindow {
+        unsafeBitCast(0, to: NSWindow.self)
+    }
+
+    private static var shouldUseExternalBrowserForGoogleAuth: Bool {
+        true
+    }
+
+    private static func googleAuthPresentationWindow(from window: NSWindow) -> NSWindow {
+        var candidate = window
+        while let parent = candidate.sheetParent {
+            candidate = parent
+        }
+        if candidate.isVisible, !candidate.isMiniaturized {
+            NSApp.activate(ignoringOtherApps: true)
+            candidate.makeKeyAndOrderFront(nil)
+            return candidate
+        }
+        let fallback = NSApp.windows.first { $0.isVisible && !$0.isMiniaturized && $0.sheetParent == nil }
+        if let fallback {
+            NSApp.activate(ignoringOtherApps: true)
+            fallback.makeKeyAndOrderFront(nil)
+            return fallback
+        }
+        return window
+    }
+
+    private static func isGoogleSignInKeychainError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == "com.google.GIDSignIn" && nsError.code == -2 {
+            return true
+        }
+
+        let fields = errorSearchFields(nsError)
+        let mentionsKeychain = fields.contains {
+            $0.localizedCaseInsensitiveContains("keychain")
+        }
+        guard mentionsKeychain else { return false }
+
+        // This classifier only runs inside the Google Sign-In flow. Broaden the
+        // dependency-domain check so SDK wrapper changes do not bypass recovery.
+        return fields.contains { field in
+            field.localizedCaseInsensitiveContains("google")
+                || field.localizedCaseInsensitiveContains("gidsignin")
+                || field.localizedCaseInsensitiveContains("gtmappauth")
+                || field.localizedCaseInsensitiveContains("appauth")
+        }
+    }
+
+    private static func clearGoogleSignInKeychainState(accessGroup: String?) -> Bool {
+        var statuses = [
+            ("default", deleteGoogleSignInAuthState(accessGroup: nil, useDataProtectionKeychain: false), false),
+            ("default-dp", deleteGoogleSignInAuthState(accessGroup: nil, useDataProtectionKeychain: true), true)
+        ]
+        if let accessGroup {
+            statuses.append(contentsOf: [
+                (
+                    "access-group",
+                    deleteGoogleSignInAuthState(accessGroup: accessGroup, useDataProtectionKeychain: false),
+                    false
+                ),
+                (
+                    "access-group-dp",
+                    deleteGoogleSignInAuthState(accessGroup: accessGroup, useDataProtectionKeychain: true),
+                    true
+                )
+            ])
+        }
+
+        for (label, status, _) in statuses {
+            authLogger.info("Google Sign-In keychain cleanup \(label, privacy: .public) status=\(status)")
+        }
+
+        return statuses.allSatisfy { _, status, isDataProtectionQuery in
+            isRecoverableKeychainDeleteStatus(status, allowMissingEntitlement: isDataProtectionQuery)
+        }
+    }
+
+    private static func deleteGoogleSignInAuthState(
+        accessGroup: String?,
+        useDataProtectionKeychain: Bool
+    ) -> OSStatus {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "auth",
+            kSecAttrAccount as String: "OAuth"
+        ]
+        if let accessGroup {
+            query[kSecAttrAccessGroup as String] = accessGroup
+        }
+        if useDataProtectionKeychain {
+            query[kSecUseDataProtectionKeychain as String] = true
+        }
+        return SecItemDelete(query as CFDictionary)
+    }
+
+    private static func isFirebaseAuthKeychainError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        let fields = errorSearchFields(nsError)
+        return fields.contains { $0.localizedCaseInsensitiveContains("keychain") }
+    }
+
+    private static func clearFirebaseAuthKeychainState(accessGroup: String) -> Bool {
+        guard let firebase = firebaseAuthKeychainIdentifiers() else { return false }
+        let statuses = [
+            deleteAuthStoredUser(accessGroup: accessGroup, service: firebase.apiKey, synchronizable: false),
+            deleteAuthStoredUser(accessGroup: accessGroup, service: firebase.apiKey, synchronizable: true),
+            deleteLegacyAuthUser(service: "firebase_auth_\(firebase.googleAppID)")
+        ]
+        for (index, status) in statuses.enumerated() {
+            authLogger.info("Firebase Auth keychain cleanup index=\(index) status=\(status)")
+        }
+        return statuses.allSatisfy(isRecoverableFirebaseAuthKeychainDeleteStatus)
+    }
+
+    private static func deleteAuthStoredUser(accessGroup: String, service: String, synchronizable: Bool) -> OSStatus {
+        SecItemDelete(firebaseAuthStoredUserDeleteQuery(
+            accessGroup: accessGroup,
+            service: service,
+            synchronizable: synchronizable
+        ) as CFDictionary)
+    }
+
+    private static func firebaseAuthStoredUserDeleteQuery(
+        accessGroup: String,
+        service: String,
+        synchronizable: Bool
+    ) -> [String: Any] {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccessGroup as String: accessGroup,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: "firebase_auth_firebase_user",
+            kSecUseDataProtectionKeychain as String: true
+        ]
+        if synchronizable {
+            query[kSecAttrSynchronizable as String] = true
+        }
+        return query
+    }
+
+    private static func deleteLegacyAuthUser(service: String) -> OSStatus {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: "__FIRAPP_DEFAULT_firebase_user",
+            kSecUseDataProtectionKeychain as String: true
+        ]
+        return SecItemDelete(query as CFDictionary)
+    }
+
+    private static func isRecoverableFirebaseAuthKeychainDeleteStatus(_ status: OSStatus) -> Bool {
+        isRecoverableKeychainDeleteStatus(status, allowMissingEntitlement: false)
+    }
+
+    private static func isRecoverableKeychainDeleteStatus(
+        _ status: OSStatus,
+        allowMissingEntitlement: Bool
+    ) -> Bool {
+        status == errSecSuccess
+            || status == errSecItemNotFound
+            || (allowMissingEntitlement && status == errSecMissingEntitlement)
+    }
+
+    private static func firebaseAuthKeychainIdentifiers() -> (apiKey: String, googleAppID: String)? {
+        guard let url = Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist"),
+              let data = try? Data(contentsOf: url),
+              let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+              let values = plist as? [String: Any],
+              let apiKey = values["API_KEY"] as? String,
+              let googleAppID = values["GOOGLE_APP_ID"] as? String else {
+            return nil
+        }
+        return (apiKey, googleAppID)
+    }
+
+    private static func logAuthKeychainFailure(_ error: Error) {
+        logAuthFailure("Firebase Auth keychain recovery", error)
+    }
+
+    private static func logAuthFailure(_ label: String, _ error: Error) {
+        let nsError = error as NSError
+        let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+        let underlyingSummary = underlying.map { "\($0.domain)#\($0.code)" } ?? "none"
+        authLogger.error(
+            "\(label, privacy: .public) failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code) description=\(nsError.localizedDescription, privacy: .public) failureReason=\(nsError.localizedFailureReason ?? "none", privacy: .public) underlying=\(underlyingSummary, privacy: .public)"
+        )
+    }
+
+    private static func errorSearchFields(_ nsError: NSError) -> [String] {
+        var fields = [
+            nsError.domain,
+            nsError.localizedDescription,
+            nsError.localizedFailureReason,
+            nsError.localizedRecoverySuggestion
+        ].compactMap(\.self)
+
+        for (key, value) in nsError.userInfo {
+            fields.append(String(describing: key))
+            if let nested = value as? NSError {
+                fields.append(contentsOf: errorSearchFields(nested))
+            } else {
+                fields.append(String(describing: value))
+            }
+        }
+        return fields
+    }
+
+    #if DEBUG
+    static func isGoogleSignInKeychainErrorForTesting(_ error: Error) -> Bool {
+        isGoogleSignInKeychainError(error)
+    }
+
+    static func isFirebaseAuthKeychainErrorForTesting(_ error: Error) -> Bool {
+        isFirebaseAuthKeychainError(error)
+    }
+
+    static func isRecoverableFirebaseAuthKeychainDeleteStatusForTesting(_ status: OSStatus) -> Bool {
+        isRecoverableFirebaseAuthKeychainDeleteStatus(status)
+    }
+
+    static func firebaseAuthStoredUserDeleteQueryForTesting(
+        accessGroup: String,
+        service: String,
+        synchronizable: Bool
+    ) -> [String: Any] {
+        firebaseAuthStoredUserDeleteQuery(
+            accessGroup: accessGroup,
+            service: service,
+            synchronizable: synchronizable
+        )
+    }
+    #endif
 }
 
 // MARK: - AccountError

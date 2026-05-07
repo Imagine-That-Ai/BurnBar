@@ -5,7 +5,7 @@ struct DashboardOverviewView: View {
     let providerSummaries: [ProviderSummary]
     let modelSummaries: [ModelSummary]
     let topModels: [(model: String, provider: AgentProvider, cost: Double, tokens: Int)]
-    let filteredUsages: [TokenUsage]
+    let usageWindow: DashboardUsageWindowSummary
     let context: DashboardContext
     let overviewAppeared: Bool
     let onNavigate: (DashboardMainRoute) -> Void
@@ -15,24 +15,24 @@ struct DashboardOverviewView: View {
     private var settingsManager: SettingsManager { context.settingsManager }
 
     private var totalCost: Double {
-        filteredUsages.reduce(0) { $0 + $1.cost }
+        usageWindow.totalCost
     }
 
     private var totalTokens: Int {
-        filteredUsages.reduce(0) { $0 + $1.totalTokens }
+        usageWindow.totalTokens
     }
 
     private var activeProviderCount: Int {
-        Set(filteredUsages.map(\.provider)).count
+        usageWindow.activeProviderCount
     }
 
     private var cacheEfficiency: CacheEfficiency {
-        CacheEfficiency.aggregate(filteredUsages)
+        usageWindow.cacheEfficiency
     }
 
     private var heroSubheadline: String {
         let refreshed = dataStore.lastRefresh?.formatted(date: .omitted, time: .shortened) ?? "never"
-        return "\(filteredUsages.count) sessions tracked in the current window. Last refresh \(refreshed)."
+        return "\(usageWindow.sessionCount.formatted()) sessions tracked in the current window. Last refresh \(refreshed)."
     }
 
     var body: some View {
@@ -63,9 +63,9 @@ struct DashboardOverviewView: View {
             )
             StatCard(
                 title: "Sessions",
-                value: "\(filteredUsages.count)",
+                value: "\(usageWindow.sessionCount.formatted())",
                 accent: DesignSystem.Colors.amber,
-                detail: "\(dataStore.usages.count) total tracked"
+                detail: "\(dataStore.totalUsageSessionCount.formatted()) total tracked"
             )
             CacheHitStatCard(efficiency: cacheEfficiency)
         }
@@ -88,7 +88,7 @@ struct DashboardOverviewView: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
 
             DashboardActivityLaneView(
-                usages: filteredUsages,
+                usages: usageWindow.usages,
                 topModels: topModels,
                 settingsManager: settingsManager,
                 overviewAppeared: overviewAppeared

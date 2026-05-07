@@ -248,6 +248,12 @@ targets:
       - path: OpenBurnBarMobile
         excludes:
           - "**/.DS_Store"
+          - "Resources/Mermaid/**"
+      # Mermaid is shipped as a folder reference so `index.html` and
+      # `mermaid.min.js` keep their relative paths inside the bundle.
+      - path: OpenBurnBarMobile/Resources/Mermaid
+        type: folder
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarMobile

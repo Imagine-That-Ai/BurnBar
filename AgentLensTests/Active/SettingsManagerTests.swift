@@ -905,6 +905,31 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertFalse(settings.tokenizerAssistedFallbackEnabled)
     }
 
+    func test_smartHubQuotaDisplayDefaults_targetLocalDashboard() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        XCTAssertFalse(settings.smartHubQuotaDisplayEnabled)
+        XCTAssertEqual(settings.smartHubQuotaDashboardURL, "http://127.0.0.1:8787/render.html")
+        XCTAssertEqual(settings.smartHubQuotaRefreshURL, "http://127.0.0.1:8787/refresh")
+        XCTAssertEqual(settings.smartHubQuotaVoiceRefreshURL, "http://127.0.0.1:8787/voice-refresh")
+    }
+
+    func test_smartHubQuotaDisplaySettings_resolveStoredValues() {
+        let defaults = makeIsolatedDefaults()
+        defaults.set(true, forKey: "smartHubQuotaDisplayEnabled")
+        defaults.set("http://192.168.68.96:8787/render.html", forKey: "smartHubQuotaDashboardURL")
+        defaults.set("http://192.168.68.96:8787/refresh", forKey: "smartHubQuotaRefreshURL")
+        defaults.set("http://192.168.68.96:8787/voice-refresh", forKey: "smartHubQuotaVoiceRefreshURL")
+
+        let settings = makeSettingsManager(defaults: defaults)
+
+        XCTAssertTrue(settings.smartHubQuotaDisplayEnabled)
+        XCTAssertEqual(settings.smartHubQuotaDashboardURL, "http://192.168.68.96:8787/render.html")
+        XCTAssertEqual(settings.smartHubQuotaRefreshURL, "http://192.168.68.96:8787/refresh")
+        XCTAssertEqual(settings.smartHubQuotaVoiceRefreshURL, "http://192.168.68.96:8787/voice-refresh")
+    }
+
     // MARK: - Hermes Chat Model Resolution
 
     func test_resolvedHermesChatModel_usesOverrideWhenSet() {

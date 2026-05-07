@@ -66,6 +66,7 @@ final class DashboardUsageViewModel {
     private(set) var usages: [TokenUsage] = []
     private var aggregateCache: UsageAggregateCache = .empty
     private var windowSummaryCache: [DateRangeCacheKey: DashboardUsageWindowSummary] = [:]
+    private var canonicalWindowSummaries: [TimeRange: DashboardUsageWindowSummary] = [:]
 
     // MARK: - Cost Totals
 
@@ -99,8 +100,16 @@ final class DashboardUsageViewModel {
         windowSummary(in: dateRange).providerSummaries
     }
 
+    func providerSummaries(for timeRange: TimeRange) -> [ProviderSummary] {
+        windowSummary(for: timeRange).providerSummaries
+    }
+
     func modelSummaries(in dateRange: ClosedRange<Date>?) -> [ModelSummary] {
         windowSummary(in: dateRange).modelSummaries
+    }
+
+    func modelSummaries(for timeRange: TimeRange) -> [ModelSummary] {
+        windowSummary(for: timeRange).modelSummaries
     }
 
     func topProviderToday() -> (provider: AgentProvider, cost: Double)? {
@@ -180,6 +189,14 @@ final class DashboardUsageViewModel {
         windowSummary(in: dateRange).cacheEfficiency
     }
 
+    func cacheEfficiency(for timeRange: TimeRange) -> CacheEfficiency {
+        windowSummary(for: timeRange).cacheEfficiency
+    }
+
+    func windowSummary(for timeRange: TimeRange) -> DashboardUsageWindowSummary {
+        canonicalWindowSummaries[timeRange] ?? windowSummary(in: timeRange.dateRange())
+    }
+
     func windowSummary(in dateRange: ClosedRange<Date>?) -> DashboardUsageWindowSummary {
         let key = DateRangeCacheKey(dateRange)
         if let cached = windowSummaryCache[key] {
@@ -191,6 +208,7 @@ final class DashboardUsageViewModel {
             usages: filteredUsages,
             totalCost: filteredUsages.reduce(0) { $0 + $1.cost },
             totalTokens: filteredUsages.reduce(0) { $0 + $1.totalTokens },
+            sessionCount: filteredUsages.count,
             activeProviderCount: Set(filteredUsages.map(\.provider)).count,
             providerSummaries: Self.makeProviderSummaries(from: filteredUsages),
             modelSummaries: Self.makeModelSummaries(from: filteredUsages),
@@ -205,8 +223,39 @@ final class DashboardUsageViewModel {
     func replaceUsages(_ newUsages: [TokenUsage]) {
         let sortedUsages = newUsages.sorted { $0.startTime > $1.startTime }
         usages = sortedUsages
+        canonicalWindowSummaries.removeAll(keepingCapacity: true)
         windowSummaryCache.removeAll(keepingCapacity: true)
         aggregateCache = rebuildAggregateCache(from: sortedUsages)
+    }
+
+    func replaceUsageSnapshot(_ snapshot: DashboardUsageSnapshot) {
+        usages = snapshot.loadedUsages.sorted { $0.startTime > $1.startTime }
+        canonicalWindowSummaries = snapshot.windowSummaries
+        windowSummaryCache.removeAll(keepingCapacity: true)
+
+        let today = snapshot.windowSummaries[.today] ?? .empty
+        let last7Days = snapshot.windowSummaries[.last7Days] ?? .empty
+        let last30Days = snapshot.windowSummaries[.last30Days] ?? .empty
+        let allTime = snapshot.windowSummaries[.allTime] ?? .empty
+
+        aggregateCache = UsageAggregateCache(
+            totalCostToday: today.totalCost,
+            totalCostThisWeek: last7Days.totalCost,
+            totalCostThisMonth: last30Days.totalCost,
+            totalCostAllTime: allTime.totalCost,
+            totalTokensToday: today.totalTokens,
+            totalTokensThisWeek: last7Days.totalTokens,
+            totalTokensThisMonth: last30Days.totalTokens,
+            totalTokensAllTime: allTime.totalTokens,
+            rollingDailyAverage: snapshot.rollingDailyAverage,
+            distinctUsageDayCount: snapshot.distinctUsageDayCount,
+            last7DayCosts: snapshot.last7DayCosts,
+            last7DayTokenTotals: snapshot.last7DayTokenTotals,
+            dailySummaries: snapshot.dailySummaries,
+            providerSummaries: allTime.providerSummaries,
+            modelSummaries: allTime.modelSummaries,
+            topProviderToday: snapshot.topProviderToday
+        )
     }
 
     // MARK: - Aggregate Cache Rebuild
@@ -368,10 +417,33 @@ struct DashboardUsageWindowSummary {
     let usages: [TokenUsage]
     let totalCost: Double
     let totalTokens: Int
+    let sessionCount: Int
     let activeProviderCount: Int
     let providerSummaries: [ProviderSummary]
     let modelSummaries: [ModelSummary]
     let cacheEfficiency: CacheEfficiency
+
+    static let empty = DashboardUsageWindowSummary(
+        usages: [],
+        totalCost: 0,
+        totalTokens: 0,
+        sessionCount: 0,
+        activeProviderCount: 0,
+        providerSummaries: [],
+        modelSummaries: [],
+        cacheEfficiency: .zero
+    )
+}
+
+struct DashboardUsageSnapshot {
+    let loadedUsages: [TokenUsage]
+    let windowSummaries: [TimeRange: DashboardUsageWindowSummary]
+    let rollingDailyAverage: Double
+    let distinctUsageDayCount: Int
+    let last7DayCosts: [Double]
+    let last7DayTokenTotals: [Int]
+    let dailySummaries: [DailyUsageSummary]
+    let topProviderToday: (provider: AgentProvider, cost: Double)?
 }
 
 private extension Date {

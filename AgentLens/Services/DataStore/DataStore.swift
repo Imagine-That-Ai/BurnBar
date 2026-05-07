@@ -56,6 +56,10 @@ actor DataStoreActor {
         try usageStore.fetchRecentUsage(limit: limit)
     }
 
+    func fetchDashboardUsageSnapshot(loadedUsageLimit: Int) async throws -> DashboardUsageSnapshot {
+        try usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: loadedUsageLimit)
+    }
+
     func deleteAll() async throws {
         try usageStore.deleteAll()
     }

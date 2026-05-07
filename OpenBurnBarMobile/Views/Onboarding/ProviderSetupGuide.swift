@@ -196,17 +196,17 @@ extension ProviderSetupGuide {
                 provider: provider,
                 kinds: [.token, .bearer],
                 defaultKind: .bearer,
-                labelSuggestion: "Zai",
-                dashboardURL: URL(string: "https://z.ai"),
-                dashboardCTA: "Open Zai",
-                oneLineHint: "API token from your Zai workspace settings.",
+                labelSuggestion: "Z.ai",
+                dashboardURL: URL(string: "https://z.ai/manage-apikey/apikey-list"),
+                dashboardCTA: "Open Z.ai API keys",
+                oneLineHint: "API key from Z.ai (or open.bigmodel.cn if you're on the China platform).",
                 instructions: [
-                    GuideStep(1, "Open your Zai workspace", detail: "Sign in to z.ai."),
-                    GuideStep(2, "Create an API token", detail: "Settings → API Tokens → New."),
-                    GuideStep(3, "Paste it below", detail: "Read scope is enough for quota tracking.")
+                    GuideStep(1, "Open Z.ai's API keys page", detail: "International users sign in to z.ai. Mainland China accounts can use open.bigmodel.cn — both keys work."),
+                    GuideStep(2, "Create an API key", detail: "Read access is enough; OpenBurnBar only reads quota and balance."),
+                    GuideStep(3, "Paste the key below", detail: "We validate via api.z.ai/api/paas/v4/models and read your coding-plan window.")
                 ],
-                credentialPlaceholder: "zai-...",
-                credentialFooterMarkdown: "Zai tokens are encrypted at rest.",
+                credentialPlaceholder: "Paste your Z.ai API key",
+                credentialFooterMarkdown: "Z.ai keys are encrypted at rest. We try `api.z.ai` first and fall back to `open.bigmodel.cn` automatically.",
                 supportsHosted: false,
                 supportsSelfHosted: false
             )
@@ -217,16 +217,16 @@ extension ProviderSetupGuide {
                 kinds: [.token, .bearer],
                 defaultKind: .bearer,
                 labelSuggestion: "MiniMax",
-                dashboardURL: URL(string: "https://platform.minimaxi.com/user-center/basic-information/interface-key"),
+                dashboardURL: URL(string: "https://platform.minimax.io/user-center/basic-information/interface-key"),
                 dashboardCTA: "Open MiniMax keys",
-                oneLineHint: "Group ID + API key from the platform console.",
+                oneLineHint: "Token Plan API key from platform.minimax.io.",
                 instructions: [
-                    GuideStep(1, "Open the MiniMax console", detail: "Sign in and go to Interface Key."),
-                    GuideStep(2, "Copy your API key", detail: "Bearer token — keep your group ID handy too."),
-                    GuideStep(3, "Paste the key below", detail: "OpenBurnBar reads usage and remaining tokens.")
+                    GuideStep(1, "Open the MiniMax console", detail: "Sign in and navigate to Interface Key."),
+                    GuideStep(2, "Copy your API key", detail: "Token Plan keys validate via api.minimax.io. Coding Plan keys (`sk-cp-…`) also work."),
+                    GuideStep(3, "Paste the key below", detail: "OpenBurnBar reads remaining tokens and your 5-hour / weekly quota window.")
                 ],
-                credentialPlaceholder: "Bearer ...",
-                credentialFooterMarkdown: "MiniMax keys are encrypted at rest.",
+                credentialPlaceholder: "Paste your MiniMax API key",
+                credentialFooterMarkdown: "MiniMax keys are encrypted at rest. We hit `www.minimax.io/v1/token_plan/remains` to validate.",
                 supportsHosted: false,
                 supportsSelfHosted: false
             )
@@ -509,14 +509,17 @@ extension ProviderSetupGuide {
 
 extension ProviderSetupGuide {
     /// "Top picks" the wizard surfaces first — the providers most users connect.
+    /// Keep this in sync with `AgentProvider.mobileAccountConnectableProviders`;
+    /// listing a provider here that the backend can't validate would advertise
+    /// a connect flow that always fails.
     static let recommended: [AgentProvider] = [
         .claudeCode,
         .codex,
         .factory,
         .cursor,
-        .copilot,
         .minimax,
-        .zai
+        .zai,
+        .openAI,
     ]
 
     static func sortedProvidersForOnboarding() -> [AgentProvider] {

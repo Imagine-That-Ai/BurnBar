@@ -12,12 +12,17 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertEqual(ConnectorProvider.minimax.displayName, "MiniMax")
         XCTAssertEqual(ConnectorProvider.minimax.defaultBaseURL, "https://api.minimax.io/v1")
         XCTAssertEqual(ConnectorProvider.minimax.suggestedModels, ["minimax-m2.7-highspeed"])
+
+        XCTAssertEqual(ConnectorProvider.ollama.displayName, "Ollama Cloud")
+        XCTAssertEqual(ConnectorProvider.ollama.defaultBaseURL, "https://ollama.com/api")
+        XCTAssertEqual(Array(ConnectorProvider.ollama.suggestedModels.prefix(3)), ["deepseek-v4-flash", "gpt-oss:120b", "gpt-oss:20b"])
     }
 
     func test_supportedModel_allowsSupportedProvidersOnly() {
         XCTAssertTrue(CursorConnectorManager.supportedModel("glm-5"))
         XCTAssertTrue(CursorConnectorManager.supportedModel("MiniMax-M2.7-highspeed"))
         XCTAssertTrue(CursorConnectorManager.supportedModel("MiniMax-M3-pro"))
+        XCTAssertTrue(CursorConnectorManager.supportedModel("deepseek-v4-flash:cloud"))
         XCTAssertFalse(CursorConnectorManager.supportedModel("kimi-for-coding"))
         XCTAssertFalse(CursorConnectorManager.supportedModel("pony-alpha-2"))
         XCTAssertFalse(CursorConnectorManager.supportedModel("claude-3-7-sonnet"))
@@ -27,6 +32,7 @@ final class CursorConnectorTests: XCTestCase {
     func test_supportedModel_respectsProviderCatalogMatchers() {
         XCTAssertTrue(CursorConnectorManager.supportedModel("glm-5-plus", provider: .zai))
         XCTAssertTrue(CursorConnectorManager.supportedModel("MiniMax-M3-pro", provider: .minimax))
+        XCTAssertTrue(CursorConnectorManager.supportedModel("gpt-oss:120b-cloud", provider: .ollama))
         XCTAssertFalse(CursorConnectorManager.supportedModel("MiniMax-M3-pro", provider: .zai))
     }
 
@@ -211,5 +217,103 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertTrue(script.contains("tool_calls"))
         XCTAssertTrue(script.contains("tool_call_id"))
         XCTAssertTrue(script.contains("call_id"))
+    }
+
+    func test_routedClientSync_updatesBothFactoryConfigShapesAndPreservesExistingModels() throws {
+        let home = try makeTemporaryHome()
+        let factoryDirectory = home.appendingPathComponent(".factory", isDirectory: true)
+        try FileManager.default.createDirectory(at: factoryDirectory, withIntermediateDirectories: true)
+        let settingsURL = factoryDirectory.appendingPathComponent("settings.json")
+        let configURL = factoryDirectory.appendingPathComponent("config.json")
+        try Data("""
+        {
+          "theme": "factory",
+          "customModels": [
+            {"model": "existing-model", "baseUrl": "https://example.com/v1", "provider": "other"},
+            {"model": "old-burnbar", "id": "openburnbar:old-burnbar", "baseUrl": "http://old/v1", "provider": "openburnbar"}
+          ]
+        }
+        """.utf8).write(to: settingsURL)
+        try Data("""
+        {
+          "custom_models": [
+            {"model": "existing-config-model", "base_url": "https://example.com/v1", "provider": "other"},
+            {"model": "old-burnbar", "base_url": "http://old/v1", "provider": "openburnbar"}
+          ]
+        }
+        """.utf8).write(to: configURL)
+
+        let service = RoutedClientConfigSyncService(
+            homeDirectory: home,
+            now: { Date(timeIntervalSince1970: 1_700_000_000) }
+        )
+        try service.applyFactoryGatewayConfig(
+            RoutedClientGatewayConfig(
+                baseURL: "http://127.0.0.1:8317/v1",
+                bearerToken: "gateway-token",
+                models: ["glm-5", "glm-5", "minimax-m2.7-highspeed"]
+            )
+        )
+
+        let settings = try XCTUnwrap(readJSON(settingsURL)["customModels"] as? [[String: Any]])
+        XCTAssertEqual(settings.compactMap { $0["model"] as? String }, ["existing-model", "glm-5", "minimax-m2.7-highspeed"])
+        XCTAssertEqual(settings.last?["baseUrl"] as? String, "http://127.0.0.1:8317/v1")
+        XCTAssertEqual(settings.last?["apiKey"] as? String, "gateway-token")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: settingsURL.deletingLastPathComponent().appendingPathComponent("settings.json.openburnbar-backup-20231114221320").path))
+
+        let factoryConfig = try XCTUnwrap(readJSON(configURL)["custom_models"] as? [[String: Any]])
+        XCTAssertEqual(factoryConfig.compactMap { $0["model"] as? String }, ["existing-config-model", "glm-5", "minimax-m2.7-highspeed"])
+        XCTAssertEqual(factoryConfig.last?["base_url"] as? String, "http://127.0.0.1:8317/v1")
+        XCTAssertEqual(factoryConfig.last?["api_key"] as? String, "gateway-token")
+    }
+
+    func test_routedClientSync_writesOpenCodeProviderConfig() throws {
+        let home = try makeTemporaryHome()
+        let configDirectory = home.appendingPathComponent(".config/opencode", isDirectory: true)
+        try FileManager.default.createDirectory(at: configDirectory, withIntermediateDirectories: true)
+        let configURL = configDirectory.appendingPathComponent("opencode.json")
+        try Data("""
+        {
+          // Existing OpenCode settings should survive JSONC parsing.
+          "theme": "opencode",
+          "provider": {
+            "other": {"name": "Other"}
+          }
+        }
+        """.utf8).write(to: configURL)
+
+        let service = RoutedClientConfigSyncService(homeDirectory: home)
+        try service.applyOpenCodeGatewayConfig(
+            RoutedClientGatewayConfig(
+                baseURL: "http://127.0.0.1:8317/v1",
+                bearerToken: "",
+                models: ["glm-5"]
+            )
+        )
+
+        let root = try readJSON(configURL)
+        XCTAssertEqual(root["theme"] as? String, "opencode")
+        XCTAssertEqual(root["model"] as? String, "openburnbar/glm-5")
+        let providers = try XCTUnwrap(root["provider"] as? [String: Any])
+        XCTAssertNotNil(providers["other"])
+        let burnbar = try XCTUnwrap(providers["openburnbar"] as? [String: Any])
+        XCTAssertEqual(burnbar["npm"] as? String, "@ai-sdk/openai-compatible")
+        let options = try XCTUnwrap(burnbar["options"] as? [String: Any])
+        XCTAssertEqual(options["baseURL"] as? String, "http://127.0.0.1:8317/v1")
+        XCTAssertEqual(options["apiKey"] as? String, "openburnbar-local")
+        let models = try XCTUnwrap(burnbar["models"] as? [String: Any])
+        XCTAssertNotNil(models["glm-5"])
+    }
+
+    private func makeTemporaryHome() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-routed-client-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    private func readJSON(_ url: URL) throws -> [String: Any] {
+        let data = try Data(contentsOf: url)
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 }

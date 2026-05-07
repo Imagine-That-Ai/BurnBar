@@ -2,6 +2,7 @@ import UIKit
 import FirebaseCore
 import FirebaseAppCheck
 import GoogleSignIn
+import OpenBurnBarCore
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
@@ -32,12 +33,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// - Debug builds: the App Check debug provider so a registered debug
     ///   token from `firebase.console -> App Check -> iOS app` is accepted.
     private func configureFirebase() {
-        guard Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil else {
+        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") else {
             print("warning: GoogleService-Info.plist not found; Firebase remains unconfigured.")
             return
         }
 
         #if DEBUG
+        AppCheckDebugTokenEnvironment.configureIfAvailable(firebasePlistPath: path)
         let factory = AppCheckDebugProviderFactory()
         #else
         let factory = OpenBurnBarAppCheckProviderFactory()

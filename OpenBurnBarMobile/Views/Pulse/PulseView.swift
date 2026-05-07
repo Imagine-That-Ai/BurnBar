@@ -52,9 +52,15 @@ struct PulseView: View {
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .staggeredEntrance(delay: 0.10)
 
-                    TrendSparkCard(
+                    TrendAtlasCard(
                         dailyPoints: dashboard.dailyPoints,
-                        displayMode: displayMode
+                        displayMode: displayMode,
+                        windowTotals: dashboard.windowTotals,
+                        providerSummaries: dashboard.topProviders,
+                        modelSummaries: dashboard.topModels,
+                        deviceSummaries: dashboard.topDevices,
+                        recentUsages: sessionsStore.usages,
+                        hermesService: hermesService
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .staggeredEntrance(delay: 0.15)

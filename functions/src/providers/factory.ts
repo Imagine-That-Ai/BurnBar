@@ -1,9 +1,18 @@
 /**
- * @fileoverview Factory (tryforge.io) provider adapter.
+ * @fileoverview Factory (factory.ai) provider adapter.
  *
- * Factory accepts either bearer tokens or session credentials.  Session
- * credentials are treated as higher risk: we warn the user and apply a
- * shorter implicit TTL.  Validation hits the /v1/me endpoint.
+ * Factory accepts both bearer API keys (created at
+ * https://app.factory.ai/settings/api-keys) and longer-lived session tokens.
+ *
+ * The `api.tryforge.io` host this adapter previously targeted is gone (DNS
+ * NXDOMAIN). Factory's current production stack lives at:
+ *
+ *   • api.factory.ai/api/app/auth/me                — validates the bearer
+ *   • api.factory.ai/api/organization/subscription/usage?useCache=true
+ *                                                  — usage / quota data
+ *
+ * (The same endpoints the macOS `FactoryQuotaAdapter` already uses.) Both
+ * return JSON like `{"detail":"…","status":401}` for bad keys.
  */
 
 import type {
@@ -14,50 +23,103 @@ import type {
 } from "../types.js";
 
 const PROVIDER = "factory" as const;
-const VALIDATE_URL = "https://api.tryforge.io/v1/me";
-const QUOTA_URL = "https://api.tryforge.io/v1/usage/quota";
+
+const API_HOST = "https://api.factory.ai";
+const VALIDATE_PATH = "/api/app/auth/me";
+const USAGE_PATH = "/api/organization/subscription/usage?useCache=true";
 
 function redact(token: string): string {
   if (token.length <= 8) return "factory_***";
   return `factory_${token.slice(0, 2)}***${token.slice(-4)}`;
 }
 
-/** Heuristic to distinguish bearer vs session tokens. */
+/** Heuristic: long opaque hex strings look like session tokens, not API keys. */
 function inferKind(token: string): "bearer" | "session" {
-  // Session tokens from Factory are often longer opaque strings (UUID-ish).
-  // This heuristic is conservative; adjust as Factory evolves.
-  const sessionPattern = /^[a-f0-9]{32,}$/i;
-  return sessionPattern.test(token) ? "session" : "bearer";
+  return /^[a-f0-9]{32,}$/i.test(token) ? "session" : "bearer";
 }
 
-async function factoryFetch<T>(
+interface FactoryFetchResult<T> {
+  ok: boolean;
+  status?: number;
+  data?: T;
+  error?: string;
+  errorCode?: string;
+}
+
+async function factoryFetch<T = unknown>(
   url: string,
   token: string
-): Promise<{ ok: boolean; data?: T; error?: string }> {
+): Promise<FactoryFetchResult<T>> {
+  let response: Response;
   try {
-    const res = await fetch(url, {
+    response = await fetch(url, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
+        "Content-Type": "application/json",
+        Origin: "https://app.factory.ai",
+        Referer: "https://app.factory.ai/",
+        "x-factory-client": "openburnbar",
       },
     });
-    if (!res.ok) {
-      return { ok: false, error: `HTTP ${res.status}` };
-    }
-    return { ok: true, data: (await res.json()) as T };
   } catch (err) {
-    return { ok: false, error: String(err) };
+    return { ok: false, error: String(err), errorCode: "network_error" };
   }
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = undefined;
+  }
+
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload === "object"
+        ? stringFrom((payload as Record<string, unknown>).detail ?? (payload as Record<string, unknown>).message)
+        : undefined;
+    return {
+      ok: false,
+      status: response.status,
+      data: payload as T,
+      error: detail ?? `HTTP ${response.status}`,
+      errorCode:
+        response.status === 401 || response.status === 403
+          ? "auth_failed"
+          : response.status === 404
+            ? "endpoint_not_found"
+            : "fetch_failed",
+    };
+  }
+
+  return { ok: true, status: response.status, data: payload as T };
 }
 
-interface FactoryQuotaPayload {
-  quota?: {
-    used?: number;
-    limit?: number;
-    reset_at?: string;
+interface FactoryAuthMePayload {
+  user?: { email?: string; name?: string };
+  organization?: {
+    name?: string;
+    subscription?: {
+      factoryTier?: string;
+      orbSubscription?: { plan?: { name?: string } };
+    };
   };
-  tier?: string;
+  [k: string]: unknown;
+}
+
+interface FactoryUsageLane {
+  userTokens?: number;
+  totalAllowance?: number;
+  usedRatio?: number;
+}
+
+interface FactoryUsagePayload {
+  usage?: {
+    endDate?: string;
+    standard?: FactoryUsageLane;
+    premium?: FactoryUsageLane;
+  };
   [k: string]: unknown;
 }
 
@@ -65,41 +127,40 @@ export const factoryAdapter: ProviderAdapter = {
   provider: PROVIDER,
 
   async testCredential(credential: string): Promise<CredentialTestResult> {
-    if (!credential || credential.length < 8) {
+    const trimmed = (credential ?? "").trim();
+    if (trimmed.length < 8) {
       return {
         valid: false,
-        redactedLabel: redact(credential || ""),
+        redactedLabel: redact(trimmed),
         credentialKind: "bearer",
         errorCode: "invalid_format",
         errorMessage: "Factory credential must be at least 8 characters.",
       };
     }
 
-    const kind = inferKind(credential);
-    const result = await factoryFetch<Record<string, unknown>>(
-      VALIDATE_URL,
-      credential
+    const kind = inferKind(trimmed);
+    const result = await factoryFetch<FactoryAuthMePayload>(
+      `${API_HOST}${VALIDATE_PATH}`,
+      trimmed
     );
     if (!result.ok) {
       return {
         valid: false,
-        redactedLabel: redact(credential),
+        redactedLabel: redact(trimmed),
         credentialKind: kind,
-        errorCode: "validation_failed",
+        errorCode: result.errorCode ?? "validation_failed",
         errorMessage: result.error || "Factory validation request failed.",
       };
     }
 
-    const warningMessage =
-      kind === "session"
-        ? "Session credentials expire and may stop working without warning. Consider using a long-lived API key if available."
-        : undefined;
-
     return {
       valid: true,
-      redactedLabel: redact(credential),
+      redactedLabel: redact(trimmed),
       credentialKind: kind,
-      warningMessage,
+      warningMessage:
+        kind === "session"
+          ? "Session credentials expire and may stop working without warning. Use an API key from app.factory.ai/settings/api-keys for the most stable refresh."
+          : undefined,
     };
   },
 
@@ -107,29 +168,25 @@ export const factoryAdapter: ProviderAdapter = {
     credential: string,
     sourceId: string
   ): Promise<QuotaRefreshResult> {
-    const result = await factoryFetch<FactoryQuotaPayload>(QUOTA_URL, credential);
+    const trimmed = (credential ?? "").trim();
+    const result = await factoryFetch<FactoryUsagePayload>(
+      `${API_HOST}${USAGE_PATH}`,
+      trimmed
+    );
     if (!result.ok) {
       return {
         ok: false,
-        errorCode: "fetch_failed",
-        errorMessage: result.error || "Factory quota request failed.",
+        errorCode: result.errorCode ?? "fetch_failed",
+        errorMessage: result.error || "Factory usage request failed.",
       };
     }
 
-    const data = result.data!;
-    const q = data.quota || {};
-    const used = typeof q.used === "number" ? q.used : 0;
-    const limit = typeof q.limit === "number" ? q.limit : -1;
-
+    const usage = result.data?.usage ?? {};
     const buckets: QuotaBucket[] = [];
-    buckets.push({
-      name: "requests",
-      used,
-      limit,
-      remaining: limit >= 0 ? Math.max(0, limit - used) : -1,
-      window: "monthly",
-      meta: { tier: data.tier, reset_at: q.reset_at },
-    });
+    const standard = bucketFromLane("Standard tokens", usage.standard, usage.endDate);
+    if (standard) buckets.push(standard);
+    const premium = bucketFromLane("Premium tokens", usage.premium, usage.endDate);
+    if (premium) buckets.push(premium);
 
     return {
       ok: true,
@@ -138,11 +195,67 @@ export const factoryAdapter: ProviderAdapter = {
         sourceId,
         provider: PROVIDER,
         fetchedAt: new Date().toISOString(),
-        source: "Factory API",
-        confidence: "high",
-        statusMessage: "Fetched from Factory quota endpoint.",
+        source: "Factory subscription usage",
+        confidence: buckets.length ? "high" : "low",
+        statusMessage: buckets.length
+          ? "Fetched from Factory subscription usage endpoint."
+          : "Factory responded but exposed no recognizable token lanes.",
         buckets,
       },
     };
   },
+};
+
+function bucketFromLane(
+  name: string,
+  lane: FactoryUsageLane | undefined,
+  windowEnd: string | undefined
+): QuotaBucket | undefined {
+  if (!lane) return undefined;
+  const used = numberFrom(lane.userTokens) ?? 0;
+  const limit = numberFrom(lane.totalAllowance) ?? -1;
+  const ratio = numberFrom(lane.usedRatio);
+  // Skip lanes with no usage, no allowance, and no ratio. A 0/0/0 lane just
+  // means the user isn't subscribed to that tier; emitting a bucket would
+  // make the dashboard look broken.
+  if (used <= 0 && limit <= 0 && (ratio ?? 0) <= 0) return undefined;
+
+  return {
+    name,
+    used,
+    limit,
+    remaining: limit >= 0 ? Math.max(0, limit - used) : -1,
+    window: "monthly",
+    meta: stripUndefined({
+      usedRatio: ratio,
+      windowEnd,
+    }),
+  };
+}
+
+function numberFrom(raw: unknown): number | undefined {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const value = Number(raw.trim());
+    if (Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function stringFrom(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  return value.length > 0 ? value : undefined;
+}
+
+function stripUndefined(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, v]) => v !== undefined)
+  );
+}
+
+export const __testing__ = {
+  factoryFetch,
+  bucketFromLane,
+  API_HOST,
 };

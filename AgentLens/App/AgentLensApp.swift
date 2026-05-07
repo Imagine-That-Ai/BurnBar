@@ -2,6 +2,7 @@ import AppKit
 import FirebaseCore
 import FirebaseAppCheck
 import GoogleSignIn
+import OpenBurnBarCore
 import OSLog
 import SwiftUI
 
@@ -513,6 +514,7 @@ struct OpenBurnBarApp: App {
         }
 
         // Configure App Check before FirebaseApp.configure()
+        AppCheckDebugTokenEnvironment.configureIfAvailable(firebasePlistPath: path)
         let providerFactory = OpenBurnBarAppCheckProviderFactory()
         AppCheck.setAppCheckProviderFactory(providerFactory)
 

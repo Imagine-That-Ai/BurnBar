@@ -151,7 +151,7 @@ struct DashboardView: View {
         .onAppear {
             autoExpandTimeRangeIfNeeded()
         }
-        .onChange(of: dataStore.usages.count) { _, _ in
+        .onChange(of: dataStore.totalUsageSessionCount) { _, _ in
             autoExpandTimeRangeIfNeeded()
         }
         .overlay(alignment: .bottomTrailing) {
@@ -173,7 +173,7 @@ struct DashboardView: View {
                         onClose: {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                                 chatPanelOpen = false
-                                UserDefaults.standard.set(dataStore.usages.count, forKey: "lastSeenSessionCountForChatBadge")
+                                UserDefaults.standard.set(dataStore.totalUsageSessionCount, forKey: "lastSeenSessionCountForChatBadge")
                             }
                         }
                     )
@@ -365,8 +365,8 @@ struct DashboardView: View {
     private func autoExpandTimeRangeIfNeeded() {
         guard !didAutoExpandEmptyTimeRange else { return }
         defer { didAutoExpandEmptyTimeRange = true }
-        let currentRangeEmpty = dataStore.usages(in: selectedTimeRange.dateRange()).isEmpty
-        let allTimeEmpty = dataStore.usages.isEmpty
+        let currentRangeEmpty = dataStore.usageWindowSummary(for: selectedTimeRange).sessionCount == 0
+        let allTimeEmpty = dataStore.totalUsageSessionCount == 0
         if currentRangeEmpty, !allTimeEmpty {
             selectedTimeRange = .allTime
         }
@@ -381,7 +381,7 @@ struct DashboardView: View {
 
     @ViewBuilder
     private var overviewView: some View {
-        if dataStore.usages.isEmpty {
+        if dataStore.totalUsageSessionCount == 0 {
             overviewEmptyState
         } else {
             ScrollView {
@@ -401,9 +401,9 @@ struct DashboardView: View {
                         )
                         StatCard(
                             title: "Sessions",
-                            value: "\(filteredUsages.count)",
+                            value: "\(dashboardUsageWindow.sessionCount.formatted())",
                             accent: DesignSystem.Colors.amber,
-                            detail: "\(dataStore.usages.count) total tracked"
+                            detail: "\(dataStore.totalUsageSessionCount.formatted()) total tracked"
                         )
                     }
                     NarrativeCardView(dataStore: dataStore)

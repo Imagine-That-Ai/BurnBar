@@ -69,7 +69,7 @@ struct MenuBarPopoverView: View {
 
     var body: some View {
         Group {
-            if !hasOnboarded && dataStore.usages.isEmpty, aggregator != nil {
+            if !hasOnboarded && dataStore.totalUsageSessionCount == 0, aggregator != nil {
                 OnboardingView(
                     settingsManager: settingsManager,
                     onOpenWizard: {
@@ -263,7 +263,7 @@ struct MenuBarPopoverView: View {
 
                 Spacer()
 
-                if !dataStore.usages.isEmpty {
+                if dataStore.totalUsageSessionCount > 0 {
                     Text(settingsManager.formatUsageMetric(cost: dataStore.totalCostToday, tokens: dataStore.totalTokensToday))
                         .font(DesignSystem.Typography.monoTiny)
                         .foregroundStyle(DesignSystem.Colors.primaryGradient)
@@ -273,7 +273,7 @@ struct MenuBarPopoverView: View {
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
 
-                    Text("\(dataStore.usages.count) session\(dataStore.usages.count == 1 ? "" : "s")")
+                    Text("\(dataStore.totalUsageSessionCount.formatted()) session\(dataStore.totalUsageSessionCount == 1 ? "" : "s")")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                         .popoverTooltip("Total imported sessions across all providers")
@@ -393,7 +393,7 @@ struct MenuBarPopoverView: View {
 
     private var emptyStateView: some View {
         VStack(spacing: DesignSystem.Spacing.sm) {
-            if dataStore.usages.isEmpty {
+            if dataStore.totalUsageSessionCount == 0 {
                 Image(systemName: "cpu")
                     .font(.system(size: 28))
                     .foregroundStyle(DesignSystem.Colors.textMuted)

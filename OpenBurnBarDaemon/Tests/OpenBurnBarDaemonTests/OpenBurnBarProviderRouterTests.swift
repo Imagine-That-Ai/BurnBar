@@ -39,6 +39,27 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(route.resolvedModelID, "minimax-m2.7-highspeed")
     }
 
+    func testRouterPreservesUnlistedOllamaCloudAliasAsDirectCloudModelID() async throws {
+        let harness = try makeHarness(name: "ollama-cloud-family")
+        try await harness.configStore.setSecret("ollama-key", for: "ollama")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama",
+                isEnabled: true,
+                baseURL: "https://ollama.com/api",
+                preferredModelIDs: ["ollama-cloud-family"]
+            )
+        )
+
+        let colonRoute = try await harness.router.route(modelName: "some-new-model:cloud", preferredProviderID: "ollama")
+        XCTAssertEqual(colonRoute.providerID, "ollama")
+        XCTAssertEqual(colonRoute.requestedModel, "some-new-model:cloud")
+        XCTAssertEqual(colonRoute.resolvedModelID, "some-new-model")
+
+        let dashRoute = try await harness.router.route(modelName: "some-new-model-cloud", preferredProviderID: "ollama")
+        XCTAssertEqual(dashRoute.resolvedModelID, "some-new-model")
+    }
+
     func testRouterRejectsUnsupportedProviderModelsAndMissingCredentials() async throws {
         let harness = try makeHarness(name: "rejections")
         _ = try await harness.configStore.upsertProvider(
@@ -115,12 +136,10 @@ final class BurnBarProviderRouterTests: XCTestCase {
         let preferredRoute = try await harness.router.route(modelName: "glm-5")
         XCTAssertEqual(preferredRoute.credentialSlotID, "slot-a", "Preferred slot should be selected via policyFit scoring")
 
-        // When preferred slot is nil, scoring determines selection.
-        // Both slots have identical scores except for tie-break (providerID asc, slotID asc).
-        // Since both are zai provider and slot-a < slot-b alphabetically, slot-a wins.
+        // When preferred slot is nil, healthy slots rotate by least-recently selected.
         try await harness.configStore.setPreferredCredentialSlot(providerID: "zai", slotID: nil)
         let unconstrainedRoute = try await harness.router.route(modelName: "glm-5")
-        XCTAssertEqual(unconstrainedRoute.credentialSlotID, "slot-a", "With equal scores, deterministic tie-break selects slot-a (alphabetically first)")
+        XCTAssertEqual(unconstrainedRoute.credentialSlotID, "slot-b", "Without a pinned preferred slot, the router should rotate to the least-recently selected plan")
     }
 
     func testRouterMarksQuotaFailureAsExhaustedSlot() async throws {
@@ -146,6 +165,50 @@ final class BurnBarProviderRouterTests: XCTestCase {
         let snapshot = try await harness.configStore.snapshot()
         let slotStatus = snapshot.providerSettings(id: "zai")?.credentialSlots.first(where: { $0.slotID == "slot-a" })?.status
         XCTAssertEqual(slotStatus, .exhausted)
+    }
+
+    func testOllamaRouterRotatesSlotsAndSkipsExhaustedPlan() async throws {
+        let harness = try makeHarness(name: "ollama-slot-rotation")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama",
+                isEnabled: true,
+                baseURL: "https://ollama.com/api",
+                preferredModelIDs: ["deepseek-v4-flash"]
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "ollama",
+            slotID: "slot-a",
+            label: "Ollama Plan A",
+            apiKey: "ollama-key-a"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "ollama",
+            slotID: "slot-b",
+            label: "Ollama Plan B",
+            apiKey: "ollama-key-b"
+        )
+        try await harness.configStore.setPreferredCredentialSlot(providerID: "ollama", slotID: nil)
+
+        let firstRoute = try await harness.router.route(modelName: "deepseek-v4-flash:cloud", preferredProviderID: "ollama")
+        XCTAssertEqual(firstRoute.providerID, "ollama")
+        XCTAssertEqual(firstRoute.resolvedModelID, "deepseek-v4-flash")
+        XCTAssertEqual(firstRoute.credentialSlotID, "slot-a")
+
+        let secondRoute = try await harness.router.route(modelName: "deepseek-v4-flash:cloud", preferredProviderID: "ollama")
+        XCTAssertEqual(secondRoute.credentialSlotID, "slot-b", "Unpinned Ollama Cloud slots should rotate by least-recently selected")
+
+        await harness.router.markRouteFailure(
+            firstRoute,
+            error: BurnBarProviderExecutorError.upstreamError(402, "quota exhausted")
+        )
+
+        let remainingCandidates = try await harness.router.candidateRoutes(modelName: "deepseek-v4-flash:cloud", preferredProviderID: "ollama")
+        XCTAssertEqual(remainingCandidates.map(\.credentialSlotID), ["slot-b"])
+
+        let afterExhaustionRoute = try await harness.router.route(modelName: "deepseek-v4-flash:cloud", preferredProviderID: "ollama")
+        XCTAssertEqual(afterExhaustionRoute.credentialSlotID, "slot-b", "Exhausted Ollama plans must be skipped in the same failover pool")
     }
 
     // MARK: - VAL-DAEMON-012: Router scorecard ranking is deterministic across required dimensions

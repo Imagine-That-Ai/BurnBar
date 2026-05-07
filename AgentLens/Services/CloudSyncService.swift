@@ -1158,7 +1158,13 @@ final class HermesRelayHostService {
         guard (200..<300).contains(statusCode) else {
             throw HermesRelayHostError.httpStatus(statusCode)
         }
-        let bodyText = String(data: body, encoding: .utf8) ?? ""
+        let responseBody: Data
+        if operation == .models {
+            responseBody = await enrichedModelsBody(primaryBody: body)
+        } else {
+            responseBody = body
+        }
+        let bodyText = String(data: responseBody, encoding: .utf8) ?? ""
         let chunkCount = try await writeRelayChunk(
             reference: reference,
             context: context,
@@ -1197,20 +1203,15 @@ final class HermesRelayHostService {
         var sequence = 0
         for try await line in bytes.lines {
             try Task.checkCancellation()
-            if line.isEmpty {
-                if !eventLines.isEmpty {
-                    let writtenChunks = try await writeRelayChunk(
-                        reference: reference,
-                        context: context,
-                        sequence: sequence,
-                        kind: .sse,
-                        data: eventLines.joined(separator: "\n")
-                    )
-                    sequence += writtenChunks
-                    eventLines.removeAll(keepingCapacity: true)
-                }
-            } else {
-                eventLines.append(line)
+            for event in Self.consumeSSELine(line, eventLines: &eventLines) {
+                let writtenChunks = try await writeRelayChunk(
+                    reference: reference,
+                    context: context,
+                    sequence: sequence,
+                    kind: .sse,
+                    data: event
+                )
+                sequence += writtenChunks
             }
         }
         if !eventLines.isEmpty {
@@ -1246,6 +1247,28 @@ final class HermesRelayHostService {
             request.httpBody = bodyData
         }
         return request
+    }
+
+    private func enrichedModelsBody(primaryBody: Data) async -> Data {
+        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
+        guard let url = URL(string: "http://127.0.0.1:\(port)/v1/models") else {
+            return primaryBody
+        }
+        var request = URLRequest(url: url, timeoutInterval: 5)
+        let token = settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (secondaryBody, response) = try await urlSession.data(for: request)
+            guard let statusCode = (response as? HTTPURLResponse)?.statusCode,
+                  (200..<300).contains(statusCode) else {
+                return primaryBody
+            }
+            return Self.mergedModelsResponseBodies(primaryBody, secondaryBody) ?? primaryBody
+        } catch {
+            return primaryBody
+        }
     }
 
     private func relayPath(operation: HermesRelayOperation, data: [String: Any]) throws -> String {
@@ -1459,6 +1482,48 @@ final class HermesRelayHostService {
             fragments.append(current)
         }
         return fragments
+    }
+
+    nonisolated static func consumeSSELine(_ rawLine: String, eventLines: inout [String]) -> [String] {
+        let line = rawLine.trimmingCharacters(in: .newlines)
+        guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            guard !eventLines.isEmpty else { return [] }
+            let event = eventLines.joined(separator: "\n")
+            eventLines.removeAll(keepingCapacity: true)
+            return [event]
+        }
+        if line.hasPrefix("data:"),
+           eventLines.contains(where: { $0.hasPrefix("data:") }) {
+            let event = eventLines.joined(separator: "\n")
+            eventLines.removeAll(keepingCapacity: true)
+            eventLines.append(line)
+            return [event]
+        }
+        eventLines.append(line)
+        return []
+    }
+
+    nonisolated static func mergedModelsResponseBodies(_ primaryBody: Data, _ secondaryBody: Data) -> Data? {
+        guard var primary = jsonObject(from: primaryBody),
+              let secondary = jsonObject(from: secondaryBody) else {
+            return nil
+        }
+
+        var seen = Set<String>()
+        var merged: [[String: Any]] = []
+        for item in (primary["data"] as? [[String: Any]] ?? []) + (secondary["data"] as? [[String: Any]] ?? []) {
+            guard let id = item["id"] as? String, !id.isEmpty else { continue }
+            if seen.insert(id).inserted {
+                merged.append(item)
+            }
+        }
+        primary["data"] = merged
+        primary["object"] = primary["object"] ?? "list"
+        return try? JSONSerialization.data(withJSONObject: primary, options: [.sortedKeys])
+    }
+
+    private nonisolated static func jsonObject(from data: Data) -> [String: Any]? {
+        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 }
 

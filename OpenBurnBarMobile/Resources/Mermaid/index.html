@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=4" />
+<title>Chart Studio · Mermaid</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg-light: #EDF0E5;
+    --bg-dark: #0E0D0B;
+    --surface-light: #FAFAF5;
+    --surface-dark: #171510;
+    --ink-light: #1C2014;
+    --ink-dark: #F0EBE2;
+    --border-light: #C5CEB6;
+    --border-dark: #302C22;
+    --ember: #E07868;
+    --amber: #E0A030;
+    --mercury: #C8BFB5;
+    --aureate: #A2ACBA;
+    --whimsy: #9080D8;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg-dark);
+    color: var(--ink-dark);
+    font-family: -apple-system, "SF Pro Rounded", system-ui, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    -webkit-touch-callout: none;
+  }
+  @media (prefers-color-scheme: light) {
+    html, body {
+      background: var(--bg-light);
+      color: var(--ink-light);
+    }
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+  #stage {
+    max-width: 100%;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #stage svg {
+    max-width: 100%;
+    height: auto;
+  }
+  #error {
+    display: none;
+    color: var(--ember);
+    font-size: 14px;
+    line-height: 1.4;
+    padding: 12px;
+    border: 1px solid var(--ember);
+    border-radius: 12px;
+    background: rgba(224, 120, 104, 0.08);
+    max-width: 90%;
+  }
+</style>
+</head>
+<body>
+  <div id="stage" aria-live="polite"></div>
+  <div id="error" role="alert"></div>
+  <script src="mermaid.min.js"></script>
+  <script>
+    (function() {
+      "use strict";
+
+      function isDark() {
+        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      }
+
+      function buildTheme(dark) {
+        var bg = dark ? "#171510" : "#FAFAF5";
+        var ink = dark ? "#F0EBE2" : "#1C2014";
+        var muted = dark ? "#9A9088" : "#7A8572";
+        var border = dark ? "#302C22" : "#C5CEB6";
+        return {
+          theme: "base",
+          themeVariables: {
+            background: bg,
+            primaryColor: "#E07868",
+            primaryTextColor: ink,
+            primaryBorderColor: "#E0A030",
+            lineColor: muted,
+            secondaryColor: "#9080D8",
+            secondaryTextColor: ink,
+            secondaryBorderColor: border,
+            tertiaryColor: "#C8BFB5",
+            tertiaryTextColor: ink,
+            tertiaryBorderColor: border,
+            mainBkg: bg,
+            secondBkg: bg,
+            edgeLabelBackground: bg,
+            clusterBkg: bg,
+            clusterBorder: border,
+            fontFamily: "-apple-system, SF Pro Rounded, system-ui, sans-serif",
+            fontSize: "14px"
+          },
+          flowchart: { htmlLabels: true, curve: "basis" },
+          sequence: { mirrorActors: false, useMaxWidth: true },
+          gantt: { useMaxWidth: true }
+        };
+      }
+
+      if (typeof mermaid === "undefined") {
+        document.getElementById("error").style.display = "block";
+        document.getElementById("error").textContent =
+          "Mermaid runtime missing.";
+        return;
+      }
+
+      mermaid.initialize(buildTheme(isDark()));
+
+      window.renderMermaid = function(source) {
+        var stage = document.getElementById("stage");
+        var err = document.getElementById("error");
+        stage.innerHTML = "";
+        err.style.display = "none";
+        try {
+          var id = "mmd-" + Math.random().toString(36).slice(2, 9);
+          mermaid.render(id, source).then(function(out) {
+            stage.innerHTML = out.svg;
+            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mermaidStatus) {
+              window.webkit.messageHandlers.mermaidStatus.postMessage({ ok: true });
+            }
+          }).catch(function(e) {
+            err.style.display = "block";
+            err.textContent = "Diagram error: " + (e && e.message ? e.message : "unknown");
+            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mermaidStatus) {
+              window.webkit.messageHandlers.mermaidStatus.postMessage({ ok: false, error: String(e) });
+            }
+          });
+        } catch (e) {
+          err.style.display = "block";
+          err.textContent = "Diagram error: " + (e && e.message ? e.message : "unknown");
+        }
+      };
+
+      // React to OS appearance changes so the diagram re-themes itself.
+      var schemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      schemeQuery.addEventListener('change', function() {
+        mermaid.initialize(buildTheme(isDark()));
+        if (window._lastSource) {
+          window.renderMermaid(window._lastSource);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

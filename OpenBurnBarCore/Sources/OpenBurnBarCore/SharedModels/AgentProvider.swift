@@ -50,19 +50,19 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         Self.quotaSignalProviders.contains(self)
     }
 
-    /// Mobile account-connection providers. This is narrower than
-    /// `allCases`: local usage/activity tools do not have quota credentials to
-    /// add from iOS.
+    /// Mobile account-connection providers. This list mirrors what the
+    /// backend `connectProviderAccount` / `connectHostedQuotaAccount` /
+    /// `connectSelfHostedQuotaAccount` callables actually accept; pickers are
+    /// gated to providers we can validate end-to-end. Adding a provider here
+    /// without a server adapter will surface a "not supported" error to the
+    /// user instead of completing the connection.
     public static let mobileAccountConnectableProviders: [AgentProvider] = [
         .claudeCode,
         .codex,
         .factory,
         .cursor,
-        .copilot,
         .minimax,
         .zai,
-        .kimi,
-        .warp,
         .openAI,
     ]
 

@@ -16,7 +16,10 @@ What is not in this shell yet:
 - start, retry, or cancel run controls from the sidebar
 - approval response UI
 - browser tools
-- routed providers beyond Z.ai and MiniMax
+- routed providers beyond Z.ai, MiniMax, and Ollama Cloud
+
+Factory and OpenCode routed-client sync is app-side configuration, not Cursor
+extension UI. See [`ROUTED_CLIENT_GATEWAY.md`](ROUTED_CLIENT_GATEWAY.md).
 
 ## Setup
 
@@ -39,6 +42,7 @@ Current routed Cursor support is limited to public models exposed by the bundled
 
 - `Z.ai`
 - `MiniMax`
+- `Ollama Cloud`
 
 Unsupported or intentionally excluded for routed Cursor use in this release:
 

@@ -150,6 +150,7 @@ public actor BurnBarDaemonServer {
             self.gatewayServer = BurnBarHTTPGatewayServer(
                 configuration: configuration.gateway,
                 configStore: resolvedConfigStore,
+                usageRecorder: resolvedUsageRecorder,
                 logger: BurnBarDaemonLogger(category: "http-gateway")
             )
         } else {

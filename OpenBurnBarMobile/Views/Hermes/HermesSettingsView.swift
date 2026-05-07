@@ -20,6 +20,7 @@ struct HermesSettingsView: View {
     @State private var newDirectName = ""
     @State private var showDeleteConfirm: HermesConnectionRecord? = nil
     @State private var showModelDetail: HermesRuntimeModelOption? = nil
+    @State private var showModelPicker = false
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
@@ -46,6 +47,9 @@ struct HermesSettingsView: View {
         }
         .navigationTitle("Hermes")
         .sheet(isPresented: $showAddDirectSheet) { addDirectSheet }
+        .sheet(isPresented: $showModelPicker) {
+            HermesModelPickerSheet(service: service)
+        }
         .alert("Delete connection?", isPresented: deleteBinding) {
             Button("Cancel", role: .cancel) { showDeleteConfirm = nil }
             Button("Delete", role: .destructive) {
@@ -204,6 +208,15 @@ struct HermesSettingsView: View {
                     sectionTitle("Models", icon: "cpu", color: MobileTheme.whimsy)
                     Spacer()
                     Button {
+                        showModelPicker = true
+                    } label: {
+                        Label("Switch", systemImage: "arrow.left.arrow.right")
+                            .font(MobileTheme.Typography.tiny)
+                            .fontWeight(.semibold)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(MobileTheme.whimsy)
+                    Button {
                         Task { await service.refreshRuntime() }
                     } label: {
                         Image(systemName: "arrow.clockwise")
@@ -224,6 +237,20 @@ struct HermesSettingsView: View {
                     }
                     .padding(.vertical, 4)
                 } else {
+                    if !service.favoriteModelOptions.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Favorites")
+                                .font(MobileTheme.Typography.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(MobileTheme.Colors.textMuted)
+                                .textCase(.uppercase)
+
+                            ForEach(service.favoriteModelOptions) { option in
+                                modelRow(option)
+                            }
+                        }
+                    }
+
                     // Group by provider
                     let grouped = Dictionary(grouping: service.modelOptions, by: { $0.providerName })
                     let sortedProviders = grouped.keys.sorted()
@@ -235,7 +262,6 @@ struct HermesSettingsView: View {
                                     .font(MobileTheme.Typography.caption)
                                     .fontWeight(.semibold)
                                     .foregroundStyle(MobileTheme.Colors.textMuted)
-                                    .tracking(0.8)
                                     .textCase(.uppercase)
 
                                 ForEach(options) { option in
@@ -250,7 +276,7 @@ struct HermesSettingsView: View {
                         Image(systemName: "star.fill")
                             .font(.system(size: 11))
                             .foregroundStyle(MobileTheme.amber)
-                        Text("Default:")
+                        Text("Favorite models are pinned in the chat selector. Default:")
                             .font(MobileTheme.Typography.caption)
                             .foregroundStyle(MobileTheme.Colors.textSecondary)
                         Text(service.selectedModelID ?? service.selectedConnection.advertisedModel ?? "hermes")
@@ -267,53 +293,51 @@ struct HermesSettingsView: View {
 
     private func modelRow(_ option: HermesRuntimeModelOption) -> some View {
         let isDefault = service.selectedModelID == option.modelID
-        let providerColor = DesignSystemColors.accent(for: providerFromID(option.providerID))
+        let isFavorite = service.isFavoriteModel(option)
 
-        return Button {
-            service.selectedModelID = option.modelID
-        } label: {
-            HStack(spacing: MobileTheme.Spacing.md) {
-                // Provider dot
-                Circle()
-                    .fill(providerColor.opacity(0.85))
-                    .frame(width: 8, height: 8)
+        return HStack(spacing: MobileTheme.Spacing.sm) {
+            Button {
+                service.selectModel(option)
+            } label: {
+                HStack(spacing: MobileTheme.Spacing.md) {
+                    UnifiedProviderLogoView(provider: option.agentProvider, size: 30, useFallbackColor: true)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(option.displayName)
-                        .font(MobileTheme.Typography.body)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    Text(option.modelID)
-                        .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(option.displayName)
+                            .font(MobileTheme.Typography.body)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text(option.modelID)
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    if isDefault {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(MobileTheme.whimsy)
+                    }
                 }
-
-                Spacer()
-
-                if isDefault {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(MobileTheme.whimsy)
-                }
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
+            .buttonStyle(.plain)
 
-    private func providerFromID(_ id: String) -> AgentProvider {
-        let lower = id.lowercased()
-        if lower.contains("openai")  { return .openAI }
-        if lower.contains("anthropic") || lower.contains("claude") { return .claudeCode }
-        if lower.contains("minimax") || lower.contains("abab") { return .minimax }
-        if lower.contains("kimi") || lower.contains("moonshot") { return .kimi }
-        if lower.contains("deepseek") { return .openClaw }
-        if lower.contains("google") || lower.contains("gemini") { return .geminiCLI }
-        if lower.contains("meta") || lower.contains("llama") { return .ollama }
-        if lower.contains("qwen") { return .ollama }
-        if lower.contains("hermes") { return .hermes }
-        return .openClaw
+            Button {
+                service.toggleFavoriteModel(option)
+                HapticBus.toggle()
+            } label: {
+                Image(systemName: isFavorite ? "star.fill" : "star")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(isFavorite ? MobileTheme.amber : MobileTheme.Colors.textMuted)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(MobileTheme.Colors.surfaceElevated.opacity(0.72)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isFavorite ? "Remove \(option.displayName) from favorites" : "Add \(option.displayName) to favorites")
+        }
+        .padding(.vertical, 6)
     }
 
     // MARK: - 3. Gateway

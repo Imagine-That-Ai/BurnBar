@@ -50,11 +50,21 @@ final class DashboardOverviewViewTests: XCTestCase {
             providerBreakdown: [],
             cacheEfficiency: .zero
         )
+        let usageWindow = DashboardUsageWindowSummary(
+            usages: ViewTestFixtures.makeWeekOfUsages(),
+            totalCost: 1.23,
+            totalTokens: 1000,
+            sessionCount: 5,
+            activeProviderCount: 1,
+            providerSummaries: [providerSummary],
+            modelSummaries: [modelSummary],
+            cacheEfficiency: .zero
+        )
         return DashboardOverviewView(
             providerSummaries: [providerSummary],
             modelSummaries: [modelSummary],
             topModels: [(model: "claude-3-opus", provider: .factory, cost: 1.23, tokens: 1000)],
-            filteredUsages: ViewTestFixtures.makeWeekOfUsages(),
+            usageWindow: usageWindow,
             context: context,
             overviewAppeared: true,
             onNavigate: { _ in },

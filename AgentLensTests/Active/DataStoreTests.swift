@@ -200,6 +200,42 @@ final class DataStoreTests: XCTestCase {
         XCTAssertTrue(snapshot.controllerRuntimeCached)
     }
 
+    func test_refresh_keepsAggregateStatsUncappedWhileLazyLoadingRows() async throws {
+        let queue = try DatabaseQueue()
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let now = Date()
+        let rows = (0..<5_001).map { index in
+            TokenUsage(
+                provider: .factory,
+                sessionId: "unbounded-refresh-\(index)",
+                projectName: "Scale",
+                model: "droid",
+                inputTokens: 1,
+                outputTokens: 1,
+                costUSD: 0.01,
+                startTime: now.addingTimeInterval(-Double(index)),
+                endTime: now.addingTimeInterval(-Double(index) + 1)
+            )
+        }
+        try store.insert(rows)
+
+        await store.refresh()
+
+        XCTAssertEqual(store.usages.count, 5_000)
+        XCTAssertEqual(store.totalTokensAllTime, 10_002)
+        XCTAssertFalse(store.usages.contains { $0.sessionId == "unbounded-refresh-5000" })
+
+        let allTime = store.usageWindowSummary(for: .allTime)
+        XCTAssertEqual(allTime.sessionCount, 5_001)
+        XCTAssertEqual(allTime.totalTokens, 10_002)
+        XCTAssertEqual(allTime.providerSummaries.first?.sessionCount, 5_001)
+        XCTAssertEqual(allTime.providerSummaries.first?.totalTokens, 10_002)
+
+        let last7Days = store.usageWindowSummary(for: .last7Days)
+        XCTAssertEqual(last7Days.sessionCount, 5_001)
+        XCTAssertEqual(last7Days.totalTokens, 10_002)
+    }
+
     // MARK: - Helper Methods
 
     private var pastDayUsage: TokenUsage {

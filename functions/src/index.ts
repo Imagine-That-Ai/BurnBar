@@ -73,6 +73,11 @@ import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 // ---------------------------------------------------------------------------
 initializeApp();
 const db = getFirestore();
+// Allow optional fields (e.g. identityHint, sourceDeviceID) to be set to
+// `undefined` directly on writes without crashing the transaction. Firestore
+// otherwise rejects the entire document, which surfaces as a generic INTERNAL
+// error to the iOS connect flow.
+db.settings({ ignoreUndefinedProperties: true });
 
 // ---------------------------------------------------------------------------
 // Provider adapter registry
@@ -110,7 +115,10 @@ const SELF_HOSTED_QUOTA_PROVIDERS = new Set<string>(["claude-code", "codex"]);
 
 function assertProvider(provider: unknown): asserts provider is Provider {
   if (typeof provider !== "string" || !ALLOWED_PROVIDERS.has(provider)) {
-    throw new Error(`Invalid or unsupported provider: ${String(provider)}`);
+    throw new HttpsError(
+      "invalid-argument",
+      `Unsupported provider "${String(provider)}". Backend connections only support: ${[...ALLOWED_PROVIDERS].join(", ")}.`
+    );
   }
 }
 
@@ -479,14 +487,25 @@ async function connectProviderAccountInternal(params: {
   const adapter = ADAPTERS[provider as keyof typeof ADAPTERS];
   if (!adapter) {
     if (provider === "claude-code" || provider === "codex") {
-      throw new Error("invalid-argument: Claude Code / Codex do not support backend credential connections.");
+      throw new HttpsError(
+        "failed-precondition",
+        "Claude Code and Codex are runner-based providers and don't support backend credential connections. Connect them through the OpenBurnBar Mac app instead."
+      );
     }
-    throw new Error("internal: no adapter for provider.");
+    throw new HttpsError(
+      "unimplemented",
+      `OpenBurnBar doesn't have a server-side connector for ${provider} yet. Connect it on the macOS app, or pick a supported provider (OpenAI, Factory, Cursor, Z.ai, MiniMax).`
+    );
   }
 
   const testResult = await adapter.testCredential(credential);
   if (!testResult.valid) {
-    throw new Error(`invalid-argument: ${testResult.errorCode} — ${testResult.errorMessage}`);
+    const message = testResult.errorMessage?.trim() || "We couldn't validate that credential.";
+    const detail = testResult.errorCode ? `${message} (${testResult.errorCode})` : message;
+    throw new HttpsError("invalid-argument", detail, {
+      provider,
+      errorCode: testResult.errorCode,
+    });
   }
 
   const now = nowISO();
@@ -616,16 +635,19 @@ export const connectProviderAccount = onCall(
     const uid = request.auth?.uid;
 
     if (!uid) {
-      throw new Error("unauthenticated");
+      throw new HttpsError("unauthenticated", "Sign in before adding a provider account.");
     }
     enforceAuthAndAppCheck(request, uid);
     assertProvider(provider);
 
-    if (typeof credential !== "string" || !credential) {
-      throw new Error("invalid-argument: credential must be a non-empty string.");
+    if (typeof credential !== "string" || credential.trim().length === 0) {
+      throw new HttpsError("invalid-argument", "credential must be a non-empty string.");
     }
     if (credential.length > getConfig().maxCredentialLength) {
-      throw new Error("invalid-argument: credential exceeds max length.");
+      throw new HttpsError(
+        "invalid-argument",
+        `credential exceeds max length (${getConfig().maxCredentialLength} characters).`
+      );
     }
 
     return connectProviderAccountInternal({
@@ -654,17 +676,20 @@ export const connectProviderCredential = onCall(
     const uid = request.auth?.uid;
 
     if (!uid) {
-      throw new Error("unauthenticated");
+      throw new HttpsError("unauthenticated", "Sign in before connecting a provider.");
     }
     enforceAuthAndAppCheck(request, uid);
 
     assertProvider(provider);
 
-    if (typeof credential !== "string" || !credential) {
-      throw new Error("invalid-argument: credential must be a non-empty string.");
+    if (typeof credential !== "string" || credential.trim().length === 0) {
+      throw new HttpsError("invalid-argument", "credential must be a non-empty string.");
     }
     if (credential.length > getConfig().maxCredentialLength) {
-      throw new Error("invalid-argument: credential exceeds max length.");
+      throw new HttpsError(
+        "invalid-argument",
+        `credential exceeds max length (${getConfig().maxCredentialLength} characters).`
+      );
     }
 
     const accountDoc = await connectProviderAccountInternal({

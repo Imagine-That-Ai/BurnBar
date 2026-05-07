@@ -9,7 +9,7 @@ extension DashboardView {
     }
 
     var dashboardUsageWindow: DashboardUsageWindowSummary {
-        dataStore.usageWindowSummary(in: dashboardDateRange)
+        dataStore.usageWindowSummary(for: selectedTimeRange)
     }
 
     /// Sidebar, overview rankings, and hero totals match the toolbar time window.
@@ -49,7 +49,7 @@ extension DashboardView {
 
     var heroSubheadline: String {
         let refreshed = dataStore.lastRefresh?.formatted(date: .omitted, time: .shortened) ?? "never"
-        return "\(dashboardUsageWindow.usages.count) sessions tracked in the current window. Last refresh \(refreshed)."
+        return "\(dashboardUsageWindow.sessionCount.formatted()) sessions tracked in the current window. Last refresh \(refreshed)."
     }
 
     var topModels: [(model: String, provider: AgentProvider, cost: Double, tokens: Int)] {
@@ -74,7 +74,7 @@ extension DashboardView {
 
     var hasNewInsightPulse: Bool {
         let n = UserDefaults.standard.integer(forKey: "lastSeenSessionCountForChatBadge")
-        return dataStore.usages.count > n && !dataStore.usages.isEmpty
+        return dataStore.totalUsageSessionCount > n && dataStore.totalUsageSessionCount > 0
     }
 }
 

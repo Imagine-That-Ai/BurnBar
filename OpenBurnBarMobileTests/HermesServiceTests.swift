@@ -131,8 +131,118 @@ final class HermesServiceTests: XCTestCase {
         let service = HermesService(relayTransport: FakeHermesRelayTransport())
         service.connections = [.localDefault, relayConnection()]
 
+        XCTAssertTrue(service.hasPendingRelaySuggestion)
         XCTAssertTrue(service.connectToSuggestedRelay(refresh: false))
         XCTAssertEqual(service.selectedConnection.id, "relay-mac")
+        XCTAssertFalse(service.hasPendingRelaySuggestion)
+    }
+
+    func testPendingRelaySuggestionRequiresDifferentSelectedHost() {
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        let relay = relayConnection()
+        service.connections = [.localDefault, relay]
+
+        XCTAssertTrue(service.hasPendingRelaySuggestion)
+
+        XCTAssertTrue(service.selectConnection(relay, refresh: false))
+        XCTAssertFalse(service.hasPendingRelaySuggestion)
+    }
+
+    func testSendAutoSelectsAvailableRelayWhenLocalHostIsOffline() async {
+        let relayTransport = FakeHermesRelayTransport()
+        relayTransport.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"relay ok"}}]}"#
+        ]
+        let service = HermesService(relayTransport: relayTransport)
+        let relay = relayConnection()
+        service.connections = [.localDefault, relay]
+        service.selectedConnection = .localDefault
+        service.isReachable = false
+
+        service.sendMessage("What model are you using?")
+        await waitForStreamToFinish(service)
+
+        XCTAssertEqual(service.selectedConnection.id, relay.id)
+        XCTAssertEqual(relayTransport.streamingPayloads.first?.connectionID, relay.id)
+        XCTAssertEqual(service.messages.last?.text, "relay ok")
+        XCTAssertFalse(service.hasPendingRelaySuggestion)
+    }
+
+    func testRefreshConnectionsReadsFirestoreBackedRelayRepository() async {
+        let relay = relayConnection()
+        let repository = FakeHermesConnectionRepository(connections: [relay])
+        let service = HermesService(
+            connectionRepository: repository,
+            relayTransport: FakeHermesRelayTransport()
+        )
+
+        await service.refreshConnections()
+
+        XCTAssertEqual(repository.listCallCount, 1)
+        XCTAssertEqual(service.connections.map(\.id), [
+            HermesConnectionRecord.localDefault.id,
+            relay.id
+        ])
+        XCTAssertEqual(service.suggestedRelayConnection?.id, relay.id)
+        XCTAssertNil(service.runtimeErrorText)
+    }
+
+    func testRefreshConnectionsSurfacesDiscoveryError() async {
+        let repository = FakeHermesConnectionRepository(error: URLError(.cannotFindHost))
+        let service = HermesService(
+            connectionRepository: repository,
+            relayTransport: FakeHermesRelayTransport()
+        )
+
+        await service.refreshConnections()
+
+        XCTAssertEqual(service.connections.map(\.id), [HermesConnectionRecord.localDefault.id])
+        XCTAssertTrue(service.runtimeErrorText?.contains("Could not load Hermes connections") ?? false)
+    }
+
+    func testFirestoreConnectionDocumentDecoderMatchesPublishedRelayShape() throws {
+        let privateKey = HermesRelayCrypto.generatePrivateKey()
+        let now = Date()
+        let record = try XCTUnwrap(FirestoreHermesConnectionRepository.decodeConnectionDocument(
+            [
+                "displayName": "Alberto's MacBook Pro Hermes Relay",
+                "mode": "relayLink",
+                "status": "online",
+                "advertisedModel": "hermes",
+                "relayPublicKey": privateKey.publicKeyBase64,
+                "relayKeyVersion": HermesRelayCrypto.keyVersion,
+                "relayEncryption": HermesRelayCrypto.algorithm,
+                "capabilities": ["chat_completions", "remote_relay"],
+                "createdAt": now,
+                "updatedAt": now,
+                "lastSeenAt": now,
+                "schemaVersion": 1
+            ],
+            documentID: "relay-mac"
+        ))
+
+        XCTAssertEqual(record.id, "relay-mac")
+        XCTAssertEqual(record.mode, .relayLink)
+        XCTAssertEqual(record.status, .online)
+        XCTAssertEqual(record.relayPublicKey, privateKey.publicKeyBase64)
+        XCTAssertEqual(record.relayEncryption, HermesRelayCrypto.algorithm)
+    }
+
+    func testFirestoreConnectionDocumentDecoderSkipsRevokedRelay() throws {
+        let record = try FirestoreHermesConnectionRepository.decodeConnectionDocument(
+            [
+                "displayName": "Revoked Relay",
+                "mode": "relayLink",
+                "status": "revoked",
+                "capabilities": [],
+                "createdAt": Date(),
+                "updatedAt": Date(),
+                "schemaVersion": 1
+            ],
+            documentID: "relay-revoked"
+        )
+
+        XCTAssertNil(record)
     }
 
     func testRelayStreamingParsesTextAndToolCalls() async {
@@ -153,6 +263,80 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(service.messages.last?.text, "Hello")
         XCTAssertEqual(service.messages.last?.toolCalls.first?.name, "read_file")
         XCTAssertFalse(service.isStreaming)
+    }
+
+    func testRelayStreamingAccumulatesCurrentConversationTokenBurn() async {
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"Hello"}}]}"#,
+            #"data: {"choices":[{"delta":{}}],"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("Use the relay")
+        await waitForStreamToFinish(service)
+
+        XCTAssertEqual(service.currentConversationTokenBurn, 14)
+        service.clearChat()
+        XCTAssertEqual(service.currentConversationTokenBurn, 0)
+    }
+
+    func testFavoriteModelsPersistAndSelectedModelUsesServiceAPI() {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let option = HermesRuntimeModelOption(
+            providerID: "zai",
+            providerName: "Z.AI",
+            modelID: "glm-5",
+            displayName: "GLM-5"
+        )
+        let service = HermesService(relayTransport: FakeHermesRelayTransport(), defaults: defaults)
+        service.modelOptions = [option]
+
+        service.toggleFavoriteModel(option)
+        service.selectModel(option)
+
+        let restored = HermesService(relayTransport: FakeHermesRelayTransport(), defaults: defaults)
+        restored.modelOptions = [option]
+        XCTAssertEqual(restored.favoriteModelIDs, ["glm-5"])
+        XCTAssertEqual(restored.favoriteModelOptions.map(\.modelID), ["glm-5"])
+        XCTAssertEqual(restored.selectedModelID, "glm-5")
+    }
+
+    func testRelayStreamingParsesAggregatedCRLFSSEPayload() async {
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\r\n\r\ndata: {\"choices\":[{\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\r\n\r\ndata: {\"choices\":[{\"delta\":{\"content\":\" relay\"},\"finish_reason\":null}]}\r\n\r\ndata: [DONE]\r\n\r\n"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("Use the relay")
+        await waitForStreamToFinish(service)
+
+        XCTAssertEqual(service.messages.last?.text, "Hello relay")
+        XCTAssertFalse(service.messages.last?.isError ?? true)
+    }
+
+    func testRelayStreamingParsesCollapsedDataLinePayload() async {
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n" +
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Hey\"},\"finish_reason\":null}]}\n" +
+            "data: {\"choices\":[{\"delta\":{\"content\":\" there\"},\"finish_reason\":null}]}\n" +
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("Use the relay")
+        await waitForStreamToFinish(service)
+
+        XCTAssertEqual(service.messages.last?.text, "Hey there")
+        XCTAssertFalse(service.messages.last?.isError ?? true)
     }
 
     func testRelayStreamingSurfacesJSONErrorEvent() async {
@@ -420,6 +604,26 @@ private final class FakeHermesSecretStore: HermesConnectionSecretStoring {
 
     func delete(connectionID: String) throws {
         values.removeValue(forKey: connectionID)
+    }
+}
+
+@MainActor
+private final class FakeHermesConnectionRepository: HermesConnectionListing {
+    private let connections: [HermesConnectionRecord]
+    private let error: Error?
+    private(set) var listCallCount = 0
+
+    init(connections: [HermesConnectionRecord] = [], error: Error? = nil) {
+        self.connections = connections
+        self.error = error
+    }
+
+    func listHermesConnections() async throws -> [HermesConnectionRecord] {
+        listCallCount += 1
+        if let error {
+            throw error
+        }
+        return connections
     }
 }
 

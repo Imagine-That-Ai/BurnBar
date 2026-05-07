@@ -363,8 +363,8 @@ struct ModelDashboardView: View {
     }
 
     private var primaryMetric: String {
-        let cost = usages.reduce(0) { $0 + $1.cost }
-        let tokens = usages.reduce(0) { $0 + $1.totalTokens }
+        let cost = modelSummary?.totalCost ?? usages.reduce(0) { $0 + $1.cost }
+        let tokens = modelSummary?.totalTokens ?? usages.reduce(0) { $0 + $1.totalTokens }
         return settingsManager.formatUsageMetric(cost: cost, tokens: tokens)
     }
 
@@ -408,20 +408,20 @@ struct ModelDashboardView: View {
     }
 
     private var averageSessionMetric: String {
-        guard !usages.isEmpty else {
+        let count = modelSummary?.sessionCount ?? usages.count
+        guard count > 0 else {
             return settingsManager.usageDisplayMode == .currency ? "$0.00" : "0"
         }
         if settingsManager.usageDisplayMode == .currency {
-            return (usages.reduce(0) { $0 + $1.cost } / Double(usages.count)).formatAsCost()
+            return ((modelSummary?.totalCost ?? usages.reduce(0) { $0 + $1.cost }) / Double(count)).formatAsCost()
         }
-        return (usages.reduce(0) { $0 + $1.totalTokens } / usages.count).formatAsTokenVolume()
+        return ((modelSummary?.totalTokens ?? usages.reduce(0) { $0 + $1.totalTokens }) / count).formatAsTokenVolume()
     }
 
     private var topAgents: [ProviderUsage] {
-        let summary = dataStore.modelSummaries(in: timeRange.dateRange()).first(where: { $0.modelName == modelName })
         return Array(
             DashboardUsageRanking.sortedProviderUsages(
-                summary?.providerBreakdown ?? [],
+                modelSummary?.providerBreakdown ?? [],
                 displayMode: settingsManager.usageDisplayMode
             )
             .prefix(5)
@@ -433,11 +433,7 @@ struct ModelDashboardView: View {
     }
 
     private func agentSharePercentage(_ provider: ProviderUsage) -> Double {
-        guard let summary = dataStore
-            .modelSummaries(in: timeRange.dateRange())
-            .first(where: { $0.modelName == modelName }) else {
-            return 0
-        }
+        guard let summary = modelSummary else { return 0 }
         return DashboardUsageRanking.providerUsagePercentage(
             provider,
             in: summary,
@@ -447,12 +443,16 @@ struct ModelDashboardView: View {
 
     /// Aggregate cache reuse for this model in the active window.
     private var modelCacheEfficiency: CacheEfficiency {
-        if let summary = dataStore
-            .modelSummaries(in: timeRange.dateRange())
-            .first(where: { $0.modelName == modelName }) {
+        if let summary = modelSummary {
             return summary.cacheEfficiency
         }
         return CacheEfficiency.aggregate(usages)
+    }
+
+    private var modelSummary: ModelSummary? {
+        dataStore
+            .modelSummaries(for: timeRange)
+            .first(where: { $0.modelName == modelName })
     }
 
     private func modelMetric(label: String, value: String) -> some View {

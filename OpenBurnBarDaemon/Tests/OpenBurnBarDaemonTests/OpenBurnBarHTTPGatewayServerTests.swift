@@ -5,6 +5,11 @@ import Foundation
 import XCTest
 
 final class BurnBarHTTPGatewayServerTests: XCTestCase {
+    override func tearDown() {
+        GatewayUpstreamURLProtocol.reset()
+        super.tearDown()
+    }
+
     func testGatewayConfigurationValidationRejectsUnsafeHosts() {
         XCTAssertEqual(
             BurnBarGatewayConfiguration(isEnabled: true, host: "0.0.0.0", port: 8317, authToken: nil).validationError,
@@ -150,6 +155,191 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertNotNil(throttledResponse.value(forHTTPHeaderField: "Retry-After"))
     }
 
+    func testGatewayProxiesChatCompletionsAndFailsOverExhaustedPlan() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 402,
+            body: #"{"error":{"message":"quota exceeded"}}"#
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "chatcmpl-test",
+              "object": "chat.completion",
+              "model": "glm-5-turbo",
+              "choices": [
+                {"message": {"role": "assistant", "content": "backup plan answered"}}
+              ],
+              "usage": {
+                "prompt_tokens": 11,
+                "completion_tokens": 7,
+                "total_tokens": 18
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"glm-5-turbo","messages":[{"role":"user","content":"hello"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("backup plan answered"))
+
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.count, 2)
+        XCTAssertEqual(upstreamRequests[0].authorization, "Bearer primary-key")
+        XCTAssertEqual(upstreamRequests[1].authorization, "Bearer backup-key")
+        XCTAssertTrue(upstreamRequests.allSatisfy { $0.body.contains(#""model":"glm-5-turbo""#) })
+
+        let snapshot = try await harness.configStore.snapshot()
+        let slots = try XCTUnwrap(snapshot.providerSettings(id: "zai")?.credentialSlots)
+        XCTAssertEqual(slots.first(where: { $0.slotID == "primary" })?.status, .exhausted)
+        XCTAssertEqual(slots.first(where: { $0.slotID == "backup" })?.status, .ready)
+
+        let usage = try await harness.usageRecorder.recentUsage(limit: 5)
+        XCTAssertEqual(usage.count, 1)
+        XCTAssertEqual(usage[0].providerID, "zai")
+        XCTAssertEqual(usage[0].modelID, "glm-5-turbo")
+        XCTAssertEqual(usage[0].inputTokens, 11)
+        XCTAssertEqual(usage[0].outputTokens, 7)
+    }
+
+    func testGatewayRoutesOllamaCloudThroughNativeAPIAndFailsOverSlots() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 429,
+            body: #"{"error":"quota exhausted"}"#
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "model": "deepseek-v4-flash",
+              "created_at": "2026-05-06T00:00:00Z",
+              "message": {"role": "assistant", "content": "ollama backup answered"},
+              "done": true,
+              "done_reason": "stop",
+              "prompt_eval_count": 13,
+              "eval_count": 5
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+        )
+        try await harness.configureOllamaProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"deepseek-v4-flash:cloud","messages":[{"role":"user","content":"hello"}],"stream":false,"reasoning_effort":"high","stream_options":{"include_usage":true},"max_completion_tokens":64}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        XCTAssertEqual(response.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("ollama backup answered"))
+        XCTAssertTrue(bodyText.contains(#""prompt_tokens":13"#))
+        XCTAssertTrue(bodyText.contains(#""completion_tokens":5"#))
+
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.count, 2)
+        XCTAssertTrue(upstreamRequests.allSatisfy { $0.path == "/api/chat" })
+        XCTAssertEqual(upstreamRequests[0].authorization, "Bearer primary-ollama-key")
+        XCTAssertEqual(upstreamRequests[1].authorization, "Bearer backup-ollama-key")
+        XCTAssertTrue(upstreamRequests.allSatisfy { $0.body.contains(#""model":"deepseek-v4-flash""#) })
+        XCTAssertTrue(upstreamRequests.allSatisfy { !$0.body.contains(#""deepseek-v4-flash:cloud""#) })
+        XCTAssertTrue(upstreamRequests.allSatisfy { $0.body.contains(#""think":"high""#) })
+        XCTAssertTrue(upstreamRequests.allSatisfy { $0.body.contains(#""num_predict":64"#) })
+        XCTAssertTrue(upstreamRequests.allSatisfy { !$0.body.contains("reasoning_effort") })
+        XCTAssertTrue(upstreamRequests.allSatisfy { !$0.body.contains("stream_options") })
+
+        let snapshot = try await harness.configStore.snapshot()
+        let slots = try XCTUnwrap(snapshot.providerSettings(id: "ollama")?.credentialSlots)
+        XCTAssertEqual(slots.first(where: { $0.slotID == "primary" })?.status, .exhausted)
+        XCTAssertEqual(slots.first(where: { $0.slotID == "backup" })?.status, .ready)
+
+        let usage = try await harness.usageRecorder.recentUsage(limit: 5)
+        XCTAssertEqual(usage.count, 1)
+        XCTAssertEqual(usage[0].providerID, "ollama")
+        XCTAssertEqual(usage[0].modelID, "deepseek-v4-flash")
+        XCTAssertEqual(usage[0].inputTokens, 13)
+        XCTAssertEqual(usage[0].outputTokens, 5)
+    }
+
+    func testStructuredExecutorRoutesOllamaCloudThroughNativeAPI() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "model": "deepseek-v4-flash",
+              "created_at": "2026-05-06T00:00:00Z",
+              "message": {"role": "assistant", "content": "{\\"ok\\":true}"},
+              "done": true,
+              "done_reason": "stop",
+              "prompt_eval_count": 21,
+              "eval_count": 8
+            }
+            """
+        )
+
+        let executor = BurnBarOpenAICompatibleProviderExecutor(session: session)
+        let result = try await executor.completeStructured(
+            BurnBarStructuredPromptRequest(
+                systemPrompt: "Return JSON.",
+                userPrompt: "Say OK.",
+                jsonOnly: true
+            ),
+            route: BurnBarProviderRoute(
+                providerID: "ollama",
+                providerDisplayName: "Ollama Cloud",
+                baseURL: "https://gateway-upstream.test/api",
+                requestedModel: "deepseek-v4-flash:cloud",
+                resolvedModelID: "deepseek-v4-flash",
+                apiKey: "ollama-key",
+                pricing: .defaultFallback
+            )
+        )
+
+        XCTAssertEqual(result.outputText, #"{"ok":true}"#)
+        XCTAssertEqual(result.inputTokens, 21)
+        XCTAssertEqual(result.outputTokens, 8)
+
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.count, 1)
+        XCTAssertEqual(upstreamRequests[0].path, "/api/chat")
+        XCTAssertEqual(upstreamRequests[0].authorization, "Bearer ollama-key")
+        XCTAssertTrue(upstreamRequests[0].body.contains(#""format":"json""#))
+        XCTAssertTrue(upstreamRequests[0].body.contains(#""model":"deepseek-v4-flash""#))
+        XCTAssertFalse(upstreamRequests[0].body.contains("chat/completions"))
+    }
+
     private func sendGatewayRequest(
         port: Int,
         method: String,
@@ -254,19 +444,29 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
 private final class GatewayHarness {
     let port: Int
+    let configStore: BurnBarConfigStore
+    let usageRecorder: BurnBarUsageRecorder
     private let server: BurnBarHTTPGatewayServer
 
-    init(authToken: String? = nil, rateLimit: BurnBarRateLimitConfiguration? = nil) throws {
+    init(
+        authToken: String? = nil,
+        rateLimit: BurnBarRateLimitConfiguration? = nil,
+        providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor()
+    ) throws {
         self.port = try Self.reservePort()
 
         let tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-gateway-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
 
-        let configStore = BurnBarConfigStore(
+        self.configStore = BurnBarConfigStore(
             fileURL: tempDirectory.appendingPathComponent("provider-config.json"),
             catalog: BurnBarCatalogLoader.bundledCatalog,
             secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "gateway-tests")
+        )
+        self.usageRecorder = BurnBarUsageRecorder(
+            fileURL: tempDirectory.appendingPathComponent("usage-ledger.jsonl"),
             logger: BurnBarDaemonLogger(category: "gateway-tests")
         )
 
@@ -279,7 +479,57 @@ private final class GatewayHarness {
                 rateLimit: rateLimit
             ),
             configStore: configStore,
+            usageRecorder: usageRecorder,
+            providerExecutor: providerExecutor,
             logger: BurnBarDaemonLogger(category: "gateway-tests")
+        )
+    }
+
+    func configureZAIProviderForGateway() async throws {
+        _ = try await configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["glm-5-turbo"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "primary",
+            label: "Primary",
+            apiKey: "primary-key"
+        )
+        _ = try await configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "backup",
+            label: "Backup",
+            apiKey: "backup-key"
+        )
+    }
+
+    func configureOllamaProviderForGateway() async throws {
+        _ = try await configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/api",
+                preferredModelIDs: ["deepseek-v4-flash"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await configStore.upsertCredentialSlot(
+            providerID: "ollama",
+            slotID: "primary",
+            label: "Primary",
+            apiKey: "primary-ollama-key"
+        )
+        _ = try await configStore.upsertCredentialSlot(
+            providerID: "ollama",
+            slotID: "backup",
+            label: "Backup",
+            apiKey: "backup-ollama-key"
         )
     }
 
@@ -325,5 +575,94 @@ private final class GatewayHarness {
         }
 
         return Int(UInt16(bigEndian: address.sin_port))
+    }
+}
+
+private struct GatewayUpstreamRequest: Hashable {
+    let authorization: String?
+    let path: String
+    let body: String
+}
+
+private final class GatewayUpstreamURLProtocol: URLProtocol {
+    private struct Response {
+        let status: Int
+        let body: Data
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var queuedResponses: [Response] = []
+    nonisolated(unsafe) private static var requests: [GatewayUpstreamRequest] = []
+
+    static func enqueue(status: Int, body: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        queuedResponses.append(Response(status: status, body: Data(body.utf8)))
+    }
+
+    static func recordedRequests() -> [GatewayUpstreamRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return requests
+    }
+
+    static func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        queuedResponses = []
+        requests = []
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        request.url?.host == "gateway-upstream.test"
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        Self.lock.lock()
+        let response = Self.queuedResponses.isEmpty
+            ? Response(status: 500, body: Data(#"{"error":"missing fixture"}"#.utf8))
+            : Self.queuedResponses.removeFirst()
+        Self.requests.append(
+            GatewayUpstreamRequest(
+                authorization: request.value(forHTTPHeaderField: "Authorization"),
+                path: request.url?.path ?? "",
+                body: Self.bodyString(from: request)
+            )
+        )
+        Self.lock.unlock()
+
+        let httpResponse = HTTPURLResponse(
+            url: request.url!,
+            statusCode: response.status,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: httpResponse, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: response.body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    private static func bodyString(from request: URLRequest) -> String {
+        if let body = request.httpBody {
+            return String(data: body, encoding: .utf8) ?? ""
+        }
+        guard let stream = request.httpBodyStream else { return "" }
+        stream.open()
+        defer { stream.close() }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count <= 0 { break }
+            data.append(contentsOf: buffer.prefix(count))
+        }
+        return String(data: data, encoding: .utf8) ?? ""
     }
 }

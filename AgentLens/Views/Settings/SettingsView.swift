@@ -13,6 +13,7 @@ struct SettingsView: View {
     var dataStore: DataStore
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: SettingsTab? = .general
+    @State private var presentationWindow: NSWindow?
 
     init(
         settingsManager: SettingsManager,
@@ -65,6 +66,7 @@ struct SettingsView: View {
         )
         .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(settingsManager)
+        .background(SettingsWindowReader(window: $presentationWindow))
     }
 
     @ViewBuilder
@@ -88,10 +90,7 @@ struct SettingsView: View {
                 isAnonymous: accountManager.isAnonymousUser,
                 isFirebaseAvailable: accountManager.isFirebaseAvailable,
                 onLinkGoogle: {
-                    guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
-                        throw AccountActionError.missingPresentationWindow
-                    }
-                    try await accountManager.signInWithGoogle(presentingWindow: window)
+                    try await accountManager.signInWithGoogle(presentingWindow: authPresentationWindow())
                 },
                 onEmailSignIn: { email, password in
                     try await accountManager.signInWithEmail(email: email, password: password)
@@ -100,10 +99,7 @@ struct SettingsView: View {
                     try await accountManager.signUpWithEmail(email: email, password: password)
                 },
                 onLinkApple: {
-                    guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
-                        throw AccountActionError.missingPresentationWindow
-                    }
-                    try await accountManager.signInWithApple(presentingWindow: window)
+                    try await accountManager.signInWithApple(presentingWindow: authPresentationWindow())
                 },
                 onUpgradeToPremium: {
                     if let url = URL(string: "macappstore://apps.apple.com/app/idYOUR_APP_ID") {
@@ -148,8 +144,39 @@ struct SettingsView: View {
                 .navigationTitle("Hermes")
         }
     }
+
+    private func authPresentationWindow() throws -> NSWindow {
+        let candidates = [presentationWindow, NSApp.keyWindow, NSApp.mainWindow]
+            + NSApp.windows.filter { $0.title == "Settings" || $0.isVisible }
+        guard let window = candidates.compactMap({ $0 }).first(where: { $0.isVisible && !$0.isMiniaturized }) else {
+            throw AccountActionError.missingPresentationWindow
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        return window
+    }
 }
 
+
+private struct SettingsWindowReader: NSViewRepresentable {
+    @Binding var window: NSWindow?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async {
+            window = view.window
+        }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async {
+            if window !== view.window {
+                window = view.window
+            }
+        }
+    }
+}
 private enum AccountActionError: LocalizedError {
     case missingPresentationWindow
 

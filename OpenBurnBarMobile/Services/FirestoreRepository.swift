@@ -60,13 +60,15 @@ final class FirestoreRepository {
     /// Recursively converts Firestore-native types into JSON-serializable
     /// equivalents so `JSONSerialization.data(withJSONObject:)` does not throw.
     ///
-    /// - `Timestamp` → `timeIntervalSinceReferenceDate` Double
+    /// - `Timestamp`/`Date` → `timeIntervalSinceReferenceDate` Double
     /// - ISO 8601 date strings (e.g. `computedAt`, `fetchedAt`) → Double
     /// - Nested dicts/arrays → recursively sanitized
     nonisolated func sanitizeForJSON(_ value: Any) -> Any {
         switch value {
         case let ts as Timestamp:
             return ts.dateValue().timeIntervalSinceReferenceDate
+        case let date as Date:
+            return date.timeIntervalSinceReferenceDate
         case let s as String where Self.isISODateString(s):
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

@@ -19,6 +19,22 @@ final class QuotaSettings {
         didSet { persistence.set(tokenizerAssistedFallbackEnabled, forKey: "tokenizerAssistedFallbackEnabled") }
     }
 
+    var smartHubQuotaDisplayEnabled: Bool = false {
+        didSet { persistence.set(smartHubQuotaDisplayEnabled, forKey: "smartHubQuotaDisplayEnabled") }
+    }
+
+    var smartHubQuotaDashboardURL: String = "http://127.0.0.1:8787/render.html" {
+        didSet { persistence.set(smartHubQuotaDashboardURL, forKey: "smartHubQuotaDashboardURL") }
+    }
+
+    var smartHubQuotaRefreshURL: String = "http://127.0.0.1:8787/refresh" {
+        didSet { persistence.set(smartHubQuotaRefreshURL, forKey: "smartHubQuotaRefreshURL") }
+    }
+
+    var smartHubQuotaVoiceRefreshURL: String = "http://127.0.0.1:8787/voice-refresh" {
+        didSet { persistence.set(smartHubQuotaVoiceRefreshURL, forKey: "smartHubQuotaVoiceRefreshURL") }
+    }
+
     init(persistence: SettingsPersistenceCoordinator) {
         self.persistence = persistence
         if let billingModeRaw = persistence.optionalString(forKey: "miniMaxQuotaMode"),
@@ -38,5 +54,18 @@ final class QuotaSettings {
         } else {
             self.tokenizerAssistedFallbackEnabled = false
         }
+        self.smartHubQuotaDisplayEnabled = persistence.bool(forKey: "smartHubQuotaDisplayEnabled")
+        self.smartHubQuotaDashboardURL = persistence.string(
+            forKey: "smartHubQuotaDashboardURL",
+            defaultValue: "http://127.0.0.1:8787/render.html"
+        )
+        self.smartHubQuotaRefreshURL = persistence.string(
+            forKey: "smartHubQuotaRefreshURL",
+            defaultValue: "http://127.0.0.1:8787/refresh"
+        )
+        self.smartHubQuotaVoiceRefreshURL = persistence.string(
+            forKey: "smartHubQuotaVoiceRefreshURL",
+            defaultValue: "http://127.0.0.1:8787/voice-refresh"
+        )
     }
 }

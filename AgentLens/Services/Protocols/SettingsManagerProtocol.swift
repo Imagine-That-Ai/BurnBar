@@ -207,6 +207,18 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Factory quota plan tier.
     var factoryQuotaPlanTier: FactoryQuotaPlanTier { get set }
 
+    /// Whether the smart hub quota display integration is enabled.
+    var smartHubQuotaDisplayEnabled: Bool { get set }
+
+    /// Smart hub dashboard URL.
+    var smartHubQuotaDashboardURL: String { get set }
+
+    /// Smart hub refresh endpoint URL.
+    var smartHubQuotaRefreshURL: String { get set }
+
+    /// Smart hub voice-refresh endpoint URL.
+    var smartHubQuotaVoiceRefreshURL: String { get set }
+
     // MARK: - Artifact Discovery
 
     /// Whether artifact discovery is enabled.

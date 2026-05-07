@@ -5,7 +5,46 @@ All notable changes to OpenBurnBar are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — iPadOS Port Phase 2 Hardening (2026-05-02)
+## [Unreleased]
+
+### Fixed
+- **iOS provider connect now actually works for MiniMax, Z.ai, and Factory.**
+  The cloud function adapters were calling endpoints that no longer exist
+  (MiniMax `api.minimax.chat/v1/user/info` → 404, Factory `api.tryforge.io` →
+  NXDOMAIN), so every paste in `Add MiniMax` (and friends) bounced to the
+  generic "Couldn't connect" failure screen. Replaced them with the
+  current production endpoints used by the macOS app:
+  - MiniMax → `https://www.minimax.io/v1/token_plan/remains` (with
+    `coding_plan/remains` as a fallback when the user pastes an `sk-cp-…`
+    Coding Plan key). Inline `base_resp.status_code` errors are now surfaced
+    instead of being treated as success.
+  - Z.ai → `https://api.z.ai/api/paas/v4/models` for validation, with
+    automatic fallback to `open.bigmodel.cn`. Quota now reads from
+    `monitor/usage/quota/limit` (Coding Plan windows) with the
+    pay-as-you-go `user/balance` endpoint as a backup.
+  - Factory → `https://api.factory.ai/api/app/auth/me` for validation and
+    `/api/organization/subscription/usage?useCache=true` for quota lanes.
+  Server callable errors are now wrapped in `HttpsError` with the actual
+  upstream message (e.g. "login fail: Please carry the API secret key…")
+  instead of bare `Error("invalid-argument: …")` strings that surfaced as
+  generic INTERNAL errors on iOS.
+- **iOS connect picker now matches the backend.** The mobile catalog
+  previously listed `kimi`, `warp`, and `copilot` as connectable providers,
+  but the cloud function had no adapters for them and rejected every
+  attempt at the `assertProvider` check. Trimmed the catalog to the
+  providers the server can validate end-to-end (Claude Code, Codex,
+  Factory, Cursor, MiniMax, Z.ai, OpenAI). Updated the recommended
+  ordering and the MiniMax/Z.ai onboarding copy with the real dashboard
+  URLs.
+
+### Added
+- **`functions/scripts/test-providers.mjs` regression tests** for each
+  rewritten adapter: validation against the right host, auth-failure
+  short-circuits, coding-plan vs token-plan key routing for MiniMax,
+  api.z.ai → bigmodel.cn fallback for Z.ai, and Factory's `detail` error
+  passthrough. Wired into `npm test`.
+
+## [Released earlier] — iPadOS Port Phase 2 Hardening (2026-05-02)
 
 ### Changed
 - **Responsiveness/performance pass:** dashboard usage now caches date-window
@@ -40,8 +79,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   between the wizard and manual surfaces. The "Available providers" list now shows
   a one-line setup hint per provider (e.g. *Cursor — "Sign in once, then we capture
   the cookie"*) so the list reads as a menu, not a wall of avatars.
+- **Factory and OpenCode routed-client sync:** the provider gateway now proxies
+  real `/v1/chat/completions` traffic through quota-aware route ranking and
+  failover, and the macOS app can write OpenBurnBar Gateway entries into Factory
+  and OpenCode configs so those clients share exhausted-plan rotation with Cursor.
+- **Ollama Cloud routed provider:** Ollama Cloud is now a catalog-backed upstream
+  for the same gateway path, including API-key slot rotation, `:cloud`/`-cloud`
+  alias handling, native `/api/chat` proxy translation, and exhausted-plan
+  failover for Cursor, Factory, and OpenCode.
 
 ### Fixed
+- **Google SSO keychain recovery:** Firebase Auth now binds to the app's
+  runtime Keychain access group before cloud auth. Google SSO also clears stale
+  GoogleSignIn/Firebase Auth Keychain rows before retrying credential saves that
+  failed with a Keychain access error.
+- **Hermes Remote Relay App Check handoff:** debug/local Mac and iOS builds now
+  export the App Check debug token from `GoogleService-Info.plist` before Firebase
+  initializes, so a signed-in Mac can publish its encrypted relay record for
+  mobile discovery instead of falling through to rejected DeviceCheck requests.
+- **Usage history no longer appears capped at 5,000 sessions:** dashboard
+  refreshes now hydrate the recent 5,000 rows first for fast startup, then
+  complete with an uncapped database read so all-time totals and session counts
+  converge to the full local history.
 - **Dashboard agent/model ranking correctness:** token mode now ranks providers,
   models, and model/provider drill-down stacks by token volume instead of
   spend; currency mode still ranks by spend. Kimi imports now reject
