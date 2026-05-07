@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **iOS Pulse: Trend Atlas + Chart Studio.** Replaced the single-purpose
+  `TrendSparkCard` with a tap-driven canvas system.
+  - **Trend Atlas card** rotates three intricate scenes — provider-stacked
+    stream graph with hour-of-day heat strip, "Lane Racer" model board with
+    embedded sparklines and tok/s velocity, and a cache-hit constellation
+    with ideal/actual guide rules. An auto-rotating insight strip below
+    pulls from a 9-rule `TrendInsightEngine` (cache low/high, provider
+    dominance, reasoning spikes, model champion, peak hour, weekend burn,
+    writing speed, etc.).
+  - **Chart Studio** is a full-screen AI canvas. Hermes streams back a
+    typed JSON envelope that decodes to one of: native Swift Charts (10
+    kinds — line, bar, stacked_bar, area, stacked_area, stream, scatter,
+    heatmap, donut, rule), sandboxed Mermaid (offline `mermaid.min.js`
+    11.4.1 in a `WKWebView`, sanitized against `<script>`, `javascript:`,
+    inline `on*=` handlers), an "insight" narrative card, or a vertical
+    `composed` stack of any of the above.
+  - **Plumbing:** capped (≤12 KB) `TrendDataDigest` of rollups + recent
+    sessions, strict JSON-only `ChartStudioPromptEngine` system prompt
+    with three worked examples, and a `ChartStudioHermesBridge` SSE
+    one-shot that does **not** pollute the main Hermes chat history.
+    Recent canvases persist via `ChartStudioStore`.
+  - **Docs:** [`docs/CHART_STUDIO.md`](docs/CHART_STUDIO.md) covers the
+    wire format and architecture.
+  - **Tests:** 22 new tests across `TrendDataDigestTests`,
+    `TrendInsightEngineTests`, `ChartSpecRendererTests`,
+    `MermaidSanitizationTests`, and `ChartStudioPromptEngineTests`. Full
+    mobile suite: 180 passed, 2 skipped, 0 failed.
+
 ### Fixed
 - **iOS provider connect now actually works for MiniMax, Z.ai, and Factory.**
   The cloud function adapters were calling endpoints that no longer exist

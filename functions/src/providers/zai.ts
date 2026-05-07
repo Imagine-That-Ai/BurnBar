@@ -294,26 +294,39 @@ export const zaiAdapter: ProviderAdapter = {
 function bucketsFromMonitorQuota(
   payload: ZaiMonitorQuotaPayload | undefined
 ): QuotaBucket[] {
-  const list = payload?.data?.quotaList ?? payload?.quotaList;
-  if (!Array.isArray(list)) return [];
+  if (!payload) return [];
 
-  return list
-    .map((row, index): QuotaBucket | undefined => {
-      const used = numberFromAny(row.used) ?? 0;
-      const limit = numberFromAny(row.limit) ?? -1;
-      const remaining =
-        numberFromAny(row.remaining) ??
-        (limit >= 0 ? Math.max(0, limit - used) : -1);
-      const window = stringFromAny(row.window ?? row.windowName) ?? `window_${index + 1}`;
-      return {
-        name: window,
-        used,
-        limit,
-        remaining,
-        window,
-      };
-    })
-    .filter((bucket): bucket is QuotaBucket => bucket !== undefined);
+  // First, try the documented shapes (`data.quotaList` / top-level
+  // `quotaList`) so well-behaved deployments produce the cleanest output.
+  const list = payload.data?.quotaList ?? payload.quotaList;
+  if (Array.isArray(list) && list.length > 0) {
+    return list
+      .map((row, index): QuotaBucket | undefined => {
+        const used = numberFromAny(row.used) ?? 0;
+        const limit = numberFromAny(row.limit) ?? -1;
+        const remaining =
+          numberFromAny(row.remaining) ??
+          (limit >= 0 ? Math.max(0, limit - used) : -1);
+        const window =
+          stringFromAny(row.window ?? row.windowName) ?? `window_${index + 1}`;
+        return {
+          name: window,
+          used,
+          limit,
+          remaining,
+          window,
+        };
+      })
+      .filter((bucket): bucket is QuotaBucket => bucket !== undefined);
+  }
+
+  // Fallback: walk every nested object and synthesize a bucket from any node
+  // that carries `{used, limit}` / `{used_num, total_num}` / similar pairs.
+  // This mirrors the permissive detector the macOS adapter uses so users on
+  // Z.ai Coding Plan tiers that ship newer payload shapes still see a quota
+  // tile instead of a blank dashboard.
+  const harvested = harvestQuotaBuckets(payload);
+  return harvested;
 }
 
 function bucketsFromBalance(
@@ -351,6 +364,149 @@ function bucketsFromBalance(
     ];
   }
   return [];
+}
+
+/**
+ * Recursively walks a JSON payload and synthesizes `QuotaBucket`s from any
+ * node that exposes a (used, limit, remaining) triple under one of the many
+ * spellings Z.ai (and similar Chinese AI infra APIs) like to ship. Mirrors
+ * the macOS `FlexibleQuotaBucketNormalizer` heuristics in spirit so a single
+ * connected key returns the same dashboard tiles whether the user opens
+ * BurnBar on Mac or iPhone.
+ */
+function harvestQuotaBuckets(payload: unknown): QuotaBucket[] {
+  const buckets: QuotaBucket[] = [];
+  const seen = new Set<string>();
+
+  function walk(node: unknown, path: string[]): void {
+    if (!node || typeof node !== "object") return;
+
+    if (Array.isArray(node)) {
+      node.forEach((item, idx) => walk(item, [...path, `[${idx}]`]));
+      return;
+    }
+
+    const obj = node as Record<string, unknown>;
+    const candidate = bucketFromObject(obj, path);
+    if (candidate) {
+      const key = `${candidate.name}|${candidate.window}|${candidate.limit}|${candidate.used}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        buckets.push(candidate);
+      }
+    }
+
+    for (const [k, v] of Object.entries(obj)) {
+      if (v && typeof v === "object") {
+        walk(v, [...path, k]);
+      }
+    }
+  }
+
+  walk(payload, []);
+  return buckets;
+}
+
+function pickNumber(
+  source: Record<string, unknown>,
+  keys: readonly string[]
+): number | undefined {
+  for (const key of keys) {
+    const value = numberFromAny(source[key]);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function pickString(
+  source: Record<string, unknown>,
+  keys: readonly string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = stringFromAny(source[key]);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+const USED_KEYS = [
+  "used", "used_num", "usedNum", "currentUsage", "current_usage",
+  "currentValue", "current_value", "consumed", "consumed_num",
+  "consumedNum", "current", "requestUsed", "requestsUsed",
+  "current_interval_used_count", "currentIntervalUsedCount",
+  "usage", "use_count", "useCount",
+] as const;
+
+const LIMIT_KEYS = [
+  "limit", "limit_num", "limitNum", "total", "totalLimit", "total_limit",
+  "max", "maxValue", "max_value", "quota", "quotaLimit", "quota_limit",
+  "usageLimit", "usage_limit", "requestLimit", "requestsLimit",
+  "current_interval_total_count", "currentIntervalTotalCount", "total_num",
+  "totalNum", "max_count", "maxCount",
+] as const;
+
+const REMAINING_KEYS = [
+  "remaining", "remain", "remain_num", "remainNum", "remaining_quota",
+  "remainingQuota", "quota_remain", "quotaRemain", "remainingValue",
+  "available", "available_num", "availableNum", "left",
+  "current_interval_remaining_count", "currentIntervalRemainingCount",
+  "current_interval_remains_count", "currentIntervalRemainsCount",
+  "remain_count", "remainCount",
+] as const;
+
+const NAME_KEYS = [
+  "label", "title", "name", "model", "model_name", "modelName",
+  "resource", "resource_name", "resourceName", "quota_name", "quotaName",
+] as const;
+
+const WINDOW_KEYS = [
+  "window", "quota_cycle", "quotaCycle", "cycle", "period", "period_name",
+  "periodName", "type",
+] as const;
+
+function bucketFromObject(
+  obj: Record<string, unknown>,
+  path: string[]
+): QuotaBucket | undefined {
+  const used = pickNumber(obj, USED_KEYS);
+  const limit = pickNumber(obj, LIMIT_KEYS);
+  const remaining = pickNumber(obj, REMAINING_KEYS);
+
+  // Need at least one signal to call this a bucket.
+  if (used === undefined && limit === undefined && remaining === undefined) {
+    return undefined;
+  }
+
+  // Reject obvious non-bucket nodes (e.g. metadata maps with `total: 0`).
+  if (
+    (limit === undefined || limit <= 0) &&
+    (remaining === undefined || remaining <= 0) &&
+    (used === undefined || used <= 0)
+  ) {
+    return undefined;
+  }
+
+  const name =
+    pickString(obj, NAME_KEYS) ??
+    pickString(obj, WINDOW_KEYS) ??
+    path[path.length - 1] ??
+    "quota";
+
+  const window = pickString(obj, WINDOW_KEYS) ?? "account";
+
+  const finalUsed = used ?? (limit !== undefined && remaining !== undefined ? Math.max(0, limit - remaining) : 0);
+  const finalLimit = limit ?? -1;
+  const finalRemaining =
+    remaining ??
+    (finalLimit >= 0 && finalUsed >= 0 ? Math.max(0, finalLimit - finalUsed) : -1);
+
+  return {
+    name,
+    used: finalUsed,
+    limit: finalLimit,
+    remaining: finalRemaining,
+    window,
+  };
 }
 
 function numberFromAny(raw: unknown): number | undefined {

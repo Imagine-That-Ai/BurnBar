@@ -281,7 +281,126 @@ export function extractBuckets(
     ];
   }
 
-  return [];
+  // Last resort — recursively walk the payload for any node that looks like
+  // `{used, limit, remaining}` under one of MiniMax's many naming conventions
+  // (Coding Plan, Token Plan, Open Platform balances). The dashboard prefers
+  // a coarse-but-real bucket over a blank "no signal" state.
+  const harvested = harvestMiniMaxBuckets(payload);
+  return harvested;
+}
+
+const MINIMAX_USED_KEYS = [
+  "used", "used_num", "usedNum", "current_usage", "currentUsage",
+  "current", "consumed", "current_interval_used_count",
+  "currentIntervalUsedCount", "request_used", "requestsUsed",
+  "use_count", "useCount",
+] as const;
+
+const MINIMAX_LIMIT_KEYS = [
+  "total", "limit", "total_num", "totalNum", "max", "max_value",
+  "max_count", "maxCount", "quota", "quota_limit", "quotaLimit",
+  "request_limit", "requestLimit", "current_interval_total_count",
+  "currentIntervalTotalCount",
+] as const;
+
+const MINIMAX_REMAINING_KEYS = [
+  "remains", "remaining", "remain", "remaining_quota", "remainingQuota",
+  "quota_remain", "quotaRemain", "available", "left",
+  "current_interval_remaining_count", "currentIntervalRemainingCount",
+  "current_interval_remains_count", "currentIntervalRemainsCount",
+  "remain_count", "remainCount",
+] as const;
+
+const MINIMAX_NAME_KEYS = [
+  "model_name", "modelName", "name", "title", "label", "resource_name",
+  "resourceName",
+] as const;
+
+function harvestMiniMaxBuckets(payload: unknown): QuotaBucket[] {
+  const buckets: QuotaBucket[] = [];
+  const seen = new Set<string>();
+
+  function walk(node: unknown, path: string[]): void {
+    if (!node || typeof node !== "object") return;
+
+    if (Array.isArray(node)) {
+      node.forEach((item, idx) => walk(item, [...path, `[${idx}]`]));
+      return;
+    }
+
+    const obj = node as Record<string, unknown>;
+    const candidate = miniMaxBucketFromObject(obj, path);
+    if (candidate) {
+      const key = `${candidate.name}|${candidate.window}|${candidate.limit}|${candidate.used}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        buckets.push(candidate);
+      }
+    }
+
+    for (const [k, v] of Object.entries(obj)) {
+      if (v && typeof v === "object") {
+        walk(v, [...path, k]);
+      }
+    }
+  }
+
+  walk(payload, []);
+  return buckets;
+}
+
+function miniMaxBucketFromObject(
+  obj: Record<string, unknown>,
+  path: string[]
+): QuotaBucket | undefined {
+  function pickNumber(keys: readonly string[]): number | undefined {
+    for (const key of keys) {
+      const value = numberFrom(obj[key]);
+      if (value !== undefined) return value;
+    }
+    return undefined;
+  }
+  function pickString(keys: readonly string[]): string | undefined {
+    for (const key of keys) {
+      const value = stringFrom(obj[key]);
+      if (value !== undefined) return value;
+    }
+    return undefined;
+  }
+
+  const used = pickNumber(MINIMAX_USED_KEYS);
+  const limit = pickNumber(MINIMAX_LIMIT_KEYS);
+  const remaining = pickNumber(MINIMAX_REMAINING_KEYS);
+
+  if (used === undefined && limit === undefined && remaining === undefined) {
+    return undefined;
+  }
+  if (
+    (limit === undefined || limit <= 0) &&
+    (remaining === undefined || remaining <= 0) &&
+    (used === undefined || used <= 0)
+  ) {
+    return undefined;
+  }
+
+  const name =
+    pickString(MINIMAX_NAME_KEYS) ?? path[path.length - 1] ?? "tokens";
+  const period = pickString(["period", "window", "cycle", "period_name", "periodName"]) ?? "account";
+
+  const finalUsed =
+    used ?? (limit !== undefined && remaining !== undefined ? Math.max(0, limit - remaining) : 0);
+  const finalLimit = limit ?? -1;
+  const finalRemaining =
+    remaining ??
+    (finalLimit >= 0 && finalUsed >= 0 ? Math.max(0, finalLimit - finalUsed) : -1);
+
+  return {
+    name,
+    used: finalUsed,
+    limit: finalLimit,
+    remaining: finalRemaining,
+    window: period,
+  };
 }
 
 function collectModelRows(
