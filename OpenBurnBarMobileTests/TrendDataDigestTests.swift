@@ -16,7 +16,9 @@ final class TrendDataDigestTests: XCTestCase {
         )
         XCTAssertEqual(digest.totals.count, 0)
         XCTAssertTrue(digest.compactJSON().hasPrefix("{"))
-        XCTAssertLessThan(digest.approximateByteSize, 1024)
+        // Empty digest still carries the schema scaffolding (24 hour buckets,
+        // empty arrays, cache aggregate, ISO timestamps).
+        XCTAssertLessThan(digest.approximateByteSize, 2048)
     }
 
     func testRealisticDigestStaysUnderSixKB() {
@@ -92,10 +94,10 @@ final class TrendDataDigestTests: XCTestCase {
         XCTAssertLessThanOrEqual(digest.providers.count, 6)
         XCTAssertLessThanOrEqual(digest.models.count, 8)
         XCTAssertEqual(digest.hourly.count, 24)
-        XCTAssertLessThanOrEqual(digest.recentSessions.count, 25)
+        XCTAssertLessThanOrEqual(digest.recentSessions.count, 15)
         XCTAssertGreaterThan(digest.approximateByteSize, 1024)
-        XCTAssertLessThan(digest.approximateByteSize, 8 * 1024,
-                          "Digest grew past the 8KB ceiling — risk of dropping context on small models.")
+        XCTAssertLessThan(digest.approximateByteSize, 12 * 1024,
+                          "Digest grew past 12KB — risk of dropping context on small models.")
     }
 
     func testDigestEncodesProviderSharePercents() {

@@ -229,10 +229,10 @@ public struct TrendDataDigest: Codable, Hashable, Sendable {
             .prefix(6)
             .map { $0 }
 
-        // Recent sessions (top 25 by start time)
+        // Recent sessions (top 15 by start time — keeps payload tight)
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
-        let recentSessions = recentUsages.prefix(25).map { u -> SessionSlice in
+        let recentSessions = recentUsages.prefix(15).map { u -> SessionSlice in
             let duration = Int(max(0, u.endTime.timeIntervalSince(u.startTime)))
             let promptBasis = max(0, u.inputTokens) + max(0, u.cacheCreationTokens) + max(0, u.cacheReadTokens)
             let cacheHit: Double = promptBasis > 0
@@ -329,13 +329,19 @@ public struct TrendDataDigest: Codable, Hashable, Sendable {
             perDay[day, default: [:]][usage.provider.persistedToken, default: 0] += usage.cost
         }
 
-        // Cap to last 30 daily points to control payload size
-        return dailyPoints.suffix(30).map { point in
+        // Cap to last 21 daily points and only keep top 4 providers per day
+        // — this keeps payload size predictable for small models.
+        return dailyPoints.suffix(21).map { point in
             let day = formatter.string(from: point.date)
+            let allProvidersForDay = perDay[day] ?? [:]
+            let top4 = allProvidersForDay
+                .sorted { $0.value > $1.value }
+                .prefix(4)
+            let trimmed = Dictionary(uniqueKeysWithValues: top4.map { ($0.key, $0.value) })
             return DailySeries(
                 date: day,
                 total: point.value,
-                perProvider: perDay[day] ?? [:]
+                perProvider: trimmed
             )
         }
     }
