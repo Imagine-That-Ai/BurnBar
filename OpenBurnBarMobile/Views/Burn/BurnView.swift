@@ -453,6 +453,20 @@ struct BurnView: View {
         for k in quotaStore.healthyProviders {
             if seen.insert(k).inserted { keys.append(k) }
         }
+        // Surface providers that the user has connected as cloud accounts but
+        // for which the upstream returned no usable quota signal yet (e.g.
+        // MiniMax Token Plan unlimited rows, Z.ai endpoints that return zero
+        // buckets). The dashboard still needs a tile for these so users can
+        // confirm their key is wired up — `BurnProviderRow` already renders a
+        // graceful "no signal" state when its `snapshots` list is empty.
+        let connectedProviderKeys = Set(
+            quotaStore.accounts
+                .filter { $0.status != .deleted }
+                .map(\.providerID.rawValue)
+        )
+        for k in connectedProviderKeys.sorted() {
+            if seen.insert(k).inserted { keys.append(k) }
+        }
         return keys
     }
 

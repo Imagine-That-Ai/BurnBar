@@ -102,7 +102,11 @@ struct PulseView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await dashboard.refresh() }
-            Task { await hermesService.checkReachability() }
+            // Re-load the full Hermes runtime (connections + reachability +
+            // models) when Pulse comes back to the foreground so Chart Studio
+            // inherits the user's saved Remote Relay / LAN endpoint instead of
+            // the localhost default.
+            Task { await hermesService.refreshRuntime() }
         }
         .onChange(of: displayMode) { _, mode in
             HapticBus.toggle()
@@ -117,7 +121,11 @@ struct PulseView: View {
         async let d: Void = dashboard.load()
         async let q: Void = quotaStore.load()
         async let s: Void = sessionsStore.loadInitial()
-        async let h: Void = hermesService.checkReachability()
+        // Full runtime refresh so the saved Remote Relay / LAN connection is
+        // attached before the user opens Chart Studio. `checkReachability`
+        // alone leaves `selectedConnection == .localDefault`, which is fatal
+        // on iPhone (no `localhost:8642` Hermes process).
+        async let h: Void = hermesService.refreshRuntime()
         _ = await (d, q, s, h)
         quotaStore.startListening()
     }

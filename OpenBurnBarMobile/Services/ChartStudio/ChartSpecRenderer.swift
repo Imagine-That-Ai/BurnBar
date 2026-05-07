@@ -13,6 +13,7 @@ public enum ChartStudioRendering: Hashable, Sendable {
     case insight(InsightSpec)
     case mermaid(MermaidSpec)
     case swiftChart(ChartSpec)
+    case ascii(AsciiSpec)
     case composed([ChartStudioRendering])
     case error(String)
 }
@@ -30,6 +31,57 @@ public struct InsightSpec: Codable, Hashable, Sendable {
         self.body = body
         self.sparkline = sparkline
         self.tone = tone
+    }
+}
+
+// MARK: - ASCII / Unicode-block art
+//
+// Inspired by the Hermes `ascii-art` skill and the OpenTUI terminal-UI
+// aesthetic that leans on box-drawing + half-block characters
+// (▁▂▃▄▅▆▇█ ▏▎▍▌▋▊▉) plus rounded ╭╮╯╰─│ frames. The model returns one or
+// more pre-rendered monospace blocks; we render them inside a glassy
+// terminal-style card with a synthetic chrome bar.
+
+public struct AsciiSpec: Codable, Hashable, Sendable {
+
+    public enum Variant: String, Codable, Hashable, Sendable {
+        case bar       // horizontal block-bar chart
+        case sparkline // dense column sparkline
+        case heatmap   // 2D shaded grid
+        case banner    // figlet-style title block
+        case scene     // freeform terminal scene (boxes, frames, callouts)
+    }
+
+    public struct Block: Codable, Hashable, Sendable {
+        public let label: String?
+        public let lines: [String]      // already-rendered monospace lines
+        public let accent: String?      // optional hex (#RRGGBB)
+
+        public init(label: String? = nil, lines: [String], accent: String? = nil) {
+            self.label = label
+            self.lines = lines
+            self.accent = accent
+        }
+    }
+
+    public let title: String?
+    public let subtitle: String?
+    public let variant: Variant
+    public let blocks: [Block]
+    public let footnote: String?
+
+    public init(
+        title: String? = nil,
+        subtitle: String? = nil,
+        variant: Variant,
+        blocks: [Block],
+        footnote: String? = nil
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.variant = variant
+        self.blocks = blocks
+        self.footnote = footnote
     }
 }
 
@@ -278,6 +330,10 @@ public enum ChartSpecRenderer {
         if let bare = try? JSONDecoder().decode(ChartSpec.self, from: data) {
             return .swiftChart(bare)
         }
+        // Accept a bare AsciiSpec (model returned just the ascii payload).
+        if let bareAscii = try? JSONDecoder().decode(AsciiSpec.self, from: data) {
+            return .ascii(sanitizeAscii(bareAscii))
+        }
         // Accept a bare Mermaid source string keyed by "mermaid".
         if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             if let mermaidSource = dict["mermaid"] as? String {
@@ -312,6 +368,7 @@ public enum ChartSpecRenderer {
         let swift_chart: ChartSpec?
         let mermaid: MermaidSpec?
         let insight: InsightSpec?
+        let ascii: AsciiSpec?
         let components: [Envelope]?
 
         func toRendering() -> ChartStudioRendering {
@@ -331,6 +388,11 @@ public enum ChartSpecRenderer {
                     return .insight(i)
                 }
                 return .error("Missing insight payload.")
+            case "ascii", "unicode", "tui", "terminal":
+                if let a = ascii {
+                    return .ascii(ChartSpecRenderer.sanitizeAscii(a, fallbackTitle: title))
+                }
+                return .error("Missing ascii payload.")
             case "composed", "stack":
                 let items = (components ?? []).map { $0.toRendering() }
                 return items.isEmpty ? .error("Composed payload had no components.") : .composed(items)
@@ -340,5 +402,33 @@ public enum ChartSpecRenderer {
                 return .error("Unknown render kind: \(kind)")
             }
         }
+    }
+
+    /// Cap line length and block count so a hostile or runaway model can't
+    /// blow up the canvas or scroll viewport.
+    static func sanitizeAscii(_ spec: AsciiSpec, fallbackTitle: String? = nil) -> AsciiSpec {
+        let maxLineWidth = 96
+        let maxLinesPerBlock = 60
+        let maxBlocks = 12
+
+        let cleanedBlocks: [AsciiSpec.Block] = spec.blocks.prefix(maxBlocks).map { block in
+            let trimmedLines = block.lines.prefix(maxLinesPerBlock).map { line -> String in
+                // Strip ANSI escapes — we render plain monospace + colored frame.
+                var s = line.replacingOccurrences(of: "\u{1B}[", with: "")
+                if s.count > maxLineWidth {
+                    s = String(s.prefix(maxLineWidth - 1)) + "…"
+                }
+                return s
+            }
+            return AsciiSpec.Block(label: block.label, lines: Array(trimmedLines), accent: block.accent)
+        }
+
+        return AsciiSpec(
+            title: spec.title ?? fallbackTitle,
+            subtitle: spec.subtitle,
+            variant: spec.variant,
+            blocks: cleanedBlocks,
+            footnote: spec.footnote
+        )
     }
 }

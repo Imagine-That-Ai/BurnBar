@@ -163,6 +163,8 @@ struct ChartStudioView: View {
                     submit()
                 }
             )
+        case .ascii(let spec):
+            return AnyView(AsciiArtCardView(spec: spec))
         case .composed(let renderings):
             return AnyView(
                 VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
@@ -437,6 +439,7 @@ struct ChartStudioView: View {
         case .swiftChart(let s): return s.title
         case .mermaid(let m):    return m.title ?? "Mermaid diagram"
         case .insight(let i):    return i.title
+        case .ascii(let a):      return a.title ?? "Terminal canvas"
         case .composed:          return "Composed canvas"
         case .error:             return fallback
         }
@@ -447,6 +450,7 @@ struct ChartStudioView: View {
         case .swiftChart(let s): return s.subtitle ?? "Native chart"
         case .mermaid:           return "Mermaid diagram"
         case .insight(let i):    return i.body
+        case .ascii(let a):      return a.subtitle ?? "\(a.blocks.count) terminal block\(a.blocks.count == 1 ? "" : "s")"
         case .composed:          return "Stacked rendering"
         case .error:             return "Couldn't draw"
         }
@@ -466,28 +470,31 @@ struct ChartStudioView: View {
 /// without needing the enum itself to be `Codable` (it has nested `composed`
 /// recursion which complicates synthesis).
 private struct EnvelopeForArchive: Codable {
-    enum Kind: String, Codable { case swiftChart, mermaid, insight, composed, error }
+    enum Kind: String, Codable { case swiftChart, mermaid, insight, ascii, composed, error }
     let kind: Kind
     let chart: ChartSpec?
     let mermaid: MermaidSpec?
     let insight: InsightSpec?
+    let ascii: AsciiSpec?
     let composed: [EnvelopeForArchive]?
     let errorMessage: String?
 
     init(rendering: ChartStudioRendering) {
         switch rendering {
         case .swiftChart(let s):
-            kind = .swiftChart; chart = s; mermaid = nil; insight = nil; composed = nil; errorMessage = nil
+            kind = .swiftChart; chart = s; mermaid = nil; insight = nil; ascii = nil; composed = nil; errorMessage = nil
         case .mermaid(let m):
-            kind = .mermaid; chart = nil; mermaid = m; insight = nil; composed = nil; errorMessage = nil
+            kind = .mermaid; chart = nil; mermaid = m; insight = nil; ascii = nil; composed = nil; errorMessage = nil
         case .insight(let i):
-            kind = .insight; chart = nil; mermaid = nil; insight = i; composed = nil; errorMessage = nil
+            kind = .insight; chart = nil; mermaid = nil; insight = i; ascii = nil; composed = nil; errorMessage = nil
+        case .ascii(let a):
+            kind = .ascii; chart = nil; mermaid = nil; insight = nil; ascii = a; composed = nil; errorMessage = nil
         case .composed(let items):
-            kind = .composed; chart = nil; mermaid = nil; insight = nil
+            kind = .composed; chart = nil; mermaid = nil; insight = nil; ascii = nil
             composed = items.map(EnvelopeForArchive.init(rendering:))
             errorMessage = nil
         case .error(let m):
-            kind = .error; chart = nil; mermaid = nil; insight = nil; composed = nil; errorMessage = m
+            kind = .error; chart = nil; mermaid = nil; insight = nil; ascii = nil; composed = nil; errorMessage = m
         }
     }
 
@@ -496,8 +503,71 @@ private struct EnvelopeForArchive: Codable {
         case .swiftChart: return chart.map(ChartStudioRendering.swiftChart) ?? .error("Missing chart spec.")
         case .mermaid:    return mermaid.map(ChartStudioRendering.mermaid)  ?? .error("Missing mermaid spec.")
         case .insight:    return insight.map(ChartStudioRendering.insight)  ?? .error("Missing insight spec.")
+        case .ascii:      return ascii.map(ChartStudioRendering.ascii)      ?? .error("Missing ASCII spec.")
         case .composed:   return .composed((composed ?? []).map { $0.toRendering() })
         case .error:      return .error(errorMessage ?? "Unknown error.")
+        }
+    }
+}
+
+private struct AsciiArtCardView: View {
+    let spec: AsciiSpec
+
+    var body: some View {
+        AuroraGlassCard(variant: .hermes, cornerRadius: AuroraDesign.Shape.heroCorner) {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(MobileTheme.hermesAureate)
+                        .frame(width: 8, height: 8)
+                    Text(spec.variant.rawValue.uppercased())
+                        .font(MobileTheme.Typography.tiny)
+                        .fontWeight(.semibold)
+                        .tracking(1.4)
+                        .foregroundStyle(MobileTheme.hermesAureate)
+                    Spacer()
+                }
+
+                if let title = spec.title {
+                    Text(title)
+                        .font(MobileTheme.Typography.title)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                }
+                if let subtitle = spec.subtitle {
+                    Text(subtitle)
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                }
+
+                ForEach(Array(spec.blocks.enumerated()), id: \.offset) { _, block in
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let label = block.label {
+                            Text(label)
+                                .font(MobileTheme.Typography.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        }
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            Text(block.lines.joined(separator: "\n"))
+                                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                                .padding(MobileTheme.Spacing.md)
+                                .background(MobileTheme.Colors.surfaceElevated.opacity(0.72))
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(MobileTheme.hermesAureate.opacity(0.35), lineWidth: 0.5)
+                                )
+                        }
+                    }
+                }
+
+                if let footnote = spec.footnote {
+                    Text(footnote)
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+            }
         }
     }
 }
