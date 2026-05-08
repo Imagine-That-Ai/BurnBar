@@ -80,7 +80,14 @@ HOP_BY_HOP_HEADERS = {
     "transfer-encoding",
     "upgrade",
 }
-ALLOWED_UPSTREAM_PATH_PREFIXES = ("/v1/", "/health", "/ready")
+FORWARDED_RESPONSE_HEADERS = {
+    "cache-control": "Cache-Control",
+    "content-encoding": "Content-Encoding",
+    "content-language": "Content-Language",
+    "content-type": "Content-Type",
+    "expires": "Expires",
+    "retry-after": "Retry-After",
+}
 
 
 @dataclass(frozen=True)
@@ -118,9 +125,14 @@ def _scheme_for(value: str) -> str:
 def _filter_response_headers(headers: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     for k, v in headers:
-        if k.lower() in HOP_BY_HOP_HEADERS or _contains_header_ctl(k) or _contains_header_ctl(v):
+        canonical_name = FORWARDED_RESPONSE_HEADERS.get(k.lower())
+        if (
+            canonical_name is None
+            or k.lower() in HOP_BY_HOP_HEADERS
+            or _contains_header_ctl(v)
+        ):
             continue
-        out.append((k, v))
+        out.append((canonical_name, v))
     return out
 
 
@@ -134,17 +146,17 @@ def _origin_form_path(raw_path: str) -> Optional[str]:
     parsed = urlparse(raw_path)
     if parsed.scheme or parsed.netloc or not parsed.path:
         return None
-    if not parsed.path.startswith(ALLOWED_UPSTREAM_PATH_PREFIXES):
-        return None
-    normalized = parsed.path
-    if parsed.query:
-        normalized = f"{normalized}?{parsed.query}"
-    return normalized
-
-
-def _safe_log_value(value: str, limit: int = 160) -> str:
-    sanitized = "".join(ch if ch.isprintable() and ch not in "\r\n\t" else "?" for ch in value)
-    return sanitized[:limit]
+    if parsed.path == "/health":
+        return "/health"
+    if parsed.path == "/ready":
+        return "/ready"
+    if parsed.path == "/v1/chat/completions":
+        return "/v1/chat/completions"
+    if parsed.path == "/v1/completions":
+        return "/v1/completions"
+    if parsed.path == "/v1/models":
+        return "/v1/models"
+    return None
 
 
 def _coerce_int(value: Any) -> int:
@@ -481,7 +493,7 @@ class HermesProxyHandler(BaseHTTPRequestHandler):
             try:
                 payload = json.loads(body_bytes.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
-                logger.debug("non-JSON response body for %s", _safe_log_value(path))
+                logger.debug("non-JSON response body from upstream")
                 return
             try:
                 event, _ = _build_event(
