@@ -5,7 +5,7 @@
 
   > A native macOS app that watches your AI coding agents so you don't have to wonder where all your money went.
 
-  **Status:** Experimental beta (`0.1.3-beta.1`) — best-effort support, feedback welcome.
+  **Status:** Commercial launch candidate — iOS `1.0` is prepared for App Store review; the macOS/source release remains beta while the hosted-cloud subscription path finishes final review.
 
 </div>
 
@@ -13,7 +13,7 @@ If you're the kind of person who has three AI agents running in parallel tabs an
 
 For the paranoid-and-proud crowd: analytics stay **local-first**. No API keys, no account, no cloud — unless you *want* cloud. OpenBurnBar also ships a **Cursor / VS Code extension** that talks to a small **local daemon** so your editor and your meter can be friends.
 
-OpenBurnBar is still an **experimental** release, but the install path is straightforward: grab the latest macOS DMG from GitHub Releases, drag `OpenBurnBar.app` into `/Applications`, and launch it from your menu bar. If you want the latest tree or prefer local builds, `make install` remains the source fallback.
+OpenBurnBar's macOS/source release is still **beta**, but the install path is straightforward: grab the latest macOS DMG from GitHub Releases, drag `OpenBurnBar.app` into `/Applications`, and launch it from your menu bar. If you want the latest tree or prefer local builds, `make install` remains the source fallback.
 
 The macOS app ships as a packaged release artifact. The editor extension remains source-only for now; there is no public VS Marketplace / Open VSX listing or signed VSIX attached to releases yet.
 
