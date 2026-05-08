@@ -43,6 +43,10 @@ fastlane/test_output
 ._*
 Library/Logs/
 
+# Python
+__pycache__/
+*.py[cod]
+
 # Xcode private settings
 *.mode1v3
 *.mode2v3
