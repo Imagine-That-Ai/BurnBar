@@ -211,7 +211,9 @@ Trust pipeline (every entitlement write flows through it):
    re-verified independently. The "winning" transaction is the one
    with the most recent `signedDate` matching the configured product
    id. Apple's view trumps the inbound JWS — a stale client cannot
-   resurrect a revoked entitlement.
+   resurrect a revoked entitlement. If App Store Connect cannot be
+   reached, the reconciliation fails closed and no entitlement write is
+   made from the inbound JWS alone.
 4. **UID binding via `appAccountToken`.** Before
    `Product.purchase()`, the iOS client calls
    `beginEntitlementBinding`, which mints a fresh UUID and writes

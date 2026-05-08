@@ -257,6 +257,9 @@ function mapReconcileError(err: unknown): functions.HttpsError {
     if (err.code === "no_active_transaction") {
       return httpsError("failed-precondition", err.message);
     }
+    if (err.code === "asc_live_status_unavailable") {
+      return httpsError("unavailable", err.message);
+    }
     if (err.code === "missing_field") {
       return httpsError("invalid-argument", err.message);
     }

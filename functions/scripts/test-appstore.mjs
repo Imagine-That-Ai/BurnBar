@@ -856,6 +856,58 @@ test("reconcileEntitlement honours ASC live state over inbound JWS", async () =>
   assert.equal(result.entitlement.transactionID, "tx-new");
 });
 
+test("reconcileEntitlement fails closed when ASC live status is unavailable", async () => {
+  const productID = "p";
+  const cfg = stubCfg({ bundleId: "com.test.app" });
+  const writes = [];
+  const reads = new Map();
+  const token = "33333333-3333-3333-3333-333333333333";
+  reads.set(`users/uid-asc/entitlement_bindings/${token}`, {
+    exists: true,
+    data: () => ({
+      id: token,
+      uid: "uid-asc",
+      productID,
+      createdAt: "2026-01-01",
+      schemaVersion: 1,
+    }),
+  });
+  const db = makeReconcilerDb(writes, reads);
+  const seed = fakeTx({
+    productId: productID,
+    signedDate: 1700000000_000,
+    transactionId: "tx-seed",
+    originalTransactionId: "otx-asc",
+    bundleId: "com.test.app",
+    expiresDate: Date.now() + 86_400_000,
+    appAccountToken: token,
+  });
+  const verifier = fakeVerifier({ seed });
+  const fetchLive = async () => {
+    throw new Error("ASC temporarily unavailable");
+  };
+
+  await assert.rejects(
+    reconcileEntitlement(
+      db,
+      cfg,
+      {
+        signedTransactionJWS: seed.raw,
+        claimedUid: "uid-asc",
+        source: "client_callable",
+        productID,
+      },
+      { verifier, fetchLive }
+    ),
+    /asc_live_status_unavailable/
+  );
+
+  assert.equal(
+    writes.filter((w) => w.path.endsWith("/entitlements/hosted_quota_sync")).length,
+    0
+  );
+});
+
 // ---------------------------------------------------------------------------
 // 12. Hosted quota runner snapshot normalization
 // ---------------------------------------------------------------------------

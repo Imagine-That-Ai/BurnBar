@@ -367,14 +367,12 @@ async function fetchLiveStatusVerified(
   try {
     live = await fetchLive(cfg, seed.environment, original);
   } catch (err) {
-    // If ASC is unreachable, we fall back to seed-only — the entitlement
-    // is still chain-verified, just not live-reconciled. Logged, not
-    // fatal, so a transient ASC outage doesn't break entitlement writes.
-    console.warn(
-      "appstore:reconciler ASC fetch failed, continuing with seed only",
-      { code: (err as Error).message }
+    throw new EntitlementReconcileError(
+      "asc_live_status_unavailable",
+      `App Store live subscription status unavailable: ${
+        err instanceof Error ? err.message : "unknown ASC error"
+      }`
     );
-    return [];
   }
 
   const verified: DecodedTransaction[] = [];

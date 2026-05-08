@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and metadata-only chat-thread sync available. The PR harness now runs the
   real Functions test suite and an emulator-backed Firestore rules suite
   (`functions/scripts/test-firestore-rules.mjs`) instead of echo-skipping
-  those gates.
+  those gates. App Store entitlement reconciliation now fails closed when ASC
+  live status cannot be fetched, so a stale client JWS cannot mint paid cloud
+  access during an Apple outage.
 - **Conversation Atoms (macOS, iOS, iPadOS).** Hermes responses on every
   surface — macOS dashboard chat panel (`ChatPanel`), menu-bar popover
   (`HermesPopoverChatView`), mobile `ChatView`, and the iOS Hermes tab
