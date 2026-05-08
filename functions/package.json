@@ -39,7 +39,8 @@
     "typescript": "~5.7.0"
   },
   "overrides": {
-    "@tootallnate/once": "^3.0.1"
+    "@tootallnate/once": "^3.0.1",
+    "fast-xml-builder": "^1.2.0"
   },
   "private": true
 }
