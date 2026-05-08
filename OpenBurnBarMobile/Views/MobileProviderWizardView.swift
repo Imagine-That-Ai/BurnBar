@@ -44,6 +44,12 @@ struct MobileProviderWizardView: View {
     @State private var errorMessage: String?
     @State private var isConnecting = false
     @State private var connectedAccount: ProviderAccountDoc?
+    /// Direction of last step transition; drives the asymmetric slide animation.
+    @State private var stepDirection: StepDirection = .forward
+    /// Handle on the in-flight connect call so the Cancel button on `.connecting`
+    /// can actually halt the network round-trip instead of leaving a phantom
+    /// request that could persist a credential server-side.
+    @State private var connectTask: Task<Void, Never>?
 
     @FocusState private var labelFocused: Bool
     @FocusState private var credentialFocused: Bool
@@ -60,7 +66,24 @@ struct MobileProviderWizardView: View {
         case connecting
         case connected
         case failed
+
+        /// Linear ordering of steps. Used to compute slide direction so the
+        /// transition feels physical: forward steps slide in from trailing,
+        /// back steps slide in from leading.
+        var orderIndex: Int {
+            switch self {
+            case .pickProvider: return 0
+            case .authMethod:   return 1
+            case .syncMode:     return 2
+            case .credential:   return 3
+            case .connecting:   return 4
+            case .connected:    return 5
+            case .failed:       return 4
+            }
+        }
     }
+
+    enum StepDirection { case forward, backward }
 
     // MARK: - Body
 
@@ -82,9 +105,10 @@ struct MobileProviderWizardView: View {
                 }
                 .padding(.horizontal, MobileTheme.Spacing.lg)
                 .padding(.top, MobileTheme.Spacing.lg)
+                .id(step)
                 .transition(.asymmetric(
-                    insertion: .move(edge: .trailing).combined(with: .opacity),
-                    removal: .move(edge: .leading).combined(with: .opacity)
+                    insertion: .move(edge: stepDirection == .forward ? .trailing : .leading).combined(with: .opacity),
+                    removal: .move(edge: stepDirection == .forward ? .leading : .trailing).combined(with: .opacity)
                 ))
             }
             .scrollDismissesKeyboard(.interactively)
@@ -121,6 +145,10 @@ struct MobileProviderWizardView: View {
         }
     }
 
+    /// Static mirror of `nextStepAfterPicker(for:)` used at init time before
+    /// `self` exists. The two implementations are intentionally identical so
+    /// the wizard can never enter at a different step than back/forward
+    /// navigation would land on.
     private static func firstInteractiveStep(for provider: AgentProvider) -> WizardStep {
         let descriptor = ProviderSetupGuide.registryDescriptor(for: provider)
         if (descriptor?.methods.count ?? 0) > 1 { return .authMethod }
@@ -210,12 +238,22 @@ struct MobileProviderWizardView: View {
         case .authMethod:   return "Pick a credential method"
         case .syncMode:     return "Pick a sync mode"
         case .credential:
-            if let selectedProvider { return "Connect \(selectedProvider.displayName)" }
+            if let selectedProvider {
+                if alreadyHasAccountForSelectedProvider {
+                    return "Add another \(selectedProvider.displayName) account"
+                }
+                return "Connect \(selectedProvider.displayName)"
+            }
             return "Paste your credential"
         case .connecting:   return "Connecting…"
         case .connected:    return "You're connected"
         case .failed:       return "Couldn't connect"
         }
+    }
+
+    private var alreadyHasAccountForSelectedProvider: Bool {
+        guard let provider = selectedProvider else { return false }
+        return connectionStore.accounts.contains { $0.providerID == provider.providerID }
     }
 
     private var stepCaption: String? {
@@ -247,6 +285,7 @@ struct MobileProviderWizardView: View {
                     .textFieldStyle(.plain)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
+                    .accessibilityIdentifier("a11y.wizard.search.field")
                 if !searchText.isEmpty {
                     Button {
                         searchText = ""
@@ -270,8 +309,55 @@ struct MobileProviderWizardView: View {
 
             providerGridSection(title: "Top picks", providers: filteredRecommended)
             providerGridSection(title: "All providers", providers: filteredOthers)
+
+            if isSearchEmptyOfResults {
+                emptySearchState
+            }
         }
         .padding(.bottom, MobileTheme.Spacing.lg)
+    }
+
+    private var isSearchEmptyOfResults: Bool {
+        !searchText.isEmpty && filteredRecommended.isEmpty && filteredOthers.isEmpty
+    }
+
+    private var emptySearchState: some View {
+        VStack(spacing: MobileTheme.Spacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+            Text("No providers match \u{201C}\(searchText)\u{201D}.")
+                .font(MobileTheme.Typography.body)
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                .multilineTextAlignment(.center)
+            Text("Try a shorter search or clear the field to see every supported provider.")
+                .font(MobileTheme.Typography.caption)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .multilineTextAlignment(.center)
+            Button {
+                Haptics.selection()
+                searchText = ""
+            } label: {
+                Label("Clear search", systemImage: "xmark.circle.fill")
+                    .font(MobileTheme.Typography.caption)
+                    .fontWeight(.semibold)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(MobileTheme.Colors.accent)
+            .padding(.top, MobileTheme.Spacing.xs)
+            .accessibilityIdentifier("a11y.wizard.search.clear")
+        }
+        .frame(maxWidth: .infinity)
+        .padding(MobileTheme.Spacing.xl)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
+        )
+        .accessibilityIdentifier("a11y.wizard.search.empty")
     }
 
     private var allConnectableProviders: [AgentProvider] {
@@ -329,6 +415,7 @@ struct MobileProviderWizardView: View {
                                 advanceFromPicker(to: provider)
                             }
                         )
+                        .accessibilityIdentifier("a11y.wizard.providerTile.\(provider.persistedToken)")
                     }
                 }
             }
@@ -345,20 +432,8 @@ struct MobileProviderWizardView: View {
         runnerURL = ""
         runnerSecret = ""
         errorMessage = nil
-        if let descriptor = ProviderSetupGuide.registryDescriptor(for: provider) {
-            selectedAuthMethodID = descriptor.primaryMethod.id
-            if descriptor.methods.count > 1 {
-                advance(to: .authMethod)
-                return
-            }
-        } else {
-            selectedAuthMethodID = nil
-        }
-        if guide.supportsRemoteRunner {
-            advance(to: .syncMode)
-        } else {
-            advance(to: .credential)
-        }
+        selectedAuthMethodID = ProviderSetupGuide.registryDescriptor(for: provider)?.primaryMethod.id
+        advance(to: nextStepAfterPicker(for: provider))
     }
 
     // MARK: - Step 2: Auth Method
@@ -386,6 +461,7 @@ struct MobileProviderWizardView: View {
                                 selectedAuthMethodID = method.id
                             }
                         )
+                        .accessibilityIdentifier("a11y.wizard.authMethodCard.\(method.id)")
                     }
                 }
             }
@@ -418,6 +494,7 @@ struct MobileProviderWizardView: View {
                             syncMode = .hosted
                         }
                     )
+                    .accessibilityIdentifier("a11y.wizard.syncModeCard.hosted")
                 }
                 if guide.supportsSelfHosted {
                     MobileSyncModeCard(
@@ -429,6 +506,7 @@ struct MobileProviderWizardView: View {
                             syncMode = .selfHosted
                         }
                     )
+                    .accessibilityIdentifier("a11y.wizard.syncModeCard.selfHosted")
                 }
                 MobileSyncModeCard(
                     mode: .cloud,
@@ -439,6 +517,7 @@ struct MobileProviderWizardView: View {
                         syncMode = .cloud
                     }
                 )
+                .accessibilityIdentifier("a11y.wizard.syncModeCard.cloud")
             }
 
             if syncMode == .hosted, guide.supportsHosted {
@@ -790,22 +869,38 @@ struct MobileProviderWizardView: View {
                 Button("Cancel", action: handleCancel)
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .accessibilityIdentifier("a11y.wizard.cancel")
 
             case .authMethod:
                 primaryButton(title: "Continue", systemImage: "arrow.right") {
                     advanceFromAuthMethod()
                 }
+                .accessibilityIdentifier("a11y.wizard.continueAuthMethod")
                 Button("Back") { advance(to: .pickProvider) }
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .accessibilityIdentifier("a11y.wizard.backFromAuthMethod")
 
             case .syncMode:
-                primaryButton(title: "Continue", systemImage: "arrow.right") {
+                primaryButton(
+                    title: "Continue",
+                    systemImage: "arrow.right",
+                    isEnabled: canContinueFromSyncMode
+                ) {
                     advance(to: .credential)
+                }
+                .accessibilityIdentifier("a11y.wizard.continueSyncMode")
+                if syncMode == .hosted && !subscriptionStore.isActive {
+                    Text("Subscribe to Hosted Quota Sync to continue.")
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.warning)
+                        .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("a11y.wizard.hostedRequired")
                 }
                 Button("Back") { backFromSyncMode() }
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .accessibilityIdentifier("a11y.wizard.backFromSyncMode")
 
             case .credential:
                 primaryButton(
@@ -813,19 +908,19 @@ struct MobileProviderWizardView: View {
                     systemImage: "checkmark.circle.fill",
                     isEnabled: canConnect && !isConnecting
                 ) {
-                    Task { await connect() }
+                    startConnect()
                 }
+                .accessibilityIdentifier("a11y.wizard.connect")
                 Button("Back") { backFromCredential() }
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .accessibilityIdentifier("a11y.wizard.backFromCredential")
 
             case .connecting:
-                Button("Cancel") {
-                    isConnecting = false
-                    advance(to: .credential)
-                }
-                .font(MobileTheme.Typography.caption)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
+                Button("Cancel", action: cancelConnectingFromUser)
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .accessibilityIdentifier("a11y.wizard.cancelConnecting")
 
             case .connected:
                 primaryButton(title: "Done", systemImage: "checkmark") {
@@ -835,14 +930,17 @@ struct MobileProviderWizardView: View {
                         onCancel()
                     }
                 }
+                .accessibilityIdentifier("a11y.wizard.done")
 
             case .failed:
                 primaryButton(title: "Try again", systemImage: "arrow.clockwise") {
                     advance(to: .credential)
                 }
+                .accessibilityIdentifier("a11y.wizard.retry")
                 Button("Cancel", action: handleCancel)
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .accessibilityIdentifier("a11y.wizard.cancelFromFailed")
             }
         }
         .padding(MobileTheme.Spacing.lg)
@@ -850,6 +948,17 @@ struct MobileProviderWizardView: View {
             MobileTheme.Colors.surface.opacity(0.6)
                 .ignoresSafeArea(.keyboard, edges: .bottom)
         )
+    }
+
+    /// Sync-mode continue is only valid when the picked mode is reachable.
+    /// Hosted requires an active subscription — without this gate the user
+    /// could land on the credential step in a state where `canConnect` is
+    /// permanently false, leaving them stuck without explanation.
+    private var canContinueFromSyncMode: Bool {
+        switch syncMode {
+        case .cloud, .selfHosted: return true
+        case .hosted: return subscriptionStore.isActive
+        }
     }
 
     private func primaryButton(
@@ -889,6 +998,7 @@ struct MobileProviderWizardView: View {
     // MARK: - Navigation
 
     private func advance(to next: WizardStep) {
+        stepDirection = next.orderIndex >= step.orderIndex ? .forward : .backward
         Haptics.selection()
         withAnimation(MobileTheme.Animation.gentle) {
             step = next
@@ -898,21 +1008,15 @@ struct MobileProviderWizardView: View {
 
     private func advanceFromAuthMethod() {
         guard let provider = selectedProvider else { return }
-        let guide = ProviderSetupGuide.registryEnrichedGuide(for: provider)
-        if guide.supportsRemoteRunner {
-            advance(to: .syncMode)
-        } else {
-            advance(to: .credential)
-        }
+        advance(to: nextStepAfterPicker(for: provider, skipping: .authMethod))
     }
 
     private func backFromSyncMode() {
-        if let provider = selectedProvider,
-           (ProviderSetupGuide.registryDescriptor(for: provider)?.methods.count ?? 0) > 1 {
-            advance(to: .authMethod)
-        } else {
+        guard let provider = selectedProvider else {
             advance(to: .pickProvider)
+            return
         }
+        advance(to: hasMultipleAuthMethods(for: provider) ? .authMethod : .pickProvider)
     }
 
     private func backFromCredential() {
@@ -920,19 +1024,57 @@ struct MobileProviderWizardView: View {
             advance(to: .pickProvider)
             return
         }
-        let guide = ProviderSetupGuide.registryEnrichedGuide(for: provider)
-        if guide.supportsRemoteRunner {
+        if ProviderSetupGuide.registryEnrichedGuide(for: provider).supportsRemoteRunner {
             advance(to: .syncMode)
-        } else if (ProviderSetupGuide.registryDescriptor(for: provider)?.methods.count ?? 0) > 1 {
+        } else if hasMultipleAuthMethods(for: provider) {
             advance(to: .authMethod)
         } else {
             advance(to: .pickProvider)
         }
     }
 
+    /// Single source of truth for "where do we land after the provider picker
+    /// (or auth method) for this provider?" — used by init, advance handlers,
+    /// and back handlers so they cannot drift apart.
+    private func nextStepAfterPicker(
+        for provider: AgentProvider,
+        skipping skipped: WizardStep? = nil
+    ) -> WizardStep {
+        if hasMultipleAuthMethods(for: provider) && skipped != .authMethod {
+            return .authMethod
+        }
+        if ProviderSetupGuide.registryEnrichedGuide(for: provider).supportsRemoteRunner {
+            return .syncMode
+        }
+        return .credential
+    }
+
+    private func hasMultipleAuthMethods(for provider: AgentProvider) -> Bool {
+        (ProviderSetupGuide.registryDescriptor(for: provider)?.methods.count ?? 0) > 1
+    }
+
     private func handleCancel() {
+        connectTask?.cancel()
+        connectTask = nil
         onCancel()
-        dismiss()
+    }
+
+    private func startConnect() {
+        connectTask?.cancel()
+        connectTask = Task { await connect() }
+    }
+
+    /// Called when the user taps Cancel on the `.connecting` step. Pre-fix this
+    /// only flipped `isConnecting = false` and bounced back to `.credential`,
+    /// while the network request kept running and could persist a credential
+    /// server-side after the user had already "cancelled" — silent and bad.
+    /// Now we cancel the task handle so the in-flight call honors cooperative
+    /// cancellation.
+    private func cancelConnectingFromUser() {
+        connectTask?.cancel()
+        connectTask = nil
+        isConnecting = false
+        advance(to: .credential)
     }
 
     // MARK: - Connect
@@ -998,14 +1140,19 @@ struct MobileProviderWizardView: View {
                 kind: kind,
                 label: labelToUse
             )
+            if Task.isCancelled { return }
         case .hosted:
             do {
                 try await subscriptionStore.refreshEntitlement()
+            } catch is CancellationError {
+                return
             } catch {
+                if Task.isCancelled { return }
                 errorMessage = error.localizedDescription
                 advance(to: .failed)
                 return
             }
+            if Task.isCancelled { return }
             guard subscriptionStore.isActive else {
                 errorMessage = "Hosted Quota Sync subscription is not active."
                 advance(to: .failed)
@@ -1017,11 +1164,16 @@ struct MobileProviderWizardView: View {
                 kind: kind,
                 label: labelToUse
             )
+            if Task.isCancelled { return }
         case .selfHosted:
             created = await connectionStore.connectSelfHosted(
                 providerID: provider.providerID,
                 label: labelToUse
             )
+            if Task.isCancelled {
+                if let created { await connectionStore.delete(account: created) }
+                return
+            }
             if let created {
                 do {
                     try SelfHostedQuotaRunnerStore.shared.save(
@@ -1039,6 +1191,7 @@ struct MobileProviderWizardView: View {
             }
         }
 
+        if Task.isCancelled { return }
         if let created {
             connectedAccount = created
             advance(to: .connected)

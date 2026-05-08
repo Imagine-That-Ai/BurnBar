@@ -32,6 +32,9 @@ struct OnboardingProviderConnectStep: View {
     @State private var isConnecting = false
     @State private var errorMessage: String?
     @State private var connectedAccount: ProviderAccountDoc?
+    /// Handle on the in-flight connect call. Used so the Cancel button on the
+    /// `.connecting` sub-step can actually halt the credential round-trip.
+    @State private var connectTask: Task<Void, Never>?
     @FocusState private var labelFocused: Bool
     @FocusState private var credentialFocused: Bool
 
@@ -422,7 +425,7 @@ struct OnboardingProviderConnectStep: View {
                 .submitLabel(.go)
                 .onSubmit {
                     if canConnect {
-                        Task { await connect() }
+                        startConnect()
                     }
                 }
 
@@ -608,21 +611,21 @@ struct OnboardingProviderConnectStep: View {
                     systemImage: "checkmark.circle.fill",
                     isEnabled: canConnect && !isConnecting
                 ) {
-                    Task { await connect() }
+                    startConnect()
                 }
+                .accessibilityIdentifier("a11y.onboarding.connect")
                 Button("Back") {
                     advance(to: .guide)
                 }
                 .font(MobileTheme.Typography.caption)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
+                .accessibilityIdentifier("a11y.onboarding.backFromPaste")
 
             case .connecting:
-                Button("Cancel") {
-                    isConnecting = false
-                    advance(to: .paste)
-                }
-                .font(MobileTheme.Typography.caption)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
+                Button("Cancel", action: cancelConnectingFromUser)
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .accessibilityIdentifier("a11y.onboarding.cancelConnecting")
 
             case .connected:
                 primaryButton(title: "Continue", systemImage: "arrow.right") {
@@ -630,14 +633,17 @@ struct OnboardingProviderConnectStep: View {
                         onConnected(connectedAccount)
                     }
                 }
+                .accessibilityIdentifier("a11y.onboarding.continueAfterConnected")
 
             case .failed:
                 primaryButton(title: "Try again", systemImage: "arrow.clockwise") {
                     advance(to: .paste)
                 }
+                .accessibilityIdentifier("a11y.onboarding.retry")
                 Button("Skip \(provider.displayName)", action: onSkip)
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .accessibilityIdentifier("a11y.onboarding.skipFromFailed")
             }
         }
         .padding(MobileTheme.Spacing.lg)
@@ -716,6 +722,21 @@ struct OnboardingProviderConnectStep: View {
         }
     }
 
+    private func startConnect() {
+        connectTask?.cancel()
+        connectTask = Task { await connect() }
+    }
+
+    /// User-initiated cancel from the `.connecting` sub-step. Cancels the
+    /// in-flight task so the credential round-trip honors cooperative
+    /// cancellation instead of running to completion behind the user's back.
+    private func cancelConnectingFromUser() {
+        connectTask?.cancel()
+        connectTask = nil
+        isConnecting = false
+        advance(to: .paste)
+    }
+
     private func connect() async {
         guard canConnect else { return }
         Haptics.medium()
@@ -735,14 +756,19 @@ struct OnboardingProviderConnectStep: View {
                 kind: selectedKind,
                 label: labelToUse
             )
+            if Task.isCancelled { return }
         case .hosted:
             do {
                 try await subscriptionStore.refreshEntitlement()
+            } catch is CancellationError {
+                return
             } catch {
+                if Task.isCancelled { return }
                 errorMessage = error.localizedDescription
                 advance(to: .failed)
                 return
             }
+            if Task.isCancelled { return }
             guard subscriptionStore.isActive else {
                 errorMessage = "Hosted Quota Sync subscription is not active."
                 advance(to: .failed)
@@ -754,11 +780,16 @@ struct OnboardingProviderConnectStep: View {
                 kind: selectedKind,
                 label: labelToUse
             )
+            if Task.isCancelled { return }
         case .selfHosted:
             created = await connectionStore.connectSelfHosted(
                 providerID: provider.providerID,
                 label: labelToUse
             )
+            if Task.isCancelled {
+                if let created { await connectionStore.delete(account: created) }
+                return
+            }
             if let created {
                 do {
                     try SelfHostedQuotaRunnerStore.shared.save(
@@ -776,6 +807,7 @@ struct OnboardingProviderConnectStep: View {
             }
         }
 
+        if Task.isCancelled { return }
         if let created {
             connectedAccount = created
             advance(to: .connected)
