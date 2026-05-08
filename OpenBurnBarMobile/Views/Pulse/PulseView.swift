@@ -14,17 +14,30 @@ struct PulseView: View {
     @State private var hermesService = HermesService()
     @State private var displayMode: UsageDisplayMode = .currency
     @State private var timelineScope: PulseTimelineScope = .day
+    @State private var showCloudStore = false
+    @AppStorage("cloudBannerDismissed") private var cloudBannerDismissed = false
 
     let router: PulseRouter
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.cloudSubscriptionStore) private var cloudStore
 
     var body: some View {
         ZStack {
             AuroraBackdrop()
             ScrollView {
                 VStack(spacing: MobileTheme.Spacing.lg) {
+                    if shouldShowCloudBanner {
+                        CloudUpsellBanner(
+                            priceText: cloudStore?.product?.displayPrice,
+                            onTap: { showCloudStore = true },
+                            onDismiss: { cloudBannerDismissed = true }
+                        )
+                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+
                     TimelineScopePicker(selection: $timelineScope)
                         .padding(.horizontal, AuroraDesign.Layout.cardInset)
                         .staggeredEntrance(delay: 0.0)
@@ -101,6 +114,14 @@ struct PulseView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.hidden, for: .navigationBar)
         .task { await initialLoad() }
+        .sheet(isPresented: $showCloudStore) {
+            NavigationStack {
+                CloudStoreView(onClose: { showCloudStore = false })
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .animation(MobileTheme.Animation.gentle, value: shouldShowCloudBanner)
         .onDisappear {
             dashboard.stopListening()
             quotaStore.stopListening()
@@ -148,6 +169,12 @@ struct PulseView: View {
     }
 
     // MARK: - Derived
+
+    private var shouldShowCloudBanner: Bool {
+        guard let cloudStore else { return false }
+        if cloudBannerDismissed { return false }
+        return !cloudStore.isActive
+    }
 
     private var topProvider: AgentProvider? {
         guard let topKey = dashboard.topProviders.first?.provider else { return nil }

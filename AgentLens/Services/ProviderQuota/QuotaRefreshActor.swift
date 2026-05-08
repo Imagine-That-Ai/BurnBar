@@ -409,6 +409,8 @@ private func daemonProviderID(for provider: AgentProvider) -> String? {
         return "ollama"
     case .openAI:
         return "openai"
+    case .kimi:
+        return "moonshot"
     default:
         return nil
     }
@@ -460,6 +462,8 @@ private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
         return .ollama
     case "openai":
         return .openAI
+    case "moonshot", "kimi":
+        return .kimi
     default:
         return nil
     }

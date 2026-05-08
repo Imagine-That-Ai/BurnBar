@@ -1884,6 +1884,89 @@ extension ProviderQuotaServiceTests {
         XCTAssertFalse(snapshot.buckets.contains { $0.key.contains("local") || $0.key == "ollama-cloud" })
     }
 
+    func test_refreshAll_persistsKimiSlotsByMappingMoonshotCatalogToKimiAdapter() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let runtimeSecrets = KeychainStore(
+            service: "tests.runtime.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: TestKeychainBackend()
+        )
+        let kimiJWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiJrZW1pIn0.signature"
+        try runtimeSecrets.set(kimiJWT, for: "provider.moonshot.slot.session.apiKey")
+
+        OpenBurnBarDaemonManager.shared.providerConfigurations = [
+            OpenBurnBarDaemonProviderConfiguration(
+                providerID: "moonshot",
+                provider: .kimi,
+                displayName: "Kimi (Moonshot)",
+                isEnabled: true,
+                baseURL: "https://api.moonshot.cn/v1",
+                preferredModelIDs: [],
+                preferredCredentialSlotID: "session",
+                credentialSlots: [
+                    OpenBurnBarDaemonProviderConfiguration.CredentialSlot(
+                        slotID: "session",
+                        label: "Browser Session",
+                        isEnabled: true,
+                        status: .ready,
+                        cooldownUntil: nil,
+                        lastSelectedAt: nil,
+                        lastQuotaRemainingPercent: nil,
+                        lastQuotaResetsAt: nil,
+                        lastStatusMessage: nil
+                    ),
+                ]
+            )
+        ]
+
+        let observedAuthorizations = Locked<[String]>([])
+        let session = makeStubSession { request in
+            let authorization = request.value(forHTTPHeaderField: "Authorization") ?? ""
+            observedAuthorizations.withLock { $0.append(authorization) }
+            let body = """
+            {
+              "usages": [
+                {
+                  "scope": "FEATURE_CODING",
+                  "detail": {
+                    "used_tokens": 250000,
+                    "total_tokens": 1000000,
+                    "used_requests": 30,
+                    "total_requests": 200,
+                    "reset_time": "2026-05-15T00:00:00Z"
+                  },
+                  "limits": []
+                }
+              ]
+            }
+            """
+            return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            providerRuntimeKeyStore: runtimeSecrets,
+            session: session,
+            refreshProviders: [.kimi]
+        )
+
+        let dataStore = try makeDataStore()
+        await service.refreshAll(dataStore: dataStore)
+
+        XCTAssertTrue(observedAuthorizations.read().contains("Bearer \(kimiJWT)"),
+                      "Kimi adapter should authorize using daemon-slot Moonshot key. Saw: \(observedAuthorizations.read())")
+
+        let snapshots = service.snapshots(for: .kimi)
+        XCTAssertFalse(snapshots.isEmpty, "Expected Kimi snapshot from Moonshot daemon slot bleed-over")
+
+        let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: ProviderID(rawValue: "moonshot"))
+        XCTAssertEqual(persistedAccounts.map(\.id), ["moonshot-session"])
+        XCTAssertEqual(persistedAccounts.first?.label, "Browser Session")
+        XCTAssertEqual(persistedAccounts.first?.storageScope, .deviceKeychain)
+    }
+
     func test_ollamaLocalAndCloudModelsWithoutScrapedQuotaDoNotCreateBuckets() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()

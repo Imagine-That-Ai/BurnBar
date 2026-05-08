@@ -10,6 +10,10 @@ import OpenBurnBarCore
 struct SettingsHubView: View {
     let authStore: AuthStore
 
+    @Environment(\.cloudSubscriptionStore) private var sharedSubscriptionStore
+    @State private var localSubscriptionStore = HostedQuotaSubscriptionStore()
+    @State private var didLoadLocalSubscription = false
+
     @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
     @AppStorage("usageDisplayMode") private var usageDisplayMode: String = "currency"
     @AppStorage("uiMode") private var uiMode: String = UIMode.standard.rawValue
@@ -106,6 +110,14 @@ struct SettingsHubView: View {
 
                 Section {
                     NavigationLink {
+                        CloudStoreView()
+                    } label: {
+                        cloudSettingsRow
+                    }
+                } header: { groupHeader("Cloud") }
+
+                Section {
+                    NavigationLink {
                         ProviderConnectionsView(showsDoneButton: false)
                     } label: {
                         SettingsLabel(icon: "externaldrive.connected.to.line.below", color: MobileTheme.ember, title: "Provider connections")
@@ -137,6 +149,56 @@ struct SettingsHubView: View {
             .scrollContentBackground(.hidden)
         }
         .navigationTitle("Settings")
+        .task {
+            // Load only when no shared store is available (e.g. preview, deep
+            // link to settings before root injection).
+            if sharedSubscriptionStore == nil, !didLoadLocalSubscription {
+                didLoadLocalSubscription = true
+                await localSubscriptionStore.load()
+            }
+        }
+    }
+
+    private var subscriptionStore: HostedQuotaSubscriptionStore {
+        sharedSubscriptionStore ?? localSubscriptionStore
+    }
+
+    @ViewBuilder
+    private var cloudSettingsRow: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("OpenBurnBar Cloud")
+                    .font(MobileTheme.Typography.body)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                Text(cloudRowSubtitle)
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .lineLimit(1)
+            }
+        } icon: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(UnifiedDesignSystem.mercuryGradient)
+                    .frame(width: 26, height: 26)
+                Image(systemName: "cloud.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+        }
+    }
+
+    private var cloudRowSubtitle: String {
+        if subscriptionStore.isActive {
+            if let expires = subscriptionStore.expirationDate {
+                let formatted = expires.formatted(.dateTime.month(.abbreviated).day())
+                return "Active · renews \(formatted)"
+            }
+            return "Active"
+        }
+        if let priceText = subscriptionStore.product?.displayPrice {
+            return "Upgrade — \(priceText)/mo"
+        }
+        return "Quota, backups, Hermes — anywhere"
     }
 
     private func groupHeader(_ title: String) -> some View {

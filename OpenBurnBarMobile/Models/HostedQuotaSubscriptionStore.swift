@@ -34,6 +34,17 @@ final class HostedQuotaSubscriptionStore {
     private(set) var isLoading = false
     private(set) var error: String?
 
+    /// First-purchase date of the user's currently-active entitlement, sourced
+    /// from `Transaction.originalPurchaseDate`. Used by the store screen's
+    /// member card ("Member since …"). `nil` while no local entitlement is
+    /// visible (server-only restores fall back to `expirationDate` for chrome).
+    private(set) var purchaseDate: Date?
+
+    /// The StoreKit transaction id for the entitlement currently displayed.
+    /// Surfaced for diagnostics in the member card footer; not used for any
+    /// trust decision.
+    private(set) var latestTransactionID: UInt64?
+
     nonisolated(unsafe) private var transactionUpdatesTask: Task<Void, Never>?
 
     /// Serializes inbound `verifyOnServer` calls. StoreKit can race a
@@ -170,7 +181,9 @@ final class HostedQuotaSubscriptionStore {
     /// Walk `Transaction.currentEntitlements` and return the JWS of the
     /// first verified, non-revoked, non-expired transaction matching
     /// our productID. Returns `nil` when no qualifying entitlement is
-    /// present locally.
+    /// present locally. As a side-effect, captures `purchaseDate` and
+    /// `latestTransactionID` from the matched transaction for display in
+    /// the member card.
     private func findCurrentEntitlementJWS() async -> String? {
         for await result in Transaction.currentEntitlements {
             do {
@@ -180,6 +193,8 @@ final class HostedQuotaSubscriptionStore {
                 if let expires = transaction.expirationDate, expires <= Date() {
                     continue
                 }
+                purchaseDate = transaction.originalPurchaseDate
+                latestTransactionID = transaction.id
                 return result.jwsRepresentation
             } catch {
                 // Skip unverified entitlements — the server is the

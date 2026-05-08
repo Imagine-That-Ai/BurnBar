@@ -108,6 +108,73 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         }
     }
 
+    /// Resolves an `AgentProvider` from a catalog provider identifier
+    /// (`BurnBarCatalogProvider.id`). Catalog IDs and `AgentProvider`
+    /// `persistedToken` mostly line up, with a handful of historical
+    /// aliases we have to bridge here:
+    ///
+    /// - `moonshot` (catalog) → `.kimi`
+    /// - `anthropic` (catalog) → `.claudeCode`
+    /// - `google` (catalog) → `.geminiCLI`
+    /// - `xai` / `deepseek` / `mistral` / etc. fall through to the
+    ///   nearest persisted-token match when one exists.
+    public static func fromCatalogProviderID(_ catalogProviderID: String) -> AgentProvider? {
+        let normalized = catalogProviderID
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        switch normalized {
+        case "anthropic", "claude-code", "claude":
+            return .claudeCode
+        case "openai", "open-ai":
+            return .openAI
+        case "codex":
+            return .codex
+        case "google", "gemini", "gemini-cli":
+            return .geminiCLI
+        case "moonshot", "kimi":
+            return .kimi
+        case "minimax":
+            return .minimax
+        case "zai", "z-ai", "z.ai":
+            return .zai
+        case "ollama":
+            return .ollama
+        case "hermes":
+            return .hermes
+        case "factory":
+            return .factory
+        case "cursor":
+            return .cursor
+        case "copilot":
+            return .copilot
+        case "aider":
+            return .aider
+        case "warp":
+            return .warp
+        case "windsurf":
+            return .windsurf
+        case "goose":
+            return .goose
+        case "openclaw", "open-claw":
+            return .openClaw
+        case "forge", "forgedev":
+            return .forgeDev
+        case "augment":
+            return .augment
+        case "cline":
+            return .cline
+        case "kilocode", "kilo-code":
+            return .kiloCode
+        case "roocode", "roo-code":
+            return .rooCode
+        default:
+            if let direct = fromPersistedToken(normalized) {
+                return direct
+            }
+            return AgentProvider.allCases.first { $0.providerID.rawValue == normalized }
+        }
+    }
+
     /// Bundled asset catalog image name for every provider.
     public var bundledLogoName: String {
         switch self {

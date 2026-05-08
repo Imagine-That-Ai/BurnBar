@@ -21,6 +21,10 @@ struct RootTabView: View {
     @State private var hermesService = HermesService()
     @State private var studioPresenter = ChartStudioPresenter()
     @State private var isHermesKeyboardVisible = false
+    /// Shared OpenBurnBar Cloud / Hosted Quota Sync store, hoisted here so a
+    /// single StoreKit observer feeds the Settings row, the Pulse upsell
+    /// banner, and the dedicated `CloudStoreView`.
+    @State private var subscriptionStore = HostedQuotaSubscriptionStore()
 
     // Per-tab navigation paths
     @State private var pulsePath = NavigationPath()
@@ -32,8 +36,12 @@ struct RootTabView: View {
 
     var body: some View {
         ZStack {
-            contentForSelection
-                .ignoresSafeArea(.keyboard)
+            if selection == .hermes {
+                contentForSelection
+            } else {
+                contentForSelection
+                    .ignoresSafeArea(.keyboard)
+            }
 
             VStack(spacing: 0) {
                 Spacer()
@@ -71,6 +79,8 @@ struct RootTabView: View {
         }
         .environment(\.motionStore, motionStore)
         .environment(\.chartStudioPresenter, studioPresenter)
+        .environment(\.cloudSubscriptionStore, subscriptionStore)
+        .task { await subscriptionStore.load() }
         .onAppear {
             applyScreenshotRouteIfNeeded()
         }

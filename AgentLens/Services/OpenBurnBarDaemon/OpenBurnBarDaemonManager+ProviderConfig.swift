@@ -282,12 +282,14 @@ extension OpenBurnBarDaemonManager {
         switch providerID.lowercased() {
         case "minimax":
             return .minimax
-        case "zai":
+        case "zai", "z-ai":
             return .zai
         case "copilot":
             return .copilot
         case "ollama":
             return .ollama
+        case "moonshot", "kimi":
+            return .kimi
         default:
             return nil
         }

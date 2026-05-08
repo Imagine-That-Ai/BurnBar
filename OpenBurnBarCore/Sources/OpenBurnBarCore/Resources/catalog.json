@@ -1847,6 +1847,34 @@
       ]
     },
     {
+      "id": "mlx",
+      "displayName": "MLX Local",
+      "baseURL": "http://127.0.0.1:8328/v1",
+      "visibility": "public",
+      "logoKey": "MLXLogo",
+      "capabilities": ["routing", "accounting", "cursor_connector"],
+      "models": [
+        {
+          "id": "mlx-community/gemma-4-31b-it-4bit",
+          "displayName": "Gemma 4 31B 4-bit MTP",
+          "visibility": "public",
+          "aliases": [
+            "gemma-4-31b-it-4bit-mtp",
+            "gemma-4-31b-it-4bit",
+            "gemma-4-31b-mtp"
+          ],
+          "matchers": [
+            { "all": ["gemma", "4", "31b"], "any": ["mtp", "4bit", "4-bit"], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          }
+        }
+      ]
+    },
+    {
       "id": "ollama",
       "displayName": "Ollama Cloud",
       "baseURL": "https://ollama.com/api",
@@ -1861,6 +1889,20 @@
           "aliases": ["deepseek-v4-flash:cloud", "deepseek-v4-flash-cloud"],
           "matchers": [
             { "all": ["deepseek", "v4", "flash"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          }
+        },
+        {
+          "id": "qwen3.6:27b-coding-nvfp4",
+          "displayName": "Qwen 3.6 27B Coding NVFP4",
+          "visibility": "public",
+          "aliases": ["qwen3.6-27b-coding-nvfp4"],
+          "matchers": [
+            { "all": ["qwen3.6", "27b", "coding", "nvfp4"], "any": [], "none": [] }
           ],
           "pricing": {
             "inputPerMToken": 0,

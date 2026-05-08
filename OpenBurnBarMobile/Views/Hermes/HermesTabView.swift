@@ -1,5 +1,8 @@
 import SwiftUI
 import OpenBurnBarCore
+import PhotosUI
+import UniformTypeIdentifiers
+import UIKit
 
 // MARK: - Hermes Navigation
 //
@@ -858,6 +861,11 @@ struct HermesChatView: View {
     @AppStorage(HermesMobileChatPreferences.usePretextRenderingKey) private var usePretextRendering = true
     @State private var showPretextPlayground = false
     @State private var atomRouter = HermesAtomRouter()
+    @State private var pendingAttachments: [HermesAttachment] = []
+    @State private var attachmentImportError: String?
+    @State private var showFileImporter = false
+    @State private var showCameraSheet = false
+    @State private var photoPickerSelection: [PhotosPickerItem] = []
     @FocusState private var inputFocused: Bool
     @Namespace private var bubbleNamespace
 
@@ -935,6 +943,20 @@ struct HermesChatView: View {
                         .padding(.bottom, 4)
                 }
 
+                if !pendingAttachments.isEmpty {
+                    ChatAttachmentTray(
+                        attachments: pendingAttachments,
+                        onRemove: { id in
+                            withAnimation(AuroraDesign.Motion.auroraSpring) {
+                                pendingAttachments.removeAll { $0.id == id }
+                            }
+                        }
+                    )
+                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                    .padding(.bottom, 4)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
                 inputBar
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .padding(.bottom, inputFocused ? 0 : 8)
@@ -1002,12 +1024,6 @@ struct HermesChatView: View {
                         .foregroundStyle(MobileTheme.hermesAureate)
                 }
             }
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    inputFocused = false
-                }
-            }
         }
         .alert("Clear chat?", isPresented: $showClearConfirm) {
             Button("Cancel", role: .cancel) {}
@@ -1038,6 +1054,33 @@ struct HermesChatView: View {
         }
         .sheet(isPresented: $showPretextPlayground) {
             PretextPlayground()
+        }
+        .fileImporter(
+            isPresented: $showFileImporter,
+            allowedContentTypes: chatFileImporterTypes,
+            allowsMultipleSelection: true
+        ) { result in
+            handleFileImporterResult(result)
+        }
+        .sheet(isPresented: $showCameraSheet) {
+            CameraCaptureSheet { image in
+                showCameraSheet = false
+                guard let image else { return }
+                ingestImage(image)
+            }
+            .ignoresSafeArea()
+        }
+        .onChange(of: photoPickerSelection) { _, newSelection in
+            guard !newSelection.isEmpty else { return }
+            handlePhotosPickerSelection(newSelection)
+        }
+        .alert("Couldn't attach file", isPresented: Binding(
+            get: { attachmentImportError != nil },
+            set: { if !$0 { attachmentImportError = nil } }
+        )) {
+            Button("OK", role: .cancel) { attachmentImportError = nil }
+        } message: {
+            Text(attachmentImportError ?? "")
         }
         .sheet(item: Binding(
             get: { atomRouter.pending },
@@ -1353,11 +1396,51 @@ struct HermesChatView: View {
 
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
+            attachmentButton
             field
             sendButton
         }
         .padding(10)
         .auroraGlass(.hermes, cornerRadius: 18)
+    }
+
+    private var attachmentButton: some View {
+        Menu {
+            PhotosPicker(
+                selection: $photoPickerSelection,
+                maxSelectionCount: 5,
+                matching: .any(of: [.images, .videos]),
+                photoLibrary: .shared()
+            ) {
+                Label("Photo or Video Library", systemImage: "photo.on.rectangle")
+            }
+            Button {
+                showCameraSheet = true
+            } label: {
+                Label("Take Photo", systemImage: "camera")
+            }
+            Button {
+                showFileImporter = true
+            } label: {
+                Label("Files", systemImage: "folder")
+            }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(MobileTheme.Colors.surface.opacity(0.7))
+                    .frame(width: 38, height: 38)
+                    .overlay(
+                        Circle()
+                            .stroke(MobileTheme.Colors.border.opacity(0.45), lineWidth: 0.5)
+                    )
+                Image(systemName: "paperclip")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(service.isStreaming ? MobileTheme.Colors.textMuted : MobileTheme.hermesAureate)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(service.isStreaming)
+        .accessibilityLabel("Attach file")
     }
 
     private var field: some View {
@@ -1394,30 +1477,90 @@ struct HermesChatView: View {
         Button(action: send) {
             ZStack {
                 Circle()
-                    .fill(input.isEmpty
+                    .fill(sendDisabled
                           ? AnyShapeStyle(MobileTheme.Colors.surface.opacity(0.6))
                           : AnyShapeStyle(AuroraDesign.Gradients.mercuryFoil))
                     .frame(width: 38, height: 38)
-                    .shadow(color: MobileTheme.hermesAureate.opacity(input.isEmpty ? 0 : 0.4), radius: 10)
+                    .shadow(color: MobileTheme.hermesAureate.opacity(sendDisabled ? 0 : 0.4), radius: 10)
                 Image(systemName: "arrow.up")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(input.isEmpty ? MobileTheme.Colors.textMuted : .white)
+                    .foregroundStyle(sendDisabled ? MobileTheme.Colors.textMuted : .white)
             }
         }
         .buttonStyle(.plain)
-        .disabled(input.isEmpty || service.isStreaming)
+        .disabled(sendDisabled)
         .accessibilityLabel("Send")
+    }
+
+    private var sendDisabled: Bool {
+        service.isStreaming
+            || (input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingAttachments.isEmpty)
     }
 
     // MARK: - Actions
 
     private func send() {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !service.isStreaming else { return }
+        let attachments = pendingAttachments
+        guard (!trimmed.isEmpty || !attachments.isEmpty), !service.isStreaming else { return }
         HapticBus.send()
         input = ""
+        pendingAttachments = []
         inputFocused = false
-        service.sendMessage(trimmed, context: dashboardContextPrompt)
+        service.sendMessage(trimmed, context: dashboardContextPrompt, attachments: attachments)
+    }
+
+    private var chatFileImporterTypes: [UTType] {
+        var types: [UTType] = [.image, .pdf, .text, .plainText, .json, .commaSeparatedText, .rtf, .audio, .movie, .data]
+        if let yaml = UTType("public.yaml") { types.append(yaml) }
+        if let log = UTType(filenameExtension: "log") { types.append(log) }
+        if let md = UTType("net.daringfireball.markdown") { types.append(md) }
+        return types
+    }
+
+    private func handlePhotosPickerSelection(_ items: [PhotosPickerItem]) {
+        Task { @MainActor in
+            for item in items {
+                do {
+                    let attachment = try await HermesAttachmentLoader.importPhotosPickerItem(item)
+                    appendAttachment(attachment)
+                } catch {
+                    attachmentImportError = error.localizedDescription
+                }
+            }
+            photoPickerSelection = []
+        }
+    }
+
+    private func handleFileImporterResult(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            for url in urls {
+                do {
+                    let attachment = try HermesAttachmentLoader.importFileURL(url)
+                    appendAttachment(attachment)
+                } catch {
+                    attachmentImportError = error.localizedDescription
+                }
+            }
+        case .failure(let error):
+            attachmentImportError = error.localizedDescription
+        }
+    }
+
+    private func ingestImage(_ image: UIImage) {
+        do {
+            let attachment = try HermesAttachmentLoader.importImage(image)
+            appendAttachment(attachment)
+        } catch {
+            attachmentImportError = error.localizedDescription
+        }
+    }
+
+    private func appendAttachment(_ attachment: HermesAttachment) {
+        withAnimation(AuroraDesign.Motion.auroraSpring) {
+            pendingAttachments.append(attachment)
+        }
     }
 
     private var dashboardContextPrompt: String? {
@@ -1992,7 +2135,15 @@ struct HermesMessageBubble: View {
         HStack(alignment: .bottom, spacing: 8) {
             if isUser {
                 Spacer(minLength: 48)
-                userBubble
+                VStack(alignment: .trailing, spacing: 6) {
+                    if !message.attachments.isEmpty {
+                        ChatBubbleAttachmentStrip(attachments: message.attachments)
+                            .frame(maxWidth: 270)
+                    }
+                    if !message.text.isEmpty {
+                        userBubble
+                    }
+                }
             } else {
                 assistantStack
                 Spacer(minLength: 48)

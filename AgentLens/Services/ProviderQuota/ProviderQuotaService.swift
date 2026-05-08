@@ -313,7 +313,7 @@ final class ProviderQuotaService {
         apiKeyOverride: String
     ) async throws -> ProviderQuotaSnapshot {
         switch provider {
-        case .minimax, .zai, .copilot, .ollama:
+        case .minimax, .zai, .copilot, .ollama, .kimi:
             let scratchDataStore = try makeScratchDataStore()
             let context = makeContext(dataStore: scratchDataStore, apiKeyOverrides: [provider: apiKeyOverride])
             return try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
@@ -324,7 +324,7 @@ final class ProviderQuotaService {
                 source: .unavailable,
                 confidence: .unavailable,
                 managementURL: nil,
-                statusMessage: "Per-plan quota refresh is available for MiniMax, Z.ai, Copilot, and Ollama Cloud.",
+                statusMessage: "Per-plan quota refresh is available for MiniMax, Z.ai, Kimi, Copilot, and Ollama Cloud.",
                 buckets: []
             )
         }
@@ -613,6 +613,8 @@ final class ProviderQuotaService {
             return "zai"
         case .ollama:
             return "ollama"
+        case .kimi:
+            return "moonshot"
         default:
             return nil
         }
@@ -797,6 +799,8 @@ final class ProviderQuotaService {
             return .ollama
         case "openai":
             return .openAI
+        case "moonshot", "kimi":
+            return .kimi
         default:
             return nil
         }
