@@ -240,6 +240,21 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
                 CREATE UNIQUE INDEX token_usage_unique_session_model_device_account_idx
                 ON token_usage(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, ''))
                 """)
+
+            try db.execute(sql: """
+                CREATE TABLE chat_messages (
+                    id TEXT PRIMARY KEY,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    timestamp DATETIME NOT NULL,
+                    cliUsed TEXT,
+                    transcriptPiecesJSON TEXT,
+                    threadId TEXT
+                )
+                """)
+            try db.execute(
+                sql: "CREATE INDEX chat_messages_thread_time_idx ON chat_messages(threadId, timestamp)"
+            )
         }
     }
 
