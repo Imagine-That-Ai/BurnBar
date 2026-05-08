@@ -102,7 +102,7 @@ struct SettingsView: View {
                     try await accountManager.signInWithApple(presentingWindow: authPresentationWindow())
                 },
                 onUpgradeToPremium: {
-                    if let url = URL(string: "macappstore://apps.apple.com/app/idYOUR_APP_ID") {
+                    if let url = URL(string: "https://apps.apple.com/app/id6766366964") {
                         NSWorkspace.shared.open(url)
                     }
                 },
