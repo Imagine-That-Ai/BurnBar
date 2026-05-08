@@ -215,8 +215,11 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         let elapsedMs = elapsedMilliseconds(since: startedAt)
         let throughputJobsPerSecond = Double(report.completedJobs) / max(0.001, elapsedMs / 1_000)
         let isCI = openBurnBarIsGitHubActionsRunner()
-        let maxElapsedMs: Double = isCI ? 25_000 : 15_000
-        let minThroughputJobsPerSecond: Double = isCI ? 7 : 15
+        // GitHub's macOS runners can swing heavily during the app-hosted test
+        // bundle. Keep the local guardrail strict, but leave CI enough headroom
+        // to catch real regressions without failing on transient runner load.
+        let maxElapsedMs: Double = isCI ? 35_000 : 15_000
+        let minThroughputJobsPerSecond: Double = isCI ? 5 : 15
 
         XCTAssertGreaterThanOrEqual(report.completedJobs, jobCount)
         XCTAssertLessThan(elapsedMs, maxElapsedMs)
