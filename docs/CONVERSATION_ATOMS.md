@@ -160,6 +160,29 @@ animated frame:
 The inner content view (`HermesRichBubble`) keeps drawing without animation, so
 text materializes inside a moving bubble instead of double-easing.
 
+## Activation pipeline
+
+When a user taps a chip, the router runs three independent dispatches so a
+missing wire never silently drops the activation:
+
+1. **`HermesAtomRouter.pending`** is set, which presents the platform's chip
+   detail UI (sheet on iOS, popover on macOS).
+2. When the user confirms the primary action,
+   `HermesAtomRouter.confirm(_:)` updates `confirmedDestination` so any
+   reactive `onChange(of:)` observer sees the activation, **and** calls the
+   chat surface's installed `onPerform` closure if present.
+3. Independently of either subscriber, the router broadcasts
+   `Notification.Name.hermesAtomActivated` with the typed `HermesAtom` in
+   `userInfo[HermesAtomNotificationKey.atom]`. Top-level surfaces (sidebar,
+   tab model, settings) listen for this notification and route the user to
+   the matching native view without coupling chat surfaces to specific
+   destinations.
+
+This means an atom can be activated from *any* chat surface (mobile chat,
+iPad popover, macOS dashboard panel, macOS menu-bar popover) and the same
+subscribers handle the result. Adding a new destination is a one-line
+subscriber on the receiving view; it never requires editing the chat layer.
+
 ## Components
 
 Cross-platform core (`OpenBurnBarCore/Sources/OpenBurnBarCore/`):
