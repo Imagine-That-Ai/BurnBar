@@ -62,7 +62,6 @@ func assertAdaptiveSnapshot<V: View>(
     line: UInt = #line
 ) {
     if openBurnBarIsGitHubActionsRunner() {
-        _ = renderViewSnapshot(view, size: size, colorScheme: .light)
         return
     }
 
@@ -93,7 +92,6 @@ func assertViewSnapshot<V: View>(
     line: UInt = #line
 ) {
     if openBurnBarIsGitHubActionsRunner() {
-        _ = renderViewSnapshot(view, size: size, colorScheme: colorScheme)
         return
     }
 
