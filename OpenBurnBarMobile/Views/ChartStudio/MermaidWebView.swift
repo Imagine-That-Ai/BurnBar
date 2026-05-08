@@ -95,7 +95,7 @@ struct MermaidWebView: UIViewRepresentable {
             }
         }
 
-        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
             // Block off-app navigation. Mermaid SVG is rendered inline; no anchor-tap nav allowed.
             if navigationAction.navigationType == .linkActivated {
                 decisionHandler(.cancel)

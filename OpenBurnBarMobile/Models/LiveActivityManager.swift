@@ -70,6 +70,7 @@ final class LiveActivityManager {
 // MARK: - No-op stub for iOS < 16.1
 
 /// Non-ActivityKit fallback for compilation on older OS versions.
+@MainActor
 final class LiveActivityManagerStub {
     static let shared = LiveActivityManagerStub()
     var hasActiveActivity: Bool { false }
