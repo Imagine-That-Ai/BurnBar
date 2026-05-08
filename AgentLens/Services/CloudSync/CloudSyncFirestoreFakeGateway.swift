@@ -7,7 +7,8 @@ import Foundation
 ///
 /// - Stores documents as `[path: [String: Any]]`.
 /// - Supports batch writes, collection queries, ordering, limits, and simple filtering.
-/// - Replaces `FieldValue.serverTimestamp()` with `Date()` at write time.
+/// - Replaces `FieldValue.serverTimestamp()` with `Date()` at write time and
+///   applies `FieldValue.delete()` to merged writes.
 /// - Thread-safe via internal actor isolation.
 @MainActor
 final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway {
@@ -80,7 +81,11 @@ private final class FakeDocumentStore {
     func mergeDocumentData(_ data: [String: Any], at path: String) {
         var existing = documents[path] ?? [:]
         for (key, value) in data {
-            existing[key] = value
+            if value is FakeFieldDelete {
+                existing.removeValue(forKey: key)
+            } else {
+                existing[key] = value
+            }
         }
         documents[path] = existing
     }
@@ -430,13 +435,18 @@ private enum FakeQueryEngine {
 
 // MARK: - Field Value Normalization
 
-/// Replaces `FieldValue.serverTimestamp()` with the current date so fake queries can compare against it.
+/// Replaces Firestore field transforms with deterministic fake behavior.
 @MainActor
 private func normalizeFieldValues(_ data: [String: Any]) -> [String: Any] {
     var result: [String: Any] = [:]
     for (key, value) in data {
-        if value is FieldValue {
-            result[key] = Date()
+        if let transform = fakeFieldTransform(value) {
+            switch transform {
+            case .delete:
+                result[key] = FakeFieldDelete()
+            case .serverTimestamp:
+                result[key] = Date()
+            }
         } else if let dict = value as? [String: Any] {
             result[key] = normalizeFieldValues(dict)
         } else if let array = value as? [[String: Any]] {
@@ -446,6 +456,26 @@ private func normalizeFieldValues(_ data: [String: Any]) -> [String: Any] {
         }
     }
     return result
+}
+
+private struct FakeFieldDelete {}
+
+private enum FakeFieldTransform {
+    case delete
+    case serverTimestamp
+}
+
+/// Firebase's Swift `FieldValue` type intentionally hides the concrete
+/// transform, so the fake inspects the debug surface and falls back to the
+/// legacy timestamp behavior for unknown transforms.
+@MainActor
+private func fakeFieldTransform(_ value: Any) -> FakeFieldTransform? {
+    guard value is FieldValue else { return nil }
+    let description = "\(String(describing: value)) \(String(reflecting: value))".lowercased()
+    if description.contains("delete") {
+        return .delete
+    }
+    return .serverTimestamp
 }
 
 // MARK: - String Helpers
