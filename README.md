@@ -5,7 +5,7 @@
 
   > A native macOS app that watches your AI coding agents so you don't have to wonder where all your money went.
 
-  **Status:** Commercial launch candidate — iOS `1.0` is prepared for App Store review; the macOS/source release remains beta while the hosted-cloud subscription path finishes final review.
+  **Status:** Commercial launch candidate — iOS `1.0` is prepared for App Store review; the macOS/source release remains beta (`0.1.3-beta.1`) while the hosted-cloud subscription path finishes final review.
 
 </div>
 
