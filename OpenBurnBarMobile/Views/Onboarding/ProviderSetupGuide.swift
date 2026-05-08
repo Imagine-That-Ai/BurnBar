@@ -505,6 +505,132 @@ extension ProviderSetupGuide {
     }
 }
 
+// MARK: - Registry bridge
+
+extension ProviderSetupGuide {
+
+    /// Returns the `BurnBarProviderAuthRegistry` descriptor that matches this
+    /// provider, if one exists. The registry is the cross-platform source of
+    /// truth for credential metadata (placeholder, dashboard URL, validation).
+    /// Hand-coded guides above remain authoritative for numbered instructions
+    /// and iOS-specific copy that can't live in the shared registry.
+    static func registryDescriptor(for provider: AgentProvider) -> BurnBarProviderAuthDescriptor? {
+        let candidates = registryCatalogIDCandidates(for: provider)
+        for candidate in candidates {
+            if let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: candidate) {
+                return descriptor
+            }
+        }
+        return nil
+    }
+
+    /// Returns the canonical primary `BurnBarProviderAuthMethod` for this
+    /// provider (used for placeholder text, prefix hints, and validation),
+    /// or `nil` if the registry has no descriptor for it.
+    static func registryPrimaryMethod(for provider: AgentProvider) -> BurnBarProviderAuthMethod? {
+        registryDescriptor(for: provider)?.primaryMethod
+    }
+
+    /// Catalog provider IDs to probe in the shared registry. We try the
+    /// canonical `providerID.rawValue` first, then per-provider aliases that
+    /// the registry expects (e.g. `.kimi` → "moonshot", `.claudeCode` →
+    /// "anthropic", `.geminiCLI` → "google").
+    private static func registryCatalogIDCandidates(for provider: AgentProvider) -> [String] {
+        var ids: [String] = [provider.providerID.rawValue, provider.persistedToken]
+        switch provider {
+        case .kimi:
+            ids.append(contentsOf: ["moonshot", "kimi"])
+        case .claudeCode:
+            ids.append(contentsOf: ["anthropic", "claude-code", "claude"])
+        case .geminiCLI:
+            ids.append(contentsOf: ["google", "gemini", "gemini-cli"])
+        case .openAI:
+            ids.append("openai")
+        case .zai:
+            ids.append(contentsOf: ["zai", "z-ai", "z.ai", "glm"])
+        case .minimax:
+            ids.append("minimax")
+        case .ollama:
+            ids.append("ollama")
+        default:
+            break
+        }
+        return ids.compactMap { id in
+            let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+    }
+
+    /// Hand-coded guide enriched with registry metadata when available.
+    /// Falls through to `guide(for:)` when no descriptor exists. The
+    /// hand-coded numbered instructions are always preserved — the registry
+    /// only overrides credential placeholder, prefix-hint footer copy, and
+    /// the dashboard CTA when the registry's data is more accurate.
+    static func registryEnrichedGuide(for provider: AgentProvider) -> ProviderSetupGuide {
+        let base = guide(for: provider)
+        guard let descriptor = registryDescriptor(for: provider) else { return base }
+
+        let primary = descriptor.primaryMethod
+        let placeholder = primary.placeholder.isEmpty ? base.credentialPlaceholder : primary.placeholder
+        let dashboardURL = primary.dashboardURL.flatMap(URL.init(string:)) ?? base.dashboardURL
+        let dashboardCTA: String = {
+            if let label = primary.dashboardLabel, !label.isEmpty { return label }
+            return base.dashboardCTA
+        }()
+        let oneLineHint = descriptor.summary.isEmpty ? base.oneLineHint : descriptor.summary
+        let footer: String = {
+            var parts: [String] = []
+            if !primary.helperText.isEmpty { parts.append(primary.helperText) }
+            if let proxy = descriptor.proxyHint, !proxy.isEmpty { parts.append(proxy) }
+            if let quota = descriptor.quotaHint, !quota.isEmpty { parts.append(quota) }
+            return parts.isEmpty ? base.credentialFooterMarkdown : parts.joined(separator: " ")
+        }()
+
+        return ProviderSetupGuide(
+            provider: base.provider,
+            kinds: base.kinds,
+            defaultKind: base.defaultKind,
+            labelSuggestion: base.labelSuggestion,
+            dashboardURL: dashboardURL,
+            dashboardCTA: dashboardCTA,
+            oneLineHint: oneLineHint,
+            instructions: base.instructions,
+            credentialPlaceholder: placeholder,
+            credentialFooterMarkdown: footer,
+            supportsHosted: base.supportsHosted,
+            supportsSelfHosted: base.supportsSelfHosted
+        )
+    }
+
+    /// Validates `credential` against the registry's per-method validator
+    /// when available; otherwise falls back to the existing length heuristic.
+    static func registryValidation(
+        credential: String,
+        for provider: AgentProvider
+    ) -> BurnBarProviderAuthValidation {
+        guard let primary = registryPrimaryMethod(for: provider) else {
+            let trimmed = credential.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return .empty }
+            if trimmed.count < 8 { return .warning("That looks too short — make sure you copied the full credential.") }
+            return .ok
+        }
+        return primary.validate(credential)
+    }
+
+    /// Capability chips surfaced on the wizard's provider tile / confirm hero.
+    /// macOS exposes routed-proxy. iOS only mirrors quota — we still surface
+    /// "Routes on Mac" copy so users understand the cross-device picture.
+    static func capabilityChips(for provider: AgentProvider) -> [String] {
+        guard let descriptor = registryDescriptor(for: provider) else {
+            return []
+        }
+        var chips: [String] = []
+        if descriptor.supportsQuotaRefresh { chips.append("Live quota") }
+        if descriptor.supportsProxyRouting { chips.append("Routes on Mac") }
+        return chips
+    }
+}
+
 // MARK: - Recommended ordering
 
 extension ProviderSetupGuide {

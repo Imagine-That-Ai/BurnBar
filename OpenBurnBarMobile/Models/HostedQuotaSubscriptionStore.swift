@@ -4,6 +4,27 @@ import StoreKit
 import UIKit
 #endif
 
+@MainActor
+protocol HostedQuotaEntitlementServicing: AnyObject {
+    func beginEntitlementBinding(
+        productID: String,
+        clientPlatform: String?
+    ) async throws -> String
+
+    func verifyHostedQuotaEntitlement(
+        signedTransactionJWS: String,
+        signedRenewalInfoJWS: String?,
+        productID: String?
+    ) async throws -> HostedQuotaEntitlementResponse
+
+    func restoreHostedQuotaEntitlement(
+        productID: String?,
+        signedTransactionJWS: String?
+    ) async throws -> HostedQuotaEntitlementResponse
+}
+
+extension FunctionsRepository: HostedQuotaEntitlementServicing {}
+
 /// StoreKit 2 surface for the Apple-verified hosted-quota entitlement.
 ///
 /// Trust model:
@@ -26,7 +47,7 @@ import UIKit
 final class HostedQuotaSubscriptionStore {
     static let productID = "com.openburnbar.hostedQuotaSync.monthly"
 
-    private let functions: FunctionsRepository
+    private let functions: any HostedQuotaEntitlementServicing
 
     private(set) var product: Product?
     private(set) var isActive = false
@@ -53,7 +74,7 @@ final class HostedQuotaSubscriptionStore {
     /// JWS representation so the second call awaits the first.
     private var inFlightVerifyByJWS: [String: Task<Void, Error>] = [:]
 
-    init(functions: FunctionsRepository = .shared) {
+    init(functions: any HostedQuotaEntitlementServicing = FunctionsRepository.shared) {
         self.functions = functions
     }
 
@@ -145,7 +166,8 @@ final class HostedQuotaSubscriptionStore {
             //    (works only if a prior entitlement doc exists for the
             //    signed-in UID).
             let response = try await functions.restoreHostedQuotaEntitlement(
-                productID: Self.productID
+                productID: Self.productID,
+                signedTransactionJWS: nil
             )
             apply(response: response)
         } catch {
@@ -168,7 +190,8 @@ final class HostedQuotaSubscriptionStore {
             // doc on file) still see their entitlement on this device.
             do {
                 let response = try await functions.restoreHostedQuotaEntitlement(
-                    productID: Self.productID
+                    productID: Self.productID,
+                    signedTransactionJWS: nil
                 )
                 apply(response: response)
             } catch {
@@ -253,6 +276,7 @@ final class HostedQuotaSubscriptionStore {
             guard let self else { return }
             let response = try await self.functions.verifyHostedQuotaEntitlement(
                 signedTransactionJWS: jws,
+                signedRenewalInfoJWS: nil,
                 productID: Self.productID
             )
             await MainActor.run { self.apply(response: response) }

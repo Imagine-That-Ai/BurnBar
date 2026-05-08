@@ -3,38 +3,33 @@ import OpenBurnBarCore
 
 /// Manual "Add Account" sheet shown post-onboarding from `ProviderConnectionsView`.
 ///
-/// Internally this is the **same** `OnboardingProviderConnectStep` the wizard
-/// uses, just hosted inside its own NavigationStack with a Cancel button. The
-/// user enters at the *Guide* sub-step and exits when the credential is
-/// connected (or they cancel).
-///
-/// Renovating this surface to share components means:
-///   - One place to keep "where do I find the credential?" copy
-///     (`ProviderSetupGuide`).
-///   - The connect/error/result UX is identical at first-run and afterwards,
-///     so muscle memory transfers.
+/// Hosts `MobileProviderWizardView` — the new beautiful card-based wizard
+/// that mirrors the macOS `ProviderPlanWizardView`. When `provider` is
+/// non-nil, the wizard opens at the first interactive step (auth method
+/// or sync mode or credential, whichever comes first). When `provider` is
+/// nil, the wizard opens at a searchable provider grid so users can pick
+/// from any backend-supported provider in one place.
 struct AddProviderConnectionView: View {
-    let provider: AgentProvider
+    let provider: AgentProvider?
 
     @Environment(\.dismiss) private var dismiss
+
+    init(provider: AgentProvider? = nil) {
+        self.provider = provider
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 EmberSurfaceBackground().ignoresSafeArea()
 
-                OnboardingProviderConnectStep(
-                    provider: provider,
-                    queuePosition: nil,
-                    onConnected: { _ in
-                        dismiss()
-                    },
-                    onSkip: {
-                        dismiss()
-                    }
+                MobileProviderWizardView(
+                    preselectedProvider: provider,
+                    onConnected: { _ in dismiss() },
+                    onCancel: { dismiss() }
                 )
             }
-            .navigationTitle("Add \(provider.displayName)")
+            .navigationTitle(provider.map { "Add \($0.displayName)" } ?? "Add provider")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -43,6 +38,10 @@ struct AddProviderConnectionView: View {
             }
         }
     }
+}
+
+#Preview("Searchable picker") {
+    AddProviderConnectionView(provider: nil)
 }
 
 #Preview("Standard cloud — Cursor") {

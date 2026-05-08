@@ -24,9 +24,11 @@ struct OnboardingProviderConnectStep: View {
     @State private var accountLabel: String = ""
     @State private var credential: String = ""
     @State private var selectedKind: CredentialKind
+    @State private var selectedAuthMethodID: String?
     @State private var syncMode: QuotaConnectionMode
     @State private var runnerURL: String = ""
     @State private var runnerSecret: String = ""
+    @State private var revealCredential = false
     @State private var isConnecting = false
     @State private var errorMessage: String?
     @State private var connectedAccount: ProviderAccountDoc?
@@ -47,8 +49,9 @@ struct OnboardingProviderConnectStep: View {
         self.onConnected = onConnected
         self.onSkip = onSkip
 
-        let guide = ProviderSetupGuide.guide(for: provider)
+        let guide = ProviderSetupGuide.registryEnrichedGuide(for: provider)
         _selectedKind = State(initialValue: guide.defaultKind)
+        _selectedAuthMethodID = State(initialValue: ProviderSetupGuide.registryDescriptor(for: provider)?.primaryMethod.id)
 
         // Default to a sensible sync mode based on what the provider supports.
         if guide.supportsHosted {
@@ -60,7 +63,16 @@ struct OnboardingProviderConnectStep: View {
         }
     }
 
-    private var guide: ProviderSetupGuide { ProviderSetupGuide.guide(for: provider) }
+    private var guide: ProviderSetupGuide { ProviderSetupGuide.registryEnrichedGuide(for: provider) }
+    private var registryDescriptor: BurnBarProviderAuthDescriptor? {
+        ProviderSetupGuide.registryDescriptor(for: provider)
+    }
+    private var capabilityChips: [String] { ProviderSetupGuide.capabilityChips(for: provider) }
+    private var selectedAuthMethod: BurnBarProviderAuthMethod? {
+        guard let descriptor = registryDescriptor else { return nil }
+        if let id = selectedAuthMethodID, let method = descriptor.method(id: id) { return method }
+        return descriptor.primaryMethod
+    }
 
     enum SubStep: Hashable {
         case guide
@@ -165,30 +177,56 @@ struct OnboardingProviderConnectStep: View {
 
     private var guideStep: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
-            // Hero
-            VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
-                Text(guide.oneLineHint)
-                    .font(MobileTheme.Typography.body)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            MobileProviderConfirmHero(
+                provider: provider,
+                title: provider.displayName,
+                subtitle: guide.oneLineHint,
+                capabilityChips: capabilityChips,
+                maskedCredential: nil
+            )
 
-                if let dashboardURL = guide.dashboardURL {
-                    Link(destination: dashboardURL) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.up.right.square.fill")
-                            Text(guide.dashboardCTA)
-                                .fontWeight(.semibold)
-                        }
-                        .font(MobileTheme.Typography.body)
+            if let dashboardURL = guide.dashboardURL {
+                Link(destination: dashboardURL) {
+                    Label(guide.dashboardCTA, systemImage: "arrow.up.right.square.fill")
+                        .font(MobileTheme.Typography.caption)
+                        .fontWeight(.semibold)
                         .foregroundStyle(MobileTheme.Colors.primary(for: provider))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(
+                            Capsule().fill(MobileTheme.Colors.primary(for: provider).opacity(0.12))
+                        )
+                }
+                .accessibilityHint("Opens \(provider.displayName) in Safari.")
+            }
+
+            // Auth-method cards (only when registry descriptor advertises >1 method).
+            if let descriptor = registryDescriptor, descriptor.methods.count > 1 {
+                VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+                    Text("Credential method")
+                        .font(MobileTheme.Typography.caption)
+                        .fontWeight(.semibold)
+                        .tracking(0.6)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+
+                    ForEach(descriptor.methods, id: \.id) { method in
+                        MobileAuthMethodCard(
+                            method: method,
+                            provider: provider,
+                            isSelected: selectedAuthMethodID == method.id,
+                            onTap: {
+                                Haptics.selection()
+                                selectedAuthMethodID = method.id
+                                selectedKind = mapAuthMethodToCredentialKind(method.kind)
+                            }
+                        )
                     }
-                    .accessibilityHint("Opens \(provider.displayName) in Safari.")
                 }
             }
 
-            // Sync-mode picker (Codex hosted/self-hosted, Claude Code self-hosted only).
+            // Sync-mode cards (Codex hosted/self-hosted, Claude Code self-hosted only).
             if guide.supportsRemoteRunner {
-                syncModePicker
+                syncModeCards
             }
 
             // Numbered instructions.
@@ -206,27 +244,46 @@ struct OnboardingProviderConnectStep: View {
         .padding(.bottom, MobileTheme.Spacing.lg)
     }
 
-    private var syncModePicker: some View {
+    private var syncModeCards: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
             Text("Sync mode")
                 .font(MobileTheme.Typography.caption)
                 .fontWeight(.semibold)
                 .tracking(0.6)
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
-            Picker("Sync", selection: $syncMode) {
-                if guide.supportsHosted {
-                    Label("Hosted", systemImage: "cloud").tag(QuotaConnectionMode.hosted)
-                }
-                if guide.supportsSelfHosted {
-                    Label("Self-hosted", systemImage: "server.rack").tag(QuotaConnectionMode.selfHosted)
-                }
-            }
-            .pickerStyle(.segmented)
 
-            Text(syncMode.description(provider: provider.displayName))
-                .font(MobileTheme.Typography.caption)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
+            if guide.supportsHosted {
+                MobileSyncModeCard(
+                    mode: .hosted,
+                    provider: provider,
+                    isSelected: syncMode == .hosted,
+                    onTap: {
+                        Haptics.selection()
+                        syncMode = .hosted
+                    }
+                )
+            }
+            if guide.supportsSelfHosted {
+                MobileSyncModeCard(
+                    mode: .selfHosted,
+                    provider: provider,
+                    isSelected: syncMode == .selfHosted,
+                    onTap: {
+                        Haptics.selection()
+                        syncMode = .selfHosted
+                    }
+                )
+            }
+        }
+    }
+
+    private func mapAuthMethodToCredentialKind(_ kind: BurnBarProviderAuthMethodKind) -> CredentialKind {
+        switch kind {
+        case .apiKey:        return .token
+        case .bearerToken:   return .bearer
+        case .sessionToken:  return .session
+        case .cookie:        return .cookie
+        case .browserLogin, .localRuntime: return .session
         }
     }
 
@@ -317,7 +374,8 @@ struct OnboardingProviderConnectStep: View {
     }
 
     private var credentialFields: some View {
-        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+        let validation = currentValidation
+        return VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("Credential")
@@ -325,52 +383,87 @@ struct OnboardingProviderConnectStep: View {
                         .fontWeight(.semibold)
                         .tracking(0.6)
                         .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    if let method = selectedAuthMethod {
+                        MobileCapabilityChip(
+                            label: method.kind.shortLabel,
+                            tint: MobileTheme.Colors.primary(for: provider)
+                        )
+                    } else if guide.kinds.count == 1 {
+                        MobileCapabilityChip(
+                            label: ProviderSetupGuide.credentialKindLabel(guide.defaultKind),
+                            tint: MobileTheme.Colors.primary(for: provider)
+                        )
+                    }
                     Spacer()
-                    if guide.kinds.count > 1 {
-                        Picker("Type", selection: $selectedKind) {
-                            ForEach(guide.kinds, id: \.self) { kind in
-                                Text(ProviderSetupGuide.credentialKindLabel(kind)).tag(kind)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .tint(MobileTheme.Colors.primary(for: provider))
+                    Button {
+                        revealCredential.toggle()
+                        Haptics.light()
+                    } label: {
+                        Image(systemName: revealCredential ? "eye.slash.fill" : "eye.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Group {
+                    if revealCredential {
+                        TextField(guide.credentialPlaceholder, text: $credential, axis: .vertical)
+                            .lineLimit(2...4)
+                    } else {
+                        SecureField(guide.credentialPlaceholder, text: $credential)
+                    }
+                }
+                .textFieldStyle(.roundedBorder)
+                .textContentType(.password)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .focused($credentialFocused)
+                .submitLabel(.go)
+                .onSubmit {
+                    if canConnect {
+                        Task { await connect() }
                     }
                 }
 
-                SecureField(guide.credentialPlaceholder, text: $credential)
-                    .textFieldStyle(.roundedBorder)
-                    .textContentType(.password)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .focused($credentialFocused)
-                    .submitLabel(.go)
-                    .onSubmit {
-                        if canConnect {
-                            Task { await connect() }
+                HStack(spacing: 8) {
+                    PasteButton(payloadType: String.self) { strings in
+                        if let first = strings.first {
+                            Haptics.success()
+                            credential = first
                         }
                     }
+                    .labelStyle(.titleAndIcon)
+                    .frame(minHeight: 36)
 
-                PasteButton(payloadType: String.self) { strings in
-                    if let first = strings.first {
-                        Haptics.success()
-                        credential = first
+                    if !credential.isEmpty {
+                        Button {
+                            credential = ""
+                            Haptics.light()
+                        } label: {
+                            Label("Clear", systemImage: "xmark.circle.fill")
+                                .font(MobileTheme.Typography.caption)
+                                .foregroundStyle(MobileTheme.Colors.textMuted)
+                        }
+                        .buttonStyle(.plain)
                     }
+                    Spacer()
                 }
-                .labelStyle(.titleAndIcon)
-                .frame(maxWidth: .infinity, minHeight: 44)
             }
+
+            MobileValidationChip(validation: validation)
+                .animation(MobileTheme.Animation.snappy, value: credential)
 
             Text(.init(guide.credentialFooterMarkdown))
                 .font(MobileTheme.Typography.caption)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
-
-            if validationState == .tooShort {
-                Label("That looks too short — make sure you copied the full credential.", systemImage: "exclamationmark.triangle.fill")
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.warning)
-            }
         }
+    }
+
+    private var currentValidation: BurnBarProviderAuthValidation {
+        if let method = selectedAuthMethod { return method.validate(credential) }
+        return ProviderSetupGuide.registryValidation(credential: credential, for: provider)
     }
 
     private var selfHostedRunnerFields: some View {
@@ -433,6 +526,14 @@ struct OnboardingProviderConnectStep: View {
 
     private var connectedStep: some View {
         VStack(spacing: MobileTheme.Spacing.lg) {
+            MobileProviderConfirmHero(
+                provider: provider,
+                title: "\(provider.displayName) connected",
+                subtitle: connectedAccount.map { "Account: \($0.label)" } ?? "Account is ready to use.",
+                capabilityChips: capabilityChips,
+                maskedCredential: syncMode == .selfHosted ? nil : mobileMaskCredential(credential)
+            )
+
             ZStack {
                 Circle()
                     .fill(MobileTheme.Colors.success.opacity(0.18))
@@ -442,18 +543,7 @@ struct OnboardingProviderConnectStep: View {
                     .foregroundStyle(MobileTheme.Colors.success)
                     .symbolEffect(.bounce)
             }
-            .padding(.top, MobileTheme.Spacing.xl)
-
-            Text("\(provider.displayName) connected")
-                .font(MobileTheme.Typography.title)
-                .foregroundStyle(MobileTheme.Colors.textPrimary)
-                .multilineTextAlignment(.center)
-
-            if let connectedAccount {
-                Text("Account: \(connectedAccount.label)")
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-            }
+            .padding(.top, MobileTheme.Spacing.md)
         }
         .frame(maxWidth: .infinity)
         .padding(.bottom, MobileTheme.Spacing.xxl)

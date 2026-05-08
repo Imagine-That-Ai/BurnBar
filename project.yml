@@ -274,6 +274,39 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+    postBuildScripts:
+      - name: Block App Check Debug Token In Release
+        script: |
+          set -euo pipefail
+
+          STAMP="${SCRIPT_OUTPUT_FILE_0:-}"
+          finish() {
+            if [[ -n "${STAMP}" ]]; then
+              mkdir -p "$(dirname "${STAMP}")"
+              touch "${STAMP}"
+            fi
+          }
+          trap finish EXIT
+
+          if [[ "${CONFIGURATION:-}" == "Debug" ]]; then
+            exit 0
+          fi
+
+          SOURCE_PLIST="${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist"
+          if [[ ! -f "${SOURCE_PLIST}" ]]; then
+            exit 0
+          fi
+
+          for KEY in FirebaseAppCheckDebugToken FIRAAppCheckDebugToken; do
+            if /usr/libexec/PlistBuddy -c "Print :${KEY}" "${SOURCE_PLIST}" >/dev/null 2>&1; then
+              echo "error: ${KEY} must not be present in OpenBurnBarMobile/Resources/GoogleService-Info.plist for non-Debug builds."
+              exit 1
+            fi
+          done
+        inputFiles:
+          - $(PROJECT_DIR)/OpenBurnBarMobile/Resources/GoogleService-Info.plist
+        outputFiles:
+          - $(DERIVED_FILE_DIR)/BlockAppCheckDebugTokenInRelease.stamp
     info:
       path: OpenBurnBarMobile/Info.plist
       properties:
@@ -305,6 +338,7 @@ targets:
     scheme:
       testTargets:
         - OpenBurnBarMobileTests
+      storeKitConfiguration: OpenBurnBarMobileTests/Resources/OpenBurnBarHostedQuota.storekit
 
   OpenBurnBarMobileTests:
     type: bundle.unit-test

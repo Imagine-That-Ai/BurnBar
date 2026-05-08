@@ -162,7 +162,7 @@ private struct CloudStorePlanPicker: View {
             HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
                 CloudPlanTile(
                     kind: .monthly,
-                    priceText: store.product?.displayPrice ?? "$2.99",
+                    priceText: store.product?.displayPrice ?? "$4.99",
                     cadence: "/ month",
                     caption: "Most flexible",
                     isSelected: true,
@@ -713,7 +713,7 @@ private struct CloudStoreActionBar: View {
 
     @ViewBuilder
     private var subscribeButton: some View {
-        let priceCopy = store.product?.displayPrice ?? "$2.99"
+        let priceCopy = store.product?.displayPrice ?? "$4.99"
         Button {
             Haptics.medium()
             Task { await store.purchase() }

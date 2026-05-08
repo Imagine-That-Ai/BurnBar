@@ -41,9 +41,7 @@ struct ProviderConnectionsView: View {
                     }
                 }
                 .sheet(isPresented: $showAddSheet) {
-                    if let selectedProvider {
-                        AddProviderConnectionView(provider: selectedProvider)
-                    }
+                    AddProviderConnectionView(provider: selectedProvider)
                 }
                 .alert(
                     "Couldn't update account",
@@ -80,13 +78,12 @@ struct ProviderConnectionsView: View {
                     ConnectionLoadingPlaceholder()
                 } else if !hasFirstClassAccounts && store.connections.isEmpty {
                     ConnectionsEmptyState {
-                        // Default to a sensible "first add" path — pick the first
-                        // unconnected provider in the catalog. Users can change it
-                        // in the sheet or use the Available list below.
-                        if let first = availableProviders.first {
-                            selectedProvider = first
-                            showAddSheet = true
-                        }
+                        // Open the searchable provider grid so users see the
+                        // full list of supported providers in one place
+                        // instead of being silently routed to whichever
+                        // provider happens to be first.
+                        selectedProvider = nil
+                        showAddSheet = true
                     }
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
