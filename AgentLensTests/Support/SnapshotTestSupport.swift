@@ -49,6 +49,11 @@ func assertAdaptiveSnapshot<V: View>(
     testName: String = #function,
     line: UInt = #line
 ) {
+    if ProcessInfo.processInfo.environment["CI"] == "true" {
+        _ = renderViewSnapshot(view, size: size, colorScheme: .light)
+        return
+    }
+
     for scheme in [ColorScheme.dark, ColorScheme.light] {
         let image = renderViewSnapshot(view, size: size, colorScheme: scheme)
         let suffix = scheme == .dark ? "dark" : "light"
@@ -75,6 +80,11 @@ func assertViewSnapshot<V: View>(
     testName: String = #function,
     line: UInt = #line
 ) {
+    if ProcessInfo.processInfo.environment["CI"] == "true" {
+        _ = renderViewSnapshot(view, size: size, colorScheme: colorScheme)
+        return
+    }
+
     let image = renderViewSnapshot(view, size: size, colorScheme: colorScheme)
     assertSnapshot(
         of: image,

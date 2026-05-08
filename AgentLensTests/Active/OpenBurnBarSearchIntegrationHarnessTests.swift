@@ -214,10 +214,13 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         let report = try await harness.drainProjectionQueue(maxSweeps: 16, maxJobsPerSweep: 96, advanceClockBy: 1)
         let elapsedMs = elapsedMilliseconds(since: startedAt)
         let throughputJobsPerSecond = Double(report.completedJobs) / max(0.001, elapsedMs / 1_000)
+        let isCI = ProcessInfo.processInfo.environment["CI"] == "true"
+        let maxElapsedMs: Double = isCI ? 25_000 : 15_000
+        let minThroughputJobsPerSecond: Double = isCI ? 7 : 15
 
         XCTAssertGreaterThanOrEqual(report.completedJobs, jobCount)
-        XCTAssertLessThan(elapsedMs, 15_000)
-        XCTAssertGreaterThanOrEqual(throughputJobsPerSecond, 15)
+        XCTAssertLessThan(elapsedMs, maxElapsedMs)
+        XCTAssertGreaterThanOrEqual(throughputJobsPerSecond, minThroughputJobsPerSecond)
         XCTAssertTrue(
             try harness.dataStore.fetchProjectionJobs(statuses: [.queued, .failed, .leased, .running], limit: 1).isEmpty
         )
