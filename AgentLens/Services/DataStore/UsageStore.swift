@@ -34,6 +34,7 @@ final class UsageStore: Sendable {
     private func deleteKimiRequestIDModelRows(replacedBy usage: TokenUsage, in db: Database) throws {
         guard usage.provider == .kimi,
               !Self.isKimiRequestIDModel(usage.model) else { return }
+        let providerAccountID = Self.nonSecretProviderAccountIdentifier(usage.providerAccountID)
 
         try db.execute(
             sql: """
@@ -48,7 +49,7 @@ final class UsageStore: Sendable {
                 usage.provider.rawValue,
                 usage.sessionId,
                 usage.sourceDeviceId,
-                usage.providerAccountID,
+                providerAccountID,
             ]
         )
     }
@@ -73,6 +74,7 @@ final class UsageStore: Sendable {
     /// Cloud sync data with equal or higher confidence than existing row will update it.
     func insertRemoteUsage(_ usage: TokenUsage) throws {
         try dbQueue.write { db in
+            let providerAccountID = Self.nonSecretProviderAccountIdentifier(usage.providerAccountID)
             try db.execute(
                 sql: """
                     INSERT INTO token_usage (
@@ -170,7 +172,7 @@ final class UsageStore: Sendable {
                     usage.usageSource.rawValue,
                     usage.sourceDeviceId, usage.sourceDeviceName, usage.isRemote, Date(),
                     usage.providerID.rawValue,
-                    usage.providerAccountID,
+                    providerAccountID,
                     usage.providerAccountLabel,
                     usage.providerAccountSource?.rawValue,
                     usage.provenanceMethod.rawValue,
@@ -470,6 +472,7 @@ final class UsageStore: Sendable {
     }
 
     private func upsertUsage(_ usage: TokenUsage, in db: Database) throws {
+        let providerAccountID = Self.nonSecretProviderAccountIdentifier(usage.providerAccountID)
         let statement = try db.cachedStatement(
             sql: """
                 INSERT INTO token_usage (
@@ -597,7 +600,7 @@ final class UsageStore: Sendable {
                 usage.sourceDeviceName,
                 usage.isRemote ? 1 : 0,
                 usage.providerID.rawValue,
-                usage.providerAccountID,
+                providerAccountID,
                 usage.providerAccountLabel,
                 usage.providerAccountSource?.rawValue,
                 usage.provenanceMethod.rawValue,
@@ -605,6 +608,14 @@ final class UsageStore: Sendable {
                 usage.estimatorVersion
             ]
         )
+    }
+
+    private static func nonSecretProviderAccountIdentifier(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else { return nil }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._:-@"))
+        let filtered = String(trimmed.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" })
+        return String(filtered.prefix(160))
     }
 
     private static func decodeUsage(row: Row) -> TokenUsage? {

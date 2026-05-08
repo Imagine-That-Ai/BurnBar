@@ -26,7 +26,7 @@ const APP = {
   locale: process.env.APP_STORE_LOCALE || "en-US",
   screenshotDir:
     process.env.OPENBURNBAR_SCREENSHOT_DIR ||
-    "/tmp/openburnbar-appstore-screenshots",
+    path.join(process.cwd(), ".appstore-screenshots"),
 };
 
 const APP_REVIEW = {
@@ -544,6 +544,33 @@ function md5(filePath) {
   return crypto.createHash("md5").update(fs.readFileSync(filePath)).digest("hex");
 }
 
+function screenshotPath(fileName) {
+  const baseDir = path.resolve(APP.screenshotDir);
+  const resolved = path.resolve(baseDir, fileName);
+  const relative = path.relative(baseDir, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`Screenshot path escapes configured directory: ${fileName}`);
+  }
+  return resolved;
+}
+
+function verifiedUploadURL(rawURL) {
+  const parsed = new URL(rawURL);
+  if (parsed.protocol !== "https:") {
+    throw new Error("App Store upload URL must use HTTPS.");
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  if (
+    hostname !== "api.appstoreconnect.apple.com" &&
+    !hostname.endsWith(".appstoreconnect.apple.com") &&
+    hostname !== "iosapps-ssl.itunes.apple.com" &&
+    !hostname.endsWith(".iosapps-ssl.itunes.apple.com")
+  ) {
+    throw new Error(`Unexpected App Store upload host: ${parsed.hostname}`);
+  }
+  return parsed;
+}
+
 async function uploadOperations(filePath, operations) {
   const handle = fs.openSync(filePath, "r");
   try {
@@ -556,7 +583,7 @@ async function uploadOperations(filePath, operations) {
       for (const header of operation.requestHeaders || []) {
         headers[header.name] = header.value;
       }
-      const uploadResponse = await fetch(operation.url, {
+      const uploadResponse = await fetch(verifiedUploadURL(operation.url), {
         method: operation.method || "PUT",
         headers,
         body: chunk,
@@ -604,7 +631,7 @@ async function uploadAppScreenshot(setId, filePath) {
 async function replaceScreenshots(localizationId) {
   const existingSets = await getScreenshotSets(localizationId);
   for (const plan of SCREENSHOT_PLAN) {
-    const plannedPaths = plan.files.map((file) => path.join(APP.screenshotDir, file));
+    const plannedPaths = plan.files.map((file) => screenshotPath(file));
     for (const filePath of plannedPaths) {
       if (!fs.existsSync(filePath)) {
         throw new Error(`Missing screenshot file: ${filePath}`);
@@ -647,7 +674,7 @@ async function deleteSubscriptionReviewScreenshot(subscriptionResponse) {
 }
 
 async function uploadSubscriptionReviewScreenshot() {
-  const filePath = path.join(APP.screenshotDir, "ipad-pro13-providers.png");
+  const filePath = screenshotPath("ipad-pro13-providers.png");
   if (!fs.existsSync(filePath)) {
     throw new Error(`Missing subscription review screenshot file: ${filePath}`);
   }
@@ -689,6 +716,10 @@ async function printStatus() {
   const linkedBuild = await getLinkedBuild(version.id);
   const linkedBuildReadback = linkedBuild?.id ? await getBuild(linkedBuild.id) : null;
   const reviewDetail = await getReviewDetail(version.id);
+  const hasDemoAccountPassword = Boolean(
+    reviewDetail?.attributes?.demoAccountPassword
+  );
+  const hasReviewNotes = Boolean(reviewDetail?.attributes?.notes);
 
   console.log(
     JSON.stringify(
@@ -726,10 +757,8 @@ async function printStatus() {
               id: reviewDetail.id,
               demoAccountRequired: reviewDetail.attributes?.demoAccountRequired,
               demoAccountName: reviewDetail.attributes?.demoAccountName,
-              hasDemoAccountPassword: Boolean(
-                reviewDetail.attributes?.demoAccountPassword
-              ),
-              hasNotes: Boolean(reviewDetail.attributes?.notes),
+              hasDemoAccountPassword,
+              hasNotes: hasReviewNotes,
             }
           : null,
         subscription: {

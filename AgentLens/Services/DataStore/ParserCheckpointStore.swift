@@ -282,6 +282,7 @@ final class AtomicIngestionTransaction {
         try dbQueue.write { db in
             // First, persist usages
             for usage in usages {
+                let providerAccountID = Self.nonSecretProviderAccountIdentifier(usage.providerAccountID)
                 try db.execute(sql: """
                     INSERT INTO token_usage (
                         id, provider, sessionId, projectName, model,
@@ -389,7 +390,7 @@ final class AtomicIngestionTransaction {
                         usage.sourceDeviceName,
                         usage.isRemote ? 1 : 0,
                         usage.providerID.rawValue,
-                        usage.providerAccountID,
+                        providerAccountID,
                         usage.providerAccountLabel,
                         usage.providerAccountSource?.rawValue,
                         usage.provenanceMethod.rawValue,
@@ -433,4 +434,12 @@ final class AtomicIngestionTransaction {
 
     var wasCommitted: Bool { isCommitted }
     var wasRolledBack: Bool { isRolledBack }
+
+    private static func nonSecretProviderAccountIdentifier(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else { return nil }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._:-@"))
+        let filtered = String(trimmed.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" })
+        return String(filtered.prefix(160))
+    }
 }

@@ -80,6 +80,7 @@ HOP_BY_HOP_HEADERS = {
     "transfer-encoding",
     "upgrade",
 }
+ALLOWED_UPSTREAM_PATH_PREFIXES = ("/v1/", "/health", "/ready")
 
 
 @dataclass(frozen=True)
@@ -117,10 +118,33 @@ def _scheme_for(value: str) -> str:
 def _filter_response_headers(headers: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     for k, v in headers:
-        if k.lower() in HOP_BY_HOP_HEADERS:
+        if k.lower() in HOP_BY_HOP_HEADERS or _contains_header_ctl(k) or _contains_header_ctl(v):
             continue
         out.append((k, v))
     return out
+
+
+def _contains_header_ctl(value: str) -> bool:
+    return any(ch in value for ch in ("\r", "\n", "\x00"))
+
+
+def _origin_form_path(raw_path: str) -> Optional[str]:
+    if not raw_path.startswith("/") or raw_path.startswith("//"):
+        return None
+    parsed = urlparse(raw_path)
+    if parsed.scheme or parsed.netloc or not parsed.path:
+        return None
+    if not parsed.path.startswith(ALLOWED_UPSTREAM_PATH_PREFIXES):
+        return None
+    normalized = parsed.path
+    if parsed.query:
+        normalized = f"{normalized}?{parsed.query}"
+    return normalized
+
+
+def _safe_log_value(value: str, limit: int = 160) -> str:
+    sanitized = "".join(ch if ch.isprintable() and ch not in "\r\n\t" else "?" for ch in value)
+    return sanitized[:limit]
 
 
 def _coerce_int(value: Any) -> int:
@@ -379,7 +403,10 @@ class HermesProxyHandler(BaseHTTPRequestHandler):
 
     def _do_proxy(self, method: str) -> None:
         body = self._request_body()
-        path = self.path
+        path = _origin_form_path(self.path)
+        if path is None:
+            self.send_error(HTTPStatus.BAD_REQUEST, "Unsupported upstream path.")
+            return
         try:
             parsed_body: dict[str, Any] = json.loads(body) if body else {}
         except json.JSONDecodeError:
@@ -454,7 +481,7 @@ class HermesProxyHandler(BaseHTTPRequestHandler):
             try:
                 payload = json.loads(body_bytes.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
-                logger.debug("non-JSON response body for %s", path)
+                logger.debug("non-JSON response body for %s", _safe_log_value(path))
                 return
             try:
                 event, _ = _build_event(

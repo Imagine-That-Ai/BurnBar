@@ -49,19 +49,29 @@ function step(msg) { console.log(`\n[ASC] ▶ ${msg}`); }
 
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+function isAllowedLoggedInUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  const pathname = parsed.pathname.toLowerCase();
+  return (
+    hostname === 'appstoreconnect.apple.com' &&
+    !pathname.includes('/signin') &&
+    !pathname.includes('/login') &&
+    !pathname.includes('/auth')
+  );
+}
+
 async function waitForLoggedIn(page) {
   log('Waiting for you to log in to App Store Connect…');
   log('Complete your Apple ID sign-in and 2FA in the Chrome window.');
   for (let i = 0; i < 300; i++) {          // wait up to 10 min
     const url = page.url();
-    if (
-      url.includes('appstoreconnect.apple.com') &&
-      !url.includes('idmsa.apple.com') &&
-      !url.includes('appleid.apple.com') &&
-      !url.includes('/signin') &&
-      !url.includes('/login') &&
-      !url.includes('/auth')
-    ) {
+    if (isAllowedLoggedInUrl(url)) {
       log('Login detected — continuing.');
       return;
     }
