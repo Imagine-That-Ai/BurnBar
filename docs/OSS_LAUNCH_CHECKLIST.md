@@ -69,7 +69,7 @@ Re-check every item immediately before changing repository visibility.
 
 ## Re-check snapshot on 2026-05-08
 
-- GitHub Dependabot API reports 2 open alerts on the default branch: `@tootallnate/once` low in `functions/package-lock.json` and `postcss` medium in `extensions/openburnbar/package-lock.json`. The current PR branch resolves them to patched versions (`@tootallnate/once@3.0.1`, `postcss@8.5.14`); the alerts should close after the branch lands on `main`.
+- GitHub Dependabot API reports 2 open alerts on the default branch: `fast-xml-builder` high and medium advisories in `functions/package-lock.json`. PR #45 resolves them by overriding the transitive dependency to `fast-xml-builder@1.2.0`; the alerts should close after the branch lands on `main`.
 - Current commercial-launch privacy review found `docs/PRIVACY.md` needed to disclose paid Firestore chat/session backup, iCloud mirroring, hosted quota credentials, Secret Manager, and App Store entitlement behavior.
 
 ## Still needs manual confirmation before public launch
