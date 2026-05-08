@@ -34,6 +34,7 @@
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
     "firebase": "^12.13.0",
+    "firebase-tools": "^15.17.0",
     "typescript": "~5.7.0"
   },
   "overrides": {
