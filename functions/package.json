@@ -36,5 +36,8 @@
     "firebase": "^12.13.0",
     "typescript": "~5.7.0"
   },
+  "overrides": {
+    "@tootallnate/once": "^3.0.1"
+  },
   "private": true
 }

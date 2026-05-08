@@ -20,5 +20,8 @@
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.12",
     "typescript": "~5.7.0"
+  },
+  "overrides": {
+    "@tootallnate/once": "^3.0.1"
   }
 }
