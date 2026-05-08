@@ -7,6 +7,7 @@ struct ChatView: View {
     @State private var service = HermesService()
     @State private var inputText = ""
     @State private var showClearConfirmation = false
+    @State private var atomRouter = HermesAtomRouter()
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
@@ -18,6 +19,17 @@ struct ChatView: View {
             inputBar
         }
         .background(emberBackground.ignoresSafeArea())
+        .environment(\.hermesAtomNavigator, atomRouter)
+        .sheet(item: Binding(
+            get: { atomRouter.pending },
+            set: { atomRouter.pending = $0 }
+        )) { pending in
+            HermesAtomDetailSheet(
+                atom: pending.atom,
+                label: pending.label,
+                onOpen: { atomRouter.confirm(pending) }
+            )
+        }
         .navigationTitle("Hermes")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -52,6 +64,10 @@ struct ChatView: View {
         .onAppear {
             service.loadHistory()
             Task { await service.checkReachability() }
+            // Idempotent: warm pretext WKWebView so the first assistant
+            // turn renders chips without an initial measurement stall.
+            PretextEngine.shared.start()
+            atomRouter.onPerform = { _ in }
         }
     }
 
@@ -206,6 +222,13 @@ struct ChatView: View {
 }
 
 // MARK: - Hermes Chat Bubble
+//
+// Atom-aware bubble. Assistant turns route through `HermesRichBubble` (so
+// `[label](burnbar://...)` markdown links become tappable chips) wrapped in
+// `StreamingBubble` (which animates frame height during streaming and
+// shrink-wraps when the turn completes). Errors and user messages keep the
+// plain `Text` path — atoms in error text would be misleading and user
+// turns are short enough to not benefit from rich layout.
 
 struct HermesChatBubble: View {
     let message: HermesChatMessage
@@ -235,7 +258,52 @@ struct HermesChatBubble: View {
         }
     }
 
+    @ViewBuilder
     private var bubble: some View {
+        if !isUser, !message.isError, !message.text.isEmpty, !message.isStreaming {
+            atomBubble
+        } else if !isUser, !message.isError, message.isStreaming, !message.text.isEmpty {
+            StreamingBubble(
+                text: message.text,
+                isStreaming: true,
+                isError: false,
+                baseSize: 15,
+                lineHeight: 21
+            ) {
+                plainBubble
+            }
+        } else {
+            plainBubble
+        }
+    }
+
+    private var atomBubble: some View {
+        StreamingBubble(
+            text: message.text,
+            isStreaming: false,
+            isError: false,
+            baseSize: 15,
+            lineHeight: 21
+        ) {
+            HermesRichBubble(text: message.text)
+                .padding(.horizontal, MobileTheme.Spacing.md)
+                .padding(.vertical, MobileTheme.Spacing.sm)
+                .background(
+                    RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                        .fill(MobileTheme.Colors.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                        .stroke(bubbleStroke, lineWidth: 1)
+                )
+                .overlay(
+                    MercuryShimmerOverlay()
+                        .clipShape(RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous))
+                )
+        }
+    }
+
+    private var plainBubble: some View {
         Text(message.text)
             .font(MobileTheme.Typography.body)
             .foregroundStyle(message.isError ? MobileTheme.Colors.error : MobileTheme.Colors.textPrimary)

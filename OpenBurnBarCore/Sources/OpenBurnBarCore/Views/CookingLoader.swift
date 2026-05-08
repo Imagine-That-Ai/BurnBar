@@ -7,11 +7,7 @@ import SwiftUI
 // to a gentle spring rhythm — like breakfast dancing in the pan.
 
 public struct CookingLoader: View {
-    public enum Style {
-        case inline
-        case panel
-        case hero
-    }
+    public typealias Style = MiningPickLoader.Style
 
     public let style: Style
     public let label: String?
@@ -130,22 +126,21 @@ public struct CookingLoader: View {
     /// Squash-stretch: taller at apex, squatter at bottom.
     private func squashScale(_ p: Double) -> CGFloat {
         let s = sin(p * .pi * 2)
-        let yScale = 1.0 + s * 0.06
-        let xScale = 1.0 - s * 0.04
-        return CGFloat(xScale) // SwiftUI scaleEffect is uniform; we use offset + rotation for character
+        // SwiftUI scaleEffect is uniform; we use offset + rotation for character
+        return CGFloat(1.0 + s * 0.04)
     }
 }
 
 // MARK: - Mode-Aware Loader
 
 public struct ModeAwareLoader: View {
-    public let style: CookingLoader.Style
+    public let style: MiningPickLoader.Style
     public let label: String?
     public let tint: Color?
 
     @Environment(\.uiMode) private var uiMode
 
-    public init(_ style: CookingLoader.Style = .panel, label: String? = nil, tint: Color? = nil) {
+    public init(_ style: MiningPickLoader.Style = .panel, label: String? = nil, tint: Color? = nil) {
         self.style = style
         self.label = label
         self.tint = tint

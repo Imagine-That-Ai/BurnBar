@@ -245,4 +245,79 @@ final class HermesAtomParserTests: XCTestCase {
         XCTAssertLessThan(preambleRange!.lowerBound, directiveRange!.lowerBound)
         XCTAssertLessThan(directiveRange!.lowerBound, contextRange!.lowerBound)
     }
+
+    // MARK: - Unicode + percent-encoded labels
+
+    func testParsesAtomWithPercentEncodedSessionID() {
+        // `abc 123` → `abc%20123` after URL encoding. Decoder should recover
+        // the original space-separated identifier.
+        let text = "Open [session abc 123](burnbar://session?id=abc%20123) for the diff."
+        let runs = HermesAtomParser.parse(text)
+        let atoms = runs.compactMap { $0.atom }
+        XCTAssertEqual(atoms.count, 1)
+        if case let .session(id) = atoms[0] {
+            XCTAssertEqual(id, "abc 123")
+        } else {
+            XCTFail("expected session atom")
+        }
+    }
+
+    func testParsesAtomWithEmojiInLabel() {
+        // Labels are user-visible and may contain emoji or any Unicode
+        // grapheme. They must round-trip through the parser unchanged.
+        let text = "Tap [\u{1F525} today](burnbar://burn?window=today&amount=1) please."
+        let runs = HermesAtomParser.parse(text)
+        guard case let .atom(atom, label) = runs[1].kind else {
+            XCTFail("expected atom run")
+            return
+        }
+        XCTAssertEqual(label, "\u{1F525} today")
+        if case .cost = atom {} else { XCTFail("expected cost atom") }
+    }
+
+    func testParsesAtomWithUnicodeProjectID() {
+        // Project IDs frequently contain non-ASCII (Cyrillic, CJK, etc.).
+        // The decoder treats anything URL-encoded as opaque payload — it
+            // should restore the original identifier byte-for-byte.
+        let project = "\u{4E2D}\u{6587}\u{9879}\u{76EE}" // 中文项目
+        let encoded = project.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let text = "Open [the project](burnbar://project?id=\(encoded)) please."
+        let runs = HermesAtomParser.parse(text)
+        guard case let .atom(atom, _) = runs[1].kind, case let .project(id) = atom else {
+            XCTFail("expected project atom")
+            return
+        }
+        XCTAssertEqual(id, project)
+    }
+
+    // MARK: - URL codec edge cases
+
+    func testURLCodecRejectsForeignScheme() {
+        let url = URL(string: "https://example.com/path?atom=1")!
+        XCTAssertNil(HermesAtomURL.decode(url))
+    }
+
+    func testURLCodecRejectsUnknownHost() {
+        let url = URL(string: "burnbar://nonsense?id=abc")!
+        XCTAssertNil(HermesAtomURL.decode(url))
+    }
+
+    func testURLCodecRejectsEmptySessionID() {
+        let url = URL(string: "burnbar://session?id=")!
+        XCTAssertNil(HermesAtomURL.decode(url))
+    }
+
+    // MARK: - Router contract
+
+    func testNoopNavigatorIsCallableFromAnyContext() {
+        // Sanity: the default no-op navigator must not crash when invoked
+            // — it only logs. This is the value SwiftUI uses by default.
+        let navigator: any HermesAtomNavigator = NoopHermesAtomNavigator()
+        let expectation = expectation(description: "open returns")
+        Task { @MainActor in
+            navigator.open(.session(id: "abc"))
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1)
+    }
 }
