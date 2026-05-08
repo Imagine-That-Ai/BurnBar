@@ -11,55 +11,97 @@ struct HeroSmallView: View {
 
     private var tokensText: String {
         guard let snap else { return "—" }
-        return "\(snap.heroTotalTokens.formatAsTokens()) tokens"
+        return snap.heroTotalTokens.formatAsTokensRaw()
     }
 
     private var topProvider: String {
         snap?.topProviders.first ?? "—"
     }
 
+    var providerEnum: AgentProvider? {
+        AgentProvider.fromPersistedToken(topProvider)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+        ZStack {
+            WidgetDesignSystem.Colors.primaryGradient
+                .ignoresSafeArea()
 
-                Text("OpenBurnBar")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(0.5)
+            WidgetFlameGlow()
+                .offset(x: 24, y: -18)
 
-                Spacer()
-            }
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 5) {
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(WidgetDesignSystem.Colors.accentGradient)
 
-            Spacer(minLength: 2)
+                    Text("BurnBar")
+                        .font(WidgetDesignSystem.Typography.micro)
+                        .foregroundStyle(WidgetDesignSystem.Colors.textSecondary)
+                        .textCase(.uppercase)
+                        .tracking(0.6)
 
-            Text(costText)
-                .font(.system(size: 32, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                    Spacer()
+                }
 
-            HStack(spacing: 4) {
-                Text(tokensText)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
 
-                Text("·")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary.opacity(0.6))
-
-                Text(topProvider)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.accentColor)
+                Text(costText)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                    .widgetAccentable()
+
+                Spacer(minLength: 2)
+
+                HStack(spacing: 4) {
+                    Text("\(tokensText) tokens")
+                        .font(WidgetDesignSystem.Typography.caption)
+                        .foregroundStyle(WidgetDesignSystem.Colors.textSecondary)
+
+                    if topProvider != "—" {
+                        Text("·")
+                            .font(WidgetDesignSystem.Typography.caption)
+                            .foregroundStyle(WidgetDesignSystem.Colors.textMuted)
+
+                        if let providerEnum,
+                           UIImage(named: providerEnum.bundledLogoName) != nil {
+                            UnifiedProviderLogoView(provider: providerEnum, size: 12)
+                        }
+
+                        Text(topProvider)
+                            .font(WidgetDesignSystem.Typography.caption)
+                            .foregroundStyle(WidgetDesignSystem.Colors.amber)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 4)
+
+                HStack(spacing: 6) {
+                    WidgetMetricBadge(
+                        icon: "number",
+                        value: "\(snap?.heroTotalRequests ?? 0)",
+                        label: "reqs",
+                        color: WidgetDesignSystem.Colors.whimsy
+                    )
+
+                    if let window = snap?.windowKey {
+                        WidgetMetricBadge(
+                            icon: "calendar",
+                            value: window,
+                            label: "",
+                            color: WidgetDesignSystem.Colors.textSecondary
+                        )
+                    }
+                }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .widgetAccentable()
     }
 }

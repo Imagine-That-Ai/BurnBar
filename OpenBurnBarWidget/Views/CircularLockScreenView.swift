@@ -10,33 +10,40 @@ struct CircularLockScreenView: View {
 
     var body: some View {
         ZStack {
+            // Background track
             Circle()
-                .stroke(Color.gray.opacity(0.2), style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                .stroke(
+                    Color.gray.opacity(0.15),
+                    style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                )
 
+            // Progress arc with gradient
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
-                    Color.accentColor,
+                    WidgetDesignSystem.Colors.accentGradient,
                     style: StrokeStyle(lineWidth: 5, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
                 .widgetAccentable()
 
-            VStack(spacing: 0) {
-                Text(cost.formatAsCost())
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+            // Center content
+            VStack(spacing: 1) {
+                Text(cost.formatAsCostCompact())
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.6)
+                    .minimumScaleFactor(0.55)
                     .widgetAccentable()
 
                 if let tokens = snap?.heroTotalTokens {
-                    Text("\(tokens.formatAsTokens())")
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                    Text(tokens.formatAsTokens())
+                        .font(.system(size: 8, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.6)
                 }
             }
+            .padding(.horizontal, 4)
         }
         .widgetAccentable()
     }

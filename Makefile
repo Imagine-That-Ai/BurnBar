@@ -20,6 +20,7 @@ CONFIG       := Release
 DESTINATION  := platform=macOS
 CACHE_DIR    := .spm-cache
 DERIVED_DATA := .derived-data
+OPENBURNBAR_DEVELOPMENT_TEAM ?= 4Y367DF25B
 APP_NAME     := OpenBurnBar.app
 INSTALL_DIR  := /Applications
 DAEMON_PACKAGE := OpenBurnBarDaemon
@@ -29,7 +30,7 @@ DAEMON_CORE_DYLIB := libOpenBurnBarCore.dylib
 # Built .app location inside DerivedData
 APP_BUNDLE = $(DERIVED_DATA)/Build/Products/$(CONFIG)/$(APP_NAME)
 
-.PHONY: preflight build install uninstall clean test lint ci release-checksums sbom
+.PHONY: preflight build build-signed install uninstall clean test lint ci release-checksums sbom
 
 preflight:
 	@command -v xcodebuild >/dev/null 2>&1 || { echo "ERROR: xcodebuild not found. Install Xcode 16+ command line tools first."; exit 1; }
@@ -74,7 +75,48 @@ build: preflight
 	cp -R "$$OPENBURNBAR_CORE_FRAMEWORK" "$(APP_BUNDLE)/Contents/Frameworks/"
 	@echo "==> Built: $(APP_BUNDLE)"
 
-install: build
+build-signed: preflight
+	@mkdir -p "$(CACHE_DIR)" "$(DERIVED_DATA)"
+	@echo "==> Resolving packages…"
+	xcodebuild -resolvePackageDependencies \
+		-project $(PROJECT) \
+		-scheme $(SCHEME) \
+		-clonedSourcePackagesDirPath $(CACHE_DIR) \
+		-derivedDataPath $(DERIVED_DATA) \
+		-quiet
+	@echo "==> Building daemon…"
+	swift build --package-path $(DAEMON_PACKAGE) -c release
+	@echo "==> Building signed $(SCHEME) ($(CONFIG))…"
+	xcodebuild \
+		-project $(PROJECT) \
+		-scheme $(SCHEME) \
+		-configuration $(CONFIG) \
+		-destination "$(DESTINATION)" \
+		-clonedSourcePackagesDirPath $(CACHE_DIR) \
+		-derivedDataPath $(DERIVED_DATA) \
+		DEVELOPMENT_TEAM=$(OPENBURNBAR_DEVELOPMENT_TEAM) \
+		CODE_SIGN_STYLE=Automatic \
+		-allowProvisioningUpdates \
+		build
+	@echo "==> Embedding daemon helper…"
+	mkdir -p "$(APP_BUNDLE)/Contents/Helpers"
+	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_BIN)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
+	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CORE_DYLIB)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CORE_DYLIB)"
+	chmod +x "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
+	@echo "==> Embedding OpenBurnBarCore framework…"
+	mkdir -p "$(APP_BUNDLE)/Contents/Frameworks"
+	OPENBURNBAR_CORE_FRAMEWORK="$(DERIVED_DATA)/Build/Products/$(CONFIG)/PackageFrameworks/OpenBurnBarCore.framework"; \
+	if [ ! -d "$$OPENBURNBAR_CORE_FRAMEWORK" ]; then \
+		echo "ERROR: Missing OpenBurnBarCore framework at $$OPENBURNBAR_CORE_FRAMEWORK"; \
+		exit 1; \
+	fi; \
+	rm -rf "$(APP_BUNDLE)/Contents/Frameworks/OpenBurnBarCore.framework"; \
+	cp -R "$$OPENBURNBAR_CORE_FRAMEWORK" "$(APP_BUNDLE)/Contents/Frameworks/"
+	@echo "==> Signing $(APP_BUNDLE) for local install…"
+	OPENBURNBAR_PRESERVE_SIGNED_ENTITLEMENTS=1 scripts/sign-openburnbar-local.sh "$(APP_BUNDLE)" "AgentLens/Resources/OpenBurnBar.entitlements"
+	@echo "==> Built signed: $(APP_BUNDLE)"
+
+install: build-signed
 	@echo "==> Installing to $(INSTALL_DIR)/$(APP_NAME)…"
 	@# Verify the build produced a valid .app before touching the install dir
 	@test -d "$(APP_BUNDLE)" || { echo "ERROR: Build output not found at $(APP_BUNDLE)"; exit 1; }
@@ -103,8 +145,11 @@ test: ## Run all test suites (Swift packages + app tests)
 	@./scripts/test-openburnbar-app.sh
 
 lint: ## Run SwiftLint
-	@command -v swiftlint >/dev/null 2>&1 || { echo "WARNING: swiftlint not found; skipping lint."; exit 0; }
-	@swiftlint lint --quiet
+	@if command -v swiftlint >/dev/null 2>&1; then \
+		swiftlint lint --quiet; \
+	else \
+		echo "WARNING: swiftlint not found; skipping lint."; \
+	fi
 
 ci: lint test ## Full CI check (lint + test)
 

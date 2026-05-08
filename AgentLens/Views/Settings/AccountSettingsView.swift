@@ -177,28 +177,25 @@ struct AccountSettingsView: View {
 
             VStack(spacing: 0) {
                 signInMethodRow(
-                    icon: "apple.logo",
+                    logo: .apple,
                     title: "Sign in with Apple",
                     subtitle: "Recommended for macOS",
-                    color: .black,
                     provider: .apple,
                     action: onLinkApple
                 )
                 Divider().background(DesignSystem.Colors.border)
                 signInMethodRow(
-                    icon: "g.circle.fill",
+                    logo: .google,
                     title: "Sign in with Google",
                     subtitle: "Use your Google account",
-                    color: Color(hex: "4285F4"),
                     provider: .google,
                     action: onLinkGoogle
                 )
                 Divider().background(DesignSystem.Colors.border)
                 signInMethodRow(
-                    icon: "envelope.fill",
+                    logo: .email,
                     title: "Continue with Email",
                     subtitle: "Sign in or create an account",
-                    color: DesignSystem.Colors.blaze,
                     provider: .email,
                     action: {
                         authError = nil
@@ -216,10 +213,9 @@ struct AccountSettingsView: View {
 
     @ViewBuilder
     private func signInMethodRow(
-        icon: String,
+        logo: AuthProviderLogo,
         title: String,
         subtitle: String,
-        color: Color,
         provider: AuthProviderAction,
         action: @escaping () async throws -> Void
     ) -> some View {
@@ -237,10 +233,7 @@ struct AccountSettingsView: View {
             }
         } label: {
             HStack(spacing: DesignSystem.Spacing.md) {
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundStyle(color)
-                    .frame(width: 28)
+                AuthProviderLogoView(logo: logo, size: 28)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
@@ -278,13 +271,13 @@ struct AccountSettingsView: View {
 
             VStack(spacing: 0) {
                 linkedAccountRow(
-                    icon: "apple.logo",
+                    logo: .apple,
                     title: "Apple ID",
                     isLinked: currentUser?.providerData.contains { $0.providerID == "apple.com" } ?? false
                 )
                 Divider().background(DesignSystem.Colors.border)
                 linkedAccountRow(
-                    icon: "g.circle.fill",
+                    logo: .google,
                     title: "Google",
                     isLinked: currentUser?.providerData.contains { $0.providerID == "google.com" } ?? false
                 )
@@ -297,12 +290,9 @@ struct AccountSettingsView: View {
     }
 
     @ViewBuilder
-    private func linkedAccountRow(icon: String, title: String, isLinked: Bool) -> some View {
+    private func linkedAccountRow(logo: AuthProviderLogo, title: String, isLinked: Bool) -> some View {
         HStack(spacing: DesignSystem.Spacing.md) {
-            Image(systemName: icon)
-                .font(.system(size: 20))
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .frame(width: 28)
+            AuthProviderLogoView(logo: logo, size: 28)
 
             Text(title)
                 .font(DesignSystem.Typography.body)
@@ -611,6 +601,71 @@ private enum AuthProviderAction {
     case apple
     case google
     case email
+}
+
+// MARK: - Auth Provider Logo
+
+private enum AuthProviderLogo {
+    case apple
+    case google
+    case email
+}
+
+/// Renders real brand logos for auth providers (Apple, Google) with an
+/// SF Symbol fallback for email. Sized to fit a square frame of `size` pts.
+private struct AuthProviderLogoView: View {
+    let logo: AuthProviderLogo
+    let size: CGFloat
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Group {
+            switch logo {
+            case .apple:
+                appleLogoView
+            case .google:
+                googleLogoView
+            case .email:
+                Image(systemName: "envelope.fill")
+                    .font(.system(size: size * 0.7))
+                    .foregroundStyle(DesignSystem.Colors.blaze)
+                    .frame(width: size, height: size)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var appleLogoView: some View {
+        if NSImage(named: "AppleLogo") != nil {
+            Image("AppleLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+        } else {
+            Image(systemName: "apple.logo")
+                .font(.system(size: size * 0.7))
+                .foregroundStyle(colorScheme == .dark ? .white : .black)
+                .frame(width: size, height: size)
+        }
+    }
+
+    @ViewBuilder
+    private var googleLogoView: some View {
+        if NSImage(named: "GoogleLogo") != nil {
+            Image("GoogleLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+        } else {
+            Image(systemName: "g.circle.fill")
+                .font(.system(size: size * 0.7))
+                .foregroundStyle(Color(hex: "4285F4"))
+                .frame(width: size, height: size)
+        }
+    }
 }
 
 private enum EmailAuthMode: CaseIterable {

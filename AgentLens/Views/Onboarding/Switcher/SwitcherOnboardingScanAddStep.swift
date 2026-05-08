@@ -2,7 +2,13 @@ import SwiftUI
 import OpenBurnBarCore
 
 /// Maximum accounts per provider during onboarding.
-let onboardingProviderCap = 3
+enum SwitcherOnboardingLimits {
+    static var providerCap: Int { 3 }
+}
+
+var onboardingProviderCap: Int {
+    SwitcherOnboardingLimits.providerCap
+}
 
 struct SwitcherOnboardingScanAddStep: View {
     @ObservedObject var discoveryService: SwitcherDiscoveryService
@@ -133,7 +139,8 @@ struct SwitcherOnboardingScanAddStep: View {
         let added = addedCountForProvider(provider)
         let already = alreadyAddedCountForProvider(provider)
         let total = added + already
-        let isAtCap = total >= onboardingProviderCap
+        let providerCap = SwitcherOnboardingLimits.providerCap
+        let isAtCap = total >= providerCap
 
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
             // Section header with count
@@ -159,7 +166,7 @@ struct SwitcherOnboardingScanAddStep: View {
 
                 Spacer()
 
-                Text("\(total)/\(onboardingProviderCap) added")
+                Text("\(total)/\(providerCap) added")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(isAtCap ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
             }
@@ -185,7 +192,7 @@ struct SwitcherOnboardingScanAddStep: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 10))
                         .foregroundStyle(DesignSystem.Colors.success)
-                    Text("Provider cap reached (\(onboardingProviderCap))")
+                    Text("Provider cap reached (\(providerCap))")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
@@ -342,9 +349,10 @@ struct SwitcherOnboardingScanAddStep: View {
     private func enforceCap(for kind: OnboardingProvider.Kind) -> Bool {
         let provider = OnboardingProvider.defaultOrder.first { $0.kind == kind } ?? OnboardingProvider.defaultOrder[0]
         let total = addedCountForProvider(provider) + alreadyAddedCountForProvider(provider)
-        if total >= onboardingProviderCap {
+        let providerCap = SwitcherOnboardingLimits.providerCap
+        if total >= providerCap {
             withAnimation(DesignSystem.Animation.snappy) {
-                capMessage = "\(provider.label) cap reached (\(onboardingProviderCap)). Remove one first or continue."
+                capMessage = "\(provider.label) cap reached (\(providerCap)). Remove one first or continue."
             }
             return false
         }
@@ -538,7 +546,7 @@ private struct APIKeyEntrySheet: View {
                     .foregroundStyle(DesignSystem.Colors.textMuted)
 
                 Picker("Tool", selection: $cliType) {
-                    ForEach(SwitcherCLIProfileType.allCases, id: \.rawValue) { type in
+                    ForEach(cliTypes, id: \.rawValue) { type in
                         Text(type.displayName).tag(type)
                     }
                 }
@@ -592,6 +600,17 @@ private struct APIKeyEntrySheet: View {
         .padding(DesignSystem.Spacing.xl)
         .frame(width: 360, height: 300)
         .background(DesignSystem.Colors.background)
+    }
+}
+
+private extension APIKeyEntrySheet {
+    var cliTypes: [SwitcherCLIProfileType] {
+        var types: [SwitcherCLIProfileType] = []
+        types.reserveCapacity(3)
+        types.append(.codex)
+        types.append(.claude)
+        types.append(.opencode)
+        return types
     }
 }
 

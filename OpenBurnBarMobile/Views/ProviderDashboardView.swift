@@ -41,10 +41,8 @@ struct ProviderDashboardView: View {
         .background(UnifiedDesignSystem.Colors.background.ignoresSafeArea())
         .navigationTitle(provider.displayName)
         .refreshable {
-            Task {
-                await store?.refresh()
-                await quotaStore.refresh()
-            }
+            await store?.refresh()
+            await quotaStore.refresh()
         }
         .task {
             store = ProviderDashboardStore(provider: provider)

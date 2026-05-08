@@ -7,13 +7,19 @@ struct QuotaView: View {
 
     var body: some View {
         ScrollView {
-            if store.isLoading && store.snapshotsByProvider.isEmpty {
+            if store.isLoading && store.visibleProviders.isEmpty {
                 loadingPlaceholder
-            } else if store.snapshotsByProvider.isEmpty {
+            } else if let error = store.error, store.visibleProviders.isEmpty {
+                EmptyStateView(
+                    icon: "exclamationmark.icloud.fill",
+                    title: "Quota Sync Error",
+                    message: "\(error)\n\(signedInDiagnostic)"
+                )
+            } else if store.visibleProviders.isEmpty {
                 EmptyStateView(
                     icon: "gauge.with.dots.needle.67percent",
                     title: "No Quota Data",
-                    message: "Connect a provider to see quota snapshots."
+                    message: "Open the Mac app to sync provider quota snapshots. Make sure this iPhone is signed into the same OpenBurnBar account as your Mac.\n\(signedInDiagnostic)"
                 )
             } else {
                 VStack(spacing: MobileTheme.Spacing.xl) {
@@ -25,9 +31,12 @@ struct QuotaView: View {
                 .padding(.vertical, MobileTheme.Spacing.lg)
             }
         }
-        .background(MobileTheme.Colors.background.ignoresSafeArea())
+        .background(emberBackground.ignoresSafeArea())
         .navigationTitle("Quota")
-        .refreshable { await store.refresh() }
+        .refreshable {
+            Haptics.success()
+            await store.refresh()
+        }
         .task {
             await store.load()
             store.startListening()
@@ -47,6 +56,17 @@ struct QuotaView: View {
         }
     }
 
+    private var emberBackground: some View {
+        EmberSurfaceBackground()
+    }
+
+    private var signedInDiagnostic: String {
+        if let account = store.currentUserDisplayID, account.isEmpty == false {
+            return "Signed into account \(account)."
+        }
+        return "Not signed in."
+    }
+
     // MARK: - Urgent Section
 
     private var urgentSection: some View {
@@ -55,6 +75,8 @@ struct QuotaView: View {
                 .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.Colors.error)
                 .padding(.horizontal, MobileTheme.Spacing.lg)
+                .overlay(warningHalo, alignment: .leading)
+
             LazyVStack(spacing: MobileTheme.Spacing.md) {
                 ForEach(store.urgentProviders, id: \.self) { provider in
                     QuotaProviderCard(
@@ -70,6 +92,13 @@ struct QuotaView: View {
         }
     }
 
+    private var warningHalo: some View {
+        Circle()
+            .fill(MobileTheme.Colors.warning.opacity(0.25))
+            .frame(width: 12, height: 12)
+            .blur(radius: 6)
+    }
+
     // MARK: - Healthy Section
 
     private var healthySection: some View {
@@ -78,6 +107,8 @@ struct QuotaView: View {
                 .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                 .padding(.horizontal, MobileTheme.Spacing.lg)
+                .overlay(healthyPulse, alignment: .leading)
+
             LazyVStack(spacing: MobileTheme.Spacing.md) {
                 ForEach(store.healthyProviders, id: \.self) { provider in
                     QuotaProviderCard(
@@ -93,13 +124,20 @@ struct QuotaView: View {
         }
     }
 
+    private var healthyPulse: some View {
+        Circle()
+            .fill(MobileTheme.Colors.success.opacity(0.3))
+            .frame(width: 8, height: 8)
+            .blur(radius: 4)
+    }
+
     // MARK: - Loading Placeholder
 
     private var loadingPlaceholder: some View {
         VStack(spacing: MobileTheme.Spacing.lg) {
-            SkeletonView(height: 120, cornerRadius: MobileTheme.Radius.lg)
-            SkeletonView(height: 120, cornerRadius: MobileTheme.Radius.lg)
-            SkeletonView(height: 120, cornerRadius: MobileTheme.Radius.lg)
+            EmberSkeleton(height: 120, cornerRadius: MobileTheme.Radius.lg)
+            EmberSkeleton(height: 120, cornerRadius: MobileTheme.Radius.lg)
+            EmberSkeleton(height: 120, cornerRadius: MobileTheme.Radius.lg)
         }
         .padding(.horizontal, MobileTheme.Spacing.lg)
         .padding(.top, MobileTheme.Spacing.xl)
@@ -108,7 +146,7 @@ struct QuotaView: View {
 
 // MARK: - Quota Provider Card
 
-private struct QuotaProviderCard: View {
+struct QuotaProviderCard: View {
     let provider: String
     let snapshots: [ProviderQuotaSnapshot]
     let accountCount: Int
@@ -129,80 +167,97 @@ private struct QuotaProviderCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-                HStack(alignment: .top) {
-                    if let providerEnum {
-                        ProviderBadge(provider: providerEnum, size: 40)
-                            .accessibilityHidden(true)
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(providerEnum?.displayName ?? provider)
-                            .font(MobileTheme.Typography.headline)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        HStack(spacing: 6) {
-                            Text(accountCountLabel)
-                                .font(MobileTheme.Typography.footnote)
-                                .foregroundStyle(MobileTheme.Colors.textSecondary)
-                            if hasUrgentBucket {
-                                Text("·")
-                                    .font(MobileTheme.Typography.footnote)
-                                    .foregroundStyle(MobileTheme.Colors.textMuted)
-                                Text("Quota under pressure")
-                                    .font(MobileTheme.Typography.tiny)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(MobileTheme.Colors.warning)
-                            }
-                        }
-                        if !storageScopes.isEmpty {
-                            HStack(spacing: 4) {
-                                ForEach(storageScopes, id: \.self) { scope in
-                                    ProviderAccountStorageChip(scope: scope, compact: true)
-                                }
-                            }
-                        }
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                        .accessibilityHidden(true)
-                }
-
-                if hasMultipleAccounts, let primaryName = primaryAccountName {
-                    Text("Showing \(primaryName)\(remainingAccountsLabel) — tap for full breakdown")
-                        .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if let providerEnum,
-                   let routingState,
-                   routingState.hasMeaningfulRoutingDetail {
-                    ProviderRoutingCockpit(provider: providerEnum, state: routingState, compact: true)
-                }
-
-                if let bucket = mostPressuredBucket {
-                    QuotaBucketView(bucket: bucket)
-                } else {
-                    QuotaPlaceholderRow()
+            UnifiedGlassCard {
+                VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+                    headerRow
+                    accountInfoRow
+                    routingRow
+                    bucketRow
                 }
             }
-            .padding(MobileTheme.Spacing.md)
-            .background(
-                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .fill(MobileTheme.Colors.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
-            )
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(Text("Tap to see per-account quota detail."))
+    }
+
+    // MARK: - Header Row
+
+    private var headerRow: some View {
+        HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
+            if let providerEnum {
+                ProviderAvatar(provider: providerEnum, mode: .aurora, size: 44)
+                    .accessibilityHidden(true)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(providerEnum?.displayName ?? provider)
+                    .font(MobileTheme.Typography.headline)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                HStack(spacing: 6) {
+                    Text(accountCountLabel)
+                        .font(MobileTheme.Typography.footnote)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    if hasUrgentBucket {
+                        Text("·")
+                            .font(MobileTheme.Typography.footnote)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                        Text("Quota under pressure")
+                            .font(MobileTheme.Typography.tiny)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(MobileTheme.Colors.warning)
+                    }
+                }
+                if !storageScopes.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(storageScopes, id: \.self) { scope in
+                            ProviderAccountStorageChip(scope: scope, compact: true)
+                        }
+                    }
+                }
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .accessibilityHidden(true)
+        }
+    }
+
+    // MARK: - Account Info
+
+    private var accountInfoRow: some View {
+        Group {
+            if hasMultipleAccounts, let primaryName = primaryAccountName {
+                Text("Showing \(primaryName)\(remainingAccountsLabel) — tap for full breakdown")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // MARK: - Routing
+
+    @ViewBuilder
+    private var routingRow: some View {
+        if let providerEnum,
+           let routingState,
+           routingState.hasMeaningfulRoutingDetail {
+            ProviderRoutingCockpit(provider: providerEnum, state: routingState, compact: true)
+        }
+    }
+
+    // MARK: - Bucket
+
+    @ViewBuilder
+    private var bucketRow: some View {
+        if let bucket = mostPressuredBucket, let providerEnum {
+            UnifiedQuotaSignalView(bucket: bucket, provider: providerEnum, compact: true)
+        } else {
+            QuotaPlaceholderRow()
+        }
     }
 
     private var accountCountLabel: String {
@@ -212,7 +267,6 @@ private struct QuotaProviderCard: View {
 
     private var storageScopes: [ProviderAccountStorageScope] {
         let scopes = snapshots.compactMap(\.accountStorageScope)
-        // Preserve the natural priority order so chips read consistently.
         let order: [ProviderAccountStorageScope] = [
             .cloudRefreshable,
             .serverPrivate,
@@ -268,7 +322,6 @@ private struct QuotaProviderCard: View {
         }
         return parts.joined(separator: ", ")
     }
-
 }
 
 // MARK: - Quota Placeholder Row

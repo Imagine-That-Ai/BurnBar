@@ -35,6 +35,8 @@ final class AccountStore {
                 self?.isSignedIn = user != nil
                 if user != nil {
                     await self?.loadConnections()
+                } else {
+                    self?.resetSessionState()
                 }
             }
         }
@@ -64,12 +66,18 @@ final class AccountStore {
     func signOut() {
         do {
             try authRepo.signOut()
-            connections = []
-            providerAccounts = []
-            syncHealth = .unknown
+            resetSessionState()
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    private func resetSessionState() {
+        connections = []
+        providerAccounts = []
+        profiles = []
+        activeProfile = nil
+        syncHealth = .unknown
     }
 
     // MARK: - Profile Management

@@ -239,7 +239,7 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
 }
 
 @MainActor
-private final class ControlledChatSessionSearchProvider: ChatSessionSearchProviding {
+final class ControlledChatSessionSearchProvider: ChatSessionSearchProviding {
     struct Response {
         let delaySeconds: TimeInterval
         let results: [SearchResult]

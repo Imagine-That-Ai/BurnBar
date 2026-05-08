@@ -4,6 +4,16 @@ import Foundation
 
 public enum ProviderQuotaSourceKind: String, Codable, Sendable {
     case provider
+    case officialAPI
+    case localCLI
+    case localSession
+    case manualEstimate
+    case unavailable
+
+    public init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        self = Self(rawValue: value) ?? .provider
+    }
 }
 
 // MARK: - Provider Quota Confidence
@@ -13,6 +23,22 @@ public enum ProviderQuotaConfidence: String, Codable, Sendable {
     case medium
     case low
     case stale
+
+    public init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        switch value {
+        case Self.high.rawValue, "exact":
+            self = .high
+        case Self.medium.rawValue, "estimated":
+            self = .medium
+        case Self.low.rawValue:
+            self = .low
+        case Self.stale.rawValue, "unavailable":
+            self = .stale
+        default:
+            self = .stale
+        }
+    }
 }
 
 // MARK: - Provider Quota Unit
@@ -58,6 +84,30 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable {
         self.remaining = remaining
         self.window = window
         self.meta = meta
+    }
+}
+
+public extension ProviderQuotaBucket {
+    var isDisplayableQuotaSignal: Bool {
+        guard limit.isFinite, limit > 0, used.isFinite, remaining.isFinite else {
+            return false
+        }
+
+        let marker = "\(name) \(meta?["label"] ?? "")".lowercased()
+        if ["cache", "hit rate", "local model", "cloud model", "installed", "task", "conversation", "line", "file"].contains(where: marker.contains) {
+            return false
+        }
+
+        if let unit = meta?["unit"]?.lowercased() {
+            if ["sessions", "session", "lines", "files"].contains(unit) {
+                return false
+            }
+            if unit == "count" && !(marker.contains("credit") || marker.contains("budget")) {
+                return false
+            }
+        }
+
+        return used >= 0 || remaining >= 0 || meta?["usedPercent"] != nil
     }
 }
 
@@ -166,5 +216,51 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
         try c.encode(buckets, forKey: .buckets)
         try c.encode(schemaVersion, forKey: .schemaVersion)
         try c.encode(updatedAt, forKey: .updatedAt)
+    }
+}
+
+public extension ProviderQuotaSnapshot {
+    private var quotaProvider: AgentProvider? {
+        AgentProvider.fromProviderID(providerID)
+            ?? AgentProvider.fromPersistedToken(provider)
+            ?? AgentProvider(rawValue: provider)
+    }
+
+    var displayableQuotaBuckets: [ProviderQuotaBucket] {
+        buckets.filter(\.isDisplayableQuotaSignal)
+    }
+
+    var hasDisplayableQuotaSignal: Bool {
+        guard quotaProvider?.isQuotaSignalProvider == true else {
+            return false
+        }
+        return !displayableQuotaBuckets.isEmpty
+    }
+
+    func filteringToDisplayableQuotaSignal() -> ProviderQuotaSnapshot? {
+        let filteredBuckets = displayableQuotaBuckets
+        guard quotaProvider?.isQuotaSignalProvider == true,
+              !filteredBuckets.isEmpty else {
+            return nil
+        }
+
+        return ProviderQuotaSnapshot(
+            id: id,
+            provider: provider,
+            providerID: providerID,
+            accountID: accountID,
+            accountLabel: accountLabel,
+            accountStorageScope: accountStorageScope,
+            sourceKind: sourceKind,
+            sourceId: sourceId,
+            fetchedAt: fetchedAt,
+            source: source,
+            confidence: confidence,
+            managementURL: managementURL,
+            statusMessage: statusMessage,
+            buckets: filteredBuckets,
+            schemaVersion: schemaVersion,
+            updatedAt: updatedAt
+        )
     }
 }

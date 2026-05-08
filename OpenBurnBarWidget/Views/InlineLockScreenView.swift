@@ -20,7 +20,7 @@ struct InlineLockScreenView: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            Text("\(snap?.heroTotalTokens ?? 0) tok")
+            Text("\(snap?.heroTotalTokens.formatAsTokensRaw() ?? "0") tok")
                 .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

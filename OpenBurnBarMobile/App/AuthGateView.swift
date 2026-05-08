@@ -12,28 +12,37 @@ struct AuthGateView: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("uiMode") private var uiMode: String = UIMode.standard.rawValue
 
     var body: some View {
         Group {
-            switch authStore.state {
-            case .firebaseUnavailable:
-                FirebaseUnavailableScene()
-            case .signedOut, .signingIn, .firestoreUnavailable:
-                SignInScene(authStore: authStore)
-            case .signedIn:
+            if AppStoreScreenshotMode.isEnabled {
                 mainSignedInView
-                    .fullScreenCover(isPresented: Binding(
-                        get: { !hasCompletedOnboarding },
-                        set: { hasCompletedOnboarding = !$0 }
-                    )) {
-                        iPadOnboardingWizardView(isPresented: Binding(
+            } else {
+                switch authStore.state {
+                case .firebaseUnavailable:
+                    FirebaseUnavailableScene()
+                case .signedOut, .signingIn, .firestoreUnavailable:
+                    SignInScene(authStore: authStore)
+                case .signedIn:
+                    mainSignedInView
+                        .fullScreenCover(isPresented: Binding(
                             get: { !hasCompletedOnboarding },
                             set: { hasCompletedOnboarding = !$0 }
-                        ))
-                    }
+                        )) {
+                            // Both iPhone and iPad use the same provider-connection
+                            // wizard — `OnboardingWizardView` adapts its gutter
+                            // padding via `horizontalSizeClass`.
+                            OnboardingWizardView(isPresented: Binding(
+                                get: { !hasCompletedOnboarding },
+                                set: { hasCompletedOnboarding = !$0 }
+                            ))
+                        }
+                }
             }
         }
         .animation(.snappy(duration: 0.25), value: authStore.state)
+        .environment(\.uiMode, UIMode(rawValue: uiMode) ?? .standard)
     }
 
     // MARK: - Device-Specific Root

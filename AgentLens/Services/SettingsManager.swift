@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - Settings Manager
 
@@ -372,9 +373,29 @@ final class SettingsManager {
         set { chatBackend.hermesChatModelOverride = newValue }
     }
 
+    var hermesGatewayBaseURL: String {
+        get { chatBackend.hermesGatewayBaseURL }
+        set { chatBackend.hermesGatewayBaseURL = newValue }
+    }
+
+    var hermesRemoteRelayEnabled: Bool {
+        get { chatBackend.hermesRemoteRelayEnabled }
+        set { chatBackend.hermesRemoteRelayEnabled = newValue }
+    }
+
+    var hermesRealtimeRelayURL: String {
+        get { chatBackend.hermesRealtimeRelayURL }
+        set { chatBackend.hermesRealtimeRelayURL = newValue }
+    }
+
     var chatBackendOnboardingCompleted: Bool {
         get { chatBackend.chatBackendOnboardingCompleted }
         set { chatBackend.chatBackendOnboardingCompleted = newValue }
+    }
+
+    var hermesSetupWizardCompleted: Bool {
+        get { chatBackend.hermesSetupWizardCompleted }
+        set { chatBackend.hermesSetupWizardCompleted = newValue }
     }
 
     var switcherOnboardingCompleted: Bool {
@@ -573,6 +594,51 @@ final class SettingsManager {
     var tokenizerAssistedFallbackEnabled: Bool {
         get { quotas.tokenizerAssistedFallbackEnabled }
         set { quotas.tokenizerAssistedFallbackEnabled = newValue }
+    }
+
+    var smartHubQuotaDisplayEnabled: Bool {
+        get { quotas.smartHubQuotaDisplayEnabled }
+        set { quotas.smartHubQuotaDisplayEnabled = newValue }
+    }
+
+    var smartHubQuotaDashboardURL: String {
+        get { quotas.smartHubQuotaDashboardURL }
+        set { quotas.smartHubQuotaDashboardURL = newValue }
+    }
+
+    var smartHubQuotaRefreshURL: String {
+        get { quotas.smartHubQuotaRefreshURL }
+        set { quotas.smartHubQuotaRefreshURL = newValue }
+    }
+
+    var smartHubQuotaTimePeriod: SmartHubTimePeriod {
+        get { quotas.smartHubQuotaTimePeriod }
+        set { quotas.smartHubQuotaTimePeriod = newValue }
+    }
+
+    var smartHubQuotaVoiceRefreshURL: String {
+        get { quotas.smartHubQuotaVoiceRefreshURL }
+        set { quotas.smartHubQuotaVoiceRefreshURL = newValue }
+    }
+
+    var smartHubHomeAssistantRecoveryWebhookURL: String {
+        get { quotas.smartHubHomeAssistantRecoveryWebhookURL }
+        set { quotas.smartHubHomeAssistantRecoveryWebhookURL = newValue }
+    }
+
+    var castSelectedDeviceServiceName: String {
+        get { quotas.castSelectedDeviceServiceName }
+        set { quotas.castSelectedDeviceServiceName = newValue }
+    }
+
+    var castSelectedDeviceFriendlyName: String {
+        get { quotas.castSelectedDeviceFriendlyName }
+        set { quotas.castSelectedDeviceFriendlyName = newValue }
+    }
+
+    var castSelectedDeviceModel: String {
+        get { quotas.castSelectedDeviceModel }
+        set { quotas.castSelectedDeviceModel = newValue }
     }
 
     // MARK: Provider Paths

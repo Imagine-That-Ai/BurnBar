@@ -9,30 +9,9 @@ import OpenBurnBarCore
 final class ProviderQuotaService {
     static let shared = ProviderQuotaService()
 
-    static let supportedProviders: [AgentProvider] = [
-        .aider,
-        .codex,
-        .openAI,
-        .claudeCode,
-        .copilot,
-        .minimax,
-        .zai,
-        .factory,
-        .cursor,
-        .warp,
-        .ollama,
-        .kimi,
-        .forgeDev,
-        .hermes,
-        .cline,
-        .kiloCode,
-        .rooCode,
-        .augment,
-        .geminiCLI,
-        .goose,
-        .openClaw,
-        .windsurf,
-    ]
+    static var supportedProviders: [AgentProvider] {
+        AgentProvider.quotaSignalProviders
+    }
 
     private let keyStore: ProviderAPIKeyStore
     private let providerRuntimeKeyStore: KeychainStore
@@ -60,6 +39,9 @@ final class ProviderQuotaService {
     private(set) var routingStatesByProviderID: [ProviderID: ProviderRoutingStateSnapshot] = [:]
     private(set) var routingEvents: [ProviderRoutingDecisionEvent] = []
     private var codexRolloutScanCache: CodexRolloutScanCache = .empty
+    private var connectedQuotaProviderIDsCache: (fetchedAt: Date, ids: Set<ProviderID>)?
+    private var suppressRoutingEventPersistence = false
+    private var routingEventsDirty = false
 
     init(
         settingsManager: SettingsManager = .shared,
@@ -86,7 +68,7 @@ final class ProviderQuotaService {
         self.homeDirectoryURL = homeDirectoryURL
         self.miniMaxModeProvider = miniMaxModeProvider ?? { settingsManager.miniMaxQuotaMode }
         self.factoryPlanProvider = factoryPlanProvider ?? { settingsManager.factoryQuotaPlanTier }
-        self.refreshProviders = refreshProviders
+        self.refreshProviders = refreshProviders.filter(\.isQuotaSignalProvider)
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
         self.snapshotStore = store
@@ -108,7 +90,7 @@ final class ProviderQuotaService {
             homeDirectoryURL: homeDirectoryURL,
             miniMaxModeProvider: self.miniMaxModeProvider,
             factoryPlanProvider: self.factoryPlanProvider,
-            refreshProviders: refreshProviders
+            refreshProviders: self.refreshProviders
         )
 
         self.claudeBridgeStatus = bridgeManager.refreshClaudeBridgeStatus()
@@ -160,6 +142,7 @@ final class ProviderQuotaService {
     var snapshotsForCloudSync: [ProviderQuotaSnapshot] {
         Array(
             (Array(snapshotsByProvider.values) + Array(snapshotsByAccountID.values))
+                .compactMap { $0.filteringToDisplayableQuotaSignal() }
                 .reduce(into: [String: ProviderQuotaSnapshot]()) { result, snapshot in
                     let key = ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)
                     guard let existing = result[key] else {
@@ -174,6 +157,24 @@ final class ProviderQuotaService {
         )
     }
 
+    func visiblePopoverProviders(dataStore: DataStore) -> [AgentProvider] {
+        let connectedProviderIDs = connectedQuotaProviderIDs(dataStore: dataStore)
+        let providersWithAccountSnapshots = Set(snapshotsByAccountID.values.compactMap { snapshot -> AgentProvider? in
+            guard snapshot.hasDisplayableQuotaSignal else { return nil }
+            return AgentProvider.fromProviderID(snapshot.providerID)
+        })
+
+        return refreshProviders.filter { provider in
+            if connectedProviderIDs.contains(provider.providerID) { return true }
+            if snapshotsByProvider[provider]?.hasDisplayableQuotaSignal == true { return true }
+            return providersWithAccountSnapshots.contains(provider)
+        }
+    }
+
+    func hasConnectedQuotaAccount(for provider: AgentProvider, dataStore: DataStore) -> Bool {
+        connectedQuotaProviderIDs(dataStore: dataStore).contains(provider.providerID)
+    }
+
     func routingState(for providerID: ProviderID) -> ProviderRoutingStateSnapshot? {
         routingStatesByProviderID[providerID]
     }
@@ -186,12 +187,22 @@ final class ProviderQuotaService {
         let accounts = (try? dataStore.providerAccountStore.fetchAll()) ?? []
         let providerIDs = Set(
             accounts.map(\.providerID)
-                + snapshotsByProvider.keys.map(\.providerID)
+                + snapshotsByProvider.values.filter(\.hasDisplayableQuotaSignal).map(\.providerID)
                 + OpenBurnBarDaemonManager.shared.providerConfigurations.map { ProviderID(rawValue: $0.providerID) }
                 + request.preferredProviderIDs
         )
 
         var updatedStates: [ProviderID: ProviderRoutingStateSnapshot] = [:]
+        let wasSuppressingPersistence = suppressRoutingEventPersistence
+        suppressRoutingEventPersistence = true
+        defer {
+            suppressRoutingEventPersistence = wasSuppressingPersistence
+            if !wasSuppressingPersistence, routingEventsDirty {
+                routingEventsDirty = false
+                persistRoutingEvents()
+            }
+        }
+
         for providerID in providerIDs {
             let scopedRequest = ProviderRoutingRequest(
                 modelID: request.modelID,
@@ -227,16 +238,8 @@ final class ProviderQuotaService {
     }
 
     func refreshIfNeeded(dataStore: DataStore, maxAge: TimeInterval = 5 * 60) async {
-        let hasUsefulSnapshot = refreshProviders.contains { provider in
-            let snap = snapshotsByProvider[provider]
-            return snap != nil && !(snap?.buckets.isEmpty ?? true)
-        }
-        if !hasUsefulSnapshot {
-            await refreshAll(dataStore: dataStore)
-            return
-        }
-        refreshRoutingState(dataStore: dataStore)
         if let lastFetch, Date().timeIntervalSince(lastFetch) < maxAge {
+            refreshRoutingState(dataStore: dataStore)
             return
         }
         await refreshAll(dataStore: dataStore)
@@ -310,7 +313,7 @@ final class ProviderQuotaService {
         apiKeyOverride: String
     ) async throws -> ProviderQuotaSnapshot {
         switch provider {
-        case .minimax, .zai, .copilot:
+        case .minimax, .zai, .copilot, .ollama, .kimi:
             let scratchDataStore = try makeScratchDataStore()
             let context = makeContext(dataStore: scratchDataStore, apiKeyOverrides: [provider: apiKeyOverride])
             return try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
@@ -321,7 +324,7 @@ final class ProviderQuotaService {
                 source: .unavailable,
                 confidence: .unavailable,
                 managementURL: nil,
-                statusMessage: "Per-plan quota refresh is currently available for MiniMax and Z.ai.",
+                statusMessage: "Per-plan quota refresh is available for MiniMax, Z.ai, Kimi, Copilot, and Ollama Cloud.",
                 buckets: []
             )
         }
@@ -350,10 +353,41 @@ final class ProviderQuotaService {
             return
         }
         routingEvents.append(event)
+        routingEventsDirty = true
         if routingEvents.count > 100 {
             routingEvents.removeFirst(routingEvents.count - 100)
         }
-        persistRoutingEvents()
+        if !suppressRoutingEventPersistence {
+            routingEventsDirty = false
+            persistRoutingEvents()
+        }
+    }
+
+    private func connectedQuotaProviderIDs(dataStore: DataStore) -> Set<ProviderID> {
+        if let cache = connectedQuotaProviderIDsCache,
+           Date().timeIntervalSince(cache.fetchedAt) < 15 {
+            return cache.ids
+        }
+        let accounts = (try? dataStore.providerAccountStore.fetchAll()) ?? []
+        let ids: Set<ProviderID> = Set(accounts.compactMap { account in
+            guard Self.isConnectedQuotaAccount(account) else { return nil }
+            guard let provider = AgentProvider.fromProviderID(account.providerID),
+                  Self.supportedProviders.contains(provider) else {
+                return nil
+            }
+            return account.providerID
+        })
+        connectedQuotaProviderIDsCache = (Date(), ids)
+        return ids
+    }
+
+    private static func isConnectedQuotaAccount(_ account: ProviderAccountDoc) -> Bool {
+        switch account.status {
+        case .connected, .stale, .error:
+            return true
+        case .disconnected, .disabled, .deleted:
+            return false
+        }
     }
 
     private func routingCandidates(
@@ -371,7 +405,7 @@ final class ProviderQuotaService {
         }
 
         if let agentProvider = AgentProvider.fromProviderID(providerID),
-           snapshotsByProvider[agentProvider] != nil || ProviderQuotaService.supportedProviders.contains(agentProvider) {
+           snapshotsByProvider[agentProvider]?.hasDisplayableQuotaSignal == true || ProviderQuotaService.supportedProviders.contains(agentProvider) {
             return [
                 .defaultLegacyAccount(
                     providerID: providerID,
@@ -452,7 +486,7 @@ final class ProviderQuotaService {
             }
         }
 
-        guard let bucket = snapshot?.primaryBucket ?? snapshot?.buckets.first else {
+        guard let bucket = snapshot?.primaryDisplayableBucket else {
             return account.status == .error ? .authFailed : .unknown
         }
 
@@ -492,6 +526,9 @@ final class ProviderQuotaService {
             }
         }
         resolvedKeys["cursor_cookie"] = keyStore.apiKey(for: "cursor_cookie")
+        for identifier in ["factory_cookie_header", "factory_cookie", "ollama_cookie_header", "ollama_cookie", "kimi_auth_token"] {
+            resolvedKeys[identifier] = keyStore.apiKey(for: identifier)
+        }
 
         return ProviderQuotaAdapterContext(
             appPaths: appPaths,
@@ -576,6 +613,8 @@ final class ProviderQuotaService {
             return "zai"
         case .ollama:
             return "ollama"
+        case .kimi:
+            return "moonshot"
         default:
             return nil
         }
@@ -594,6 +633,8 @@ final class ProviderQuotaService {
             identifiers.append("minimax")
         case .zai:
             identifiers.append(contentsOf: ["zai", "z_ai"])
+        case .kimi:
+            identifiers.append("kimi_auth_token")
         default:
             break
         }
@@ -636,6 +677,7 @@ final class ProviderQuotaService {
                 scopedProviderIDs: scopedProviderIDs,
                 activeAccountIDs: Set(accounts.map(\.id))
             )
+            connectedQuotaProviderIDsCache = nil
         } catch {
             AppLogger.dataStore.silentFailure("ProviderQuotaService: Failed to persist daemon provider accounts", error: error)
         }
@@ -757,6 +799,8 @@ final class ProviderQuotaService {
             return .ollama
         case "openai":
             return .openAI
+        case "moonshot", "kimi":
+            return .kimi
         default:
             return nil
         }

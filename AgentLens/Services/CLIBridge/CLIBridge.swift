@@ -38,9 +38,12 @@ final class CLIBridge: ObservableObject {
 
     /// Non-blocking probe for Hermes gateway API availability. Does not set `detectedBackend`.
     /// Also fetches the current model name from the models endpoint.
-    func probeHermesAvailability(bearerToken: String? = nil) async {
+    func probeHermesAvailability(
+        baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
+        bearerToken: String? = nil
+    ) async {
         let result = await Self.probeHermes(
-            baseURL: URL(string: "http://localhost:8642")!,
+            baseURL: baseURL,
             bearerToken: bearerToken
         )
         hermesAvailable = result.available
@@ -197,12 +200,15 @@ final class CLIBridge: ObservableObject {
 
     /// Streams assistant text and tool-use events from Hermes gateway API (OpenAI-compatible SSE).
     func chatHermes(
+        baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
         systemPrompt: String,
         history: [ChatMessageRecord],
         bearerToken: String? = nil,
-        model: String = "hermes"
+        model: String = "hermes",
+        attachmentBytes: [String: Data] = [:],
+        capabilities: HermesBackendCapabilities = .default,
+        workspaceURL: URL? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
-        let baseURL = URL(string: "http://localhost:8642")!
         let stream = AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
             let streamIDTask = Task { [streamRuntime] in
                 await streamRuntime.nextHTTPStreamID()
@@ -221,6 +227,9 @@ final class CLIBridge: ObservableObject {
                     bearerToken: bearerToken,
                     unavailableError: .hermesUnavailable,
                     httpStreamID: streamID,
+                    attachmentBytes: attachmentBytes,
+                    capabilities: capabilities,
+                    workspaceURL: workspaceURL,
                     continuation: continuation
                 )
             }
@@ -245,7 +254,10 @@ final class CLIBridge: ObservableObject {
         systemPrompt: String,
         history: [ChatMessageRecord],
         bearerToken: String?,
-        model: String = "gpt-4o-mini"
+        model: String = "gpt-4o-mini",
+        attachmentBytes: [String: Data] = [:],
+        capabilities: HermesBackendCapabilities = .default,
+        workspaceURL: URL? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let streamIDTask = Task { [streamRuntime] in
@@ -268,6 +280,9 @@ final class CLIBridge: ObservableObject {
                     bearerToken: bearerToken,
                     unavailableError: .openClawUnavailable,
                     httpStreamID: streamID,
+                    attachmentBytes: attachmentBytes,
+                    capabilities: capabilities,
+                    workspaceURL: workspaceURL,
                     continuation: continuation
                 )
             }

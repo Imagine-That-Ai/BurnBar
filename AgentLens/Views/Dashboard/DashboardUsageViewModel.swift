@@ -26,6 +26,7 @@ final class DashboardUsageViewModel {
         let distinctUsageDayCount: Int
         let last7DayCosts: [Double]
         let last7DayTokenTotals: [Int]
+        let dailySummaries: [DailyUsageSummary]
         let providerSummaries: [ProviderSummary]
         let modelSummaries: [ModelSummary]
         let topProviderToday: (provider: AgentProvider, cost: Double)?
@@ -43,16 +44,29 @@ final class DashboardUsageViewModel {
             distinctUsageDayCount: 0,
             last7DayCosts: Array(repeating: 0, count: 7),
             last7DayTokenTotals: Array(repeating: 0, count: 7),
+            dailySummaries: [],
             providerSummaries: [],
             modelSummaries: [],
             topProviderToday: nil
         )
     }
 
+    private struct DateRangeCacheKey: Hashable {
+        let lower: Int64?
+        let upper: Int64?
+
+        init(_ dateRange: ClosedRange<Date>?) {
+            lower = dateRange?.lowerBound.cacheBucket
+            upper = dateRange?.upperBound.cacheBucket
+        }
+    }
+
     // MARK: - State
 
     private(set) var usages: [TokenUsage] = []
     private var aggregateCache: UsageAggregateCache = .empty
+    private var windowSummaryCache: [DateRangeCacheKey: DashboardUsageWindowSummary] = [:]
+    private var canonicalWindowSummaries: [TimeRange: DashboardUsageWindowSummary] = [:]
 
     // MARK: - Cost Totals
 
@@ -83,11 +97,19 @@ final class DashboardUsageViewModel {
     }
 
     func providerSummaries(in dateRange: ClosedRange<Date>?) -> [ProviderSummary] {
-        Self.makeProviderSummaries(from: usages(in: dateRange))
+        windowSummary(in: dateRange).providerSummaries
+    }
+
+    func providerSummaries(for timeRange: TimeRange) -> [ProviderSummary] {
+        windowSummary(for: timeRange).providerSummaries
     }
 
     func modelSummaries(in dateRange: ClosedRange<Date>?) -> [ModelSummary] {
-        Self.makeModelSummaries(from: usages(in: dateRange))
+        windowSummary(in: dateRange).modelSummaries
+    }
+
+    func modelSummaries(for timeRange: TimeRange) -> [ModelSummary] {
+        windowSummary(for: timeRange).modelSummaries
     }
 
     func topProviderToday() -> (provider: AgentProvider, cost: Double)? {
@@ -130,29 +152,7 @@ final class DashboardUsageViewModel {
     // MARK: - Daily Summaries
 
     var dailySummaries: [DailyUsageSummary] {
-        let calendar = Calendar.current
-        var dayData: [Date: [TokenUsage]] = [:]
-
-        for usage in usages {
-            let dayKey = calendar.startOfDay(for: usage.startTime)
-            dayData[dayKey, default: []].append(usage)
-        }
-
-        return dayData.map { date, dayUsages in
-            DailyUsageSummary(
-                date: date,
-                provider: dayUsages.first?.provider ?? .factory,
-                totalInputTokens: dayUsages.reduce(0) { $0 + $1.inputTokens },
-                totalOutputTokens: dayUsages.reduce(0) { $0 + $1.outputTokens },
-                totalCacheCreationTokens: dayUsages.reduce(0) { $0 + $1.cacheCreationTokens },
-                totalCacheReadTokens: dayUsages.reduce(0) { $0 + $1.cacheReadTokens },
-                totalTokens: dayUsages.reduce(0) { $0 + $1.totalTokens },
-                totalCost: dayUsages.reduce(0) { $0 + $1.cost },
-                sessionCount: dayUsages.count,
-                models: Array(Set(dayUsages.map { $0.model }))
-            )
-        }
-        .sorted { $0.date > $1.date }
+        aggregateCache.dailySummaries
     }
 
     // MARK: - Filtering
@@ -186,7 +186,36 @@ final class DashboardUsageViewModel {
     /// Aggregate cache reuse across every row in the optional date range.
     /// Used for the dashboard hero so users see a single window-level cache hit rate.
     func cacheEfficiency(in dateRange: ClosedRange<Date>?) -> CacheEfficiency {
-        CacheEfficiency.aggregate(usages(in: dateRange))
+        windowSummary(in: dateRange).cacheEfficiency
+    }
+
+    func cacheEfficiency(for timeRange: TimeRange) -> CacheEfficiency {
+        windowSummary(for: timeRange).cacheEfficiency
+    }
+
+    func windowSummary(for timeRange: TimeRange) -> DashboardUsageWindowSummary {
+        canonicalWindowSummaries[timeRange] ?? windowSummary(in: timeRange.dateRange())
+    }
+
+    func windowSummary(in dateRange: ClosedRange<Date>?) -> DashboardUsageWindowSummary {
+        let key = DateRangeCacheKey(dateRange)
+        if let cached = windowSummaryCache[key] {
+            return cached
+        }
+
+        let filteredUsages = usages(in: dateRange)
+        let summary = DashboardUsageWindowSummary(
+            usages: filteredUsages,
+            totalCost: filteredUsages.reduce(0) { $0 + $1.cost },
+            totalTokens: filteredUsages.reduce(0) { $0 + $1.totalTokens },
+            sessionCount: filteredUsages.count,
+            activeProviderCount: Set(filteredUsages.map(\.provider)).count,
+            providerSummaries: Self.makeProviderSummaries(from: filteredUsages),
+            modelSummaries: Self.makeModelSummaries(from: filteredUsages),
+            cacheEfficiency: CacheEfficiency.aggregate(filteredUsages)
+        )
+        windowSummaryCache[key] = summary
+        return summary
     }
 
     // MARK: - Update
@@ -194,7 +223,39 @@ final class DashboardUsageViewModel {
     func replaceUsages(_ newUsages: [TokenUsage]) {
         let sortedUsages = newUsages.sorted { $0.startTime > $1.startTime }
         usages = sortedUsages
+        canonicalWindowSummaries.removeAll(keepingCapacity: true)
+        windowSummaryCache.removeAll(keepingCapacity: true)
         aggregateCache = rebuildAggregateCache(from: sortedUsages)
+    }
+
+    func replaceUsageSnapshot(_ snapshot: DashboardUsageSnapshot) {
+        usages = snapshot.loadedUsages.sorted { $0.startTime > $1.startTime }
+        canonicalWindowSummaries = snapshot.windowSummaries
+        windowSummaryCache.removeAll(keepingCapacity: true)
+
+        let today = snapshot.windowSummaries[.today] ?? .empty
+        let last7Days = snapshot.windowSummaries[.last7Days] ?? .empty
+        let last30Days = snapshot.windowSummaries[.last30Days] ?? .empty
+        let allTime = snapshot.windowSummaries[.allTime] ?? .empty
+
+        aggregateCache = UsageAggregateCache(
+            totalCostToday: today.totalCost,
+            totalCostThisWeek: last7Days.totalCost,
+            totalCostThisMonth: last30Days.totalCost,
+            totalCostAllTime: allTime.totalCost,
+            totalTokensToday: today.totalTokens,
+            totalTokensThisWeek: last7Days.totalTokens,
+            totalTokensThisMonth: last30Days.totalTokens,
+            totalTokensAllTime: allTime.totalTokens,
+            rollingDailyAverage: snapshot.rollingDailyAverage,
+            distinctUsageDayCount: snapshot.distinctUsageDayCount,
+            last7DayCosts: snapshot.last7DayCosts,
+            last7DayTokenTotals: snapshot.last7DayTokenTotals,
+            dailySummaries: snapshot.dailySummaries,
+            providerSummaries: allTime.providerSummaries,
+            modelSummaries: allTime.modelSummaries,
+            topProviderToday: snapshot.topProviderToday
+        )
     }
 
     // MARK: - Aggregate Cache Rebuild
@@ -219,6 +280,7 @@ final class DashboardUsageViewModel {
         var distinctDays = Set<Date>()
         var dayCost: [Date: Double] = [:]
         var dayTokens: [Date: Int] = [:]
+        var dailyAccumulator: [Date: DailyAccumulator] = [:]
         var todayProviderCost: [AgentProvider: Double] = [:]
 
         for usage in usages {
@@ -229,6 +291,7 @@ final class DashboardUsageViewModel {
             distinctDays.insert(dayStart)
             dayCost[dayStart, default: 0] += usage.cost
             dayTokens[dayStart, default: 0] += usage.totalTokens
+            dailyAccumulator[dayStart, default: DailyAccumulator(date: dayStart)].record(usage)
 
             if usage.startTime >= weekAgo {
                 totalCostThisWeek += usage.cost
@@ -279,6 +342,9 @@ final class DashboardUsageViewModel {
             distinctUsageDayCount: distinctDays.count,
             last7DayCosts: last7DayCosts,
             last7DayTokenTotals: last7DayTokenTotals,
+            dailySummaries: dailyAccumulator.values
+                .map(\.summary)
+                .sorted { $0.date > $1.date },
             providerSummaries: Self.makeProviderSummaries(from: usages),
             modelSummaries: Self.makeModelSummaries(from: usages),
             topProviderToday: topProviderToday
@@ -288,98 +354,13 @@ final class DashboardUsageViewModel {
     // MARK: - Provider Summary Builder
 
     static func makeProviderSummaries(from usages: [TokenUsage]) -> [ProviderSummary] {
-        AgentProvider.allCases.compactMap { provider -> ProviderSummary? in
-            let providerUsages = usages.filter { $0.provider == provider }
-            guard !providerUsages.isEmpty else { return nil }
+        var providers: [AgentProvider: ProviderAccumulator] = [:]
+        for usage in usages {
+            providers[usage.provider, default: ProviderAccumulator()].record(usage)
+        }
 
-            let totalCost = providerUsages.reduce(0) { $0 + $1.cost }
-            let totalTokens = providerUsages.reduce(0) { $0 + $1.totalTokens }
-            let totalInputTokens = providerUsages.reduce(0) { $0 + $1.inputTokens }
-            let totalOutputTokens = providerUsages.reduce(0) { $0 + $1.outputTokens }
-
-            var modelData: [String: (input: Int, output: Int, cacheCreation: Int, cacheRead: Int, reasoning: Int, cost: Double, bestConfidence: UsageProvenanceConfidence, bestMethod: UsageProvenanceMethod, hasEstimated: Bool)] = [:]
-            for usage in providerUsages {
-                let existing = modelData[usage.model]
-                let newConfidence = usage.provenanceConfidence
-                let newMethod = usage.provenanceMethod
-                let bestConfidence: UsageProvenanceConfidence
-                let bestMethod: UsageProvenanceMethod
-                if let existingRec = existing {
-                    bestConfidence = newConfidence > existingRec.bestConfidence ? newConfidence : existingRec.bestConfidence
-                    if newConfidence == existingRec.bestConfidence {
-                        bestMethod = newMethod.precedence > existingRec.bestMethod.precedence ? newMethod : existingRec.bestMethod
-                    } else {
-                        bestMethod = newConfidence > existingRec.bestConfidence ? newMethod : existingRec.bestMethod
-                    }
-                } else {
-                    bestConfidence = newConfidence
-                    bestMethod = newMethod
-                }
-                let rowIsEstimated = newConfidence != .exact && newConfidence != .derivedExact
-                let existingHasEstimated = existing?.hasEstimated ?? false
-                modelData[usage.model] = (
-                    (existing?.0 ?? 0) + usage.inputTokens,
-                    (existing?.1 ?? 0) + usage.outputTokens,
-                    (existing?.2 ?? 0) + usage.cacheCreationTokens,
-                    (existing?.3 ?? 0) + usage.cacheReadTokens,
-                    (existing?.4 ?? 0) + usage.reasoningTokens,
-                    (existing?.5 ?? 0) + usage.cost,
-                    bestConfidence,
-                    bestMethod,
-                    existingHasEstimated || rowIsEstimated
-                )
-            }
-
-            var dominantConfidence: UsageProvenanceConfidence = .unknown
-            var dominantMethod: UsageProvenanceMethod = .unknown
-            var bestCostSoFar: Double = 0
-            var hasAnyEstimated: Bool = false
-            for usage in providerUsages {
-                let rowIsEstimated = usage.provenanceConfidence != .exact && usage.provenanceConfidence != .derivedExact
-                hasAnyEstimated = hasAnyEstimated || rowIsEstimated
-                let weight = usage.cost > 0 ? usage.cost : 0.001
-                if usage.provenanceConfidence > dominantConfidence {
-                    dominantConfidence = usage.provenanceConfidence
-                    dominantMethod = usage.provenanceMethod
-                    bestCostSoFar = weight
-                } else if usage.provenanceConfidence == dominantConfidence && weight > bestCostSoFar {
-                    dominantMethod = usage.provenanceMethod
-                    bestCostSoFar = weight
-                }
-            }
-
-            let modelBreakdown = modelData.map { modelName, data in
-                let totalModelTokens = data.0 + data.1 + data.2 + data.3 + data.4
-                return ModelUsage(
-                    modelName: modelName,
-                    inputTokens: data.0,
-                    outputTokens: data.1,
-                    cacheCreationTokens: data.2,
-                    cacheReadTokens: data.3,
-                    reasoningTokens: data.4,
-                    totalTokens: totalModelTokens,
-                    cost: data.5,
-                    percentage: totalCost > 0 ? (data.5 / totalCost) * 100 : 0,
-                    provenanceConfidence: data.bestConfidence,
-                    provenanceMethod: data.bestMethod,
-                    hasEstimatedContributions: data.hasEstimated
-                )
-            }
-            .sorted { $0.cost > $1.cost }
-
-            return ProviderSummary(
-                provider: provider,
-                totalCost: totalCost,
-                totalTokens: totalTokens,
-                totalInputTokens: totalInputTokens,
-                totalOutputTokens: totalOutputTokens,
-                sessionCount: providerUsages.count,
-                modelBreakdown: modelBreakdown,
-                provenanceConfidence: dominantConfidence,
-                provenanceMethod: dominantMethod,
-                hasEstimatedContributions: hasAnyEstimated,
-                cacheEfficiency: CacheEfficiency.aggregate(providerUsages)
-            )
+        return providers.compactMap { provider, accumulator in
+            accumulator.summary(for: provider)
         }
         .sorted { $0.totalCost > $1.totalCost }
     }
@@ -427,5 +408,192 @@ final class DashboardUsageViewModel {
             )
         }
         .sorted { $0.totalCost > $1.totalCost }
+    }
+}
+
+// MARK: - Dashboard Cached Window Summary
+
+struct DashboardUsageWindowSummary {
+    let usages: [TokenUsage]
+    let totalCost: Double
+    let totalTokens: Int
+    let sessionCount: Int
+    let activeProviderCount: Int
+    let providerSummaries: [ProviderSummary]
+    let modelSummaries: [ModelSummary]
+    let cacheEfficiency: CacheEfficiency
+
+    static let empty = DashboardUsageWindowSummary(
+        usages: [],
+        totalCost: 0,
+        totalTokens: 0,
+        sessionCount: 0,
+        activeProviderCount: 0,
+        providerSummaries: [],
+        modelSummaries: [],
+        cacheEfficiency: .zero
+    )
+}
+
+struct DashboardUsageSnapshot {
+    let loadedUsages: [TokenUsage]
+    let windowSummaries: [TimeRange: DashboardUsageWindowSummary]
+    let rollingDailyAverage: Double
+    let distinctUsageDayCount: Int
+    let last7DayCosts: [Double]
+    let last7DayTokenTotals: [Int]
+    let dailySummaries: [DailyUsageSummary]
+    let topProviderToday: (provider: AgentProvider, cost: Double)?
+}
+
+private extension Date {
+    var cacheBucket: Int64 {
+        Int64((timeIntervalSinceReferenceDate * 10).rounded(.down))
+    }
+}
+
+private struct DailyAccumulator {
+    let date: Date
+    var provider: AgentProvider = .factory
+    var totalInputTokens = 0
+    var totalOutputTokens = 0
+    var totalCacheCreationTokens = 0
+    var totalCacheReadTokens = 0
+    var totalTokens = 0
+    var totalCost: Double = 0
+    var sessionCount = 0
+    var models: Set<String> = []
+
+    mutating func record(_ usage: TokenUsage) {
+        if sessionCount == 0 {
+            provider = usage.provider
+        }
+        totalInputTokens += usage.inputTokens
+        totalOutputTokens += usage.outputTokens
+        totalCacheCreationTokens += usage.cacheCreationTokens
+        totalCacheReadTokens += usage.cacheReadTokens
+        totalTokens += usage.totalTokens
+        totalCost += usage.cost
+        sessionCount += 1
+        models.insert(usage.model)
+    }
+
+    var summary: DailyUsageSummary {
+        DailyUsageSummary(
+            date: date,
+            provider: provider,
+            totalInputTokens: totalInputTokens,
+            totalOutputTokens: totalOutputTokens,
+            totalCacheCreationTokens: totalCacheCreationTokens,
+            totalCacheReadTokens: totalCacheReadTokens,
+            totalTokens: totalTokens,
+            totalCost: totalCost,
+            sessionCount: sessionCount,
+            models: Array(models)
+        )
+    }
+}
+
+private struct ProviderAccumulator {
+    var usages: [TokenUsage] = []
+    var totalCost: Double = 0
+    var totalTokens = 0
+    var totalInputTokens = 0
+    var totalOutputTokens = 0
+    var modelData: [String: ModelAccumulator] = [:]
+    var dominantConfidence: UsageProvenanceConfidence = .unknown
+    var dominantMethod: UsageProvenanceMethod = .unknown
+    var bestCostSoFar: Double = 0
+    var hasAnyEstimated = false
+
+    mutating func record(_ usage: TokenUsage) {
+        usages.append(usage)
+        totalCost += usage.cost
+        totalTokens += usage.totalTokens
+        totalInputTokens += usage.inputTokens
+        totalOutputTokens += usage.outputTokens
+        modelData[usage.model, default: ModelAccumulator()].record(usage)
+
+        let rowIsEstimated = usage.provenanceConfidence != .exact && usage.provenanceConfidence != .derivedExact
+        hasAnyEstimated = hasAnyEstimated || rowIsEstimated
+        let weight = usage.cost > 0 ? usage.cost : 0.001
+        if usage.provenanceConfidence > dominantConfidence {
+            dominantConfidence = usage.provenanceConfidence
+            dominantMethod = usage.provenanceMethod
+            bestCostSoFar = weight
+        } else if usage.provenanceConfidence == dominantConfidence && weight > bestCostSoFar {
+            dominantMethod = usage.provenanceMethod
+            bestCostSoFar = weight
+        }
+    }
+
+    func summary(for provider: AgentProvider) -> ProviderSummary? {
+        guard !usages.isEmpty else { return nil }
+        let modelBreakdown = modelData.map { modelName, data in
+            data.modelUsage(modelName: modelName, providerTotalCost: totalCost)
+        }
+        .sorted { $0.cost > $1.cost }
+
+        return ProviderSummary(
+            provider: provider,
+            totalCost: totalCost,
+            totalTokens: totalTokens,
+            totalInputTokens: totalInputTokens,
+            totalOutputTokens: totalOutputTokens,
+            sessionCount: usages.count,
+            modelBreakdown: modelBreakdown,
+            provenanceConfidence: dominantConfidence,
+            provenanceMethod: dominantMethod,
+            hasEstimatedContributions: hasAnyEstimated,
+            cacheEfficiency: CacheEfficiency.aggregate(usages)
+        )
+    }
+}
+
+private struct ModelAccumulator {
+    var input = 0
+    var output = 0
+    var cacheCreation = 0
+    var cacheRead = 0
+    var reasoning = 0
+    var cost: Double = 0
+    var bestConfidence: UsageProvenanceConfidence = .unknown
+    var bestMethod: UsageProvenanceMethod = .unknown
+    var hasEstimated = false
+
+    mutating func record(_ usage: TokenUsage) {
+        input += usage.inputTokens
+        output += usage.outputTokens
+        cacheCreation += usage.cacheCreationTokens
+        cacheRead += usage.cacheReadTokens
+        reasoning += usage.reasoningTokens
+        cost += usage.cost
+        hasEstimated = hasEstimated || (usage.provenanceConfidence != .exact && usage.provenanceConfidence != .derivedExact)
+
+        if usage.provenanceConfidence > bestConfidence {
+            bestConfidence = usage.provenanceConfidence
+            bestMethod = usage.provenanceMethod
+        } else if usage.provenanceConfidence == bestConfidence,
+                  usage.provenanceMethod.precedence > bestMethod.precedence {
+            bestMethod = usage.provenanceMethod
+        }
+    }
+
+    func modelUsage(modelName: String, providerTotalCost: Double) -> ModelUsage {
+        let totalModelTokens = input + output + cacheCreation + cacheRead + reasoning
+        return ModelUsage(
+            modelName: modelName,
+            inputTokens: input,
+            outputTokens: output,
+            cacheCreationTokens: cacheCreation,
+            cacheReadTokens: cacheRead,
+            reasoningTokens: reasoning,
+            totalTokens: totalModelTokens,
+            cost: cost,
+            percentage: providerTotalCost > 0 ? (cost / providerTotalCost) * 100 : 0,
+            provenanceConfidence: bestConfidence,
+            provenanceMethod: bestMethod,
+            hasEstimatedContributions: hasEstimated
+        )
     }
 }

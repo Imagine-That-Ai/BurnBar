@@ -67,6 +67,10 @@ struct ProvidersSettingsView: View {
                     quotaSourceSummary: quotaSourceSummary(for:)
                 )
 
+                SettingsSectionHeader(title: "Smart Hubs")
+
+                ProviderQuotaSmartHubsSection(settingsManager: settingsManager)
+
                 SettingsSectionHeader(title: "Provider Accounts")
 
                 providerAccountsSection
@@ -460,7 +464,7 @@ struct ProvidersSettingsView: View {
 
     private func quotaSourceSummary(for provider: AgentProvider) -> String? {
         switch provider {
-        case .minimax, .zai:
+        case .minimax, .zai, .ollama:
             guard let configuration = daemonManager.providerConfigurations.first(where: { $0.provider == provider }) else {
                 return "No routed provider plan is configured yet."
             }
@@ -469,9 +473,15 @@ struct ProvidersSettingsView: View {
             }
             if let preferredSlotID = configuration.preferredCredentialSlotID,
                let preferredSlot = configuration.credentialSlots.first(where: { $0.slotID == preferredSlotID }) {
+                if provider == .ollama {
+                    return "Using preferred Ollama Cloud plan “\(preferredSlot.label)” for routed gateway traffic. Quota windows still come from Ollama's local/cloud usage signals when available."
+                }
                 return "Using preferred daemon plan “\(preferredSlot.label)” for quota refresh when available."
             }
             if let firstEnabledSlot = configuration.credentialSlots.first(where: \.isEnabled) {
+                if provider == .ollama {
+                    return "Using Ollama Cloud plan “\(firstEnabledSlot.label)” for routed gateway traffic. Quota windows still come from Ollama's local/cloud usage signals when available."
+                }
                 return "Using daemon plan “\(firstEnabledSlot.label)” for quota refresh when available."
             }
             return "Provider plans exist, but none are enabled for quota refresh."
@@ -775,12 +785,12 @@ private struct CLIConnectionsSettingsSection: View {
     @State private var activeTests: Set<SwitcherCLIProfileType> = []
     @State private var activeLogins: Set<SwitcherCLIProfileType> = []
 
-    private let supportedCLIs: [SwitcherCLIProfileType] = [.claude, .codex]
+    private let supportedCLIs: [SwitcherCLIProfileType] = [.claude, .codex, .opencode]
 
     var body: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                Text("Check whether Claude Code and Codex are installed and authenticated, then open their login flow in Terminal when needed.")
+                Text("Check whether Claude Code, Codex, and OpenCode are installed and authenticated, then open supported login flows in Terminal when needed.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
 
@@ -1024,7 +1034,7 @@ private struct CLIConnectionCard: View {
         case .codex:
             return "Codex supports either OAuth or an OpenAI API key in the local config."
         case .opencode:
-            return ""
+            return "OpenCode can use the OpenBurnBar Gateway through the routed client sync in Quota Reporting."
         }
     }
 }
@@ -1049,6 +1059,8 @@ private extension AgentProvider {
             return "minimax"
         case .zai:
             return "zai"
+        case .ollama:
+            return "ollama"
         default:
             return nil
         }

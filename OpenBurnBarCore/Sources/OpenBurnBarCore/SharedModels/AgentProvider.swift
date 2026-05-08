@@ -30,6 +30,42 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
 
     public var id: String { rawValue }
 
+    /// Providers that expose a real quota/rate-limit signal either through an
+    /// official API, a provider dashboard scrape, or a first-party local quota
+    /// bridge. Usage-only tools stay out of quota surfaces.
+    public static let quotaSignalProviders: [AgentProvider] = [
+        .codex,
+        .claudeCode,
+        .copilot,
+        .minimax,
+        .zai,
+        .factory,
+        .cursor,
+        .warp,
+        .ollama,
+        .kimi,
+    ]
+
+    public var isQuotaSignalProvider: Bool {
+        Self.quotaSignalProviders.contains(self)
+    }
+
+    /// Mobile account-connection providers. This list mirrors what the
+    /// backend `connectProviderAccount` / `connectHostedQuotaAccount` /
+    /// `connectSelfHostedQuotaAccount` callables actually accept; pickers are
+    /// gated to providers we can validate end-to-end. Adding a provider here
+    /// without a server adapter will surface a "not supported" error to the
+    /// user instead of completing the connection.
+    public static let mobileAccountConnectableProviders: [AgentProvider] = [
+        .claudeCode,
+        .codex,
+        .factory,
+        .cursor,
+        .minimax,
+        .zai,
+        .openAI,
+    ]
+
     /// A stable, lowercased, space-stripped token for persisting provider identifiers.
     public var persistedToken: String {
         rawValue.lowercased().replacingOccurrences(of: " ", with: "")
@@ -69,6 +105,73 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .codex
         default:
             return AgentProvider.allCases.first { $0.providerID == providerID }
+        }
+    }
+
+    /// Resolves an `AgentProvider` from a catalog provider identifier
+    /// (`BurnBarCatalogProvider.id`). Catalog IDs and `AgentProvider`
+    /// `persistedToken` mostly line up, with a handful of historical
+    /// aliases we have to bridge here:
+    ///
+    /// - `moonshot` (catalog) → `.kimi`
+    /// - `anthropic` (catalog) → `.claudeCode`
+    /// - `google` (catalog) → `.geminiCLI`
+    /// - `xai` / `deepseek` / `mistral` / etc. fall through to the
+    ///   nearest persisted-token match when one exists.
+    public static func fromCatalogProviderID(_ catalogProviderID: String) -> AgentProvider? {
+        let normalized = catalogProviderID
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        switch normalized {
+        case "anthropic", "claude-code", "claude":
+            return .claudeCode
+        case "openai", "open-ai":
+            return .openAI
+        case "codex":
+            return .codex
+        case "google", "gemini", "gemini-cli":
+            return .geminiCLI
+        case "moonshot", "kimi":
+            return .kimi
+        case "minimax":
+            return .minimax
+        case "zai", "z-ai", "z.ai":
+            return .zai
+        case "ollama":
+            return .ollama
+        case "hermes":
+            return .hermes
+        case "factory":
+            return .factory
+        case "cursor":
+            return .cursor
+        case "copilot":
+            return .copilot
+        case "aider":
+            return .aider
+        case "warp":
+            return .warp
+        case "windsurf":
+            return .windsurf
+        case "goose":
+            return .goose
+        case "openclaw", "open-claw":
+            return .openClaw
+        case "forge", "forgedev":
+            return .forgeDev
+        case "augment":
+            return .augment
+        case "cline":
+            return .cline
+        case "kilocode", "kilo-code":
+            return .kiloCode
+        case "roocode", "roo-code":
+            return .rooCode
+        default:
+            if let direct = fromPersistedToken(normalized) {
+                return direct
+            }
+            return AgentProvider.allCases.first { $0.providerID.rawValue == normalized }
         }
     }
 

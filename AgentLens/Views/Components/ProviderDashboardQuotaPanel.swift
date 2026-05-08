@@ -59,9 +59,9 @@ struct ProviderDashboardQuotaPanel: View {
                         accountIdentityStrip(snapshot: only)
                     }
 
-                    if let active = activeSnapshot, !active.buckets.isEmpty {
+                    if let active = activeSnapshot, active.hasDisplayableQuotaSignal {
                         VStack(spacing: DesignSystem.Spacing.md) {
-                            ForEach(active.buckets) { bucket in
+                            ForEach(active.displayableQuotaBuckets) { bucket in
                                 ProviderQuotaBucketRow(bucket: bucket, provider: provider)
                             }
                         }

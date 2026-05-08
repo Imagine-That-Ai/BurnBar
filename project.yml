@@ -92,6 +92,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
+        SWIFT_ENABLE_EXPLICIT_MODULES: NO
     postBuildScripts:
       - name: Configure Firebase Auth Resources
         # GoogleService-Info.plist is bundled via the regular Copy Resources phase
@@ -128,6 +129,8 @@ targets:
         product: FirebaseAuth
       - package: Firebase
         product: FirebaseFirestore
+      - package: Firebase
+        product: FirebaseFunctions
       - package: Firebase
         product: FirebaseAppCheck
       - package: GoogleSignIn
@@ -212,6 +215,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.tests
         BUNDLE_LOADER: "$(BUILT_PRODUCTS_DIR)/OpenBurnBar.app/Contents/MacOS/OpenBurnBar"
         TEST_HOST: "$(BUNDLE_LOADER)"
+        SWIFT_ENABLE_EXPLICIT_MODULES: NO
     dependencies:
       - target: OpenBurnBar
       - package: OpenBurnBarCore
@@ -246,10 +250,18 @@ targets:
       - path: OpenBurnBarMobile
         excludes:
           - "**/.DS_Store"
+          - "Resources/Mermaid/**"
+      # Mermaid is shipped as a folder reference so `index.html` and
+      # `mermaid.min.js` keep their relative paths inside the bundle.
+      - path: OpenBurnBarMobile/Resources/Mermaid
+        type: folder
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarMobile
-        PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: 6
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         # Apple sign-in + iOS Keychain access group; see
@@ -262,12 +274,48 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+    postBuildScripts:
+      - name: Block App Check Debug Token In Release
+        script: |
+          set -euo pipefail
+
+          STAMP="${SCRIPT_OUTPUT_FILE_0:-}"
+          finish() {
+            if [[ -n "${STAMP}" ]]; then
+              mkdir -p "$(dirname "${STAMP}")"
+              touch "${STAMP}"
+            fi
+          }
+          trap finish EXIT
+
+          if [[ "${CONFIGURATION:-}" == "Debug" ]]; then
+            exit 0
+          fi
+
+          SOURCE_PLIST="${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist"
+          if [[ ! -f "${SOURCE_PLIST}" ]]; then
+            exit 0
+          fi
+
+          for KEY in FirebaseAppCheckDebugToken FIRAAppCheckDebugToken; do
+            if /usr/libexec/PlistBuddy -c "Print :${KEY}" "${SOURCE_PLIST}" >/dev/null 2>&1; then
+              echo "error: ${KEY} must not be present in OpenBurnBarMobile/Resources/GoogleService-Info.plist for non-Debug builds."
+              exit 1
+            fi
+          done
+        inputFiles:
+          - $(PROJECT_DIR)/OpenBurnBarMobile/Resources/GoogleService-Info.plist
+        outputFiles:
+          - $(DERIVED_FILE_DIR)/BlockAppCheckDebugTokenInRelease.stamp
     info:
       path: OpenBurnBarMobile/Info.plist
       properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
-            CFBundleURLName: com.burnbar.app.google-sign-in
+            CFBundleURLName: com.openburnbar.app.google-sign-in
             CFBundleURLSchemes:
               - com.googleusercontent.apps.246956661961-k53p0e4oln229kmmed459fm6i8i5vtoo
     dependencies:
@@ -290,6 +338,7 @@ targets:
     scheme:
       testTargets:
         - OpenBurnBarMobileTests
+      storeKitConfiguration: OpenBurnBarMobileTests/Resources/OpenBurnBarHostedQuota.storekit
 
   OpenBurnBarMobileTests:
     type: bundle.unit-test
@@ -302,7 +351,9 @@ targets:
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarMobileTests
-        PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.app.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.tests
+        DEVELOPMENT_TEAM: 4Y367DF25B
+        CODE_SIGN_STYLE: Automatic
     dependencies:
       - target: OpenBurnBarMobile
       - package: OpenBurnBarCore
@@ -319,7 +370,9 @@ targets:
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarWidget
-        PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.app.widget
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.widget
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: 6
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements
@@ -329,6 +382,8 @@ targets:
     info:
       path: OpenBurnBarWidget/Info.plist
       properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
           

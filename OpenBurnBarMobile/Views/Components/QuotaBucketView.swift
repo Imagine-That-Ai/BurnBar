@@ -72,10 +72,7 @@ struct QuotaBucketView: View {
     }
 
     private func formatNumber(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = value < 10 ? 2 : 0
-        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        value.humanReadableNumber(maxFractions: value < 10 ? 2 : 1)
     }
 }
 

@@ -18,6 +18,7 @@ import OpenBurnBarCore
 @MainActor
 final class DataStoreCoordinator {
     nonisolated static let legacyChatThreadID = "openburnbar-chat-legacy"
+    private static let quickHydrationLimit = 5_000
 
     nonisolated let actor: DataStoreActor
 
@@ -43,6 +44,7 @@ final class DataStoreCoordinator {
     private(set) var usages: [TokenUsage] = []
     private(set) var isLoading = false
     private(set) var lastRefresh: Date?
+    private var refreshGeneration = 0
 
     // MARK: - Forwarding Computed Properties (deprecated — use usageViewModel)
 
@@ -101,12 +103,36 @@ final class DataStoreCoordinator {
         usageViewModel.providerSummaries(in: dateRange)
     }
 
+    func providerSummaries(for timeRange: TimeRange) -> [ProviderSummary] {
+        usageViewModel.providerSummaries(for: timeRange)
+    }
+
     func modelSummaries(in dateRange: ClosedRange<Date>?) -> [ModelSummary] {
         usageViewModel.modelSummaries(in: dateRange)
     }
 
+    func modelSummaries(for timeRange: TimeRange) -> [ModelSummary] {
+        usageViewModel.modelSummaries(for: timeRange)
+    }
+
     func cacheEfficiency(in dateRange: ClosedRange<Date>?) -> CacheEfficiency {
         usageViewModel.cacheEfficiency(in: dateRange)
+    }
+
+    func cacheEfficiency(for timeRange: TimeRange) -> CacheEfficiency {
+        usageViewModel.cacheEfficiency(for: timeRange)
+    }
+
+    func usageWindowSummary(in dateRange: ClosedRange<Date>?) -> DashboardUsageWindowSummary {
+        usageViewModel.windowSummary(in: dateRange)
+    }
+
+    func usageWindowSummary(for timeRange: TimeRange) -> DashboardUsageWindowSummary {
+        usageViewModel.windowSummary(for: timeRange)
+    }
+
+    var totalUsageSessionCount: Int {
+        usageViewModel.windowSummary(for: .allTime).sessionCount
     }
 
     func usages(in dateRange: ClosedRange<Date>?) -> [TokenUsage] {
@@ -197,17 +223,30 @@ final class DataStoreCoordinator {
         lastRefresh = Date()
     }
 
+    func replaceUsageSnapshot(_ snapshot: DashboardUsageSnapshot) {
+        let sortedUsages = snapshot.loadedUsages.sorted { $0.startTime > $1.startTime }
+        usages = sortedUsages
+        usageViewModel.replaceUsageSnapshot(snapshot)
+        lastRefresh = Date()
+    }
+
     func refresh() async {
+        refreshGeneration += 1
+        let generation = refreshGeneration
         isLoading = true
+        defer {
+            if generation == refreshGeneration {
+                isLoading = false
+            }
+        }
 
         do {
-            let records = try await actor.fetchRecentUsage(limit: 5000)
-            replaceUsages(records)
+            let snapshot = try await actor.fetchDashboardUsageSnapshot(loadedUsageLimit: Self.quickHydrationLimit)
+            guard generation == refreshGeneration else { return }
+            replaceUsageSnapshot(snapshot)
         } catch {
             AppLogger.dataStore.silentFailure("refresh_failed", error: error)
         }
-
-        isLoading = false
     }
 
     func deleteAll() async throws {

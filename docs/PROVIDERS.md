@@ -15,7 +15,7 @@
 | **Factory** | `FactoryQuotaAdapter.swift` | `.exact` / `.estimated` | `POST app.factory.ai/api/.../usage` | Standard + Premium token buckets |
 | **Cursor** | `CursorQuotaAdapter.swift` | `.exact` / `.estimated` | `GET cursor.com/api/usage-summary` | Included + on-demand usage |
 | **Warp** | `WarpQuotaAdapter.swift` | `.exact` / log-tailing | `POST app.warp.dev/graphql/v2` | Request credits |
-| **Ollama** | `OllamaQuotaAdapter.swift` | `.exact` | `GET localhost:11434/api/tags` + `/api/ps` | Model counts only |
+| **Ollama** | `OllamaQuotaAdapter.swift` + routed-provider catalog | `.exact` | `GET localhost:11434/api/tags` + `/api/ps`; `https://ollama.com/api` for cloud routing | Local model counts; cloud API-key route state |
 | **OpenAI** | `OpenAIQuotaAdapter` / `functions/src/providers/openai.ts` | `.exact` | `GET api.openai.com/v1/organization/usage/completions` | Organization token + request usage; hard quota limits unavailable |
 | **Kimi** | _none_ | `.unavailable` | No public API | CLI token counts only |
 | **Gemini CLI** | _none_ | `.unavailable` | No public API | Session JSONL tokens only |
@@ -39,7 +39,7 @@
 | **Warp** | API key | `wk-...` | `Authorization: Bearer {key}` + `User-Agent: Warp/1.0` | Created at warp.dev. Spoofed UA required (HTTP 429 otherwise). |
 | **MiniMax** | Coding Plan API key | `sk-cp-...` | `Authorization: Bearer {key}` | Standard `sk-api-...` keys are rejected. |
 | **Z.ai** | API key | (no fixed prefix) | `Authorization: Bearer {key}` | From Z.ai dashboard. Coding plan or API quota access. |
-| **Ollama** | None (localhost) | N/A | N/A | Ollama must be running (`ollama serve`). |
+| **Ollama** | None for localhost; API key for Ollama Cloud | `ollama` local placeholder or Ollama API key | `Authorization: Bearer {key}` for `https://ollama.com/api` | Local inventory needs `ollama serve`; cloud routing uses explicit Keychain-backed provider-plan slots. |
 | **OpenAI (usage)** | Admin API key | `sk-...` | `Authorization: Bearer {key}` | Requires organization admin key for `/v1/organization/usage/completions`. |
 | **Anthropic (usage)** | Admin API key | `sk-ant-admin-...` | `x-api-key: {key}` + `anthropic-version: 2023-06-01` | Requires admin key for `/v1/organizations/usage_report/messages`. |
 | **OpenRouter (usage)** | API key | `sk-or-...` | `Authorization: Bearer {key}` | Any API key works. Returns `total_cost` directly. |
@@ -57,7 +57,7 @@
 | Warp | `POST https://app.warp.dev/graphql/v2?op=GetRequestLimitInfo` | GraphQL | `{"data":{"workspace":{"requestLimit":...,"requestsUsedSinceLastRefresh":...,"bonusGrants":[...]}}}` |
 | MiniMax | `GET https://www.minimax.io/v1/api/openplatform/coding_plan/remains` | HTTP | `{"model_remains":[{"model_name":"...","current_interval_usage_count":...,"current_interval_total_count":...,"resets_at":"..."}]}` |
 | Z.ai | `GET https://api.z.ai/api/monitor/usage/quota/limit` | HTTP | `[{"type":"TOKENS_LIMIT","unit":3,"number":5,"currentValue":...,"remaining":...,"percentage":...}]` |
-| Ollama | `GET http://localhost:11434/api/tags` | HTTP | `{"models":[{"name":"...","modified_at":"...","size":...}]}` |
+| Ollama | `GET http://localhost:11434/api/tags`; `POST https://ollama.com/api/chat`; `GET https://ollama.com/api/tags` | HTTP | Local/cloud model list plus native chat response with `message.content`, `prompt_eval_count`, and `eval_count` |
 | OpenAI | `GET https://api.openai.com/v1/organization/usage/completions?start_time=...&end_time=...&bucket_width=1d` | HTTP | `{"data":[{"results":[{"input_tokens":...,"output_tokens":...,"input_cached_tokens":...,"num_model_requests":...}]}]}` |
 
 ## Refresh Cadences
@@ -73,7 +73,7 @@
 | Factory | On refresh (polled) | Browser cookie |
 | Cursor | On refresh (polled) | Browser cookie |
 | Warp | On refresh (polled) | `wk-...` API key |
-| Ollama | On refresh (polled) | None |
+| Ollama | On refresh (polled); on routed gateway request | None for localhost; Ollama Cloud API key for direct cloud API |
 | OpenAI | On refresh (polled) | Organization admin API key |
 
 ## Adding a New Provider

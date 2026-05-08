@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 #if canImport(AppKit)
@@ -42,7 +43,7 @@ struct ProviderQuotaSettingsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            Text("Quota reporting stays separate from spend history. OpenBurnBar uses official APIs where they exist and otherwise shows the best verifiable local signal it can: Codex rollout snapshots, Claude statusline JSON, and Factory / Droid monthly token estimates. Review provider-level quota here or in each provider dashboard.")
+            Text("Quota reporting stays separate from spend history. OpenBurnBar uses official APIs where they exist and otherwise shows the best verifiable local signal it can: Codex rollout snapshots, Claude statusline JSON, Factory / Droid token history, and explicit OpenBurnBar login sessions for providers that need web quota pages.")
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
@@ -58,7 +59,197 @@ struct ProviderQuotaSettingsSection: View {
             }
         }
         .task {
-            await quotaService.refreshAll(dataStore: dataStore)
+            await quotaService.refreshIfNeeded(dataStore: dataStore)
+        }
+    }
+}
+
+struct ProviderQuotaSmartHubsSection: View {
+    @Bindable var settingsManager: SettingsManager
+
+    @State private var refreshStatus: String?
+    @State private var isRefreshingHub = false
+
+    private var dashboardURL: URL? {
+        URL(string: settingsManager.smartHubQuotaDashboardURL.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private var refreshURL: URL? {
+        URL(string: settingsManager.smartHubQuotaRefreshURL.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private var voiceRefreshURL: URL? {
+        URL(string: settingsManager.smartHubQuotaVoiceRefreshURL.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                            .fill(DesignSystem.Colors.whimsy.opacity(0.12))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: "display")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.whimsy)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Nest Hub quota display")
+                            .font(DesignSystem.Typography.headline)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("Expose the provider quota dashboard on a Google Nest Hub or any DashCast-compatible smart display.")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: DesignSystem.Spacing.md)
+
+                    Toggle("", isOn: $settingsManager.smartHubQuotaDisplayEnabled)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .accessibilityLabel("Enable smart hub quota display")
+                }
+
+                if settingsManager.smartHubQuotaDisplayEnabled {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                        smartHubField(
+                            title: "Dashboard URL",
+                            text: $settingsManager.smartHubQuotaDashboardURL,
+                            placeholder: "http://127.0.0.1:8787/render.html"
+                        )
+
+                        smartHubField(
+                            title: "Refresh endpoint",
+                            text: $settingsManager.smartHubQuotaRefreshURL,
+                            placeholder: "http://127.0.0.1:8787/refresh"
+                        )
+
+                        smartHubField(
+                            title: "Voice routine endpoint",
+                            text: $settingsManager.smartHubQuotaVoiceRefreshURL,
+                            placeholder: "http://127.0.0.1:8787/voice-refresh"
+                        )
+
+                        HStack(spacing: DesignSystem.Spacing.sm) {
+                            smartHubProviderChip("Claude", color: DesignSystem.Colors.ember)
+                            smartHubProviderChip("Codex", color: DesignSystem.Colors.success)
+                            smartHubProviderChip("Cursor", color: .blue)
+                            smartHubProviderChip("Droid", color: DesignSystem.Colors.whimsy)
+                        }
+
+                        HStack(spacing: DesignSystem.Spacing.md) {
+                            GlassButton(title: "Open", icon: "arrow.up.right.square", style: .regular) {
+                                openDashboard()
+                            }
+                            .disabled(dashboardURL == nil)
+
+                            GlassButton(
+                                title: isRefreshingHub ? "Refreshing" : "Refresh Hub",
+                                icon: "arrow.clockwise",
+                                style: .prominent
+                            ) {
+                                Task { await refreshHub() }
+                            }
+                            .disabled(refreshURL == nil || isRefreshingHub)
+
+                            GlassButton(title: "Copy Voice URL", icon: "doc.on.doc", style: .regular) {
+                                copyVoiceURL()
+                            }
+                            .disabled(voiceRefreshURL == nil)
+                        }
+
+                        if let refreshStatus {
+                            Text(refreshStatus)
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        Text("For Google Assistant, bind the phrase \"quota refresh\" to the voice routine endpoint from Google Home, Home Assistant, IFTTT, or another webhook bridge.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, DesignSystem.Spacing.xs)
+                }
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+    }
+
+    @ViewBuilder
+    private func smartHubField(
+        title: String,
+        text: Binding<String>,
+        placeholder: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            Text(title)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+            TextField(placeholder, text: text)
+                .font(DesignSystem.Typography.monoSmall)
+                .textFieldStyle(.plain)
+                .padding(DesignSystem.Spacing.sm)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(DesignSystem.Colors.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
+                )
+        }
+    }
+
+    private func smartHubProviderChip(_ title: String, color: Color) -> some View {
+        Text(title)
+            .font(DesignSystem.Typography.tiny)
+            .fontWeight(.semibold)
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.11))
+            .clipShape(Capsule())
+    }
+
+    private func openDashboard() {
+        guard let dashboardURL else { return }
+        #if canImport(AppKit)
+        NSWorkspace.shared.open(dashboardURL)
+        #endif
+    }
+
+    private func copyVoiceURL() {
+        guard let voiceRefreshURL else { return }
+        #if canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(voiceRefreshURL.absoluteString, forType: .string)
+        refreshStatus = "Voice refresh URL copied."
+        #endif
+    }
+
+    private func refreshHub() async {
+        guard let refreshURL else { return }
+        isRefreshingHub = true
+        defer { isRefreshingHub = false }
+
+        do {
+            var request = URLRequest(url: refreshURL)
+            request.httpMethod = "POST"
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                refreshStatus = "Refresh returned HTTP \(http.statusCode)."
+            } else {
+                refreshStatus = "Hub refresh requested."
+            }
+        } catch {
+            refreshStatus = "Could not reach smart hub refresh endpoint: \(error.localizedDescription)"
         }
     }
 }
@@ -94,7 +285,7 @@ struct ProviderQuotaOverviewPanel: View {
             .padding(DesignSystem.Spacing.lg)
         }
         .task {
-            await quotaService.refreshAll(dataStore: dataStore)
+            await quotaService.refreshIfNeeded(dataStore: dataStore)
         }
     }
 
@@ -129,7 +320,7 @@ struct ProviderQuotaOverviewPanel: View {
                 QuotaDualWindowStrip(
                     hourlyBucket: snapshot?.hourlyBucket,
                     weeklyBucket: snapshot?.weeklyBucket,
-                    fallbackBucket: snapshot?.primaryBucket,
+                    fallbackBucket: snapshot?.primaryDisplayableBucket,
                     provider: provider,
                     isActive: isActive
                 )
@@ -245,9 +436,9 @@ private struct ProviderQuotaSettingsCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if let snapshot, !snapshot.buckets.isEmpty {
+                if let snapshot, snapshot.hasDisplayableQuotaSignal {
                     VStack(spacing: DesignSystem.Spacing.md) {
-                        ForEach(snapshot.buckets) { bucket in
+                        ForEach(snapshot.displayableQuotaBuckets) { bucket in
                             ProviderQuotaBucketRow(bucket: bucket, provider: provider)
                         }
                     }
@@ -446,6 +637,16 @@ private struct ProviderQuotaSettingsCard: View {
 
         case .factory:
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                Text("OpenBurnBar no longer reads Chrome Safe Storage or third-party browser cookies. Connect Factory here to store an OpenBurnBar login session for quota refresh.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                GlassButton(title: "Connect Factory", icon: "person.crop.circle.badge.checkmark", style: .prominent) {
+                    Task { await connectProviderSession(.factory) }
+                }
+                .disabled(isWorking)
+
                 Text("Plan tier")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -463,11 +664,40 @@ private struct ProviderQuotaSettingsCard: View {
                 }
             }
 
+        case .ollama:
+            providerSessionSetup(
+                provider: .ollama,
+                title: "Connect Ollama",
+                message: "Ollama Cloud quota uses an OpenBurnBar login session from ollama.com/settings. Refresh never reads browser stores or asks for your macOS system password."
+            )
+
+        case .kimi:
+            providerSessionSetup(
+                provider: .kimi,
+                title: "Connect Kimi",
+                message: "Kimi Coding quota uses an OpenBurnBar-captured auth token. Reconnect here if the provider rejects the stored session."
+            )
+
         case .cursor:
             CursorQuotaInlineSetup(quotaService: quotaService, dataStore: dataStore)
 
         default:
             EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func providerSessionSetup(provider: AgentProvider, title: String, message: String) -> some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text(message)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            GlassButton(title: title, icon: "person.crop.circle.badge.checkmark", style: .prominent) {
+                Task { await connectProviderSession(provider) }
+            }
+            .disabled(isWorking)
         }
     }
 
@@ -578,6 +808,45 @@ private struct ProviderQuotaSettingsCard: View {
             credentialSaveMessage = "Could not save \(provider.displayName) token: \(error.localizedDescription)"
         }
     }
+
+    private func connectProviderSession(_ provider: AgentProvider) async {
+        isWorking = true
+        credentialSaveMessage = nil
+        defer { isWorking = false }
+
+        do {
+            let keyStore = ProviderAPIKeyStore.shared
+            switch provider {
+            case .factory:
+                guard let cookieHeader = await FactoryLoginHelper.runLoginFlow(),
+                      !cookieHeader.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw NSError(domain: "ProviderQuota", code: 1, userInfo: [NSLocalizedDescriptionKey: "Factory login was cancelled or did not return a session."])
+                }
+                try keyStore.setAPIKey(cookieHeader, for: "factory_cookie_header")
+            case .ollama:
+                guard let cookieHeader = await FactoryLoginHelper.runOllamaLoginFlow(),
+                      !cookieHeader.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw NSError(domain: "ProviderQuota", code: 2, userInfo: [NSLocalizedDescriptionKey: "Ollama login was cancelled or did not return a session."])
+                }
+                try keyStore.setAPIKey(cookieHeader, for: "ollama_cookie_header")
+            case .kimi:
+                guard let token = await FactoryLoginHelper.runKimiLoginFlow(),
+                      !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw NSError(domain: "ProviderQuota", code: 3, userInfo: [NSLocalizedDescriptionKey: "Kimi login was cancelled or did not return an auth token."])
+                }
+                try keyStore.setAPIKey(token, for: "kimi_auth_token")
+            default:
+                return
+            }
+
+            credentialSaveIsError = false
+            credentialSaveMessage = "\(provider.displayName) login session saved."
+            await quotaService.refresh(provider: provider, dataStore: dataStore)
+        } catch {
+            credentialSaveIsError = true
+            credentialSaveMessage = "Could not connect \(provider.displayName): \(error.localizedDescription)"
+        }
+    }
 }
 
 // MARK: - Cursor Inline Setup
@@ -620,8 +889,34 @@ private struct CursorQuotaInlineSetup: View {
                 GlassButton(title: "Refresh", icon: "arrow.clockwise", style: .regular) {
                     Task { await quotaService.refresh(provider: .cursor, dataStore: dataStore) }
                 }
+
+                GlassButton(title: "Sign in", icon: "person.crop.circle.badge.checkmark", style: .regular) {
+                    Task {
+                        _ = await CursorLoginHelper.runLoginFlow()
+                        await quotaService.refresh(provider: .cursor, dataStore: dataStore)
+                    }
+                }
             }
             .disabled(cursorManager.isBusy)
+
+            HStack(spacing: DesignSystem.Spacing.md) {
+                GlassButton(title: "Sync Factory", icon: "arrow.triangle.2.circlepath", style: .regular) {
+                    cursorManager.syncRoutedClient(.factory)
+                }
+
+                GlassButton(title: "Sync OpenCode", icon: "terminal", style: .regular) {
+                    cursorManager.syncRoutedClient(.opencode)
+                }
+            }
+
+            ForEach(RoutedClientTarget.allCases) { target in
+                if let status = cursorManager.routedClientSyncStatuses[target] {
+                    Text("\(target.displayName): \(status.summary)")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.success)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
 
             if let error = cursorManager.lastError {
                 Text(error)
@@ -631,7 +926,7 @@ private struct CursorQuotaInlineSetup: View {
                     .lineLimit(3)
             }
 
-            Text("Cursor Connector routes requests through OpenBurnBar's local proxy to Z.ai and MiniMax. Configure providers and models in Dashboard → Settings.")
+            Text("Routed clients use OpenBurnBar's local gateway so Cursor, Factory, and OpenCode share the same plan rotation and exhausted-plan failover.")
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
                 .fixedSize(horizontal: false, vertical: true)

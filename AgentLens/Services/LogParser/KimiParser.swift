@@ -144,7 +144,7 @@ final class KimiParser: LogParser, Sendable {
         let cacheReadTokens: Int
 
         if let wt = wireTokens, (wt.inputOther > 0 || wt.output > 0 || wt.inputCacheRead > 0 || wt.inputCacheCreation > 0) {
-            inputTokens = wt.inputOther + wt.inputCacheRead + wt.inputCacheCreation
+            inputTokens = wt.inputOther
             outputTokens = wt.output
             cacheCreationTokens = wt.inputCacheCreation
             cacheReadTokens = wt.inputCacheRead
@@ -239,13 +239,48 @@ final class KimiParser: LogParser, Sendable {
             result.inputCacheRead += tokenUsage["input_cache_read"] as? Int ?? 0
             result.inputCacheCreation += tokenUsage["input_cache_creation"] as? Int ?? 0
 
-            // Extract model from message_id if present (format: chatcmpl-xxx)
-            if result.model == nil, let messageId = payload["message_id"] as? String, !messageId.isEmpty {
-                result.model = messageId
+            if result.model == nil,
+               let model = Self.validWireModel(from: tokenUsage, payload: payload) {
+                result.model = model
             }
         }
 
         return (result.inputOther > 0 || result.output > 0) ? result : nil
+    }
+
+    private static func validWireModel(
+        from tokenUsage: [String: Any],
+        payload: [String: Any]
+    ) -> String? {
+        let candidates = [
+            tokenUsage["model"],
+            tokenUsage["model_id"],
+            tokenUsage["modelId"],
+            tokenUsage["model_name"],
+            tokenUsage["modelName"],
+            payload["model"],
+            payload["model_id"],
+            payload["modelId"],
+            payload["model_name"],
+            payload["modelName"],
+        ]
+
+        for candidate in candidates {
+            guard let raw = candidate as? String else { continue }
+            let model = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !model.isEmpty, !isRequestIDLikeModel(model) else { continue }
+            return model
+        }
+        return nil
+    }
+
+    private static func isRequestIDLikeModel(_ value: String) -> Bool {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.hasPrefix("chatcmpl-")
+            || normalized.hasPrefix("cmpl-")
+            || normalized.hasPrefix("resp_")
+            || normalized.hasPrefix("response-")
+            || normalized.hasPrefix("msg_")
     }
 
     private func appendText(_ full: inout String, _ chunk: String) {

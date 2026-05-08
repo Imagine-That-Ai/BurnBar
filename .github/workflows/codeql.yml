@@ -49,7 +49,7 @@ jobs:
           # for more complete symbol resolution.
           - language: swift
             build-mode: manual
-            runner: macos-15
+            runner: macos-26
           - language: javascript-typescript
             build-mode: none
             runner: ubuntu-latest
@@ -74,6 +74,14 @@ jobs:
           # dead-store, etc.). Those are handled by eslint in the PR harness.
           queries: security-extended
 
+      # The app target references this plist as a bundle resource, but the real
+      # Firebase config is intentionally gitignored. CodeQL only needs the Swift
+      # build graph, so use the checked-in placeholder rather than requiring
+      # production Firebase secrets for source analysis.
+      - name: Prepare Firebase plist for Swift build
+        if: matrix.language == 'swift'
+        run: cp AgentLens/Resources/GoogleService-Info.plist.example AgentLens/Resources/GoogleService-Info.plist
+
       # Swift build — resolves packages and compiles all targets so CodeQL
       # can trace the compiler. Runs after init (so CodeQL hooks the build)
       # and only on the swift matrix entry. Disable code signing because
@@ -84,10 +92,11 @@ jobs:
           xcodebuild -project OpenBurnBar.xcodeproj \
             -scheme OpenBurnBar \
             -configuration Debug \
-            -destination 'platform=macOS,arch=arm64' \
+            -destination 'platform=macOS' \
             -derivedDataPath .codeql-derived-data \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
+            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
             build
 
       - name: Perform CodeQL analysis

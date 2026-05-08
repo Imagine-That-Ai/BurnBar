@@ -128,11 +128,21 @@ struct BurnBarLiveActivityExpandedTrailing: View {
 struct BurnBarLiveActivityExpandedCenter: View {
     let context: ActivityViewContext<BurnBarLiveActivityAttributes>
 
+    var providerEnum: AgentProvider? {
+        AgentProvider.fromPersistedToken(context.state.topProvider)
+    }
+
     var body: some View {
-        Image(systemName: "flame.fill")
-            .font(.system(size: 20, weight: .semibold))
-            .foregroundStyle(.orange)
-            .widgetAccentable()
+        if let providerEnum,
+           UIImage(named: providerEnum.bundledLogoName) != nil {
+            UnifiedProviderLogoView(provider: providerEnum, size: 20)
+                .widgetAccentable()
+        } else {
+            Image(systemName: "flame.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.orange)
+                .widgetAccentable()
+        }
     }
 }
 
@@ -155,18 +165,27 @@ struct BurnBarLiveActivityExpandedBottom: View {
 struct ProviderBadgeWidget: View {
     let provider: String
 
+    var providerEnum: AgentProvider? {
+        AgentProvider.fromPersistedToken(provider)
+    }
+
     var body: some View {
-        Text(provider)
-            .font(.system(size: 11, weight: .medium, design: .rounded))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 2)
-            .background(Color.gray.opacity(0.15))
-            .clipShape(Capsule())
-            .overlay(
-                Capsule()
-                    .stroke(Color.gray.opacity(0.25), lineWidth: 1)
-            )
-            .foregroundStyle(.secondary)
+        if let providerEnum,
+           UIImage(named: providerEnum.bundledLogoName) != nil {
+            UnifiedProviderLogoView(provider: providerEnum, size: 16)
+        } else {
+            Text(provider)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(Color.gray.opacity(0.15))
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(Color.gray.opacity(0.25), lineWidth: 1)
+                )
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

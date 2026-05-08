@@ -215,7 +215,7 @@ extension OpenBurnBarDaemonManager {
                                 for: quotaProvider,
                                 apiKeyOverride: apiKey
                             )
-                            let bucket = quotaSnapshot.primaryBucket ?? quotaSnapshot.buckets.first
+                            let bucket = quotaSnapshot.primaryDisplayableBucket
                             slot.lastQuotaRemainingPercent = bucket?.remainingPercent
                             slot.lastQuotaResetsAt = bucket?.resetsAt
                             slot.lastStatusMessage = quotaSnapshot.statusMessage
@@ -282,12 +282,14 @@ extension OpenBurnBarDaemonManager {
         switch providerID.lowercased() {
         case "minimax":
             return .minimax
-        case "zai":
+        case "zai", "z-ai":
             return .zai
+        case "copilot":
+            return .copilot
         case "ollama":
             return .ollama
-        case "openai":
-            return .openAI
+        case "moonshot", "kimi":
+            return .kimi
         default:
             return nil
         }

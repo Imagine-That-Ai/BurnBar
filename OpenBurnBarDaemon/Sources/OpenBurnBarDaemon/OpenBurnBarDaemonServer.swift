@@ -150,6 +150,7 @@ public actor BurnBarDaemonServer {
             self.gatewayServer = BurnBarHTTPGatewayServer(
                 configuration: configuration.gateway,
                 configStore: resolvedConfigStore,
+                usageRecorder: resolvedUsageRecorder,
                 logger: BurnBarDaemonLogger(category: "http-gateway")
             )
         } else {
@@ -404,6 +405,25 @@ public actor BurnBarDaemonServer {
                     id: typedRequest.id,
                     protocolVersion: BurnBarProtocolVersion.current,
                     result: BurnBarRecentUsageResponse(usage: usage)
+                )
+                return encode(response)
+            case .usageRecord:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarRecordUsageRequest>.self,
+                    from: requestData
+                )
+                let recordResult = try await usageRecorder.record(
+                    typedRequest.params.event,
+                    idempotencyKey: typedRequest.params.idempotencyKey
+                )
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: BurnBarRecordUsageResponse(
+                        idempotencyKey: recordResult.record.idempotencyKey,
+                        inserted: recordResult.inserted,
+                        event: recordResult.record.event
+                    )
                 )
                 return encode(response)
             case .connectorPlaneGet:

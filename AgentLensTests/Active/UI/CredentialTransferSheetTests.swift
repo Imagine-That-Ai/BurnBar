@@ -49,6 +49,33 @@ final class CredentialTransferSheetTests: XCTestCase {
             XCTFail("Expected failed stage, got \(vm.exportStage)")
         }
     }
+
+    func test_deviceTrustViewModelDeduplicatesRepeatedPhysicalDevices() async {
+        let gateway = FakeMacDeviceTrustGateway(devices: [
+            MacTrustedDevice(id: "iphone-old", displayName: "Alberto’s iPhone", platform: "iOS"),
+            MacTrustedDevice(id: "iphone-new", displayName: "Alberto’s iPhone", platform: "iOS"),
+            MacTrustedDevice(id: "mac", displayName: "MacBook Pro", platform: "macOS", isCurrentDevice: true)
+        ])
+        let vm = DeviceTrustViewModel(gateway: gateway)
+
+        await vm.load()
+
+        XCTAssertEqual(vm.trustedDevices.count, 2)
+        XCTAssertEqual(vm.trustedDevices.map(\.displayName), ["MacBook Pro", "Alberto’s iPhone"])
+    }
+
+    func test_devicesSettingsExposeNestHubControls() throws {
+        let deviceTrust = DeviceTrustViewModel(gateway: FakeMacDeviceTrustGateway(devices: []))
+        let view = DevicesAndSyncSettingsView(
+            settingsManager: SettingsManager(),
+            deviceTrust: deviceTrust,
+            exportViewModel: CredentialTransferExportViewModel(gateway: FakeExportGateway())
+        )
+        let sut = try view.inspect()
+
+        XCTAssertNoThrow(try sut.find(text: MacCopy.googleNestHubSectionTitle))
+        XCTAssertNoThrow(try sut.find(text: "Nest Hub quota display"))
+    }
 }
 
 @MainActor

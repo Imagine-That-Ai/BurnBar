@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import OpenBurnBarCore
 
@@ -12,7 +13,7 @@ enum ProviderPlanStrategy: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .auto: return "Auto (round-robin)"
+        case .auto: return "Auto rotate"
         case .preferred: return "Always preferred"
         case .backup: return "Backup only"
         }
@@ -22,15 +23,15 @@ enum ProviderPlanStrategy: String, CaseIterable, Identifiable {
         switch self {
         case .auto: return "arrow.triangle.2.circlepath"
         case .preferred: return "star.fill"
-        case .backup: return "shield.fill"
+        case .backup: return "shield.lefthalf.filled"
         }
     }
 
-    var description: String {
+    var summary: String {
         switch self {
-        case .auto: return "Rotates fairly across all active plans"
-        case .preferred: return "Always use this plan first, fall back to others only if it fails"
-        case .backup: return "Keep disabled until other plans fail, then activate automatically"
+        case .auto: return "Rotate fairly across plans"
+        case .preferred: return "Use this plan first, fall back on failure"
+        case .backup: return "Stay disabled until other plans fail"
         }
     }
 }
@@ -40,22 +41,19 @@ enum ProviderPlanStrategy: String, CaseIterable, Identifiable {
 private enum ProviderPlanWizardStep: Int, CaseIterable {
     case dashboard
     case provider
-    case apiKey
+    case auth
+    case credential
     case strategy
     case confirm
 
-    var progressFraction: Double {
-        guard Self.allCases.count > 1 else { return 1 }
-        return Double(rawValue) / Double(Self.allCases.count - 1)
-    }
-
-    var stepLabel: String {
+    var stepIndex: Int? {
         switch self {
-        case .dashboard: return "Plans"
-        case .provider: return "Provider"
-        case .apiKey: return "API Key"
-        case .strategy: return "Strategy"
-        case .confirm: return "Confirm"
+        case .dashboard: return nil
+        case .provider: return 1
+        case .auth: return 2
+        case .credential: return 3
+        case .strategy: return 4
+        case .confirm: return 5
         }
     }
 
@@ -63,7 +61,8 @@ private enum ProviderPlanWizardStep: Int, CaseIterable {
         switch self {
         case .dashboard: return "Plans"
         case .provider: return "Provider"
-        case .apiKey: return "API Key"
+        case .auth: return "Method"
+        case .credential: return "Credential"
         case .strategy: return "Strategy"
         case .confirm: return "Review"
         }
@@ -78,26 +77,28 @@ struct ProviderPlanWizardView: View {
     let onDismiss: () -> Void
 
     @State private var currentStep: ProviderPlanWizardStep = .dashboard
-    @State private var navigationDirection: Edge = .trailing
 
-    // Step 1 (dashboard) state
+    // Dashboard state
     @State private var activeProviderID: String?
 
-    // Step 2 (provider pick) state
+    // Provider step state
     @State private var selectedProviderID: String?
+    @State private var providerSearchQuery: String = ""
 
-    // Step 3 state
+    // Auth method step state
+    @State private var selectedAuthMethodID: String?
+
+    // Credential step state
     @State private var planLabel = ""
     @State private var apiKeyInput = ""
     @State private var showAPIKey = false
-    @State private var keyValidationMessage: String?
-    @State private var keyValidationIsWarning = false
     @State private var isProbingQuota = false
     @State private var quotaProbeResult: String?
     @State private var quotaProbePercent: Double?
+    @State private var quotaProbeError: String?
     @State private var quotaProbeTask: Task<Void, Never>?
 
-    // Step 4 state
+    // Strategy step state
     @State private var selectedStrategy: ProviderPlanStrategy = .auto
 
     // Save state
@@ -114,15 +115,39 @@ struct ProviderPlanWizardView: View {
         var id: String { slotID }
     }
 
-    // MARK: - Computed
+    // MARK: - Lookups
 
     private var eligibleProviders: [OpenBurnBarDaemonProviderConfiguration] {
-        // All providers with at least accounting capability are eligible for plan management.
-        // Routing-capable providers can also proxy requests.
-        daemonManager.providerConfigurations
+        let sorted = daemonManager.providerConfigurations.sorted { lhs, rhs in
+            let lhsHasRouting = lhs.hasRoutingCapability
+            let rhsHasRouting = rhs.hasRoutingCapability
+            if lhsHasRouting != rhsHasRouting { return lhsHasRouting && !rhsHasRouting }
+            if lhs.credentialSlots.count != rhs.credentialSlots.count {
+                return lhs.credentialSlots.count > rhs.credentialSlots.count
+            }
+            return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+        }
+        return sorted
     }
 
-    /// The provider whose plans are being managed on the dashboard.
+    private var filteredProviders: [OpenBurnBarDaemonProviderConfiguration] {
+        let query = providerSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return eligibleProviders }
+        return eligibleProviders.filter { config in
+            config.displayName.lowercased().contains(query)
+                || config.providerID.lowercased().contains(query)
+                || (descriptor(for: config.providerID).aliasProviderIDs.contains { $0.contains(query) })
+        }
+    }
+
+    private var routingProviders: [OpenBurnBarDaemonProviderConfiguration] {
+        filteredProviders.filter { $0.hasRoutingCapability }
+    }
+
+    private var trackingProviders: [OpenBurnBarDaemonProviderConfiguration] {
+        filteredProviders.filter { !$0.hasRoutingCapability }
+    }
+
     private var activeProvider: OpenBurnBarDaemonProviderConfiguration? {
         guard let id = activeProviderID else { return nil }
         return daemonManager.providerConfigurations.first { $0.providerID == id }
@@ -133,68 +158,95 @@ struct ProviderPlanWizardView: View {
         return eligibleProviders.first { $0.providerID == id }
     }
 
-    private var canProceedFromProvider: Bool {
-        selectedProviderID != nil
+    private var selectedDescriptor: BurnBarProviderAuthDescriptor? {
+        guard let id = selectedProviderID else { return nil }
+        return descriptor(for: id)
     }
 
-    private var canProceedFromAPIKey: Bool {
+    private var selectedAuthMethod: BurnBarProviderAuthMethod? {
+        guard let descriptor = selectedDescriptor else { return nil }
+        if let id = selectedAuthMethodID, let method = descriptor.method(id: id) {
+            return method
+        }
+        return descriptor.primaryMethod
+    }
+
+    private func descriptor(for providerID: String) -> BurnBarProviderAuthDescriptor {
+        let displayName = daemonManager.providerConfigurations
+            .first { $0.providerID == providerID }?.displayName ?? providerID.capitalized
+        let supportsProxy = daemonManager.providerConfigurations
+            .first { $0.providerID == providerID }?.hasRoutingCapability ?? true
+        return BurnBarProviderAuthRegistry.descriptorOrFallback(
+            forCatalogProviderID: providerID,
+            displayName: displayName,
+            supportsProxyRouting: supportsProxy
+        )
+    }
+
+    private func quotaProbeProvider(for providerID: String) -> AgentProvider? {
+        AgentProvider.fromCatalogProviderID(providerID)
+    }
+
+    private var canProceedFromProvider: Bool { selectedProviderID != nil }
+    private var canProceedFromAuth: Bool { selectedAuthMethod != nil }
+    private var canProceedFromCredential: Bool {
         let trimmedLabel = planLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
         return !trimmedLabel.isEmpty && !trimmedKey.isEmpty
-    }
-
-    /// Whether to show the provider-pick step (only when no initial provider and multiple eligible).
-    private var needsProviderPick: Bool {
-        initialProviderID == nil && eligibleProviders.count > 1
     }
 
     // MARK: - Body
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             wizardHeader
 
             Divider().background(DesignSystem.Colors.border)
 
-            // Content
             ScrollView {
-                VStack(spacing: DesignSystem.Spacing.lg) {
-                    stepContent
-                }
-                .padding(DesignSystem.Spacing.lg)
+                stepContent
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                    .padding(.top, DesignSystem.Spacing.lg)
+                    .padding(.bottom, DesignSystem.Spacing.xl)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .transition(stepTransition)
+                    .id(currentStep)
             }
 
             Divider().background(DesignSystem.Colors.border)
 
-            // Navigation
             wizardNavigation
         }
-        .frame(width: 520)
-        .frame(minHeight: 480)
+        .frame(width: 600)
+        .frame(minHeight: 580)
         .background(DesignSystem.Colors.background)
-        .onAppear {
-            if let initialID = initialProviderID {
-                activeProviderID = initialID
-            } else if eligibleProviders.count == 1 {
-                activeProviderID = eligibleProviders.first?.providerID
-            }
-        }
-        .onDisappear {
-            quotaProbeTask?.cancel()
-        }
-        .alert("Delete Plan?", isPresented: Binding(
+        .onAppear { primeWizardOnAppear() }
+        .onDisappear { quotaProbeTask?.cancel() }
+        .alert("Delete plan?", isPresented: Binding(
             get: { slotToDelete != nil },
             set: { if !$0 { slotToDelete = nil } }
         )) {
             Button("Cancel", role: .cancel) { slotToDelete = nil }
             Button("Delete", role: .destructive) {
-                if let target = slotToDelete {
-                    deleteSlot(target)
-                }
+                if let target = slotToDelete { deleteSlot(target) }
             }
         } message: {
-            Text("This will permanently remove the plan \"\(slotToDelete?.slotLabel ?? "")\" and its API key. This cannot be undone.")
+            Text("This permanently removes the plan \"\(slotToDelete?.slotLabel ?? "")\" and its credentials.")
+        }
+    }
+
+    private var stepTransition: AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: .trailing).combined(with: .opacity),
+            removal: .move(edge: .leading).combined(with: .opacity)
+        )
+    }
+
+    private func primeWizardOnAppear() {
+        if let initialID = initialProviderID {
+            activeProviderID = initialID
+        } else if eligibleProviders.count == 1 {
+            activeProviderID = eligibleProviders.first?.providerID
         }
     }
 
@@ -202,7 +254,7 @@ struct ProviderPlanWizardView: View {
 
     @ViewBuilder
     private var wizardHeader: some View {
-        VStack(spacing: DesignSystem.Spacing.md) {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 Button {
                     if currentStep == .dashboard {
@@ -216,76 +268,108 @@ struct ProviderPlanWizardView: View {
                     Image(systemName: currentStep == .dashboard ? "xmark" : "chevron.left")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 28, height: 28)
+                        .background(
+                            Circle().fill(DesignSystem.Colors.surfaceElevated)
+                        )
+                        .overlay(
+                            Circle().stroke(DesignSystem.Colors.border, lineWidth: 0.5)
+                        )
                 }
                 .buttonStyle(.plain)
 
                 Spacer()
 
-                // Show step indicators only during the add flow (not on dashboard)
                 if currentStep != .dashboard {
-                    ForEach(addFlowSteps, id: \.rawValue) { step in
-                        stepIndicator(step)
-                        if step != addFlowSteps.last {
-                            Spacer()
-                        }
-                    }
+                    progressTrack
                 }
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
             .padding(.top, DesignSystem.Spacing.md)
 
-            Text(stepTitle)
-                .font(DesignSystem.Typography.title)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(stepTitle)
+                    .font(DesignSystem.Typography.title)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-            Text(stepDescription)
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                Text(stepDescription)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.lg)
         }
         .padding(.bottom, DesignSystem.Spacing.md)
     }
 
-    /// The steps shown in the add-flow progress indicator (excludes dashboard).
     private var addFlowSteps: [ProviderPlanWizardStep] {
-        [.provider, .apiKey, .strategy, .confirm]
+        [.provider, .auth, .credential, .strategy, .confirm]
     }
 
     @ViewBuilder
-    private func stepIndicator(_ step: ProviderPlanWizardStep) -> some View {
-        VStack(spacing: DesignSystem.Spacing.xs) {
-            ZStack {
-                Circle()
-                    .fill(stepStateColor(step))
-                    .frame(width: 28, height: 28)
-
-                if step.rawValue < currentStep.rawValue {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white)
-                } else {
-                    Text("\(step.rawValue + 1)")
-                        .font(DesignSystem.Typography.tiny)
-                        .fontWeight(.bold)
-                        .foregroundStyle(step == currentStep ? .white : DesignSystem.Colors.textSecondary)
+    private var progressTrack: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(addFlowSteps.enumerated()), id: \.element.rawValue) { index, step in
+                progressNode(step)
+                if index < addFlowSteps.count - 1 {
+                    progressConnector(after: step)
                 }
             }
-
-            Text(step.shortTitle)
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(step == currentStep ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textMuted)
-                .frame(width: 80)
         }
     }
 
-    private func stepStateColor(_ step: ProviderPlanWizardStep) -> Color {
-        if step.rawValue < currentStep.rawValue {
-            return DesignSystem.Colors.success
-        } else if step == currentStep {
-            return DesignSystem.Colors.blaze
-        } else {
-            return DesignSystem.Colors.surface
+    @ViewBuilder
+    private func progressNode(_ step: ProviderPlanWizardStep) -> some View {
+        let isCurrent = step == currentStep
+        let isPast = step.rawValue < currentStep.rawValue
+        let accent = stepAccentGradient
+
+        ZStack {
+            Circle()
+                .fill(isPast || isCurrent ? AnyShapeStyle(accent) : AnyShapeStyle(DesignSystem.Colors.surfaceElevated))
+                .frame(width: 22, height: 22)
+                .overlay(
+                    Circle().stroke(
+                        isCurrent ? DesignSystem.Colors.blaze : DesignSystem.Colors.border,
+                        lineWidth: isCurrent ? 1.5 : 0.5
+                    )
+                )
+
+            if isPast {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(.white)
+            } else if let index = step.stepIndex {
+                Text("\(index)")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(isCurrent ? .white : DesignSystem.Colors.textSecondary)
+            }
         }
+        .accessibilityLabel("Step \(step.stepIndex.map(String.init) ?? "") \(step.shortTitle)")
+    }
+
+    @ViewBuilder
+    private func progressConnector(after step: ProviderPlanWizardStep) -> some View {
+        let isCompleted = step.rawValue < currentStep.rawValue
+        Rectangle()
+            .fill(isCompleted ? AnyShapeStyle(stepAccentGradient) : AnyShapeStyle(DesignSystem.Colors.border))
+            .frame(width: 26, height: 2)
+            .padding(.horizontal, 2)
+    }
+
+    private var stepAccentGradient: LinearGradient {
+        if let provider = selectedProvider {
+            let primary = ProviderBrand.colorForProviderID(provider.providerID)
+            return LinearGradient(
+                colors: [primary.opacity(0.95), DesignSystem.Colors.blaze.opacity(0.95)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+        return LinearGradient(
+            colors: [DesignSystem.Colors.blaze, DesignSystem.Colors.blaze.opacity(0.7)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     // MARK: - Step Content
@@ -293,265 +377,361 @@ struct ProviderPlanWizardView: View {
     @ViewBuilder
     private var stepContent: some View {
         switch currentStep {
-        case .dashboard:
-            dashboardStep
-        case .provider:
-            providerSelectionStep
-        case .apiKey:
-            apiKeyEntryStep
-        case .strategy:
-            strategySelectionStep
-        case .confirm:
-            confirmStep
+        case .dashboard: dashboardStep
+        case .provider: providerSelectionStep
+        case .auth: authMethodStep
+        case .credential: credentialEntryStep
+        case .strategy: strategySelectionStep
+        case .confirm: confirmStep
         }
     }
 
-    // MARK: - Step 0: Dashboard (Plan Management Hub)
+    // MARK: - Dashboard Step
 
     @ViewBuilder
     private var dashboardStep: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            // Provider selector (if no initial provider was given and there are multiple)
-            if initialProviderID == nil && eligibleProviders.count > 1 {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    Text("Provider")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+            if eligibleProviders.isEmpty {
+                emptyDaemonNotice
+            } else if let provider = activeProvider {
+                providerHero(provider)
+                providerSlotList(provider)
+                addPlanCTA(providerID: provider.providerID)
+            } else {
+                Text("Select a provider to manage its plans, or add a new account.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
 
-                    Picker("", selection: $activeProviderID) {
-                        Text("Select a provider").tag(String?.none)
-                        ForEach(eligibleProviders) { config in
-                            Text(config.displayName).tag(String?.some(config.providerID))
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                }
-            }
-
-            if let provider = activeProvider {
-                // Provider header
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    CatalogProviderLogoView(brand: provider.brand, size: 36)
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(provider.displayName)
-                            .font(DesignSystem.Typography.headline)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        Text(provider.baseURL)
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: Binding(
-                        get: { provider.isEnabled },
-                        set: { enabled in
-                            Task {
-                                await daemonManager.updateProviderConfiguration(
-                                    providerID: provider.providerID,
-                                    isEnabled: enabled
-                                )
-                            }
-                        }
-                    ))
-                    .labelsHidden()
-                    .toggleStyle(SwitchToggleStyle(tint: DesignSystem.Colors.blaze))
-                }
-
-                // Existing plans list
-                if provider.credentialSlots.isEmpty {
-                    VStack(spacing: DesignSystem.Spacing.md) {
-                        Image(systemName: "tray")
-                            .font(.system(size: 28, weight: .light))
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-
-                        Text("No plans yet")
-                            .font(DesignSystem.Typography.body)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-
-                        Text("Add a plan with an API key to start using this provider through OpenBurnBar.")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(DesignSystem.Spacing.xl)
-                    .background(DesignSystem.Colors.surfaceElevated.opacity(0.3))
-                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
-                } else {
-                    VStack(spacing: DesignSystem.Spacing.sm) {
-                        ForEach(provider.credentialSlots) { slot in
-                            planCard(slot, provider: provider)
-                        }
-                    }
-                }
-
-                // Add plan button
                 Button {
-                    startAddFlow(providerID: provider.providerID)
+                    selectedProviderID = nil
+                    selectedAuthMethodID = nil
+                    navigateToStep(.provider)
                 } label: {
                     HStack(spacing: DesignSystem.Spacing.sm) {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 16))
-                        Text("Add Plan")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("Add a Provider Account")
                             .font(DesignSystem.Typography.body)
                             .fontWeight(.semibold)
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, DesignSystem.Spacing.sm)
-                    .background(DesignSystem.Colors.blaze)
+                    .padding(.vertical, DesignSystem.Spacing.sm + 2)
+                    .background(stepAccentGradient)
                     .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
                 }
                 .buttonStyle(.plain)
-            } else if eligibleProviders.isEmpty {
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(DesignSystem.Colors.warning)
-                    Text("No providers found. Make sure the daemon is running and at least one provider is configured.")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var emptyDaemonNotice: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            Image(systemName: "exclamationmark.bubble")
+                .font(.system(size: 32, weight: .light))
+                .foregroundStyle(DesignSystem.Colors.warning)
+
+            Text("Daemon not ready")
+                .font(DesignSystem.Typography.headline)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+            Text("OpenBurnBar's daemon hasn't returned a provider list yet. Make sure it's installed and running.")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(DesignSystem.Spacing.xl)
+        .background(DesignSystem.Colors.surface.opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+        )
+    }
+
+    @ViewBuilder
+    private func providerHero(_ provider: OpenBurnBarDaemonProviderConfiguration) -> some View {
+        let descriptor = self.descriptor(for: provider.providerID)
+        let primary = ProviderBrand.colorForProviderID(provider.providerID)
+        let gradient = LinearGradient(
+            colors: [primary.opacity(0.32), primary.opacity(0.08)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(gradient)
+                        .frame(width: 56, height: 56)
+                    CatalogProviderLogoView(brand: provider.brand, size: 36)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(provider.displayName)
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                    Text(descriptor.summary)
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(2)
                 }
-                .padding(DesignSystem.Spacing.md)
-                .background(DesignSystem.Colors.warning.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+
+                Spacer()
+
+                Toggle("", isOn: Binding(
+                    get: { provider.isEnabled },
+                    set: { enabled in
+                        Task {
+                            await daemonManager.updateProviderConfiguration(
+                                providerID: provider.providerID,
+                                isEnabled: enabled
+                            )
+                        }
+                    }
+                ))
+                .labelsHidden()
+                .toggleStyle(SwitchToggleStyle(tint: DesignSystem.Colors.blaze))
+            }
+
+            HStack(spacing: 6) {
+                if descriptor.supportsProxyRouting && provider.hasRoutingCapability {
+                    capabilityChip(label: "Routed proxy", system: "arrow.triangle.swap", tint: DesignSystem.Colors.blaze)
+                }
+                if descriptor.supportsQuotaRefresh {
+                    capabilityChip(label: "Live quota", system: "gauge.with.needle", tint: DesignSystem.Colors.success)
+                }
+                if !descriptor.supportsProxyRouting && !provider.hasRoutingCapability {
+                    capabilityChip(label: "Tracking only", system: "chart.bar.doc.horizontal", tint: DesignSystem.Colors.textMuted)
+                }
+                Spacer()
+                Text(provider.baseURL.isEmpty ? "Daemon-managed" : provider.baseURL)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .fill(DesignSystem.Colors.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [primary.opacity(0.6), primary.opacity(0.0)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        )
+    }
+
+    @ViewBuilder
+    private func capabilityChip(label: String, system: String, tint: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: system).font(.system(size: 9, weight: .semibold))
+            Text(label).font(DesignSystem.Typography.tiny).fontWeight(.medium)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(tint.opacity(0.14))
+        .foregroundStyle(tint)
+        .clipShape(Capsule())
+    }
+
+    @ViewBuilder
+    private func providerSlotList(_ provider: OpenBurnBarDaemonProviderConfiguration) -> some View {
+        if provider.credentialSlots.isEmpty {
+            VStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "tray")
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Text("No accounts yet")
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Text("Add a credential to start using this provider through OpenBurnBar.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(DesignSystem.Spacing.xl)
+            .background(DesignSystem.Colors.surfaceElevated.opacity(0.4))
+            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
+        } else {
+            VStack(spacing: DesignSystem.Spacing.sm) {
+                ForEach(provider.credentialSlots) { slot in
+                    planCard(slot, provider: provider)
+                }
             }
         }
     }
 
     @ViewBuilder
     private func planCard(_ slot: OpenBurnBarDaemonProviderConfiguration.CredentialSlot, provider: OpenBurnBarDaemonProviderConfiguration) -> some View {
-        GlassCard {
-            VStack(spacing: DesignSystem.Spacing.md) {
-                // Row 1: label + status + preferred badge
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    Circle()
-                        .fill(slotStatusColor(for: slot.status))
-                        .frame(width: 10, height: 10)
+        VStack(spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Circle()
+                    .fill(slotStatusColor(for: slot.status))
+                    .frame(width: 8, height: 8)
+                    .overlay(
+                        Circle()
+                            .stroke(slotStatusColor(for: slot.status).opacity(0.35), lineWidth: 4)
+                            .frame(width: 16, height: 16)
+                    )
 
-                    Text(slot.label)
-                        .font(DesignSystem.Typography.body)
-                        .fontWeight(.medium)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(slot.label)
+                            .font(DesignSystem.Typography.body)
+                            .fontWeight(.medium)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                    if provider.preferredCredentialSlotID == slot.slotID {
-                        HStack(spacing: 3) {
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 9))
-                            Text("Preferred")
-                                .font(DesignSystem.Typography.tiny)
-                        }
-                        .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(DesignSystem.Colors.blaze.opacity(0.12))
-                        .foregroundStyle(DesignSystem.Colors.blaze)
-                        .clipShape(Capsule())
-                    }
-
-                    if !slot.isEnabled {
-                        Text("Disabled")
-                            .font(DesignSystem.Typography.tiny)
-                            .padding(.horizontal, 7).padding(.vertical, 3)
-                            .background(DesignSystem.Colors.textMuted.opacity(0.12))
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                        if provider.preferredCredentialSlotID == slot.slotID {
+                            HStack(spacing: 3) {
+                                Image(systemName: "star.fill").font(.system(size: 9))
+                                Text("Preferred").font(DesignSystem.Typography.tiny)
+                            }
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(DesignSystem.Colors.blaze.opacity(0.14))
+                            .foregroundStyle(DesignSystem.Colors.blaze)
                             .clipShape(Capsule())
-                    }
-
-                    Spacer()
-
-                    // Action buttons
-                    HStack(spacing: DesignSystem.Spacing.xs) {
-                        if provider.preferredCredentialSlotID != slot.slotID && slot.isEnabled {
-                            Button {
-                                Task {
-                                    await daemonManager.setPreferredProviderCredentialSlot(
-                                        providerID: provider.providerID,
-                                        slotID: slot.slotID
-                                    )
-                                }
-                            } label: {
-                                Image(systemName: "star")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Set as preferred plan")
                         }
 
-                        Button {
-                            Task {
-                                await daemonManager.updateProviderCredentialSlot(
-                                    providerID: provider.providerID,
-                                    slotID: slot.slotID,
-                                    isEnabled: !slot.isEnabled
-                                )
-                            }
-                        } label: {
-                            Image(systemName: slot.isEnabled ? "pause.circle" : "play.circle")
-                                .font(.system(size: 14))
-                                .foregroundStyle(slot.isEnabled ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.success)
-                        }
-                        .buttonStyle(.plain)
-                        .help(slot.isEnabled ? "Disable plan" : "Enable plan")
-
-                        Button {
-                            slotToDelete = SlotDeleteTarget(
-                                providerID: provider.providerID,
-                                slotID: slot.slotID,
-                                slotLabel: slot.label
-                            )
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.system(size: 12))
+                        if !slot.isEnabled {
+                            Text("Disabled")
+                                .font(DesignSystem.Typography.tiny)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(DesignSystem.Colors.textMuted.opacity(0.12))
                                 .foregroundStyle(DesignSystem.Colors.textMuted)
+                                .clipShape(Capsule())
                         }
-                        .buttonStyle(.plain)
-                        .help("Delete plan")
                     }
+                    slotStatusLine(slot)
                 }
 
-                // Row 2: quota info
-                HStack(spacing: DesignSystem.Spacing.xs) {
-                    if let pct = slot.lastQuotaRemainingPercent {
-                        Text("\(Int(pct.rounded()))% remaining")
-                            .font(DesignSystem.Typography.monoSmall)
-                            .foregroundStyle(pct > 20 ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.warning)
+                Spacer()
 
-                        if let resetAt = slot.lastQuotaResetsAt {
-                            Text("· resets \(resetAt.formatted(date: .abbreviated, time: .shortened))")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
-                        }
-                    } else if slot.status == .missingSecret {
-                        Text("Missing API key")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.error)
-                    } else {
-                        Text("Quota unknown")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                    }
+                slotActionRow(slot, provider: provider)
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+    }
 
-                    Spacer()
-
-                    Button {
-                        Task {
-                            await daemonManager.refreshProviderCredentialSlotQuotas(
-                                providerID: provider.providerID
-                            )
-                        }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 10))
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Refresh quota")
+    @ViewBuilder
+    private func slotStatusLine(_ slot: OpenBurnBarDaemonProviderConfiguration.CredentialSlot) -> some View {
+        if let percent = slot.lastQuotaRemainingPercent {
+            HStack(spacing: 4) {
+                Text("\(Int(percent.rounded()))% remaining")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(percent > 20 ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.warning)
+                if let resets = slot.lastQuotaResetsAt {
+                    Text("· resets \(resets.formatted(date: .abbreviated, time: .shortened))")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
             }
-            .padding(DesignSystem.Spacing.md)
+        } else if slot.status == .missingSecret {
+            Text("Missing credential")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.error)
+        } else {
+            Text("Quota will refresh after first use")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
         }
+    }
+
+    @ViewBuilder
+    private func slotActionRow(_ slot: OpenBurnBarDaemonProviderConfiguration.CredentialSlot, provider: OpenBurnBarDaemonProviderConfiguration) -> some View {
+        HStack(spacing: 4) {
+            if provider.preferredCredentialSlotID != slot.slotID && slot.isEnabled {
+                slotButton("star", help: "Mark preferred") {
+                    Task {
+                        await daemonManager.setPreferredProviderCredentialSlot(
+                            providerID: provider.providerID,
+                            slotID: slot.slotID
+                        )
+                    }
+                }
+            }
+
+            slotButton(slot.isEnabled ? "pause.circle" : "play.circle",
+                       help: slot.isEnabled ? "Pause" : "Resume") {
+                Task {
+                    await daemonManager.updateProviderCredentialSlot(
+                        providerID: provider.providerID,
+                        slotID: slot.slotID,
+                        isEnabled: !slot.isEnabled
+                    )
+                }
+            }
+
+            slotButton("arrow.clockwise", help: "Refresh quota") {
+                Task {
+                    await daemonManager.refreshProviderCredentialSlotQuotas(
+                        providerID: provider.providerID
+                    )
+                }
+            }
+
+            slotButton("trash", help: "Delete plan", tint: DesignSystem.Colors.error) {
+                slotToDelete = SlotDeleteTarget(
+                    providerID: provider.providerID,
+                    slotID: slot.slotID,
+                    slotLabel: slot.label
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func slotButton(_ symbol: String, help: String, tint: Color = DesignSystem.Colors.textSecondary, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 26, height: 26)
+                .background(DesignSystem.Colors.surfaceElevated)
+                .clipShape(Circle())
+                .overlay(Circle().strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    @ViewBuilder
+    private func addPlanCTA(providerID: String) -> some View {
+        Button {
+            startAddFlow(providerID: providerID)
+        } label: {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("Add another account")
+                    .font(DesignSystem.Typography.body)
+                    .fontWeight(.semibold)
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, DesignSystem.Spacing.sm + 2)
+            .background(stepAccentGradient)
+            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private func slotStatusColor(for status: BurnBarProviderCredentialSlotStatus) -> Color {
@@ -563,456 +743,884 @@ struct ProviderPlanWizardView: View {
         }
     }
 
-    // MARK: - Step 1: Pick Provider
+    // MARK: - Provider Step
 
     @ViewBuilder
     private var providerSelectionStep: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            Text("Choose a provider to add a plan to")
-                .font(DesignSystem.Typography.body)
-                .fontWeight(.semibold)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            providerSearchField
 
-            Text("Each plan gets its own API key and quota. OpenBurnBar rotates between plans automatically.")
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-
-            if eligibleProviders.isEmpty {
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(DesignSystem.Colors.warning)
-                    Text("No providers found. Make sure the daemon is running and at least one provider is configured.")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
-                .padding(DesignSystem.Spacing.md)
-                .background(DesignSystem.Colors.warning.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+            if filteredProviders.isEmpty {
+                emptySearchNotice
             } else {
-                VStack(spacing: DesignSystem.Spacing.sm) {
-                    ForEach(eligibleProviders) { provider in
-                        providerOption(provider)
-                    }
+                if !routingProviders.isEmpty {
+                    sectionHeader("Routed proxy", subtitle: "Connect once and proxy traffic round-robins across plans.")
+                    providerGrid(routingProviders)
+                }
+
+                if !trackingProviders.isEmpty {
+                    sectionHeader("Quota & tracking", subtitle: "Connect for live quota and usage tracking.", topPadding: routingProviders.isEmpty ? 0 : DesignSystem.Spacing.lg)
+                    providerGrid(trackingProviders)
                 }
             }
         }
     }
 
     @ViewBuilder
-    private func providerOption(_ config: OpenBurnBarDaemonProviderConfiguration) -> some View {
-        let isSelected = selectedProviderID == config.providerID
-
-        Button {
-            selectedProviderID = config.providerID
-        } label: {
-            HStack(spacing: DesignSystem.Spacing.md) {
-                CatalogProviderLogoView(brand: config.brand, size: 32)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: DesignSystem.Spacing.xs) {
-                        Text(config.displayName)
-                            .font(DesignSystem.Typography.body)
-                            .fontWeight(.medium)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                        Text("\(config.credentialSlots.count) plan\(config.credentialSlots.count == 1 ? "" : "s")")
-                            .font(DesignSystem.Typography.tiny)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(DesignSystem.Colors.surfaceElevated)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .clipShape(Capsule())
-                    }
-
-                    Text(providerDescription(for: config.provider))
-                        .font(DesignSystem.Typography.tiny)
+    private var providerSearchField: some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            TextField("Search providers", text: $providerSearchQuery)
+                .textFieldStyle(.plain)
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            if !providerSearchQuery.isEmpty {
+                Button { providerSearchQuery = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12))
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm + 2)
+        .background(DesignSystem.Colors.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+    }
 
+    @ViewBuilder
+    private var emptySearchNotice: some View {
+        VStack(spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 22, weight: .light))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            Text("No providers match \"\(providerSearchQuery)\"")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(DesignSystem.Spacing.xl)
+    }
+
+    @ViewBuilder
+    private func sectionHeader(_ title: String, subtitle: String? = nil, topPadding: CGFloat = 0) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .tracking(0.6)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            if let subtitle {
+                Text(subtitle)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+        }
+        .padding(.top, topPadding)
+    }
+
+    @ViewBuilder
+    private func providerGrid(_ providers: [OpenBurnBarDaemonProviderConfiguration]) -> some View {
+        let columns = [
+            GridItem(.flexible(), spacing: DesignSystem.Spacing.sm),
+            GridItem(.flexible(), spacing: DesignSystem.Spacing.sm)
+        ]
+        LazyVGrid(columns: columns, spacing: DesignSystem.Spacing.sm) {
+            ForEach(providers) { provider in
+                providerTile(provider)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func providerTile(_ config: OpenBurnBarDaemonProviderConfiguration) -> some View {
+        let isSelected = selectedProviderID == config.providerID
+        let descriptor = self.descriptor(for: config.providerID)
+        let primary = ProviderBrand.colorForProviderID(config.providerID)
+
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                selectedProviderID = config.providerID
+                selectedAuthMethodID = descriptor.primaryMethod.id
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(LinearGradient(
+                                colors: [primary.opacity(0.32), primary.opacity(0.08)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ))
+                            .frame(width: 40, height: 40)
+                        CatalogProviderLogoView(brand: config.brand, size: 26)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(config.displayName)
+                            .font(DesignSystem.Typography.body)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        if config.credentialSlots.isEmpty {
+                            Text("Not connected")
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                        } else {
+                            Text("\(config.credentialSlots.count) plan\(config.credentialSlots.count == 1 ? "" : "s")")
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        }
+                    }
+                    Spacer()
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(primary)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+
+                Text(descriptor.summary)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+
+                HStack(spacing: 4) {
+                    if descriptor.supportsProxyRouting {
+                        miniChip("Routing", system: "arrow.triangle.swap", tint: DesignSystem.Colors.blaze)
+                    }
+                    if descriptor.supportsQuotaRefresh {
+                        miniChip("Quota", system: "gauge.with.needle", tint: DesignSystem.Colors.success)
+                    }
+                    Spacer()
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(isSelected ? primary.opacity(0.10) : DesignSystem.Colors.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: isSelected
+                                ? [primary, primary.opacity(0.6)]
+                                : [DesignSystem.Colors.border, DesignSystem.Colors.border.opacity(0.5)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: isSelected ? 1.5 : 0.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isSelected)
+    }
+
+    @ViewBuilder
+    private func miniChip(_ label: String, system: String, tint: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: system).font(.system(size: 8, weight: .semibold))
+            Text(label).font(.system(size: 9, weight: .semibold))
+        }
+        .padding(.horizontal, 6).padding(.vertical, 2)
+        .background(tint.opacity(0.14))
+        .foregroundStyle(tint)
+        .clipShape(Capsule())
+    }
+
+    // MARK: - Auth Method Step
+
+    @ViewBuilder
+    private var authMethodStep: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            if let provider = selectedProvider {
+                providerStripHeader(provider)
+            }
+
+            if let descriptor = selectedDescriptor {
+                Text("Choose how you'll authenticate")
+                    .font(DesignSystem.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                Text(descriptor.summary)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .padding(.bottom, DesignSystem.Spacing.xs)
+
+                VStack(spacing: DesignSystem.Spacing.sm) {
+                    ForEach(descriptor.methods) { method in
+                        authMethodCard(method)
+                    }
+                }
+
+                if let proxy = descriptor.proxyHint {
+                    miniHintCard(symbol: "arrow.triangle.swap", text: proxy)
+                }
+                if let quota = descriptor.quotaHint {
+                    miniHintCard(symbol: "gauge.with.needle", text: quota)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func providerStripHeader(_ provider: OpenBurnBarDaemonProviderConfiguration) -> some View {
+        let primary = ProviderBrand.colorForProviderID(provider.providerID)
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [primary.opacity(0.4), primary.opacity(0.08)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+                    .frame(width: 32, height: 32)
+                CatalogProviderLogoView(brand: provider.brand, size: 22)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(provider.displayName)
+                    .font(DesignSystem.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(descriptor(for: provider.providerID).displayName)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            Spacer()
+            Button {
+                withAnimation { selectedProviderID = nil }
+                navigateToStep(.provider)
+            } label: {
+                Text("Change")
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.blaze)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(DesignSystem.Colors.blaze.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.bottom, DesignSystem.Spacing.xs)
+    }
+
+    @ViewBuilder
+    private func authMethodCard(_ method: BurnBarProviderAuthMethod) -> some View {
+        let isSelected = selectedAuthMethodID == method.id
+        let primary: Color = {
+            if let id = selectedProviderID {
+                return ProviderBrand.colorForProviderID(id)
+            }
+            return DesignSystem.Colors.blaze
+        }()
+
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                selectedAuthMethodID = method.id
+                apiKeyInput = ""
+                quotaProbeResult = nil
+                quotaProbeError = nil
+            }
+        } label: {
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(LinearGradient(
+                            colors: isSelected
+                                ? [primary, primary.opacity(0.6)]
+                                : [DesignSystem.Colors.surfaceElevated, DesignSystem.Colors.surfaceElevated],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: method.kind.symbolName)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(isSelected ? .white : DesignSystem.Colors.textSecondary)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(method.displayName)
+                        .font(DesignSystem.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                    Text(method.summary)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(2)
+
+                    HStack(spacing: 4) {
+                        if method.unlocksProxyRouting {
+                            miniChip("Unlocks routing", system: "arrow.triangle.swap", tint: DesignSystem.Colors.blaze)
+                        }
+                        if method.unlocksQuotaRefresh {
+                            miniChip("Live quota", system: "gauge.with.needle", tint: DesignSystem.Colors.success)
+                        }
+                        if !method.unlocksProxyRouting && !method.unlocksQuotaRefresh {
+                            miniChip("Tracking only", system: "chart.bar.doc.horizontal", tint: DesignSystem.Colors.textMuted)
+                        }
+                    }
+                }
                 Spacer()
 
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(DesignSystem.Colors.blaze)
+                        .font(.system(size: 18))
+                        .foregroundStyle(primary)
                 }
             }
             .padding(DesignSystem.Spacing.md)
-            .background(isSelected ? DesignSystem.Colors.blaze.opacity(0.1) : DesignSystem.Colors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .stroke(isSelected ? DesignSystem.Colors.blaze : DesignSystem.Colors.border, lineWidth: isSelected ? 1.5 : 0.5))
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(isSelected ? primary.opacity(0.08) : DesignSystem.Colors.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? primary : DesignSystem.Colors.border,
+                        lineWidth: isSelected ? 1.5 : 0.5
+                    )
+            )
         }
         .buttonStyle(.plain)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isSelected)
     }
 
-    private func providerDescription(for provider: AgentProvider?) -> String {
-        switch provider {
-        case .zai:
-            return "GLM coding plan via Z.ai API"
-        case .minimax:
-            return "Token Plan or OpenAPI key via MiniMax"
-        case .codex:
-            return "OpenAI API key for Codex models"
-        case .openAI:
-            return "OpenAI organization admin key for usage reporting"
-        case .claudeCode:
-            return "Anthropic API key for Claude models"
-        case .geminiCLI:
-            return "Google API key for Gemini models"
-        default:
-            // Catalog providers that don't map to an AgentProvider get a generic description
-            return "API key for this provider"
+    @ViewBuilder
+    private func miniHintCard(symbol: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .padding(.top, 1)
+            Text(text)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.surfaceElevated.opacity(0.55))
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+    }
+
+    // MARK: - Credential Step
+
+    @ViewBuilder
+    private var credentialEntryStep: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            if let provider = selectedProvider {
+                providerStripHeader(provider)
+            }
+
+            if let method = selectedAuthMethod {
+                methodHeroCard(method)
+                planLabelField
+                credentialField(method)
+                liveValidationView(method)
+                liveQuotaProbeView()
+            }
         }
     }
 
-    // MARK: - Step 2: Enter API Key
-
     @ViewBuilder
-    private var apiKeyEntryStep: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+    private func methodHeroCard(_ method: BurnBarProviderAuthMethod) -> some View {
+        let primary: Color = selectedProviderID
+            .map { ProviderBrand.colorForProviderID($0) } ?? DesignSystem.Colors.blaze
+
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             HStack(spacing: DesignSystem.Spacing.sm) {
-                if let provider = selectedProvider {
-                    CatalogProviderLogoView(brand: provider.brand, size: 20)
-                    Text(provider.displayName)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [primary, primary.opacity(0.6)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: method.kind.symbolName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
                 }
-            }
-
-            Text("Enter a label and API key for this plan")
-                .font(DesignSystem.Typography.body)
-                .fontWeight(.semibold)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-            // Label field
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text("Plan label")
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-
-                TextField("e.g. Work plan, Personal plan", text: $planLabel)
-                    .textFieldStyle(.roundedBorder)
+                Text(method.displayName)
                     .font(DesignSystem.Typography.body)
-                    .onChange(of: planLabel) {
-                        keyValidationMessage = nil
-                    }
-            }
-
-            // API key field
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                HStack {
-                    Text("API key")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-
-                    Spacer()
-
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Spacer()
+                if let descriptor = selectedDescriptor, descriptor.methods.count > 1 {
                     Button {
-                        showAPIKey.toggle()
+                        navigateToStep(.auth)
                     } label: {
-                        Image(systemName: showAPIKey ? "eye.slash" : "eye")
-                            .font(.system(size: 11))
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                        Text("Change method")
+                            .font(DesignSystem.Typography.tiny)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.blaze)
                     }
                     .buttonStyle(.plain)
                 }
-
-                if showAPIKey {
-                    TextField("Paste your API key here", text: $apiKeyInput)
-                        .textFieldStyle(.roundedBorder)
-                        .font(DesignSystem.Typography.monoSmall)
-                        .textContentType(.password)
-                        .onChange(of: apiKeyInput) {
-                            validateAPIKey()
-                            scheduleQuotaProbe()
-                        }
-                } else {
-                    SecureField("Paste your API key here", text: $apiKeyInput)
-                        .textFieldStyle(.roundedBorder)
-                        .font(DesignSystem.Typography.monoSmall)
-                        .onChange(of: apiKeyInput) {
-                            validateAPIKey()
-                            scheduleQuotaProbe()
-                        }
-                }
             }
 
-            // Validation message
-            if let message = keyValidationMessage {
-                HStack(spacing: DesignSystem.Spacing.xs) {
-                    Image(systemName: keyValidationIsWarning ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                        .foregroundStyle(keyValidationIsWarning ? DesignSystem.Colors.warning : DesignSystem.Colors.success)
-                    Text(message)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(keyValidationIsWarning ? DesignSystem.Colors.warning : DesignSystem.Colors.success)
-                }
-            }
+            Text(method.helperText)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
 
-            // Quota probe result
-            if isProbingQuota {
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Checking quota...")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+            if let url = method.dashboardURL.flatMap(URL.init(string:)) {
+                Button {
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(method.dashboardLabel ?? "Open dashboard")
+                            .font(DesignSystem.Typography.tiny)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundStyle(primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(primary.opacity(0.12))
+                    .clipShape(Capsule())
                 }
-            } else if let result = quotaProbeResult {
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(DesignSystem.Colors.success)
-                    Text(result)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
+                .buttonStyle(.plain)
             }
         }
-        .onAppear {
-            if planLabel.isEmpty {
-                let slotProvider = selectedProvider ?? activeProvider
-                if let provider = slotProvider {
-                    let slotCount = provider.credentialSlots.count
-                    planLabel = slotCount == 0 ? "Default" : "Plan \(slotCount + 1)"
-                }
-            }
-        }
+        .padding(DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
     }
 
-    private func validateAPIKey() {
-        let trimmed = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            keyValidationMessage = nil
-            return
-        }
-
-        guard let provider = selectedProvider?.provider else { return }
-
-        switch provider {
-        case .minimax:
-            if !trimmed.hasPrefix("sk-cp-") {
-                keyValidationMessage = "This doesn't look like a MiniMax coding plan key (expected sk-cp-...)"
-                keyValidationIsWarning = true
-            } else {
-                keyValidationMessage = "Key format looks correct"
-                keyValidationIsWarning = false
-            }
-        case .zai:
-            keyValidationMessage = "Key entered"
-            keyValidationIsWarning = false
-        default:
-            break
-        }
-    }
-
-    private func scheduleQuotaProbe() {
-        quotaProbeTask?.cancel()
-        quotaProbeResult = nil
-        quotaProbePercent = nil
-
-        let trimmedKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedKey.isEmpty, let provider = selectedProvider else { return }
-
-        guard let quotaProvider = providerSlotQuotaProvider(for: provider.providerID) else { return }
-
-        quotaProbeTask = Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            guard !Task.isCancelled else { return }
-
-            await MainActor.run {
-                isProbingQuota = true
-            }
-
-            do {
-                let snapshot = try await ProviderQuotaService.shared.fetchSnapshot(
-                    for: quotaProvider,
-                    apiKeyOverride: trimmedKey
+    @ViewBuilder
+    private var planLabelField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Plan label")
+                .font(DesignSystem.Typography.tiny)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            TextField("Personal, Work, Team A…", text: $planLabel)
+                .textFieldStyle(.plain)
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .padding(.horizontal, DesignSystem.Spacing.md)
+                .padding(.vertical, DesignSystem.Spacing.sm + 2)
+                .background(DesignSystem.Colors.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
                 )
-                guard !Task.isCancelled else { return }
+                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        }
+    }
 
-                await MainActor.run {
-                    isProbingQuota = false
-                    if let bucket = snapshot.primaryBucket {
-                        let pct = bucket.remainingPercent
-                        quotaProbePercent = pct
-                        if let pct {
-                            quotaProbeResult = "\(Int(pct.rounded()))% remaining \(bucket.label.isEmpty ? "" : "(\(bucket.label))")"
-                        } else {
-                            quotaProbeResult = bucket.remainingText
-                        }
+    @ViewBuilder
+    private func credentialField(_ method: BurnBarProviderAuthMethod) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(method.kind == .sessionToken ? "Session token" : (method.kind == .cookie ? "Cookie payload" : "Credential"))
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Spacer()
+                Button {
+                    if let pasted = NSPasteboard.general.string(forType: .string) {
+                        apiKeyInput = pasted
+                        scheduleQuotaProbe()
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "doc.on.clipboard")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text("Paste")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(DesignSystem.Colors.surfaceElevated)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+                Button {
+                    withAnimation(.snappy) { showAPIKey.toggle() }
+                } label: {
+                    Image(systemName: showAPIKey ? "eye.slash.fill" : "eye.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: 0) {
+                Group {
+                    if showAPIKey {
+                        TextField(method.placeholder, text: $apiKeyInput)
+                            .textFieldStyle(.plain)
+                            .font(DesignSystem.Typography.monoSmall)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .onChange(of: apiKeyInput) { _, _ in scheduleQuotaProbe() }
                     } else {
-                        quotaProbeResult = "No quota data returned"
+                        SecureField(method.placeholder, text: $apiKeyInput)
+                            .textFieldStyle(.plain)
+                            .font(DesignSystem.Typography.monoSmall)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .onChange(of: apiKeyInput) { _, _ in scheduleQuotaProbe() }
                     }
                 }
-            } catch {
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    isProbingQuota = false
-                    quotaProbeResult = nil
-                }
+                .padding(.horizontal, DesignSystem.Spacing.md)
+                .padding(.vertical, DesignSystem.Spacing.sm + 2)
             }
+            .background(DesignSystem.Colors.surface)
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .strokeBorder(
+                        method.validate(apiKeyInput).isWarning ? DesignSystem.Colors.warning :
+                            (method.validate(apiKeyInput).isOK ? DesignSystem.Colors.success : DesignSystem.Colors.border),
+                        lineWidth: method.validate(apiKeyInput).message == nil ? 0.5 : 1
+                    )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+            .animation(.snappy, value: apiKeyInput)
         }
     }
 
-    private func providerSlotQuotaProvider(for providerID: String) -> AgentProvider? {
-        switch providerID.lowercased() {
-        case "minimax": return .minimax
-        case "zai": return .zai
-        case "openai": return .openAI
-        default: return nil
+    @ViewBuilder
+    private func liveValidationView(_ method: BurnBarProviderAuthMethod) -> some View {
+        let validation = method.validate(apiKeyInput)
+        if let message = validation.message {
+            HStack(spacing: 4) {
+                Image(systemName: validation.isWarning ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                Text(message)
+                    .font(DesignSystem.Typography.tiny)
+            }
+            .foregroundStyle(validation.isWarning ? DesignSystem.Colors.warning : DesignSystem.Colors.success)
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .background((validation.isWarning ? DesignSystem.Colors.warning : DesignSystem.Colors.success).opacity(0.10))
+            .clipShape(Capsule())
+            .transition(.move(edge: .top).combined(with: .opacity))
         }
     }
 
-    // MARK: - Step 3: Choose Strategy
+    @ViewBuilder
+    private func liveQuotaProbeView() -> some View {
+        if isProbingQuota {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Probing live quota…")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+            .clipShape(Capsule())
+        } else if let result = quotaProbeResult {
+            HStack(spacing: 6) {
+                Image(systemName: "gauge.with.needle")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.success)
+                Text(result)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(DesignSystem.Colors.success.opacity(0.12))
+            .clipShape(Capsule())
+        } else if let error = quotaProbeError {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.bubble.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                Text(error)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(2)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(DesignSystem.Colors.warning.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+    }
+
+    // MARK: - Strategy Step
 
     @ViewBuilder
     private var strategySelectionStep: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            Text("How should this plan be used?")
+            if let provider = selectedProvider {
+                providerStripHeader(provider)
+            }
+
+            Text("How should this account be used?")
                 .font(DesignSystem.Typography.body)
                 .fontWeight(.semibold)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-            Text("This controls when OpenBurnBar picks this plan for requests.")
+            Text("OpenBurnBar fails over deterministically when a plan hits its quota or returns an auth error.")
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
 
             VStack(spacing: DesignSystem.Spacing.sm) {
                 ForEach(ProviderPlanStrategy.allCases) { strategy in
-                    strategyOption(strategy)
+                    strategyCard(strategy)
                 }
             }
         }
     }
 
     @ViewBuilder
-    private func strategyOption(_ strategy: ProviderPlanStrategy) -> some View {
+    private func strategyCard(_ strategy: ProviderPlanStrategy) -> some View {
         let isSelected = selectedStrategy == strategy
+        let primary: Color = selectedProviderID
+            .map { ProviderBrand.colorForProviderID($0) } ?? DesignSystem.Colors.blaze
 
         Button {
-            selectedStrategy = strategy
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                selectedStrategy = strategy
+            }
         } label: {
             HStack(spacing: DesignSystem.Spacing.md) {
-                Image(systemName: strategy.iconName)
-                    .font(.system(size: 18))
-                    .foregroundStyle(isSelected ? DesignSystem.Colors.blaze : DesignSystem.Colors.textMuted)
-                    .frame(width: 24)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(LinearGradient(
+                            colors: isSelected
+                                ? [primary, primary.opacity(0.6)]
+                                : [DesignSystem.Colors.surfaceElevated, DesignSystem.Colors.surfaceElevated],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 48, height: 48)
+                    Image(systemName: strategy.iconName)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(isSelected ? .white : DesignSystem.Colors.textSecondary)
+                }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(strategy.displayName)
                         .font(DesignSystem.Typography.body)
-                        .fontWeight(.medium)
+                        .fontWeight(.semibold)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text(strategy.description)
+                    Text(strategy.summary)
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
 
                 Spacer()
 
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(DesignSystem.Colors.blaze)
-                }
+                strategyDiagram(for: strategy, primary: primary, selected: isSelected)
             }
             .padding(DesignSystem.Spacing.md)
-            .background(isSelected ? DesignSystem.Colors.blaze.opacity(0.1) : DesignSystem.Colors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .stroke(isSelected ? DesignSystem.Colors.blaze : DesignSystem.Colors.border, lineWidth: isSelected ? 1.5 : 0.5))
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .fill(isSelected ? primary.opacity(0.08) : DesignSystem.Colors.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? primary : DesignSystem.Colors.border,
+                        lineWidth: isSelected ? 1.5 : 0.5
+                    )
+            )
         }
         .buttonStyle(.plain)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isSelected)
     }
 
-    // MARK: - Step 4: Confirm
+    @ViewBuilder
+    private func strategyDiagram(for strategy: ProviderPlanStrategy, primary: Color, selected: Bool) -> some View {
+        switch strategy {
+        case .auto:
+            HStack(spacing: 3) {
+                ForEach(0..<3, id: \.self) { index in
+                    Capsule()
+                        .fill(selected ? primary.opacity(0.85 - Double(index) * 0.2) : DesignSystem.Colors.textMuted.opacity(0.4))
+                        .frame(width: 8, height: 16)
+                }
+            }
+        case .preferred:
+            HStack(spacing: 3) {
+                Capsule().fill(selected ? primary : DesignSystem.Colors.textMuted.opacity(0.4)).frame(width: 12, height: 18)
+                Capsule().fill(DesignSystem.Colors.textMuted.opacity(0.3)).frame(width: 8, height: 12)
+                Capsule().fill(DesignSystem.Colors.textMuted.opacity(0.3)).frame(width: 8, height: 12)
+            }
+        case .backup:
+            HStack(spacing: 3) {
+                Capsule().fill(DesignSystem.Colors.textMuted.opacity(0.3)).frame(width: 8, height: 14)
+                Capsule().fill(DesignSystem.Colors.textMuted.opacity(0.3)).frame(width: 8, height: 14)
+                Capsule().fill(selected ? primary.opacity(0.7) : DesignSystem.Colors.textMuted.opacity(0.4)).frame(width: 8, height: 14)
+            }
+        }
+    }
+
+    // MARK: - Confirm Step
 
     @ViewBuilder
     private var confirmStep: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            Text("Review your new plan")
-                .font(DesignSystem.Typography.title)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-            // Summary card
-            GlassCard {
-                VStack(spacing: DesignSystem.Spacing.md) {
-                    // Provider header
-                    HStack(spacing: DesignSystem.Spacing.md) {
-                        if let provider = selectedProvider {
-                            CatalogProviderLogoView(brand: provider.brand, size: 28)
-                            Text(provider.displayName)
-                                .font(DesignSystem.Typography.headline)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        }
-                        Spacer()
-                    }
-
-                    Divider().background(DesignSystem.Colors.border)
-
-                    // Plan details
-                    reviewRow("Label", value: planLabel.trimmingCharacters(in: .whitespacesAndNewlines))
-
-                    Divider().background(DesignSystem.Colors.border)
-
-                    reviewRow("API key", value: maskedKey)
-
-                    Divider().background(DesignSystem.Colors.border)
-
-                    // Quota preview
-                    HStack {
-                        Text("Quota")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        Spacer()
-                        if let result = quotaProbeResult {
-                            Text(result)
-                                .font(DesignSystem.Typography.body)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        } else {
-                            Text("Will check after saving")
-                                .font(DesignSystem.Typography.body)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
-                        }
-                    }
-                    .padding(DesignSystem.Spacing.md)
-
-                    Divider().background(DesignSystem.Colors.border)
-
-                    // Strategy
-                    HStack {
-                        Text("Strategy")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        Spacer()
-                        strategyBadge(selectedStrategy)
-                    }
-                    .padding(DesignSystem.Spacing.md)
-                }
+            if let provider = selectedProvider {
+                confirmHeroCard(provider)
             }
 
-            // Save error
+            confirmDetailRows
+
             if let error = saveError {
-                HStack(spacing: DesignSystem.Spacing.sm) {
+                HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(DesignSystem.Colors.error)
                     Text(error)
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.error)
                 }
+                .padding(.horizontal, DesignSystem.Spacing.md)
+                .padding(.vertical, DesignSystem.Spacing.sm)
+                .background(DesignSystem.Colors.error.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
             }
 
-            Text("You can change the strategy or disable this plan at any time from provider settings.")
-                .font(DesignSystem.Typography.caption)
+            Text("OpenBurnBar stores your credentials in the macOS Keychain and the daemon socket. Connect once, used everywhere.")
+                .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
         }
     }
 
     @ViewBuilder
-    private func reviewRow(_ label: String, value: String) -> some View {
-        HStack {
+    private func confirmHeroCard(_ provider: OpenBurnBarDaemonProviderConfiguration) -> some View {
+        let primary = ProviderBrand.colorForProviderID(provider.providerID)
+        let descriptor = self.descriptor(for: provider.providerID)
+
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(LinearGradient(
+                            colors: [primary, primary.opacity(0.55)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 64, height: 64)
+                        .shadow(color: primary.opacity(0.4), radius: 12, x: 0, y: 4)
+                    CatalogProviderLogoView(brand: provider.brand, size: 40)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(provider.displayName)
+                        .font(DesignSystem.Typography.title)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(planLabel.isEmpty ? "Untitled plan" : planLabel)
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    if let method = selectedAuthMethod {
+                        HStack(spacing: 4) {
+                            Image(systemName: method.kind.symbolName).font(.system(size: 9, weight: .semibold))
+                            Text(method.displayName).font(DesignSystem.Typography.tiny).fontWeight(.semibold)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(primary.opacity(0.18))
+                        .foregroundStyle(primary)
+                        .clipShape(Capsule())
+                    }
+                }
+                Spacer()
+            }
+
+            Text(descriptor.summary)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .fill(DesignSystem.Colors.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [primary.opacity(0.6), primary.opacity(0.0)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        )
+    }
+
+    @ViewBuilder
+    private var confirmDetailRows: some View {
+        VStack(spacing: 0) {
+            confirmRow(symbol: "key.fill", label: "Credential", value: maskedKey)
+            divider
+            confirmRow(symbol: "tag.fill", label: "Label", value: planLabel.trimmingCharacters(in: .whitespacesAndNewlines))
+            divider
+            confirmRow(symbol: selectedStrategy.iconName, label: "Strategy", value: selectedStrategy.displayName)
+            divider
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "gauge.with.needle")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .frame(width: 18)
+                Text("Live quota")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Spacer()
+                if let result = quotaProbeResult {
+                    Text(result)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.success)
+                } else if isProbingQuota {
+                    ProgressView().controlSize(.mini)
+                } else if let method = selectedAuthMethod, !method.unlocksQuotaRefresh {
+                    Text("Tracking only")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                } else {
+                    Text("Will probe after save")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+        }
+        .background(DesignSystem.Colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+        )
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(DesignSystem.Colors.border)
+            .frame(height: 0.5)
+    }
+
+    @ViewBuilder
+    private func confirmRow(symbol: String, label: String, value: String) -> some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .frame(width: 18)
             Text(label)
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
             Spacer()
-            Text(value)
+            Text(value.isEmpty ? "—" : value)
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .textSelection(.enabled)
@@ -1020,36 +1628,19 @@ struct ProviderPlanWizardView: View {
         .padding(DesignSystem.Spacing.md)
     }
 
-    @ViewBuilder
-    private func strategyBadge(_ strategy: ProviderPlanStrategy) -> some View {
-        HStack(spacing: DesignSystem.Spacing.xs) {
-            Image(systemName: strategy.iconName)
-                .font(.system(size: 10))
-            Text(strategy.displayName)
-                .font(DesignSystem.Typography.caption)
-        }
-        .padding(.horizontal, 8).padding(.vertical, 4)
-        .background(DesignSystem.Colors.blaze.opacity(0.12))
-        .foregroundStyle(DesignSystem.Colors.blaze)
-        .clipShape(Capsule())
-    }
-
     private var maskedKey: String {
         let trimmed = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count <= 8 {
-            return String(repeating: "•", count: trimmed.count)
-        }
+        if trimmed.count <= 8 { return String(repeating: "•", count: max(trimmed.count, 4)) }
         let prefix = trimmed.prefix(4)
         let suffix = trimmed.suffix(4)
-        return "\(prefix)••••\(suffix)"
+        return "\(prefix)\(String(repeating: "•", count: 6))\(suffix)"
     }
 
-    // MARK: - Navigation
+    // MARK: - Navigation Bar
 
     @ViewBuilder
     private var wizardNavigation: some View {
         if currentStep == .dashboard {
-            // Dashboard: just a close button
             HStack {
                 Spacer()
                 Button("Done") { onDismiss() }
@@ -1058,31 +1649,51 @@ struct ProviderPlanWizardView: View {
             }
             .padding(DesignSystem.Spacing.lg)
         } else {
-            // Add flow: Back / Cancel / Next-or-Save
             HStack {
-                Button("Back") {
+                Button {
                     navigateBack()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
+                        Text("Back").font(DesignSystem.Typography.body)
+                    }
                 }
                 .buttonStyle(.bordered)
 
                 Spacer()
 
-                Button("Cancel") {
-                    navigateToStep(.dashboard)
-                }
-                .buttonStyle(.bordered)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                Button("Cancel") { navigateToStep(.dashboard) }
+                    .buttonStyle(.bordered)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
 
                 if currentStep == .confirm {
-                    Button(isSaving ? "Saving..." : "Save Plan") {
+                    Button {
                         savePlan()
+                    } label: {
+                        HStack(spacing: 6) {
+                            if isSaving {
+                                ProgressView().controlSize(.mini)
+                                Text("Saving…").font(DesignSystem.Typography.body).fontWeight(.semibold)
+                            } else {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text("Save & Connect").font(DesignSystem.Typography.body).fontWeight(.semibold)
+                            }
+                        }
+                        .padding(.horizontal, DesignSystem.Spacing.sm)
+                        .padding(.vertical, 2)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(DesignSystem.Colors.blaze)
                     .disabled(isSaving)
                 } else {
-                    Button("Next") {
+                    Button {
                         navigateForward()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Next").font(DesignSystem.Typography.body)
+                            Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(DesignSystem.Colors.blaze)
@@ -1095,110 +1706,180 @@ struct ProviderPlanWizardView: View {
 
     private var canProceedFromCurrentStep: Bool {
         switch currentStep {
-        case .dashboard:
-            return false
-        case .provider:
-            return canProceedFromProvider
-        case .apiKey:
-            return canProceedFromAPIKey
-        case .strategy:
-            return true
-        case .confirm:
-            return false
+        case .dashboard: return false
+        case .provider: return canProceedFromProvider
+        case .auth: return canProceedFromAuth
+        case .credential: return canProceedFromCredential
+        case .strategy: return true
+        case .confirm: return false
         }
     }
 
-    // MARK: - Step Properties
+    // MARK: - Step Title / Description
 
     private var stepTitle: String {
         switch currentStep {
         case .dashboard:
-            if let provider = activeProvider {
-                return "\(provider.displayName) Plans"
-            }
-            return "Manage Plans"
-        case .provider: return "Pick Provider"
-        case .apiKey: return "Enter API Key"
-        case .strategy: return "Choose Strategy"
-        case .confirm: return "Review & Save"
+            if let provider = activeProvider { return "\(provider.displayName) Accounts" }
+            return "Provider Accounts"
+        case .provider: return "Pick a provider"
+        case .auth: return "Choose how to connect"
+        case .credential: return "Add your credential"
+        case .strategy: return "Routing strategy"
+        case .confirm: return "Review & connect"
         }
     }
 
     private var stepDescription: String {
         switch currentStep {
-        case .dashboard: return "View, manage, and add plans for this provider"
-        case .provider: return "Select which provider this plan is for"
-        case .apiKey: return "Add a label and paste the API key"
-        case .strategy: return "Control when OpenBurnBar uses this plan"
-        case .confirm: return "Verify everything looks right before saving"
+        case .dashboard: return "Manage existing accounts or add a new one. Quotas refresh in the background."
+        case .provider: return "Pick the provider to connect. Routing-capable providers proxy traffic; tracking providers report usage."
+        case .auth: return "Some providers support multiple auth methods — pick the one that fits your account."
+        case .credential: return "Paste your credential. We probe it live so you know it works before you save."
+        case .strategy: return "Decide whether this account joins rotation, takes priority, or stays as a backup."
+        case .confirm: return "Last look. Connect once and it'll power proxy traffic, quota, and reporting."
         }
     }
 
     // MARK: - Navigation Actions
 
     private func startAddFlow(providerID: String) {
+        let descriptor = self.descriptor(for: providerID)
         selectedProviderID = providerID
+        selectedAuthMethodID = descriptor.primaryMethod.id
         planLabel = ""
         apiKeyInput = ""
         showAPIKey = false
-        keyValidationMessage = nil
         quotaProbeResult = nil
+        quotaProbeError = nil
         quotaProbePercent = nil
         selectedStrategy = .auto
         saveError = nil
 
-        if needsProviderPick {
-            navigateToStep(.provider)
+        if descriptor.methods.count > 1 {
+            navigateToStep(.auth)
         } else {
-            // Skip provider pick, go straight to API key
-            navigateToStep(.apiKey)
+            navigateToStep(.credential)
         }
     }
 
     private func navigateForward() {
-        guard let next = ProviderPlanWizardStep(rawValue: currentStep.rawValue + 1) else { return }
-        navigationDirection = .trailing
-        withAnimation(.easeInOut(duration: 0.25)) {
-            currentStep = next
+        let nextStep: ProviderPlanWizardStep
+        switch currentStep {
+        case .provider:
+            let descriptor = selectedDescriptor ?? BurnBarProviderAuthRegistry.defaultDescriptor(providerID: "", displayName: "")
+            nextStep = descriptor.methods.count > 1 ? .auth : .credential
+            if descriptor.methods.count == 1 {
+                selectedAuthMethodID = descriptor.primaryMethod.id
+            }
+        case .auth:
+            nextStep = .credential
+        case .credential:
+            nextStep = .strategy
+        case .strategy:
+            nextStep = .confirm
+        case .dashboard, .confirm:
+            return
+        }
+
+        primeStepIfNeeded(nextStep)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            currentStep = nextStep
+        }
+    }
+
+    private func primeStepIfNeeded(_ step: ProviderPlanWizardStep) {
+        if step == .credential, planLabel.isEmpty {
+            let provider = selectedProvider ?? activeProvider
+            if let provider {
+                let count = provider.credentialSlots.count
+                planLabel = count == 0 ? "Default" : "Plan \(count + 1)"
+            }
         }
     }
 
     private func navigateBack() {
-        // When in the add flow and provider pick was skipped, back goes to dashboard
-        if currentStep == .apiKey && !needsProviderPick {
-            navigateToStep(.dashboard)
-            return
+        let previous: ProviderPlanWizardStep
+        switch currentStep {
+        case .auth: previous = .provider
+        case .credential:
+            previous = (selectedDescriptor?.methods.count ?? 0) > 1 ? .auth : .provider
+        case .strategy: previous = .credential
+        case .confirm: previous = .strategy
+        case .provider, .dashboard: return
         }
-        guard let prev = ProviderPlanWizardStep(rawValue: currentStep.rawValue - 1) else { return }
-        navigationDirection = .leading
-        withAnimation(.easeInOut(duration: 0.25)) {
-            currentStep = prev
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            currentStep = previous
         }
     }
 
     private func navigateToStep(_ step: ProviderPlanWizardStep) {
-        navigationDirection = step.rawValue > currentStep.rawValue ? .trailing : .leading
-        withAnimation(.easeInOut(duration: 0.25)) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             currentStep = step
         }
     }
 
-    // MARK: - Delete Slot
+    // MARK: - Quota Probe
 
-    private func deleteSlot(_ target: SlotDeleteTarget) {
-        Task {
-            await daemonManager.removeProviderCredentialSlot(
-                providerID: target.providerID,
-                slotID: target.slotID
-            )
-            slotToDelete = nil
+    private func scheduleQuotaProbe() {
+        quotaProbeTask?.cancel()
+        quotaProbeResult = nil
+        quotaProbeError = nil
+        quotaProbePercent = nil
+
+        let trimmedKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty,
+              let providerID = selectedProviderID,
+              let method = selectedAuthMethod,
+              method.unlocksQuotaRefresh,
+              let quotaProvider = quotaProbeProvider(for: providerID) else {
+            return
+        }
+
+        quotaProbeTask = Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run { isProbingQuota = true }
+
+            do {
+                let snapshot = try await ProviderQuotaService.shared.fetchSnapshot(
+                    for: quotaProvider,
+                    apiKeyOverride: trimmedKey
+                )
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    isProbingQuota = false
+                    if let bucket = snapshot.primaryDisplayableBucket {
+                        let pct = bucket.remainingPercent
+                        quotaProbePercent = pct
+                        if let pct {
+                            let label = bucket.label.isEmpty ? "" : " (\(bucket.label))"
+                            quotaProbeResult = "\(Int(pct.rounded()))% remaining\(label)"
+                        } else {
+                            quotaProbeResult = bucket.remainingText
+                        }
+                    } else if snapshot.confidence == .unavailable {
+                        quotaProbeError = snapshot.statusMessage ?? "Live quota probe didn't return data."
+                    } else {
+                        quotaProbeResult = "Connected — quota will populate after first use."
+                    }
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    isProbingQuota = false
+                    quotaProbeError = "Probe failed: \(error.localizedDescription)"
+                }
+            }
         }
     }
 
-    // MARK: - Save
+    // MARK: - Save & Delete
 
     private func savePlan() {
-        guard let providerID = selectedProviderID ?? activeProviderID else { return }
+        guard let providerID = selectedProviderID ?? activeProviderID,
+              let method = selectedAuthMethod else { return }
 
         let label = planLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         let apiKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1208,30 +1889,41 @@ struct ProviderPlanWizardView: View {
         saveError = nil
 
         Task {
-            // Add the slot
             await daemonManager.addProviderCredentialSlot(
                 providerID: providerID,
                 label: label,
                 apiKey: apiKey
             )
 
-            // Apply strategy
+            if let mirrorAccount = method.storage.mirrorAccountIdentifier {
+                await MainActor.run {
+                    do {
+                        try ProviderAPIKeyStore.shared.setAPIKey(apiKey, for: mirrorAccount)
+                    } catch {
+                        AppLogger.dataStore.silentFailure(
+                            "ProviderPlanWizardView: failed to mirror credential to keychain",
+                            error: error
+                        )
+                    }
+                }
+            }
+
             switch selectedStrategy {
             case .auto:
                 break
             case .preferred:
-                if let updatedConfig = daemonManager.providerConfigurations
+                if let updated = daemonManager.providerConfigurations
                     .first(where: { $0.providerID == providerID }),
-                   let newSlot = updatedConfig.credentialSlots.last {
+                   let newSlot = updated.credentialSlots.last {
                     await daemonManager.setPreferredProviderCredentialSlot(
                         providerID: providerID,
                         slotID: newSlot.slotID
                     )
                 }
             case .backup:
-                if let updatedConfig = daemonManager.providerConfigurations
+                if let updated = daemonManager.providerConfigurations
                     .first(where: { $0.providerID == providerID }),
-                   let newSlot = updatedConfig.credentialSlots.last {
+                   let newSlot = updated.credentialSlots.last {
                     await daemonManager.updateProviderCredentialSlot(
                         providerID: providerID,
                         slotID: newSlot.slotID,
@@ -1240,15 +1932,42 @@ struct ProviderPlanWizardView: View {
                 }
             }
 
-            // Refresh quotas
             await daemonManager.refreshProviderCredentialSlotQuotas(providerID: providerID)
 
             await MainActor.run {
                 isSaving = false
-                // Return to dashboard instead of dismissing
                 activeProviderID = providerID
                 navigateToStep(.dashboard)
             }
+        }
+    }
+
+    private func deleteSlot(_ target: SlotDeleteTarget) {
+        Task {
+            await daemonManager.removeProviderCredentialSlot(
+                providerID: target.providerID,
+                slotID: target.slotID
+            )
+            await MainActor.run { slotToDelete = nil }
+        }
+    }
+}
+
+// MARK: - Provider Configuration Helpers
+
+private extension OpenBurnBarDaemonProviderConfiguration {
+    var hasRoutingCapability: Bool {
+        let providerID = self.providerID.lowercased()
+        switch providerID {
+        case "minimax", "zai", "z-ai", "ollama", "mlx",
+             "openai", "xai", "deepseek", "mistral", "alibaba", "qwen", "meta":
+            return true
+        default:
+            // Honor catalog routing capability when available.
+            if let catalog = BurnBarCatalogLoader.bundledCatalog.provider(id: self.providerID) {
+                return catalog.capabilities.contains(.routing)
+            }
+            return false
         }
     }
 }

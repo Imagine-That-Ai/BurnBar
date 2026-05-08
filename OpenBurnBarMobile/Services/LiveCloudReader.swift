@@ -5,6 +5,34 @@ import OpenBurnBarCore
 import Security
 import UIKit
 
+enum MobileDeviceIdentity {
+    static let deviceIDKey = "com.openburnbar.mobile.deviceId"
+
+    /// Returns a stable per-install device id. We anchor on
+    /// `UIDevice.identifierForVendor` so reinstalls of the **same** app
+    /// from the same vendor land on the same Firestore document, which
+    /// prevents the "same iPhone shows up many times" duplicate explosion
+    /// in Settings → Devices.
+    ///
+    /// Vendor IDs do reset if the user uninstalls every OpenBurnBar-vendor
+    /// app, so we still cache the first observed ID in UserDefaults to
+    /// keep the doc stable across that edge case for the lifetime of this
+    /// install. Generated UUIDs remain a last-resort fallback.
+    static func loadOrCreateDeviceId(defaults: UserDefaults = .standard) -> String {
+        if let stored = defaults.string(forKey: deviceIDKey), !stored.isEmpty {
+            return stored
+        }
+        let resolved: String
+        if let vendor = UIDevice.current.identifierForVendor?.uuidString, !vendor.isEmpty {
+            resolved = vendor
+        } else {
+            resolved = UUID().uuidString
+        }
+        defaults.set(resolved, forKey: deviceIDKey)
+        return resolved
+    }
+}
+
 /// Production CloudReader + DeviceTrustGateway + EscrowGateway.
 /// Reads Firestore, manages device trust state, handles encrypted credential import.
 @MainActor
@@ -16,7 +44,7 @@ final class LiveCloudReader: CloudReader {
 
     private var uid: String? { Auth.auth().currentUser?.uid }
     private var deviceId: String {
-        UserDefaults.standard.string(forKey: "com.openburnbar.mobile.deviceId") ?? UUID().uuidString
+        MobileDeviceIdentity.loadOrCreateDeviceId()
     }
 
     // MARK: - CloudReader
@@ -227,7 +255,7 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
     private let db = Firestore.firestore()
     private var uid: String? { Auth.auth().currentUser?.uid }
     private var deviceId: String {
-        UserDefaults.standard.string(forKey: "com.openburnbar.mobile.deviceId") ?? UUID().uuidString
+        MobileDeviceIdentity.loadOrCreateDeviceId()
     }
 
     /// Register this device in both the general devices registry and escrow_devices.
@@ -333,7 +361,7 @@ final class LiveEscrowGateway: EscrowGateway {
 
     private var uid: String? { Auth.auth().currentUser?.uid }
     private var deviceId: String {
-        UserDefaults.standard.string(forKey: "com.openburnbar.mobile.deviceId") ?? UUID().uuidString
+        MobileDeviceIdentity.loadOrCreateDeviceId()
     }
 
     func observeEnvelopes(_ onChange: @escaping @MainActor () -> Void) {

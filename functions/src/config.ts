@@ -69,7 +69,80 @@ function buildConfig(): EnvConfig {
         cfg.openburnbar?.quota_refresh_batch_size,
       20
     ),
+    hostedQuotaProductID:
+      process.env.HOSTED_QUOTA_PRODUCT_ID ??
+      cfg.openburnbar?.hosted_quota_product_id ??
+      "com.openburnbar.hostedQuotaSync.monthly",
+    hostedQuotaRunnerURL:
+      process.env.HOSTED_QUOTA_RUNNER_URL ??
+      cfg.openburnbar?.hosted_quota_runner_url ??
+      "",
+    hostedQuotaRunnerToken:
+      process.env.HOSTED_QUOTA_RUNNER_TOKEN ??
+      cfg.openburnbar?.hosted_quota_runner_token ??
+      "",
+    hostedQuotaDailyRefreshLimit: toNum(
+      process.env.HOSTED_QUOTA_DAILY_REFRESH_LIMIT ??
+        cfg.openburnbar?.hosted_quota_daily_refresh_limit,
+      30
+    ),
+    hostedQuotaMonthlyRefreshLimit: toNum(
+      process.env.HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT ??
+        cfg.openburnbar?.hosted_quota_monthly_refresh_limit,
+      300
+    ),
+    appStore: {
+      bundleId:
+        process.env.APP_STORE_BUNDLE_ID ??
+        cfg.appstore?.bundle_id ??
+        "com.openburnbar.app",
+      // `appAppleId` MUST be `undefined` in Sandbox (library v1.1.0+
+      // forbids passing 0 for non-production). The numeric is required
+      // for Production-environment notification verification.
+      appAppleId: parseAppleId(
+        process.env.APP_STORE_APPLE_APP_ID ?? cfg.appstore?.apple_app_id
+      ),
+      environment:
+        (process.env.APP_STORE_ENV ??
+          cfg.appstore?.environment ??
+          "Sandbox") as EnvConfig["appStore"]["environment"],
+      enableOnlineChecks: toBool(
+        process.env.APP_STORE_ENABLE_ONLINE_CHECKS ??
+          cfg.appstore?.enable_online_checks,
+        true
+      ),
+      autoFallbackEnvironment:
+        toBool(
+          process.env.APP_STORE_AUTO_FALLBACK_ENV ??
+            cfg.appstore?.auto_fallback_environment,
+          true
+        ),
+      // ASC credentials are populated at runtime by
+      // `appstore/config.ts:readAscCredentials()` because secrets are
+      // only injected into `process.env` *inside* the handler that
+      // declared them via `secrets: APP_STORE_SECRETS`. Reading them at
+      // module-load time (which is when `getConfig()` is first called
+      // by `enforceAppCheck: getConfig().enforceAppCheck`) would
+      // capture empty strings forever.
+      //
+      // Use `loadAppStoreRuntimeConfig()` from request handlers — it
+      // shallow-clones this base config and fills in `asc` from
+      // `defineSecret(...).value()` which Firebase guarantees works
+      // at invocation time.
+      asc: {
+        issuerId: "",
+        keyId: "",
+        privateKeyP8: "",
+      },
+    },
   };
+}
+
+function parseAppleId(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.floor(n);
 }
 
 /**

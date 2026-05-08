@@ -6,7 +6,8 @@ This skill teaches Hermes to act as a full operator over OpenBurnBar data: spend
 
 ## MCP Tools Exposed
 
-The `openburnbar-mcp` server (`tools/openburnbar-mcp/server.py`) exposes 7 read-only tools over the OpenBurnBar SQLite database:
+The `openburnbar-mcp` server (`tools/openburnbar-mcp/server.py`) exposes 7
+read-only tools over the OpenBurnBar SQLite database, plus 2 ledger tools:
 
 | Tool | Purpose |
 |------|---------|
@@ -17,6 +18,8 @@ The `openburnbar-mcp` server (`tools/openburnbar-mcp/server.py`) exposes 7 read-
 | `burnbar_search_conversations` | FTS search over conversation titles and transcripts |
 | `burnbar_get_conversation` | Full row + fullText for one conversation by ID |
 | `burnbar_chat_messages` | In-app assistant chat_messages tail |
+| `burnbar_record_hermes_usage` | **Write** an idempotent row to the daemon usage ledger |
+| `burnbar_resolve_usage_ledger_path` | Show the ledger path the writer will use |
 
 ## Setup
 
@@ -38,9 +41,15 @@ mcp_servers:
 
 ## Evidence contract
 
-- All tools are **read-only** — no writes to the BurnBar database.
-- `burnbar_search_conversations` uses FTS5 with the same query builder as the OpenBurnBar app.
-- `burnbar_project_summary` aggregates over `token_usage` — not a substitute for per-session transcripts.
+- Read tools are **read-only** — no writes to the BurnBar SQLite database.
+- `burnbar_record_hermes_usage` is the single write tool: it appends an
+  idempotent record to the daemon usage ledger
+  (`~/Library/Application Support/OpenBurnBar/usage-events.jsonl`). The macOS
+  app picks the row up on its next refresh.
+- `burnbar_search_conversations` uses FTS5 with the same query builder as the
+  OpenBurnBar app.
+- `burnbar_project_summary` aggregates over `token_usage` — not a substitute
+  for per-session transcripts.
 - `burnbar_get_conversation.fullText` is truncated at 120 000 chars by default.
 
 ## Grounding

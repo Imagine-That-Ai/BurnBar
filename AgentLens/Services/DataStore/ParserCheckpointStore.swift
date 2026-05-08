@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import GRDB
 import OpenBurnBarCore
 
@@ -282,15 +283,17 @@ final class AtomicIngestionTransaction {
         try dbQueue.write { db in
             // First, persist usages
             for usage in usages {
+                let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
                 try db.execute(sql: """
                     INSERT INTO token_usage (
                         id, provider, sessionId, projectName, model,
                         inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
                         reasoningTokens, totalTokens, cost, startTime, endTime, createdAt,
                         usageSource, sourceDeviceId, sourceDeviceName, isRemote,
+                        providerID, providerAccountID, providerAccountLabel, providerAccountSource,
                         provenanceMethod, provenanceConfidence, estimatorVersion
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, '')) DO UPDATE SET
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, '')) DO UPDATE SET
                         projectName = excluded.projectName,
                         inputTokens = excluded.inputTokens,
                         outputTokens = excluded.outputTokens,
@@ -324,6 +327,10 @@ final class AtomicIngestionTransaction {
                             THEN excluded.usageSource
                             ELSE token_usage.usageSource
                         END,
+                        providerID = excluded.providerID,
+                        providerAccountID = excluded.providerAccountID,
+                        providerAccountLabel = excluded.providerAccountLabel,
+                        providerAccountSource = excluded.providerAccountSource,
                         provenanceMethod = excluded.provenanceMethod,
                         provenanceConfidence = CASE
                             WHEN
@@ -383,6 +390,10 @@ final class AtomicIngestionTransaction {
                         usage.sourceDeviceId,
                         usage.sourceDeviceName,
                         usage.isRemote ? 1 : 0,
+                        usage.providerID.rawValue,
+                        usagePartition,
+                        usage.providerAccountLabel,
+                        usage.providerAccountSource?.rawValue,
                         usage.provenanceMethod.rawValue,
                         usage.provenanceConfidence.rawValue,
                         usage.estimatorVersion
@@ -424,4 +435,12 @@ final class AtomicIngestionTransaction {
 
     var wasCommitted: Bool { isCommitted }
     var wasRolledBack: Bool { isRolledBack }
+
+    private static func usagePartitionToken(from rawValue: String?) -> String? {
+        guard let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else { return nil }
+        let digest = SHA256.hash(data: Data(trimmed.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return "acct_sha256_\(hex.prefix(24))"
+    }
 }

@@ -112,38 +112,39 @@ final class CloudSyncService {
         let start = Date()
 
         do {
-            let unsynced = try dataStore.fetchUnsynced()
-            guard !unsynced.isEmpty else {
-                isSyncing = false
-                lastSyncDate = Date()
-                TelemetryService.shared.record(feature: .cloudSync, outcome: .success, durationMs: Int(Date().timeIntervalSince(start) * 1000))
-                return
-            }
-
             let deviceId = accountManager.deviceId
-
-            // Firestore batch limit is 500 ops; we fetch max 400 rows at a time
-            let batch = db.batch()
             let collectionRef = db.collection("users").document(uid).collection("usage")
+            var uploadedAnyBatch = false
 
-            for usage in unsynced {
-                let docId = "\(deviceId)_\(usage.id.uuidString)"
-                let docRef = collectionRef.document(docId)
-                let data = encodeUsage(usage, deviceId: deviceId)
-                batch.setData(data, forDocument: docRef, merge: true)
+            while true {
+                let unsynced = try dataStore.fetchUnsynced()
+                guard !unsynced.isEmpty else { break }
+
+                // Firestore batch limit is 500 ops; fetchUnsynced caps each page at 400 rows.
+                let batch = db.batch()
+
+                for usage in unsynced {
+                    let docId = "\(deviceId)_\(usage.id.uuidString)"
+                    let docRef = collectionRef.document(docId)
+                    let data = encodeUsage(usage, deviceId: deviceId)
+                    batch.setData(data, forDocument: docRef, merge: true)
+                }
+
+                try await batch.commit()
+
+                let syncedIds = unsynced.map { $0.id }
+                try dataStore.markSynced(ids: syncedIds)
+                uploadedAnyBatch = true
             }
-
-            try await batch.commit()
-
-            let syncedIds = unsynced.map { $0.id }
-            try dataStore.markSynced(ids: syncedIds)
 
             lastSyncDate = Date()
             lastSyncError = nil
 
             TelemetryService.shared.record(feature: .cloudSync, outcome: .success, durationMs: Int(Date().timeIntervalSince(start) * 1000))
-            await downloadRemoteData(uid: uid)
-            await fetchCloudTotal(uid: uid)
+            if uploadedAnyBatch {
+                await downloadRemoteData(uid: uid)
+                await fetchCloudTotal(uid: uid)
+            }
         } catch {
             TelemetryService.shared.record(feature: .cloudSync, outcome: .failure, durationMs: Int(Date().timeIntervalSince(start) * 1000))
             recordSyncError(error)
@@ -810,4 +811,804 @@ final class CloudSyncService {
     }
 
 
+}
+
+// MARK: - Hermes Remote Relay Host
+
+@MainActor
+final class HermesRelayHostService {
+    private let db: Firestore
+    private let accountManager: AccountManager
+    private let settingsManager: SettingsManager
+    private let urlSession: URLSession
+    private let relayKeyStore: HermesRelayKeyStore
+    private var heartbeatTask: Task<Void, Never>?
+    private var listener: ListenerRegistration?
+    private var listenerUID: String?
+    private var requestTasks: [String: Task<Void, Never>] = [:]
+    private var processingRequestIDs: Set<String> = []
+
+    init(
+        db: Firestore = Firestore.firestore(),
+        accountManager: AccountManager = .shared,
+        settingsManager: SettingsManager = .shared,
+        urlSession: URLSession = .shared,
+        relayKeyStore: HermesRelayKeyStore = HermesRelayKeyStore()
+    ) {
+        self.db = db
+        self.accountManager = accountManager
+        self.settingsManager = settingsManager
+        self.urlSession = urlSession
+        self.relayKeyStore = relayKeyStore
+    }
+
+    var connectionID: String {
+        "relay-\(Self.safeIdentifier(accountManager.deviceId))"
+    }
+
+    func start() {
+        guard heartbeatTask == nil else { return }
+        heartbeatTask = Task { @MainActor in
+            while !Task.isCancelled {
+                await refreshRelayHost()
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+            }
+        }
+    }
+
+    func stop() {
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
+        listener?.remove()
+        listener = nil
+        listenerUID = nil
+        for task in requestTasks.values {
+            task.cancel()
+        }
+        requestTasks.removeAll()
+        processingRequestIDs.removeAll()
+    }
+
+    private func refreshRelayHost() async {
+        guard accountManager.isFirebaseAvailable,
+              accountManager.isSignedIn,
+              accountManager.isCloudSyncEnabled,
+              let uid = Auth.auth().currentUser?.uid else {
+            listener?.remove()
+            listener = nil
+            listenerUID = nil
+            for task in requestTasks.values {
+                task.cancel()
+            }
+            requestTasks.removeAll()
+            return
+        }
+
+        guard settingsManager.hermesRemoteRelayEnabled else {
+            listener?.remove()
+            listener = nil
+            listenerUID = nil
+            for task in requestTasks.values {
+                task.cancel()
+            }
+            requestTasks.removeAll()
+            await publishRelayOffline(uid: uid)
+            return
+        }
+
+        await publishRelayConnection(uid: uid)
+        ensureRequestListener(uid: uid)
+    }
+
+    private func publishRelayOffline(uid: String) async {
+        let now = Self.iso8601.string(from: Date())
+        let ref = db.collection("users").document(uid).collection("hermes_connections").document(connectionID)
+        do {
+            let snap = try await ref.getDocument()
+            var data: [String: Any] = [
+                "id": connectionID,
+                "displayName": Host.current().localizedName.map { "\($0) Hermes Relay" } ?? "Mac Hermes Relay",
+                "mode": HermesConnectionMode.relayLink.rawValue,
+                "status": HermesConnectionStatus.offline.rawValue,
+                "capabilities": ["chat_completions", "remote_relay"],
+                "advertisedModel": FieldValue.delete(),
+                "updatedAt": now,
+                "schemaVersion": 2
+            ]
+            if let key = try? relayKeyStore.privateKey() {
+                data["relayPublicKey"] = key.publicKeyBase64
+                data["relayKeyVersion"] = HermesRelayCrypto.keyVersion
+                data["relayEncryption"] = HermesRelayCrypto.algorithm
+            }
+            if !snap.exists {
+                data["createdAt"] = now
+            }
+            try await ref.setData(data, merge: true)
+        } catch {
+            AppLogger.network.silentFailure("hermes_relay_offline_publish_failed", error: error)
+        }
+    }
+
+    private func publishRelayConnection(uid: String) async {
+        let relayPrivateKey: HermesRelayPrivateKey
+        do {
+            relayPrivateKey = try relayKeyStore.privateKey()
+        } catch {
+            AppLogger.network.error(
+                "hermes_relay_key_unavailable",
+                metadata: ["error": error.localizedDescription]
+            )
+            await publishRelayOffline(uid: uid)
+            return
+        }
+        let probe = await OpenAICompatibleModelProbe.probeWithModel(
+            baseURL: hermesBaseURL(),
+            bearerToken: settingsManager.hermesBearerToken
+        )
+        let now = Self.iso8601.string(from: Date())
+        var data: [String: Any] = [
+            "id": connectionID,
+            "displayName": Host.current().localizedName.map { "\($0) Hermes Relay" } ?? "Mac Hermes Relay",
+            "mode": HermesConnectionMode.relayLink.rawValue,
+            "status": probe.available ? HermesConnectionStatus.online.rawValue : HermesConnectionStatus.offline.rawValue,
+            "capabilities": ["chat_completions", "remote_relay"],
+            "relayPublicKey": relayPrivateKey.publicKeyBase64,
+            "relayKeyVersion": HermesRelayCrypto.keyVersion,
+            "relayEncryption": HermesRelayCrypto.algorithm,
+            "updatedAt": now,
+            "schemaVersion": 2
+        ]
+        if probe.available, let modelName = probe.modelName {
+            data["advertisedModel"] = modelName
+            data["lastSeenAt"] = now
+        } else {
+            data["advertisedModel"] = FieldValue.delete()
+        }
+        let ref = db.collection("users").document(uid).collection("hermes_connections").document(connectionID)
+        do {
+            let snap = try await ref.getDocument()
+            if !snap.exists {
+                data["createdAt"] = now
+            }
+            try await ref.setData(data, merge: true)
+        } catch {
+            AppLogger.network.error(
+                "hermes_relay_connection_publish_failed",
+                metadata: ["error": error.localizedDescription]
+            )
+        }
+    }
+
+    private func ensureRequestListener(uid: String) {
+        guard listenerUID != uid else { return }
+        listener?.remove()
+        listenerUID = uid
+        listener = db.collection("users").document(uid)
+            .collection("hermes_relay_requests")
+            .whereField("connectionId", isEqualTo: connectionID)
+            .whereField("status", isEqualTo: HermesRelayRequestStatus.pending.rawValue)
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error {
+                    AppLogger.network.error(
+                        "hermes_relay_listener_failed",
+                        metadata: ["error": error.localizedDescription]
+                    )
+                    Task { @MainActor [weak self] in
+                        self?.listener?.remove()
+                        self?.listener = nil
+                        self?.listenerUID = nil
+                    }
+                    return
+                }
+                guard let documents = snapshot?.documents, !documents.isEmpty else { return }
+                Task { @MainActor [weak self] in
+                    self?.handlePendingRelayDocuments(documents, uid: uid)
+                }
+            }
+    }
+
+    private func handlePendingRelayDocuments(_ documents: [QueryDocumentSnapshot], uid: String) {
+        for document in documents
+        where !processingRequestIDs.contains(document.documentID) && requestTasks[document.documentID] == nil {
+            let requestID = document.documentID
+            processingRequestIDs.insert(requestID)
+            let task = Task { @MainActor in
+                defer {
+                    processingRequestIDs.remove(requestID)
+                    requestTasks.removeValue(forKey: requestID)
+                }
+                await processRelayRequest(reference: document.reference, uid: uid)
+            }
+            requestTasks[requestID] = task
+        }
+    }
+
+    private func processRelayRequest(reference: DocumentReference, uid: String) async {
+        var context: HermesRelayRequestContext?
+        do {
+            guard let data = try await claimRelayRequest(reference: reference) else { return }
+            guard let operationText = data["operation"] as? String,
+                  let operation = HermesRelayOperation(rawValue: operationText) else {
+                try await failRelayRequest(reference: reference, requestID: reference.documentID, message: "Malformed relay request.")
+                return
+            }
+            let requestID = (data["id"] as? String) ?? reference.documentID
+            guard !isExpired(data["expiresAt"]) else {
+                try await reference.setData([
+                    "status": HermesRelayRequestStatus.expired.rawValue,
+                    "updatedAt": Self.iso8601.string(from: Date())
+                ], merge: true)
+                return
+            }
+            let prepared = try decryptRelayRequest(data, uid: uid, requestID: requestID)
+            context = prepared.context
+            switch operation {
+            case .chatCompletions:
+                try await forwardStreamingRequest(
+                    reference: reference,
+                    context: prepared.context,
+                    data: prepared.data
+                )
+            case .models, .sessions, .sessionDetail, .profiles, .jobs:
+                try await forwardUnaryRequest(
+                    reference: reference,
+                    context: prepared.context,
+                    operation: operation,
+                    data: prepared.data
+                )
+            }
+        } catch {
+            try? await failRelayRequest(
+                reference: reference,
+                requestID: reference.documentID,
+                message: error.localizedDescription,
+                context: context
+            )
+        }
+    }
+
+    private func decryptRelayRequest(
+        _ data: [String: Any],
+        uid: String,
+        requestID: String
+    ) throws -> (data: [String: Any], context: HermesRelayRequestContext) {
+        guard uid.isEmpty == false,
+              data["relayEncryption"] as? String == HermesRelayCrypto.algorithm,
+              let wrappedKey = data["wrappedKey"] as? String,
+              let payloadCiphertext = data["payloadCiphertext"] as? String else {
+            throw HermesRelayHostError.encryptionRequired
+        }
+        let connectionID = (data["connectionId"] as? String) ?? self.connectionID
+        let privateKey = try relayKeyStore.privateKey()
+        let keyData = try HermesRelayCrypto.unwrapSymmetricKey(
+            wrappedKey,
+            privateKey: privateKey,
+            aad: HermesRelayCrypto.keyAAD(uid: uid, connectionID: connectionID, requestID: requestID)
+        )
+        let plaintext = try HermesRelayCrypto.openBase64(
+            ciphertext: payloadCiphertext,
+            keyData: keyData,
+            aad: HermesRelayCrypto.requestAAD(uid: uid, connectionID: connectionID, requestID: requestID)
+        )
+        let payload = try JSONDecoder().decode(HermesRelayEncryptedRequestPayload.self, from: plaintext)
+        var decrypted = data
+        decrypted["path"] = payload.path
+        decrypted["sessionId"] = payload.sessionId
+        decrypted["body"] = payload.body
+        return (
+            decrypted,
+            HermesRelayRequestContext(
+                uid: uid,
+                requestID: requestID,
+                connectionID: connectionID,
+                keyData: keyData
+            )
+        )
+    }
+
+    private func claimRelayRequest(reference: DocumentReference) async throws -> [String: Any]? {
+        try await withCheckedThrowingContinuation { continuation in
+            db.runTransaction({ transaction, errorPointer in
+                let snapshot: DocumentSnapshot
+                do {
+                    snapshot = try transaction.getDocument(reference)
+                } catch {
+                    errorPointer?.pointee = error as NSError
+                    return nil
+                }
+                guard var data = snapshot.data(),
+                      data["status"] as? String == HermesRelayRequestStatus.pending.rawValue else {
+                    return NSNull()
+                }
+                let now = Self.iso8601.string(from: Date())
+                transaction.setData([
+                    "status": HermesRelayRequestStatus.claimed.rawValue,
+                    "claimedAt": now,
+                    "claimedBy": self.connectionID,
+                    "updatedAt": now
+                ], forDocument: reference, merge: true)
+                data["status"] = HermesRelayRequestStatus.claimed.rawValue
+                data["claimedBy"] = self.connectionID
+                return data as NSDictionary
+            }) { result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                if result is NSNull {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: result as? [String: Any])
+            }
+        }
+    }
+
+    private func forwardUnaryRequest(
+        reference: DocumentReference,
+        context: HermesRelayRequestContext,
+        operation: HermesRelayOperation,
+        data: [String: Any]
+    ) async throws {
+        let request = try makeForwardRequest(operation: operation, data: data)
+        let (body, response) = try await urlSession.data(for: request)
+        guard let statusCode = (response as? HTTPURLResponse)?.statusCode else {
+            throw HermesRelayHostError.invalidResponse
+        }
+        guard (200..<300).contains(statusCode) else {
+            throw HermesRelayHostError.httpStatus(statusCode)
+        }
+        let responseBody: Data
+        if operation == .models {
+            responseBody = await enrichedModelsBody(primaryBody: body)
+        } else {
+            responseBody = body
+        }
+        let bodyText = String(data: responseBody, encoding: .utf8) ?? ""
+        let chunkCount = try await writeRelayChunk(
+            reference: reference,
+            context: context,
+            sequence: 0,
+            kind: .data,
+            data: bodyText
+        )
+        try await completeRelayRequest(reference: reference, chunkCount: chunkCount)
+    }
+
+    private func forwardStreamingRequest(
+        reference: DocumentReference,
+        context: HermesRelayRequestContext,
+        data: [String: Any]
+    ) async throws {
+        var request = try makeForwardRequest(operation: .chatCompletions, data: data)
+        request.httpMethod = "POST"
+        guard try await relayRequestCanReceiveOutput(reference: reference) else {
+            throw HermesRelayHostError.requestNoLongerActive
+        }
+        let now = Self.iso8601.string(from: Date())
+        try await reference.setData([
+            "status": HermesRelayRequestStatus.streaming.rawValue,
+            "updatedAt": now
+        ], merge: true)
+
+        let (bytes, response) = try await urlSession.bytes(for: request)
+        guard let statusCode = (response as? HTTPURLResponse)?.statusCode else {
+            throw HermesRelayHostError.invalidResponse
+        }
+        guard (200..<300).contains(statusCode) else {
+            throw HermesRelayHostError.httpStatus(statusCode)
+        }
+
+        var eventLines: [String] = []
+        var sequence = 0
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            for event in Self.consumeSSELine(line, eventLines: &eventLines) {
+                let writtenChunks = try await writeRelayChunk(
+                    reference: reference,
+                    context: context,
+                    sequence: sequence,
+                    kind: .sse,
+                    data: event
+                )
+                sequence += writtenChunks
+            }
+        }
+        if !eventLines.isEmpty {
+            let writtenChunks = try await writeRelayChunk(
+                reference: reference,
+                context: context,
+                sequence: sequence,
+                kind: .sse,
+                data: eventLines.joined(separator: "\n")
+            )
+            sequence += writtenChunks
+        }
+        try await completeRelayRequest(reference: reference, chunkCount: sequence)
+    }
+
+    private func makeForwardRequest(operation: HermesRelayOperation, data: [String: Any]) throws -> URLRequest {
+        let path = try relayPath(operation: operation, data: data)
+        guard let url = URL(string: path, relativeTo: hermesBaseURLWithTrailingSlash())?.absoluteURL else {
+            throw HermesRelayHostError.invalidPath
+        }
+        var request = URLRequest(url: url, timeoutInterval: operation == .chatCompletions ? 120 : 20)
+        request.httpMethod = operation == .chatCompletions ? "POST" : "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if operation == .chatCompletions {
+            guard let body = data["body"] as? String,
+                  let bodyData = body.data(using: .utf8) else {
+                throw HermesRelayHostError.missingBody
+            }
+            request.httpBody = bodyData
+        }
+        return request
+    }
+
+    static func enrichedModelsBody(
+        primaryBody: Data,
+        settingsManager: SettingsManager,
+        urlSession: URLSession
+    ) async -> Data {
+        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
+        guard let url = URL(string: "http://127.0.0.1:\(port)/v1/models") else {
+            return primaryBody
+        }
+        var request = URLRequest(url: url, timeoutInterval: 5)
+        let token = settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (secondaryBody, response) = try await urlSession.data(for: request)
+            guard let statusCode = (response as? HTTPURLResponse)?.statusCode,
+                  (200..<300).contains(statusCode) else {
+                return primaryBody
+            }
+            return mergedModelsResponseBodies(primaryBody, secondaryBody) ?? primaryBody
+        } catch {
+            return primaryBody
+        }
+    }
+
+    private func enrichedModelsBody(primaryBody: Data) async -> Data {
+        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
+        guard let url = URL(string: "http://127.0.0.1:\(port)/v1/models") else {
+            return primaryBody
+        }
+        var request = URLRequest(url: url, timeoutInterval: 5)
+        let token = settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (secondaryBody, response) = try await urlSession.data(for: request)
+            guard let statusCode = (response as? HTTPURLResponse)?.statusCode,
+                  (200..<300).contains(statusCode) else {
+                return primaryBody
+            }
+            return Self.mergedModelsResponseBodies(primaryBody, secondaryBody) ?? primaryBody
+        } catch {
+            return primaryBody
+        }
+    }
+
+    private func relayPath(operation: HermesRelayOperation, data: [String: Any]) throws -> String {
+        switch operation {
+        case .chatCompletions:
+            return "v1/chat/completions"
+        case .models:
+            return "v1/models"
+        case .sessions:
+            return "api/sessions"
+        case .profiles:
+            return "api/profiles"
+        case .jobs:
+            return "api/jobs"
+        case .sessionDetail:
+            guard let sessionID = data["sessionId"] as? String,
+                  !sessionID.isEmpty else {
+                throw HermesRelayHostError.invalidPath
+            }
+            let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionID
+            return "api/sessions/\(encoded)"
+        }
+    }
+
+    @discardableResult
+    private func writeRelayChunk(
+        reference: DocumentReference,
+        context: HermesRelayRequestContext,
+        sequence: Int,
+        kind: HermesRelayChunkKind,
+        data: String? = nil,
+        error: String? = nil
+    ) async throws -> Int {
+        guard try await relayRequestCanReceiveOutput(reference: reference) else {
+            throw HermesRelayHostError.requestNoLongerActive
+        }
+
+        if kind == .data, let data {
+            let fragments = Self.relayDataFragments(data)
+            for (offset, fragment) in fragments.enumerated() {
+                try await writeRelayChunkDocument(
+                    reference: reference,
+                    context: context,
+                    sequence: sequence + offset,
+                    kind: kind,
+                    data: fragment,
+                    error: error
+                )
+            }
+            return fragments.count
+        }
+
+        if let data, data.utf8.count > Self.maxRelayChunkDataBytes {
+            throw HermesRelayHostError.payloadTooLarge
+        }
+        try await writeRelayChunkDocument(
+            reference: reference,
+            context: context,
+            sequence: sequence,
+            kind: kind,
+            data: data,
+            error: error.map { String($0.prefix(2_000)) }
+        )
+        return 1
+    }
+
+    private func writeRelayChunkDocument(
+        reference: DocumentReference,
+        context: HermesRelayRequestContext,
+        sequence: Int,
+        kind: HermesRelayChunkKind,
+        data: String? = nil,
+        error: String? = nil
+    ) async throws {
+        let now = Self.iso8601.string(from: Date())
+        let chunkID = String(format: "%08d", sequence)
+        var payload: [String: Any] = [
+            "id": chunkID,
+            "requestId": context.requestID,
+            "sequence": sequence,
+            "kind": kind.rawValue,
+            "createdAt": now,
+            "updatedAt": now,
+            "schemaVersion": 2
+        ]
+        let plaintext = error ?? data ?? ""
+        payload["ciphertext"] = try HermesRelayCrypto.sealToBase64(
+            plaintext: Data(plaintext.utf8),
+            keyData: context.keyData,
+            aad: HermesRelayCrypto.chunkAAD(
+                uid: context.uid,
+                connectionID: context.connectionID,
+                requestID: context.requestID,
+                sequence: sequence,
+                kind: kind.rawValue
+            )
+        )
+        try await reference.collection("chunks").document(chunkID).setData(payload, merge: false)
+    }
+
+    private func completeRelayRequest(reference: DocumentReference, chunkCount: Int) async throws {
+        guard try await relayRequestCanReceiveOutput(reference: reference) else {
+            return
+        }
+        let now = Self.iso8601.string(from: Date())
+        try await reference.setData([
+            "status": HermesRelayRequestStatus.completed.rawValue,
+            "chunkCount": chunkCount,
+            "completedAt": now,
+            "updatedAt": now
+        ], merge: true)
+    }
+
+    private func failRelayRequest(
+        reference: DocumentReference,
+        requestID: String,
+        message: String,
+        context: HermesRelayRequestContext? = nil
+    ) async throws {
+        guard try await relayRequestCanReceiveOutput(reference: reference) else {
+            return
+        }
+        let now = Self.iso8601.string(from: Date())
+        var statusUpdate: [String: Any] = [
+            "status": HermesRelayRequestStatus.failed.rawValue,
+            "updatedAt": now
+        ]
+        if let context {
+            try? await writeRelayChunk(
+                reference: reference,
+                context: context,
+                sequence: 0,
+                kind: .error,
+                error: String(message.prefix(2_000))
+            )
+            statusUpdate["chunkCount"] = 1
+        } else {
+            let snapshot = try? await reference.getDocument()
+            let isEncrypted = (snapshot?.data()?["schemaVersion"] as? Int ?? 1) >= 2
+            if !isEncrypted {
+                statusUpdate["error"] = String(message.prefix(2_000))
+            }
+        }
+        try await reference.setData(statusUpdate, merge: true)
+    }
+
+    private func relayRequestCanReceiveOutput(reference: DocumentReference) async throws -> Bool {
+        let snapshot = try await reference.getDocument()
+        guard let statusText = snapshot.data()?["status"] as? String,
+              let status = HermesRelayRequestStatus(rawValue: statusText) else {
+            return false
+        }
+        return status == .claimed || status == .streaming
+    }
+
+    private func hermesBaseURL() -> URL {
+        URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? URL(string: "http://127.0.0.1:8642")!
+    }
+
+    private func hermesBaseURLWithTrailingSlash() -> URL {
+        let url = hermesBaseURL()
+        if url.absoluteString.hasSuffix("/") { return url }
+        return URL(string: "\(url.absoluteString)/") ?? url
+    }
+
+    private func isExpired(_ raw: Any?) -> Bool {
+        guard let text = raw as? String,
+              let date = Self.iso8601.date(from: text) ?? Self.iso8601NoFraction.date(from: text) else {
+            return false
+        }
+        return date <= Date()
+    }
+
+    private static func safeIdentifier(_ raw: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+        let lowered = raw.lowercased()
+        let scalars = lowered.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
+        let collapsed = String(scalars).split(separator: "-").joined(separator: "-")
+        return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "-")).isEmpty ? "mac" : collapsed
+    }
+
+    private static let iso8601: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let iso8601NoFraction = ISO8601DateFormatter()
+
+    nonisolated static let maxRelayChunkDataBytes = 72_000
+
+    nonisolated static func relayDataFragments(_ text: String) -> [String] {
+        guard text.utf8.count > maxRelayChunkDataBytes else {
+            return [text]
+        }
+        var fragments: [String] = []
+        var current = ""
+        var currentBytes = 0
+        for character in text {
+            let bytes = String(character).utf8.count
+            if currentBytes > 0, currentBytes + bytes > maxRelayChunkDataBytes {
+                fragments.append(current)
+                current = ""
+                currentBytes = 0
+            }
+            current.append(character)
+            currentBytes += bytes
+        }
+        if !current.isEmpty {
+            fragments.append(current)
+        }
+        return fragments
+    }
+
+    nonisolated static func consumeSSELine(_ rawLine: String, eventLines: inout [String]) -> [String] {
+        let line = rawLine.trimmingCharacters(in: .newlines)
+        guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            guard !eventLines.isEmpty else { return [] }
+            let event = eventLines.joined(separator: "\n")
+            eventLines.removeAll(keepingCapacity: true)
+            return [event]
+        }
+        if line.hasPrefix("data:"),
+           eventLines.contains(where: { $0.hasPrefix("data:") }) {
+            let event = eventLines.joined(separator: "\n")
+            eventLines.removeAll(keepingCapacity: true)
+            eventLines.append(line)
+            return [event]
+        }
+        eventLines.append(line)
+        return []
+    }
+
+    nonisolated static func mergedModelsResponseBodies(_ primaryBody: Data, _ secondaryBody: Data) -> Data? {
+        guard var primary = jsonObject(from: primaryBody),
+              let secondary = jsonObject(from: secondaryBody) else {
+            return nil
+        }
+
+        var seen = Set<String>()
+        var merged: [[String: Any]] = []
+        for item in (primary["data"] as? [[String: Any]] ?? []) + (secondary["data"] as? [[String: Any]] ?? []) {
+            guard let id = item["id"] as? String, !id.isEmpty else { continue }
+            if seen.insert(id).inserted {
+                merged.append(item)
+            }
+        }
+        primary["data"] = merged
+        primary["object"] = primary["object"] ?? "list"
+        return try? JSONSerialization.data(withJSONObject: primary, options: [.sortedKeys])
+    }
+
+    private nonisolated static func jsonObject(from data: Data) -> [String: Any]? {
+        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+}
+
+private enum HermesRelayHostError: LocalizedError {
+    case invalidPath
+    case missingBody
+    case invalidResponse
+    case httpStatus(Int)
+    case requestNoLongerActive
+    case payloadTooLarge
+    case encryptionRequired
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidPath:
+            return "Hermes relay request path is invalid."
+        case .missingBody:
+            return "Hermes relay chat request is missing a body."
+        case .invalidResponse:
+            return "Hermes returned an invalid relay response."
+        case .httpStatus(let code):
+            return "Hermes returned HTTP \(code)."
+        case .requestNoLongerActive:
+            return "Hermes relay request is no longer active."
+        case .payloadTooLarge:
+            return "Hermes relay response chunk is too large to relay safely."
+        case .encryptionRequired:
+            return "Hermes relay requests must be encrypted."
+        }
+    }
+}
+
+private struct HermesRelayRequestContext {
+    let uid: String
+    let requestID: String
+    let connectionID: String
+    let keyData: Data
+}
+
+struct HermesRelayKeyStore {
+    private let keychain: KeychainStore
+    private let account = "settings.chat.hermes.relay.p256.v1"
+
+    init(
+        keychain: KeychainStore = KeychainStore(
+            service: "com.openburnbar.hermes-relay",
+            legacyServices: []
+        )
+    ) {
+        self.keychain = keychain
+    }
+
+    func privateKey() throws -> HermesRelayPrivateKey {
+        if let stored = try keychain.string(for: account),
+           let data = Data(base64Encoded: stored) {
+            return try HermesRelayPrivateKey(rawRepresentation: data)
+        }
+        let key = HermesRelayCrypto.generatePrivateKey()
+        try keychain.set(key.rawRepresentation.base64EncodedString(), for: account)
+        return key
+    }
 }

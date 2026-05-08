@@ -9,7 +9,7 @@ import Foundation
 /// `app.factory.ai/settings/billing` is a Next.js page that embeds usage
 /// data in `__NEXT_DATA__` or renders it server-side. This scraper:
 ///
-/// 1. Gets session cookies from Chrome (via FactoryCookieExtractor)
+/// 1. Receives an OpenBurnBar-owned Factory session cookie header
 /// 2. Fetches `app.factory.ai/settings/billing` as HTML
 /// 3. Parses `__NEXT_DATA__` JSON for SSR props (plan, usage, limits)
 /// 4. Falls back to regex-based HTML parsing for visible usage text
@@ -34,11 +34,8 @@ enum FactoryDashboardScraper {
 
     /// Fetches personal usage by scraping the Factory dashboard HTML.
     /// Tries: __NEXT_DATA__ SSR props → regex HTML parsing → cookie-based API (org only).
-    static func fetchPersonalUsage(session: URLSession = .shared) async -> DashboardUsage? {
-        guard let cookieHeader = FactoryCookieExtractor.extractCookieHeader() else {
-            return nil
-        }
-
+    static func fetchPersonalUsage(cookieHeader: String?, session: URLSession = .shared) async -> DashboardUsage? {
+        guard let cookieHeader = quotaNonEmpty(cookieHeader) else { return nil }
         // 1. Try HTML scraping of the billing dashboard page
         if let usage = await fetchDashboardHTML(cookieHeader: cookieHeader, session: session) {
             return usage

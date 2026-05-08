@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - Chat Panel
 
@@ -20,6 +21,12 @@ struct ChatPanel: View {
     @State private var headerDragStart: CGSize?
     @State private var showHistoryPopover = false
     @State private var showClearChatPrompt = false
+    @State private var didRequestHermesFirstRunSetup = false
+    /// Atom router shared with every Hermes assistant bubble in the panel.
+    /// Owned here so the popover anchors against the panel itself and any
+    /// chip tap (current message or history scroll-back) opens through the
+    /// same router instance.
+    @State private var atomRouter = HermesAtomRouter()
 
     private let cornerResizeHandle: CGFloat = 18
 
@@ -31,10 +38,40 @@ struct ChatPanel: View {
                 expandedPanel
             }
         }
+        .environment(\.hermesAtomNavigator, atomRouter)
+        .popover(item: Binding(
+            get: { atomRouter.pending },
+            set: { atomRouter.pending = $0 }
+        )) { pending in
+            HermesAtomDetailPopover(
+                atom: pending.atom,
+                label: pending.label,
+                onOpen: {
+                    atomRouter.confirm(pending)
+                    atomRouter.pending = nil
+                }
+            )
+        }
+        .task {
+            // Eagerly warm the Pretext engine so the first assistant turn
+            // doesn't pay the WKWebView load latency mid-stream. Idempotent.
+            PretextEngine.shared.start()
+            // Install a destination handler once. Default: notify; the
+            // sidebar/dashboard layer subscribes via
+            // `Notification.Name.hermesAtomActivated` and dispatches.
+            atomRouter.onPerform = { _ in
+                // Notification is already broadcast by `confirm(_:)`. The
+                // hook is reserved here for surfaces that want to handle
+                // the destination synchronously without going through
+                // `NotificationCenter`.
+            }
+        }
         .onAppear {
             brief = controller.buildInsightBriefSnapshot(refreshRollups: false)
+            controller.syncChatBackendWithEnabledBackends()
             controller.loadPersistedMessages()
             controller.reclampPanelOffset(container: containerSize, padding: edgePadding)
+            presentHermesSetupIfNeeded()
             Task {
                 let enabled = settingsManager.enabledChatBackends
                 if enabled.contains(.hermes) {
@@ -44,6 +81,9 @@ struct ChatPanel: View {
                     await controller.probeOpenClawAvailability()
                 }
             }
+        }
+        .onChange(of: controller.chatBackend) { _, _ in
+            presentHermesSetupIfNeeded()
         }
         .onChange(of: dataStore.lastRefresh) { _, _ in
             Task { @MainActor in
@@ -87,6 +127,18 @@ struct ChatPanel: View {
         } message: {
             Text("This starts a new chat. Previous Burn Bar chats stay in History.")
         }
+    }
+
+    private func presentHermesSetupIfNeeded() {
+        guard controller.chatBackend == .hermes else { return }
+        guard !settingsManager.hermesSetupWizardCompleted else { return }
+        guard !didRequestHermesFirstRunSetup else { return }
+        didRequestHermesFirstRunSetup = true
+        WindowManager.shared.openHermesSetupWizard(
+            settingsManager: settingsManager,
+            chatController: controller,
+            dataStore: dataStore
+        )
     }
 
     // MARK: - Minimized Pill
@@ -830,64 +882,11 @@ struct ChatPanel: View {
     }
 
     private var inputRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if controller.lastRetrievalHadNoEvidence, !controller.isStreaming {
-                Text("No indexed excerpts matched your last question\u{2014}try \u{201c}Search indexed sessions\u{201d}, enable indexing in Settings, or rephrase.")
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            HStack(alignment: .bottom, spacing: DesignSystem.Spacing.sm) {
-                TextField(inputPlaceholder, text: $controller.inputText, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(DesignSystem.Typography.body)
-                    .lineLimit(1...5)
-                    .submitLabel(.send)
-                    .onSubmit {
-                        Task { await controller.send() }
-                    }
-                    .padding(DesignSystem.Spacing.sm)
-                    .background {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                                .fill(.ultraThinMaterial)
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                                .fill(DesignSystem.Colors.surface.opacity(0.3))
-                        }
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                            .strokeBorder(inputStrokeGradient, lineWidth: 0.75)
-                    )
-                    .animation(DesignSystem.Animation.snappy, value: controller.chatBackend)
-
-                VStack(spacing: 6) {
-                    if controller.isStreaming {
-                        Button("Stop") {
-                            controller.cancelGeneration()
-                        }
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.error)
-                    }
-
-                    Button {
-                        Task { await controller.send() }
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 26))
-                            .foregroundStyle(
-                                controller.chatBackend == .hermes
-                                    ? AnyShapeStyle(DesignSystem.Colors.mercuryGradient)
-                                    : AnyShapeStyle(DesignSystem.Colors.primaryGradient)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(controller.isStreaming || controller.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-        }
-        .padding(DesignSystem.Spacing.md)
+        ChatInputRow(
+            controller: controller,
+            chatBackend: controller.chatBackend,
+            onSubmit: { Task { await controller.send() } }
+        )
     }
 }
 

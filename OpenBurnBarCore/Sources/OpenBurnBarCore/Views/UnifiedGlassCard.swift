@@ -16,7 +16,7 @@ public struct UnifiedGlassCard<Content: View>: View {
     }
 
     public var body: some View {
-        content()
+        let card = content()
             .padding(UnifiedDesignSystem.Spacing.lg)
             .background(
                 ZStack {
@@ -34,21 +34,23 @@ public struct UnifiedGlassCard<Content: View>: View {
             .scaleEffect(isPressed ? 0.98 : (isHovered ? 1.01 : 1.0))
             .animation(UnifiedDesignSystem.Animation.hover, value: isHovered)
             .animation(UnifiedDesignSystem.Animation.snappy, value: isPressed)
-            .onHover { hovering in
-                guard interactive else { return }
-                isHovered = hovering
-            }
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        guard interactive else { return }
-                        isPressed = true
-                    }
-                    .onEnded { _ in
-                        guard interactive else { return }
-                        isPressed = false
-                    }
-            )
+
+        // Critical: only attach hover/drag gestures when the card is
+        // actually interactive. The previous unconditional
+        // `DragGesture(minimumDistance: 0)` was installed on every glass
+        // card and swallowed scroll touches, so any ScrollView with stacked
+        // glass cards (Session Detail, Settings, etc.) couldn't scroll.
+        if interactive {
+            card
+                .onHover { hovering in isHovered = hovering }
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in isPressed = true }
+                        .onEnded { _ in isPressed = false }
+                )
+        } else {
+            card
+        }
     }
 
     // MARK: - Sheen

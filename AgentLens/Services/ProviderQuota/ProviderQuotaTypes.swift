@@ -43,6 +43,8 @@ enum ProviderQuotaUnit: String, Codable {
     case lines
     case files
     case count
+    /// Value is USD dollars (e.g. Cursor "Included usage" returns cents which we convert to dollars).
+    case currency
 
     var shortLabel: String {
         switch self {
@@ -53,6 +55,7 @@ enum ProviderQuotaUnit: String, Codable {
         case .lines: return "lines"
         case .files: return "files"
         case .count: return ""
+        case .currency: return "$"
         }
     }
 }
@@ -150,6 +153,40 @@ struct ProviderQuotaBucket: Codable, Hashable, Identifiable {
                 return "\(Int(value))"
             }
             return String(format: "%.1f", value)
+        case .currency:
+            // Two-decimal USD; small values keep the cents (e.g. "$0.39"),
+            // larger values stay readable (e.g. "$3.61", "$1,250.00").
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            formatter.currencySymbol = "$"
+            formatter.minimumFractionDigits = 2
+            formatter.maximumFractionDigits = 2
+            return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
+        }
+    }
+}
+
+extension ProviderQuotaBucket {
+    var isDisplayableQuotaSignal: Bool {
+        let marker = "\(key) \(label)".lowercased()
+        if ["cache", "hit rate", "local model", "cloud model", "installed", "task", "conversation", "line", "file"].contains(where: marker.contains) {
+            return false
+        }
+
+        switch unit {
+        case .sessions, .lines, .files:
+            return false
+        case .count:
+            guard marker.contains("credit") || marker.contains("budget"),
+                  let limitValue, limitValue > 0 else {
+                return false
+            }
+            return usedValue != nil || remainingValue != nil || usedPercent != nil
+        case .percent:
+            return usedPercent != nil || remainingValue != nil || (limitValue ?? 0) > 0
+        case .requests, .tokens, .currency:
+            guard let limitValue, limitValue > 0 else { return false }
+            return usedValue != nil || remainingValue != nil || usedPercent != nil
         }
     }
 }
@@ -300,7 +337,7 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
     }
 
     var summaryText: String {
-        guard let primaryBucket else { return statusMessage }
+        guard let primaryBucket = primaryDisplayableBucket else { return statusMessage }
         return "\(primaryBucket.label): \(primaryBucket.remainingText) left"
     }
 
@@ -334,12 +371,58 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
 
     /// Returns the bucket representing the hourly/5h window (windowKind == .rollingHours)
     var hourlyBucket: ProviderQuotaBucket? {
-        buckets.first { $0.windowKind == .rollingHours }
+        displayableQuotaBuckets.first { $0.windowKind == .rollingHours }
     }
 
     /// Returns the bucket representing the weekly window (windowKind == .weekly or .rollingDays)
     var weeklyBucket: ProviderQuotaBucket? {
-        buckets.first { $0.windowKind == .weekly || $0.windowKind == .rollingDays }
+        displayableQuotaBuckets.first { $0.windowKind == .weekly || $0.windowKind == .rollingDays }
+    }
+
+    var displayableQuotaBuckets: [ProviderQuotaBucket] {
+        buckets.filter(\.isDisplayableQuotaSignal)
+    }
+
+    var hasDisplayableQuotaSignal: Bool {
+        provider.isQuotaSignalProvider && !displayableQuotaBuckets.isEmpty
+    }
+
+    var primaryDisplayableBucket: ProviderQuotaBucket? {
+        displayableQuotaBuckets.sorted {
+            let lhsPriority = primaryBucketPriority(for: $0)
+            let rhsPriority = primaryBucketPriority(for: $1)
+            if lhsPriority != rhsPriority {
+                return lhsPriority < rhsPriority
+            }
+            let lhsRemaining = $0.remainingPercent ?? .infinity
+            let rhsRemaining = $1.remainingPercent ?? .infinity
+            if lhsRemaining == rhsRemaining {
+                return ($0.resetsAt ?? .distantFuture) < ($1.resetsAt ?? .distantFuture)
+            }
+            return lhsRemaining < rhsRemaining
+        }.first
+    }
+
+    func filteringToDisplayableQuotaSignal() -> ProviderQuotaSnapshot? {
+        let filteredBuckets = displayableQuotaBuckets
+        guard provider.isQuotaSignalProvider, !filteredBuckets.isEmpty else {
+            return nil
+        }
+        return ProviderQuotaSnapshot(
+            provider: provider,
+            providerID: providerID,
+            accountID: accountID,
+            accountLabel: accountLabel,
+            accountStorageScope: accountStorageScope,
+            fetchedAt: fetchedAt,
+            source: source,
+            sourceId: sourceId,
+            confidence: confidence,
+            managementURL: managementURL,
+            statusMessage: statusMessage,
+            buckets: filteredBuckets,
+            schemaVersion: schemaVersion
+        )
     }
 }
 

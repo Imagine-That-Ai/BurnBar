@@ -1,0 +1,27 @@
+{
+  "name": "openburnbar-hermes-realtime-relay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node lib/server.js",
+    "test": "npm run build && node --test lib/*.test.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "ioredis": "^5.4.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.12",
+    "typescript": "~5.7.0"
+  },
+  "overrides": {
+    "@tootallnate/once": "^3.0.1"
+  }
+}

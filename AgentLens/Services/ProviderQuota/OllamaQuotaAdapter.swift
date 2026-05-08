@@ -2,11 +2,11 @@ import Foundation
 
 // MARK: - Ollama Quota Adapter
 
-/// Reports Ollama model availability (local + cloud) with real usage data.
+/// Reports real Ollama Cloud quota windows when Ollama exposes them.
 ///
 /// ## Local Ollama
-/// Reads `/api/tags` for available models and `/api/ps` for loaded models.
-/// No billing or rate limits — local inference is unlimited.
+/// Reads `/api/tags` and `/api/ps` only for status text. Local models are not
+/// quota and never become quota buckets.
 ///
 /// ## Ollama Cloud
 /// Two-tier approach for cloud quota:
@@ -27,7 +27,7 @@ struct OllamaQuotaAdapter: ProviderQuotaAdapter {
         let hasCloudKey = apiKey != nil
 
         // --- Cloud quota scraping (uses Chrome cookies, same as Factory/Cursor) ---
-        async let cloudUsage = OllamaCloudScraper.fetchCloudUsage(session: context.session)
+        async let cloudUsage = fetchCloudUsage(context: context)
 
         // --- Local model detection ---
         let tagsURL = endpoint.appendingPathComponent("api/tags")
@@ -87,67 +87,7 @@ struct OllamaQuotaAdapter: ProviderQuotaAdapter {
 
         let cloud = await cloudUsage
 
-        var buckets: [ProviderQuotaBucket] = []
-
-        // --- Local models ---
-        if !localModels.isEmpty {
-            buckets.append(ProviderQuotaBucket(
-                key: "ollama-local",
-                label: "Local models",
-                windowKind: .custom,
-                usedValue: nil,
-                limitValue: nil,
-                remainingValue: Double(localModels.count),
-                usedPercent: nil,
-                resetsAt: nil,
-                unit: .count,
-                isEstimated: false
-            ))
-        }
-
-        // --- Cloud models with real scraped usage ---
-        if let cloud, !cloudModels.isEmpty {
-            buckets.append(ProviderQuotaBucket(
-                key: "ollama-cloud-session",
-                label: "Cloud · \(cloud.planName ?? "Session")",
-                windowKind: .custom,
-                usedValue: cloud.sessionUsedPercent,
-                limitValue: 100,
-                remainingValue: max(0, 100 - cloud.sessionUsedPercent),
-                usedPercent: cloud.sessionUsedPercent,
-                resetsAt: cloud.sessionResetsAt,
-                unit: .percent,
-                isEstimated: false
-            ))
-
-            if let weeklyPct = cloud.weeklyUsedPercent {
-                buckets.append(ProviderQuotaBucket(
-                    key: "ollama-cloud-weekly",
-                    label: "Cloud · Weekly",
-                    windowKind: .weekly,
-                    usedValue: weeklyPct,
-                    limitValue: 100,
-                    remainingValue: max(0, 100 - weeklyPct),
-                    usedPercent: weeklyPct,
-                    resetsAt: cloud.weeklyResetsAt,
-                    unit: .percent,
-                    isEstimated: false
-                ))
-            }
-        } else if !cloudModels.isEmpty {
-            buckets.append(ProviderQuotaBucket(
-                key: "ollama-cloud",
-                label: "Cloud models",
-                windowKind: .custom,
-                usedValue: nil,
-                limitValue: nil,
-                remainingValue: Double(cloudModels.count),
-                usedPercent: nil,
-                resetsAt: nil,
-                unit: .count,
-                isEstimated: false
-            ))
-        }
+        let buckets = cloud.map(cloudQuotaBuckets) ?? []
 
         // --- Status message ---
         let loadedLabel = loadedModels.isEmpty ? "" : " (\(loadedModels.joined(separator: ", ")))"
@@ -156,14 +96,20 @@ struct OllamaQuotaAdapter: ProviderQuotaAdapter {
         if !localModels.isEmpty {
             statusParts.append("\(localModels.count) local model(s)")
         }
-        if !cloudModels.isEmpty {
-            if cloud != nil {
-                let planLabel = cloud?.planName ?? "Cloud"
-                statusParts.append("\(planLabel) — \(String(format: "%.1f", cloud?.sessionUsedPercent ?? 0))% used")
-            } else if hasCloudKey {
-                statusParts.append("\(cloudModels.count) cloud model(s) — sign in to ollama.com for quota")
+        if let cloud {
+            let planLabel = cloud.planName ?? "Cloud"
+            if let sessionUsedPercent = cloud.sessionUsedPercent {
+                statusParts.append("\(planLabel) — \(String(format: "%.1f", sessionUsedPercent))% used in the 5-hour window")
+            } else if let weeklyUsedPercent = cloud.weeklyUsedPercent {
+                statusParts.append("\(planLabel) — \(String(format: "%.1f", weeklyUsedPercent))% used weekly")
             } else {
-                statusParts.append("\(cloudModels.count) cloud model(s) — add OLLAMA_API_KEY + sign in")
+                statusParts.append("\(planLabel) quota page reached")
+            }
+        } else if !cloudModels.isEmpty {
+            if hasCloudKey {
+                statusParts.append("\(cloudModels.count) cloud model(s) — sign in to ollama.com for quota windows")
+            } else {
+                statusParts.append("\(cloudModels.count) cloud model(s) — add OLLAMA_API_KEY + sign in for quota windows")
             }
         }
         if !loadedModels.isEmpty {
@@ -177,7 +123,7 @@ struct OllamaQuotaAdapter: ProviderQuotaAdapter {
             provider: .ollama,
             fetchedAt: Date(),
             source: cloud != nil ? .officialAPI : .localSession,
-            confidence: .exact,
+            confidence: buckets.isEmpty ? .unavailable : .exact,
             managementURL: hasCloudKey
                 ? "https://ollama.com/settings/billing"
                 : "https://ollama.com",
@@ -192,20 +138,52 @@ struct OllamaQuotaAdapter: ProviderQuotaAdapter {
         cloud: OllamaCloudScraper.CloudUsage,
         hasCloudKey: Bool
     ) -> ProviderQuotaSnapshot {
+        let buckets = cloudQuotaBuckets(cloud)
+
+        let planLabel = cloud.planName ?? "Cloud"
+        let emailSuffix = cloud.accountEmail.map { " (\($0))" } ?? ""
+        let usageSummary = cloud.sessionUsedPercent
+            .map { "\(String(format: "%.1f", $0))% used in the 5-hour window" }
+            ?? cloud.weeklyUsedPercent.map { "\(String(format: "%.1f", $0))% used weekly" }
+            ?? "quota page reached"
+
+        return ProviderQuotaSnapshot(
+            provider: .ollama,
+            fetchedAt: Date(),
+            source: .officialAPI,
+            confidence: buckets.isEmpty ? .unavailable : .exact,
+            managementURL: "https://ollama.com/settings/billing",
+            statusMessage: "Ollama Cloud · \(planLabel)\(emailSuffix) · \(usageSummary). Local daemon not running.",
+            buckets: buckets
+        )
+    }
+
+    // MARK: - Helpers
+
+    private func fetchCloudUsage(context: ProviderQuotaAdapterContext) async -> OllamaCloudScraper.CloudUsage? {
+        if let html = quotaNonEmpty(context.environment["OPENBURNBAR_OLLAMA_CLOUD_HTML"]) {
+            return OllamaCloudScraper.parseCloudUsage(html: html)
+        }
+        return await OllamaCloudScraper.fetchCloudUsage(cookieHeader: nil, session: context.session)
+    }
+
+    private func cloudQuotaBuckets(_ cloud: OllamaCloudScraper.CloudUsage) -> [ProviderQuotaBucket] {
         var buckets: [ProviderQuotaBucket] = []
 
-        buckets.append(ProviderQuotaBucket(
-            key: "ollama-cloud-session",
-            label: "Cloud · \(cloud.planName ?? "Session")",
-            windowKind: .custom,
-            usedValue: cloud.sessionUsedPercent,
-            limitValue: 100,
-            remainingValue: max(0, 100 - cloud.sessionUsedPercent),
-            usedPercent: cloud.sessionUsedPercent,
-            resetsAt: cloud.sessionResetsAt,
-            unit: .percent,
-            isEstimated: false
-        ))
+        if let sessionPct = cloud.sessionUsedPercent {
+            buckets.append(ProviderQuotaBucket(
+                key: "ollama-cloud-session",
+                label: "Cloud · 5-hour window",
+                windowKind: .rollingHours,
+                usedValue: sessionPct,
+                limitValue: 100,
+                remainingValue: max(0, 100 - sessionPct),
+                usedPercent: sessionPct,
+                resetsAt: cloud.sessionResetsAt,
+                unit: .percent,
+                isEstimated: false
+            ))
+        }
 
         if let weeklyPct = cloud.weeklyUsedPercent {
             buckets.append(ProviderQuotaBucket(
@@ -222,21 +200,8 @@ struct OllamaQuotaAdapter: ProviderQuotaAdapter {
             ))
         }
 
-        let planLabel = cloud.planName ?? "Cloud"
-        let emailSuffix = cloud.accountEmail.map { " (\($0))" } ?? ""
-
-        return ProviderQuotaSnapshot(
-            provider: .ollama,
-            fetchedAt: Date(),
-            source: .officialAPI,
-            confidence: .exact,
-            managementURL: "https://ollama.com/settings/billing",
-            statusMessage: "Ollama Cloud · \(planLabel)\(emailSuffix) · \(String(format: "%.1f", cloud.sessionUsedPercent))% used. Local daemon not running.",
-            buckets: buckets
-        )
+        return buckets
     }
-
-    // MARK: - Helpers
 
     private func resolveAPIKey(context: ProviderQuotaAdapterContext) -> String? {
         for identifier in ["ollama", "Ollama"] {

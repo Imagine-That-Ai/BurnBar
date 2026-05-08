@@ -439,7 +439,40 @@ public struct BurnBarProviderRouter: Sendable {
             return exactMatch
         }
 
-        return configuration.preferredModels.first(where: { $0.matches(modelName: normalized) })
+        guard let matchedModel = configuration.preferredModels.first(where: { $0.matches(modelName: normalized) }) else {
+            return nil
+        }
+
+        if configuration.provider.id.lowercased() == "ollama",
+           matchedModel.id == "ollama-cloud-family",
+           let directCloudModelID = normalizedOllamaCloudModelID(from: modelName) {
+            return BurnBarCatalogModel(
+                id: directCloudModelID,
+                displayName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
+                visibility: .hidden,
+                aliases: [modelName],
+                matchers: [],
+                pricing: matchedModel.pricing
+            )
+        }
+
+        return matchedModel
+    }
+
+    private func normalizedOllamaCloudModelID(from modelName: String) -> String? {
+        let trimmed = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowercased = trimmed.lowercased()
+        if lowercased.hasSuffix(":cloud") {
+            let candidate = String(trimmed.dropLast(":cloud".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return candidate.isEmpty ? nil : candidate
+        }
+        if lowercased.hasSuffix("-cloud") {
+            let candidate = String(trimmed.dropLast("-cloud".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return candidate.isEmpty ? nil : candidate
+        }
+        return nil
     }
 }
 
@@ -485,7 +518,9 @@ extension BurnBarProviderRouter {
             return BurnBarRankedRoute(route: route, breakdown: breakdown)
         }
 
-        // Sort by composite score (desc), then deterministic tie-break
+        // Sort by composite score (desc), then deterministic tie-breaks.
+        // When scores tie inside one provider, prefer the least-recently selected
+        // slot so unpinned provider plans rotate instead of sticking to one key.
         rankedRoutes.sort { lhs, rhs in
             let lhsScore = lhs.breakdown.score.composite
             let rhsScore = rhs.breakdown.score.composite
@@ -497,6 +532,11 @@ extension BurnBarProviderRouter {
             let rhsProvider = rhs.breakdown.providerID
             if lhsProvider != rhsProvider {
                 return lhsProvider < rhsProvider
+            }
+            let lhsLastSelected = slotInfoMap[lhs.breakdown.routeKey]?.lastSelectedAt ?? .distantPast
+            let rhsLastSelected = slotInfoMap[rhs.breakdown.routeKey]?.lastSelectedAt ?? .distantPast
+            if lhsLastSelected != rhsLastSelected {
+                return lhsLastSelected < rhsLastSelected
             }
             let lhsSlot = lhs.breakdown.slotID ?? "legacy"
             let rhsSlot = rhs.breakdown.slotID ?? "legacy"
@@ -573,16 +613,11 @@ extension BurnBarProviderRouter {
     }
 
     private func estimateLatencyMs(for slot: BurnBarResolvedProviderConfiguration.ResolvedCredentialSlot) -> Double {
-        // If we have a lastSelectedAt, estimate based on time since last use
-        // (In production this would come from actual latency tracking)
-        if let lastSelected = slot.slot.lastSelectedAt {
-            let secondsSince = Date().timeIntervalSince(lastSelected)
-            // Simulate 50-200ms base latency + aging factor
-            let baseLatency = 75.0
-            let agingFactor = min(secondsSince / 3600, 1.0) * 25.0 // up to 25ms extra after 1 hour
-            return baseLatency + agingFactor
-        }
-        return 100.0 // default estimated latency
+        _ = slot
+        // The router does not yet persist measured upstream RTT per slot. Keep
+        // latency neutral so route recency is handled by the explicit LRU
+        // tie-break instead of being conflated with network performance.
+        return 100.0
     }
 
     private struct CostRange {

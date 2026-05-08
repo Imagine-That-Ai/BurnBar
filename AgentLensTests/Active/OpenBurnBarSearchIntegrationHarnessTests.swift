@@ -214,10 +214,16 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         let report = try await harness.drainProjectionQueue(maxSweeps: 16, maxJobsPerSweep: 96, advanceClockBy: 1)
         let elapsedMs = elapsedMilliseconds(since: startedAt)
         let throughputJobsPerSecond = Double(report.completedJobs) / max(0.001, elapsedMs / 1_000)
+        let isCI = openBurnBarIsGitHubActionsRunner()
+        // GitHub's macOS runners can swing heavily during the app-hosted test
+        // bundle. Keep the local guardrail strict, but leave CI enough headroom
+        // to catch real regressions without failing on transient runner load.
+        let maxElapsedMs: Double = isCI ? 35_000 : 15_000
+        let minThroughputJobsPerSecond: Double = isCI ? 5 : 15
 
         XCTAssertGreaterThanOrEqual(report.completedJobs, jobCount)
-        XCTAssertLessThan(elapsedMs, 15_000)
-        XCTAssertGreaterThanOrEqual(throughputJobsPerSecond, 15)
+        XCTAssertLessThan(elapsedMs, maxElapsedMs)
+        XCTAssertGreaterThanOrEqual(throughputJobsPerSecond, minThroughputJobsPerSecond)
         XCTAssertTrue(
             try harness.dataStore.fetchProjectionJobs(statuses: [.queued, .failed, .leased, .running], limit: 1).isEmpty
         )
@@ -328,7 +334,8 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             backend: .ann,
             exactRerankEnabled: true,
             exactRerankLimit: 256,
-            nowProvider: { harness.clock.now() }
+            nowProvider: { harness.clock.now() },
+            storageRootURL: harness.vectorIndexRootURL
         )
         let exactProvider = VectorSemanticCandidateProvider(
             dataStore: harness.dataStore,
@@ -336,7 +343,8 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
             backend: .exact,
             exactRerankEnabled: true,
             exactRerankLimit: 256,
-            nowProvider: { harness.clock.now() }
+            nowProvider: { harness.clock.now() },
+            storageRootURL: harness.vectorIndexRootURL
         )
 
         let query = "reliability hardening checklist rollout"

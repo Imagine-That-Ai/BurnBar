@@ -54,7 +54,7 @@ public struct BurnBarWidgetSnapshot: Codable, Sendable, Hashable {
 // MARK: - Shared App Group Utilities
 
 public enum BurnBarWidgetShared {
-    public static let appGroupIdentifier = "group.com.burnbar.app"
+    public static let appGroupIdentifier = "group.com.openburnbar.app"
     public static let snapshotFilename = "widget_snapshot.json"
 
     /// The shared container URL for the App Group. Returns `nil` if the app group is not configured.

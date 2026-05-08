@@ -411,7 +411,7 @@ private struct EmberLogo: View {
             if reduceMotion {
                 staticLogo
             } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { context in
+                TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { context in
                     let t = context.date.timeIntervalSince(start)
                     animatedLogo(t: t)
                 }

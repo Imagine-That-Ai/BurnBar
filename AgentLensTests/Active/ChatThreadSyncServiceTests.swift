@@ -60,6 +60,35 @@ final class ChatThreadSyncServiceTests: XCTestCase {
         XCTAssertEqual(messages.first?["content"] as? String, "secret prompt")
     }
 
+    func test_syncAfterChatContentConsentRevokedDeletesCloudContentFields() async throws {
+        settingsManager.chatThreadContentCloudBackupEnabled = true
+        settingsManager.chatThreadContentCloudBackupConsentShown = true
+        try seedThread()
+
+        await chatThreadSync.sync()
+
+        var docData = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/chat_threads/test-device-1_thread-1"))
+        XCTAssertEqual(docData["contentIncluded"] as? Bool, true)
+        XCTAssertNotNil(docData["messages"])
+        XCTAssertNotNil(docData["title"])
+        XCTAssertNotNil(docData["preview"])
+
+        settingsManager.chatThreadContentCloudBackupEnabled = false
+        await chatThreadSync.sync()
+
+        docData = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/chat_threads/test-device-1_thread-1"))
+        XCTAssertEqual(docData["contentIncluded"] as? Bool, false)
+        XCTAssertNil(docData["messages"])
+        XCTAssertNil(docData["title"])
+        XCTAssertNil(docData["preview"])
+        XCTAssertFalse(docData.values.contains { value in
+            String(describing: value).contains("secret prompt")
+        })
+        XCTAssertFalse(docData.values.contains { value in
+            String(describing: value).contains("secret response")
+        })
+    }
+
     private func seedThread() throws {
         _ = try dataStore.createChatThread(id: "thread-1", at: Date(timeIntervalSince1970: 1_700_000_000))
         try dataStore.saveChatMessage(

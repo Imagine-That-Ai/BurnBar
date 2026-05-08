@@ -1,0 +1,135 @@
+# iOS App Store Release Runbook
+
+This runbook captures the App Store Connect path for `OpenBurnBarMobile`
+(`com.openburnbar.app`). It exists so the next release can be repeated from
+repo commands plus a short web-only App Store Connect pass.
+
+## Current App Store Connect Shape
+
+- App: `OpenBurnBar`
+- Apple app ID: `6766366964`
+- iOS bundle ID: `com.openburnbar.app`
+- iOS version: `1.0`
+- Linked build: `6`
+- Hosted quota subscription product: `com.openburnbar.hostedQuotaSync.monthly`
+- Subscription reference name: `Hosted Quota Sync Monthly`
+- App Store Server Notifications V2 URL:
+  `https://us-central1-burnbar.cloudfunctions.net/appStoreServerNotificationsV2`
+
+The iOS app is a companion app. It needs sign-in and cloud data to be useful.
+For review, use the seeded Firebase review account and seeded Firestore usage,
+quota, provider-account, device, and rollup data.
+
+## ASC Helper Setup
+
+The App Store Connect helper reads API credentials from environment variables.
+For local operator runs, pull them from Firebase Secret Manager:
+
+```bash
+export APP_STORE_ASC_KEY_ID="$(firebase functions:secrets:access APP_STORE_ASC_KEY_ID --project burnbar)"
+export APP_STORE_ASC_ISSUER_ID="$(firebase functions:secrets:access APP_STORE_ASC_ISSUER_ID --project burnbar)"
+export APP_STORE_ASC_KEY_P8="$(firebase functions:secrets:access APP_STORE_ASC_KEY_P8 --project burnbar)"
+```
+
+Status readback:
+
+```bash
+npm --prefix tools/app-store-connect run status
+```
+
+The status output must show:
+
+- `iosVersion.state` is `READY_FOR_REVIEW` before final submission.
+- `iosVersion.releaseType` is `MANUAL`.
+- `linkedBuild.processingState` is `VALID`.
+- `linkedBuild.buildAudienceType` is `APP_STORE_ELIGIBLE`.
+- `linkedBuild.usesNonExemptEncryption` is `false`.
+- `appReviewDetail.demoAccountRequired` is `true`.
+- `appReviewDetail.demoAccountName` is `app-review@openburnbar.app`.
+- `appReviewDetail.hasNotes` is `true`. App Store Connect does not echo the
+  demo account password in status readback; `prepare-review-metadata` is the
+  write gate for the password.
+- Subscription state is `READY_TO_SUBMIT` before final submission.
+- Subscription `hasReviewScreenshot` is `true`.
+
+## Review Account
+
+Seed the review account with:
+
+```bash
+OPENBURNBAR_REVIEW_EMAIL="app-review@openburnbar.app" \
+OPENBURNBAR_REVIEW_PASSWORD="REDACTED_LOCAL_PASSWORD" \
+node tools/app-store-connect/seed-review-account.js
+```
+
+Do not commit the password. Store the local copy outside the repo, for example
+`/tmp/openburnbar-app-review-credentials.txt` with mode `0600`.
+
+The seed script creates or updates the Firebase Auth user, verifies the email,
+and seeds representative Firestore data:
+
+- two devices (`Review MacBook Pro`, `Review iPad Pro`)
+- Codex hosted quota account
+- Claude Code self-hosted runner account
+- OpenAI usage API account
+- quota snapshots, usage rows, rollups, and sync status
+
+Firebase Email/Password sign-in must stay enabled for App Review unless the
+review account is moved to another supported sign-in method.
+
+## Build Compliance And Review Metadata
+
+The source plist contains:
+
+```xml
+<key>ITSAppUsesNonExemptEncryption</key>
+<false/>
+```
+
+For the already-uploaded build, also patch and verify App Store Connect:
+
+```bash
+set -a
+. /tmp/openburnbar-app-review-credentials.txt
+set +a
+
+npm --prefix tools/app-store-connect run prepare-review-metadata
+```
+
+That command:
+
+1. Sets the linked build's `usesNonExemptEncryption` to `false`.
+2. Sets iOS release mode to `MANUAL`.
+3. Writes App Review login credentials and notes.
+4. Prints a status readback.
+
+## Web-Only App Store Connect Gates
+
+Some gates are still safest in App Store Connect's web UI:
+
+1. Open the iOS version page.
+2. Confirm the build row no longer says `Missing Compliance`.
+3. In **In-App Purchases and Subscriptions**, select
+   `Hosted Quota Sync Monthly`.
+4. In **App Information -> Content Rights**, choose:
+   `No, it does not contain, show, or access third-party content`.
+5. Confirm **App Store Version Release** is set to manual release.
+6. Click **Add for Review**.
+7. Confirm the draft drawer shows `Item Ready to Submit` for iOS app `1.0`.
+8. Stop before **Submit for Review** unless the operator explicitly confirms
+   the official Apple submission.
+
+## Final Submission
+
+`Submit for Review` is the official Apple submission action. Click it only
+after an explicit action-time confirmation from the app owner.
+
+After submission, rerun:
+
+```bash
+npm --prefix tools/app-store-connect run status
+```
+
+Expected state should move from `READY_FOR_REVIEW` to a review state such as
+`WAITING_FOR_REVIEW`. Because release type is `MANUAL`, approval should not
+automatically publish the app to customers.

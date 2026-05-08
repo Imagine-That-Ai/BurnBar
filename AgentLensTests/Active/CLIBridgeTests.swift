@@ -249,9 +249,12 @@ final class CLIBridgeTests: XCTestCase {
 
         let result = parser.events(fromLine: line)
 
+        // Usage is yielded immediately, then tool call is buffered and flushed
+        // when content arrives, so tool call precedes text.
         XCTAssertEqual(result.events.count, 3)
         XCTAssertEqual(result.events[0], .usage(CLIUsageSnapshot(inputTokens: 2, outputTokens: 3, cacheCreationTokens: 0, cacheReadTokens: 0, reasoningTokens: 0)))
-        XCTAssertEqual(result.events[1], .toolUse(name: "search", detail: #"{"q":"burnbar"}"#))
+        // Tool call flushed before text; detail is summarized from the JSON arguments
+        XCTAssertEqual(result.events[1], .toolUse(name: "search", detail: "burnbar"))
         XCTAssertEqual(result.events[2], .text("hi"))
         XCTAssertTrue(result.streamedText)
         XCTAssertFalse(result.done)
@@ -295,5 +298,167 @@ final class CLIBridgeTests: XCTestCase {
         await runtime.cancelHTTPStreamTask(streamID: streamID)
         XCTAssertTrue(task.isCancelled)
         await task.value
+    }
+
+    // MARK: - OpenAI-Compatible SSE Multi-Delta Tool Call Accumulation
+
+    func test_openAICompatibleSSEParser_accumulatesMultiDeltaToolCall() {
+        var parser = OpenAICompatibleSSEParser()
+
+        // First delta: name only, arguments empty — buffered
+        let first = parser.events(fromLine: """
+        data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"Read","arguments":""}}]}}]}
+        """)
+        // Should not emit tool event yet — we buffer until content or [DONE]
+        XCTAssertEqual(first.events.filter { if case .toolUse = $0 { true } else { false } }.count, 0)
+
+        // Second delta: arguments fragment arrives
+        let second = parser.events(fromLine: """
+        data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"/src/main.swift"}}]}}]}
+        """)
+        XCTAssertEqual(second.events.filter { if case .toolUse = $0 { true } else { false } }.count, 0)
+
+        // Third delta: content starts — flush pending tool calls
+        let third = parser.events(fromLine: """
+        data: {"choices":[{"delta":{"content":"Here is the file:"}}]}
+        """)
+        let toolEvents = third.events.filter { if case .toolUse = $0 { true } else { false } }
+        XCTAssertEqual(toolEvents.count, 1)
+        if case .toolUse(let name, let detail) = third.events[0] {
+            XCTAssertEqual(name, "Read")
+            // Accumulated arguments: "" + "/src/main.swift" → summarizeToolArguments extracts path
+            XCTAssertEqual(detail, "/src/main.swift")
+        } else {
+            XCTFail("Expected toolUse event as first event")
+        }
+        XCTAssertEqual(third.events.last, .text("Here is the file:"))
+    }
+
+    func test_openAICompatibleSSEParser_multipleToolCallsAcrossDeltas() {
+        var parser = OpenAICompatibleSSEParser()
+
+        // First tool call: name arrives with empty arguments — buffered
+        let first = parser.events(fromLine: """
+        data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"Read","arguments":""}}]}}]}
+        """)
+        // With accumulation, name-only delta is buffered (not emitted yet)
+        XCTAssertEqual(first.events.count, 0)
+
+        // Second tool call name arrives (different index)
+        let second = parser.events(fromLine: """
+        data: {"choices":[{"delta":{"tool_calls":[{"index":1,"function":{"name":"Bash","arguments":""}}]}}]}
+        """)
+        // Also buffered
+        XCTAssertEqual(second.events.count, 0)
+
+        // Content arrives — flush all pending tool calls, then emit text
+        let third = parser.events(fromLine: """
+        data: {"choices":[{"delta":{"content":"Done."}}]}
+        """)
+        // Should flush 2 tool calls then emit text
+        XCTAssertEqual(third.events.count, 3)
+        XCTAssertEqual(third.events[0], .toolUse(name: "Read", detail: nil))
+        XCTAssertEqual(third.events[1], .toolUse(name: "Bash", detail: nil))
+        XCTAssertEqual(third.events[2], .text("Done."))
+    }
+
+    func test_openAICompatibleSSEParser_accumulatesArgumentsAcrossDeltas() {
+        var parser = OpenAICompatibleSSEParser()
+
+        // Delta 1: tool call name + first argument fragment
+        _ = parser.events(fromLine: """
+        data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"search","arguments":"bu"}}]}}]}
+        """)
+        // No content, no flush — buffered
+
+        // Delta 2: more arguments
+        _ = parser.events(fromLine: """
+        data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"rn"}}]}}]}
+        """)
+        // Still buffered
+
+        // [DONE] — flush all pending
+        let done = parser.events(fromLine: "data: [DONE]")
+        let toolEvents = done.events.filter { if case .toolUse = $0 { true } else { false } }
+        XCTAssertEqual(toolEvents.count, 1)
+        if case .toolUse(let name, let detail) = toolEvents[0] {
+            XCTAssertEqual(name, "search")
+            // Accumulated arguments: "bu" + "rn" = "burn"
+            // summarizeToolArguments gets a non-JSON string, falls back to truncated preview
+            XCTAssertEqual(detail, "burn")
+        }
+    }
+
+    func test_openAICompatibleSSEParser_finishReasonFlushesToolCalls() {
+        var parser = OpenAICompatibleSSEParser()
+
+        // Tool call with arguments
+        _ = parser.events(fromLine: """
+        data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"Bash","arguments":"{\\"command\\":\\"ls\\"}"}}]}}]}
+        """)
+
+        // finish_reason: stop should flush pending tool calls
+        let stop = parser.events(fromLine: """
+        data: {"choices":[{"finish_reason":"stop","delta":{}}]}
+        """)
+        let tools = stop.events.filter { if case .toolUse = $0 { true } else { false } }
+        XCTAssertEqual(tools.count, 1)
+        if case .toolUse(let name, let detail) = tools[0] {
+            XCTAssertEqual(name, "Bash")
+            XCTAssertEqual(detail, "ls")
+        }
+    }
+
+    func test_openAICompatibleSSEParser_finishReasonToolCallsFlushes() {
+        var parser = OpenAICompatibleSSEParser()
+
+        // Tool call buffered
+        _ = parser.events(fromLine: """
+        data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"EditFile","arguments":"{\\"path\\":\\"/foo.swift\\"}"}}]}}]}
+        """)
+
+        // finish_reason: tool_calls should flush
+        let flush = parser.events(fromLine: """
+        data: {"choices":[{"finish_reason":"tool_calls","delta":{}}]}
+        """)
+        let tools = flush.events.filter { if case .toolUse = $0 { true } else { false } }
+        XCTAssertEqual(tools.count, 1)
+        if case .toolUse(let name, let detail) = tools[0] {
+            XCTAssertEqual(name, "EditFile")
+            XCTAssertEqual(detail, "/foo.swift")
+        }
+    }
+
+    func test_openAICompatibleSSEParser_backwardsCompatible_singleDeltaWithContentAndTool() {
+        // Existing behavior: tool name + content in same delta still works
+        var parser = OpenAICompatibleSSEParser()
+        let line = #"""
+        data: {"usage":{"input_tokens":2,"output_tokens":3},"choices":[{"delta":{"content":"hi","tool_calls":[{"function":{"name":"search","arguments":"{\"q\":\"burnbar\"}"}}]}}]}
+        """#
+        let result = parser.events(fromLine: line)
+        // Usage flushed immediately (not a tool call), then tool call buffered,
+        // then content arrives and flushes the tool call.
+        XCTAssertEqual(result.events.count, 3)
+        XCTAssertEqual(result.events[0], .usage(CLIUsageSnapshot(inputTokens: 2, outputTokens: 3, cacheCreationTokens: 0, cacheReadTokens: 0, reasoningTokens: 0)))
+        // Tool call flushed before text
+        XCTAssertEqual(result.streamedText, true)
+    }
+
+    func test_openAICompatibleSSEParser_argumentOnlyDeltaWithoutPriorName() {
+        var parser = OpenAICompatibleSSEParser()
+
+        // Argument fragment arrives without a name for a tool call we haven't seen yet
+        _ = parser.events(fromLine: """
+        data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"path\\":\\"/tmp/test.swift\\"}"}}]}}]}
+        """)
+
+        // [DONE] — should synthesize a generic name
+        let done = parser.events(fromLine: "data: [DONE]")
+        let tools = done.events.filter { if case .toolUse = $0 { true } else { false } }
+        XCTAssertEqual(tools.count, 1)
+        if case .toolUse(let name, let detail) = tools[0] {
+            XCTAssertEqual(name, "tool")  // generic fallback
+            XCTAssertEqual(detail, "/tmp/test.swift")
+        }
     }
 }

@@ -1,11 +1,172 @@
 import AppKit
 import CryptoKit
 import Foundation
+import Network
 import SQLite3
 
 #if canImport(OpenBurnBarCore)
 import OpenBurnBarCore
 #endif
+
+private final class CursorConnectorSecretBroker: @unchecked Sendable {
+    private let keychain: KeychainStore
+    private let routeAccounts: [String: String]
+    private let queue = DispatchQueue(label: "openburnbar.cursor.secret-broker")
+    private var listener: NWListener?
+
+    let bearerToken: String
+    private(set) var port: UInt16 = 0
+
+    var baseURLString: String {
+        "http://127.0.0.1:\(port)"
+    }
+
+    init(keychain: KeychainStore, routeAccounts: [String: String]) {
+        self.keychain = keychain
+        self.routeAccounts = routeAccounts
+        self.bearerToken = Self.randomToken()
+    }
+
+    func start() throws {
+        var lastError: Error?
+        for _ in 0..<20 {
+            let candidate = UInt16.random(in: 49152...65535)
+            do {
+                let ready = DispatchSemaphore(value: 0)
+                var stateError: Error?
+                let parameters = NWParameters.tcp
+                parameters.requiredLocalEndpoint = .hostPort(
+                    host: .ipv4(IPv4Address("127.0.0.1")!),
+                    port: NWEndpoint.Port(rawValue: candidate)!
+                )
+                let listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: candidate)!)
+                listener.stateUpdateHandler = { state in
+                    switch state {
+                    case .ready:
+                        ready.signal()
+                    case .failed(let error):
+                        stateError = error
+                        ready.signal()
+                    default:
+                        break
+                    }
+                }
+                listener.newConnectionHandler = { [weak self] connection in
+                    self?.handle(connection)
+                }
+                listener.start(queue: queue)
+                guard ready.wait(timeout: .now() + 2) == .success else {
+                    listener.cancel()
+                    lastError = NSError(
+                        domain: "CursorConnectorSecretBroker",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "Secret broker did not become ready."]
+                    )
+                    continue
+                }
+                if let stateError {
+                    listener.cancel()
+                    lastError = stateError
+                    continue
+                }
+                self.listener = listener
+                self.port = candidate
+                return
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError ?? NSError(
+            domain: "CursorConnectorSecretBroker",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Could not start connector secret broker."]
+        )
+    }
+
+    func stop() {
+        listener?.cancel()
+        listener = nil
+        port = 0
+    }
+
+    private func handle(_ connection: NWConnection) {
+        connection.start(queue: queue)
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 16 * 1024) { [weak self] data, _, _, _ in
+            guard let self else {
+                connection.cancel()
+                return
+            }
+            let response = self.response(for: data)
+            connection.send(content: response, completion: .contentProcessed { _ in
+                connection.cancel()
+            })
+        }
+    }
+
+    private func response(for data: Data?) -> Data {
+        guard let data,
+              let request = String(data: data, encoding: .utf8) else {
+            return http(status: 400, body: ["error": "empty_request"])
+        }
+
+        let lines = request.components(separatedBy: "\r\n")
+        guard let requestLine = lines.first else {
+            return http(status: 400, body: ["error": "bad_request"])
+        }
+        let parts = requestLine.split(separator: " ")
+        guard parts.count >= 2 else {
+            return http(status: 400, body: ["error": "bad_request"])
+        }
+
+        let authHeader = lines.first { $0.lowercased().hasPrefix("authorization:") } ?? ""
+        guard authHeader == "Authorization: Bearer \(bearerToken)" else {
+            return http(status: 401, body: ["error": "unauthorized"])
+        }
+
+        let path = String(parts[1])
+        guard path.hasPrefix("/secret/") else {
+            return http(status: 404, body: ["error": "not_found"])
+        }
+
+        let routeID = String(path.dropFirst("/secret/".count))
+        guard let account = routeAccounts[routeID] else {
+            return http(status: 404, body: ["error": "unknown_route"])
+        }
+
+        guard let secret = try? keychain.string(for: account, allowUserInteraction: false),
+              let normalized = quotaNonEmpty(secret) else {
+            return http(status: 424, body: ["error": "secret_unavailable"])
+        }
+
+        return http(status: 200, body: ["api_key": normalized])
+    }
+
+    private func http(status: Int, body: [String: String]) -> Data {
+        let payload = (try? JSONSerialization.data(withJSONObject: body, options: [])) ?? Data("{}".utf8)
+        let reason: String
+        switch status {
+        case 200: reason = "OK"
+        case 400: reason = "Bad Request"
+        case 401: reason = "Unauthorized"
+        case 404: reason = "Not Found"
+        case 424: reason = "Failed Dependency"
+        default: reason = "Error"
+        }
+        var header = "HTTP/1.1 \(status) \(reason)\r\n"
+        header += "Content-Type: application/json\r\n"
+        header += "Content-Length: \(payload.count)\r\n"
+        header += "Connection: close\r\n\r\n"
+        return Data(header.utf8) + payload
+    }
+
+    private static func randomToken() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        if SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) != errSecSuccess {
+            return UUID().uuidString + UUID().uuidString
+        }
+        return bytes.map { String(format: "%02x", $0) }.joined()
+    }
+}
 
 @MainActor
 @Observable
@@ -24,6 +185,7 @@ final class CursorConnectorManager {
     var lastError: String?
     var recentRouteLog: [String] = []
     var recentUsageEvents: [RoutedUsageEvent] = []
+    var routedClientSyncStatuses: [RoutedClientTarget: RoutedClientSyncStatus] = [:]
 
     private let supportDirectory: URL
     private let proxyScriptURL: URL
@@ -36,6 +198,8 @@ final class CursorConnectorManager {
     private var usagePollTask: Task<Void, Never>?
     private var routePollTask: Task<Void, Never>?
     private var sessionToken: String = ""
+    private var secretBroker: CursorConnectorSecretBroker?
+    private var secretBrokerRoutes: [String: String] = [:]
     private weak var dataStore: DataStore?
 
     init(settingsManager: SettingsManager = .shared) {
@@ -49,7 +213,7 @@ final class CursorConnectorManager {
 
         if let data = UserDefaults.standard.data(forKey: CursorConnectorConfig.defaultsKey),
            let loaded = try? JSONDecoder().decode(CursorConnectorConfig.self, from: data) {
-            self.config = loaded
+            self.config = Self.normalizedConfig(loaded)
         } else {
             self.config = CursorConnectorConfig()
         }
@@ -67,6 +231,9 @@ final class CursorConnectorManager {
     }
 
     func updateProviderConfig(_ provider: ConnectorProvider, mutate: (inout ConnectorProviderConfig) -> Void) {
+        if !config.providerConfigs.contains(where: { $0.id == provider }) {
+            config.providerConfigs.append(ConnectorProviderConfig(id: provider))
+        }
         guard let idx = config.providerConfigs.firstIndex(where: { $0.id == provider }) else { return }
         var copy = config.providerConfigs[idx]
         mutate(&copy)
@@ -127,7 +294,7 @@ final class CursorConnectorManager {
             }
         }
         if !foundAny {
-            lastError = "Factory settings were found, but no supported Z.ai or MiniMax models were available."
+            lastError = "Factory settings were found, but no supported Z.ai, MiniMax, or Ollama Cloud models were available."
         } else {
             lastError = nil
             config.statusMessage = "Imported supported models from Factory"
@@ -147,6 +314,7 @@ final class CursorConnectorManager {
             // Generate a fresh rotation token for each session to invalidate any
             // tokens that may have been exposed in previous sessions.
             try generateRotationToken()
+            try startSecretBroker()
             try writeProxyScript()
             try writeProxyConfig()
             try await startProxy()
@@ -159,6 +327,7 @@ final class CursorConnectorManager {
             saveConfig()
             beginPollingLogsIfNeeded()
         } catch {
+            stopSecretBroker()
             stopTunnel()
             stopProxy()
             try? restoreCursorSettings()
@@ -175,6 +344,7 @@ final class CursorConnectorManager {
         do {
             stopTunnel()
             stopProxy()
+            stopSecretBroker()
             try restoreCursorSettings()
             config.isEnabled = false
             config.tunnel.publicBaseURL = nil
@@ -219,6 +389,32 @@ final class CursorConnectorManager {
         NSWorkspace.shared.open(URL(string: "https://cursor.com/help/models-and-usage/api-keys")!)
     }
 
+    func syncRoutedClient(_ target: RoutedClientTarget) {
+        do {
+            let syncConfig = try routedClientGatewayConfig()
+            let syncService = RoutedClientConfigSyncService()
+            switch target {
+            case .factory:
+                let urls = try syncService.applyFactoryGatewayConfig(syncConfig)
+                routedClientSyncStatuses[target] = RoutedClientSyncStatus(
+                    target: target,
+                    appliedAt: Date(),
+                    summary: "Synced \(syncConfig.models.count) models to \(urls.map(\.lastPathComponent).joined(separator: " and "))."
+                )
+            case .opencode:
+                let url = try syncService.applyOpenCodeGatewayConfig(syncConfig)
+                routedClientSyncStatuses[target] = RoutedClientSyncStatus(
+                    target: target,
+                    appliedAt: Date(),
+                    summary: "Synced \(syncConfig.models.count) models to \(url.path)."
+                )
+            }
+            lastError = nil
+        } catch {
+            lastError = "\(target.displayName) sync failed: \(error.localizedDescription)"
+        }
+    }
+
     func resetUnsupportedModels() {
         for provider in ConnectorProvider.allCases {
             updateProviderConfig(provider) { config in
@@ -237,6 +433,41 @@ final class CursorConnectorManager {
 
     private func keychainAccount(for provider: ConnectorProvider) -> String {
         "provider.\(provider.rawValue).apiKey"
+    }
+
+    private static func normalizedConfig(_ loaded: CursorConnectorConfig) -> CursorConnectorConfig {
+        var providerConfigs = loaded.providerConfigs
+        for provider in ConnectorProvider.allCases where !providerConfigs.contains(where: { $0.id == provider }) {
+            providerConfigs.append(ConnectorProviderConfig(id: provider))
+        }
+        providerConfigs.sort { lhs, rhs in
+            let lhsIndex = ConnectorProvider.allCases.firstIndex(of: lhs.id) ?? .max
+            let rhsIndex = ConnectorProvider.allCases.firstIndex(of: rhs.id) ?? .max
+            return lhsIndex < rhsIndex
+        }
+        return CursorConnectorConfig(
+            isEnabled: loaded.isEnabled,
+            providerConfigs: providerConfigs,
+            tunnel: loaded.tunnel
+        )
+    }
+
+    private func routedClientGatewayConfig() throws -> RoutedClientGatewayConfig {
+        let models = config.exposedModels
+        guard !models.isEmpty else {
+            throw NSError(domain: "CursorConnector", code: 17, userInfo: [
+                NSLocalizedDescriptionKey: "Choose at least one routed model before syncing external clients."
+            ])
+        }
+        let host = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "127.0.0.1"
+            : settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
+        return RoutedClientGatewayConfig(
+            baseURL: "http://\(host):\(port)/v1",
+            bearerToken: settingsManager.gatewayAuthToken,
+            models: models
+        )
     }
 
     private func validateConfiguration() throws {
@@ -293,22 +524,29 @@ final class CursorConnectorManager {
         struct RouteEntry: Codable {
             let provider: String
             let baseURL: String
-            let keychainService: String
-            let keychainAccount: String
+            let routeID: String
         }
-        let routes = Dictionary(uniqueKeysWithValues: config.enabledProviderConfigs.flatMap { providerConfig in
-            providerConfig.exposedModels.map { model in
-                (
+        var routePairs: [(String, RouteEntry)] = []
+        for providerConfig in config.enabledProviderConfigs {
+            for model in providerConfig.exposedModels {
+                guard let routeID = secretBrokerRoutes[model] else {
+                    throw NSError(
+                        domain: "CursorConnector",
+                        code: 19,
+                        userInfo: [NSLocalizedDescriptionKey: "Secret broker route was not prepared for model \(model). Reconnect the Cursor connector."]
+                    )
+                }
+                routePairs.append((
                     model,
                     RouteEntry(
                         provider: providerConfig.id.rawValue,
                         baseURL: providerConfig.baseURL,
-                        keychainService: OpenBurnBarIdentity.cursorConnectorKeychainService,
-                        keychainAccount: keychainAccount(for: providerConfig.id)
+                        routeID: routeID
                     )
-                )
+                ))
             }
-        })
+        }
+        let routes = Dictionary(uniqueKeysWithValues: routePairs)
         if sessionToken.isEmpty {
             var bytes = [UInt8](repeating: 0, count: 32)
             _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
@@ -320,13 +558,14 @@ final class CursorConnectorManager {
             // Bearer token for proxy auth — required on all non-health endpoints.
             // Regenerated on every connect; Cursor stores session_token separately.
             "tunnel_rotation_token": config.tunnel.tunnelRotationToken ?? "",
+            "secret_broker_url": secretBroker?.baseURLString ?? "",
+            "secret_broker_token": secretBroker?.bearerToken ?? "",
             "rate_limit_requests": config.tunnel.tunnelRateLimitRequests,
             "rate_limit_window": config.tunnel.tunnelRateLimitWindow,
             "routes": routes.mapValues { [
                 "provider": $0.provider,
                 "base_url": $0.baseURL,
-                "keychain_service": $0.keychainService,
-                "keychain_account": $0.keychainAccount
+                "route_id": $0.routeID
             ] },
             "usage_log": usageLogURL.path
         ]
@@ -359,6 +598,35 @@ final class CursorConnectorManager {
         sessionToken = ""
         health.routerListening = false
         try? FileManager.default.removeItem(at: proxyConfigURL)
+    }
+
+    private func startSecretBroker() throws {
+        stopSecretBroker()
+        var modelRouteIDs: [String: String] = [:]
+        var routeAccounts: [String: String] = [:]
+
+        for providerConfig in config.enabledProviderConfigs {
+            let account = keychainAccount(for: providerConfig.id)
+            for model in providerConfig.exposedModels {
+                let routeID = UUID().uuidString
+                modelRouteIDs[model] = routeID
+                routeAccounts[routeID] = account
+            }
+        }
+
+        let broker = CursorConnectorSecretBroker(
+            keychain: keychain,
+            routeAccounts: routeAccounts
+        )
+        try broker.start()
+        secretBroker = broker
+        secretBrokerRoutes = modelRouteIDs
+    }
+
+    private func stopSecretBroker() {
+        secretBroker?.stop()
+        secretBroker = nil
+        secretBrokerRoutes = [:]
     }
 
     private func startTunnel() async throws {
@@ -901,6 +1169,13 @@ final class CursorConnectorManager {
                 return lowercased.contains("glm") || lowercased.contains("z.ai")
             case .minimax:
                 return lowercased.contains("minimax")
+            case .ollama:
+                return lowercased.contains("ollama")
+                    || lowercased.contains(":cloud")
+                    || lowercased.contains("-cloud")
+                    || lowercased.contains("gpt-oss")
+                    || lowercased.contains("deepseek")
+                    || lowercased.contains("qwen")
             }
         }
 
@@ -917,6 +1192,9 @@ final class CursorConnectorManager {
         }
         if normalized.contains("minimax") {
             return .minimax
+        }
+        if normalized.contains("ollama") || normalized.contains("localhost:11434") || normalized.contains("127.0.0.1:11434") {
+            return .ollama
         }
         return nil
     }
@@ -997,7 +1275,7 @@ final class CursorConnectorManager {
     static func proxyScript() -> String {
         """
         #!/usr/bin/env python3
-        import json, ssl, subprocess, sys, uuid, datetime, time, threading
+        import json, ssl, sys, uuid, datetime, time, threading
         from http import HTTPStatus
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
         from urllib.error import HTTPError, URLError
@@ -1009,32 +1287,37 @@ final class CursorConnectorManager {
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 return json.load(f)
 
-        KEYCHAIN_CACHE = {}
+        SECRET_CACHE = {}
 
         def resolve_route_api_key(route):
             direct = route.get("api_key")
             if isinstance(direct, str) and direct.strip():
                 return direct.strip()
-            service = route.get("keychain_service")
-            account = route.get("keychain_account")
-            if not isinstance(service, str) or not isinstance(account, str):
+            route_id = route.get("route_id")
+            config = load_config()
+            broker_url = config.get("secret_broker_url")
+            broker_token = config.get("secret_broker_token")
+            if not isinstance(route_id, str) or not route_id:
                 return None
-            cache_key = (service, account)
-            if cache_key in KEYCHAIN_CACHE:
-                return KEYCHAIN_CACHE[cache_key]
+            if not isinstance(broker_url, str) or not broker_url:
+                return None
+            if not isinstance(broker_token, str) or not broker_token:
+                return None
+            if route_id in SECRET_CACHE:
+                return SECRET_CACHE[route_id]
             try:
-                result = subprocess.run(
-                    ["/usr/bin/security", "find-generic-password", "-w", "-s", service, "-a", account],
-                    check=True,
-                    capture_output=True,
-                    text=True,
+                req = Request(
+                    broker_url.rstrip("/") + "/secret/" + route_id,
+                    headers={"Authorization": "Bearer " + broker_token},
                 )
-            except (FileNotFoundError, subprocess.CalledProcessError):
+                with urlopen(req, timeout=2) as resp:
+                    payload = json.loads(resp.read().decode("utf-8"))
+            except Exception:
                 return None
-            secret = result.stdout.strip()
+            secret = payload.get("api_key") if isinstance(payload, dict) else None
             if not secret:
                 return None
-            KEYCHAIN_CACHE[cache_key] = secret
+            SECRET_CACHE[route_id] = secret
             return secret
 
         def extract_text_parts(content):

@@ -1,0 +1,40 @@
+{
+  "identifier": "OpenBurnBarHostedQuota",
+  "nonRenewingSubscriptions": [],
+  "products": [],
+  "settings": {},
+  "subscriptionGroups": [
+    {
+      "id": "HOSTEDQUOTA",
+      "localizations": [],
+      "name": "OpenBurnBar Cloud",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "4.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "HQMONTH1",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Hosted quota synchronization for OpenBurnBar.",
+              "displayName": "OpenBurnBar Cloud Monthly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.openburnbar.hostedQuotaSync.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "OpenBurnBar Cloud Monthly",
+          "subscriptionGroupID": "HOSTEDQUOTA",
+          "type": "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 2,
+    "minor": 0
+  }
+}

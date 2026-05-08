@@ -294,10 +294,27 @@ enum OpenAICompatibleUsageParser {
 }
 
 struct OpenAICompatibleSSEParser {
+    /// Accumulates tool_call argument fragments across streaming deltas.
+    /// OpenAI-compatible APIs send tool_calls as multiple deltas: the first has the
+    /// function name, subsequent deltas carry incremental `arguments` strings for the
+    /// same index. We buffer these and flush completed tool calls when content appears
+    /// or the stream ends.
+    private var pendingToolCalls: [Int: PendingToolCall] = [:]
+
+    private struct PendingToolCall {
+        let index: Int
+        var name: String
+        var arguments: String
+    }
+
     mutating func events(fromLine line: String) -> (events: [CLIChatStreamEvent], done: Bool, streamedText: Bool) {
         guard line.hasPrefix("data: ") else { return ([], false, false) }
         let payload = String(line.dropFirst(6))
-        guard payload != "[DONE]" else { return ([], true, false) }
+        guard payload != "[DONE]" else {
+            // Stream finished — flush any buffered tool calls.
+            let flushed = flushPendingToolCalls()
+            return (flushed, true, false)
+        }
 
         guard let data = payload.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -317,23 +334,96 @@ struct OpenAICompatibleSSEParser {
 
         if let toolCalls = delta["tool_calls"] as? [[String: Any]] {
             for tc in toolCalls {
-                if let function = tc["function"] as? [String: Any],
-                   let name = function["name"] as? String, !name.isEmpty {
-                    let args = function["arguments"] as? String
-                    events.append(.toolUse(
+                let index = tc["index"] as? Int ?? 0
+                let function = tc["function"] as? [String: Any] ?? [:]
+                let name = function["name"] as? String ?? ""
+                let argsFragment = function["arguments"] as? String ?? ""
+
+                if var existing = pendingToolCalls[index] {
+                    // Subsequent delta — append arguments.
+                    if !name.isEmpty && existing.name.isEmpty {
+                        existing.name = name
+                    }
+                    existing.arguments += argsFragment
+                    pendingToolCalls[index] = existing
+                } else if !name.isEmpty {
+                    // First delta for this tool call — has the name.
+                    pendingToolCalls[index] = PendingToolCall(
+                        index: index,
                         name: name,
-                        detail: args.flatMap { $0.isEmpty ? nil : String($0.prefix(200)) }
-                    ))
+                        arguments: argsFragment
+                    )
+                } else if !argsFragment.isEmpty {
+                    // Argument-only delta for a tool call we haven't seen a name for yet.
+                    // Create a placeholder — the name should arrive in an earlier or
+                    // concurrent delta. If it never does, we'll synthesize a generic name
+                    // at flush time.
+                    pendingToolCalls[index] = PendingToolCall(
+                        index: index,
+                        name: "",
+                        arguments: argsFragment
+                    )
                 }
             }
         }
 
+        // When the model switches from tool calls to text content, all pending tool calls
+        // are complete — flush them before the text event.
         if let content = delta["content"] as? String, !content.isEmpty {
+            events.append(contentsOf: flushPendingToolCalls())
             events.append(.text(content))
             return (events, false, true)
         }
 
+        // Also flush if finish_reason indicates the assistant is done with tool calls but
+        // hasn't started emitting text yet (some APIs set finish_reason on a delta that
+        // only carries content or is empty).
+        if let finishReason = choice["finish_reason"] as? String, finishReason == "stop" || finishReason == "tool_calls" {
+            events.append(contentsOf: flushPendingToolCalls())
+        }
+
         return (events, false, false)
+    }
+
+    /// Emits `.toolUse` events for all buffered tool calls and clears the buffer.
+    private mutating func flushPendingToolCalls() -> [CLIChatStreamEvent] {
+        guard !pendingToolCalls.isEmpty else { return [] }
+        let sorted = pendingToolCalls.keys.sorted()
+        var events: [CLIChatStreamEvent] = []
+        for index in sorted {
+            guard let tc = pendingToolCalls[index] else { continue }
+            let name = tc.name.isEmpty ? "tool" : tc.name
+            let detail = summarizeToolArguments(tc.arguments)
+            events.append(.toolUse(name: name, detail: detail))
+        }
+        pendingToolCalls.removeAll()
+        return events
+    }
+
+    /// Extracts a human-readable summary from raw JSON arguments.
+    /// Prioritizes: path → file_path → command → pattern → query, then falls back to
+    /// a truncated raw-string preview.
+    private func summarizeToolArguments(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        // Try JSON parse for known key extraction.
+        if let obj = try? JSONSerialization.jsonObject(with: trimmed.data(using: .utf8) ?? Data()) as? [String: Any] {
+            for key in ["path", "file_path", "command", "pattern", "query", "url"] {
+                if let value = obj[key] as? String, !value.isEmpty {
+                    return String(value.prefix(200))
+                }
+            }
+            // Fall back to first string value.
+            for (_, value) in obj.sorted(by: { $0.key < $1.key }) {
+                if let str = value as? String, !str.isEmpty {
+                    return String(str.prefix(200))
+                }
+            }
+        }
+
+        // Not valid JSON or no interesting keys — return a truncated preview.
+        return String(trimmed.prefix(200))
     }
 }
 

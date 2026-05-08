@@ -8,7 +8,7 @@ struct NarrativeCardView: View {
     }
 
     var body: some View {
-        if dataStore.usages.isEmpty {
+        if dataStore.totalUsageSessionCount == 0 {
             EmptyView()
         } else {
             GlassCard {

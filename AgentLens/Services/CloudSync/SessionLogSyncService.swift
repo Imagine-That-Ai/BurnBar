@@ -1,6 +1,7 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
+import CryptoKit
 
 /// Sync domain for uploading full session-log Markdown bodies to Firestore.
 ///
@@ -44,7 +45,9 @@ final class SessionLogSyncService: CloudSyncDomain {
                 return
             }
 
-            let logsRef = context.firestoreGateway.collection("users").document(uid).collection("session_logs")
+            let userRef = context.firestoreGateway.collection("users").document(uid)
+            let logsRef = userRef.collection("session_logs")
+            let sessionModelMap = (try? context.dataStore.sessionModelMap()) ?? [:]
 
             for record in unsynced {
                 let markdown = SessionLogMarkdownFormatter.markdown(for: record)
@@ -53,46 +56,80 @@ final class SessionLogSyncService: CloudSyncDomain {
                     .replacingOccurrences(of: "/", with: "_")
                 let docId = "\(context.deviceId)_\(safeId)"
                 let manifestRef = logsRef.document(docId)
+                let bodyHash = Self.sha256Hex(markdown)
+                let model = sessionModelMap["\(record.provider.rawValue):\(record.sessionId)"] ?? "unknown"
+
+                if let existing = try await manifestRef.getData(),
+                   existing["bodyHash"] as? String == bodyHash,
+                   existing["chunkMetadataVersion"] as? Int == Self.chunkMetadataVersion {
+                    try context.dataStore.markSessionLogsSynced(ids: [record.id])
+                    continue
+                }
 
                 let chunks = Self.chunkUTF8String(markdown, maxBytes: 900_000)
 
-                // Write manifest
                 var manifest: [String: Any] = [
                     "id": record.id,
                     "deviceId": context.deviceId,
                     "provider": record.provider.rawValue,
+                    "sessionId": record.sessionId,
                     "sourceType": record.sourceType.rawValue,
                     "projectName": record.projectName,
                     "inferredTaskTitle": record.inferredTaskTitle,
                     "messageCount": record.messageCount,
                     "chunkCount": chunks.count,
                     "byteCount": markdown.utf8.count,
+                    "bodyHash": bodyHash,
+                    "chunkSize": 900_000,
+                    "chunkHashes": chunks.map(Self.sha256Hex),
+                    "chunkMetadataVersion": Self.chunkMetadataVersion,
+                    "model": model,
                     "updatedAt": FieldValue.serverTimestamp()
                 ]
                 if let start = record.startTime { manifest["startTime"] = Timestamp(date: start) }
                 if let end = record.endTime { manifest["endTime"] = Timestamp(date: end) }
 
-                try await withCloudSyncRetry(
-                    policy: context.retryPolicy,
-                    circuitBreaker: context.circuitBreaker,
-                    domain: "sessionLog.manifest"
-                ) {
-                    try await manifestRef.setData(manifest, merge: true)
-                }
+                var writes: [(data: [String: Any], document: CloudSyncDocumentGateway, merge: Bool)] = [
+                    (manifest, manifestRef, true)
+                ]
 
-                // Write chunks as sub-documents
                 let chunksRef = manifestRef.collection("chunks")
                 for (idx, chunk) in chunks.enumerated() {
+                    let snippet = chunk
+                        .replacingOccurrences(of: "\n", with: " ")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    writes.append(([
+                        "index": idx,
+                        "body": chunk,
+                        "hash": Self.sha256Hex(chunk),
+                        "uid": uid,
+                        "docId": docId,
+                        "conversationId": record.id,
+                        "sessionId": record.sessionId,
+                        "deviceId": context.deviceId,
+                        "provider": record.provider.rawValue,
+                        "model": model,
+                        "projectName": record.projectName,
+                        "title": record.summaryTitle ?? record.inferredTaskTitle,
+                        "snippet": String(snippet.prefix(500)),
+                        "terms": Self.normalizedTerms(from: chunk + " " + record.inferredTaskTitle + " " + record.projectName + " " + model),
+                        "bodyHash": bodyHash,
+                        "schemaVersion": Self.chunkMetadataVersion,
+                        "updatedAt": FieldValue.serverTimestamp()
+                    ], chunksRef.document(String(idx)), true))
+                }
+
+                for start in stride(from: 0, to: writes.count, by: 450) {
+                    let batch = context.firestoreGateway.batch()
+                    for write in writes[start..<min(start + 450, writes.count)] {
+                        batch.setData(write.data, forDocument: write.document, merge: write.merge)
+                    }
                     try await withCloudSyncRetry(
                         policy: context.retryPolicy,
                         circuitBreaker: context.circuitBreaker,
-                        domain: "sessionLog.chunk"
+                        domain: "sessionLog.batch"
                     ) {
-                        try await chunksRef.document(String(idx)).setData([
-                            "index": idx,
-                            "body": chunk,
-                            "updatedAt": FieldValue.serverTimestamp()
-                        ], merge: true)
+                        try await batch.commit()
                     }
                 }
             }
@@ -138,6 +175,28 @@ final class SessionLogSyncService: CloudSyncDomain {
         }
         return chunks.isEmpty ? [string] : chunks
     }
+
+    private static let chunkMetadataVersion = 1
+
+    private static func normalizedTerms(from text: String) -> [String] {
+        let stopwords: Set<String> = ["the", "and", "for", "with", "that", "this", "from", "how", "what", "where", "when", "why", "are", "was"]
+        let parts = text
+            .lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 2 && !stopwords.contains($0) }
+        var seen = Set<String>()
+        var terms: [String] = []
+        for part in parts where seen.insert(part).inserted {
+            terms.append(part)
+            if terms.count >= 250 { break }
+        }
+        return terms
+    }
+
+    private static func sha256Hex(_ text: String) -> String {
+        let digest = SHA256.hash(data: Data(text.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
 }
 
 extension CloudSyncService {
@@ -150,84 +209,20 @@ extension CloudSyncService {
     /// Gated separately on `sessionLogCloudBackupEnabled`.
     /// Uses its own dirty flag (`logSyncedAt`) so it is independent of metadata sync.
     func uploadPendingSessionLogs() async {
-        guard accountManager.isFirebaseAvailable,
-              accountManager.isSignedIn,
-              accountManager.isCloudSyncEnabled,
-              settingsManager.sessionLogCloudBackupEnabled,
-              !syncIsSuppressed(),
-              !isSyncing,
-              let uid = Auth.auth().currentUser?.uid else { return }
-
+        guard !isSyncing else { return }
         isSyncing = true
         lastSyncError = nil
+        defer { isSyncing = false }
 
-        do {
-            let unsynced = try dataStore.fetchUnsyncedSessionLogs(limit: 50)
-            guard !unsynced.isEmpty else {
-                isSyncing = false
-                lastSyncDate = Date()
-                return
-            }
-
-            let deviceId = accountManager.deviceId
-            let logsRef = db.collection("users").document(uid).collection("session_logs")
-
-            for record in unsynced {
-                let markdown = SessionLogMarkdownFormatter.markdown(for: record)
-                let safeId = record.id
-                    .replacingOccurrences(of: ":", with: "_")
-                    .replacingOccurrences(of: "/", with: "_")
-                let docId = "\(deviceId)_\(safeId)"
-                let manifestRef = logsRef.document(docId)
-
-                let chunks = Self.chunkUTF8String(markdown, maxBytes: 900_000)
-
-                // Write manifest
-                var manifest: [String: Any] = [
-                    "id": record.id,
-                    "deviceId": deviceId,
-                    "provider": record.provider.rawValue,
-                    "sourceType": record.sourceType.rawValue,
-                    "projectName": record.projectName,
-                    "inferredTaskTitle": record.inferredTaskTitle,
-                    "messageCount": record.messageCount,
-                    "chunkCount": chunks.count,
-                    "byteCount": markdown.utf8.count,
-                    "updatedAt": FieldValue.serverTimestamp()
-                ]
-                let safeStart = record.startTime.map { TimestampNormalizationUtility.firestoreSafeDate($0) }
-                let safeEnd = record.endTime.map { rawEnd in
-                    let normalizedEnd = TimestampNormalizationUtility.firestoreSafeDate(rawEnd, fallback: safeStart ?? rawEnd)
-                    if let safeStart {
-                        return max(safeStart, normalizedEnd)
-                    }
-                    return normalizedEnd
-                }
-                if let safeStart { manifest["startTime"] = Timestamp(date: safeStart) }
-                if let safeEnd { manifest["endTime"] = Timestamp(date: safeEnd) }
-
-                try await manifestRef.setData(manifest, merge: true)
-
-                // Write chunks as sub-documents
-                let chunksRef = manifestRef.collection("chunks")
-                for (idx, chunk) in chunks.enumerated() {
-                    try await chunksRef.document(String(idx)).setData([
-                        "index": idx,
-                        "body": chunk,
-                        "updatedAt": FieldValue.serverTimestamp()
-                    ], merge: true)
-                }
-            }
-
-            let ids = unsynced.map(\.id)
-            try dataStore.markSessionLogsSynced(ids: ids)
-            lastSyncDate = Date()
-            lastSyncError = nil
-        } catch {
-            recordSyncError(error)
-        }
-
-        isSyncing = false
+        let context = CloudSyncContext(
+            dataStore: dataStore,
+            accountManager: accountManager,
+            settingsManager: settingsManager
+        )
+        let service = SessionLogSyncService(context: context)
+        await service.sync()
+        lastSyncDate = service.lastSyncDate
+        lastSyncError = service.lastSyncError
     }
 
     // MARK: - Session Log Download (Firestore read-back)

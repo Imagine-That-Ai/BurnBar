@@ -66,14 +66,14 @@ struct ProviderCard: View {
                             UnifiedMiniStat(label: "Cache R", value: formatTokens(summary.modelBreakdown.reduce(0) { $0 + $1.cacheReadTokens }))
                         }
 
-                        if !summary.modelBreakdown.isEmpty {
+                        if !rankedModelBreakdown.isEmpty {
                             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
                                 Text("Top Models")
                                     .font(UnifiedDesignSystem.Typography.tiny)
                                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                                     .textCase(.uppercase)
 
-                                ForEach(Array(summary.modelBreakdown.prefix(3).enumerated()), id: \.element.id) { index, model in
+                                ForEach(Array(rankedModelBreakdown.prefix(3).enumerated()), id: \.element.id) { index, model in
                                     HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                                         Capsule()
                                             .fill(theme.chartColors[index % theme.chartColors.count])
@@ -86,7 +86,7 @@ struct ProviderCard: View {
 
                                         Spacer()
 
-                                        Text("\(model.percentage, specifier: "%.0f")%")
+                                        Text("\(modelSharePercentage(model), specifier: "%.0f")%")
                                             .font(UnifiedDesignSystem.Typography.monoTiny)
                                             .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
@@ -102,6 +102,21 @@ struct ProviderCard: View {
                 .padding(UnifiedDesignSystem.Spacing.lg)
         }
         .onTapGesture(perform: onTap)
+    }
+
+    private var rankedModelBreakdown: [ModelUsage] {
+        DashboardUsageRanking.sortedModelUsages(
+            summary.modelBreakdown,
+            displayMode: settingsManager.usageDisplayMode
+        )
+    }
+
+    private func modelSharePercentage(_ model: ModelUsage) -> Double {
+        DashboardUsageRanking.modelUsagePercentage(
+            model,
+            in: summary,
+            displayMode: settingsManager.usageDisplayMode
+        )
     }
 
     @ViewBuilder
@@ -297,8 +312,8 @@ struct ProviderDashboardView: View {
 
                                 HStack {
                                     Text(settingsManager.usageDisplayMode == .currency
-                                        ? "\(model.percentage, specifier: "%.0f")% of provider spend"
-                                        : "\(model.percentage, specifier: "%.0f")% of provider tokens")
+                                        ? "\(modelSharePercentage(model), specifier: "%.0f")% of provider spend"
+                                        : "\(modelSharePercentage(model), specifier: "%.0f")% of provider tokens")
                                         .font(UnifiedDesignSystem.Typography.tiny)
                                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
@@ -408,39 +423,55 @@ struct ProviderDashboardView: View {
     }
 
     private var totalTokens: String {
-        formatTokens(usages.reduce(0) { $0 + $1.totalTokens })
+        formatTokens(providerSummary?.totalTokens ?? usages.reduce(0) { $0 + $1.totalTokens })
     }
 
     private var primaryProviderMetric: String {
-        let cost = usages.reduce(0) { $0 + $1.cost }
-        let tokens = usages.reduce(0) { $0 + $1.totalTokens }
+        let cost = providerSummary?.totalCost ?? usages.reduce(0) { $0 + $1.cost }
+        let tokens = providerSummary?.totalTokens ?? usages.reduce(0) { $0 + $1.totalTokens }
         return settingsManager.formatUsageMetric(cost: cost, tokens: tokens)
     }
 
     private var averageSessionMetric: String {
-        guard !usages.isEmpty else {
+        let count = providerSummary?.sessionCount ?? usages.count
+        guard count > 0 else {
             return settingsManager.usageDisplayMode == .currency ? "$0.00" : "0"
         }
         if settingsManager.usageDisplayMode == .currency {
-            let value = usages.reduce(0) { $0 + $1.cost } / Double(usages.count)
+            let value = (providerSummary?.totalCost ?? usages.reduce(0) { $0 + $1.cost }) / Double(count)
             return value.formatAsCost()
         }
-        let t = usages.reduce(0) { $0 + $1.totalTokens } / usages.count
+        let t = (providerSummary?.totalTokens ?? usages.reduce(0) { $0 + $1.totalTokens }) / count
         return t.formatAsTokenVolume()
     }
 
     private var topModels: [ModelUsage] {
         Array(
-            dataStore
-                .providerSummaries(in: timeRange.dateRange())
-                .first(where: { $0.provider == provider })?
-                .modelBreakdown
-                .prefix(5) ?? []
+            DashboardUsageRanking.sortedModelUsages(
+                providerSummary?.modelBreakdown ?? [],
+                displayMode: settingsManager.usageDisplayMode
+            )
+            .prefix(5)
         )
     }
 
     private var topModelName: String {
         topModels.first?.modelName ?? "None"
+    }
+
+    private var providerSummary: ProviderSummary? {
+        dataStore
+            .providerSummaries(for: timeRange)
+            .first(where: { $0.provider == provider })
+    }
+
+    private func modelSharePercentage(_ model: ModelUsage) -> Double {
+        guard let providerSummary else { return 0 }
+        return DashboardUsageRanking.modelUsagePercentage(
+            model,
+            in: providerSummary,
+            displayMode: settingsManager.usageDisplayMode
+        )
     }
 
 

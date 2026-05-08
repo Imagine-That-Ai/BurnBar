@@ -7,15 +7,20 @@ struct ConversationIndexingReport: Equatable {
     var skippedRecordCount: Int = 0
     var enqueuedProjectionJobCount: Int = 0
 
-    static let empty = ConversationIndexingReport()
+    static var empty: ConversationIndexingReport {
+        ConversationIndexingReport()
+    }
 }
 
 
 final class ConversationIndexer {
-    static let shared = ConversationIndexer()
-    private static let fileModifiedAtToleranceSeconds: TimeInterval = 0.001
-    private static let dateFieldToleranceSeconds: TimeInterval = 0.001
-    private static let writeYieldInterval = 64
+    static var shared: ConversationIndexer {
+        ConversationIndexer()
+    }
+
+    private static var fileModifiedAtToleranceSeconds: TimeInterval { 0.001 }
+    private static var dateFieldToleranceSeconds: TimeInterval { 0.001 }
+    private static var writeYieldInterval: Int { 64 }
 
     private init() {}
 

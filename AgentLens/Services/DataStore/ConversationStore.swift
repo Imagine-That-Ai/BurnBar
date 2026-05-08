@@ -505,12 +505,19 @@ final class ConversationStore: Sendable {
             piecesJSON = try OpenBurnBarDatabase.encodeTranscriptPieces(message.transcriptPieces)
         }
 
+        let attachmentsJSON: String?
+        if message.attachments.isEmpty {
+            attachmentsJSON = nil
+        } else {
+            attachmentsJSON = try OpenBurnBarDatabase.encodeChatAttachments(message.attachments)
+        }
+
         try dbQueue.write { db in
             try Self.upsertChatThread(threadID, at: message.timestamp, db: db)
             try db.execute(
                 sql: """
-                INSERT OR REPLACE INTO chat_messages (id, threadId, role, content, timestamp, cliUsed, transcriptPiecesJSON)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO chat_messages (id, threadId, role, content, timestamp, cliUsed, transcriptPiecesJSON, attachmentsJSON)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     message.id,
@@ -519,7 +526,8 @@ final class ConversationStore: Sendable {
                     message.content,
                     message.timestamp,
                     message.cliUsed,
-                    piecesJSON
+                    piecesJSON,
+                    attachmentsJSON
                 ]
             )
         }
@@ -944,13 +952,15 @@ final class ConversationStore: Sendable {
         }
 
         let pieces = OpenBurnBarDatabase.decodeTranscriptPieces(row["transcriptPiecesJSON"] as? String) ?? []
+        let attachments = OpenBurnBarDatabase.decodeChatAttachments(row["attachmentsJSON"] as? String) ?? []
         return ChatMessageRecord(
             id: id,
             role: role,
             content: content,
             timestamp: ts,
             cliUsed: row["cliUsed"] as? String,
-            transcriptPieces: pieces
+            transcriptPieces: pieces,
+            attachments: attachments
         )
     }
 

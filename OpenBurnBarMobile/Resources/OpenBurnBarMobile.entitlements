@@ -20,7 +20,17 @@
     <!-- App Group for sharing widget data with the WidgetKit extension. -->
     <key>com.apple.security.application-groups</key>
     <array>
-        <string>group.com.burnbar.app</string>
+        <string>group.com.openburnbar.app</string>
+    </array>
+
+    <!-- Lets iPhone/iPad read the OpenBurnBar iCloud Drive archive created by the Mac app. -->
+    <key>com.apple.developer.icloud-container-identifiers</key>
+    <array>
+        <string>iCloud.com.openburnbar.app</string>
+    </array>
+    <key>com.apple.developer.icloud-services</key>
+    <array>
+        <string>CloudDocuments</string>
     </array>
 </dict>
 </plist>

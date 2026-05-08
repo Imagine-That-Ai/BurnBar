@@ -71,6 +71,70 @@ final class ProviderAccountContractTests: XCTestCase {
         XCTAssertEqual(decoded.schemaVersion, 1)
     }
 
+    func test_quotaSnapshot_decodesDesktopSyncedQuotaShape() throws {
+        let json = """
+        {
+          "id": "cursor_unattributed_default",
+          "provider": "Cursor",
+          "providerID": "cursor",
+          "sourceKind": "officialAPI",
+          "sourceId": "default",
+          "sourceID": "default",
+          "fetchedAt": "\(isoDate)",
+          "source": "officialAPI",
+          "confidence": "exact",
+          "buckets": [
+            {
+              "name": "cursor-plan",
+              "used": 25,
+              "limit": 100,
+              "remaining": 75,
+              "window": "monthly",
+              "meta": {
+                "label": "Plan",
+                "unit": "requests",
+                "isEstimated": "false"
+              }
+            }
+          ],
+          "schemaVersion": 2,
+          "updatedAt": "\(isoDate)"
+        }
+        """
+
+        let decoded = try decoder().decode(ProviderQuotaSnapshot.self, from: Data(json.utf8))
+
+        XCTAssertEqual(decoded.provider, "Cursor")
+        XCTAssertEqual(decoded.providerID, ProviderID(rawValue: "cursor"))
+        XCTAssertEqual(decoded.sourceKind, .officialAPI)
+        XCTAssertEqual(decoded.sourceID, "default")
+        XCTAssertEqual(decoded.confidence, .high)
+        XCTAssertEqual(decoded.buckets.first?.name, "cursor-plan")
+        XCTAssertEqual(decoded.buckets.first?.meta?["label"], "Plan")
+    }
+
+    func test_quotaSnapshot_mapsUnavailableConfidenceToStale() throws {
+        let json = """
+        {
+          "id": "openai_unattributed_default",
+          "provider": "OpenAI",
+          "providerID": "openai",
+          "sourceKind": "officialAPI",
+          "sourceId": "default",
+          "fetchedAt": "\(isoDate)",
+          "source": "officialAPI",
+          "confidence": "unavailable",
+          "buckets": [],
+          "schemaVersion": 2,
+          "updatedAt": "\(isoDate)"
+        }
+        """
+
+        let decoded = try decoder().decode(ProviderQuotaSnapshot.self, from: Data(json.utf8))
+
+        XCTAssertEqual(decoded.confidence, .stale)
+    }
+
     func test_quotaSnapshot_encodesV2AccountIdentityAndCompatibilitySourceKeys() throws {
         let date = try XCTUnwrap(ISO8601DateFormatter().date(from: isoDate))
         let snapshot = ProviderQuotaSnapshot(

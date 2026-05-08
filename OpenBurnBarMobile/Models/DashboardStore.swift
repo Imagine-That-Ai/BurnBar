@@ -8,6 +8,7 @@ import WidgetKit
 @MainActor
 final class DashboardStore {
     private let firestore: FirestoreRepository
+    private let functions: FunctionsRepository
 
     private(set) var isLoading = false
     private(set) var error: String?
@@ -22,9 +23,14 @@ final class DashboardStore {
     private(set) var isListening = false
 
     private var listener: ListenerRegistration?
+    private var attemptedRollupRebuild = false
 
-    init(firestore: FirestoreRepository = FirestoreRepository()) {
+    init(
+        firestore: FirestoreRepository = FirestoreRepository(),
+        functions: FunctionsRepository = FunctionsRepository()
+    ) {
         self.firestore = firestore
+        self.functions = functions
     }
 
     /// Initial load called on first view appear.
@@ -34,12 +40,23 @@ final class DashboardStore {
     }
 
     func refresh() async {
+        if AppStoreScreenshotMode.isEnabled {
+            applyRollups(AppStoreScreenshotData.usageRollups)
+            error = nil
+            isLoading = false
+            return
+        }
         isLoading = true
         error = nil
         defer { isLoading = false }
 
         do {
-            let rollups = try await firestore.fetchRollups()
+            var rollups = try await firestore.fetchRollups()
+            if rollups.isEmpty && !attemptedRollupRebuild {
+                attemptedRollupRebuild = true
+                try await functions.rebuildUsageRollups()
+                rollups = try await firestore.fetchRollups()
+            }
             applyRollups(rollups)
         } catch {
             self.error = error.localizedDescription
@@ -47,6 +64,7 @@ final class DashboardStore {
     }
 
     func startListening() {
+        guard !AppStoreScreenshotMode.isEnabled else { return }
         guard !isListening else { return }
         isListening = true
         listener?.remove()
@@ -122,7 +140,7 @@ final class DashboardStore {
 
         do {
             try BurnBarWidgetShared.writeSnapshot(snapshot)
-            WidgetCenter.shared.reloadTimelines(ofKind: "com.burnbar.app.widget")
+            WidgetCenter.shared.reloadTimelines(ofKind: "com.openburnbar.app.widget")
         } catch {
             // Silently fail — widget will show placeholder until next successful write.
             // Do NOT surface widget I/O errors to the user dashboard.

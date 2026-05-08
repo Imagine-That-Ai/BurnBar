@@ -13,7 +13,10 @@ on:
 
 jobs:
   openburnbar-pr:
-    runs-on: macos-15
+    # Use the current GA macOS/Xcode image for the app target. The macOS 15
+    # image's Xcode 16.4 Swift frontend crashes while lowering lazy global
+    # initializers in the large OpenBurnBar SwiftUI target, before tests run.
+    runs-on: macos-26
     timeout-minutes: 30
     env:
       INTERNAL_RUN: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
@@ -40,7 +43,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
 
@@ -71,27 +74,27 @@ jobs:
       - name: Build OpenBurnBar Functions
         run: npm --prefix functions run build
 
-      # BLOCKER: Functions unit tests do not exist yet.
-      # When a test suite is added under functions/, replace this echo with:
-      #   npm --prefix functions test
       - name: Run OpenBurnBar Functions tests
-        run: echo "Functions test suite not yet implemented; skipping."
+        run: npm --prefix functions test
 
       - name: Run OpenBurnBar Swift tests
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
 
       - name: Run OpenBurnBar app tests
-        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
+        # Xcode 16.4 can crash in SwiftEmitModule while lowering lazy global
+        # initializers for this large SwiftUI app target. The script keeps this
+        # as a real test gate while disabling the brittle batch compile path.
+        run: ./scripts/test-openburnbar-app.sh
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
 
       - name: Extract code coverage
-        if: always()
+        if: always() && hashFiles('.derived-data/OpenBurnBar_TestCoverage.xcresult/**') != ''
         run: ./scripts/extract-coverage.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-coverage.json"
 
       - name: Compute diff coverage
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && hashFiles('openburnbar-coverage.json') != ''
         run: ./scripts/diff-coverage.sh origin/main "$GITHUB_WORKSPACE/openburnbar-coverage.json" > "$GITHUB_WORKSPACE/openburnbar-diff-coverage.json"
 
       - name: Post coverage summary
@@ -149,12 +152,8 @@ jobs:
       - name: Run OpenBurnBar extension-host tests
         run: ./scripts/test-openburnbar-extension-host.sh
 
-      # BLOCKER: Firestore rules emulator tests require a rules test suite
-      # (e.g., @firebase/rules-unit-testing) that does not yet exist in the repo.
-      # When rules tests are added, replace this echo with:
-      #   firebase emulators:exec --only firestore "npm --prefix firestore-rules-tests test"
       - name: Run Firestore rules emulator tests
-        run: echo "Firestore rules emulator tests not yet implemented; skipping."
+        run: npm --prefix functions run test:firestore-rules
 
       # CodeQL analysis is enforced by the separate .github/workflows/codeql.yml
       # workflow which runs security-extended scans for Swift, JavaScript/TypeScript,

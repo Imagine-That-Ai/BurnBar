@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import OpenBurnBarCore
 
 // MARK: - Hermes Popover Chat View
 
@@ -11,6 +13,12 @@ struct HermesPopoverChatView: View {
     var settingsManager: SettingsManager
     var onDismissChat: () -> Void
     var onOpenDashboardWithChat: () -> Void
+
+    /// Atom router scoped to the popover. Owns the chip-detail popover
+    /// presentation and broadcasts `Notification.Name.hermesAtomActivated`
+    /// on confirm so the surrounding menu bar surfaces can route the
+    /// activation (open dashboard, switch tab, surface settings, …).
+    @State private var atomRouter = HermesAtomRouter()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,8 +40,26 @@ struct HermesPopoverChatView: View {
         }
         .frame(width: 340)
         .background(DesignSystem.Colors.background)
+        .environment(\.hermesAtomNavigator, atomRouter)
+        .popover(item: Binding(
+            get: { atomRouter.pending },
+            set: { atomRouter.pending = $0 }
+        )) { pending in
+            HermesAtomDetailPopover(
+                atom: pending.atom,
+                label: pending.label,
+                onOpen: {
+                    atomRouter.confirm(pending)
+                    atomRouter.pending = nil
+                }
+            )
+        }
         .onAppear {
             controller.ensureChatWorkspaceDirectoryExists()
+            // Warm pretext + install (a no-op) onPerform so the contract
+            // is consistent with `ChatPanel`. Notifications still fire.
+            PretextEngine.shared.start()
+            atomRouter.onPerform = { _ in }
             Task {
                 await controller.probeHermesAvailability()
                 await controller.probeOpenClawAvailability()
@@ -210,37 +236,111 @@ struct HermesPopoverChatView: View {
     // MARK: - Input Row
 
     private var inputRow: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
-            TextField(popoverInputPlaceholder, text: $controller.inputText)
-                .textFieldStyle(.plain)
-                .font(DesignSystem.Typography.body)
-                .onSubmit {
-                    Task { await sendMessage() }
-                }
+        VStack(spacing: 0) {
+            if !controller.pendingAttachments.isEmpty || controller.attachmentError != nil {
+                ChatAttachmentTray(
+                    attachments: controller.pendingAttachments,
+                    isHermes: controller.chatBackend == .hermes,
+                    attachmentError: controller.attachmentError,
+                    onRemove: { controller.removeAttachment($0) },
+                    onReveal: { revealAttachment($0) }
+                )
+            }
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                attachmentMenu
+                TextField(popoverInputPlaceholder, text: $controller.inputText)
+                    .textFieldStyle(.plain)
+                    .font(DesignSystem.Typography.body)
+                    .onSubmit {
+                        Task { await sendMessage() }
+                    }
 
-            if controller.isStreaming {
-                Button {
-                    controller.cancelGeneration()
-                } label: {
-                    Image(systemName: "stop.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundStyle(DesignSystem.Colors.error)
+                if controller.isStreaming {
+                    Button {
+                        controller.cancelGeneration()
+                    } label: {
+                        Image(systemName: "stop.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(DesignSystem.Colors.error)
+                    }
+                    .buttonStyle(.plain)
+                } else if popoverSendEnabled {
+                    Button {
+                        Task { await sendMessage() }
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-            } else if !controller.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Button {
-                    Task { await sendMessage() }
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                }
-                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.sm + 2)
+        }
+        .background(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+    }
+
+    private var popoverSendEnabled: Bool {
+        !controller.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !controller.pendingAttachments.isEmpty
+    }
+
+    @ViewBuilder
+    private var attachmentMenu: some View {
+        Menu {
+            Button {
+                pickFiles()
+            } label: {
+                Label("Choose Files…", systemImage: "folder")
+            }
+            Button {
+                pickImagesFromPhotos()
+            } label: {
+                Label("Photos…", systemImage: "photo.on.rectangle")
+            }
+        } label: {
+            Image(systemName: "paperclip")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                .frame(width: 26, height: 26)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .help("Attach files")
+    }
+
+    private func pickFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if panel.runModal() == .OK {
+            for url in panel.urls {
+                controller.addAttachment(from: url)
             }
         }
-        .padding(.horizontal, DesignSystem.Spacing.md)
-        .padding(.vertical, DesignSystem.Spacing.sm + 2)
-        .background(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+    }
+
+    private func pickImagesFromPhotos() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [.image, .pdf]
+        panel.directoryURL = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
+        if panel.runModal() == .OK {
+            for url in panel.urls {
+                controller.addAttachment(from: url)
+            }
+        }
+    }
+
+    private func revealAttachment(_ attachment: HermesAttachment) {
+        let url = controller.chatWorkspaceURL.appendingPathComponent(attachment.workspaceRelativePath)
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
     }
 
     // MARK: - Bottom Bar
@@ -352,18 +452,30 @@ private struct HermesPopoverBubble: View {
                     .scaleEffect(0.85)
             }
 
-            ForEach(transcript) { piece in
-                switch piece.kind {
-                case .toolUse:
-                    compactToolPill(piece)
-                case .text:
-                    let isLast = piece.id == transcript.last(where: { $0.kind == .text })?.id
-                    let display = piece.value + (isStreaming && isLast ? "▍" : "")
-                    if !display.isEmpty {
-                        Text(display)
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            .textSelection(.enabled)
+            ForEach(popoverGroupedTranscript) { group in
+                Group {
+                    switch group {
+                    case .toolGroup(let pieces):
+                        popoverToolGroupStrip(pieces)
+                    case .single(let piece):
+                        let isLast = piece.id == transcript.last(where: { $0.kind == .text })?.id
+                        let display = piece.value + (isStreaming && isLast ? "▍" : "")
+                        // Use atom-aware rendering for completed assistant
+                        // turns; streaming/error keeps plain `Text` so chips
+                        // never thrash mid-stream.
+                        let useAtomRendering = !isStreaming && !display.isEmpty
+                        if !display.isEmpty {
+                            Group {
+                                if useAtomRendering {
+                                    HermesRichBubble(text: piece.value, baseSize: 12)
+                                        .frame(maxWidth: 260, alignment: .leading)
+                                } else {
+                                    Text(display)
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                        .textSelection(.enabled)
+                                }
+                            }
                             .padding(.horizontal, DesignSystem.Spacing.sm + 2)
                             .padding(.vertical, DesignSystem.Spacing.xs + 3)
                             .background {
@@ -387,10 +499,32 @@ private struct HermesPopoverBubble: View {
                                     .strokeBorder(DesignSystem.Colors.mercuryGradient, lineWidth: 0.75)
                                 }
                             }
+                        }
                     }
                 }
             }
         }
+    }
+
+    // MARK: - Popover Tool Group Strip
+
+    @ViewBuilder
+    private func popoverToolGroupStrip(_ pieces: [ChatTranscriptPiece]) -> some View {
+        let reversedPieces = Array(pieces.reversed())
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(reversedPieces) { piece in
+                    compactToolPill(piece)
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    // MARK: - Popover Transcript Grouping
+
+    private var popoverGroupedTranscript: [TranscriptGroup] {
+        TranscriptGroup.group(transcript)
     }
 
     @ViewBuilder

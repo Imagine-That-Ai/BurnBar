@@ -32,6 +32,54 @@
         {"fieldPath": "model", "order": "ASCENDING"},
         {"fieldPath": "startTime", "order": "DESCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "usage",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "deviceId", "order": "ASCENDING"},
+        {"fieldPath": "sessionId", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "usage",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "startTime", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "chunks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "uid", "order": "ASCENDING"},
+        {"fieldPath": "terms", "arrayConfig": "CONTAINS"}
+      ]
+    },
+    {
+      "collectionGroup": "session_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "provider", "order": "ASCENDING"},
+        {"fieldPath": "updatedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "entitlements",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "id", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "entitlements",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "id", "order": "ASCENDING"},
+        {"fieldPath": "originalTransactionID", "order": "ASCENDING"}
+      ]
     }
   ]
 }

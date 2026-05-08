@@ -30,7 +30,9 @@ env:
 jobs:
   build-and-release:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    runs-on: macos-15
+    # Keep release builds on the same current GA macOS/Xcode image as PR app
+    # tests; Xcode 16.4 on macOS 15 crashes in SwiftEmitModule for this target.
+    runs-on: macos-26
     timeout-minutes: 60
     outputs:
       dmg_path: ${{ steps.dmg.outputs.dmg_path }}

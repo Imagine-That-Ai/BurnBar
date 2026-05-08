@@ -61,7 +61,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - **Daily digest** — optional notification at a time you pick, because future-you deserves a single sentence of truth instead of a billing surprise.
 - **Chat panel** — ask questions about *your* usage data inside the dashboard. Meta? A little. Useful? Also a little. Delightful? We think so.
 - **Optional cloud sync** — sign in with **Google or Apple** (Firebase under the hood), and selected OpenBurnBar data can follow you across Macs. Today that can include usage rows, in-app OpenBurnBar chat-thread metadata for cross-device resume, and any separately enabled conversation/session-log backups. Chat message bodies require their own explicit setting. Fully opt-in; flip it off anytime and your local world keeps spinning.
-- **Optional Cursor connector** — route selected **Z.ai** and **MiniMax** models through a local OpenAI-shaped router plus a tunnel, because Cursor is picky about BYOK targets. OpenBurnBar logs those requests so you know where the bits actually went.
+- **Optional routed-provider gateway** — route selected **Z.ai**, **MiniMax**, and **Ollama Cloud** models through a local OpenAI-shaped router for Cursor, Factory, and OpenCode. Cursor gets a tunnel because it is picky about BYOK targets; local clients use the loopback gateway directly. OpenBurnBar logs those requests so you know where the bits actually went.
 - **Daemon-backed controller runtime** — project registry, questions, followups, missions, scheduled reviews, simulator replay, mission provenance, and auto-takeover now live behind the local daemon instead of a UI-only mirror.
 - **Operational tool plane** — OpenBurnBar exposes daemon-owned connector status/actions for GitHub, Slack, Linear, PostHog, Sentry, and Gmail, plus browser tooling status/actions for the system browser and daemon-side fetch/link extraction.
 
@@ -176,7 +176,9 @@ The external launch settings that cannot be inferred from the working tree alone
 
 **Estimated** = we applied math and hope — e.g. Codex may only give totals without an input/output split, so OpenBurnBar shrugs and assumes 50/50. Costs everywhere use **public pricing tables**, not your invoice. Good for trends; bad for tax audits.
 
-Quota reporting is separate from spend history. Codex quota comes from the latest local rollout/session snapshot, Claude Code quota comes from the local statusline bridge, MiniMax and Z.ai use official API responses, and Factory / Droid remaining is an explicit estimate from OpenBurnBar-tracked raw monthly tokens rather than Factory billable tokens.
+Quota reporting is separate from spend history. Codex quota comes from the latest local rollout/session snapshot, Claude Code quota comes from the local statusline bridge, MiniMax and Z.ai use official API responses, Ollama reports local model inventory plus cloud-plan routing state, and Factory / Droid remaining is an explicit estimate from OpenBurnBar-tracked raw monthly tokens rather than Factory billable tokens.
+
+Claude Code and Codex can also refresh quota remotely from iOS/iPadOS through on-demand quota sync. Codex supports hosted or self-hosted sync; Claude Code uses a self-hosted runner so provider auth stays in the user's own environment. See [Claude Code and Codex Remote Quota Sync](docs/HOSTED_QUOTA_SYNC.md).
 
 Factory exact quota no longer reuses session state from other local apps in this source release. If you want OpenBurnBar to call the official Factory quota API, provide explicit `FACTORY_COOKIE_HEADER` and/or `FACTORY_BEARER_TOKEN` environment overrides; otherwise OpenBurnBar falls back to plan-tier estimation.
 
@@ -184,9 +186,9 @@ Factory exact quota no longer reuses session state from other local apps in this
 
 Routed Cursor traffic is a smaller club than the table above.
 
-- **In:** `Z.ai`, `MiniMax`
+- **In:** `Z.ai`, `MiniMax`, `Ollama Cloud`
 - **Out (on purpose):** `Kimi`, `pony-alpha-2`, hidden/internal catalog models, browser tools
-- **Public catalog examples for routing:** `glm-5-turbo`, `glm-5`, `minimax-m2.7-highspeed`
+- **Public catalog examples for routing:** `glm-5-turbo`, `glm-5`, `minimax-m2.7-highspeed`, `deepseek-v4-flash`, `gpt-oss:120b`
 
 The sidebar today is honest about being a **shell**: health, catalog, workspace state, recovery copy — the full run-control red carpet is still rolling out.
 
@@ -215,35 +217,39 @@ Even in trusted workspaces, `apply_patch` and `run_terminal` pause for explicit 
 
 1. Run OpenBurnBar on the same Mac as the editor.
 2. Install or repair the daemon from OpenBurnBar.
-3. Add Z.ai / MiniMax keys if you want routed models.
+3. Add Z.ai, MiniMax, and/or Ollama Cloud keys if you want routed models.
 4. Install the OpenBurnBar extension from `extensions/openburnbar` (build with `npm run build` in that folder, then load the unpacked extension in your editor of choice).
 5. Open a folder or workspace, then open the OpenBurnBar sidebar and say hi.
 
 ---
 
-## Cursor provider routing (the tunnel plot twist)
+## Routed provider gateway (Cursor, Factory, OpenCode)
 
-OpenBurnBar can wire supported models into Cursor without you hand-editing ghost JSON or running a sketchy proxy you found at 2am.
+OpenBurnBar can wire supported models into Cursor, Factory, and OpenCode without you hand-editing ghost JSON or running a sketchy proxy you found at 2am.
 
 The play:
 
 - Keys live in the **macOS Keychain** (where keys belong).
-- You pick which model IDs Cursor should believe in.
-- A local **OpenAI-compatible router** wakes up.
-- A **public HTTPS tunnel** appears because Cursor blocks `localhost` and private IPs for BYOK — not our rule, just our problem to solve.
-- OpenBurnBar writes Cursor's custom-model BYOK settings for you.
+- You pick which model IDs routed clients should believe in.
+- A local **OpenAI-compatible gateway** wakes up.
+- Cursor gets a **public HTTPS tunnel** because Cursor blocks `localhost` and private IPs for BYOK — not our rule, just our problem to solve.
+- Factory and OpenCode point directly at the local gateway.
+- OpenBurnBar writes the client config for Cursor, Factory, and OpenCode.
 - OpenBurnBar temporarily swaps Cursor's local BYOK token field to a short-lived OpenBurnBar session token while the connector is active, then restores the saved value on disconnect.
-- Routed provider API keys stay in Keychain; the local connector config stores Keychain lookup metadata plus the short-lived session token for the active bridge, not raw provider secrets.
-- Routed usage shows up as **`OpenBurnBar Cursor Connector`** so your dashboard and your conscience stay aligned.
+- Routed provider API keys stay in Keychain; client config only receives the local gateway URL and gateway token.
+- Gateway usage shows up as **`OpenBurnBar Gateway`**, and exhausted upstream plans fail over through the same routing policy instead of stranding the client on a dead account.
 
-**v1 scope:** `Z.ai`, `MiniMax`. **Tunnel flavor:** Cloudflare quick tunnel (bring `cloudflared`).
+**v1 upstream provider scope:** `Z.ai`, `MiniMax`, `Ollama Cloud`. **Client targets:** Cursor, Factory, OpenCode. **Cursor tunnel flavor:** Cloudflare quick tunnel (bring `cloudflared` only for Cursor).
 
 **Checklist:**
 
-1. Install `cloudflared` (Homebrew is fine; the internet is full of opinions).
-2. OpenBurnBar → **Settings → Providers → Connect Cursor**
-3. Paste keys, pick models, mash **Connect**
-4. Leave OpenBurnBar running while Cursor chats through the connector — it's doing real work under the hood.
+1. Install `cloudflared` only if you want routed Cursor models.
+2. OpenBurnBar → **Settings → Providers → Quota Reporting → Cursor**
+3. Paste provider keys and pick routed models.
+4. Use **Connect** for Cursor, or **Sync Factory** / **Sync OpenCode** for local routed clients.
+5. Leave OpenBurnBar and the daemon running while clients chat through the gateway — it's doing real work under the hood.
+
+More detail: [`docs/ROUTED_CLIENT_GATEWAY.md`](docs/ROUTED_CLIENT_GATEWAY.md).
 
 ---
 
@@ -365,14 +371,14 @@ OpenBurnBar is a happy offline hermit by default. Cloud sync is for people who u
 **Pieces:**
 
 - **Primary store:** GRDB + SQLite — fast, local, yours. **Optional at-rest encryption** uses SQLCipher (SPM `GRDB-SQLCipher`, pinned with the daemon); the encryption key lives in the Keychain. When encryption is on, the build must link SQLCipher — see [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) and [docs/RUNBOOK.md](docs/RUNBOOK.md). SQLCipher licensing: [Zetetic](https://www.zetetic.net/sqlcipher/license/).
-- **Sync store:** Firestore under `users/{uid}/` — `usage`, `chat_threads` (OpenBurnBar in-app chat thread metadata by default; message bodies only when **Back Up Chat Message Content** is enabled), `conversations` (optional metadata backup), `session_logs` (+ `chunks` for full log backup when enabled)
+- **Sync store:** Firestore under `users/{uid}/` — `usage`, `chat_threads` (OpenBurnBar in-app chat thread metadata by default; message bodies only when **Back Up Chat Message Content** is enabled), `conversations` (optional metadata backup), `session_logs` (+ `chunks` for full log backup when enabled). Hosted cloud backup writes for conversation metadata, chat content, session-log manifests/chunks, and Hermes relay traffic require the server-written `hosted_quota_sync` entitlement; metadata-only usage/chat-thread sync remains available without that paid entitlement.
 - **Shared artifact sync:** Firestore under `workspaces/workspace-{uid}/teams/team-default/artifacts/{artifactID}` plus `versions/{revisionID}` for the current source-release collaboration head/history path
 - **Auth:** Firebase Auth — **Google** and/or **Sign in with Apple**
 - **App Check:** The app initializes App Check before Firebase; **production** Firebase projects must **enforce** App Check for **Cloud Firestore** in the console (Auth + rules are not enough). See [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md).
 - **Device identity:** random UUID stored in local app defaults and migrated from legacy OpenBurnBar/AgentLens defaults keys
 - **iCloud mirror (optional):** copies parsed session log files into your **personal** iCloud Drive folder for the app (`Documents/OpenBurnBar/SessionMirror/...`). Independent of Firebase; see below.
 
-**Current cloud behavior:** when cloud sync is enabled, OpenBurnBar uploads usage rows and OpenBurnBar chat-thread metadata for cross-device resume. Chat titles, previews, and message bodies are uploaded only after enabling **Settings → Privacy & Indexing → Back Up Chat Message Content**. The current source release also syncs shared-artifact heads/revisions through an owner-scoped Firestore path for local-first collaboration metadata. Conversation metadata and full session-log backup remain separately gated by their own settings.
+**Current cloud behavior:** when cloud sync is enabled, OpenBurnBar uploads usage rows and OpenBurnBar chat-thread metadata for cross-device resume. Chat titles, previews, and message bodies are uploaded only after enabling **Settings → Privacy & Indexing → Back Up Chat Message Content** and only when Firestore rules see an active Apple-verified `hosted_quota_sync` entitlement. The current source release also syncs shared-artifact heads/revisions through an owner-scoped Firestore path for local-first collaboration metadata. Conversation metadata and full session-log backup remain separately gated by their own settings and the same hosted-cloud entitlement.
 
 **Setup:**
 
@@ -419,7 +425,7 @@ After signing in with Apple or Google on the same Firebase account you use on Ma
 - **Account → Devices** lets you approve this iPhone (after your Mac signs in and approves it from the new **Devices & Sync** tab in macOS Settings).
 - **Account → Encrypted credential transfer** surfaces only the credentials your Mac has explicitly exported, decrypts them on this device with the iOS Keychain, and never reports success until provider readback confirms the credential works.
 
-Provider account behavior is documented in [docs/PROVIDER_ACCOUNTS.md](docs/PROVIDER_ACCOUNTS.md). Architectural mobile details and screen-by-screen behavior live in [docs/IOS_APP_ARCHITECTURE.md](docs/IOS_APP_ARCHITECTURE.md).
+Provider account behavior is documented in [docs/PROVIDER_ACCOUNTS.md](docs/PROVIDER_ACCOUNTS.md). Architectural mobile details and screen-by-screen behavior live in [docs/IOS_APP_ARCHITECTURE.md](docs/IOS_APP_ARCHITECTURE.md). App Store submission steps, review-account seeding, and hosted quota subscription gates live in [docs/IOS_APP_STORE_RELEASE_RUNBOOK.md](docs/IOS_APP_STORE_RELEASE_RUNBOOK.md).
 
 If mobile shows "No Mac data has been published yet" but the Mac is signed in, see Incidents 9–12 in the [Runbook](docs/RUNBOOK.md).
 

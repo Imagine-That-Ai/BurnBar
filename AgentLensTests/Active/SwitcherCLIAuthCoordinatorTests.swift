@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import Security
 import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBar
@@ -1010,5 +1011,96 @@ final class AccountManagerTests: XCTestCase {
         // OAuth state should be cleared (already nil)
         XCTAssertNil(manager.lastOAuthProviderID)
         XCTAssertNil(manager.lastOAuthToken)
+    }
+
+    // MARK: - Firebase Auth Keychain Recovery Tests
+
+    func test_isGoogleSignInKeychainError_detectsGoogleKeychainFailure() {
+        let error = NSError(
+            domain: "com.google.GIDSignIn",
+            code: -2,
+            userInfo: [
+                NSLocalizedDescriptionKey: "keychain error"
+            ]
+        )
+
+        XCTAssertTrue(AccountManager.isGoogleSignInKeychainErrorForTesting(error))
+    }
+
+    func test_isGoogleSignInKeychainError_detectsWrappedGoogleKeychainFailure() {
+        let error = NSError(
+            domain: "GIDSignInErrorDomain",
+            code: 1,
+            userInfo: [
+                NSLocalizedDescriptionKey: "The Google Sign-In auth state could not be saved.",
+                NSUnderlyingErrorKey: NSError(
+                    domain: "GTMAppAuth.KeychainStore",
+                    code: -34018,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "keychain error"
+                    ]
+                )
+            ]
+        )
+
+        XCTAssertTrue(AccountManager.isGoogleSignInKeychainErrorForTesting(error))
+    }
+
+    func test_isGoogleSignInKeychainError_ignoresOtherGoogleFailures() {
+        let error = NSError(
+            domain: "com.google.GIDSignIn",
+            code: -5,
+            userInfo: [
+                NSLocalizedDescriptionKey: "canceled"
+            ]
+        )
+
+        XCTAssertFalse(AccountManager.isGoogleSignInKeychainErrorForTesting(error))
+    }
+
+    func test_isFirebaseAuthKeychainError_detectsNestedKeychainFailure() {
+        let error = NSError(
+            domain: "FIRAuthErrorDomain",
+            code: 17995,
+            userInfo: [
+                NSLocalizedDescriptionKey: "An internal error occurred.",
+                NSLocalizedFailureReasonErrorKey: "An error occurred when accessing the keychain."
+            ]
+        )
+
+        XCTAssertTrue(AccountManager.isFirebaseAuthKeychainErrorForTesting(error))
+    }
+
+    func test_isFirebaseAuthKeychainError_ignoresNonKeychainFailure() {
+        let error = NSError(
+            domain: "FIRAuthErrorDomain",
+            code: 17020,
+            userInfo: [
+                NSLocalizedDescriptionKey: "Network error."
+            ]
+        )
+
+        XCTAssertFalse(AccountManager.isFirebaseAuthKeychainErrorForTesting(error))
+    }
+
+    func test_firebaseAuthStoredUserDeleteQuery_targetsFirebaseDataProtectionKeychainRow() {
+        let query = AccountManager.firebaseAuthStoredUserDeleteQueryForTesting(
+            accessGroup: "4Y367DF25B.com.openburnbar.app",
+            service: "test-api-key",
+            synchronizable: true
+        )
+
+        XCTAssertEqual(query[kSecClass as String] as? String, kSecClassGenericPassword as String)
+        XCTAssertEqual(query[kSecAttrAccessGroup as String] as? String, "4Y367DF25B.com.openburnbar.app")
+        XCTAssertEqual(query[kSecAttrService as String] as? String, "test-api-key")
+        XCTAssertEqual(query[kSecAttrAccount as String] as? String, "firebase_auth_firebase_user")
+        XCTAssertEqual(query[kSecUseDataProtectionKeychain as String] as? Bool, true)
+        XCTAssertEqual(query[kSecAttrSynchronizable as String] as? Bool, true)
+    }
+
+    func test_recoverableFirebaseAuthKeychainDeleteStatus_isStrict() {
+        XCTAssertTrue(AccountManager.isRecoverableFirebaseAuthKeychainDeleteStatusForTesting(errSecSuccess))
+        XCTAssertTrue(AccountManager.isRecoverableFirebaseAuthKeychainDeleteStatusForTesting(errSecItemNotFound))
+        XCTAssertFalse(AccountManager.isRecoverableFirebaseAuthKeychainDeleteStatusForTesting(errSecMissingEntitlement))
     }
 }

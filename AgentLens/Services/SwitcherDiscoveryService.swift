@@ -733,7 +733,7 @@ final class SwitcherDiscoveryService: ObservableObject {
 
     private func shouldRefreshQuotaSnapshot(_ snapshot: ProviderQuotaSnapshot?) -> Bool {
         guard let snapshot else { return true }
-        if snapshot.buckets.isEmpty { return true }
+        if !snapshot.hasDisplayableQuotaSignal { return true }
         return snapshot.isStale()
     }
 
@@ -800,7 +800,7 @@ final class SwitcherDiscoveryService: ObservableObject {
     }
 
     /// Checks whether adding another account for the given provider kind would exceed the cap.
-    func canAddAnother(for kind: OnboardingProvider.Kind, cap: Int = onboardingProviderCap) -> Bool {
+    func canAddAnother(for kind: OnboardingProvider.Kind, cap: Int = SwitcherOnboardingLimits.providerCap) -> Bool {
         (sessionAddedCount(for: kind) + preExistingCount(for: kind)) < cap
     }
 

@@ -44,6 +44,21 @@ Tools are registered with the prefix `mcp_openburnbar_local_`:
 | `mcp_openburnbar_local_burnbar_get_conversation` | Full transcript for a specific session by ID |
 | `mcp_openburnbar_local_burnbar_chat_messages` | Prior in-app assistant chat history (continuity questions) |
 | `mcp_openburnbar_local_burnbar_resolve_db_path` | Debug: confirm which DB file is being read |
+| `mcp_openburnbar_local_burnbar_record_hermes_usage` | **Write**: append an exact usage row to OpenBurnBar's daemon ledger |
+| `mcp_openburnbar_local_burnbar_resolve_usage_ledger_path` | Debug: show the ledger path the writer will use |
+
+`burnbar_record_hermes_usage` is the only write tool — it never touches the
+SQLite DB. It is daemon-first: when a local OpenBurnBar daemon is running it
+goes through the `daemon.usage.record` RPC so the daemon's idempotency cache
+stays consistent; when the daemon is offline it falls back to an append on the
+ledger file. Use it when:
+
+- you want OpenBurnBar to know about a Hermes call you just made (cost
+  guardrails, end-of-session summaries, post-run reports)
+- the OpenBurnBar daemon may be offline (the tool still appends to the ledger
+  so the next app launch picks it up)
+- the upstream provider returned exact `usage` you can pass through (set
+  `confidence="exact"`); for fallbacks set `confidence="low_confidence_estimate"`
 
 ## Operating Procedure
 
@@ -172,3 +187,48 @@ mcp_servers:
     timeout: 30
     connect_timeout: 20
 ```
+
+## Hermes Proxy (optional)
+
+`tools/openburnbar-mcp/hermes_proxy.py` is a stdlib-only OpenAI-compatible
+sidecar that runs in front of `hermes gateway run` and writes usage rows to
+the OpenBurnBar ledger automatically. Point OpenBurnBar mobile/desktop at the
+proxy instead of Hermes directly to capture spend even when the macOS app is
+asleep:
+
+```bash
+python3 tools/openburnbar-mcp/hermes_proxy.py \
+    --listen 127.0.0.1:8643 \
+    --upstream http://127.0.0.1:8642 \
+    --provider-id hermes \
+    --project-name "Hermes (proxy)"
+```
+
+Use `--no-estimate` to skip recording when the upstream response does not
+include `usage` (the default records a `low_confidence_estimate` row instead).
+
+## Creative plugin workflows
+
+Once `burnbar_record_hermes_usage` is available, Hermes can do things the read-only
+skill could not:
+
+- **Spend-aware answers** — call `burnbar_recent_usage` before responding to
+  long queries, abort if today's Hermes spend exceeds the user's stated budget,
+  and explain why.
+- **Cost guardrails** — annotate responses with the running total Hermes has
+  spent in this session (use `session_id` consistently to keep ledger rows
+  groupable).
+- **Session memory** — record an explicit `provider_id="hermes"` row at the
+  end of every Hermes turn, even when no model token usage is available, with
+  `confidence="derived_exact"` and a `cost=0`. OpenBurnBar will still surface
+  the session in the dashboard so the user can recall it.
+- **"Why did this spike?" investigations** — when the user asks why their
+  spend spiked, query `burnbar_recent_usage`, find the largest delta, then
+  use `burnbar_search_conversations` to pull the matching transcript and
+  summarize the root cause.
+- **Post-run summaries** — at the end of a long Hermes run, write a final row
+  with `confidence="exact"` and `project_name=<the user's project>`, then
+  optionally open the OpenBurnBar dashboard so the user can audit the run.
+- **Mobile direct-host usage** — if OpenBurnBar mobile points at the
+  proxy, Hermes itself does not need to do anything: the proxy records exact
+  usage on each request automatically.

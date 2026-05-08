@@ -28,10 +28,16 @@ struct MenuBarPopoverView: View {
         insightSnapshot.insights
     }
 
-    /// Cap the scrollable body at ~90% of screen height minus header/action bar.
-    private var popoverScrollMaxHeight: CGFloat {
+    /// Keep the menu-bar tray compact. The quota rail has its own internal
+    /// scroller, so the rest of the popover should never force the NSPopover
+    /// to consume most of the display.
+    private var popoverViewportHeight: CGFloat {
         let screenHeight = NSScreen.main?.visibleFrame.height ?? 800
-        return max(screenHeight * 0.90 - 80, 400)
+        return min(max(screenHeight * 0.58, 500), 560)
+    }
+
+    private var popoverScrollMaxHeight: CGFloat {
+        max(popoverViewportHeight - 285, 210)
     }
 
     private var menuBarSparklineSeries: [Double] {
@@ -63,7 +69,7 @@ struct MenuBarPopoverView: View {
 
     var body: some View {
         Group {
-            if !hasOnboarded && dataStore.usages.isEmpty, aggregator != nil {
+            if !hasOnboarded && dataStore.totalUsageSessionCount == 0, aggregator != nil {
                 OnboardingView(
                     settingsManager: settingsManager,
                     onOpenWizard: {
@@ -135,6 +141,15 @@ struct MenuBarPopoverView: View {
                                         withAnimation(DesignSystem.Animation.gentle) {
                                             hermesChatActive = true
                                         }
+                                    },
+                                    hermesSetupCompleted: settingsManager.hermesSetupWizardCompleted,
+                                    onRequireHermesSetup: {
+                                        dismiss()
+                                        WindowManager.shared.openHermesSetupWizard(
+                                            settingsManager: settingsManager,
+                                            chatController: chatController,
+                                            dataStore: dataStore
+                                        )
                                     }
                                 )
                                 .padding(.horizontal, DesignSystem.Spacing.sm)
@@ -161,6 +176,7 @@ struct MenuBarPopoverView: View {
             }
         }
         .frame(width: 340)
+        .frame(height: popoverViewportHeight)
         .background(DesignSystem.Colors.background)
         .onChange(of: isScanning) { oldValue, newValue in
             guard oldValue, !newValue else { return }
@@ -247,7 +263,7 @@ struct MenuBarPopoverView: View {
 
                 Spacer()
 
-                if !dataStore.usages.isEmpty {
+                if dataStore.totalUsageSessionCount > 0 {
                     Text(settingsManager.formatUsageMetric(cost: dataStore.totalCostToday, tokens: dataStore.totalTokensToday))
                         .font(DesignSystem.Typography.monoTiny)
                         .foregroundStyle(DesignSystem.Colors.primaryGradient)
@@ -257,7 +273,7 @@ struct MenuBarPopoverView: View {
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
 
-                    Text("\(dataStore.usages.count) session\(dataStore.usages.count == 1 ? "" : "s")")
+                    Text("\(dataStore.totalUsageSessionCount.formatted()) session\(dataStore.totalUsageSessionCount == 1 ? "" : "s")")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                         .popoverTooltip("Total imported sessions across all providers")
@@ -377,7 +393,7 @@ struct MenuBarPopoverView: View {
 
     private var emptyStateView: some View {
         VStack(spacing: DesignSystem.Spacing.sm) {
-            if dataStore.usages.isEmpty {
+            if dataStore.totalUsageSessionCount == 0 {
                 Image(systemName: "cpu")
                     .font(.system(size: 28))
                     .foregroundStyle(DesignSystem.Colors.textMuted)

@@ -13,6 +13,8 @@ import OpenBurnBarCore
 /// a single migration entry-point and shared codecs so that each store file
 /// stays focused on domain SQL.
 final class OpenBurnBarDatabase: Sendable {
+    private static let latestMigrationIdentifier = "v37_token_usage_performance_indexes"
+
     let dbQueue: any DatabaseWriter
 
     init(databaseQueue: any DatabaseWriter) {
@@ -35,7 +37,9 @@ final class OpenBurnBarDatabase: Sendable {
     /// Skips backup for in-memory databases (tests).
     func runMigrationsSafely() throws {
         try runIntegrityCheck()
-        try createBackupIfNeeded()
+        if try needsBackupBeforeMigration() {
+            try createBackupIfNeeded()
+        }
         try Self.migrator.migrate(dbQueue)
     }
 
@@ -52,6 +56,30 @@ final class OpenBurnBarDatabase: Sendable {
     private var isInMemoryDatabase: Bool {
         let path = dbQueue.path
         return path == ":memory:" || path.hasPrefix("file:")
+    }
+
+    private func needsBackupBeforeMigration() throws -> Bool {
+        guard !isInMemoryDatabase else { return false }
+        return try dbQueue.read { db in
+            let userTableCount = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+            ) ?? 0
+            guard userTableCount > 0 else { return false }
+
+            let hasMigrationTable = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'grdb_migrations'"
+            ) ?? 0
+            guard hasMigrationTable > 0 else { return true }
+
+            let latestApplied = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM grdb_migrations WHERE identifier = ?",
+                arguments: [Self.latestMigrationIdentifier]
+            ) ?? 0
+            return latestApplied == 0
+        }
     }
 
     private func createBackupIfNeeded() throws {
@@ -1151,6 +1179,94 @@ final class OpenBurnBarDatabase: Sendable {
             )
         }
 
+        migrator.registerMigration("v36_repair_kimi_request_id_models") { db in
+            // Older Kimi imports could persist OpenAI-style response IDs as model names
+            // and count cache-read tokens in both input and cache buckets. Drop duplicate
+            // legacy rows when a corrected kimi-for-coding row already exists, then repair
+            // any remaining rows in place so dashboards stop treating request IDs as models.
+            try db.execute(sql: """
+                DELETE FROM token_usage
+                WHERE provider = 'Kimi'
+                  AND model LIKE 'chatcmpl-%'
+                  AND EXISTS (
+                    SELECT 1
+                    FROM token_usage corrected
+                    WHERE corrected.provider = token_usage.provider
+                      AND corrected.sessionId = token_usage.sessionId
+                      AND corrected.model = 'kimi-for-coding'
+                      AND COALESCE(corrected.sourceDeviceId, '') = COALESCE(token_usage.sourceDeviceId, '')
+                      AND COALESCE(corrected.providerAccountID, '') = COALESCE(token_usage.providerAccountID, '')
+                  )
+                """)
+
+            try db.execute(sql: """
+                DELETE FROM token_usage
+                WHERE provider = 'Kimi'
+                  AND model LIKE 'chatcmpl-%'
+                  AND EXISTS (
+                    SELECT 1
+                    FROM token_usage winner
+                    WHERE winner.provider = token_usage.provider
+                      AND winner.sessionId = token_usage.sessionId
+                      AND winner.model LIKE 'chatcmpl-%'
+                      AND COALESCE(winner.sourceDeviceId, '') = COALESCE(token_usage.sourceDeviceId, '')
+                      AND COALESCE(winner.providerAccountID, '') = COALESCE(token_usage.providerAccountID, '')
+                      AND (
+                        winner.totalTokens > token_usage.totalTokens
+                        OR (winner.totalTokens = token_usage.totalTokens AND winner.rowid > token_usage.rowid)
+                      )
+                  )
+                """)
+
+            try db.execute(sql: """
+                UPDATE token_usage
+                SET model = 'kimi-for-coding',
+                    inputTokens = MAX(0, inputTokens - cacheReadTokens - cacheCreationTokens),
+                    totalTokens = MAX(0, inputTokens - cacheReadTokens - cacheCreationTokens)
+                        + outputTokens
+                        + cacheCreationTokens
+                        + cacheReadTokens
+                        + COALESCE(reasoningTokens, 0),
+                    cost = (
+                        (MAX(0, inputTokens - cacheReadTokens - cacheCreationTokens) + cacheCreationTokens) * 0.6
+                        + outputTokens * 2.5
+                        + cacheReadTokens * 0.15
+                    ) / 1000000.0,
+                    syncedAt = NULL
+                WHERE provider = 'Kimi'
+                  AND model LIKE 'chatcmpl-%'
+                """)
+        }
+
+        migrator.registerMigration("v37_token_usage_performance_indexes") { db in
+            try db.create(
+                index: "token_usage_sync_pending_idx",
+                on: "token_usage",
+                columns: ["syncedAt", "isRemote", "startTime"]
+            )
+            try db.create(
+                index: "token_usage_provider_time_idx",
+                on: "token_usage",
+                columns: ["provider", "startTime"]
+            )
+            try db.create(
+                index: "token_usage_provider_model_time_idx",
+                on: "token_usage",
+                columns: ["provider", "model", "startTime"]
+            )
+            try db.create(
+                index: "token_usage_provider_id_time_idx",
+                on: "token_usage",
+                columns: ["providerID", "startTime"]
+            )
+        }
+
+        migrator.registerMigration("v38_chat_message_attachments") { db in
+            try db.alter(table: "chat_messages") { t in
+                t.add(column: "attachmentsJSON", .text)
+            }
+        }
+
         return migrator
     }
 
@@ -1248,5 +1364,16 @@ final class OpenBurnBarDatabase: Sendable {
             return nil
         }
         return arr
+    }
+
+    static func encodeChatAttachments(_ value: [HermesAttachment]) throws -> String {
+        try encodeJSON(value)
+    }
+
+    static func decodeChatAttachments(_ string: String?) -> [HermesAttachment]? {
+        guard let string, !string.isEmpty, let data = string.data(using: .utf8) else {
+            return nil
+        }
+        return try? JSONDecoder().decode([HermesAttachment].self, from: data)
     }
 }

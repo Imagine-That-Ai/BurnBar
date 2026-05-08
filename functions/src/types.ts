@@ -159,6 +159,128 @@ export interface ProviderConnectionDoc {
 }
 
 // ---------------------------------------------------------------------------
+// Firestore: hermes_connections / hermes_pairings
+// ---------------------------------------------------------------------------
+
+export type HermesConnectionMode = "local" | "directURL" | "relayLink";
+
+export type HermesConnectionStatus =
+  | "pending"
+  | "online"
+  | "offline"
+  | "unauthorized"
+  | "revoked"
+  | "degraded";
+
+export interface HermesConnectionDoc {
+  id: string;
+  displayName: string;
+  mode: HermesConnectionMode;
+  status: HermesConnectionStatus;
+  profileName?: string;
+  endpointURL?: string;
+  advertisedModel?: string;
+  relayPublicKey?: string;
+  relayKeyVersion?: number;
+  relayEncryption?: string;
+  capabilities: string[];
+  lastSeenAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+export interface HermesPairingDoc {
+  id: string;
+  status: "pending" | "completed" | "expired" | "revoked";
+  codeHash: string;
+  failedAttempts?: number;
+  requestedByDeviceId?: string;
+  requestedByPlatform?: "ios" | "ipados" | "macos" | "web";
+  displayName?: string;
+  connectionId?: string;
+  expiresAt: string;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+export interface HermesConnectionAuditEventDoc {
+  id: string;
+  eventType:
+    | "pairing_created"
+    | "pairing_completed"
+    | "pairing_failed"
+    | "connection_created"
+    | "connection_revoked"
+    | "connection_status_updated";
+  connectionId?: string;
+  pairingId?: string;
+  actorDeviceId?: string;
+  observedAt: string;
+  detail?: Record<string, unknown>;
+  schemaVersion: number;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+}
+
+export type HermesRelayOperation =
+  | "chatCompletions"
+  | "models"
+  | "sessions"
+  | "sessionDetail"
+  | "profiles"
+  | "jobs";
+
+export type HermesRelayRequestStatus =
+  | "pending"
+  | "claimed"
+  | "streaming"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "expired";
+
+export interface HermesRelayRequestDoc {
+  id: string;
+  connectionId: string;
+  operation: HermesRelayOperation;
+  status: HermesRelayRequestStatus;
+  method: "GET" | "POST";
+  path?: string;
+  sessionId?: string;
+  body?: string;
+  payloadCiphertext?: string;
+  wrappedKey?: string;
+  relayEncryption?: string;
+  relayKeyVersion?: number;
+  error?: string;
+  chunkCount: number;
+  claimedAt?: string;
+  claimedBy?: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+  schemaVersion: number;
+}
+
+export interface HermesRelayChunkDoc {
+  id: string;
+  requestId: string;
+  sequence: number;
+  kind: "sse" | "data" | "error";
+  data?: string;
+  text?: string;
+  error?: string;
+  ciphertext?: string;
+  createdAt: string;
+  updatedAt?: string;
+  schemaVersion: number;
+}
+
+// ---------------------------------------------------------------------------
 // Firestore: quota_snapshots/{provider}_{sourceId}
 // ---------------------------------------------------------------------------
 
@@ -340,8 +462,14 @@ export interface UsageEventDoc {
   /** Model identifier. */
   model?: string;
 
+  /** Provider/session identifier used to collapse idempotent re-uploads. */
+  sessionId?: string;
+
   /** Device that originated the request. */
   deviceId?: string;
+
+  /** Source device identifier used by synced records from another device. */
+  sourceDeviceId?: string;
 
   /** Number of input tokens. */
   inputTokens?: number;
@@ -349,14 +477,41 @@ export interface UsageEventDoc {
   /** Number of output tokens. */
   outputTokens?: number;
 
+  /** Number of cache creation/write tokens. */
+  cacheCreationTokens?: number;
+
+  /** Number of cache read tokens. */
+  cacheReadTokens?: number;
+
+  /** Number of reasoning/thinking tokens. */
+  reasoningTokens?: number;
+
+  /** Total tokens as written by legacy clients. */
+  totalTokens?: number;
+
   /** Estimated cost in USD (optional, canonical field). */
   costUsd?: number;
 
   /** Cost in USD (legacy field written by desktop UsageSyncService). */
   cost?: number;
 
+  /** Parser/source confidence used to choose the best copy of a duplicate. */
+  provenanceConfidence?: string;
+
   /** ISO 8601 timestamp of the event. */
-  timestamp: string;
+  timestamp?: unknown;
+
+  /** Legacy desktop event start timestamp. */
+  startTime?: unknown;
+
+  /** Legacy desktop event end timestamp. */
+  endTime?: unknown;
+
+  /** Legacy or server create timestamp. */
+  createdAt?: unknown;
+
+  /** Legacy or server update timestamp. */
+  updatedAt?: unknown;
 
   /** Schema version. */
   schemaVersion: number;
@@ -441,4 +596,110 @@ export interface EnvConfig {
 
   /** Max batch size for scheduled quota refresh (default 20). */
   quotaRefreshBatchSize: number;
+
+  /** StoreKit product ID that unlocks hosted quota sync. */
+  hostedQuotaProductID: string;
+
+  /** HTTPS endpoint for the paid hosted quota runner. */
+  hostedQuotaRunnerURL: string;
+
+  /** Shared bearer token used between Functions and the hosted quota runner. */
+  hostedQuotaRunnerToken: string;
+
+  /** Daily hosted-runner attempt ceiling per account. */
+  hostedQuotaDailyRefreshLimit: number;
+
+  /** Monthly hosted-runner attempt ceiling per account. */
+  hostedQuotaMonthlyRefreshLimit: number;
+
+  /** App Store verification config. */
+  appStore: AppStoreConfig;
+}
+
+// ---------------------------------------------------------------------------
+// App Store hosted quota entitlement docs
+// ---------------------------------------------------------------------------
+
+export type AppStoreEnvironment =
+  | "Production"
+  | "Sandbox"
+  | "Xcode"
+  | "LocalTesting";
+
+export interface AppStoreConfig {
+  bundleId: string;
+  appAppleId?: number;
+  environment: AppStoreEnvironment;
+  enableOnlineChecks: boolean;
+  autoFallbackEnvironment: boolean;
+  asc: {
+    issuerId: string;
+    keyId: string;
+    privateKeyP8: string;
+  };
+}
+
+export type EntitlementOwnershipType = "PURCHASED" | "FAMILY_SHARED";
+
+export type HostedQuotaEntitlementSource =
+  | "apple_jws_verified"
+  | "apple_s2s"
+  | "scheduled_reconcile";
+
+export interface HostedQuotaEntitlementDoc {
+  id: string;
+  active: boolean;
+  productID: string;
+  transactionID: string;
+  originalTransactionID: string;
+  expiresAt?: string;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+  revokedAt?: string;
+  revocationReason?: number;
+  environment: AppStoreEnvironment;
+  ownershipType?: EntitlementOwnershipType;
+  appAccountToken?: string;
+  signedTransactionHash: string;
+  signedDateMs?: number;
+  lastNotificationUUID?: string;
+  lastVerifiedAt: string;
+  source: HostedQuotaEntitlementSource;
+  verificationVersion: number;
+  schemaVersion: number;
+  updatedAt: string;
+}
+
+export interface EntitlementBindingDoc {
+  id: string;
+  uid: string;
+  productID: string;
+  clientPlatform?: "ios" | "ipados" | "macos";
+  consumedAt?: string;
+  createdAt: string;
+  schemaVersion: number;
+}
+
+export interface EntitlementEventDoc {
+  id: string;
+  uid: string;
+  source: "client_callable" | "apple_s2s" | "scheduled_reconcile";
+  notificationType?: string;
+  notificationSubtype?: string;
+  transactionId: string;
+  originalTransactionId: string;
+  productId: string;
+  environment: AppStoreEnvironment;
+  expiresAt?: string;
+  revokedAt?: string;
+  revocationReason?: number;
+  rawJWSHash: string;
+  observedAt: string;
+  /**
+   * Firestore TTL deletion target. Configure the TTL policy on this
+   * field via Console / `firebase firestore:ttls:create` to have stale
+   * audit rows reaped automatically.
+   */
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+  decoded: Record<string, unknown>;
+  schemaVersion: number;
 }

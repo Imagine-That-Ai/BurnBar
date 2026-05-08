@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - SettingsManagerProtocol
 
@@ -130,6 +131,9 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Whether chat backend onboarding is completed.
     var chatBackendOnboardingCompleted: Bool { get set }
 
+    /// Whether the Hermes-specific 1-2-3 setup wizard is completed.
+    var hermesSetupWizardCompleted: Bool { get set }
+
     /// Comma-separated enabled chat backend IDs.
     var enabledChatBackendIDsCSV: String { get set }
 
@@ -144,6 +148,15 @@ protocol SettingsManagerProtocol: AnyObject {
 
     /// Optional Hermes gateway chat `model` override (see `resolvedHermesChatModel(gatewayAdvertisedModel:)`).
     var hermesChatModelOverride: String { get set }
+
+    /// Hermes gateway base URL. Defaults to the official local web API port.
+    var hermesGatewayBaseURL: String { get set }
+
+    /// Whether this Mac may relay local Hermes traffic for signed-in mobile devices.
+    var hermesRemoteRelayEnabled: Bool { get set }
+
+    /// Cloud Run WebSocket relay endpoint for low-latency Hermes remote relay.
+    var hermesRealtimeRelayURL: String { get set }
 
     /// Resolves the `model` field for Hermes `POST /v1/chat/completions`.
     func resolvedHermesChatModel(gatewayAdvertisedModel: String?) -> String
@@ -197,6 +210,21 @@ protocol SettingsManagerProtocol: AnyObject {
 
     /// Factory quota plan tier.
     var factoryQuotaPlanTier: FactoryQuotaPlanTier { get set }
+
+    /// Whether the smart hub quota display integration is enabled.
+    var smartHubQuotaDisplayEnabled: Bool { get set }
+
+    /// Smart hub dashboard URL.
+    var smartHubQuotaDashboardURL: String { get set }
+
+    /// Smart hub refresh endpoint URL.
+    var smartHubQuotaRefreshURL: String { get set }
+
+    /// Smart hub voice-refresh endpoint URL.
+    var smartHubQuotaVoiceRefreshURL: String { get set }
+
+    /// Time period (rolling 5h / 24h / 7d / 30d) the smart hub dashboard renders.
+    var smartHubQuotaTimePeriod: SmartHubTimePeriod { get set }
 
     // MARK: - Artifact Discovery
 

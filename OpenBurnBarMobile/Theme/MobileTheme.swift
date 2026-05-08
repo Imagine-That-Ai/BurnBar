@@ -86,6 +86,11 @@ enum MobileTheme {
         static let mercuryPulse   = UnifiedDesignSystem.Animation.mercuryPulse
     }
 
+    // MARK: - UIMode Convenience
+    static func tokens(for mode: UIMode) -> UIModeTheme {
+        UIModeTheme(mode: mode)
+    }
+
     // MARK: - Colors Namespace
     enum Colors {
         static let background      = MobileTheme.background

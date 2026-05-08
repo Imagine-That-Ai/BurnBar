@@ -15,6 +15,7 @@ final class ProviderConnectionStore {
     private(set) var connections: [ProviderConnectionDoc] = []
     private(set) var quotaSnapshots: [ProviderQuotaSnapshot] = []
     private(set) var isLoading = false
+    private(set) var accountsByProvider: [(providerID: ProviderID, accounts: [ProviderAccountDoc])] = []
 
     init(
         functions: FunctionsRepository = FunctionsRepository(),
@@ -25,6 +26,14 @@ final class ProviderConnectionStore {
     }
 
     func load() async {
+        if AppStoreScreenshotMode.isEnabled {
+            isLoading = false
+            error = nil
+            applyAccounts(AppStoreScreenshotData.providerAccounts)
+            connections = AppStoreScreenshotData.providerConnections
+            quotaSnapshots = normalizeQuotaSnapshots(AppStoreScreenshotData.quotaSnapshots)
+            return
+        }
         isLoading = true
         error = nil
         defer { isLoading = false }
@@ -33,12 +42,12 @@ final class ProviderConnectionStore {
             async let accountsTask = firestore.fetchProviderAccounts()
             async let connectionsTask = firestore.fetchProviderConnections()
             async let snapshotsTask = firestore.fetchQuotaSnapshots()
-            accounts = try await accountsTask
+            applyAccounts(try await accountsTask)
             connections = try await connectionsTask
             // Quota snapshots are best-effort — they only enrich the routing
             // cockpit and account row hints. Failing here must not break the
             // connections list.
-            quotaSnapshots = (try? await snapshotsTask) ?? quotaSnapshots
+            quotaSnapshots = (try? await snapshotsTask).map(normalizeQuotaSnapshots) ?? quotaSnapshots
         } catch {
             self.error = error.localizedDescription
         }
@@ -52,21 +61,27 @@ final class ProviderConnectionStore {
         )
     }
 
-    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async {
+    private func normalizeQuotaSnapshots(_ snapshots: [ProviderQuotaSnapshot]) -> [ProviderQuotaSnapshot] {
+        snapshots.compactMap { $0.filteringToDisplayableQuotaSignal() }
+    }
+
+    func connect(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc? {
         connectingProvider = providerID.rawValue
         error = nil
         defer { connectingProvider = nil }
 
         do {
-            _ = try await functions.connectProviderAccount(
+            let doc = try await functions.connectProviderAccount(
                 providerID: providerID,
                 credential: credential,
                 kind: kind,
                 label: label
             )
             await load()
+            return doc
         } catch {
             self.error = error.localizedDescription
+            return nil
         }
     }
 
@@ -87,6 +102,43 @@ final class ProviderConnectionStore {
         }
     }
 
+    func connectHosted(providerID: ProviderID, credential: String, kind: CredentialKind, label: String?) async -> ProviderAccountDoc? {
+        connectingProvider = providerID.rawValue
+        error = nil
+        defer { connectingProvider = nil }
+
+        do {
+            let doc = try await functions.connectHostedQuotaAccount(
+                providerID: providerID,
+                credential: credential,
+                label: label
+            )
+            await load()
+            return doc
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
+    }
+
+    func connectSelfHosted(providerID: ProviderID, label: String?) async -> ProviderAccountDoc? {
+        connectingProvider = providerID.rawValue
+        error = nil
+        defer { connectingProvider = nil }
+
+        do {
+            let doc = try await functions.connectSelfHostedQuotaAccount(
+                providerID: providerID,
+                label: label
+            )
+            await load()
+            return doc
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
+    }
+
     func delete(account: ProviderAccountDoc) async {
         deletingAccountID = account.id
         error = nil
@@ -94,6 +146,11 @@ final class ProviderConnectionStore {
 
         do {
             try await functions.deleteProviderAccount(accountID: account.id)
+            if account.storageScope == .localOnly,
+               account.providerID == .claudeCode || account.providerID == .codex {
+                // Clean up locally-stored runner config when deleting a self-hosted account.
+                SelfHostedQuotaRunnerStore.shared.delete(accountID: account.id)
+            }
             await load()
         } catch {
             self.error = error.localizedDescription
@@ -119,7 +176,12 @@ final class ProviderConnectionStore {
         defer { refreshingAccountID = nil }
 
         do {
-            _ = try await functions.refreshProviderAccountQuota(accountID: account.id)
+            if account.storageScope == .localOnly,
+               account.providerID == .claudeCode || account.providerID == .codex {
+                _ = try await SelfHostedQuotaRunnerStore.shared.refresh(account: account)
+            } else {
+                _ = try await functions.refreshProviderAccountQuota(accountID: account.id)
+            }
             await load()
         } catch {
             self.error = error.localizedDescription
@@ -148,8 +210,9 @@ final class ProviderConnectionStore {
         }
     }
 
-    var accountsByProvider: [(providerID: ProviderID, accounts: [ProviderAccountDoc])] {
-        Dictionary(grouping: accounts, by: \.providerID)
+    private func applyAccounts(_ newAccounts: [ProviderAccountDoc]) {
+        accounts = newAccounts
+        accountsByProvider = Dictionary(grouping: newAccounts, by: \.providerID)
             .map { providerID, accounts in
                 (
                     providerID,

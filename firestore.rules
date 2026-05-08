@@ -2,6 +2,7 @@ rules_version = '2';
 // OpenBurnBar currently syncs explicit owner-scoped collections:
 // - users/{uid}/usage, conversations, chat_threads, session_logs (+ chunks), devices
 // - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups
+// - users/{uid}/hermes_connections, hermes_pairings, hermes_relay_requests, hermes_session_cache, hermes_audit_events
 // - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
 // - users/{uid}/escrow_devices, escrow_public_keys, escrow_grants, escrow_envelopes, escrow_audit_events
 // - server-only: provider_account_secret_refs, users/{uid}/_rate_limits, users/{uid}/rollup_jobs
@@ -58,6 +59,165 @@ service cloud.firestore {
         && hasNoPlaintextSecretFields();
     }
 
+    function hostedCloudEntitlementPath(userId) {
+      return /databases/$(database)/documents/users/$(userId)/entitlements/hosted_quota_sync;
+    }
+
+    function hasActiveHostedQuotaEntitlement(userId) {
+      let entitlement = get(hostedCloudEntitlementPath(userId)).data;
+      return exists(hostedCloudEntitlementPath(userId))
+        && entitlement.active == true
+        && entitlement.productID == "com.openburnbar.hostedQuotaSync.monthly"
+        && entitlement.expireAt is timestamp
+        && entitlement.expireAt > request.time;
+    }
+
+    function ownerWritableHostedCloudBackup(userId) {
+      return ownerWritableNonSecret(userId)
+        && hasActiveHostedQuotaEntitlement(userId);
+    }
+
+    function chatThreadIncludesBackedUpContent() {
+      return request.resource.data.keys().hasAny(["messages", "title", "preview"])
+        || (("contentIncluded" in request.resource.data)
+          && request.resource.data.contentIncluded == true);
+    }
+
+    function ownerWritableChatThread(userId) {
+      return ownerWritableNonSecret(userId)
+        && (!chatThreadIncludesBackedUpContent()
+          || hasActiveHostedQuotaEntitlement(userId));
+    }
+
+    function relayConnectionWrite(userId, connectionId) {
+      return ownerWritableNonSecret(userId)
+        && hasActiveHostedQuotaEntitlement(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "displayName",
+          "mode",
+          "status",
+          "profileName",
+          "advertisedModel",
+          "relayPublicKey",
+          "relayKeyVersion",
+          "relayEncryption",
+          "realtimeRelayURL",
+          "realtimeRelayStatus",
+          "capabilities",
+          "lastSeenAt",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.mode == "relayLink"
+        && request.resource.data.status in ["online", "offline", "degraded", "unauthorized"]
+        && request.resource.data.schemaVersion is int
+        && (!("relayPublicKey" in request.resource.data) || (request.resource.data.relayPublicKey is string && request.resource.data.relayPublicKey.size() <= 256))
+        && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion is int)
+        && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm")
+        && (!("realtimeRelayURL" in request.resource.data) || (request.resource.data.realtimeRelayURL is string && request.resource.data.realtimeRelayURL.matches("^wss://.+")))
+        && (!("realtimeRelayStatus" in request.resource.data) || request.resource.data.realtimeRelayStatus in ["online", "offline", "degraded"])
+        && request.resource.data.id is string
+        && request.resource.data.id == connectionId
+        && request.resource.data.displayName is string
+        && request.resource.data.capabilities is list;
+    }
+
+    function relayRequestWrite(userId, requestId) {
+      return ownerWritableNonSecret(userId)
+        && hasActiveHostedQuotaEntitlement(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "connectionId",
+          "operation",
+          "status",
+          "method",
+          "path",
+          "sessionId",
+          "body",
+          "payloadCiphertext",
+          "wrappedKey",
+          "relayEncryption",
+          "relayKeyVersion",
+          "error",
+          "chunkCount",
+          "createdAt",
+          "updatedAt",
+          "expiresAt",
+          "expireAt",
+          "claimedAt",
+          "claimedBy",
+          "completedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id == requestId
+        && request.resource.data.connectionId is string
+        && request.resource.data.operation in ["chatCompletions", "models", "sessions", "sessionDetail", "profiles", "jobs"]
+        && request.resource.data.status in ["pending", "claimed", "streaming", "completed", "failed", "cancelled", "expired"]
+        && request.resource.data.method in ["GET", "POST"]
+        && request.resource.data.chunkCount is int
+        && request.resource.data.schemaVersion is int
+        && (!("claimedBy" in request.resource.data) || request.resource.data.claimedBy == request.resource.data.connectionId)
+        && (!("body" in request.resource.data) || (request.resource.data.body is string && request.resource.data.body.size() <= 131072))
+        && (!("error" in request.resource.data) || (request.resource.data.error is string && request.resource.data.error.size() <= 2048))
+        && (!("payloadCiphertext" in request.resource.data) || (request.resource.data.payloadCiphertext is string && request.resource.data.payloadCiphertext.size() <= 900000))
+        && (!("wrappedKey" in request.resource.data) || (request.resource.data.wrappedKey is string && request.resource.data.wrappedKey.size() <= 4096))
+        && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion is int)
+        && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm")
+        && (
+          request.resource.data.schemaVersion < 2
+          || (
+            !("path" in request.resource.data)
+            && !("sessionId" in request.resource.data)
+            && !("body" in request.resource.data)
+            && !("error" in request.resource.data)
+            && request.resource.data.payloadCiphertext is string
+            && request.resource.data.wrappedKey is string
+            && request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm"
+          )
+        );
+    }
+
+    function relayChunkWrite(userId, requestId, chunkId) {
+      return ownerWritableNonSecret(userId)
+        && hasActiveHostedQuotaEntitlement(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "requestId",
+          "sequence",
+          "kind",
+          "data",
+          "text",
+          "error",
+          "ciphertext",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id == chunkId
+        && request.resource.data.requestId is string
+        && request.resource.data.requestId == requestId
+        && request.resource.data.sequence is int
+        && request.resource.data.kind in ["sse", "data", "error"]
+        && request.resource.data.schemaVersion is int
+        && (!("data" in request.resource.data) || (request.resource.data.data is string && request.resource.data.data.size() <= 131072))
+        && (!("text" in request.resource.data) || (request.resource.data.text is string && request.resource.data.text.size() <= 131072))
+        && (!("error" in request.resource.data) || (request.resource.data.error is string && request.resource.data.error.size() <= 2048))
+        && (!("ciphertext" in request.resource.data) || (request.resource.data.ciphertext is string && request.resource.data.ciphertext.size() <= 131072))
+        && (
+          request.resource.data.schemaVersion < 2
+          || (
+            !("data" in request.resource.data)
+            && !("text" in request.resource.data)
+            && !("error" in request.resource.data)
+            && request.resource.data.ciphertext is string
+          )
+        );
+    }
+
     function sharedArtifactOwnerRead() {
       return isSignedIn()
         && resource.data.ownerUserID is string
@@ -96,24 +256,24 @@ service cloud.firestore {
 
     match /users/{userId}/conversations/{conversationId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create, update: if ownerWritableHostedCloudBackup(userId);
       allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/chat_threads/{threadId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create, update: if ownerWritableChatThread(userId);
       allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/session_logs/{logId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create, update: if ownerWritableHostedCloudBackup(userId);
       allow delete: if ownsUserNamespace(userId);
 
       match /chunks/{chunkId} {
         allow read: if ownsUserNamespace(userId);
-        allow create, update: if ownerWritableNonSecret(userId);
+        allow create, update: if ownerWritableHostedCloudBackup(userId);
         allow delete: if ownsUserNamespace(userId);
       }
     }
@@ -142,6 +302,63 @@ service cloud.firestore {
       allow delete: if ownsUserNamespace(userId);
     }
 
+    match /users/{userId}/hermes_connections/{connectionId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if relayConnectionWrite(userId, connectionId);
+      allow update: if relayConnectionWrite(userId, connectionId) && resource.data.mode == "relayLink";
+      allow delete: if false;
+    }
+
+    match /users/{userId}/hermes_pairings/{pairingId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/hermes_relay_requests/{requestId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if relayRequestWrite(userId, requestId);
+      allow delete: if ownsUserNamespace(userId);
+
+      match /chunks/{chunkId} {
+        allow read: if ownsUserNamespace(userId);
+        allow create, update: if relayChunkWrite(userId, requestId, chunkId);
+        allow delete: if ownsUserNamespace(userId);
+      }
+    }
+
+    match /users/{userId}/hermes_session_cache/{sessionId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/hermes_audit_events/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/smart_hub_config/{deviceId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "enabled",
+          "dashboardURL",
+          "refreshURL",
+          "voiceRefreshURL",
+          "sourceDeviceName",
+          "publishedAt",
+          "timePeriod",
+          "schemaVersion"
+        ])
+        && request.resource.data.enabled is bool
+        && request.resource.data.schemaVersion is int
+        && (!("dashboardURL" in request.resource.data) || (request.resource.data.dashboardURL is string && request.resource.data.dashboardURL.size() <= 2048))
+        && (!("refreshURL" in request.resource.data) || (request.resource.data.refreshURL is string && request.resource.data.refreshURL.size() <= 2048))
+        && (!("voiceRefreshURL" in request.resource.data) || (request.resource.data.voiceRefreshURL is string && request.resource.data.voiceRefreshURL.size() <= 2048))
+        && (!("sourceDeviceName" in request.resource.data) || (request.resource.data.sourceDeviceName is string && request.resource.data.sourceDeviceName.size() <= 160))
+        && (!("timePeriod" in request.resource.data) || request.resource.data.timePeriod in ["rolling5h", "rolling24h", "rolling7d", "rolling30d"]);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
     match /users/{userId}/usage_rollups/{rollupId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if false;
@@ -152,6 +369,33 @@ service cloud.firestore {
     }
 
     match /users/{userId}/_rate_limits/{limitId} {
+      allow read, write: if false;
+    }
+
+    // --- Apple-verified hosted-quota entitlement (server-only writer) ---
+    // Cloud Functions are the sole writer; clients read their own
+    // entitlement state. Trust is anchored in JWS chain verification
+    // against AppleRootCA-G3 + reconciliation against the App Store
+    // Server API. See `functions/src/appstore/`.
+    match /users/{userId}/entitlements/{entitlementId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    // --- Apple-verified entitlement audit log (server-only writer) ---
+    // Append-only log of every server-verified Apple JWS event, keyed
+    // on Apple's notificationUUID where available. Owners may read for
+    // support / debug; clients must never write.
+    match /users/{userId}/entitlement_events/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    // --- appAccountToken bindings (server-only) ---
+    // Server mints a UUID per signed-in user before purchase and uses
+    // it to bind incoming JWS payloads to the correct UID. No client
+    // surface — both read and write are denied to clients.
+    match /users/{userId}/entitlement_bindings/{bindingId} {
       allow read, write: if false;
     }
 

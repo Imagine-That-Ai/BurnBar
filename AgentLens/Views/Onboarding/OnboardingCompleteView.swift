@@ -9,9 +9,9 @@ struct OnboardingCompleteView: View {
     @State private var checkmarkScale: CGFloat = 0.3
     @State private var checkmarkOpacity: Double = 0
 
-    private var sessionCount: Int { dataStore.usages.count }
+    private var sessionCount: Int { dataStore.totalUsageSessionCount }
     private var providerCount: Int {
-        Set(dataStore.usages.map(\.provider)).count
+        dataStore.providerSummaries(for: .allTime).count
     }
 
     var body: some View {

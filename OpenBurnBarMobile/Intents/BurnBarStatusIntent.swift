@@ -8,8 +8,8 @@ import OpenBurnBarCore
 /// Speak: "What's my burn today?" → "You've spent $3.42 today across 3 providers."
 @available(iOS 16.0, *)
 struct BurnBarStatusIntent: AppIntent {
-    static var title: LocalizedStringResource = "Get Burn Status"
-    static var description = IntentDescription("Ask OpenBurnBar for your current spend and token usage.")
+    static let title: LocalizedStringResource = "Get Burn Status"
+    static let description = IntentDescription("Ask OpenBurnBar for your current spend and token usage.")
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<String> {

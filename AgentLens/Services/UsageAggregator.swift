@@ -164,11 +164,6 @@ final class UsageAggregator {
         isRefreshing = false
 
         let postResult = result.postPersistence
-        if let refreshed = postResult.refreshedRecords {
-            dataStore.replaceUsages(refreshed)
-            lastRefresh = Date()
-        }
-
         apiUsages = postResult.apiUsages
         if let postError = postResult.parserImportError, parserImportError == nil {
             parserImportError = postError

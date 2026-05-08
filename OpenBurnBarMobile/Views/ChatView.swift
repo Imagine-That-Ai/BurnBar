@@ -7,6 +7,7 @@ struct ChatView: View {
     @State private var service = HermesService()
     @State private var inputText = ""
     @State private var showClearConfirmation = false
+    @State private var atomRouter = HermesAtomRouter()
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
@@ -17,7 +18,18 @@ struct ChatView: View {
                 .background(MobileTheme.Colors.border)
             inputBar
         }
-        .background(MobileTheme.Colors.background.ignoresSafeArea())
+        .background(emberBackground.ignoresSafeArea())
+        .environment(\.hermesAtomNavigator, atomRouter)
+        .sheet(item: Binding(
+            get: { atomRouter.pending },
+            set: { atomRouter.pending = $0 }
+        )) { pending in
+            HermesAtomDetailSheet(
+                atom: pending.atom,
+                label: pending.label,
+                onOpen: { atomRouter.confirm(pending) }
+            )
+        }
         .navigationTitle("Hermes")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -52,24 +64,42 @@ struct ChatView: View {
         .onAppear {
             service.loadHistory()
             Task { await service.checkReachability() }
+            // Idempotent: warm pretext WKWebView so the first assistant
+            // turn renders chips without an initial measurement stall.
+            PretextEngine.shared.start()
+            atomRouter.onPerform = { _ in }
         }
+    }
+
+    private var emberBackground: some View {
+        EmberSurfaceBackground()
     }
 
     // MARK: - Connection Status
 
     private var connectionStatusBar: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(service.isReachable ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
-                .frame(width: 6, height: 6)
-            Text(service.isReachable ? "Hermes connected" : "Hermes not reachable")
-                .font(MobileTheme.Typography.tiny)
-                .foregroundStyle(service.isReachable ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
+        Button {
+            Task { await service.checkReachability() }
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(service.isReachable ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
+                    .frame(width: 6, height: 6)
+                Text(service.isReachable ? "Hermes connected" : "Hermes not reachable — tap to retry")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(service.isReachable ? MobileTheme.Colors.success : MobileTheme.Colors.warning)
+            }
+            .padding(.horizontal, MobileTheme.Spacing.md)
+            .padding(.vertical, MobileTheme.Spacing.xs)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                UnifiedGlassCard {
+                    EmptyView()
+                }
+                .padding(-MobileTheme.Spacing.md)
+            )
         }
-        .padding(.horizontal, MobileTheme.Spacing.md)
-        .padding(.vertical, MobileTheme.Spacing.xs)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MobileTheme.Colors.surfaceElevated.opacity(0.5))
+        .buttonStyle(.plain)
     }
 
     // MARK: - Message List
@@ -87,8 +117,10 @@ struct ChatView: View {
                             ))
                     }
                     if service.isStreaming {
-                        HermesThinkingIndicator()
-                            .id("thinking")
+                        HStack(spacing: 4) {
+                            MercuryThinkingIndicator()
+                        }
+                        .id("thinking")
                     }
                 }
                 .padding(MobileTheme.Spacing.lg)
@@ -118,7 +150,22 @@ struct ChatView: View {
             sendButton
         }
         .padding(MobileTheme.Spacing.md)
-        .background(MobileTheme.Colors.surface.ignoresSafeArea())
+        .background(
+            inputBarBackground
+                .ignoresSafeArea()
+        )
+    }
+
+    @ViewBuilder
+    private var inputBarBackground: some View {
+        if #available(iOS 26.0, *) {
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .glassEffect(.regular)
+        } else {
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .fill(.ultraThinMaterial)
+        }
     }
 
     private var textField: some View {
@@ -168,12 +215,20 @@ struct ChatView: View {
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        Haptics.rigid()
         inputText = ""
         service.sendMessage(text)
     }
 }
 
 // MARK: - Hermes Chat Bubble
+//
+// Atom-aware bubble. Assistant turns route through `HermesRichBubble` (so
+// `[label](burnbar://...)` markdown links become tappable chips) wrapped in
+// `StreamingBubble` (which animates frame height during streaming and
+// shrink-wraps when the turn completes). Errors and user messages keep the
+// plain `Text` path — atoms in error text would be misleading and user
+// turns are short enough to not benefit from rich layout.
 
 struct HermesChatBubble: View {
     let message: HermesChatMessage
@@ -186,13 +241,69 @@ struct HermesChatBubble: View {
                 Spacer(minLength: 48)
                 bubble
             } else {
-                bubble
+                VStack(alignment: .leading, spacing: 2) {
+                    // "via Hermes" badge
+                    HStack(spacing: 4) {
+                        Text("☿")
+                            .font(.system(size: 10))
+                        Text("via Hermes")
+                            .font(MobileTheme.Typography.tiny)
+                    }
+                    .foregroundStyle(MobileTheme.hermesAureate.opacity(0.7))
+                    .padding(.leading, MobileTheme.Spacing.sm)
+                    bubble
+                }
                 Spacer(minLength: 48)
             }
         }
     }
 
+    @ViewBuilder
     private var bubble: some View {
+        if !isUser, !message.isError, !message.text.isEmpty, !message.isStreaming {
+            atomBubble
+        } else if !isUser, !message.isError, message.isStreaming, !message.text.isEmpty {
+            StreamingBubble(
+                text: message.text,
+                isStreaming: true,
+                isError: false,
+                baseSize: 15,
+                lineHeight: 21
+            ) {
+                plainBubble
+            }
+        } else {
+            plainBubble
+        }
+    }
+
+    private var atomBubble: some View {
+        StreamingBubble(
+            text: message.text,
+            isStreaming: false,
+            isError: false,
+            baseSize: 15,
+            lineHeight: 21
+        ) {
+            HermesRichBubble(text: message.text)
+                .padding(.horizontal, MobileTheme.Spacing.md)
+                .padding(.vertical, MobileTheme.Spacing.sm)
+                .background(
+                    RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                        .fill(MobileTheme.Colors.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                        .stroke(bubbleStroke, lineWidth: 1)
+                )
+                .overlay(
+                    MercuryShimmerOverlay()
+                        .clipShape(RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous))
+                )
+        }
+    }
+
+    private var plainBubble: some View {
         Text(message.text)
             .font(MobileTheme.Typography.body)
             .foregroundStyle(message.isError ? MobileTheme.Colors.error : MobileTheme.Colors.textPrimary)
@@ -204,36 +315,31 @@ struct HermesChatBubble: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .stroke(bubbleStrokeColor, lineWidth: message.isError ? 1.5 : 1)
+                    .stroke(bubbleStroke, lineWidth: message.isError ? 1.5 : 1)
+            )
+            .overlay(
+                Group {
+                    if !isUser {
+                        MercuryShimmerOverlay()
+                            .clipShape(RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous))
+                    }
+                }
             )
     }
 
-    private var bubbleStrokeColor: Color {
-        if message.isError { return MobileTheme.Colors.error }
-        return isUser ? MobileTheme.Colors.chatUserStroke : MobileTheme.Colors.chatAssistantStroke
+    private var bubbleStroke: AnyShapeStyle {
+        if message.isError {
+            return AnyShapeStyle(MobileTheme.Colors.error)
+        }
+        if isUser {
+            return AnyShapeStyle(MobileTheme.Colors.chatUserStroke)
+        }
+        return AnyShapeStyle(MobileTheme.mercuryGradient)
     }
 }
 
-// MARK: - Hermes Thinking Indicator
-
-struct HermesThinkingIndicator: View {
-    @State private var phase = 0.0
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(0..<3) { index in
-                Circle()
-                    .fill(MobileTheme.mercuryGradient)
-                    .frame(width: 8, height: 8)
-                    .scaleEffect(1 + 0.3 * sin(phase + Double(index) * 1.2))
-                    .opacity(0.5 + 0.5 * sin(phase + Double(index) * 1.2))
-            }
-        }
-        .padding(MobileTheme.Spacing.md)
-        .onAppear {
-            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                phase = .pi * 2
-            }
-        }
+#Preview {
+    NavigationStack {
+        ChatView()
     }
 }

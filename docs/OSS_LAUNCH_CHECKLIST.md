@@ -67,12 +67,17 @@ Re-check every item immediately before changing repository visibility.
 - VS Marketplace item `openburnbar.openburnbar`: not present (`404`) at the time of check
 - Annotated source-release tag on remote: `v0.1.0-beta`
 
+## Re-check snapshot on 2026-05-08
+
+- GitHub Dependabot API reports 2 open alerts on the default branch: `@tootallnate/once` low in `functions/package-lock.json` and `postcss` medium in `extensions/openburnbar/package-lock.json`. The current PR branch resolves them to patched versions (`@tootallnate/once@3.0.1`, `postcss@8.5.14`); the alerts should close after the branch lands on `main`.
+- Current commercial-launch privacy review found `docs/PRIVACY.md` needed to disclose paid Firestore chat/session backup, iCloud mirroring, hosted quota credentials, Secret Manager, and App Store entitlement behavior.
+
 ## Still needs manual confirmation before public launch
 
 - [ ] After the repository is public, enable private vulnerability reporting in repository settings (GitHub documents this as a public-repository feature)
 - [ ] After the repository is public, verify secret scanning is active; for a user-owned free public repo GitHub runs secret scanning automatically
 - [ ] After the repository is public, enable code scanning if the public-repo settings expose it, or document the plan/visibility limitation if GitHub does not
-- [ ] Whether the single current vulnerability alert has been reviewed and is acceptable for launch
+- [ ] Whether all current vulnerability alerts have been reviewed, remediated, or explicitly accepted for launch
 - [ ] Whether wiki should remain enabled
 - [ ] Whether Discussions should remain enabled
 

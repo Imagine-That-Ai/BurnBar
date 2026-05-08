@@ -81,6 +81,18 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(settings.refreshInterval, 300)
     }
 
+    func test_smartHubHomeAssistantRecoveryWebhookURL_roundTrips() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(settings.smartHubHomeAssistantRecoveryWebhookURL, "")
+
+        let url = "http://homeassistant.local:8123/api/webhook/openburnbar_cast_recover_test"
+        settings.smartHubHomeAssistantRecoveryWebhookURL = url
+
+        XCTAssertEqual(settings.smartHubHomeAssistantRecoveryWebhookURL, url)
+        XCTAssertEqual(defaults.string(forKey: "smartHubHomeAssistantRecoveryWebhookURL"), url)
+    }
+
     func test_refreshIntervalMinutes_conversionRoundTrips() {
         let settings = makeSettingsManager()
         settings.refreshIntervalMinutes = 5
@@ -519,6 +531,27 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(settings.hermesChatModelOverride, "")
     }
 
+    func test_hermesGatewayBaseURL_defaultValue_isLocalhost8642() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(settings.hermesGatewayBaseURL, "http://127.0.0.1:8642")
+    }
+
+    func test_hermesRemoteRelayEnabled_defaultValue_isFalse() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertFalse(settings.hermesRemoteRelayEnabled)
+    }
+
+    func test_hermesGatewayBaseURL_settingPersists() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.hermesGatewayBaseURL = "https://hermes.example.com"
+        XCTAssertEqual(settings.hermesGatewayBaseURL, "https://hermes.example.com")
+        XCTAssertEqual(defaults.string(forKey: "hermesGatewayBaseURL"), "https://hermes.example.com")
+    }
+
     func test_hermesChatModelOverride_settingPersists() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
@@ -528,12 +561,46 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "hermesChatModelOverride"), "gpt-5.4")
     }
 
+    func test_hermesRemoteRelayEnabled_settingPersists() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.hermesRemoteRelayEnabled = true
+        XCTAssertTrue(settings.hermesRemoteRelayEnabled)
+        XCTAssertTrue(defaults.bool(forKey: "hermesRemoteRelayEnabled"))
+    }
+
     // MARK: - Chat Backend Settings
 
     func test_chatBackendOnboardingCompleted_defaultValue_isFalse() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
         XCTAssertFalse(settings.chatBackendOnboardingCompleted)
+    }
+
+    func test_hermesSetupWizardCompleted_defaultValue_isFalse() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertFalse(settings.hermesSetupWizardCompleted)
+    }
+
+    func test_hermesSetupWizardCompleted_settingPersists() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.hermesSetupWizardCompleted = true
+
+        XCTAssertTrue(settings.hermesSetupWizardCompleted)
+        XCTAssertTrue(defaults.bool(forKey: "hermesSetupWizardCompleted"))
+    }
+
+    func test_hermesSetupWizard_isThreeStepFlow() {
+        XCTAssertEqual(HermesSetupStep.allCases.count, 3)
+        XCTAssertEqual(
+            HermesSetupStep.allCases.map(\.stepLabel),
+            ["1 · Prepare", "2 · Connect", "3 · Chat"]
+        )
+        XCTAssertEqual(HermesSetupStep.allCases.map(\.progressFraction), [0.0, 0.5, 1.0])
     }
 
     func test_switcherOnboardingCompleted_defaultValue_isFalse() {
@@ -613,10 +680,10 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertTrue(settings.autoSessionSummariesEnabled)
     }
 
-    func test_summaryProviderOrderCSV_defaultValue_isLocalMLXMiniMaxOpenRouterZai() {
+    func test_summaryProviderOrderCSV_defaultValue_isLocalMLXMiniMaxOpenRouterZaiOllama() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
-        XCTAssertEqual(settings.summaryProviderOrderCSV, "local,mlx,minimax,openrouter,zai")
+        XCTAssertEqual(settings.summaryProviderOrderCSV, "local,mlx,minimax,openrouter,zai,ollama")
     }
 
     func test_summaryProviderOrder_parsesAndDedups() {
@@ -625,7 +692,7 @@ final class SettingsManagerTests: XCTestCase {
         let settings = makeSettingsManager(defaults: defaults)
 
         let order = settings.summaryProviderOrder
-        XCTAssertEqual(order, [.local, .mlx, .minimax, .openrouter, .zai])
+        XCTAssertEqual(order, [.local, .mlx, .minimax, .openrouter, .zai, .ollama])
     }
 
     func test_summaryProviderOrder_fallsBackToDefaultWhenEmpty() {
@@ -633,7 +700,7 @@ final class SettingsManagerTests: XCTestCase {
         defaults.set("", forKey: "summaryProviderOrderCSV")
         let settings = makeSettingsManager(defaults: defaults)
 
-        XCTAssertEqual(settings.summaryProviderOrder, [.local, .mlx, .minimax, .openrouter, .zai])
+        XCTAssertEqual(settings.summaryProviderOrder, [.local, .mlx, .minimax, .openrouter, .zai, .ollama])
     }
 
     func test_summaryProviderOrder_appendsMissingProviders() {
@@ -647,6 +714,7 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertTrue(order.contains(.minimax))
         XCTAssertTrue(order.contains(.openrouter))
         XCTAssertTrue(order.contains(.zai))
+        XCTAssertTrue(order.contains(.ollama))
     }
 
     func test_setSummaryProviderOrder_encodesToCSV() {
@@ -847,6 +915,44 @@ final class SettingsManagerTests: XCTestCase {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
         XCTAssertFalse(settings.tokenizerAssistedFallbackEnabled)
+    }
+
+    func test_smartHubQuotaDisplayDefaults_targetLocalDashboard() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        XCTAssertFalse(settings.smartHubQuotaDisplayEnabled)
+        XCTAssertEqual(settings.smartHubQuotaDashboardURL, "http://127.0.0.1:8787/render.html")
+        XCTAssertEqual(settings.smartHubQuotaRefreshURL, "http://127.0.0.1:8787/refresh")
+        XCTAssertEqual(settings.smartHubQuotaVoiceRefreshURL, "http://127.0.0.1:8787/voice-refresh")
+        XCTAssertEqual(settings.smartHubQuotaTimePeriod, .rolling5h)
+    }
+
+    func test_smartHubQuotaDisplaySettings_resolveStoredValues() {
+        let defaults = makeIsolatedDefaults()
+        defaults.set(true, forKey: "smartHubQuotaDisplayEnabled")
+        defaults.set("http://192.168.68.96:8787/render.html", forKey: "smartHubQuotaDashboardURL")
+        defaults.set("http://192.168.68.96:8787/refresh", forKey: "smartHubQuotaRefreshURL")
+        defaults.set("http://192.168.68.96:8787/voice-refresh", forKey: "smartHubQuotaVoiceRefreshURL")
+        defaults.set("rolling7d", forKey: "smartHubQuotaTimePeriod")
+
+        let settings = makeSettingsManager(defaults: defaults)
+
+        XCTAssertTrue(settings.smartHubQuotaDisplayEnabled)
+        XCTAssertEqual(settings.smartHubQuotaDashboardURL, "http://192.168.68.96:8787/render.html")
+        XCTAssertEqual(settings.smartHubQuotaRefreshURL, "http://192.168.68.96:8787/refresh")
+        XCTAssertEqual(settings.smartHubQuotaVoiceRefreshURL, "http://192.168.68.96:8787/voice-refresh")
+        XCTAssertEqual(settings.smartHubQuotaTimePeriod, .rolling7d)
+    }
+
+    func test_smartHubQuotaTimePeriod_persistsAcrossInstances() {
+        let defaults = makeIsolatedDefaults()
+        do {
+            let settings = makeSettingsManager(defaults: defaults)
+            settings.smartHubQuotaTimePeriod = .rolling30d
+        }
+        let reloaded = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(reloaded.smartHubQuotaTimePeriod, .rolling30d)
     }
 
     // MARK: - Hermes Chat Model Resolution

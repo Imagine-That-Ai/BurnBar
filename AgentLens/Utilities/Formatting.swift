@@ -18,9 +18,12 @@ enum UsageDisplayMode: String, CaseIterable, Identifiable, Hashable {
 
 extension Double {
     func formatAsCost() -> String {
-        if abs(self) < 1e-9 { return "$0.00" }
-        if self < 0.01 { return String(format: "$%.4f", self) }
-        return String(format: "$%.2f", self)
+        let magnitude = abs(self)
+        if magnitude < 1e-9 { return "$0.00" }
+        let formatted = magnitude < 0.01
+            ? String(format: "$%.4f", magnitude)
+            : String(format: "$%.2f", magnitude)
+        return self < 0 ? "-\(formatted)" : formatted
     }
 
     /// Display a 0–1 ratio as a percent. Whole numbers when ≥ 10%, one decimal below.

@@ -123,13 +123,17 @@ final class QuotaSnapshotSyncService {
         do {
             let batch = context.firestoreGateway.batch()
             let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("quota_snapshots")
+            var didEnqueueWrite = false
 
-            for snapshot in snapshots {
+            for snapshot in snapshots where snapshot.hasDisplayableQuotaSignal {
                 let docId = snapshotDocumentID(snapshot, fallbackSourceID: context.deviceId)
                 let docRef = collectionRef.document(docId)
                 let data = encodeSnapshot(snapshot, deviceId: context.deviceId)
                 batch.setData(data, forDocument: docRef, merge: true)
+                didEnqueueWrite = true
             }
+
+            guard didEnqueueWrite else { return }
 
             try await withCloudSyncRetry(
                 policy: context.retryPolicy,
@@ -163,7 +167,7 @@ final class QuotaSnapshotSyncService {
             "fetchedAt": Timestamp(date: snapshot.fetchedAt),
             "confidence": snapshot.confidence.rawValue,
             "statusMessage": snapshot.statusMessage,
-            "buckets": snapshot.buckets.map(encodeBucket),
+            "buckets": snapshot.displayableQuotaBuckets.map(encodeBucket),
             "schemaVersion": snapshot.schemaVersion,
             "updatedAt": FieldValue.serverTimestamp()
         ]
@@ -224,5 +228,25 @@ final class QuotaSnapshotSyncService {
             "meta": meta
         ]
         return result
+    }
+}
+
+extension CloudSyncService {
+    func uploadProviderAccountsForIOS() async {
+        let context = CloudSyncContext(
+            dataStore: dataStore,
+            accountManager: accountManager,
+            settingsManager: settingsManager
+        )
+        await ProviderAccountSyncService(context: context).uploadAccounts()
+    }
+
+    func uploadQuotaSnapshotsForIOS(_ snapshots: [ProviderQuotaSnapshot]) async {
+        let context = CloudSyncContext(
+            dataStore: dataStore,
+            accountManager: accountManager,
+            settingsManager: settingsManager
+        )
+        await QuotaSnapshotSyncService(context: context).uploadSnapshots(snapshots)
     }
 }

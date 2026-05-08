@@ -15,6 +15,8 @@ public actor BurnBarHTTPGatewayServer {
 
     private let configuration: BurnBarGatewayConfiguration
     private let configStore: BurnBarConfigStore
+    private let usageRecorder: BurnBarUsageRecorder?
+    private let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
     private let logger: BurnBarDaemonLogger
     private let rateLimiter: BurnBarRateLimiter?
     private var listener: NWListener?
@@ -22,11 +24,15 @@ public actor BurnBarHTTPGatewayServer {
     public init(
         configuration: BurnBarGatewayConfiguration,
         configStore: BurnBarConfigStore,
+        usageRecorder: BurnBarUsageRecorder? = nil,
+        providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "http-gateway"),
         rateLimiter: BurnBarRateLimiter? = nil
     ) {
         self.configuration = configuration
         self.configStore = configStore
+        self.usageRecorder = usageRecorder
+        self.providerExecutor = providerExecutor
         self.logger = logger
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
             BurnBarRateLimiter(configuration: $0)
@@ -267,19 +273,19 @@ public actor BurnBarHTTPGatewayServer {
             }
         }
 
-        let (status, responseBody) = await routeRequest(request)
-        var headers: [String: String] = ["Content-Type": "application/json"]
+        let routedResponse = await routeRequest(request)
+        var headers = routedResponse.headers
         for (key, value) in corsHeaders(for: request) {
             headers[key] = value
         }
-        await writeResponse(on: connection, status: status, headers: headers, body: responseBody)
+        await writeResponse(on: connection, response: routedResponse.withHeaders(headers))
         connection.cancel()
     }
 
-    private func routeRequest(_ request: HTTPRequest) async -> (Int, String) {
+    private func routeRequest(_ request: HTTPRequest) async -> GatewayHTTPResponse {
         switch (request.method, request.path) {
         case ("GET", "/health"):
-            return (200, encodeBody(HealthResponse(ok: true, version: BurnBarDaemonVersion.current)))
+            return jsonResponse(status: 200, body: encodeBody(HealthResponse(ok: true, version: BurnBarDaemonVersion.current)))
 
         case ("GET", "/v1/models"):
             return await handleModels()
@@ -288,13 +294,13 @@ public actor BurnBarHTTPGatewayServer {
             return await handleChatCompletions(body: request.body)
 
         default:
-            return (404, errorBody("not found"))
+            return jsonResponse(status: 404, body: errorBody("not found"))
         }
     }
 
     // MARK: - /v1/models
 
-    private func handleModels() async -> (Int, String) {
+    private func handleModels() async -> GatewayHTTPResponse {
         do {
             let configurations = try await configStore.resolvedConfigurations()
             let enabledConfigs = configurations.filter { $0.settings.isEnabled && $0.hasCredential }
@@ -304,34 +310,34 @@ public actor BurnBarHTTPGatewayServer {
                     models.append(ModelDescriptor(id: model.id, ownedBy: config.provider.id))
                 }
             }
-            return (200, encodeBody(ModelsResponse(data: models)))
+            return jsonResponse(status: 200, body: encodeBody(ModelsResponse(data: models)))
         } catch {
             logger.error("gateway_models_error", metadata: ["error": "\(error)"])
-            return (500, errorBody("internal error"))
+            return jsonResponse(status: 500, body: errorBody("internal error"))
         }
     }
 
     // MARK: - /v1/chat/completions
 
-    private func handleChatCompletions(body: String?) async -> (Int, String) {
+    private func handleChatCompletions(body: String?) async -> GatewayHTTPResponse {
         guard let body, !body.isEmpty else {
-            return (400, errorBody("request body required"))
+            return jsonResponse(status: 400, body: errorBody("request body required"))
         }
 
         guard let bodyData = body.data(using: .utf8) else {
-            return (400, errorBody("request body must be valid UTF-8"))
+            return jsonResponse(status: 400, body: errorBody("request body must be valid UTF-8"))
         }
 
         let completionRequest: ChatCompletionsRequest
         do {
             completionRequest = try JSONDecoder().decode(ChatCompletionsRequest.self, from: bodyData)
         } catch {
-            return (400, errorBody("invalid JSON request body"))
+            return jsonResponse(status: 400, body: errorBody("invalid JSON request body"))
         }
 
         let modelID = completionRequest.model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard modelID.isEmpty == false else {
-            return (400, errorBody("model field required"))
+            return jsonResponse(status: 400, body: errorBody("model field required"))
         }
 
         do {
@@ -339,29 +345,110 @@ public actor BurnBarHTTPGatewayServer {
                 configStore: configStore,
                 logger: BurnBarDaemonLogger(category: "gateway-router")
             )
-            let route = try await router.route(modelName: modelID)
+            let ranking = try await router.scoreAndRankRoutes(modelName: modelID)
+            let routes = ranking.rankedRoutes.map(\.route)
+            guard routes.isEmpty == false else {
+                return jsonResponse(status: 502, body: errorBody("routing failed: no eligible route for \(modelID)"))
+            }
 
-            let response = ChatCompletionRouteResponse(
-                id: "gw-\(UUID().uuidString.prefix(8))",
-                model: route.resolvedModelID,
-                providerID: route.providerID,
-                baseURL: route.baseURL,
-                credentialSlot: route.credentialSlotID ?? "default",
-                created: Int(Date().timeIntervalSince1970),
-                choices: []
-            )
-            return (200, encodeBody(response))
+            var lastError: Error?
+            for (index, route) in routes.enumerated() {
+                if let slotID = route.credentialSlotID {
+                    try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
+                }
+
+                do {
+                    let response = try await providerExecutor.proxyChatCompletions(
+                        body: bodyData,
+                        route: route
+                    )
+                    await router.markRouteSuccess(route)
+                    await recordUsageIfAvailable(response.usage, route: route)
+                    return GatewayHTTPResponse(
+                        status: response.statusCode,
+                        headers: ["Content-Type": response.contentType],
+                        body: response.body
+                    )
+                } catch {
+                    lastError = error
+                    await router.markRouteFailure(route, error: error)
+                    let hasMoreCandidates = index < routes.count - 1
+                    if shouldFailOverProviderError(error), hasMoreCandidates {
+                        continue
+                    }
+                    break
+                }
+            }
+
+            let message = lastError?.localizedDescription ?? "no eligible route for \(modelID)"
+            return jsonResponse(status: 502, body: errorBody("routing failed: \(message)"))
         } catch {
             logger.error("gateway_route_error", metadata: ["model": modelID, "error": "\(error)"])
-            return (502, errorBody("routing failed: \(error.localizedDescription)"))
+            return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
         }
+    }
+
+    private func recordUsageIfAvailable(
+        _ usage: BurnBarProviderProxyUsage?,
+        route: BurnBarProviderRoute
+    ) async {
+        guard let usage, let usageRecorder else { return }
+        let event = BurnBarUsageEvent(
+            providerID: route.providerID,
+            modelID: route.resolvedModelID,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheCreationTokens: usage.cacheCreationTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+            reasoningTokens: usage.reasoningTokens,
+            cost: route.pricing.cost(
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                cacheCreationTokens: usage.cacheCreationTokens,
+                cacheReadTokens: usage.cacheReadTokens
+            ),
+            recordedAt: Date(),
+            projectName: "OpenBurnBar Gateway",
+            confidence: usage.confidence
+        )
+        do {
+            _ = try await usageRecorder.record(
+                event,
+                idempotencyKey: "gateway:\(UUID().uuidString)"
+            )
+        } catch {
+            logger.silentFailure("gateway_usage_record", error: error)
+        }
+    }
+
+    private func shouldFailOverProviderError(_ error: Error) -> Bool {
+        if let providerError = error as? BurnBarProviderExecutorError {
+            switch providerError {
+            case .upstreamError(let statusCode, let body):
+                if statusCode == 429 || statusCode == 401 || statusCode == 403 || statusCode == 402 {
+                    return true
+                }
+                let normalizedBody = body.lowercased()
+                return normalizedBody.contains("quota")
+                    || normalizedBody.contains("rate")
+                    || normalizedBody.contains("insufficient")
+                    || normalizedBody.contains("exhaust")
+            case .invalidBaseURL, .invalidResponse:
+                return false
+            }
+        }
+
+        let description = error.localizedDescription.lowercased()
+        return description.contains("quota")
+            || description.contains("rate limit")
+            || description.contains("429")
     }
 
     // MARK: - HTTP I/O (NWConnection)
 
-    private func writeResponse(on connection: NWConnection, status: Int, headers: [String: String], body: String) async {
+    private func writeResponse(on connection: NWConnection, response: GatewayHTTPResponse) async {
         let statusText: String
-        switch status {
+        switch response.status {
         case 204: statusText = "No Content"
         case 200: statusText = "OK"
         case 400: statusText = "Bad Request"
@@ -374,25 +461,36 @@ public actor BurnBarHTTPGatewayServer {
         default: statusText = "Unknown"
         }
 
-        var response = "HTTP/1.1 \(status) \(statusText)\r\n"
-        for (key, value) in headers {
-            response += "\(key): \(value)\r\n"
+        var head = "HTTP/1.1 \(response.status) \(statusText)\r\n"
+        for (key, value) in response.headers {
+            head += "\(key): \(value)\r\n"
         }
-        response += "Content-Length: \(body.utf8.count)\r\n"
-        response += "Connection: close\r\n"
-        response += "\r\n"
-        response += body
+        head += "Content-Length: \(response.body.count)\r\n"
+        head += "Connection: close\r\n"
+        head += "\r\n"
 
-        guard let data = response.data(using: .utf8) else {
+        guard var data = head.data(using: .utf8) else {
             connection.cancel()
             return
         }
+        data.append(response.body)
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             connection.send(content: data, completion: .contentProcessed { _ in
                 continuation.resume()
             })
         }
+    }
+
+    private func writeResponse(on connection: NWConnection, status: Int, headers: [String: String], body: String) async {
+        await writeResponse(
+            on: connection,
+            response: GatewayHTTPResponse(
+                status: status,
+                headers: headers,
+                body: Data(body.utf8)
+            )
+        )
     }
 
     // MARK: - HTTP Parsing
@@ -505,6 +603,14 @@ public actor BurnBarHTTPGatewayServer {
         encodeBody(GatewayErrorResponse(error: message))
     }
 
+    private func jsonResponse(status: Int, body: String) -> GatewayHTTPResponse {
+        GatewayHTTPResponse(
+            status: status,
+            headers: ["Content-Type": "application/json"],
+            body: Data(body.utf8)
+        )
+    }
+
     private func encodeBody<Value: Encodable>(_ value: Value) -> String {
         do {
             let payload = try JSONEncoder().encode(value)
@@ -517,6 +623,16 @@ public actor BurnBarHTTPGatewayServer {
     private enum HTTPRequestReadError: Error {
         case invalidRequest
         case payloadTooLarge
+    }
+
+    private struct GatewayHTTPResponse {
+        let status: Int
+        let headers: [String: String]
+        let body: Data
+
+        func withHeaders(_ headers: [String: String]) -> GatewayHTTPResponse {
+            GatewayHTTPResponse(status: status, headers: headers, body: body)
+        }
     }
 
     private struct HealthResponse: Encodable {
@@ -549,27 +665,6 @@ public actor BurnBarHTTPGatewayServer {
         let model: String
     }
 
-    private struct ChatCompletionRouteResponse: Encodable {
-        let id: String
-        let object = "chat.completion"
-        let model: String
-        let providerID: String
-        let baseURL: String
-        let credentialSlot: String
-        let created: Int
-        let choices: [String]
-
-        enum CodingKeys: String, CodingKey {
-            case id
-            case object
-            case model
-            case providerID = "provider_id"
-            case baseURL = "base_url"
-            case credentialSlot = "credential_slot"
-            case created
-            case choices
-        }
-    }
 }
 
 public enum BurnBarHTTPGatewayError: Error, LocalizedError {

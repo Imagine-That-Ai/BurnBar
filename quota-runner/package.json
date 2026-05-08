@@ -1,0 +1,14 @@
+{
+  "name": "openburnbar-quota-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "On-demand Claude Code and Codex quota probe runner for OpenBurnBar.",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

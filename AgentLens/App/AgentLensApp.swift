@@ -2,6 +2,7 @@ import AppKit
 import FirebaseCore
 import FirebaseAppCheck
 import GoogleSignIn
+import OpenBurnBarCore
 import OSLog
 import SwiftUI
 
@@ -100,6 +101,7 @@ final class WindowManager: ObservableObject {
     private var hermesSetupWindow: NSWindow?
     private var switcherOnboardingWindow: NSWindow?
     private var startupRecoveryWindow: NSWindow?
+    private var dashboardWindowLifecycleDelegate: DashboardWindowLifecycleDelegate?
 
     func openDashboard(
         dataStore: DataStore,
@@ -149,8 +151,11 @@ final class WindowManager: ObservableObject {
         window.center()
         window.makeKeyAndOrderFront(nil)
         window.isReleasedWhenClosed = false
+        let lifecycleDelegate = DashboardWindowLifecycleDelegate()
+        window.delegate = lifecycleDelegate
 
         dashboardWindow = window
+        dashboardWindowLifecycleDelegate = lifecycleDelegate
     }
 
     func openSettings(
@@ -245,7 +250,10 @@ final class WindowManager: ObservableObject {
 
     func openHermesSetupWizard(
         settingsManager: SettingsManager,
-        chatController: ChatSessionController?
+        chatController: ChatSessionController?,
+        dataStore: DataStore? = nil,
+        cloudSyncService: CloudSyncService? = nil,
+        iCloudSessionMirrorService: ICloudSessionMirrorService? = nil
     ) {
         NSApplication.shared.activate(ignoringOtherApps: true)
 
@@ -254,9 +262,19 @@ final class WindowManager: ObservableObject {
             return
         }
 
+        let importService: HermesInventoryImportService? = dataStore.map { store in
+            HermesInventoryImportService(
+                dataStore: store,
+                settingsManager: settingsManager,
+                cloudSyncService: cloudSyncService ?? CloudSyncService(dataStore: store, accountManager: .shared, settingsManager: settingsManager),
+                iCloudMirrorService: iCloudSessionMirrorService ?? ICloudSessionMirrorService(settingsManager: settingsManager)
+            )
+        }
+
         let contentView = HermesSetupWizardView(
             settingsManager: settingsManager,
             chatController: chatController,
+            inventoryImportService: importService,
             onDismiss: { [weak self] in
                 self?.hermesSetupWindow?.close()
                 self?.hermesSetupWindow = nil
@@ -264,7 +282,7 @@ final class WindowManager: ObservableObject {
         )
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 580),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 540),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -379,6 +397,21 @@ final class WindowManager: ObservableObject {
     }
 }
 
+@MainActor
+private final class DashboardWindowLifecycleDelegate: NSObject, NSWindowDelegate {
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.orderOut(nil)
+        return false
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        guard window.isVisible, window.attachedSheet == nil, NSApp.modalWindow == nil else { return }
+
+        window.orderOut(nil)
+    }
+}
+
 // MARK: - App Entry Point
 
 @main
@@ -481,6 +514,7 @@ struct OpenBurnBarApp: App {
         }
 
         // Configure App Check before FirebaseApp.configure()
+        AppCheckDebugTokenEnvironment.configureIfAvailable(firebasePlistPath: path)
         let providerFactory = OpenBurnBarAppCheckProviderFactory()
         AppCheck.setAppCheckProviderFactory(providerFactory)
 
@@ -760,24 +794,84 @@ struct OpenBurnBarApp: App {
                     .task {
                         await Task.yield()
                         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
-                        guard context.aggregator == nil else { return }
-                        let sync = CloudSyncService(
-                            dataStore: context.dataStore,
-                            accountManager: context.accountManager,
-                            settingsManager: context.settingsManager
-                        )
+                        let sync: CloudSyncService
+                        if let existingSync = context.cloudSyncService {
+                            sync = existingSync
+                        } else {
+                            sync = CloudSyncService(
+                                dataStore: context.dataStore,
+                                accountManager: context.accountManager,
+                                settingsManager: context.settingsManager
+                            )
+                        }
                         context.cloudSyncService = sync
-                        let mirror = ICloudSessionMirrorService(settingsManager: context.settingsManager)
+
+                        let hermesRelayHost: HermesRelayHostService
+                        if let existingRelayHost = context.hermesRelayHostService {
+                            hermesRelayHost = existingRelayHost
+                        } else {
+                            hermesRelayHost = HermesRelayHostService(
+                                accountManager: context.accountManager,
+                                settingsManager: context.settingsManager
+                            )
+                        }
+                        context.hermesRelayHostService = hermesRelayHost
+                        hermesRelayHost.start()
+
+                        // Smart Hub bridge — local HTTP server that the
+                        // Google Nest Hub points at. Auto-starts when the
+                        // toggle in Settings → Provider Quota is on.
+                        let smartHubBridge: SmartHubBridgeController
+                        if let existingSmartHubBridge = context.smartHubBridgeController {
+                            smartHubBridge = existingSmartHubBridge
+                        } else {
+                            smartHubBridge = SmartHubBridgeController(
+                                settingsManager: context.settingsManager,
+                                quotaService: context.quotaService,
+                                dataStore: context.dataStore
+                            )
+                        }
+                        context.smartHubBridgeController = smartHubBridge
+                        smartHubBridge.start()
+
+                        // Cast Actions listener — proxies Cast requests
+                        // from iPhone via Firestore. We always start it
+                        // when the runtime is online; the iPhone wizard
+                        // is the only writer.
+                        let castListener: CastActionsListener
+                        if let existing = context.castActionsListener {
+                            castListener = existing
+                        } else {
+                            castListener = CastActionsListener(
+                                accountManager: context.accountManager,
+                                settingsManager: context.settingsManager
+                            )
+                        }
+                        context.castActionsListener = castListener
+                        castListener.start()
+
+                        let mirror: ICloudSessionMirrorService
+                        if let existingMirror = context.iCloudSessionMirrorService {
+                            mirror = existingMirror
+                        } else {
+                            mirror = ICloudSessionMirrorService(settingsManager: context.settingsManager)
+                        }
                         context.iCloudSessionMirrorService = mirror
-                        let newAggregator = UsageAggregator(
-                            dataStore: context.dataStore,
-                            cloudSync: sync,
-                            sessionMirror: mirror,
-                            settingsManager: context.settingsManager,
-                            quotaService: context.quotaService
-                        )
-                        context.aggregator = newAggregator
-                        context.operatingLayer.aggregator = newAggregator
+
+                        let aggregator: UsageAggregator
+                        if let existingAggregator = context.aggregator {
+                            aggregator = existingAggregator
+                        } else {
+                            aggregator = UsageAggregator(
+                                dataStore: context.dataStore,
+                                cloudSync: sync,
+                                sessionMirror: mirror,
+                                settingsManager: context.settingsManager,
+                                quotaService: context.quotaService
+                            )
+                        }
+                        context.aggregator = aggregator
+                        context.operatingLayer.aggregator = aggregator
                         context.operatingLayer.chatController = context.chatController
                         context.daemonManager.attach(dataStore: context.dataStore)
                         context.cursorConnectorManager.attach(dataStore: context.dataStore)
@@ -785,7 +879,7 @@ struct OpenBurnBarApp: App {
                             hasShownInitialDashboard = true
                             windowManager.openDashboard(
                                 dataStore: context.dataStore,
-                                aggregator: newAggregator,
+                                aggregator: aggregator,
                                 accountManager: context.accountManager,
                                 cloudSyncService: sync,
                                 iCloudSessionMirrorService: mirror,
@@ -811,9 +905,12 @@ struct OpenBurnBarApp: App {
                             await context.daemonManager.refreshHealth()
                             await context.operatingLayer.refreshControllerRuntime()
                         }
-                        // Don't block the first frame on a long disk scan; the menu bar can appear while refresh runs.
-                        Task(priority: .userInitiated) {
-                            await newAggregator.refreshAll()
+                        // Delay the first scan briefly so app activation, menu-bar paint, and
+                        // dashboard construction are not competing with parser and DB I/O.
+                        Task(priority: .utility) {
+                            try? await Task.sleep(for: .seconds(2))
+                            guard !Task.isCancelled else { return }
+                            await aggregator.refreshAll()
                             await sync.uploadPendingConversations()
                             await sync.uploadPendingChatThreads()
                             if context.settingsManager.dailyDigestEnabled {
@@ -827,11 +924,11 @@ struct OpenBurnBarApp: App {
                         periodicRefreshTask?.cancel()
                         periodicRefreshTask = Task(priority: .utility) {
                             while !Task.isCancelled {
-                                let seconds = max(context.settingsManager.refreshInterval, 30)
+                                let seconds = max(context.settingsManager.refreshInterval, 60)
                                 let nanos = UInt64(seconds * 1_000_000_000)
                                 try? await Task.sleep(nanoseconds: nanos)
                                 if Task.isCancelled { break }
-                                await newAggregator.refreshAll()
+                                await aggregator.refreshAll()
                                 await context.daemonManager.refreshHealth()
                                 await context.operatingLayer.refreshControllerRuntime()
                             }

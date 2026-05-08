@@ -67,7 +67,38 @@ public struct UnifiedQuotaSignalView: View {
                     )
                 )
 
-            VStack(alignment: .leading, spacing: compact ? 4 : 8) {
+            VStack(alignment: .leading, spacing: compact ? 6 : 8) {
+                // Identity row: the bucket's actual name + the time window it
+                // represents. Without this, multiple gauges look identical in
+                // the per-account sheet — the only label was a status word.
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(bucketDisplayName)
+                        .font(UnifiedDesignSystem.Typography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+                    if let windowLabel {
+                        Text(windowLabel)
+                            .font(UnifiedDesignSystem.Typography.monoTiny)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(
+                                Capsule().fill(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.7))
+                            )
+                            .overlay(
+                                Capsule().stroke(theme.primaryColor.opacity(0.18), lineWidth: 0.5)
+                            )
+                    }
+                    Spacer(minLength: 0)
+                    if compact {
+                        Text(remainingPercentText)
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .foregroundStyle(fillColor)
+                    }
+                }
+
+                // Status row — the qualitative state.
                 HStack(alignment: .firstTextBaseline, spacing: UnifiedDesignSystem.Spacing.sm) {
                     Text(signalStatus.label.uppercased())
                         .font(UnifiedDesignSystem.Typography.monoTiny)
@@ -76,7 +107,7 @@ public struct UnifiedQuotaSignalView: View {
                     if compact {
                         Spacer()
                         Text(remainingText)
-                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
                             .foregroundStyle(fillColor)
                     }
                 }
@@ -139,20 +170,106 @@ public struct UnifiedQuotaSignalView: View {
         .accessibilityLabel("\(provider.displayName) quota: \(remainingText) remaining")
     }
 
+    /// What kind of value this bucket carries — drives label formatting.
+    /// Falls back to `.count` so existing buckets without a `meta["unit"]`
+    /// keep their previous decimal rendering.
+    private enum BucketUnitKind {
+        case currency
+        case percent
+        case tokens
+        case count
+
+        init(metaValue: String?) {
+            switch (metaValue ?? "").lowercased() {
+            case "currency", "usd", "dollars", "$": self = .currency
+            case "percent", "%": self = .percent
+            case "tokens", "tok": self = .tokens
+            default: self = .count
+            }
+        }
+    }
+
+    private var bucketUnit: BucketUnitKind {
+        BucketUnitKind(metaValue: bucket.meta?["unit"])
+    }
+
     private var remainingText: String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: bucket.remaining)) ?? "\(Int(bucket.remaining))"
+        formatValue(bucket.remaining)
     }
 
     private var usageText: String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 0
-        let used = formatter.string(from: NSNumber(value: bucket.used)) ?? "\(Int(bucket.used))"
-        let limit = formatter.string(from: NSNumber(value: bucket.limit)) ?? "\(Int(bucket.limit))"
+        let used = formatValue(bucket.used)
+        let limit = formatValue(bucket.limit)
         return "\(used) / \(limit)"
+    }
+
+    private func formatValue(_ value: Double) -> String {
+        switch bucketUnit {
+        case .currency:
+            // USD with two decimals — handles "$0.39", "$3.61", "$1,250.00".
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            formatter.currencySymbol = "$"
+            formatter.minimumFractionDigits = 2
+            formatter.maximumFractionDigits = 2
+            return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
+        case .percent:
+            let clamped = min(max(value, 0), 100)
+            return "\(Int(clamped.rounded()))%"
+        case .tokens:
+            if value >= 1_000_000 { return String(format: "%.1fM", value / 1_000_000) }
+            if value >= 1_000 { return String(format: "%.1fK", value / 1_000) }
+            return "\(Int(value.rounded()))"
+        case .count:
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.maximumFractionDigits = 0
+            return formatter.string(from: NSNumber(value: value)) ?? "\(Int(value))"
+        }
+    }
+
+    private var remainingPercentText: String {
+        guard bucket.limit > 0 else { return "—" }
+        let pct = remainingFraction * 100
+        if pct < 1 {
+            return String(format: "%.1f%%", pct)
+        }
+        return "\(Int(pct.rounded()))%"
+    }
+
+    /// Friendly bucket name. Falls back to a humanized form of the raw key.
+    private var bucketDisplayName: String {
+        let raw = bucket.name.trimmingCharacters(in: .whitespaces)
+        guard !raw.isEmpty else { return "Quota" }
+        // If the name already contains a space (e.g. "Sonnet 5h"), use it directly.
+        if raw.contains(" ") { return raw }
+        // Otherwise lightly humanize (`hourly_tokens` → "Hourly Tokens").
+        let cleaned = raw
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+        return cleaned
+            .split(separator: " ")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
+    }
+
+    /// Short pill label for the bucket's time window. Matches the macOS
+    /// strip's "5h / 24h / 7d / 30d / All" vocabulary so the two surfaces
+    /// read consistently.
+    private var windowLabel: String? {
+        let raw = (bucket.window ?? "").lowercased()
+        switch raw {
+        case "rollinghours", "rolling_hours", "hourly", "5h": return "5h"
+        case "daily", "24h": return "24h"
+        case "weekly", "rollingdays", "rolling_days", "7d": return "7d"
+        case "monthly", "30d": return "30d"
+        case "lifetime", "alltime", "all_time": return "All"
+        case "": return nil
+        default:
+            // Already short like "12h" or "3d" — uppercase trailing unit.
+            if raw.count <= 4 { return raw.uppercased() }
+            return raw.prefix(1).uppercased() + raw.dropFirst()
+        }
     }
 }
 

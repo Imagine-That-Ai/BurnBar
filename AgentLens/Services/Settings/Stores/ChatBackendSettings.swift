@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Chat Backend Settings
 
@@ -36,8 +37,24 @@ final class ChatBackendSettings {
         didSet { persistence.set(hermesChatModelOverride, forKey: "hermesChatModelOverride") }
     }
 
+    var hermesGatewayBaseURL: String = "http://127.0.0.1:8642" {
+        didSet { persistence.set(hermesGatewayBaseURL, forKey: "hermesGatewayBaseURL") }
+    }
+
+    var hermesRemoteRelayEnabled: Bool = false {
+        didSet { persistence.set(hermesRemoteRelayEnabled, forKey: "hermesRemoteRelayEnabled") }
+    }
+
+    var hermesRealtimeRelayURL: String = HermesRealtimeRelayProtocol.defaultHostedRelayURLString {
+        didSet { persistence.set(hermesRealtimeRelayURL, forKey: "hermesRealtimeRelayURL") }
+    }
+
     var chatBackendOnboardingCompleted: Bool = false {
         didSet { persistence.set(chatBackendOnboardingCompleted, forKey: "chatBackendOnboardingCompleted") }
+    }
+
+    var hermesSetupWizardCompleted: Bool = false {
+        didSet { persistence.set(hermesSetupWizardCompleted, forKey: "hermesSetupWizardCompleted") }
     }
 
     var switcherOnboardingCompleted: Bool = false {
@@ -89,7 +106,14 @@ final class ChatBackendSettings {
             legacyDefaultsKey: SettingsSecretDefaultsKey.hermesBearerToken
         )
         self.hermesChatModelOverride = persistence.string(forKey: "hermesChatModelOverride")
+        self.hermesGatewayBaseURL = persistence.string(forKey: "hermesGatewayBaseURL", defaultValue: "http://127.0.0.1:8642")
+        self.hermesRemoteRelayEnabled = persistence.bool(forKey: "hermesRemoteRelayEnabled")
+        self.hermesRealtimeRelayURL = persistence.string(
+            forKey: "hermesRealtimeRelayURL",
+            defaultValue: HermesRealtimeRelayProtocol.defaultHostedRelayURLString
+        )
         self.chatBackendOnboardingCompleted = persistence.bool(forKey: "chatBackendOnboardingCompleted")
+        self.hermesSetupWizardCompleted = persistence.bool(forKey: "hermesSetupWizardCompleted")
         self.switcherOnboardingCompleted = persistence.bool(forKey: "switcherOnboardingCompleted")
         self.selectedOnboardingProvidersCSV = persistence.string(forKey: "selectedOnboardingProvidersCSV")
         if persistence.objectExists(forKey: "enabledChatBackendIDsCSV") {

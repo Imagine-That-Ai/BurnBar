@@ -12,6 +12,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case notifications
     case devicesAndSync
     case switcher
+    case hermes
 
     var id: String { rawValue }
 
@@ -25,6 +26,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .notifications: return "Notifications"
         case .devicesAndSync: return MacCopy.devicesAndSyncTitle
         case .switcher: return "Account Switcher"
+        case .hermes: return "Hermes"
         }
     }
 
@@ -38,6 +40,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .notifications: return "bell.badge.fill"
         case .devicesAndSync: return "macbook.and.iphone"
         case .switcher: return "arrow.triangle.2.circlepath"
+        case .hermes: return "antenna.radiowaves.left.and.right"
         }
     }
 
@@ -51,6 +54,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .notifications: return DesignSystem.Colors.whimsy
         case .devicesAndSync: return DesignSystem.Colors.teal
         case .switcher: return DesignSystem.Colors.amber
+        case .hermes: return DesignSystem.Colors.hermesAureate
         }
     }
 }

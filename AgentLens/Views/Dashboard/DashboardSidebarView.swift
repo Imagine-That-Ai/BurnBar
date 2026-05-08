@@ -34,7 +34,7 @@ extension DashboardView {
                         isSelected: mainRoute == .overview,
                         primaryMetric: settingsManager.formatUsageMetric(cost: totalCostForTimeRange, tokens: totalTokensForTimeRange),
                         totalCost: totalCostForTimeRange,
-                        sessionCount: filteredUsages.count
+                        sessionCount: dashboardUsageWindow.sessionCount
                     ) {
                         withAnimation(DesignSystem.Animation.standard) {
                             routeHistory.removeAll()

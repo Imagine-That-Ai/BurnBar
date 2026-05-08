@@ -13,6 +13,7 @@ struct SettingsView: View {
     var dataStore: DataStore
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: SettingsTab? = .general
+    @State private var presentationWindow: NSWindow?
 
     init(
         settingsManager: SettingsManager,
@@ -65,6 +66,7 @@ struct SettingsView: View {
         )
         .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(settingsManager)
+        .background(SettingsWindowReader(window: $presentationWindow))
     }
 
     @ViewBuilder
@@ -74,7 +76,9 @@ struct SettingsView: View {
             GeneralSettingsView(
                 settingsManager: settingsManager,
                 dataStore: dataStore,
-                sharedFeaturesAvailable: accountManager.isSignedIn
+                sharedFeaturesAvailable: accountManager.isSignedIn,
+                cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService
             )
                 .navigationTitle("General")
         case .daemon:
@@ -86,10 +90,7 @@ struct SettingsView: View {
                 isAnonymous: accountManager.isAnonymousUser,
                 isFirebaseAvailable: accountManager.isFirebaseAvailable,
                 onLinkGoogle: {
-                    guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
-                        throw AccountActionError.missingPresentationWindow
-                    }
-                    try await accountManager.signInWithGoogle(presentingWindow: window)
+                    try await accountManager.signInWithGoogle(presentingWindow: authPresentationWindow())
                 },
                 onEmailSignIn: { email, password in
                     try await accountManager.signInWithEmail(email: email, password: password)
@@ -98,12 +99,13 @@ struct SettingsView: View {
                     try await accountManager.signUpWithEmail(email: email, password: password)
                 },
                 onLinkApple: {
-                    guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
-                        throw AccountActionError.missingPresentationWindow
-                    }
-                    try await accountManager.signInWithApple(presentingWindow: window)
+                    try await accountManager.signInWithApple(presentingWindow: authPresentationWindow())
                 },
-                onUpgradeToPremium: {},
+                onUpgradeToPremium: {
+                    if let url = URL(string: "https://apps.apple.com/app/id6766366964") {
+                        NSWorkspace.shared.open(url)
+                    }
+                },
                 onDeleteAccount: {
                     Task { @MainActor in
                         try? await accountManager.deleteCurrentUser()
@@ -124,7 +126,7 @@ struct SettingsView: View {
             NotificationsSettingsView(settingsManager: settingsManager)
                 .navigationTitle("Notifications")
         case .devicesAndSync:
-            DevicesAndSyncSettingsView()
+            DevicesAndSyncSettingsView(settingsManager: settingsManager)
                 .navigationTitle(MacCopy.devicesAndSyncTitle)
         case .switcher:
             AccountSwitcherSettingsView(
@@ -132,10 +134,49 @@ struct SettingsView: View {
                 settingsManager: settingsManager
             )
                 .navigationTitle("Account Switcher")
+        case .hermes:
+            ChatGatewaySettingsView(
+                settingsManager: settingsManager,
+                dataStore: dataStore,
+                cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService
+            )
+                .navigationTitle("Hermes")
         }
+    }
+
+    private func authPresentationWindow() throws -> NSWindow {
+        let candidates = [presentationWindow, NSApp.keyWindow, NSApp.mainWindow]
+            + NSApp.windows.filter { $0.title == "Settings" || $0.isVisible }
+        guard let window = candidates.compactMap({ $0 }).first(where: { $0.isVisible && !$0.isMiniaturized }) else {
+            throw AccountActionError.missingPresentationWindow
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        return window
     }
 }
 
+
+private struct SettingsWindowReader: NSViewRepresentable {
+    @Binding var window: NSWindow?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async {
+            window = view.window
+        }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async {
+            if window !== view.window {
+                window = view.window
+            }
+        }
+    }
+}
 private enum AccountActionError: LocalizedError {
     case missingPresentationWindow
 

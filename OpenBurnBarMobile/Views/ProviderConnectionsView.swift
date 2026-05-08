@@ -25,7 +25,7 @@ struct ProviderConnectionsView: View {
     }
 
     private var availableProviders: [AgentProvider] {
-        AgentProvider.allCases.sorted { $0.displayName < $1.displayName }
+        AgentProvider.mobileAccountConnectableProviders
     }
 
     var body: some View {
@@ -41,9 +41,7 @@ struct ProviderConnectionsView: View {
                     }
                 }
                 .sheet(isPresented: $showAddSheet) {
-                    if let selectedProvider {
-                        AddProviderConnectionView(provider: selectedProvider)
-                    }
+                    AddProviderConnectionView(provider: selectedProvider)
                 }
                 .alert(
                     "Couldn't update account",
@@ -80,13 +78,12 @@ struct ProviderConnectionsView: View {
                     ConnectionLoadingPlaceholder()
                 } else if !hasFirstClassAccounts && store.connections.isEmpty {
                     ConnectionsEmptyState {
-                        // Default to a sensible "first add" path — pick the first
-                        // unconnected provider in the catalog. Users can change it
-                        // in the sheet or use the Available list below.
-                        if let first = availableProviders.first {
-                            selectedProvider = first
-                            showAddSheet = true
-                        }
+                        // Open the searchable provider grid so users see the
+                        // full list of supported providers in one place
+                        // instead of being silently routed to whichever
+                        // provider happens to be first.
+                        selectedProvider = nil
+                        showAddSheet = true
                     }
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
@@ -131,7 +128,7 @@ struct ProviderConnectionsView: View {
                 }
             }
 
-            Section("Add Account") {
+            Section {
                 ForEach(availableProviders) { provider in
                     AvailableProviderRow(
                         provider: provider,
@@ -141,11 +138,17 @@ struct ProviderConnectionsView: View {
                         showAddSheet = true
                     }
                 }
+            } header: {
+                Text("Add Account")
+            } footer: {
+                Text("Accounts added here appear on signed-in Macs. Backend-refreshable providers update from cloud; local quota bridges refresh from the Mac.")
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
             }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(MobileTheme.Colors.background.ignoresSafeArea())
+        .background(EmberSurfaceBackground().ignoresSafeArea())
     }
 
     private var connectedSectionHeader: some View {
@@ -182,7 +185,7 @@ private struct ConnectionsEmptyState: View {
                 .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
 
-            Text("Connect a provider to track quota and usage. You can add multiple accounts per provider — for example, one personal and one work OpenAI account.")
+            Text("Connect a provider with real quota or routing credentials. You can add multiple accounts per provider — for example, one personal and one work Cursor account.")
                 .font(MobileTheme.Typography.footnote)
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
@@ -206,7 +209,7 @@ private struct ConnectionLoadingPlaceholder: View {
     var body: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
             ForEach(0..<2, id: \.self) { _ in
-                SkeletonView(height: 72, cornerRadius: MobileTheme.Radius.md)
+                EmberSkeleton(height: 72, cornerRadius: MobileTheme.Radius.md)
             }
         }
         .padding(.vertical, MobileTheme.Spacing.sm)
@@ -291,7 +294,7 @@ private struct ProviderAccountGroupSection: View {
     private var providerHeaderRow: some View {
         HStack(spacing: MobileTheme.Spacing.md) {
             if let providerEnum {
-                ProviderBadge(provider: providerEnum, size: 36)
+                ProviderAvatar(provider: providerEnum, mode: .aurora, size: 48)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(providerEnum?.displayName ?? providerID.rawValue)
@@ -555,7 +558,7 @@ private struct LegacyConnectionRow: View {
     var body: some View {
         HStack(spacing: MobileTheme.Spacing.md) {
             if let providerEnum {
-                ProviderBadge(provider: providerEnum, size: 36)
+                ProviderAvatar(provider: providerEnum, mode: .aurora, size: 48)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(providerEnum?.displayName ?? connection.provider)
@@ -626,16 +629,36 @@ private struct AvailableProviderRow: View {
     let accountCount: Int
     let onTap: () -> Void
 
+    /// One-line setup hint pulled from the shared `ProviderSetupGuide` so the
+    /// list reads like a menu instead of a wall of avatars. Falls through to
+    /// the generic "Add another / Connect for the first time" line below it.
+    private var setupHint: String {
+        ProviderSetupGuide.guide(for: provider).oneLineHint
+    }
+
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: MobileTheme.Spacing.md) {
-                ProviderBadge(provider: provider, size: 36)
+                ProviderAvatar(provider: provider, mode: .aurora, size: 48)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(provider.displayName)
-                        .font(MobileTheme.Typography.body)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    Text(accountCount > 0 ? "Add another account" : "Connect for the first time")
+                    HStack(spacing: 6) {
+                        Text(provider.displayName)
+                            .font(MobileTheme.Typography.body)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        if accountCount > 0 {
+                            Text("· \(accountCount)")
+                                .font(MobileTheme.Typography.tiny)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(MobileTheme.Colors.success)
+                        }
+                    }
+                    Text(setupHint)
                         .font(MobileTheme.Typography.footnote)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(accountCount > 0 ? "Tap to add another account" : "Tap to connect")
+                        .font(MobileTheme.Typography.tiny)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
                 Spacer()
@@ -644,10 +667,11 @@ private struct AvailableProviderRow: View {
                     .foregroundStyle(MobileTheme.Colors.accent)
                     .accessibilityHidden(true)
             }
+            .padding(.vertical, 4)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(provider.displayName), \(accountCount > 0 ? "add another account" : "connect for the first time")")
+        .accessibilityLabel("\(provider.displayName), \(accountCount > 0 ? "add another account" : "connect for the first time"). \(setupHint)")
     }
 }
 

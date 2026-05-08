@@ -26,6 +26,13 @@ struct ChatEngineBackendStrip: View {
                 HStack(spacing: 2) {
                     ForEach(enabledChatBackendsForHeader) { backend in
                         Button {
+                            if backend == .hermes && !settingsManager.hermesSetupWizardCompleted {
+                                WindowManager.shared.openHermesSetupWizard(
+                                    settingsManager: settingsManager,
+                                    chatController: controller
+                                )
+                                return
+                            }
                             controller.setChatBackend(backend)
                         } label: {
                             Text(backend.shortLabel)
@@ -45,8 +52,8 @@ struct ChatEngineBackendStrip: View {
                                 )
                         }
                         .buttonStyle(.plain)
-                        .disabled((backend == .hermes && !controller.hermesAvailable) || (backend == .openclaw && !controller.openClawAvailable))
-                        .opacity((backend == .hermes && !controller.hermesAvailable) || (backend == .openclaw && !controller.openClawAvailable) ? 0.4 : 1)
+                        .disabled(isBackendUnavailable(backend))
+                        .opacity(isBackendUnavailable(backend) ? 0.4 : 1)
                     }
                 }
                 .padding(2)
@@ -56,5 +63,16 @@ struct ChatEngineBackendStrip: View {
         }
         .animation(DesignSystem.Animation.snappy, value: controller.chatBackend)
         .animation(DesignSystem.Animation.snappy, value: enabledChatBackendsForHeader)
+    }
+
+    private func isBackendUnavailable(_ backend: ChatBackendID) -> Bool {
+        switch backend {
+        case .hermes:
+            controller.hermesAvailable == false && settingsManager.hermesSetupWizardCompleted
+        case .openclaw:
+            controller.openClawAvailable == false
+        case .codex, .claude:
+            false
+        }
     }
 }

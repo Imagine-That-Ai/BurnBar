@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=4" />
+<title>Pretext Bridge</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg-light: #EDF0E5;
+    --bg-dark: #0E0D0B;
+    --surface-light: #F4F6EE;
+    --surface-dark: #171510;
+    --surface-elevated-light: #FAFAF5;
+    --surface-elevated-dark: #201E18;
+    --ink-light: #1C2014;
+    --ink-dark: #F0EBE2;
+    --ink-secondary-light: #4A5442;
+    --ink-secondary-dark: #9A9088;
+    --ink-muted-light: #7A8572;
+    --ink-muted-dark: #7A7268;
+    --border-light: #C5CEB6;
+    --border-dark: #302C22;
+    --mercury: #C8BFB5;
+    --aureate-light: #3F4651;
+    --aureate-dark: #A2ACBA;
+    --ember: #E07868;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg-dark);
+    color: var(--ink-dark);
+    font-family: -apple-system, "SF Pro Rounded", system-ui, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    overflow: hidden;
+  }
+  @media (prefers-color-scheme: light) {
+    html, body {
+      background: var(--bg-light);
+      color: var(--ink-light);
+    }
+  }
+  body {
+    position: relative;
+  }
+  #stage {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+</style>
+</head>
+<body>
+  <div id="stage" aria-live="polite"></div>
+  <script src="pretext.bundle.min.js"></script>
+  <script>
+    (function () {
+      "use strict";
+
+      // ────────────────────────────────────────────────────────────────────
+      // Bridge protocol
+      //
+      // Swift sends:
+      //   window.__pretextDispatch(JSON.stringify({ id, method, params }))
+      //
+      // We post results back through:
+      //   window.webkit.messageHandlers.pretext.postMessage({ id, ok, value, error })
+      //
+      // All heavy values (PreparedText, PreparedTextWithSegments, RichInline)
+      // stay on the JS side, behind opaque integer handles. Swift never sees
+      // the raw structure — it just gets an ID and passes it back.
+      // ────────────────────────────────────────────────────────────────────
+
+      var Pretext = window.Pretext;
+      var PretextRichInline = window.PretextRichInline;
+
+      var handles = new Map();
+      var nextHandle = 1;
+
+      function storeHandle(value) {
+        var id = nextHandle++;
+        handles.set(id, value);
+        return id;
+      }
+
+      function getHandle(id) {
+        var h = handles.get(id);
+        if (!h) throw new Error("Unknown pretext handle: " + id);
+        return h;
+      }
+
+      function postReply(id, payload) {
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pretext) {
+          window.webkit.messageHandlers.pretext.postMessage(Object.assign({ id: id }, payload));
+        }
+      }
+
+      function ok(id, value) {
+        postReply(id, { ok: true, value: value });
+      }
+
+      function fail(id, error) {
+        postReply(id, { ok: false, error: String(error && error.message ? error.message : error) });
+      }
+
+      // ────────────────────────────────────────────────────────────────────
+      // Methods
+      // ────────────────────────────────────────────────────────────────────
+
+      var methods = {
+        ready: function () {
+          return { ok: true };
+        },
+
+        prepare: function (params) {
+          var prepared = Pretext.prepare(params.text, params.font, params.options || undefined);
+          return { handle: storeHandle(prepared) };
+        },
+
+        prepareWithSegments: function (params) {
+          var prepared = Pretext.prepareWithSegments(params.text, params.font, params.options || undefined);
+          return { handle: storeHandle(prepared) };
+        },
+
+        layout: function (params) {
+          var prepared = getHandle(params.handle);
+          var result = Pretext.layout(prepared, params.maxWidth, params.lineHeight);
+          return { height: result.height, lineCount: result.lineCount };
+        },
+
+        layoutWithLines: function (params) {
+          var prepared = getHandle(params.handle);
+          var result = Pretext.layoutWithLines(prepared, params.maxWidth, params.lineHeight);
+          return {
+            height: result.height,
+            lineCount: result.lineCount,
+            lines: result.lines.map(function (l) {
+              return { text: l.text, width: l.width };
+            })
+          };
+        },
+
+        measureLineStats: function (params) {
+          var prepared = getHandle(params.handle);
+          var stats = Pretext.measureLineStats(prepared, params.maxWidth);
+          return { lineCount: stats.lineCount, maxLineWidth: stats.maxLineWidth };
+        },
+
+        measureNaturalWidth: function (params) {
+          var prepared = getHandle(params.handle);
+          return { width: Pretext.measureNaturalWidth(prepared) };
+        },
+
+        prepareRichInline: function (params) {
+          var prepared = PretextRichInline.prepareRichInline(params.items);
+          return { handle: storeHandle(prepared) };
+        },
+
+        layoutRichInline: function (params) {
+          var prepared = getHandle(params.handle);
+          var lines = [];
+          var cursor = { itemIndex: 0, segmentIndex: 0, graphemeIndex: 0 };
+          var maxWidth = params.maxWidth;
+          PretextRichInline.walkRichInlineLineRanges(prepared, maxWidth, function (range) {
+            var line = PretextRichInline.materializeRichInlineLineRange(prepared, range);
+            // Each line has fragments preserving font information.
+            lines.push({
+              width: line.width,
+              fragments: line.fragments.map(function (f) {
+                return {
+                  text: f.text,
+                  itemIndex: f.itemIndex,
+                  gapBefore: f.gapBefore || 0
+                };
+              })
+            });
+          });
+          return { lines: lines };
+        },
+
+        releaseHandle: function (params) {
+          handles.delete(params.handle);
+          return { released: true };
+        },
+
+        // Render prepared text to the visible canvas, themed for the current
+        // appearance. Used by `PretextTextView`. We draw fresh on every call
+        // because re-rendering is fast and avoids staleness on resize.
+        renderToCanvas: function (params) {
+          var prepared = getHandle(params.handle);
+          var stage = document.getElementById("stage");
+          stage.innerHTML = "";
+          var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var canvas = document.createElement("canvas");
+          var dpr = window.devicePixelRatio || 1;
+          var maxWidth = params.maxWidth;
+          var lineHeight = params.lineHeight;
+          var result = Pretext.layoutWithLines(prepared, maxWidth, lineHeight);
+          canvas.width = Math.ceil(maxWidth * dpr);
+          canvas.height = Math.ceil(result.height * dpr);
+          canvas.style.width = maxWidth + "px";
+          canvas.style.height = result.height + "px";
+          stage.appendChild(canvas);
+          var ctx = canvas.getContext("2d");
+          ctx.scale(dpr, dpr);
+          ctx.font = params.font;
+          ctx.textBaseline = "alphabetic";
+          ctx.fillStyle = params.color || (dark ? "#F0EBE2" : "#1C2014");
+          // Approximate baseline: 80% of line height (matches CSS heuristic).
+          var baseline = lineHeight * 0.8;
+          for (var i = 0; i < result.lines.length; i++) {
+            ctx.fillText(result.lines[i].text, 0, baseline + i * lineHeight);
+          }
+          return { height: result.height, lineCount: result.lineCount };
+        }
+      };
+
+      // ────────────────────────────────────────────────────────────────────
+      // Dispatcher
+      // ────────────────────────────────────────────────────────────────────
+
+      window.__pretextDispatch = function (json) {
+        var msg;
+        try {
+          msg = JSON.parse(json);
+        } catch (e) {
+          return; // Malformed; nothing we can reply to.
+        }
+        var id = msg.id;
+        var method = methods[msg.method];
+        if (!method) {
+          fail(id, "Unknown method: " + msg.method);
+          return;
+        }
+        try {
+          var value = method(msg.params || {});
+          ok(id, value);
+        } catch (e) {
+          fail(id, e);
+        }
+      };
+
+      // Signal readiness once Pretext is loaded.
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pretext) {
+        window.webkit.messageHandlers.pretext.postMessage({ id: 0, ok: true, value: { ready: true } });
+      }
+    })();
+  </script>
+</body>
+</html>

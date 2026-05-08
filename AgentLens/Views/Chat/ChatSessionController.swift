@@ -60,6 +60,13 @@ final class ChatSessionController {
     /// When true, the chat panel collapses to a small dockable pill.
     var isMinimized = false
 
+    /// User-attached files staged for the next outgoing message. Cleared on
+    /// send (and reset when the chat is cleared or the thread switches).
+    var pendingAttachments: [HermesAttachment] = []
+    /// Most recent attachment-related error surfaced to the composer (size
+    /// cap, decode failure). Cleared on the next successful add.
+    var attachmentError: String?
+
     private struct LocalIndexOracleResult {
         let message: String
         let jumpTargets: [ConversationJumpTarget]
@@ -213,7 +220,10 @@ final class ChatSessionController {
     }
 
     func probeHermesAvailability() async {
-        await cliBridge.probeHermesAvailability(bearerToken: hermesBearerToken)
+        await cliBridge.probeHermesAvailability(
+            baseURL: hermesGatewayBaseURL,
+            bearerToken: hermesBearerToken
+        )
         hermesAvailable = cliBridge.hermesAvailable
     }
 
@@ -232,6 +242,11 @@ final class ChatSessionController {
     private var hermesBearerToken: String? {
         let t = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         return t.isEmpty ? nil : t
+    }
+
+    private var hermesGatewayBaseURL: URL {
+        URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? URL(string: "http://127.0.0.1:8642")!
     }
 
     private var openClawBearerToken: String? {
@@ -469,6 +484,8 @@ final class ChatSessionController {
         conversationJumpTargets = []
         firstAssistantBadgeShown = false
         lastRetrievalHadNoEvidence = false
+        pendingAttachments = []
+        attachmentError = nil
         startNewChatThread()
     }
 
@@ -629,11 +646,16 @@ final class ChatSessionController {
 
     func send() async {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !isStreaming else { return }
+        let attachmentsToSend = pendingAttachments
+        guard (!trimmed.isEmpty || !attachmentsToSend.isEmpty), !isStreaming else { return }
 
         streamError = nil
         conversationJumpTargets = []
-        let userMsg = ChatMessageRecord(role: .user, content: trimmed)
+        let userMsg = ChatMessageRecord(
+            role: .user,
+            content: trimmed,
+            attachments: attachmentsToSend
+        )
         messages.append(userMsg)
         do {
             try dataStore.saveChatMessage(userMsg, threadID: activeThreadID)
@@ -642,6 +664,8 @@ final class ChatSessionController {
         }
         refreshHistory()
         inputText = ""
+        pendingAttachments = []
+        attachmentError = nil
 
         switch chatBackend {
         case .hermes:
@@ -884,6 +908,13 @@ final class ChatSessionController {
             : []
 
         let requestModel = effectiveChatModel(for: chatBackend)
+        // Load bytes for any attachments referenced by history. We load lazily
+        // so re-opened threads don't pay the cost when nothing was attached.
+        let attachmentByteMap: [String: Data] = Self.collectAttachmentBytes(
+            history: multiTurnHistory,
+            workspaceURL: chatWorkspaceURL
+        )
+        let backendCapabilities = HermesBackendCapabilities.default
 
         streamTask = Task { [weak self] in
             guard let self else { return }
@@ -893,11 +924,24 @@ final class ChatSessionController {
                 let stream = await MainActor.run { () -> AsyncThrowingStream<CLIChatStreamEvent, Error> in
                     switch self.chatBackend {
                     case .hermes:
+                        // Compose Hermes' system prompt via the shared
+                        // builder so the atom directive stays in lockstep
+                        // with iOS. The dashboard/RAG context block lives
+                        // in `augmentedSystem` and is fed in as the
+                        // builder's `dashboardContext`.
+                        let hermesPrompt = HermesSystemPromptBuilder(
+                            dashboardContext: augmentedSystem,
+                            includesAtomDirective: true
+                        ).build()
                         return self.cliBridge.chatHermes(
-                            systemPrompt: augmentedSystem,
+                            baseURL: self.hermesGatewayBaseURL,
+                            systemPrompt: hermesPrompt,
                             history: multiTurnHistory,
                             bearerToken: self.hermesBearerToken,
-                            model: requestModel
+                            model: requestModel,
+                            attachmentBytes: attachmentByteMap,
+                            capabilities: backendCapabilities,
+                            workspaceURL: self.chatWorkspaceURL
                         )
                     case .openclaw:
                         let base = URL(string: self.settingsManager.openClawGatewayBaseURL)
@@ -907,7 +951,10 @@ final class ChatSessionController {
                             systemPrompt: augmentedSystem,
                             history: multiTurnHistory,
                             bearerToken: self.openClawBearerToken,
-                            model: requestModel
+                            model: requestModel,
+                            attachmentBytes: attachmentByteMap,
+                            capabilities: backendCapabilities,
+                            workspaceURL: self.chatWorkspaceURL
                         )
                     case .codex:
                         return self.cliBridge.chatCodexStream(
@@ -1482,6 +1529,68 @@ final class ChatSessionController {
         } else {
             pieces.append(ChatTranscriptPiece(kind: .text, value: chunk, detail: nil))
         }
+    }
+
+    // MARK: - Attachments
+
+    /// Imports a file URL (NSOpenPanel pick, drag-and-drop) into the
+    /// active chat workspace and stages it on the next outgoing message.
+    func addAttachment(from url: URL) {
+        ensureChatWorkspaceDirectoryExists()
+        do {
+            let attachment = try HermesAttachmentLoader.importFile(at: url, intoWorkspace: chatWorkspaceURL)
+            pendingAttachments.append(attachment)
+            attachmentError = nil
+        } catch {
+            attachmentError = error.localizedDescription
+            AppLogger.chat.silentFailure("addAttachment", error: error)
+        }
+    }
+
+    /// Imports an in-memory image (clipboard paste, dragged NSImage) into
+    /// the workspace.
+    func addAttachment(image: NSImage, suggestedName: String? = nil) {
+        ensureChatWorkspaceDirectoryExists()
+        do {
+            let attachment = try HermesAttachmentLoader.importImage(
+                image,
+                suggestedName: suggestedName,
+                intoWorkspace: chatWorkspaceURL
+            )
+            pendingAttachments.append(attachment)
+            attachmentError = nil
+        } catch {
+            attachmentError = error.localizedDescription
+            AppLogger.chat.silentFailure("addAttachment(image)", error: error)
+        }
+    }
+
+    func removeAttachment(_ id: String) {
+        pendingAttachments.removeAll { $0.id == id }
+    }
+
+    /// Aggregate token-cost estimate for the currently staged attachments.
+    var pendingAttachmentTokenEstimate: Int {
+        pendingAttachments.reduce(0) { $0 + $1.estimatedTokenCost }
+    }
+
+    /// Loads bytes for attachments in `history` that the encoder will need.
+    /// We pull bytes for all user messages (small overhead, keeps multi-turn
+    /// vision threads honest if the user re-sends with image context).
+    static func collectAttachmentBytes(
+        history: [ChatMessageRecord],
+        workspaceURL: URL
+    ) -> [String: Data] {
+        var map: [String: Data] = [:]
+        for message in history where message.role == .user {
+            for att in message.attachments {
+                if map[att.id] != nil { continue }
+                if let data = HermesAttachmentLoader.loadAttachmentBytes(att, workspaceURL: workspaceURL) {
+                    map[att.id] = data
+                }
+            }
+        }
+        return map
     }
 }
 

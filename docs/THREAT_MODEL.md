@@ -138,6 +138,7 @@ If the app is compromised, the attacker has full access to the user's home direc
 - **Auth:** Google and Apple Sign-In via Firebase Auth. OAuth tokens managed by Firebase SDK.
 - **App Check (Firestore):** The macOS app initializes App Check before Firebase. **Production** projects must **enforce** App Check for **Cloud Firestore** in the Firebase console so traffic without a valid attestation is rejected; Auth alone is not a substitute (see [FIREBASE_APP_CHECK_ENFORCEMENT.md](FIREBASE_APP_CHECK_ENFORCEMENT.md)).
 - **Firestore:** Owner-scoped explicit collection rules cover supported `users/{uid}/...` sync paths and `workspaces/workspace-{uid}/...` shared-artifact paths. Client-writable sync documents reject plaintext-looking secret field names. Usage rollups, rate-limit docs, and top-level `provider_account_secret_refs` credential reference docs are server-only. Basic size limits are enforced. Authorization is expressed in rules; **app attestation** is expected via console App Check enforcement.
+- **Hermes hosted relay:** The Cloud Run WebSocket relay is premium-only and accepts sockets only after Firebase Auth, App Check, explicit host/client role binding, and an unexpired Apple-verified hosted entitlement. It routes encrypted frames through Redis and never receives plaintext Hermes request or response bodies.
 - **What syncs:** Usage rows, chat-thread metadata (for cross-device resume), and owner-scoped shared-artifact heads/revisions. Chat message bodies, conversation metadata, and full session-log backup are separately gated.
 - **Privacy note:** Synced data can include project directory names and model names. Chat content requires **Back Up Chat Message Content**; full session log bodies with prompts or code require the session-log backup setting.
 
@@ -177,7 +178,7 @@ The app makes outbound network requests in the following categories:
 |---|---|---|---|
 | Provider logos | `raw.githubusercontent.com/lobehub/lobe-icons/...` | On UI render (SwiftUI `AsyncImage`) | None (standard HTTP metadata only) |
 | Quota/usage APIs | Provider endpoints (MiniMax, Cursor, Factory, Z.ai) | When quota polling is enabled | Provider API keys (in auth headers) |
-| Firebase | Google Cloud | When cloud sync is enabled | Usage rows, chat-thread metadata by default; chat content and session logs only behind their explicit backup settings |
+| Firebase | Google Cloud | When cloud sync is enabled | Usage rows, chat-thread metadata by default; chat content, conversation backup, session logs, and hosted Hermes relay traffic require explicit backup settings plus the server-written hosted entitlement |
 | iCloud | Apple iCloud | When iCloud mirroring is enabled | Session log file copies |
 | Connector APIs | GitHub, Slack, Linear, PostHog, Sentry, Gmail | When individual connectors are configured and tested | Connector-specific auth tokens |
 | Telegram | `api.telegram.org` | When Telegram bot is configured | Bot token, notification payloads |
@@ -227,3 +228,39 @@ Provider credentials only move between devices through an opt-in encrypted escro
 - Key versioning supports rotation. Old keys are retained for decrypting historic envelopes.
 - Missing private key is a recoverable state — surfaced as a classified error, not a crash.
 - Encryption keys are not derivable by Firebase, Firestore rules, Cloud Functions, or backend infrastructure.
+
+## Hosted Quota Subscription — Apple JWS Trust Pipeline
+
+Hosted quota sync is gated by a paid Apple subscription. The server is the
+sole writer of entitlement state; the iOS client never trusts its own
+StoreKit verification result for authorization.
+
+### Threat model
+
+| Threat | Mitigation |
+|---|---|
+| **Forged JWS from a non-Apple signer** | Server verifies the chain against three vendored Apple root certificates (`AppleRootCA-G3`, `AppleRootCA-G2`, `AppleIncRootCertificate`) using `@apple/app-store-server-library`. SHA-256 fingerprints are pinned in `functions/src/appstore/verifier.ts:ROOT_CERT_FILES` and checked at cold start; any tamper with the vendored DER refuses to start the function. |
+| **Replayed JWS from another user** | Pre-purchase, the server mints an `appAccountToken` UUID and writes `users/{uid}/entitlement_bindings/{token}`. StoreKit embeds the UUID inside the Apple-signed JWS via `Product.PurchaseOption.appAccountToken`. The reconciler reads `payload.appAccountToken`, looks it up in the binding collection, and rejects with `binding_mismatch` if it resolves to a different UID. |
+| **Replayed older JWS reviving a revoked entitlement** | Reconciler calls `getAllSubscriptionStatuses` for the inbound `originalTransactionId` and re-verifies every JWS in the response. The "winning" transaction is the one with the most recent `signedDate`; older payloads cannot overwrite a newer verified state. `shouldOverwrite` keys replay protection to Apple `signedDateMs`, not local wall-clock verification time. |
+| **Bundle / app id confusion** | Decoded JWS payloads must match `appStore.bundleId`; production notifications must additionally match `appStore.appAppleId`. Mismatches throw `bundle_id_mismatch` and never write the entitlement. |
+| **Sandbox JWS aimed at production (or vice versa)** | The verifier auto-falls-back to the alternate environment when configured (`autoFallbackEnvironment`), but the matching `Environment` is stamped on the entitlement doc so operators can audit which environment a user's purchase actually verified under. |
+| **Apple S2S replay** | Webhook endpoint is idempotent on `notificationUUID` via Firestore `create()` semantics on `users/{uid}/entitlement_events/{n_<uuid>}`. The audit append is the same operation regardless of how many times Apple retries. |
+| **Missed S2S delivery** | A scheduled `reconcileHostedEntitlementsDaily` job re-pulls live state for every active entitlement. Missed renewals/revocations converge within 24 hours without operator intervention. |
+| **App Store Connect unavailable during entitlement verification** | Reconciliation fails closed with `asc_live_status_unavailable`; the server does not mint or refresh paid entitlements from the inbound client JWS alone. |
+| **Client-driven false claim of inactivity** | Clients only forward signed JWS strings; the server is authoritative. The iOS surface uses `restoreHostedQuotaEntitlement` (re-runs ASC reconciliation) when no local entitlement is found, instead of writing `active = false` on the client's behalf. |
+| **Audit log secret exposure** | The audit `decoded` payload runs through a redactor that drops nested `signedTransactionInfo` / `signedRenewalInfo` / `signedPayload` strings and replaces them with their SHA-256. The raw JWS itself is never persisted; only its hash. `appAccountToken` UUIDs are stored on the entitlement doc but only logged with the first/last 4 chars (`abcd…7890`). |
+| **Function deploy with stale or missing ASC creds** | The verifier and ASC client throw at first-use rather than silently degrading. Operators see `APP_STORE_ASC_KEY_ID is not set` etc. on the first call, not as a quiet verification regression. |
+
+### Firestore Rules
+
+- `users/{uid}/entitlements/{entitlementId}` — owner read; `write` denied to all clients.
+- `users/{uid}/entitlement_events/{eventId}` — owner read; `write` denied to all clients.
+- `users/{uid}/entitlement_bindings/{bindingId}` — server-only, denied to clients for both read and write.
+
+### Schema versioning
+
+The entitlement doc carries `schemaVersion: 2` and `verificationVersion: 2` for
+the Apple-JWS-verified path. The `source` literal `apple_jws_verified` is
+written by every callable / S2S / scheduled write; legacy v1 docs (which
+trusted only a SHA-256 of a client-supplied JWS) are migrated forward on the
+next verified event.

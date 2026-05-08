@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import WebKit
+import OpenBurnBarCore
 struct AnimatedMiningPickView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let webView = WKWebView(frame: .zero)
@@ -492,10 +493,8 @@ struct SummaryProgressPanel: View {
                 .stroke(.white.opacity(0.15), lineWidth: 1.5)
                 .frame(width: 16, height: 16)
         case .processing:
-            // Mini animated pick
-            Image("MiningPickIcon")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
+            // Mini animated pick — shared brand loader.
+            MiningPickLoader(.inline)
                 .frame(width: 18, height: 18)
         case .done:
             Image(systemName: "checkmark.circle.fill")
