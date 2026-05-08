@@ -385,11 +385,16 @@ gcloud run deploy openburnbar-quota-runner \
 The hosted runner must only be called by Firebase Functions with the shared
 secret. Hosted Functions currently permit Codex hosted refresh only.
 
+The Docker image pins the globally installed Codex and Claude Code CLIs through
+`OPENAI_CODEX_VERSION` and `ANTHROPIC_CLAUDE_CODE_VERSION` build args. Bump
+those deliberately after testing `npm test --prefix quota-runner`; do not let
+hosted deploys float to whatever npm publishes next.
+
 ### Run Locally
 
 ```bash
 cd quota-runner
-npm install
+npm ci
 RUNNER_SHARED_SECRET=dev-secret npm start
 ```
 
