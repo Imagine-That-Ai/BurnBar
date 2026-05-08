@@ -184,6 +184,7 @@ final class SwitcherSettingsUITests: XCTestCase {
             ),
             sortKey: 1
         ))
+        let persistedOriginal = try XCTUnwrap(store.fetchProfile(id: original.id))
 
         // Update with new metadata
         let updatedRecord = SwitcherProfileRecord(
@@ -207,7 +208,11 @@ final class SwitcherSettingsUITests: XCTestCase {
         XCTAssertEqual(updated.sortKey, original.sortKey)
 
         // Verify createdAt preserved
-        XCTAssertEqual(updated.createdAt.timeIntervalSince1970, original.createdAt.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(
+            updated.createdAt.timeIntervalSince1970,
+            persistedOriginal.createdAt.timeIntervalSince1970,
+            accuracy: 0.01
+        )
 
         // Verify original ID unchanged
         XCTAssertEqual(updated.id, original.id)

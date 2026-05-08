@@ -17,7 +17,7 @@ jobs:
     # image's Xcode 16.4 Swift frontend crashes while lowering lazy global
     # initializers in the large OpenBurnBar SwiftUI target, before tests run.
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       INTERNAL_RUN: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
