@@ -283,7 +283,7 @@ final class AtomicIngestionTransaction {
         try dbQueue.write { db in
             // First, persist usages
             for usage in usages {
-                let persistedAccountKey = Self.persistedNonSecretAccountKey(fromRawAccountIdentifier: usage.providerAccountID)
+                let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
                 try db.execute(sql: """
                     INSERT INTO token_usage (
                         id, provider, sessionId, projectName, model,
@@ -391,7 +391,7 @@ final class AtomicIngestionTransaction {
                         usage.sourceDeviceName,
                         usage.isRemote ? 1 : 0,
                         usage.providerID.rawValue,
-                        persistedAccountKey,
+                        usagePartition,
                         usage.providerAccountLabel,
                         usage.providerAccountSource?.rawValue,
                         usage.provenanceMethod.rawValue,
@@ -436,7 +436,7 @@ final class AtomicIngestionTransaction {
     var wasCommitted: Bool { isCommitted }
     var wasRolledBack: Bool { isRolledBack }
 
-    private static func persistedNonSecretAccountKey(fromRawAccountIdentifier rawValue: String?) -> String? {
+    private static func usagePartitionToken(from rawValue: String?) -> String? {
         guard let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty else { return nil }
         let digest = SHA256.hash(data: Data(trimmed.utf8))
